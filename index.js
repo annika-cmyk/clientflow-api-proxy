@@ -42,6 +42,25 @@ app.post('/test-post', (req, res) => {
   });
 });
 
+// Debug endpoint för Softr
+app.post('/debug-softr', (req, res) => {
+  console.log('🔍 DEBUG: Vad Softr skickar:', {
+    body: req.body,
+    headers: req.headers,
+    method: req.method,
+    url: req.url,
+    availableFields: Object.keys(req.body || {})
+  });
+  
+  res.json({
+    success: true,
+    message: 'Debug data mottaget',
+    receivedBody: req.body,
+    availableFields: Object.keys(req.body || {}),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Airtable test endpoint
 app.get('/api/airtable/test', async (req, res) => {
   const startTime = Date.now();
@@ -295,7 +314,7 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
       avregistreradOrganisation: !!org.avregistreradOrganisation,
       avregistreringsorsak: org.avregistreringsorsak?.klartext,
       pagandeAvvecklingsEllerOmstruktureringsforfarande: org.pagandeAvvecklingsEllerOmstruktureringsforfarandeLista?.length || 0,
-      juridiskForm: org.juridiskForm?.klartext,
+              juridiskForm: org.juridiskForm?.klartext,
       verksamOrganisation: org.verksamOrganisation?.kod,
       organisationsdatum: org.organisationsdatum?.registreringsdatum,
       verksamhetsbeskrivning: org.verksamhetsbeskrivning?.beskrivning,
