@@ -61,6 +61,25 @@ app.post('/debug-softr', (req, res) => {
   });
 });
 
+// GET version av debug endpoint för Softr
+app.get('/debug-softr', (req, res) => {
+  console.log('🔍 DEBUG GET: Vad Softr skickar:', {
+    query: req.query,
+    headers: req.headers,
+    method: req.method,
+    url: req.url,
+    availableFields: Object.keys(req.query || {})
+  });
+  
+  res.json({
+    success: true,
+    message: 'Debug GET data mottaget',
+    receivedQuery: req.query,
+    availableFields: Object.keys(req.query || {}),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Airtable test endpoint
 app.get('/api/airtable/test', async (req, res) => {
   const startTime = Date.now();
