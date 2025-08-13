@@ -5,7 +5,7 @@ const Airtable = require('airtable');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // Trust proxy för Render
 app.set('trust proxy', 1);
