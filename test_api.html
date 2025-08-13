@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Proxy Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .example {
+            background-color: #e2e3e5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 API Proxy Test</h1>
+        
+        <div class="form-group">
+            <label for="orgNumber">Organisationsnummer:</label>
+            <input type="text" id="orgNumber" placeholder="t.ex. 556123-4567" value="556123-4567">
+            <div class="example">
+                <strong>Exempel:</strong> 556123-4567, 5561234567, 123456-7890
+            </div>
+        </div>
+        
+        <button onclick="testAPI()" id="testBtn">Testa API</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const orgNumber = document.getElementById('orgNumber').value.trim();
+            const resultDiv = document.getElementById('result');
+            const testBtn = document.getElementById('testBtn');
+            
+            if (!orgNumber) {
+                showResult('Vänligen ange ett organisationsnummer', 'error');
+                return;
+            }
+            
+            // Visa loading
+            testBtn.disabled = true;
+            testBtn.textContent = 'Testar...';
+            showResult('Skickar request...', 'loading');
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/lookup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        orgNumber: orgNumber
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(JSON.stringify(data, null, 2), 'success');
+                } else {
+                    showResult(`Fel: ${data.error}\nMeddelande: ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                showResult(`Nätverksfel: ${error.message}\n\nKontrollera att servern körs på http://localhost:3000`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = 'Testa API';
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+        
+        // Testa health check när sidan laddas
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('http://localhost:3000/health');
+                if (response.ok) {
+                    console.log('✅ Server is running');
+                } else {
+                    console.log('❌ Server health check failed');
+                }
+            } catch (error) {
+                console.log('❌ Cannot connect to server');
+            }
+        });
+        
+        // Enter-tangent för att testa
+        document.getElementById('orgNumber').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                testAPI();
+            }
+        });
+    </script>
+</body>
+</html>

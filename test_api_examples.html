@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Proxy Test - Exempel</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        select, input[type="text"], input[type="url"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        select:focus, input[type="text"]:focus, input[type="url"]:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .example {
+            background-color: #e2e3e5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .api-example {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .api-example:hover {
+            background-color: #e9ecef;
+        }
+        .api-example h4 {
+            margin: 0 0 10px 0;
+            color: #007bff;
+        }
+        .api-example p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <script src="config.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <img src="Namnlös (200 x 150 px) (2).png" alt="Logo" style="height: 50px; width: auto;">
+        </div>
+        <h1>API Proxy Test - Exempel</h1>
+        
+        <div class="form-group">
+            <label for="apiSelect">Välj test API:</label>
+            <select id="apiSelect" onchange="updateApiFields()">
+                <option value="">-- Välj ett API --</option>
+                <option value="docsign">DocSign (Documents)</option>
+                <option value="jsonplaceholder">JSONPlaceholder (Posts)</option>
+                <option value="jsonplaceholder-users">JSONPlaceholder (Users)</option>
+                <option value="httpbin">HTTPBin (Test API)</option>
+                <option value="reqres">ReqRes (Users)</option>
+                <option value="custom">Eget API</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="apiUrl">API URL:</label>
+            <input type="url" id="apiUrl" placeholder="https://jsonplaceholder.typicode.com/posts/1">
+        </div>
+
+        <div class="form-group">
+            <label for="testParam">Test Parameter (ID/nummer eller state):</label>
+            <input type="text" id="testParam" placeholder="pending" value="pending">
+        </div>
+
+        <div class="form-group">
+            <label for="httpMethod">HTTP Metod:</label>
+            <select id="httpMethod">
+                <option value="GET">GET (Hämta data)</option>
+                <option value="POST">POST (Skicka data)</option>
+                <option value="PUT">PUT (Uppdatera data)</option>
+                <option value="DELETE">DELETE (Ta bort data)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="apiKey">API Nyckel (valfritt):</label>
+            <input type="text" id="apiKey" placeholder="Din API nyckel här">
+            <div class="example">
+                <strong>Tips:</strong> För DocSign skickas API-nyckeln som parameter. För andra API:er som Authorization header.
+            </div>
+        </div>
+        
+        <button onclick="testDirectAPI()" id="directBtn">Testa Direkt API Anrop (GET)</button>
+        <button onclick="testProxyAPI()" id="proxyBtn">Testa via CORS Proxy</button>
+        
+        <!-- DocSign Create Document Section -->
+        <div id="docsignCreateSection" style="display: none; margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+            <h4>📄 Skapa DocSign Dokument</h4>
+            <div class="form-group">
+                <label for="docName">Dokumentnamn:</label>
+                <input type="text" id="docName" placeholder="Mitt testdokument">
+            </div>
+            <div class="form-group">
+                <label for="docComment">Kommentar:</label>
+                <textarea id="docComment" placeholder="Kommentar för undertecknare"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="docParties">Undertecknare (ID:n, komma-separerade):</label>
+                <input type="text" id="docParties" placeholder="1,2,3">
+            </div>
+            <div class="form-group">
+                <label for="docAttachments">Bilagor (JSON):</label>
+                <textarea id="docAttachments" placeholder='[{"name": "dokument.pdf", "url": "https://example.com/dokument.pdf"}]'></textarea>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="sendReminders" checked> Skicka påminnelser
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="sendReceipt" checked> Skicka kvitto
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="isDemo"> Demo-dokument
+                </label>
+            </div>
+            <button onclick="createDocSignDocument()" class="btn btn-success">📄 Skapa Dokument</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Tillgängliga Test API:er</h2>
+        
+        <div class="grid">
+            <div class="api-example" onclick="selectAPI('jsonplaceholder', 'https://jsonplaceholder.typicode.com/posts/', '1')">
+                <h4>📝 JSONPlaceholder - Posts</h4>
+                <p><strong>URL:</strong> https://jsonplaceholder.typicode.com/posts/</p>
+                <p><strong>Beskrivning:</strong> Simulerar blogg-inlägg</p>
+                <p><strong>Exempel ID:</strong> 1-100</p>
+            </div>
+
+            <div class="api-example" onclick="selectAPI('jsonplaceholder-users', 'https://jsonplaceholder.typicode.com/users/', '1')">
+                <h4>👥 JSONPlaceholder - Users</h4>
+                <p><strong>URL:</strong> https://jsonplaceholder.typicode.com/users/</p>
+                <p><strong>Beskrivning:</strong> Simulerar användardata</p>
+                <p><strong>Exempel ID:</strong> 1-10</p>
+            </div>
+
+            <div class="api-example" onclick="selectAPI('httpbin', 'https://httpbin.org/json', '')">
+                <h4>🔧 HTTPBin</h4>
+                <p><strong>URL:</strong> https://httpbin.org/json</p>
+                <p><strong>Beskrivning:</strong> Test API för HTTP-anrop</p>
+                <p><strong>Parameter:</strong> Ingen (fast endpoint)</p>
+            </div>
+
+                         <div class="api-example" onclick="selectAPI('docsign', 'https://docsign.se/api/documents', 'pending')">
+                 <h4>📄 DocSign - Documents</h4>
+                 <p><strong>URL:</strong> https://docsign.se/api/documents</p>
+                 <p><strong>Beskrivning:</strong> Dokument-signering API (GET med URL-parametrar)</p>
+                 <p><strong>State:</strong> pending, paused, completed</p>
+             </div>
+             
+             <div class="api-example" onclick="selectAPI('reqres', 'https://reqres.in/api/users/', '1')">
+                 <h4>👤 ReqRes - Users</h4>
+                 <p><strong>URL:</strong> https://reqres.in/api/users/</p>
+                 <p><strong>Beskrivning:</strong> Användardata API</p>
+                 <p><strong>Exempel ID:</strong> 1-12</p>
+             </div>
+        </div>
+    </div>
+
+            <div class="container">
+            <h2>🔧 Testa din Proxy Server</h2>
+            
+            <div class="form-group">
+                <label for="proxyUrl">Proxy Server URL:</label>
+                <input type="url" id="proxyUrl" placeholder="http://localhost:3000/api/lookup" value="http://localhost:3000/api/lookup">
+            </div>
+
+            <div class="form-group">
+                <label for="orgNumber">Organisationsnummer (för proxy test):</label>
+                <input type="text" id="orgNumber" placeholder="556123-4567" value="556123-4567">
+            </div>
+
+            <div class="form-group">
+                <label for="proxyApiKey">API Nyckel för Proxy Server (valfritt):</label>
+                <input type="text" id="proxyApiKey" placeholder="API nyckel för din proxy server">
+                <div class="example">
+                    <strong>Tips:</strong> Detta är API-nyckeln som din proxy server använder för att anropa det externa API:et
+                </div>
+            </div>
+
+            <button onclick="testProxyServer()" id="proxyServerBtn">Testa Proxy Server (POST)</button>
+            
+            <div id="proxyResult"></div>
+        </div>
+
+        <div class="container">
+            <h2>📚 HTTP-metoder förklaring</h2>
+            
+            <div class="grid">
+                <div class="api-example">
+                    <h4>🔍 GET</h4>
+                    <p><strong>Användning:</strong> Hämta data</p>
+                    <p><strong>Exempel:</strong> Hämta användarinfo, lista produkter</p>
+                    <p><strong>Body:</strong> Ingen</p>
+                </div>
+
+                <div class="api-example">
+                    <h4>📤 POST</h4>
+                    <p><strong>Användning:</strong> Skicka data</p>
+                    <p><strong>Exempel:</strong> Skapa ny användare, skicka formulär</p>
+                    <p><strong>Body:</strong> JSON-data</p>
+                </div>
+
+                <div class="api-example">
+                    <h4>✏️ PUT</h4>
+                    <p><strong>Användning:</strong> Uppdatera data</p>
+                    <p><strong>Exempel:</strong> Uppdatera användarinfo</p>
+                    <p><strong>Body:</strong> JSON-data</p>
+                </div>
+
+                <div class="api-example">
+                    <h4>🗑️ DELETE</h4>
+                    <p><strong>Användning:</strong> Ta bort data</p>
+                    <p><strong>Exempel:</strong> Ta bort användare</p>
+                    <p><strong>Body:</strong> Ingen</p>
+                </div>
+            </div>
+        </div>
+
+    <script>
+                 const apiExamples = {
+             'docsign': {
+                 url: 'https://docsign.se/api/documents',
+                 param: 'pending',
+                 description: 'Dokument-signering API'
+             },
+             'jsonplaceholder': {
+                 url: 'https://jsonplaceholder.typicode.com/posts/',
+                 param: '1',
+                 description: 'Blogg-inlägg API'
+             },
+             'jsonplaceholder-users': {
+                 url: 'https://jsonplaceholder.typicode.com/users/',
+                 param: '1',
+                 description: 'Användardata API'
+             },
+             'httpbin': {
+                 url: 'https://httpbin.org/json',
+                 param: '',
+                 description: 'HTTP test API'
+             },
+             'reqres': {
+                 url: 'https://reqres.in/api/users/',
+                 param: '1',
+                 description: 'Användardata API'
+             }
+         };
+
+                         function selectAPI(apiKey, url, param) {
+            document.getElementById('apiSelect').value = apiKey;
+            document.getElementById('apiUrl').value = url;
+            document.getElementById('testParam').value = param;
+            
+            // Sätt HTTP-metod till GET för DocSign (för att hämta dokument)
+            if (apiKey === 'docsign') {
+                document.getElementById('httpMethod').value = 'GET';
+                // Sätt API-nyckel automatiskt för DocSign
+                if (typeof config !== 'undefined' && config.docsign && config.docsign.apiKey) {
+                    document.getElementById('apiKey').value = config.docsign.apiKey;
+                }
+                // Visa create section
+                document.getElementById('docsignCreateSection').style.display = 'block';
+            } else {
+                // Dölj create section för andra API:er
+                document.getElementById('docsignCreateSection').style.display = 'none';
+            }
+        }
+
+                         function updateApiFields() {
+            const selected = document.getElementById('apiSelect').value;
+            const docsignCreateSection = document.getElementById('docsignCreateSection');
+            
+            if (selected && apiExamples[selected]) {
+                const example = apiExamples[selected];
+                document.getElementById('apiUrl').value = example.url;
+                document.getElementById('testParam').value = example.param;
+                
+                // Sätt HTTP-metod till GET för DocSign (för att hämta dokument)
+                if (selected === 'docsign') {
+                    document.getElementById('httpMethod').value = 'GET';
+                    // Sätt API-nyckel automatiskt för DocSign
+                    if (typeof config !== 'undefined' && config.docsign && config.docsign.apiKey) {
+                        document.getElementById('apiKey').value = config.docsign.apiKey;
+                    }
+                    docsignCreateSection.style.display = 'block';
+                } else {
+                    docsignCreateSection.style.display = 'none';
+                }
+            }
+        }
+
+        async function testDirectAPI() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const testParam = document.getElementById('testParam').value.trim();
+            const httpMethod = document.getElementById('httpMethod').value;
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('directBtn');
+            
+            if (!apiUrl) {
+                showResult('Vänligen ange API URL', 'error', resultDiv);
+                return;
+            }
+            
+                         // Bygg URL - specialhantering för DocSign
+             let fullUrl = apiUrl;
+             const selectedApi = document.getElementById('apiSelect').value;
+             
+             if (selectedApi === 'docsign') {
+                 // DocSign använder URL-parametrar för GET
+                 const params = new URLSearchParams();
+                 if (apiKey) {
+                     params.append('api_key', apiKey);
+                 }
+                 if (testParam) {
+                     params.append('state', testParam);
+                 }
+                 fullUrl = `${apiUrl}?${params.toString()}`;
+             } else {
+                 // Andra API:er lägger till parametern i URL
+                 fullUrl = testParam ? `${apiUrl.replace(/\/$/, '')}/${testParam}` : apiUrl;
+             }
+            
+            btn.disabled = true;
+            btn.textContent = 'Testar...';
+            showResult(`Skickar ${httpMethod} anrop till: ${fullUrl}`, 'loading', resultDiv);
+            
+            try {
+                const requestOptions = {
+                    method: httpMethod,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+                
+                // Lägg till API-nyckel om den finns (för andra API:er än DocSign)
+                if (apiKey && selectedApi !== 'docsign') {
+                    requestOptions.headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+                
+                                 // Lägg till body för POST/PUT
+                 if (httpMethod === 'POST' || httpMethod === 'PUT') {
+                     const bodyData = {};
+                     
+                     // Standard format för andra API:er
+                     bodyData.test = 'data';
+                     bodyData.param = testParam;
+                     
+                     requestOptions.body = JSON.stringify(bodyData);
+                 }
+                
+                const response = await fetch(fullUrl, requestOptions);
+                
+                // Kontrollera content-type för att se om det är JSON
+                const contentType = response.headers.get('content-type');
+                const isJson = contentType && contentType.includes('application/json');
+                
+                if (response.ok) {
+                    if (isJson) {
+                        const data = await response.json();
+                        showResult(`✅ ${httpMethod} API anrop lyckades!\n\nStatus: ${response.status}\nMetod: ${httpMethod}\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nSvar:\n${JSON.stringify(data, null, 2)}`, 'success', resultDiv);
+                    } else {
+                        const text = await response.text();
+                        showResult(`⚠️ ${httpMethod} API anrop lyckades men returnerade inte JSON!\n\nStatus: ${response.status}\nMetod: ${httpMethod}\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nSvar (första 500 tecken):\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`, 'error', resultDiv);
+                    }
+                } else {
+                    const text = await response.text();
+                    showResult(`❌ API fel: ${response.status} ${response.statusText}\n\nMetod: ${httpMethod}\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nFelmeddelande:\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`, 'error', resultDiv);
+                }
+            } catch (error) {
+                showResult(`❌ Nätverksfel: ${error.message}\n\nMetod: ${httpMethod}\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}`, 'error', resultDiv);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = `Testa Direkt API Anrop (${httpMethod})`;
+            }
+        }
+
+        async function testProxyAPI() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const testParam = document.getElementById('testParam').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('proxyBtn');
+            
+            if (!apiUrl) {
+                showResult('Vänligen ange API URL', 'error', resultDiv);
+                return;
+            }
+            
+            // Simulera proxy-anrop genom att använda en CORS-proxy
+            const corsProxy = 'https://cors-anywhere.herokuapp.com/';
+            const fullUrl = testParam ? `${apiUrl.replace(/\/$/, '')}/${testParam}` : apiUrl;
+            const proxyUrl = corsProxy + fullUrl;
+            
+            btn.disabled = true;
+            btn.textContent = 'Testar via Proxy...';
+            showResult(`Skickar anrop via CORS-proxy till: ${fullUrl}`, 'loading', resultDiv);
+            
+            try {
+                const requestOptions = {
+                    headers: {
+                        'Origin': window.location.origin
+                    }
+                };
+                
+                // Lägg till API-nyckel om den finns
+                if (apiKey) {
+                    requestOptions.headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+                
+                const response = await fetch(proxyUrl, requestOptions);
+                
+                // Kontrollera content-type för att se om det är JSON
+                const contentType = response.headers.get('content-type');
+                const isJson = contentType && contentType.includes('application/json');
+                
+                if (response.ok) {
+                    if (isJson) {
+                        const data = await response.json();
+                        showResult(`✅ Proxy API anrop lyckades!\n\nStatus: ${response.status}\nOriginal URL: ${fullUrl}\nProxy URL: ${proxyUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nSvar:\n${JSON.stringify(data, null, 2)}`, 'success', resultDiv);
+                    } else {
+                        const text = await response.text();
+                        showResult(`⚠️ Proxy API anrop lyckades men returnerade inte JSON!\n\nStatus: ${response.status}\nOriginal URL: ${fullUrl}\nProxy URL: ${proxyUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nSvar (första 500 tecken):\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`, 'error', resultDiv);
+                    }
+                } else {
+                    const text = await response.text();
+                    showResult(`❌ Proxy API fel: ${response.status} ${response.statusText}\n\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\nContent-Type: ${contentType}\n\nFelmeddelande:\n${text.substring(0, 500)}${text.length > 500 ? '...' : ''}`, 'error', resultDiv);
+                }
+            } catch (error) {
+                showResult(`❌ Proxy nätverksfel: ${error.message}\n\nURL: ${fullUrl}\nAPI Nyckel: ${apiKey ? 'Ja' : 'Nej'}\n\nTips: CORS-proxy kan vara nere. Prova direkt anrop istället.`, 'error', resultDiv);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Testa via Proxy';
+            }
+        }
+
+        async function testProxyServer() {
+            const proxyUrl = document.getElementById('proxyUrl').value.trim();
+            const orgNumber = document.getElementById('orgNumber').value.trim();
+            const proxyApiKey = document.getElementById('proxyApiKey').value.trim();
+            const resultDiv = document.getElementById('proxyResult');
+            const btn = document.getElementById('proxyServerBtn');
+            
+            if (!proxyUrl || !orgNumber) {
+                showResult('Vänligen ange både proxy URL och organisationsnummer', 'error', resultDiv);
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'Testar Proxy Server...';
+            showResult(`Skickar anrop till proxy server: ${proxyUrl}`, 'loading', resultDiv);
+            
+            try {
+                const requestBody = {
+                    orgNumber: orgNumber
+                };
+                
+                // Lägg till API-nyckel i request body om den finns
+                if (proxyApiKey) {
+                    requestBody.apiKey = proxyApiKey;
+                }
+                
+                const response = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ Proxy server anrop lyckades!\n\nStatus: ${response.status}\nOrganisationsnummer: ${orgNumber}\nAPI Nyckel: ${proxyApiKey ? 'Ja' : 'Nej'}\n\nSvar:\n${JSON.stringify(data, null, 2)}`, 'success', resultDiv);
+                } else {
+                    showResult(`❌ Proxy server fel: ${response.status} ${response.statusText}\n\nOrganisationsnummer: ${orgNumber}\nAPI Nyckel: ${proxyApiKey ? 'Ja' : 'Nej'}\n\nFelmeddelande: ${data.error || data.message}`, 'error', resultDiv);
+                }
+            } catch (error) {
+                showResult(`❌ Proxy server nätverksfel: ${error.message}\n\nKontrollera att din proxy server körs på: ${proxyUrl}`, 'error', resultDiv);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Testa Proxy Server';
+            }
+        }
+
+        function showResult(message, type, element = null) {
+            const resultDiv = element || document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.textContent = message;
+        }
+
+        async function createDocSignDocument() {
+            const docName = document.getElementById('docName').value.trim();
+            const docComment = document.getElementById('docComment').value.trim();
+            const docParties = document.getElementById('docParties').value.trim();
+            const docAttachments = document.getElementById('docAttachments').value.trim();
+            const sendReminders = document.getElementById('sendReminders').checked;
+            const sendReceipt = document.getElementById('sendReceipt').checked;
+            const isDemo = document.getElementById('isDemo').checked;
+            const resultDiv = document.getElementById('result');
+            
+            if (!docName) {
+                showResult('Vänligen ange dokumentnamn', 'error', resultDiv);
+                return;
+            }
+            
+            // Parse parties
+            let parties = [];
+            if (docParties) {
+                parties = docParties.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+            }
+            
+            // Parse attachments
+            let attachments = [];
+            if (docAttachments) {
+                try {
+                    attachments = JSON.parse(docAttachments);
+                } catch (error) {
+                    showResult('Felaktigt JSON-format för bilagor', 'error', resultDiv);
+                    return;
+                }
+            }
+            
+            const requestBody = {
+                name: docName,
+                comment: docComment,
+                send_reminders: sendReminders,
+                send_receipt: sendReceipt,
+                send_notifications: false,
+                debug: false,
+                is_demo: isDemo,
+                parties: parties,
+                attachments: attachments
+            };
+            
+            showResult('Skapar DocSign dokument...', 'loading', resultDiv);
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/docsign/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ DocSign dokument skapat!\n\nStatus: ${response.status}\nDokumentnamn: ${docName}\n\nSvar:\n${JSON.stringify(data, null, 2)}`, 'success', resultDiv);
+                } else {
+                    showResult(`❌ Fel vid skapande av DocSign dokument: ${response.status} ${response.statusText}\n\nDokumentnamn: ${docName}\n\nFelmeddelande: ${data.error || data.message}`, 'error', resultDiv);
+                }
+            } catch (error) {
+                showResult(`❌ Nätverksfel: ${error.message}\n\nKontrollera att din proxy server körs på: http://localhost:3000`, 'error', resultDiv);
+            }
+        }
+
+        // Testa proxy server när sidan laddas
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('http://localhost:3000/health');
+                if (response.ok) {
+                    console.log('✅ Proxy server is running');
+                } else {
+                    console.log('❌ Proxy server health check failed');
+                }
+            } catch (error) {
+                console.log('❌ Cannot connect to proxy server');
+            }
+            
+            // Sätt API-nyckel automatiskt om DocSign är valt
+            const selectedApi = document.getElementById('apiSelect').value;
+            if (selectedApi === 'docsign' && typeof config !== 'undefined' && config.docsign && config.docsign.apiKey) {
+                document.getElementById('apiKey').value = config.docsign.apiKey;
+            }
+        });
+    </script>
+</body>
+</html>
