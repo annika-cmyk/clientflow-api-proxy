@@ -32,6 +32,7 @@ try {
       'Verksamhetsbeskrivning': 'Test verksamhet',
       'Address': 'Testgatan 1, 12345 Stockholm',
       'Beskrivning av kunden': 'Test från debug script med användar-ID och byrå-ID',
+      'Bolagsform': 'Aktiebolag',
       'Användar ID': 'USER123',
       'Byrå ID': 'BYRA456'
     }
