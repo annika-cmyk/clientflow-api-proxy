@@ -396,7 +396,7 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
   }
 });
 
-// Bolagsverket dokumentlista endpoint
+// Bolagsverket dokumentlista endpoint (för ClientFlow)
 app.post('/api/bolagsverket/dokumentlista', async (req, res) => {
   const startTime = Date.now();
   
@@ -485,6 +485,104 @@ app.post('/api/bolagsverket/dokumentlista', async (req, res) => {
         status: error.response.status,
         duration: duration,
         requestId: error.response.headers['x-request-id'] || null
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internt serverfel',
+        message: error.message,
+        duration: duration
+      });
+    }
+  }
+});
+
+// ClientFlow dokumentlista endpoint (enklare format)
+app.post('/api/clientflow/dokumentlista', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log(`📥 Mottaget ClientFlow dokumentlista-förfrågan:`, {
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+      url: req.url
+    });
+    
+    const organisationsnummer = req.body.organisationsnummer || 
+                               req.body.orgnr || 
+                               req.body.Orgnr ||
+                               req.body.organization_number || 
+                               req.body.orgNumber;
+    
+    if (!organisationsnummer) {
+      return res.status(400).json({
+        error: 'Organisationsnummer är obligatoriskt',
+        message: 'Organization number is required'
+      });
+    }
+
+    const cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
+    const token = await getBolagsverketToken();
+    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const dokumentlistaUrl = environment === 'test'
+      ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
+      : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
+
+    const requestId = crypto.randomUUID();
+    const requestBody = {
+      identitetsbeteckning: cleanOrgNumber
+    };
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Request-Id': requestId
+    };
+
+    console.log(`🔍 Hämtar dokumentlista för ClientFlow: ${cleanOrgNumber}`);
+
+    const bolagsverketResponse = await axios.post(dokumentlistaUrl, requestBody, {
+      headers,
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+
+    // Formatera för ClientFlow - enklare att använda
+    const dokument = bolagsverketResponse.data?.dokument || [];
+    const formateradeDokument = dokument.map(doc => ({
+      id: doc.dokumentId,
+      period: doc.rapporteringsperiodTom,
+      format: doc.filformat,
+      registreringstidpunkt: doc.registreringstidpunkt,
+      downloadUrl: `${req.protocol}://${req.get('host')}/api/bolagsverket/dokument/${doc.dokumentId}`,
+      displayName: `Årsredovisning ${doc.rapporteringsperiodTom} (${doc.filformat})`
+    }));
+
+    const responseData = {
+      success: true,
+      organisationsnummer: cleanOrgNumber,
+      antalDokument: dokument.length,
+      dokument: formateradeDokument,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    };
+
+    console.log(`✅ ClientFlow dokumentlista hämtad: ${dokument.length} dokument`);
+
+    res.json(responseData);
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching ClientFlow dokumentlista:', error.message);
+    
+    if (error.response) {
+      res.status(error.response.status).json({
+        error: 'Bolagsverket API fel',
+        message: error.response.data?.detail || error.response.data?.message || error.message,
+        status: error.response.status,
+        duration: duration
       });
     } else {
       res.status(500).json({
@@ -754,8 +852,11 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : '',
-            'Antal årsredovisningar': dokumentInfo?.antalDokument || 0,
-            'Senaste årsredovisning': dokumentInfo?.dokument?.[0]?.rapporteringsperiodTom || ''
+            'Senaste årsredovisning': dokumentInfo?.dokument?.[0]?.rapporteringsperiodTom || '',
+            'Årsredovisningar JSON': JSON.stringify(dokumentInfo?.dokument || []),
+            'Dokumentlista': dokumentInfo?.dokument?.map(doc => 
+              `${doc.rapporteringsperiodTom} (${doc.filformat}) - ID: ${doc.dokumentId}`
+            ).join('; ') || ''
           }
         };
         
