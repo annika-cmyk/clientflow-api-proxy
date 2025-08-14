@@ -33,13 +33,13 @@ try {
       'Address': 'Testgatan 1, 12345 Stockholm',
       'Beskrivning av kunden': 'Test från debug script med användar-ID och byrå-ID',
       'Bolagsform': 'Aktiebolag',
-      'Användar ID': 'USER123',
+      'Användare': 'USER123',
       'Byrå ID': 'BYRA456'
     }
   };
   
   console.log('📝 Test data prepared:', testData);
-  console.log('👤 Användar ID:', testData.fields['Användar ID']);
+  console.log('👤 Användare:', testData.fields['Användare']);
   console.log('🏢 Byrå ID:', testData.fields['Byrå ID']);
   
   // Try to create record
@@ -48,7 +48,7 @@ try {
       console.log('✅ Record created successfully!');
       console.log('Record ID:', records[0].id);
       console.log('Record fields:', records[0].fields);
-      console.log('👤 Användar ID saved:', records[0].fields['Användar ID']);
+      console.log('👤 Användare saved:', records[0].fields['Användare']);
       console.log('🏢 Byrå ID saved:', records[0].fields['Byrå ID']);
     })
     .catch(error => {
