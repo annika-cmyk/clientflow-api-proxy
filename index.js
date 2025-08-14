@@ -861,7 +861,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : '',
-            'Senaste årsredovisning': dokumentInfo?.dokument?.[0]?.rapporteringsperiodTom || '',
+            'Senaste årsredovisning': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[0]?.rapporteringsperiodTom || '',
             'Årsredovisningar JSON': JSON.stringify(dokumentInfo?.dokument || []),
             'Dokumentlista': dokumentInfo?.dokument?.map(doc => 
               `${doc.rapporteringsperiodTom} (${doc.filformat}) - ID: ${doc.dokumentId}`
