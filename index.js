@@ -467,6 +467,15 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
+    // Debug: Logga SNI-data från Bolagsverket
+    console.log('🔍 SNI-data från Bolagsverket:', {
+      naringsgrenOrganisation: orgData.naringsgrenOrganisation,
+      naringsgrenOrganisationLista: orgData.naringsgrenOrganisation?.naringsgrenOrganisationLista,
+      beskrivning: orgData.naringsgrenOrganisation?.beskrivning,
+      klartext: orgData.naringsgrenOrganisation?.klartext,
+      kod: orgData.naringsgrenOrganisation?.kod
+    });
+
     // Förbered data för Airtable med förbättrad mappning
     const airtableData = {
       fields: {
