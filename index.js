@@ -595,7 +595,7 @@ app.post('/api/clientflow/dokumentlista', async (req, res) => {
   }
 });
 
-// Bolagsverket hämta dokument endpoint
+// Bolagsverket hämta dokument endpoint (GET)
 app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
   const startTime = Date.now();
   
@@ -948,6 +948,90 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       message: error.message,
       duration: duration
     });
+  }
+});
+
+// Bolagsverket hämta dokument endpoint (POST) - för Softr webhooks
+app.post('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { dokumentId } = req.params;
+    
+    console.log(`📥 Mottaget POST dokument-förfrågan:`, {
+      dokumentId: dokumentId,
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+      url: req.url
+    });
+    
+    if (!dokumentId) {
+      return res.status(400).json({
+        error: 'Dokument-ID är obligatoriskt',
+        message: 'Document ID is required'
+      });
+    }
+
+    const token = await getBolagsverketToken();
+    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const dokumentUrl = environment === 'test'
+      ? `https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`
+      : `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`;
+
+    const requestId = crypto.randomUUID();
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/zip',
+      'X-Request-Id': requestId
+    };
+
+    console.log(`🔍 Hämtar dokument med ID: ${dokumentId} (POST)`);
+
+    const bolagsverketResponse = await axios.get(dokumentUrl, {
+      headers,
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    const duration = Date.now() - startTime;
+
+    console.log(`✅ Dokument hämtat (POST):`, {
+      dokumentId: dokumentId,
+      contentType: bolagsverketResponse.headers['content-type'],
+      contentLength: bolagsverketResponse.headers['content-length'],
+      duration: duration
+    });
+
+    // Skicka tillbaka ZIP-filen
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="arsredovisning-${dokumentId}.zip"`,
+      'Content-Length': bolagsverketResponse.headers['content-length']
+    });
+
+    res.send(bolagsverketResponse.data);
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching dokument (POST):', error.message);
+    
+    if (error.response) {
+      res.status(error.response.status).json({
+        error: 'Bolagsverket API fel',
+        message: error.response.data?.detail || error.response.data?.message || error.message,
+        status: error.response.status,
+        duration: duration,
+        requestId: error.response.headers['x-request-id'] || null
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internt serverfel',
+        message: error.message,
+        duration: duration
+      });
+    }
   }
 });
 
