@@ -98,6 +98,52 @@ POST /api/bolagsverket/organisationer
 POST /api/bolagsverket/save-to-airtable
 ```
 
+#### 4. Bolagsverket - Hämta dokumentlista (årsredovisningar)
+```
+POST /api/bolagsverket/dokumentlista
+```
+
+**Request Body:**
+```json
+{
+  "organisationsnummer": "5561234567"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Dokumentlista hämtad från Bolagsverket",
+  "organisationsnummer": "5561234567",
+  "dokument": [
+    {
+      "filformat": "PDF",
+      "registreringstidpunkt": "2023-12-31",
+      "rapporteringsperiodTom": "2023-12-31",
+      "dokumentId": "doc123456"
+    }
+  ],
+  "antalDokument": 1,
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "duration": 1250,
+  "environment": "test",
+  "requestId": "req-1234567890-abc123"
+}
+```
+
+#### 5. Bolagsverket - Hämta specifikt dokument (årsredovisning)
+```
+GET /api/bolagsverket/dokument/:dokumentId
+```
+
+**Parameters:**
+- `dokumentId` - ID för dokumentet från dokumentlista
+
+**Response:**
+- ZIP-fil med årsredovisningen (binary data)
+- Filnamn: `arsredovisning-{dokumentId}.zip`
+
 **Request Body:**
 ```json
 {

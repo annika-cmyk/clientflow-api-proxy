@@ -396,6 +396,190 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
   }
 });
 
+// Bolagsverket dokumentlista endpoint
+app.post('/api/bolagsverket/dokumentlista', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    // Debug: Logga vad vi får från Softr
+    console.log(`📥 Mottaget dokumentlista-förfrågan från Softr:`, {
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+      url: req.url
+    });
+    
+    // Hantera olika fältnamn som Softr kan skicka
+    const organisationsnummer = req.body.organisationsnummer || 
+                               req.body.orgnr || 
+                               req.body.Orgnr ||
+                               req.body.organization_number || 
+                               req.body.orgNumber;
+    
+    if (!organisationsnummer) {
+      return res.status(400).json({
+        error: 'Organisationsnummer är obligatoriskt',
+        message: 'Organization number is required. Available fields: ' + Object.keys(req.body).join(', ')
+      });
+    }
+
+    const cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
+    const token = await getBolagsverketToken();
+    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const dokumentlistaUrl = environment === 'test'
+      ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
+      : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
+
+    // Generera unikt request ID
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Hämta dokumentlista från Bolagsverket
+    const requestBody = {
+      identitetsbeteckning: cleanOrgNumber
+    };
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-Request-Id': requestId
+    };
+
+    console.log(`🔍 Hämtar dokumentlista för organisationsnummer: ${cleanOrgNumber}`);
+
+    const bolagsverketResponse = await axios.post(dokumentlistaUrl, requestBody, {
+      headers,
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+
+    const responseData = {
+      success: true,
+      message: 'Dokumentlista hämtad från Bolagsverket',
+      organisationsnummer: cleanOrgNumber,
+      dokument: bolagsverketResponse.data?.dokument || [],
+      antalDokument: bolagsverketResponse.data?.dokument?.length || 0,
+      timestamp: new Date().toISOString(),
+      duration: duration,
+      environment: environment,
+      requestId: requestId
+    };
+
+    console.log(`✅ Dokumentlista hämtad:`, {
+      organisationsnummer: cleanOrgNumber,
+      antalDokument: responseData.antalDokument,
+      duration: duration
+    });
+
+    res.json(responseData);
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching dokumentlista:', error.message);
+    
+    if (error.response) {
+      res.status(error.response.status).json({
+        error: 'Bolagsverket API fel',
+        message: error.response.data?.detail || error.response.data?.message || error.message,
+        status: error.response.status,
+        duration: duration,
+        requestId: error.response.headers['x-request-id'] || null
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internt serverfel',
+        message: error.message,
+        duration: duration
+      });
+    }
+  }
+});
+
+// Bolagsverket hämta dokument endpoint
+app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { dokumentId } = req.params;
+    
+    console.log(`📥 Mottaget dokument-förfrågan:`, {
+      dokumentId: dokumentId,
+      headers: req.headers,
+      method: req.method,
+      url: req.url
+    });
+    
+    if (!dokumentId) {
+      return res.status(400).json({
+        error: 'Dokument-ID är obligatoriskt',
+        message: 'Document ID is required'
+      });
+    }
+
+    const token = await getBolagsverketToken();
+    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const dokumentUrl = environment === 'test'
+      ? `https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`
+      : `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`;
+
+    // Generera unikt request ID
+    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/zip',
+      'X-Request-Id': requestId
+    };
+
+    console.log(`🔍 Hämtar dokument med ID: ${dokumentId}`);
+
+    const bolagsverketResponse = await axios.get(dokumentUrl, {
+      headers,
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+
+    const duration = Date.now() - startTime;
+
+    console.log(`✅ Dokument hämtat:`, {
+      dokumentId: dokumentId,
+      contentType: bolagsverketResponse.headers['content-type'],
+      contentLength: bolagsverketResponse.headers['content-length'],
+      duration: duration
+    });
+
+    // Skicka tillbaka ZIP-filen
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="arsredovisning-${dokumentId}.zip"`,
+      'Content-Length': bolagsverketResponse.headers['content-length']
+    });
+
+    res.send(bolagsverketResponse.data);
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching dokument:', error.message);
+    
+    if (error.response) {
+      res.status(error.response.status).json({
+        error: 'Bolagsverket API fel',
+        message: error.response.data?.detail || error.response.data?.message || error.message,
+        status: error.response.status,
+        duration: duration,
+        requestId: error.response.headers['x-request-id'] || null
+      });
+    } else {
+      res.status(500).json({
+        error: 'Internt serverfel',
+        message: error.message,
+        duration: duration
+      });
+    }
+  }
+});
+
 // Airtable integration endpoint
 app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
   const startTime = Date.now();
