@@ -476,7 +476,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
         'Address': orgData.postadressOrganisation?.postadress ? 
           `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
         'Bolagsform': orgData.organisationsform?.klartext || '',
-        'SNI kod': orgData.naringsgrenOrganisation?.naringsgrenOrganisationLista?.[0]?.kod || '',
+        'SNI kod': orgData.naringsgrenOrganisation?.naringsgrenOrganisationLista?.map(item => 
+          `${item.kod} - ${item.klartext || ''}`
+        ).join(', ') || '',
         'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
         'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
         'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
