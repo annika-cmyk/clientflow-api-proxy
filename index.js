@@ -33,6 +33,56 @@ app.get('/test', (req, res) => {
   });
 });
 
+// Endpoint för att ladda ner base64-fil
+app.get('/api/download/:recordId/:fieldName', async (req, res) => {
+  try {
+    const { recordId, fieldName } = req.params;
+    
+    console.log(`📥 Begäran om nedladdning: ${fieldName} för record ${recordId}`);
+    
+    // Hämta data från Airtable
+    const airtableResponse = await axios.get(
+      `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}/${recordId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.AIRTABLE_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    const base64Data = airtableResponse.data.fields[fieldName];
+    
+    if (!base64Data) {
+      return res.status(404).json({ error: 'Fil hittades inte' });
+    }
+    
+    // Konvertera base64 till buffer
+    const fileBuffer = Buffer.from(base64Data, 'base64');
+    
+    // Bestäm filnamn baserat på fältnamn
+    let filename = 'arsredovisning.zip';
+    if (fieldName === 'Senaste årsredovisning fil') {
+      filename = 'senaste-arsredovisning.zip';
+    } else if (fieldName === 'Fg årsredovisning fil') {
+      filename = 'fg-arsredovisning.zip';
+    } else if (fieldName === 'Ffg årsredovisning fil') {
+      filename = 'ffg-arsredovisning.zip';
+    }
+    
+    // Skicka fil
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(fileBuffer);
+    
+    console.log(`✅ Fil nedladdad: ${filename} (${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+    
+  } catch (error) {
+    console.error('❌ Fel vid nedladdning:', error.message);
+    res.status(500).json({ error: 'Kunde inte ladda ner fil' });
+  }
+});
+
 // Simple POST test endpoint
 app.post('/test-post', (req, res) => {
   res.json({
