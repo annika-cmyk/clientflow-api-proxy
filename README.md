@@ -11,6 +11,9 @@ En Node.js-baserad API-proxy som fungerar som mellanhand mellan din Softr-applik
 - ✅ Felhantering och loggning
 - ✅ Health check endpoint
 - ✅ Konfigurerbar via miljövariabler
+- ✅ Bolagsverket API integration
+- ✅ Airtable integration med användar-ID och byrå-ID
+- ✅ Automatisk data-mappning från Bolagsverket till Airtable
 
 ## Installation
 
@@ -27,10 +30,20 @@ En Node.js-baserad API-proxy som fungerar som mellanhand mellan din Softr-applik
    
    Redigera `.env`-filen med dina inställningar:
    ```env
+   # Server Configuration
    PORT=3000
-   EXTERNAL_API_URL=https://api.example.com/organizations
-   EXTERNAL_API_KEY=din_api_nyckel_här
+   NODE_ENV=production
    ALLOWED_ORIGINS=https://din-softr-app.softr.app
+   
+   # Bolagsverket API
+   BOLAGSVERKET_CLIENT_ID=din_client_id_från_bolagsverket
+   BOLAGSVERKET_CLIENT_SECRET=din_client_secret_från_bolagsverket
+   BOLAGSVERKET_ENVIRONMENT=test
+   
+   # Airtable API
+   AIRTABLE_ACCESS_TOKEN=din_airtable_access_token
+   AIRTABLE_BASE_ID=din_airtable_base_id
+   AIRTABLE_TABLE_NAME=tblOIuLQS2DqmOQWe
    ```
 
 ## Användning
@@ -55,15 +68,15 @@ GET /health
 ```
 Returnerar serverstatus.
 
-#### 2. Organisation Lookup
+#### 2. Bolagsverket API - Hämta organisationsdata
 ```
-POST /api/lookup
+POST /api/bolagsverket/organisationer
 ```
 
 **Request Body:**
 ```json
 {
-  "orgNumber": "556123-4567"
+  "organisationsnummer": "5561234567"
 }
 ```
 
@@ -72,20 +85,63 @@ POST /api/lookup
 {
   "success": true,
   "data": {
-    // Data från externt API
+    // Organisationsdata från Bolagsverket
   },
   "timestamp": "2024-01-15T10:30:00.000Z",
-  "orgNumber": "5561234567"
+  "duration": 1250,
+  "environment": "test"
+}
+```
+
+#### 3. Bolagsverket + Airtable - Spara data med användar-ID och byrå-ID
+```
+POST /api/bolagsverket/save-to-airtable
+```
+
+**Request Body:**
+```json
+{
+  "organisationsnummer": "5561234567",
+  "anvandareId": "USER12345",
+  "byraId": "BYRA67890"
+}
+```
+
+**Stödda fältnamn för användar-ID:**
+- `anvandareId`
+- `anvId`
+- `userId`
+- `anv_id`
+- `user_id`
+
+**Stödda fältnamn för byrå-ID:**
+- `byraId`
+- `byra_id`
+- `agencyId`
+- `agency_id`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Data sparad till Airtable",
+  "airtableRecordId": "recXXXXXXXXXXXXXX",
+  "organisationsnummer": "5561234567",
+  "anvandareId": "USER12345",
+  "byraId": "BYRA67890",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "duration": 2500,
+  "environment": "test"
 }
 ```
 
 ## Integration med Softr
 
-### 1. Webhook-konfiguration i Softr
+### 1. Webhook-konfiguration i Softr för Bolagsverket + Airtable
 
 I din Softr-applikation, konfigurera en webhook som skickar data till din API-proxy:
 
-**URL:** `https://din-proxy-server.com/api/lookup`
+**URL:** `https://din-proxy-server.com/api/bolagsverket/save-to-airtable`
 **Method:** `POST`
 **Headers:** 
 ```
@@ -95,16 +151,60 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "orgNumber": "{{record.organization_number}}"
+  "organisationsnummer": "{{record.organisationsnummer}}",
+  "anvandareId": "{{record.anvandare_id}}",
+  "byraId": "{{record.byra_id}}"
 }
 ```
 
-### 2. Hantera svaret i Softr
+### 2. Alternativa fältnamn
+
+Softr kan använda olika fältnamn. API:et stöder följande varianter:
+
+**Organisationsnummer:**
+- `organisationsnummer`
+- `orgnr`
+- `Orgnr`
+- `organization_number`
+- `orgNumber`
+
+**Användar-ID:**
+- `anvandareId`
+- `anvId`
+- `userId`
+- `anv_id`
+- `user_id`
+
+**Byrå-ID:**
+- `byraId`
+- `byra_id`
+- `agencyId`
+- `agency_id`
+
+### 3. Vad händer när data skickas
+
+1. **Validering:** API:et validerar organisationsnumret
+2. **Bolagsverket:** Hämtar organisationsdata från Bolagsverket API
+3. **Airtable:** Sparar data till Airtable med följande fält:
+   - Organisationsnummer
+   - Företagsnamn
+   - Verksamhetsbeskrivning
+   - Adress
+   - Organisationsform
+   - Juridisk form
+   - Registreringsdatum
+   - **Användar-ID** (från Softr)
+   - **Byrå-ID** (från Softr)
+   - Timestamp
+   - Miljö (test/produktion)
+
+### 4. Hantera svaret i Softr
 
 I Softr kan du använda svaret för att:
-- Uppdatera befintliga poster
-- Skapa nya poster
-- Visa information i din applikation
+- Bekräfta att data sparats
+- Visa Airtable Record ID
+- Hantera fel
+- Visa användar-ID och byrå-ID som sparades
 
 ## Säkerhet
 
@@ -134,18 +234,38 @@ docker build -t api-proxy .
 docker run -p 3000:3000 --env-file .env api-proxy
 ```
 
+## Testning
+
+### Testa Airtable-anslutning
+```bash
+node debug_airtable.js
+```
+
+### Testa Softr-integration
+```bash
+node test_softr_integration.js
+```
+
+### Testa Bolagsverket API
+```bash
+node test_bolagsverket_data.js
+```
+
 ## Felsökning
 
 ### Vanliga problem
 
-1. **"Externt API inte konfigurerat"**
-   - Kontrollera att `EXTERNAL_API_URL` är satt i `.env`
+1. **"Bolagsverket API inte konfigurerat"**
+   - Kontrollera att `BOLAGSVERKET_CLIENT_ID` och `BOLAGSVERKET_CLIENT_SECRET` är satta i `.env`
 
-2. **CORS-fel**
+2. **"Airtable API inte konfigurerat"**
+   - Kontrollera att `AIRTABLE_ACCESS_TOKEN` och `AIRTABLE_BASE_ID` är satta i `.env`
+
+3. **CORS-fel**
    - Kontrollera att din Softr-applikations URL är inkluderad i `ALLOWED_ORIGINS`
 
-3. **API-nyckel fel**
-   - Kontrollera att `EXTERNAL_API_KEY` är korrekt
+4. **"Användar-ID eller Byrå-ID saknas"**
+   - Kontrollera att Softr skickar rätt fältnamn (se stödda fältnamn ovan)
 
 ### Loggar
 

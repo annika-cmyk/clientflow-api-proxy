@@ -401,12 +401,33 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
   const startTime = Date.now();
   
   try {
+    // Debug: Logga vad vi får från Softr
+    console.log(`📥 Mottaget från Softr:`, {
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+      url: req.url
+    });
+    
     // Hantera olika fältnamn som Softr kan skicka
     const organisationsnummer = req.body.organisationsnummer || 
                                req.body.orgnr || 
                                req.body.Orgnr ||
                                req.body.organization_number || 
                                req.body.orgNumber;
+    
+    // Hämta användar-ID och byrå-ID från Softr
+    const anvandareId = req.body.anvandareId || 
+                       req.body.anvId || 
+                       req.body.userId || 
+                       req.body.anv_id ||
+                       req.body.user_id;
+    
+    const byraId = req.body.byraId || 
+                   req.body.byra_id || 
+                   req.body.agencyId || 
+                   req.body.agency_id ||
+                   req.body.byra_id;
     
     if (!organisationsnummer) {
       return res.status(400).json({
@@ -444,7 +465,7 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
-    // Förbered data för Airtable
+    // Förbered data för Airtable med förbättrad mappning
     const airtableData = {
       fields: {
         'Orgnr': cleanOrgNumber,
@@ -452,7 +473,15 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
         'Verksamhetsbeskrivning': orgData.verksamhetsbeskrivning?.beskrivning || '',
         'Address': orgData.postadressOrganisation?.postadress ? 
           `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
-        'Beskrivning av kunden': `Organisationsform: ${orgData.organisationsform?.klartext || ''}, Juridisk Form: ${orgData.juridiskForm?.klartext || ''}, Registreringsdatum: ${orgData.organisationsdatum?.registreringsdatum || ''}, Miljö: ${environment}`
+        'Beskrivning av kunden': `Organisationsform: ${orgData.organisationsform?.klartext || ''}, Juridisk Form: ${orgData.juridiskForm?.klartext || ''}, Registreringsdatum: ${orgData.organisationsdatum?.registreringsdatum || ''}, Verksam: ${orgData.verksamOrganisation || ''}, Miljö: ${environment}`,
+        'Organisationsform': orgData.organisationsform?.klartext || '',
+        'Juridisk Form': orgData.juridiskForm?.klartext || '',
+        'Registreringsdatum': orgData.organisationsdatum?.registreringsdatum || '',
+        'Verksam Organisation': orgData.verksamOrganisation || '',
+        'Registreringsland': orgData.registreringsland?.klartext || '',
+        'Avregistrerad': orgData.avregistreradOrganisation ? 'Ja' : 'Nej',
+        'Användar ID': anvandareId || '',
+        'Byrå ID': byraId || ''
       }
     };
 
@@ -484,6 +513,8 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       message: 'Data sparad till Airtable',
       airtableRecordId: airtableResponse[0].id,
       organisationsnummer: cleanOrgNumber,
+      anvandareId: anvandareId || null,
+      byraId: byraId || null,
       timestamp: new Date().toISOString(),
       duration: duration,
       environment: environment
@@ -491,6 +522,8 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     console.log(`✅ Data sparad till Airtable:`, {
       organisationsnummer: cleanOrgNumber,
+      anvandareId: anvandareId || 'Ej angivet',
+      byraId: byraId || 'Ej angivet',
       recordId: airtableResponse[0].id,
       duration: duration
     });

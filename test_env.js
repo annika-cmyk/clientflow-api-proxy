@@ -29,3 +29,4 @@ app.listen(PORT, () => {
   console.log(`🔍 Environment Test Server running on port ${PORT}`);
   console.log(`🔍 Test: http://localhost:${PORT}/test-env`);
 });
+
