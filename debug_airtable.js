@@ -33,6 +33,7 @@ try {
       'Address': 'Testgatan 1, 12345 Stockholm',
       'Beskrivning av kunden': 'Test från debug script med användar-ID och byrå-ID',
       'Bolagsform': 'Aktiebolag',
+      'SNI kod': '620100',
       'Användare': 35,
       'Byrå ID': '42'
     }
