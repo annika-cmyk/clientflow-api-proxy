@@ -467,30 +467,67 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
-    // Debug: Logga SNI-data från Bolagsverket
-    console.log('🔍 SNI-data från Bolagsverket:', {
-      naringsgrenOrganisation: orgData.naringsgrenOrganisation,
-      sni: orgData.naringsgrenOrganisation?.sni,
-      fel: orgData.naringsgrenOrganisation?.fel
-    });
+            // Debug: Logga SNI-data från Bolagsverket
+        console.log('🔍 SNI-data från Bolagsverket:', {
+          naringsgrenOrganisation: orgData.naringsgrenOrganisation,
+          sni: orgData.naringsgrenOrganisation?.sni,
+          fel: orgData.naringsgrenOrganisation?.fel
+        });
+        
+        // Debug: Logga nya fält från Bolagsverket
+        console.log('🔍 Nya fält från Bolagsverket:', {
+          registreringsland: orgData.registreringsland,
+          avregistreringsorsak: orgData.avregistreringsorsak,
+          avregistreradOrganisation: orgData.avregistreradOrganisation,
+          organisationsnamn: orgData.organisationsnamn,
+          sarskiltForeningsnamn: orgData.sarskiltForeningsnamn,
+          verksamhetsbeskrivning: orgData.verksamhetsbeskrivning
+        });
 
-    // Förbered data för Airtable med förbättrad mappning
-    const airtableData = {
-      fields: {
-        'Orgnr': cleanOrgNumber,
-        'Namn': orgData.organisationsnamn?.organisationsnamnLista?.[0]?.namn || '',
-        'Verksamhetsbeskrivning': orgData.verksamhetsbeskrivning?.beskrivning || '',
-        'Address': orgData.postadressOrganisation?.postadress ? 
-          `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
-        'Bolagsform': orgData.organisationsform?.klartext || '',
-        'SNI kod': orgData.naringsgrenOrganisation?.sni?.map(item => 
-          `${item.kod} - ${item.klartext || ''}`
-        ).join(', ') || '',
-        'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
-        'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
-        'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
-      }
-    };
+            // Kontrollera om företaget är aktivt (inte avregistrerat)
+        const isActiveCompany = !orgData.avregistreringsorsak && !orgData.avregistreradOrganisation;
+        
+        // Samla företagsnamn (inklusive särskilt företagsnamn)
+        const companyNames = [];
+        if (orgData.organisationsnamn?.organisationsnamnLista) {
+          orgData.organisationsnamn.organisationsnamnLista.forEach(namn => {
+            if (namn.namn) companyNames.push(namn.namn);
+          });
+        }
+        if (orgData.sarskiltForeningsnamn?.sarskiltForeningsnamnLista) {
+          orgData.sarskiltForeningsnamn.sarskiltForeningsnamnLista.forEach(namn => {
+            if (namn.namn) companyNames.push(namn.namn);
+          });
+        }
+        
+        // Samla verksamhetsbeskrivningar
+        const descriptions = [];
+        if (orgData.verksamhetsbeskrivning?.beskrivning) {
+          descriptions.push(orgData.verksamhetsbeskrivning.beskrivning);
+        }
+        if (orgData.verksamhetsbeskrivning?.klartext) {
+          descriptions.push(orgData.verksamhetsbeskrivning.klartext);
+        }
+        
+        // Förbered data för Airtable med förbättrad mappning
+        const airtableData = {
+          fields: {
+            'Orgnr': cleanOrgNumber,
+            'Namn': companyNames.join(', ') || '',
+            'Verksamhetsbeskrivning': descriptions.join(', ') || '',
+            'Address': orgData.postadressOrganisation?.postadress ?
+              `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
+            'Bolagsform': orgData.organisationsform?.klartext || '',
+            'SNI kod': orgData.naringsgrenOrganisation?.sni?.map(item => 
+              `${item.kod} - ${item.klartext || ''}`
+            ).join(', ') || '',
+            'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
+            'registreringsland': orgData.registreringsland?.klartext || '',
+            'Aktivt företag': isActiveCompany,
+            'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
+            'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
+          }
+        };
 
     // Spara till Airtable
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
