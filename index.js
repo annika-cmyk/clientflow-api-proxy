@@ -750,8 +750,10 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
-    // Hämta dokumentlista från Bolagsverket
+    // Hämta dokumentlista och ladda ner årsredovisningar
     let dokumentInfo = null;
+    let nedladdadeDokument = {};
+    
     try {
       console.log(`🔍 Hämtar dokumentlista för organisationsnummer: ${cleanOrgNumber}`);
       
@@ -782,6 +784,51 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       };
 
       console.log(`✅ Dokumentlista hämtad: ${dokumentInfo.antalDokument} dokument hittade`);
+      
+      // Ladda ner alla årsredovisningar
+      if (dokumentInfo.dokument.length > 0) {
+        console.log(`📥 Laddar ner ${dokumentInfo.dokument.length} årsredovisningar...`);
+        
+        for (let i = 0; i < Math.min(dokumentInfo.dokument.length, 3); i++) {
+          const doc = dokumentInfo.dokument[i];
+          try {
+            console.log(`📄 Laddar ner dokument ${i + 1}: ${doc.dokumentId}`);
+            
+            const dokumentUrl = environment === 'test'
+              ? `https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${doc.dokumentId}`
+              : `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${doc.dokumentId}`;
+
+            const downloadRequestId = crypto.randomUUID();
+            const downloadHeaders = {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/zip',
+              'X-Request-Id': downloadRequestId
+            };
+
+            const downloadResponse = await axios.get(dokumentUrl, {
+              headers: downloadHeaders,
+              responseType: 'arraybuffer',
+              timeout: 30000
+            });
+
+            // Konvertera till base64 för Airtable
+            const base64Data = Buffer.from(downloadResponse.data).toString('base64');
+            
+            if (i === 0) {
+              nedladdadeDokument.senasteArsredovisning = base64Data;
+            } else if (i === 1) {
+              nedladdadeDokument.fgArsredovisning = base64Data;
+            } else if (i === 2) {
+              nedladdadeDokument.ffgArsredovisning = base64Data;
+            }
+
+            console.log(`✅ Dokument ${i + 1} nedladdat: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`);
+            
+          } catch (downloadError) {
+            console.log(`⚠️ Kunde inte ladda ner dokument ${i + 1}: ${downloadError.message}`);
+          }
+        }
+      }
       
     } catch (dokumentError) {
       console.log(`⚠️ Kunde inte hämta dokumentlista: ${dokumentError.message}`);
@@ -878,7 +925,10 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             )?.[2]?.rapporteringsperiodTom || '',
             'Ffg årsredovisning json': dokumentInfo?.dokument?.sort((a, b) => 
               new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
-            )?.[2]?.dokumentId || ''
+            )?.[2]?.dokumentId || '',
+            'Senaste årsredovisning fil': nedladdadeDokument.senasteArsredovisning || '',
+            'Fg årsredovisning fil': nedladdadeDokument.fgArsredovisning || '',
+            'Ffg årsredovisning fil': nedladdadeDokument.ffgArsredovisning || ''
           }
         };
         
