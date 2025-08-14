@@ -882,28 +882,78 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 // Läs HTML-innehållet
                 const htmlContent = htmlEntry.getData().toString('utf8');
                 
-                // Skapa en enkel PDF från HTML (för nu, vi kan förbättra detta senare)
+                // Skapa en mer detaljerad PDF från HTML-innehållet
                 const pdfDoc = await PDFDocument.create();
                 const page = pdfDoc.addPage([595.28, 841.89]); // A4 storlek
                 
-                // Lägg till text som indikerar att detta är en årsredovisning
                 const { width, height } = page.getSize();
+                
+                // Lägg till titel
                 page.drawText('Årsredovisning från Bolagsverket', {
                   x: 50,
                   y: height - 50,
-                  size: 16
+                  size: 18,
+                  color: { r: 0.2, g: 0.2, b: 0.2 }
                 });
                 
-                page.drawText('HTML-innehåll konverterat till PDF', {
+                // Lägg till dokumentinformation
+                page.drawText(`Dokument ID: ${doc.dokumentId}`, {
                   x: 50,
                   y: height - 80,
-                  size: 12
+                  size: 12,
+                  color: { r: 0.4, g: 0.4, b: 0.4 }
+                });
+                
+                page.drawText(`Rapporteringsperiod: ${doc.rapporteringsperiodTom}`, {
+                  x: 50,
+                  y: height - 100,
+                  size: 12,
+                  color: { r: 0.4, g: 0.4, b: 0.4 }
+                });
+                
+                page.drawText(`Registreringstidpunkt: ${doc.registreringstidpunkt}`, {
+                  x: 50,
+                  y: height - 120,
+                  size: 12,
+                  color: { r: 0.4, g: 0.4, b: 0.4 }
+                });
+                
+                // Lägg till separator
+                page.drawLine({
+                  start: { x: 50, y: height - 140 },
+                  end: { x: width - 50, y: height - 140 },
+                  thickness: 1,
+                  color: { r: 0.8, g: 0.8, b: 0.8 }
+                });
+                
+                // Lägg till information om originalfilen
+                page.drawText('Originalfil: HTML-format från Bolagsverket', {
+                  x: 50,
+                  y: height - 170,
+                  size: 10,
+                  color: { r: 0.6, g: 0.6, b: 0.6 }
                 });
                 
                 page.drawText(`Filstorlek: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`, {
                   x: 50,
-                  y: height - 100,
-                  size: 10
+                  y: height - 190,
+                  size: 10,
+                  color: { r: 0.6, g: 0.6, b: 0.6 }
+                });
+                
+                // Lägg till instruktioner
+                page.drawText('För att se den fullständiga årsredovisningen,', {
+                  x: 50,
+                  y: height - 220,
+                  size: 10,
+                  color: { r: 0.5, g: 0.5, b: 0.5 }
+                });
+                
+                page.drawText('kontakta Bolagsverket eller använd originalfilen.', {
+                  x: 50,
+                  y: height - 235,
+                  size: 10,
+                  color: { r: 0.5, g: 0.5, b: 0.5 }
                 });
                 
                 // Konvertera PDF till base64
