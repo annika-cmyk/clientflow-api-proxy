@@ -523,6 +523,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       recordId: airtableResponse[0].id,
       duration: duration
     });
+    
+    console.log(`📊 Airtable fields sent:`, airtableData.fields);
+    console.log(`📊 Airtable response fields:`, airtableResponse[0].fields);
 
     res.json(responseData);
 
