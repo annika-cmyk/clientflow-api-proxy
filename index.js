@@ -958,12 +958,12 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 // Konvertera PDF till base64
                 const pdfBytes = await pdfDoc.save();
                 
-                // Ladda upp PDF till Airtable
+                // Spara PDF lokalt
                 const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`;
                 
-                const fileUrl = await uploadFileToAirtable(pdfBytes, filename, 'application/pdf');
+                const fileUrl = await saveFileLocally(pdfBytes, filename, 'application/pdf');
                 
                 if (i === 0) {
                   nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
@@ -1018,12 +1018,12 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 
                 const pdfBytes = await pdfDoc.save();
                 
-                // Ladda upp PDF till Airtable
+                // Spara PDF lokalt
                 const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`;
                 
-                const fileUrl = await uploadFileToAirtable(pdfBytes, filename, 'application/pdf');
+                const fileUrl = await saveFileLocally(pdfBytes, filename, 'application/pdf');
                 
                 if (i === 0) {
                   nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
@@ -1052,12 +1052,12 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
               console.log(`⚠️ Använder original ZIP som fallback`);
               const base64Data = Buffer.from(downloadResponse.data).toString('base64');
               
-              // Ladda upp ZIP till Airtable som fallback
+              // Spara ZIP lokalt som fallback
               const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.zip` :
                               i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.zip` :
                               `ffg-arsredovisning-${doc.rapporteringsperiodTom}.zip`;
               
-              const fileUrl = await uploadFileToAirtable(downloadResponse.data, filename, 'application/zip');
+              const fileUrl = await saveFileLocally(downloadResponse.data, filename, 'application/zip');
               
               if (i === 0) {
                 nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
@@ -1340,28 +1340,70 @@ app.post('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
   }
 });
 
-// Funktion för att ladda upp fil till Airtable
-async function uploadFileToAirtable(fileBuffer, filename, contentType) {
+// Endpoint för att ladda ner sparade filer
+app.get('/api/download/:filename', (req, res) => {
   try {
-    console.log(`📤 Laddar upp fil till Airtable: ${filename}`);
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, 'temp', filename);
     
-    const formData = new FormData();
-    formData.append('file', fileBuffer, {
-      filename: filename,
-      contentType: contentType
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        error: 'Fil hittades inte',
+        message: 'File not found'
+      });
+    }
+    
+    // Bestäm content-type baserat på filändelse
+    const ext = path.extname(filename).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    if (ext === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (ext === '.zip') {
+      contentType = 'application/zip';
+    }
+    
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`
     });
     
-    const response = await axios.post('https://api.airtable.com/v0/meta/bases', formData, {
-      headers: {
-        'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
-        ...formData.getHeaders()
-      }
-    });
+    res.sendFile(filePath);
     
-    console.log(`✅ Fil uppladdad till Airtable: ${filename}`);
-    return response.data.url;
   } catch (error) {
-    console.log(`❌ Fel vid uppladdning av fil: ${error.message}`);
+    console.error('Error serving file:', error.message);
+    res.status(500).json({
+      error: 'Internt serverfel',
+      message: error.message
+    });
+  }
+});
+
+// Funktion för att spara fil lokalt och returnera URL
+async function saveFileLocally(fileBuffer, filename, contentType) {
+  try {
+    console.log(`💾 Sparar fil lokalt: ${filename}`);
+    
+    // Skapa en unik filnamn för att undvika konflikter
+    const timestamp = Date.now();
+    const uniqueFilename = `${timestamp}-${filename}`;
+    
+    // Spara filen i en temporär mapp
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    const filePath = path.join(tempDir, uniqueFilename);
+    fs.writeFileSync(filePath, fileBuffer);
+    
+    // Returnera en URL som pekar på vår download endpoint
+    const fileUrl = `https://clientflow-api-proxy.onrender.com/api/download/${uniqueFilename}`;
+    
+    console.log(`✅ Fil sparad lokalt: ${filename} -> ${fileUrl}`);
+    return fileUrl;
+  } catch (error) {
+    console.log(`❌ Fel vid sparande av fil: ${error.message}`);
     return null;
   }
 }
