@@ -957,23 +957,20 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = {
-                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.senasteArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = {
-                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.fgArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = {
-                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.ffgArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 }
                 
                 console.log(`✅ PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
@@ -1014,23 +1011,20 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = {
-                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.senasteArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = {
-                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.fgArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = {
-                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`,
-                    type: 'application/pdf',
-                    base64: pdfBase64
-                  };
+                  nedladdadeDokument.ffgArsredovisning = [{
+                    url: `data:application/pdf;base64,${pdfBase64}`,
+                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
+                  }];
                 }
                 
                 console.log(`✅ Enkel PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
@@ -1044,23 +1038,20 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
               const base64Data = Buffer.from(downloadResponse.data).toString('base64');
               
               if (i === 0) {
-                nedladdadeDokument.senasteArsredovisning = {
-                  filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.zip`,
-                  type: 'application/zip',
-                  base64: base64Data
-                };
+                nedladdadeDokument.senasteArsredovisning = [{
+                  url: `data:application/zip;base64,${base64Data}`,
+                  filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.zip`
+                }];
               } else if (i === 1) {
-                nedladdadeDokument.fgArsredovisning = {
-                  filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.zip`,
-                  type: 'application/zip',
-                  base64: base64Data
-                };
+                nedladdadeDokument.fgArsredovisning = [{
+                  url: `data:application/zip;base64,${base64Data}`,
+                  filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.zip`
+                }];
               } else if (i === 2) {
-                nedladdadeDokument.ffgArsredovisning = {
-                  filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.zip`,
-                  type: 'application/zip',
-                  base64: base64Data
-                };
+                nedladdadeDokument.ffgArsredovisning = [{
+                  url: `data:application/zip;base64,${base64Data}`,
+                  filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.zip`
+                }];
               }
             }
 
