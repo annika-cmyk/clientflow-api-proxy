@@ -785,10 +785,18 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       
     } catch (dokumentError) {
       console.log(`⚠️ Kunde inte hämta dokumentlista: ${dokumentError.message}`);
+      if (dokumentError.response) {
+        console.log(`📋 Bolagsverket dokumentlista fel:`, {
+          status: dokumentError.response.status,
+          data: dokumentError.response.data,
+          headers: dokumentError.response.headers
+        });
+      }
       dokumentInfo = {
         dokument: [],
         antalDokument: 0,
-        error: dokumentError.message
+        error: dokumentError.message,
+        details: dokumentError.response?.data || null
       };
     }
 
