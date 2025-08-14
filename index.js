@@ -470,10 +470,8 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
     // Debug: Logga SNI-data från Bolagsverket
     console.log('🔍 SNI-data från Bolagsverket:', {
       naringsgrenOrganisation: orgData.naringsgrenOrganisation,
-      naringsgrenOrganisationLista: orgData.naringsgrenOrganisation?.naringsgrenOrganisationLista,
-      beskrivning: orgData.naringsgrenOrganisation?.beskrivning,
-      klartext: orgData.naringsgrenOrganisation?.klartext,
-      kod: orgData.naringsgrenOrganisation?.kod
+      sni: orgData.naringsgrenOrganisation?.sni,
+      fel: orgData.naringsgrenOrganisation?.fel
     });
 
     // Förbered data för Airtable med förbättrad mappning
@@ -485,9 +483,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
         'Address': orgData.postadressOrganisation?.postadress ? 
           `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
         'Bolagsform': orgData.organisationsform?.klartext || '',
-        'SNI kod': orgData.naringsgrenOrganisation?.beskrivning || 
-                   orgData.naringsgrenOrganisation?.klartext || 
-                   orgData.naringsgrenOrganisation?.kod || '',
+        'SNI kod': orgData.naringsgrenOrganisation?.sni?.map(item => 
+          `${item.kod} - ${item.klartext || ''}`
+        ).join(', ') || '',
         'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
         'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
         'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
