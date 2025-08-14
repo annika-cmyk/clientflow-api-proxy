@@ -878,10 +878,7 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             )?.[2]?.rapporteringsperiodTom || '',
             'Ffg årsredovisning json': dokumentInfo?.dokument?.sort((a, b) => 
               new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
-            )?.[2]?.dokumentId || '',
-            'Dokumentlista': dokumentInfo?.dokument?.map(doc => 
-              `${doc.rapporteringsperiodTom} (${doc.filformat}) - ID: ${doc.dokumentId}`
-            ).join('; ') || ''
+            )?.[2]?.dokumentId || ''
           }
         };
         
