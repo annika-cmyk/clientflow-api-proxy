@@ -421,13 +421,15 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                        req.body.anvId || 
                        req.body.userId || 
                        req.body.anv_id ||
-                       req.body.user_id;
+                       req.body.user_id ||
+                       req.body['Användare'];
     
     const byraId = req.body.byraId || 
                    req.body.byra_id || 
                    req.body.agencyId || 
                    req.body.agency_id ||
-                   req.body.byra_id;
+                   req.body.byra_id ||
+                   req.body['Byrå ID'];
     
     if (!organisationsnummer) {
       return res.status(400).json({
