@@ -518,12 +518,14 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Address': orgData.postadressOrganisation?.postadress ?
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
             'Bolagsform': orgData.organisationsform?.klartext || '',
-            'SNI kod': orgData.naringsgrenOrganisation?.sni?.map(item => 
-              `${item.kod} - ${item.klartext || ''}`
+            'SNI kod': orgData.naringsgrenOrganisation?.sni?.filter(item => 
+              item.kod && item.kod.trim() && item.klartext && item.klartext.trim()
+            ).map(item => 
+              `${item.kod.trim()} - ${item.klartext.trim()}`
             ).join(', ') || '',
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
-            'Aktivt företag': isActiveCompany,
+            'Aktivt företag': isActiveCompany ? true : false,
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
           }
