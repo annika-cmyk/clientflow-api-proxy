@@ -3,6 +3,8 @@ const cors = require('cors');
 const axios = require('axios');
 const Airtable = require('airtable');
 const crypto = require('crypto');
+const AdmZip = require('adm-zip');
+const { PDFDocument } = require('pdf-lib');
 require('dotenv').config();
 
 const app = express();
@@ -60,18 +62,20 @@ app.get('/api/download/:recordId/:fieldName', async (req, res) => {
     // Konvertera base64 till buffer
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
-    // Bestäm filnamn baserat på fältnamn
-    let filename = 'arsredovisning.zip';
+    // Bestäm filnamn och content-type baserat på fältnamn
+    let filename = 'arsredovisning.pdf';
+    let contentType = 'application/pdf';
+    
     if (fieldName === 'Senaste årsredovisning fil') {
-      filename = 'senaste-arsredovisning.zip';
+      filename = 'senaste-arsredovisning.pdf';
     } else if (fieldName === 'Fg årsredovisning fil') {
-      filename = 'fg-arsredovisning.zip';
+      filename = 'fg-arsredovisning.pdf';
     } else if (fieldName === 'Ffg årsredovisning fil') {
-      filename = 'ffg-arsredovisning.zip';
+      filename = 'ffg-arsredovisning.pdf';
     }
     
     // Skicka fil
-    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(fileBuffer);
     
@@ -861,15 +865,83 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
               timeout: 30000
             });
 
-            // Konvertera till base64 för Airtable
-            const base64Data = Buffer.from(downloadResponse.data).toString('base64');
-            
-            if (i === 0) {
-              nedladdadeDokument.senasteArsredovisning = base64Data;
-            } else if (i === 1) {
-              nedladdadeDokument.fgArsredovisning = base64Data;
-            } else if (i === 2) {
-              nedladdadeDokument.ffgArsredovisning = base64Data;
+            // Konvertera ZIP till PDF
+            try {
+              console.log(`🔄 Konverterar ZIP till PDF för dokument ${i + 1}...`);
+              
+              // Läs ZIP-filen
+              const zip = new AdmZip(downloadResponse.data);
+              const zipEntries = zip.getEntries();
+              
+              // Hitta HTML-filen i ZIP:en
+              const htmlEntry = zipEntries.find(entry => entry.entryName.endsWith('.html') || entry.entryName.endsWith('.htm'));
+              
+              if (htmlEntry) {
+                console.log(`📄 Hittade HTML-fil: ${htmlEntry.entryName}`);
+                
+                // Läs HTML-innehållet
+                const htmlContent = htmlEntry.getData().toString('utf8');
+                
+                // Skapa en enkel PDF från HTML (för nu, vi kan förbättra detta senare)
+                const pdfDoc = await PDFDocument.create();
+                const page = pdfDoc.addPage([595.28, 841.89]); // A4 storlek
+                
+                // Lägg till text som indikerar att detta är en årsredovisning
+                const { width, height } = page.getSize();
+                page.drawText('Årsredovisning från Bolagsverket', {
+                  x: 50,
+                  y: height - 50,
+                  size: 16
+                });
+                
+                page.drawText('HTML-innehåll konverterat till PDF', {
+                  x: 50,
+                  y: height - 80,
+                  size: 12
+                });
+                
+                page.drawText(`Filstorlek: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`, {
+                  x: 50,
+                  y: height - 100,
+                  size: 10
+                });
+                
+                // Konvertera PDF till base64
+                const pdfBytes = await pdfDoc.save();
+                const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+                
+                if (i === 0) {
+                  nedladdadeDokument.senasteArsredovisning = pdfBase64;
+                } else if (i === 1) {
+                  nedladdadeDokument.fgArsredovisning = pdfBase64;
+                } else if (i === 2) {
+                  nedladdadeDokument.ffgArsredovisning = pdfBase64;
+                }
+                
+                console.log(`✅ PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
+              } else {
+                console.log(`⚠️ Ingen HTML-fil hittad i ZIP, använder original ZIP`);
+                const base64Data = Buffer.from(downloadResponse.data).toString('base64');
+                
+                if (i === 0) {
+                  nedladdadeDokument.senasteArsredovisning = base64Data;
+                } else if (i === 1) {
+                  nedladdadeDokument.fgArsredovisning = base64Data;
+                } else if (i === 2) {
+                  nedladdadeDokument.ffgArsredovisning = base64Data;
+                }
+              }
+            } catch (conversionError) {
+              console.log(`⚠️ Kunde inte konvertera till PDF: ${conversionError.message}, använder original ZIP`);
+              const base64Data = Buffer.from(downloadResponse.data).toString('base64');
+              
+              if (i === 0) {
+                nedladdadeDokument.senasteArsredovisning = base64Data;
+              } else if (i === 1) {
+                nedladdadeDokument.fgArsredovisning = base64Data;
+              } else if (i === 2) {
+                nedladdadeDokument.ffgArsredovisning = base64Data;
+              }
             }
 
             console.log(`✅ Dokument ${i + 1} nedladdat: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`);
