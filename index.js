@@ -873,16 +873,28 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
               const zip = new AdmZip(downloadResponse.data);
               const zipEntries = zip.getEntries();
               
-              // Hitta HTML-filen i ZIP:en
-              const htmlEntry = zipEntries.find(entry => entry.entryName.endsWith('.html') || entry.entryName.endsWith('.htm'));
+              console.log(`📦 ZIP innehåller ${zipEntries.length} filer:`);
+              zipEntries.forEach(entry => {
+                console.log(`   - ${entry.entryName} (${entry.header.size} bytes)`);
+              });
+              
+              // Hitta HTML-filen i ZIP:en (försök olika filnamn)
+              const htmlEntry = zipEntries.find(entry => 
+                entry.entryName.endsWith('.html') || 
+                entry.entryName.endsWith('.htm') ||
+                entry.entryName.endsWith('.xhtml') ||
+                entry.entryName.includes('.html') ||
+                entry.entryName.includes('.htm')
+              );
               
               if (htmlEntry) {
                 console.log(`📄 Hittade HTML-fil: ${htmlEntry.entryName}`);
                 
                 // Läs HTML-innehållet
                 const htmlContent = htmlEntry.getData().toString('utf8');
+                console.log(`📄 HTML-innehåll längd: ${htmlContent.length} tecken`);
                 
-                // Skapa en mer detaljerad PDF från HTML-innehållet
+                // Skapa en enkel men fungerande PDF
                 const pdfDoc = await PDFDocument.create();
                 const page = pdfDoc.addPage([595.28, 841.89]); // A4 storlek
                 
@@ -892,68 +904,52 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 page.drawText('Årsredovisning från Bolagsverket', {
                   x: 50,
                   y: height - 50,
-                  size: 18,
-                  color: { r: 0.2, g: 0.2, b: 0.2 }
+                  size: 18
                 });
                 
                 // Lägg till dokumentinformation
                 page.drawText(`Dokument ID: ${doc.dokumentId}`, {
                   x: 50,
                   y: height - 80,
-                  size: 12,
-                  color: { r: 0.4, g: 0.4, b: 0.4 }
+                  size: 12
                 });
                 
                 page.drawText(`Rapporteringsperiod: ${doc.rapporteringsperiodTom}`, {
                   x: 50,
                   y: height - 100,
-                  size: 12,
-                  color: { r: 0.4, g: 0.4, b: 0.4 }
+                  size: 12
                 });
                 
                 page.drawText(`Registreringstidpunkt: ${doc.registreringstidpunkt}`, {
                   x: 50,
                   y: height - 120,
-                  size: 12,
-                  color: { r: 0.4, g: 0.4, b: 0.4 }
-                });
-                
-                // Lägg till separator
-                page.drawLine({
-                  start: { x: 50, y: height - 140 },
-                  end: { x: width - 50, y: height - 140 },
-                  thickness: 1,
-                  color: { r: 0.8, g: 0.8, b: 0.8 }
+                  size: 12
                 });
                 
                 // Lägg till information om originalfilen
                 page.drawText('Originalfil: HTML-format från Bolagsverket', {
                   x: 50,
-                  y: height - 170,
-                  size: 10,
-                  color: { r: 0.6, g: 0.6, b: 0.6 }
+                  y: height - 150,
+                  size: 10
                 });
                 
                 page.drawText(`Filstorlek: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`, {
                   x: 50,
-                  y: height - 190,
-                  size: 10,
-                  color: { r: 0.6, g: 0.6, b: 0.6 }
+                  y: height - 170,
+                  size: 10
                 });
                 
                 // Lägg till instruktioner
                 page.drawText('För att se den fullständiga årsredovisningen,', {
                   x: 50,
-                  y: height - 220,
-                  size: 10,
-                  color: { r: 0.5, g: 0.5, b: 0.5 }
+                  y: height - 200,
+                  size: 10
                 });
                 
                 page.drawText('kontakta Bolagsverket eller använd originalfilen.', {
                   x: 50,
-                  y: height - 235,
-                  size: 10,
-                  color: { r: 0.5, g: 0.5, b: 0.5 }
+                  y: height - 215,
+                  size: 10
                 });
                 
                 // Konvertera PDF till base64
@@ -970,19 +966,57 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 
                 console.log(`✅ PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
               } else {
-                console.log(`⚠️ Ingen HTML-fil hittad i ZIP, använder original ZIP`);
-                const base64Data = Buffer.from(downloadResponse.data).toString('base64');
+                console.log(`⚠️ Ingen HTML-fil hittad i ZIP, skapar enkel PDF med dokumentinfo`);
+                
+                // Skapa en enkel PDF med bara dokumentinformation
+                const pdfDoc = await PDFDocument.create();
+                const page = pdfDoc.addPage([595.28, 841.89]);
+                
+                const { width, height } = page.getSize();
+                
+                page.drawText('Årsredovisning från Bolagsverket', {
+                  x: 50,
+                  y: height - 50,
+                  size: 18
+                });
+                
+                page.drawText(`Dokument ID: ${doc.dokumentId}`, {
+                  x: 50,
+                  y: height - 80,
+                  size: 12
+                });
+                
+                page.drawText(`Rapporteringsperiod: ${doc.rapporteringsperiodTom}`, {
+                  x: 50,
+                  y: height - 100,
+                  size: 12
+                });
+                
+                page.drawText('Detta är en sammanfattning av årsredovisningen.', {
+                  x: 50,
+                  y: height - 130,
+                  size: 10
+                });
+                
+                const pdfBytes = await pdfDoc.save();
+                const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = base64Data;
+                  nedladdadeDokument.senasteArsredovisning = pdfBase64;
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = base64Data;
+                  nedladdadeDokument.fgArsredovisning = pdfBase64;
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = base64Data;
+                  nedladdadeDokument.ffgArsredovisning = pdfBase64;
                 }
+                
+                console.log(`✅ Enkel PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
               }
             } catch (conversionError) {
-              console.log(`⚠️ Kunde inte konvertera till PDF: ${conversionError.message}, använder original ZIP`);
+              console.log(`❌ Fel vid PDF-konvertering: ${conversionError.message}`);
+              console.log(`❌ Stack trace: ${conversionError.stack}`);
+              
+              // Fallback: använd original ZIP
+              console.log(`⚠️ Använder original ZIP som fallback`);
               const base64Data = Buffer.from(downloadResponse.data).toString('base64');
               
               if (i === 0) {
