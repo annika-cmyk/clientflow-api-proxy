@@ -864,6 +864,21 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Senaste årsredovisning': dokumentInfo?.dokument?.sort((a, b) => 
               new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
             )?.[0]?.rapporteringsperiodTom || '',
+            'Senaste årsredovisning json': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[0]?.dokumentId || '',
+            'Fg årsredovisning': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[1]?.rapporteringsperiodTom || '',
+            'Fg årsredovisning json': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[1]?.dokumentId || '',
+            'Ffg årsredovisning': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[2]?.rapporteringsperiodTom || '',
+            'Ffg årsredovisning json': dokumentInfo?.dokument?.sort((a, b) => 
+              new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
+            )?.[2]?.dokumentId || '',
             'Årsredovisningar JSON': JSON.stringify(dokumentInfo?.dokument || []),
             'Dokumentlista': dokumentInfo?.dokument?.map(doc => 
               `${doc.rapporteringsperiodTom} (${doc.filformat}) - ID: ${doc.dokumentId}`
