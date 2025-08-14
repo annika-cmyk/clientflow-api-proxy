@@ -525,7 +525,7 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             ).join(', ') || '',
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
-            'Aktivt företag': isActiveCompany,
+            'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
           }
