@@ -430,8 +430,8 @@ app.post('/api/bolagsverket/dokumentlista', async (req, res) => {
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
 
-    // Generera unikt request ID
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generera unikt request ID (UUID format som Bolagsverket kräver)
+    const requestId = crypto.randomUUID();
 
     // Hämta dokumentlista från Bolagsverket
     const requestBody = {
@@ -651,6 +651,48 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
+    // Hämta dokumentlista från Bolagsverket
+    let dokumentInfo = null;
+    try {
+      console.log(`🔍 Hämtar dokumentlista för organisationsnummer: ${cleanOrgNumber}`);
+      
+      const dokumentlistaUrl = environment === 'test'
+        ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
+        : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
+
+      const dokumentRequestId = crypto.randomUUID();
+      const dokumentRequestBody = {
+        identitetsbeteckning: cleanOrgNumber
+      };
+
+      const dokumentHeaders = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Request-Id': dokumentRequestId
+      };
+
+      const dokumentResponse = await axios.post(dokumentlistaUrl, dokumentRequestBody, {
+        headers: dokumentHeaders,
+        timeout: 15000
+      });
+
+      dokumentInfo = {
+        dokument: dokumentResponse.data?.dokument || [],
+        antalDokument: dokumentResponse.data?.dokument?.length || 0
+      };
+
+      console.log(`✅ Dokumentlista hämtad: ${dokumentInfo.antalDokument} dokument hittade`);
+      
+    } catch (dokumentError) {
+      console.log(`⚠️ Kunde inte hämta dokumentlista: ${dokumentError.message}`);
+      dokumentInfo = {
+        dokument: [],
+        antalDokument: 0,
+        error: dokumentError.message
+      };
+    }
+
             // Debug: Logga SNI-data från Bolagsverket
         console.log('🔍 SNI-data från Bolagsverket:', {
           naringsgrenOrganisation: orgData.naringsgrenOrganisation,
@@ -711,7 +753,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
-            'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
+            'Byrå ID': byraId ? byraId.replace(/,/g, '') : '',
+            'Antal årsredovisningar': dokumentInfo?.antalDokument || 0,
+            'Senaste årsredovisning': dokumentInfo?.dokument?.[0]?.rapporteringsperiodTom || ''
           }
         };
         
@@ -753,6 +797,7 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       organisationsnummer: cleanOrgNumber,
       anvandareId: anvandareId || null,
       byraId: byraId || null,
+      dokumentInfo: dokumentInfo,
       timestamp: new Date().toISOString(),
       duration: duration,
       environment: environment
