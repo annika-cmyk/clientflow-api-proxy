@@ -473,10 +473,8 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
         'Verksamhetsbeskrivning': orgData.verksamhetsbeskrivning?.beskrivning || '',
         'Address': orgData.postadressOrganisation?.postadress ? 
           `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
-        'Beskrivning av kunden': `Organisationsform: ${orgData.organisationsform?.klartext || ''}, Juridisk Form: ${orgData.juridiskForm?.klartext || ''}, Registreringsdatum: ${orgData.organisationsdatum?.registreringsdatum || ''}, Verksam: ${orgData.verksamOrganisation || ''}, Miljö: ${environment}`,
-        'Bolagsform': orgData.organisationsform?.klartext || '',
-        'Användare': anvandareId || '',
-        'Byrå ID': byraId || ''
+        'Beskrivning av kunden': `Organisationsform: ${orgData.organisationsform?.klartext || ''}, Juridisk Form: ${orgData.juridiskForm?.klartext || ''}, Registreringsdatum: ${orgData.organisationsdatum?.registreringsdatum || ''}, Verksam: ${orgData.verksamOrganisation || ''}, Miljö: ${environment}, Användar-ID: ${anvandareId || 'Ej angivet'}, Byrå-ID: ${byraId || 'Ej angivet'}`,
+        'Bolagsform': orgData.organisationsform?.klartext || ''
       }
     };
 
