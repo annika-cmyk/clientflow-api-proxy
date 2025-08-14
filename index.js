@@ -5,6 +5,9 @@ const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
+const FormData = require('form-data');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -954,23 +957,29 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 
                 // Konvertera PDF till base64
                 const pdfBytes = await pdfDoc.save();
-                const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+                
+                // Ladda upp PDF till Airtable
+                const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
+                                i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
+                                `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`;
+                
+                const fileUrl = await uploadFileToAirtable(pdfBytes, filename, 'application/pdf');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.fgArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.ffgArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 }
                 
                 console.log(`✅ PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
@@ -1008,23 +1017,29 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 });
                 
                 const pdfBytes = await pdfDoc.save();
-                const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+                
+                // Ladda upp PDF till Airtable
+                const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
+                                i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
+                                `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`;
+                
+                const fileUrl = await uploadFileToAirtable(pdfBytes, filename, 'application/pdf');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.fgArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = [{
-                    url: `data:application/pdf;base64,${pdfBase64}`,
-                    filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`
-                  }];
+                  nedladdadeDokument.ffgArsredovisning = fileUrl ? [{
+                    url: fileUrl,
+                    filename: filename
+                  }] : '';
                 }
                 
                 console.log(`✅ Enkel PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
@@ -1037,21 +1052,28 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
               console.log(`⚠️ Använder original ZIP som fallback`);
               const base64Data = Buffer.from(downloadResponse.data).toString('base64');
               
+              // Ladda upp ZIP till Airtable som fallback
+              const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.zip` :
+                              i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.zip` :
+                              `ffg-arsredovisning-${doc.rapporteringsperiodTom}.zip`;
+              
+              const fileUrl = await uploadFileToAirtable(downloadResponse.data, filename, 'application/zip');
+              
               if (i === 0) {
-                nedladdadeDokument.senasteArsredovisning = [{
-                  url: `data:application/zip;base64,${base64Data}`,
-                  filename: `senaste-arsredovisning-${doc.rapporteringsperiodTom}.zip`
-                }];
+                nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
+                  url: fileUrl,
+                  filename: filename
+                }] : '';
               } else if (i === 1) {
-                nedladdadeDokument.fgArsredovisning = [{
-                  url: `data:application/zip;base64,${base64Data}`,
-                  filename: `fg-arsredovisning-${doc.rapporteringsperiodTom}.zip`
-                }];
+                nedladdadeDokument.fgArsredovisning = fileUrl ? [{
+                  url: fileUrl,
+                  filename: filename
+                }] : '';
               } else if (i === 2) {
-                nedladdadeDokument.ffgArsredovisning = [{
-                  url: `data:application/zip;base64,${base64Data}`,
-                  filename: `ffg-arsredovisning-${doc.rapporteringsperiodTom}.zip`
-                }];
+                nedladdadeDokument.ffgArsredovisning = fileUrl ? [{
+                  url: fileUrl,
+                  filename: filename
+                }] : '';
               }
             }
 
@@ -1317,6 +1339,32 @@ app.post('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
     }
   }
 });
+
+// Funktion för att ladda upp fil till Airtable
+async function uploadFileToAirtable(fileBuffer, filename, contentType) {
+  try {
+    console.log(`📤 Laddar upp fil till Airtable: ${filename}`);
+    
+    const formData = new FormData();
+    formData.append('file', fileBuffer, {
+      filename: filename,
+      contentType: contentType
+    });
+    
+    const response = await axios.post('https://api.airtable.com/v0/meta/bases', formData, {
+      headers: {
+        'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
+        ...formData.getHeaders()
+      }
+    });
+    
+    console.log(`✅ Fil uppladdad till Airtable: ${filename}`);
+    return response.data.url;
+  } catch (error) {
+    console.log(`❌ Fel vid uppladdning av fil: ${error.message}`);
+    return null;
+  }
+}
 
 app.listen(PORT, () => {
   console.log(`🚀 API Proxy Service running on port ${PORT}`);
