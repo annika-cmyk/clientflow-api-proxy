@@ -525,11 +525,19 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             ).join(', ') || '',
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
-            'Aktivt företag': isActiveCompany ? true : false,
+            'Aktivt företag': isActiveCompany,
             'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : ''
           }
         };
+        
+        // Debug: Logga isActiveCompany-värdet
+        console.log('🔍 Aktivt företag debug:', {
+          isActiveCompany: isActiveCompany,
+          isActiveCompanyType: typeof isActiveCompany,
+          avregistreringsorsak: orgData.avregistreringsorsak,
+          avregistreradOrganisation: orgData.avregistreradOrganisation
+        });
 
     // Spara till Airtable
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
