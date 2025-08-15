@@ -912,7 +912,11 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                   });
                   const page = await browser.newPage();
                   await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-                  pdfBytes = await page.pdf({ format: 'A4', printBackground: true });
+                  pdfBytes = await page.pdf({
+                    format: 'A4',
+                    printBackground: true,
+                    margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' }
+                  });
                   await browser.close();
                   console.log('✅ Puppeteer-PDF skapad');
                 } catch (puppeteerError) {
@@ -1108,11 +1112,22 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Address': orgData.postadressOrganisation?.postadress ?
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
             'Bolagsform': orgData.organisationsform?.klartext || '',
-            'SNI kod': orgData.naringsgrenOrganisation?.sni?.filter(item => 
-              item.kod && item.kod.trim() && item.klartext && item.klartext.trim()
-            ).map(item => 
-              `${item.kod.trim()} - ${item.klartext.trim()}`
-            ).join(', ') || '',
+            'SNI kod': (() => {
+              // Samla SNI från flera möjliga ställen och filtrera tomma
+              const candidates = [];
+              const a = orgData?.naringsgrenOrganisation?.sni || [];
+              const b = orgData?.sni || [];
+              const c = orgData?.naringsgrenOrganisation?.naringsgrenOrganisation?.sni || [];
+              [a, b, c].forEach(list => {
+                list.forEach(item => {
+                  const code = (item?.kod || '').trim();
+                  const text = (item?.klartext || item?.beskrivning || '').trim();
+                  if (code && text) candidates.push(`${code} - ${text}`);
+                });
+              });
+              // Unika och sammanfogade
+              return Array.from(new Set(candidates)).join(', ');
+            })(),
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
