@@ -1103,6 +1103,27 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
           descriptions.push(orgData.verksamhetsbeskrivning.klartext);
         }
         
+        // Bygg SNI-sträng från flera källor
+        const sniString = (() => {
+          const candidates = [];
+          const scbBlock = orgData?.naringsgrenOrganisation;
+          if (scbBlock?.fel) {
+            console.log('🔍 SNI från SCB ej tillgängligt:', scbBlock.fel);
+          }
+          const lists = [
+            scbBlock?.sni || [],
+            orgData?.sni || [],
+          ];
+          lists.forEach(list => {
+            list.forEach(item => {
+              const code = (item?.kod || '').trim();
+              const text = (item?.klartext || item?.beskrivning || '').trim();
+              if (code && text) candidates.push(`${code} - ${text}`);
+            });
+          });
+          return Array.from(new Set(candidates)).join(', ');
+        })();
+
         // Förbered data för Airtable med förbättrad mappning
         const airtableData = {
           fields: {
@@ -1112,22 +1133,6 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Address': orgData.postadressOrganisation?.postadress ?
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
             'Bolagsform': orgData.organisationsform?.klartext || '',
-            'SNI kod': (() => {
-              // Samla SNI från flera möjliga ställen och filtrera tomma
-              const candidates = [];
-              const a = orgData?.naringsgrenOrganisation?.sni || [];
-              const b = orgData?.sni || [];
-              const c = orgData?.naringsgrenOrganisation?.naringsgrenOrganisation?.sni || [];
-              [a, b, c].forEach(list => {
-                list.forEach(item => {
-                  const code = (item?.kod || '').trim();
-                  const text = (item?.klartext || item?.beskrivning || '').trim();
-                  if (code && text) candidates.push(`${code} - ${text}`);
-                });
-              });
-              // Unika och sammanfogade
-              return Array.from(new Set(candidates)).join(', ');
-            })(),
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
@@ -1156,6 +1161,13 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
             'Ffg årsredovisning fil': nedladdadeDokument.ffgArsredovisning || ''
           }
         };
+
+        // Lägg bara till SNI om vi faktiskt har värden, så vi inte skriver över existerande data med tom sträng
+        if (sniString) {
+          airtableData.fields['SNI kod'] = sniString;
+        } else {
+          console.log('ℹ️ Ingen SNI kod att uppdatera (SCB otillgängligt eller tom lista)');
+        }
         
         // Debug: Logga isActiveCompany-värdet
         console.log('🔍 Aktivt företag debug:', {
