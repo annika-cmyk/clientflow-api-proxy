@@ -5,7 +5,8 @@ const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
-const puppeteer = require('puppeteer');
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
@@ -902,9 +903,12 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 let pdfBytes;
                 try {
                   console.log('🖨️ Renderar fullständig PDF med Puppeteer...');
+                  const executablePath = await chromium.executablePath();
                   const browser = await puppeteer.launch({
-                    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                    headless: true
+                    args: chromium.args,
+                    defaultViewport: chromium.defaultViewport,
+                    executablePath,
+                    headless: chromium.headless
                   });
                   const page = await browser.newPage();
                   await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
