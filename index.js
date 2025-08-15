@@ -5,6 +5,7 @@ const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
+const puppeteer = require('puppeteer');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
@@ -897,92 +898,41 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 const htmlContent = htmlEntry.getData().toString('utf8');
                 console.log(`📄 HTML-innehåll längd: ${htmlContent.length} tecken`);
                 
-                // Skapa en enkel men fungerande PDF
-                const pdfDoc = await PDFDocument.create();
-                const page = pdfDoc.addPage([595.28, 841.89]); // A4 storlek
-                
-                const { width, height } = page.getSize();
-                
-                // Lägg till titel
-                page.drawText('Årsredovisning från Bolagsverket', {
-                  x: 50,
-                  y: height - 50,
-                  size: 18
-                });
-                
-                // Lägg till dokumentinformation
-                page.drawText(`Dokument ID: ${doc.dokumentId}`, {
-                  x: 50,
-                  y: height - 80,
-                  size: 12
-                });
-                
-                page.drawText(`Rapporteringsperiod: ${doc.rapporteringsperiodTom}`, {
-                  x: 50,
-                  y: height - 100,
-                  size: 12
-                });
-                
-                page.drawText(`Registreringstidpunkt: ${doc.registreringstidpunkt}`, {
-                  x: 50,
-                  y: height - 120,
-                  size: 12
-                });
-                
-                // Lägg till information om originalfilen
-                page.drawText('Originalfil: HTML-format från Bolagsverket', {
-                  x: 50,
-                  y: height - 150,
-                  size: 10
-                });
-                
-                page.drawText(`Filstorlek: ${(downloadResponse.data.length / 1024 / 1024).toFixed(2)} MB`, {
-                  x: 50,
-                  y: height - 170,
-                  size: 10
-                });
-                
-                // Lägg till instruktioner
-                page.drawText('För att se den fullständiga årsredovisningen,', {
-                  x: 50,
-                  y: height - 200,
-                  size: 10
-                });
-                
-                page.drawText('kontakta Bolagsverket eller använd originalfilen.', {
-                  x: 50,
-                  y: height - 215,
-                  size: 10
-                });
-                
-                // Konvertera PDF till base64
-                const pdfBytes = await pdfDoc.save();
+                // Försök rendera fullständig PDF med Puppeteer
+                let pdfBytes;
+                try {
+                  console.log('🖨️ Renderar fullständig PDF med Puppeteer...');
+                  const browser = await puppeteer.launch({
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                  });
+                  const page = await browser.newPage();
+                  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+                  pdfBytes = await page.pdf({ format: 'A4', printBackground: true });
+                  await browser.close();
+                  console.log('✅ Puppeteer-PDF skapad');
+                } catch (puppeteerError) {
+                  console.log(`⚠️ Puppeteer misslyckades, använder enkel PDF: ${puppeteerError.message}`);
+                  const simpleDoc = await PDFDocument.create();
+                  const simplePage = simpleDoc.addPage([595.28, 841.89]);
+                  simplePage.drawText('Årsredovisning (förenklad vy)', { x: 50, y: 780, size: 16 });
+                  pdfBytes = await simpleDoc.save();
+                }
                 
                 // Spara PDF lokalt
                 const filename = i === 0 ? `senaste-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 i === 1 ? `fg-arsredovisning-${doc.rapporteringsperiodTom}.pdf` :
                                 `ffg-arsredovisning-${doc.rapporteringsperiodTom}.pdf`;
-                
                 const fileUrl = await saveFileLocally(pdfBytes, filename, 'application/pdf');
                 
                 if (i === 0) {
-                  nedladdadeDokument.senasteArsredovisning = fileUrl ? [{
-                    url: fileUrl,
-                    filename: filename
-                  }] : '';
+                  nedladdadeDokument.senasteArsredovisning = fileUrl ? [{ url: fileUrl, filename }] : '';
                 } else if (i === 1) {
-                  nedladdadeDokument.fgArsredovisning = fileUrl ? [{
-                    url: fileUrl,
-                    filename: filename
-                  }] : '';
+                  nedladdadeDokument.fgArsredovisning = fileUrl ? [{ url: fileUrl, filename }] : '';
                 } else if (i === 2) {
-                  nedladdadeDokument.ffgArsredovisning = fileUrl ? [{
-                    url: fileUrl,
-                    filename: filename
-                  }] : '';
+                  nedladdadeDokument.ffgArsredovisning = fileUrl ? [{ url: fileUrl, filename }] : '';
                 }
                 
-                console.log(`✅ PDF skapad för dokument ${i + 1}: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
+                console.log(`✅ PDF skapad för dokument ${i + 1}`);
               } else {
                 console.log(`⚠️ Ingen HTML-fil hittad i ZIP, skapar enkel PDF med dokumentinfo`);
                 
