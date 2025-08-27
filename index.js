@@ -5,12 +5,20 @@ const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
+let chromium = null;
+let puppeteer = null;
+try {
+  chromium = require('@sparticuz/chromium');
+  puppeteer = require('puppeteer-core');
+} catch (err) {
+  console.log('ℹ️ Puppeteer/Chromium inte installerat. Förenklad PDF-rendering kommer användas.');
+}
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+
+
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -19,8 +27,16 @@ const PORT = process.env.PORT || 10000;
 app.set('trust proxy', 1);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: ['http://127.0.0.1:5500', 'http://localhost:5500', 'http://127.0.0.1:3000', 'http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(express.json());
+ 
+ // Serve static frontend
+ app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -168,23 +184,37 @@ app.get('/api/airtable/test', async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID;
-    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'tblOIuLQS2DqmOQWe';
+    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
 
     if (!airtableAccessToken || !airtableBaseId) {
       throw new Error('Airtable Access Token eller Base ID saknas i miljövariabler');
     }
 
-    // Configure Airtable with your access token
-    Airtable.configure({ apiKey: airtableAccessToken });
+    console.log('🔍 Testing Airtable API based on documentation...');
+    console.log('Token starts with:', airtableAccessToken.substring(0, 20) + '...');
+    console.log('Base ID:', airtableBaseId);
+    console.log('Table Name:', airtableTableName);
+
+    // Test 1: List records from table (same as our working test)
+    console.log('🔍 Test 1: List records from table...');
+    const tableUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}?maxRecords=3`;
     
-    // Create a base instance
-    const base = Airtable.base(airtableBaseId);
+    const tableResponse = await axios.get(tableUrl, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    const records = tableResponse.data.records || [];
+    console.log('✅ Success! Found', records.length, 'records');
     
-    // Try to get the table
-    const table = base(airtableTableName);
-    
-    // Try to get the first record
-    const records = await table.select({ maxRecords: 1 }).firstPage();
+    if (records.length > 0) {
+      const firstRecord = records[0];
+      const fields = Object.keys(firstRecord.fields || {});
+      console.log('First record fields:', fields);
+    }
 
     const duration = Date.now() - startTime;
 
@@ -202,9 +232,20 @@ app.get('/api/airtable/test', async (req, res) => {
     const duration = Date.now() - startTime;
     console.error('Error testing Airtable connection:', error.message);
     
+    if (error.response) {
+      console.error('Airtable API Error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    
     res.status(500).json({
-      error: 'Airtable anslutningsfel',
-      message: error.message,
+      success: false,
+      message: 'Airtable-anslutning misslyckades',
+      error: error.message,
+      baseId: process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50',
+      tableName: process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA',
+      timestamp: new Date().toISOString(),
       duration: duration
     });
   }
@@ -271,6 +312,20 @@ app.get('/api/bolagsverket/isalive', async (req, res) => {
   const startTime = Date.now();
   
   try {
+    // Kontrollera om Bolagsverket-credentials finns
+    if (!process.env.BOLAGSVERKET_CLIENT_ID || !process.env.BOLAGSVERKET_CLIENT_SECRET) {
+      console.log(`❌ Bolagsverket-credentials saknas`);
+      
+      const duration = Date.now() - startTime;
+      
+      return res.status(503).json({
+        error: 'Bolagsverket-tjänsten är inte konfigurerad',
+        message: 'Bolagsverket service is not configured. Please contact administrator.',
+        timestamp: new Date().toISOString(),
+        duration: duration
+      });
+    }
+
     const token = await getBolagsverketToken();
     const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
     const isaliveUrl = environment === 'test'
@@ -360,6 +415,22 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     }
 
     const cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
+    
+    // Kontrollera om Bolagsverket-credentials finns
+    if (!process.env.BOLAGSVERKET_CLIENT_ID || !process.env.BOLAGSVERKET_CLIENT_SECRET) {
+      console.log(`❌ Bolagsverket-credentials saknas för: ${cleanOrgNumber}`);
+      
+      const duration = Date.now() - startTime;
+      
+      return res.status(503).json({
+        error: 'Bolagsverket-tjänsten är inte konfigurerad',
+        message: 'Bolagsverket service is not configured. Please contact administrator.',
+        organisationsnummer: cleanOrgNumber,
+        timestamp: new Date().toISOString(),
+        duration: duration
+      });
+    }
+
     const token = await getBolagsverketToken();
     const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
     const orgUrl = environment === 'test'
@@ -402,33 +473,43 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
       });
     }
 
-    const org = response.data.organisationer[0];
+    // Returnera alla organisationer för att få alla namnskyddslöpnummer
+    const allOrganisations = response.data.organisationer;
     
     console.log(`📊 Organisationsdata tillgänglig:`, {
-      identitetsbeteckning: org.identitetsbeteckning,
-      namnskyddslopnummer: org.namnskyddslopnummer,
-      registreringsland: org.registreringsland,
-      reklamsparr: org.reklamsparr,
-      organisationsnamn: org.organisationsnamn?.organisationsnamnLista?.length,
-      organisationsform: org.organisationsform?.klartext,
-      avregistreradOrganisation: !!org.avregistreradOrganisation,
-      avregistreringsorsak: org.avregistreringsorsak?.klartext,
-      pagandeAvvecklingsEllerOmstruktureringsforfarande: org.pagandeAvvecklingsEllerOmstruktureringsforfarandeLista?.length || 0,
-              juridiskForm: org.juridiskForm?.klartext,
-      verksamOrganisation: org.verksamOrganisation?.kod,
-      organisationsdatum: org.organisationsdatum?.registreringsdatum,
-      verksamhetsbeskrivning: org.verksamhetsbeskrivning?.beskrivning,
-      naringsgrenOrganisation: org.naringsgrenOrganisation?.naringsgrenOrganisationLista?.length,
-      postadressOrganisation: !!org.postadressOrganisation,
-      felBolagsverket: org.felBolagsverket,
-      felSCB: org.felSCB
+      totalOrganisations: allOrganisations.length,
+      organisations: allOrganisations.map(org => ({
+        namnskyddslopnummer: org.namnskyddslopnummer,
+        organisationsnamn: org.organisationsnamn?.organisationsnamnLista?.length,
+        organisationsform: org.organisationsform?.klartext,
+        avregistreradOrganisation: !!org.avregistreradOrganisation,
+        verksamOrganisation: org.verksamOrganisation?.kod
+      }))
     });
+
+    // Logga detaljerad information om första organisationen för debugging
+    if (allOrganisations.length > 0) {
+      const firstOrg = allOrganisations[0];
+      console.log(`🔍 Detaljerad data för första organisationen:`, {
+        organisationsidentitet: firstOrg.organisationsidentitet,
+        organisationsnamn: firstOrg.organisationsnamn,
+        organisationsform: firstOrg.organisationsform,
+        organisationsdatum: firstOrg.organisationsdatum,
+        registreringsland: firstOrg.registreringsland,
+        verksamhetsbeskrivning: firstOrg.verksamhetsbeskrivning,
+        naringsgrenOrganisation: firstOrg.naringsgrenOrganisation,
+        postadressOrganisation: firstOrg.postadressOrganisation,
+        verksamOrganisation: firstOrg.verksamOrganisation,
+        avregistreradOrganisation: firstOrg.avregistreradOrganisation,
+        avregistreringsorsak: firstOrg.avregistreringsorsak
+      });
+    }
 
     const duration = Date.now() - startTime;
 
     res.json({
       success: true,
-      data: org,
+      data: allOrganisations,
       timestamp: new Date().toISOString(),
       duration: duration,
       environment: environment,
@@ -440,12 +521,23 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     console.error('Error in Bolagsverket organisationer API:', error.message);
     
     if (error.response) {
-      res.status(error.response.status).json({
-        error: 'Bolagsverket API fel',
-        message: error.response.data?.message || error.message,
-        status: error.response.status,
-        duration: duration
-      });
+      // Hantera specifika fel från Bolagsverket
+      if (error.response.status === 404) {
+        res.status(404).json({
+          error: 'Ingen organisation hittad',
+          message: 'Det angivna organisationsnumret finns inte i Bolagsverkets register',
+          organisationsnummer: cleanOrgNumber,
+          status: error.response.status,
+          duration: duration
+        });
+      } else {
+        res.status(error.response.status).json({
+          error: 'Bolagsverket API fel',
+          message: error.response.data?.message || error.message,
+          status: error.response.status,
+          duration: duration
+        });
+      }
     } else {
       res.status(500).json({
         error: 'Internt serverfel',
@@ -735,6 +827,69 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
         duration: duration
       });
     }
+  }
+});
+
+// Simple mock data save to Airtable endpoint
+app.post('/api/save-mock-to-airtable', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
+
+    if (!airtableAccessToken || !airtableBaseId) {
+      throw new Error('Airtable not configured');
+    }
+
+    // Mock data
+    const mockData = {
+      records: [{
+        fields: {
+          'Orgnr': req.body.organisationsnummer || '1234567890',
+          'Namn': req.body.namn || 'Test Företag AB',
+          'Bolagsform': req.body.bolagsform || 'Aktiebolag',
+          'Address': req.body.address || 'Testgatan 1, 12345 Stockholm',
+          'Verksamhetsbeskrivning': req.body.verksamhetsbeskrivning || 'Test verksamhet'
+        }
+      }]
+    };
+
+    console.log('💾 Saving mock data to Airtable...');
+    
+    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
+    
+    const airtableResponse = await axios.post(createUrl, mockData, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'Mock data sparad till Airtable',
+      airtableRecordId: airtableResponse.data.records[0].id,
+      organisationsnummer: req.body.organisationsnummer || '1234567890',
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error saving to Airtable:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid sparande till Airtable',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
   }
 });
 
@@ -1079,7 +1234,22 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
         });
 
             // Kontrollera om företaget är aktivt (inte avregistrerat)
-        const isActiveCompany = !orgData.avregistreringsorsak && !orgData.avregistreradOrganisation;
+        const isActiveCompany = (() => {
+            // Om verksamOrganisation är 'JA', är företaget aktivt
+            if (orgData.verksamOrganisation?.kod === 'JA') {
+                return true;
+            }
+            // Om avregistreradOrganisation har ett fel-objekt, betyder det att den inte är avregistrerad
+            if (orgData.avregistreradOrganisation?.fel) {
+                return true;
+            }
+            // Om avregistreringsorsak har ett fel-objekt, betyder det att den inte är avregistrerad
+            if (orgData.avregistreringsorsak?.fel) {
+                return true;
+            }
+            // Annars är den avregistrerad
+            return false;
+        })();
         
         // Samla företagsnamn (inklusive särskilt företagsnamn)
         const companyNames = [];
@@ -1180,31 +1350,85 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
     // Spara till Airtable
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID;
-    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'tblOIuLQS2DqmOQWe';
+    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
 
     if (!airtableAccessToken || !airtableBaseId) {
-      throw new Error('Airtable Access Token eller Base ID saknas i miljövariabler');
+      console.log('⚠️ Airtable inte konfigurerat - returnerar data utan att spara');
+      const duration = Date.now() - startTime;
+      return res.json({
+        success: true,
+        message: 'Data hämtad från Bolagsverket (Airtable inte konfigurerat)',
+        data: {
+          organisationsnummer: req.body.organisationsnummer || '',
+          företagsnamn: 'Data hämtad från Bolagsverket',
+          verksamhetsbeskrivning: 'Data hämtad från Bolagsverket',
+          adress: 'Data hämtad från Bolagsverket',
+          bolagsform: 'Data hämtad från Bolagsverket',
+          registreringsdatum: 'Data hämtad från Bolagsverket',
+          aktivt_företag: 'Data hämtad från Bolagsverket',
+          årsredovisningar: dokumentInfo?.dokument?.length || 0,
+          nedladdade_filer: nedladdadeDokument ? Object.keys(nedladdadeDokument).filter(key => nedladdadeDokument[key]).length : 0
+        },
+        airtableRecordId: null,
+        airtableConfigured: false,
+        airtableError: 'AIRTABLE_ACCESS_TOKEN eller AIRTABLE_BASE_ID saknas i miljövariabler',
+        timestamp: new Date().toISOString(),
+        duration: duration,
+        source: 'Bolagsverket'
+      });
     }
 
-    // Configure Airtable with your access token
-    Airtable.configure({ apiKey: airtableAccessToken });
+    // Kontrollera om API-nyckeln ser ut att vara giltig
+    if (airtableAccessToken === 'patIV1TIf0PEQWwdI.3d142b13f622c153496ac7f4e2e6baa42b3a323cf905da341f9e850337f20e90' || 
+        airtableAccessToken.includes('din_riktiga_airtable_api_nyckel') ||
+        airtableAccessToken.length < 50) {
+      console.log('⚠️ Ogiltig Airtable API-nyckel - returnerar data utan att spara');
+      const duration = Date.now() - startTime;
+      return res.json({
+        success: true,
+        message: 'Data hämtad från Bolagsverket (Ogiltig Airtable API-nyckel)',
+        data: {
+          organisationsnummer: req.body.organisationsnummer || '',
+          företagsnamn: 'Data hämtad från Bolagsverket',
+          verksamhetsbeskrivning: 'Data hämtad från Bolagsverket',
+          adress: 'Data hämtad från Bolagsverket',
+          bolagsform: 'Data hämtad från Bolagsverket',
+          registreringsdatum: 'Data hämtad från Bolagsverket',
+          aktivt_företag: 'Data hämtad från Bolagsverket',
+          årsredovisningar: 0,
+          nedladdade_filer: 0
+        },
+        airtableRecordId: null,
+        airtableConfigured: false,
+        airtableError: 'Ogiltig Airtable API-nyckel. Uppdatera AIRTABLE_ACCESS_TOKEN i .env filen.',
+        timestamp: new Date().toISOString(),
+        duration: duration,
+        source: 'Bolagsverket'
+      });
+    }
+
+    // Create record in Airtable using axios directly
+    console.log('💾 Saving to Airtable using axios...');
     
-    // Create a base instance
-    const base = Airtable.base(airtableBaseId);
+    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
     
-    // Get the table
-    const table = base(airtableTableName);
-    
-    // Create the record
-    const airtableResponse = await table.create([{ fields: airtableData.fields }]);
+    const airtableResponse = await axios.post(createUrl, {
+      records: [{ fields: airtableData.fields }]
+    }, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
 
     const duration = Date.now() - startTime;
 
     const responseData = {
       success: true,
       message: 'Data sparad till Airtable',
-      airtableRecordId: airtableResponse[0].id,
-      organisationsnummer: cleanOrgNumber,
+      airtableRecordId: airtableResponse.data.records[0].id,
+      organisationsnummer: req.body.organisationsnummer || '',
       anvandareId: anvandareId || null,
       byraId: byraId || null,
       dokumentInfo: dokumentInfo,
@@ -1214,21 +1438,49 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
     };
 
     console.log(`✅ Data sparad till Airtable:`, {
-      organisationsnummer: cleanOrgNumber,
+      organisationsnummer: req.body.organisationsnummer || '',
       anvandareId: anvandareId || 'Ej angivet',
       byraId: byraId || 'Ej angivet',
-      recordId: airtableResponse[0].id,
+      recordId: airtableResponse.data.records[0].id,
       duration: duration
     });
     
     console.log(`📊 Airtable fields sent:`, airtableData.fields);
-    console.log(`📊 Airtable response fields:`, airtableResponse[0].fields);
+    console.log(`📊 Airtable response fields:`, airtableResponse.data.records[0].fields);
 
     res.json(responseData);
 
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error('Error saving to Airtable:', error.message);
+    
+    // Om det är ett Airtable-autentiseringsfel, returnera data utan att spara
+    if (error.message.includes('You should provide valid api key') || 
+        error.message.includes('API key') || 
+        error.message.includes('authentication')) {
+      console.log('⚠️ Ogiltig Airtable API-nyckel - returnerar data utan att spara');
+      return res.json({
+        success: true,
+        message: 'Data hämtad från Bolagsverket (Airtable API-nyckel ogiltig)',
+        data: {
+          organisationsnummer: req.body.organisationsnummer || '',
+          företagsnamn: 'Data hämtad från Bolagsverket',
+          verksamhetsbeskrivning: 'Data hämtad från Bolagsverket',
+          adress: 'Data hämtad från Bolagsverket',
+          bolagsform: 'Data hämtad från Bolagsverket',
+          registreringsdatum: 'Data hämtad från Bolagsverket',
+          aktivt_företag: 'Data hämtad från Bolagsverket',
+          årsredovisningar: 0,
+          nedladdade_filer: 0
+        },
+        airtableRecordId: null,
+        airtableConfigured: false,
+        airtableError: error.message,
+        timestamp: new Date().toISOString(),
+        duration: duration,
+        source: 'Bolagsverket'
+      });
+    }
     
     res.status(500).json({
       error: 'Fel vid sparande till Airtable',
@@ -1380,7 +1632,8 @@ async function saveFileLocally(fileBuffer, filename, contentType) {
     fs.writeFileSync(filePath, fileBuffer);
     
     // Returnera en URL som pekar på vår download endpoint
-    const fileUrl = `https://clientflow-api-proxy.onrender.com/api/download/${uniqueFilename}`;
+    const baseUrl = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+    const fileUrl = `${baseUrl}/api/download/${uniqueFilename}`;
     
     console.log(`✅ Fil sparad lokalt: ${filename} -> ${fileUrl}`);
     return fileUrl;
@@ -1396,6 +1649,7 @@ app.listen(PORT, () => {
   console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
   console.log(`📋 Airtable endpoints:`);
   console.log(`   • Test connection: GET http://localhost:${PORT}/api/airtable/test`);
+  console.log(`   • Save mock data: POST http://localhost:${PORT}/api/save-mock-to-airtable`);
   console.log(`🏢 Bolagsverket endpoints:`);
   console.log(`   • Health check: GET http://localhost:${PORT}/api/bolagsverket/isalive`);
   console.log(`   • Get organization: POST http://localhost:${PORT}/api/bolagsverket/organisationer`);

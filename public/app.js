@@ -1,0 +1,765 @@
+// ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Airtable
+class ClientFlowApp {
+    constructor() {
+        this.baseUrl = 'http://localhost:3000'; // Use port 3000 where server is running
+        this.userId = 10; // Automatisk användar-ID
+        this.bureauId = 10; // Automatisk byrå-ID
+        this.navigation = null;
+        this.init();
+    }
+
+    init() {
+        // Initialize navigation first
+        this.initNavigation();
+        
+        // Then initialize other components
+        this.bindEvents();
+        this.loadRecentSearches();
+        this.checkSystemStatus();
+    }
+
+    initNavigation() {
+        // Wait for NavigationManager to be available
+        if (window.NavigationManager) {
+            this.navigation = new NavigationManager();
+        } else {
+            // Fallback if NavigationManager isn't loaded
+            setTimeout(() => this.initNavigation(), 100);
+        }
+    }
+
+    bindEvents() {
+        const searchForm = document.getElementById('search-form');
+        const clearSearchBtn = document.getElementById('clear-search');
+        const saveToAirtableBtn = document.getElementById('save-to-airtable');
+        const exportDataBtn = document.getElementById('export-data');
+        const checkStatusBtn = document.getElementById('check-status');
+        const orgNumberInput = document.getElementById('org-number');
+
+        if (searchForm) {
+            searchForm.addEventListener('submit', (e) => this.handleSearchSubmit(e));
+        }
+
+        if (clearSearchBtn) {
+            clearSearchBtn.addEventListener('click', () => this.clearSearch());
+        }
+
+        if (saveToAirtableBtn) {
+            saveToAirtableBtn.addEventListener('click', () => this.saveToAirtable());
+        }
+
+        if (exportDataBtn) {
+            exportDataBtn.addEventListener('click', () => this.exportCompanyData());
+        }
+
+        if (checkStatusBtn) {
+            checkStatusBtn.addEventListener('click', () => this.checkSystemStatus());
+        }
+
+        // Add real-time validation for organization number
+        if (orgNumberInput) {
+            orgNumberInput.addEventListener('input', (e) => this.validateOrgNumber(e.target));
+            orgNumberInput.addEventListener('blur', (e) => this.validateOrgNumber(e.target));
+        }
+    }
+
+    validateOrgNumber(input) {
+        const value = input.value.trim();
+        
+        // Accept multiple formats: 8-12 digits, with or without dashes
+        // Examples: 5164050253, 5560000002, 198101012386, 193403223328
+        const isValid = /^[0-9-]{8,12}$/.test(value) && 
+                       /^[0-9]+(-[0-9]+)*$/.test(value) && 
+                       value.replace(/-/g, '').length >= 8 && 
+                       value.replace(/-/g, '').length <= 12;
+        
+        // Remove existing validation classes
+        input.classList.remove('valid', 'invalid');
+        
+        if (value === '') {
+            input.classList.remove('valid', 'invalid');
+            return;
+        }
+        
+        if (isValid) {
+            input.classList.add('valid');
+            input.classList.remove('invalid');
+        } else {
+            input.classList.add('invalid');
+            input.classList.remove('valid');
+        }
+    }
+
+    async checkSystemStatus() {
+        // Check server status
+        this.updateStatus('server-status', 'Kontrollerar...', 'checking');
+        
+        try {
+            console.log('🔍 Testing connection to:', `${this.baseUrl}/health`);
+            const response = await fetch(`${this.baseUrl}/health`);
+            console.log('📡 Health check response:', response.status, response.ok);
+            
+            if (response.ok) {
+                this.updateStatus('server-status', 'Connected', 'connected');
+            } else {
+                this.updateStatus('server-status', 'Error', 'error');
+            }
+        } catch (error) {
+            this.updateStatus('server-status', 'Disconnected', 'error');
+        }
+
+        // Check Airtable status
+        this.updateStatus('airtable-status', 'Kontrollerar...', 'checking');
+        try {
+            const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ test: true })
+            });
+            
+            if (response.status === 400) {
+                // 400 means endpoint exists but validation failed - Airtable is accessible
+                this.updateStatus('airtable-status', 'Connected', 'connected');
+            } else if (response.ok) {
+                this.updateStatus('airtable-status', 'Connected', 'connected');
+            } else {
+                this.updateStatus('airtable-status', 'Disconnected', 'error');
+            }
+        } catch (error) {
+            this.updateStatus('airtable-status', 'Disconnected', 'error');
+        }
+
+        // Check Bolagsverket status
+        this.updateStatus('bolagsverket-status', 'Kontrollerar...', 'checking');
+        try {
+            const response = await fetch(`${this.baseUrl}/api/bolagsverket/isalive`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    this.updateStatus('bolagsverket-status', 'Connected', 'connected');
+                } else {
+                    this.updateStatus('bolagsverket-status', 'Error', 'error');
+                }
+            } else {
+                this.updateStatus('bolagsverket-status', 'Disconnected', 'error');
+            }
+        } catch (error) {
+            this.updateStatus('bolagsverket-status', 'Disconnected', 'error');
+        }
+    }
+
+    updateStatus(elementId, text, status) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.textContent = text;
+            element.className = `status-${status}`;
+        }
+    }
+
+    async handleSearchSubmit(e) {
+        e.preventDefault();
+        
+        const orgNumber = document.getElementById('org-number').value.trim();
+        if (!orgNumber) {
+            this.showMessage('Ange ett organisationsnummer', 'error');
+            return;
+        }
+
+        // Show loading state
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar data...';
+        submitBtn.disabled = true;
+
+        try {
+            // Clean organization number (remove dashes)
+            const cleanOrgNumber = orgNumber.replace(/-/g, '');
+            
+            // Fetch company data from Bolagsverket
+            const companyData = await this.fetchCompanyData(cleanOrgNumber);
+            
+            if (companyData) {
+                this.displayCompanyInfo(companyData);
+                this.addToRecentSearches(orgNumber, companyData);
+                this.showMessage('Företagsdata hämtad framgångsrikt!', 'success');
+            } else {
+                this.showMessage('Kunde inte hitta företag med det organisationsnumret', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching company data:', error);
+            this.showMessage('Ett fel uppstod vid hämtning av företagsdata', 'error');
+        } finally {
+            // Reset button state
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
+    }
+
+    async fetchCompanyData(orgNumber) {
+        console.log('🔍 Fetching company data for orgNumber:', orgNumber);
+        
+        try {
+            // Store the orgNumber for use in transformBolagsverketData
+            this.lastSearchedOrgNumber = orgNumber;
+            console.log('💾 Stored lastSearchedOrgNumber:', this.lastSearchedOrgNumber);
+            
+            // Show loading state
+            this.showLoadingError();
+            
+            // Use POST endpoint for Bolagsverket as the server expects
+            console.log('🔍 Making API request to:', `${this.baseUrl}/api/bolagsverket/organisationer`);
+            console.log('📤 Request body:', JSON.stringify({
+                organisationsnummer: orgNumber
+            }));
+            
+            const response = await fetch(`${this.baseUrl}/api/bolagsverket/organisationer`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    organisationsnummer: orgNumber
+                })
+            });
+            
+            console.log('📡 API Response status:', response.status);
+            console.log('📡 API Response ok:', response.ok);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('❌ API Error:', errorData);
+                
+                // Hide loading and show error
+                this.hideLoadingError();
+                
+                let errorMessage = 'Ett fel uppstod vid hämtning av företagsdata.';
+                let technicalDetails = null;
+                
+                if (response.status === 404) {
+                    errorMessage = `Inget företag hittades med organisationsnummer ${orgNumber}. Kontrollera att numret är korrekt.`;
+                } else if (response.status === 400) {
+                    errorMessage = 'Ogiltigt organisationsnummer. Kontrollera formatet.';
+                    technicalDetails = errorData;
+                } else if (response.status >= 500) {
+                    errorMessage = 'Serverfel. Försök igen senare.';
+                    technicalDetails = errorData;
+                } else {
+                    technicalDetails = errorData;
+                }
+                
+                this.showError(errorMessage, technicalDetails);
+                throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('📊 API Response result:', result);
+            
+            if (result.success && result.data) {
+                console.log('✅ Using real Bolagsverket data');
+                // Hide loading and return transformed data
+                this.hideLoadingError();
+                return this.transformBolagsverketData(result.data);
+            } else {
+                console.log('❌ Invalid response format from Bolagsverket');
+                this.hideLoadingError();
+                this.showError('Ogiltigt svar från Bolagsverket', result);
+                throw new Error('Invalid response format from Bolagsverket');
+            }
+        } catch (error) {
+            console.error('❌ Error fetching from Bolagsverket:', error);
+            
+            // Hide loading if not already hidden
+            this.hideLoadingError();
+            
+            // Show error if not already shown
+            if (!document.getElementById('error-message').style.display || 
+                document.getElementById('error-message').style.display === 'none') {
+                this.showError('Ett fel uppstod vid hämtning av företagsdata.', {
+                    message: error.message,
+                    stack: error.stack
+                });
+            }
+            
+            throw new Error(`Kunde inte hämta data från Bolagsverket: ${error.message}`);
+        }
+    }
+
+    transformBolagsverketData(bolagsverketData) {
+        console.log('🔄 Transforming Bolagsverket data...');
+        console.log('📊 Raw Bolagsverket data:', bolagsverketData);
+        
+        // Handle both single organization and multiple organizations
+        const organisations = Array.isArray(bolagsverketData) ? bolagsverketData : [bolagsverketData];
+        console.log('🏢 Processing organisations:', organisations.length);
+        
+        // Use the original orgNumber that was searched for
+        const orgNumber = this.lastSearchedOrgNumber || 'N/A';
+        console.log('🔢 Original orgNumber searched:', this.lastSearchedOrgNumber);
+        
+        // Collect all organization names from all organisations
+        let allNames = [];
+        let primaryName = 'Namn saknas';
+        let primaryOrg = null;
+        
+        organisations.forEach((org, index) => {
+            console.log(`📋 Processing organisation ${index + 1}:`, {
+                namnskyddslopnummer: org.namnskyddslopnummer,
+                organisationsnamn: org.organisationsnamn
+            });
+            
+            const orgNames = org.organisationsnamn?.organisationsnamnLista?.map(n => n.namn).filter(Boolean) || [];
+            allNames = allNames.concat(orgNames);
+            
+            // Use the first organisation as primary
+            if (index === 0) {
+                primaryName = orgNames[0] || 'Namn saknas';
+                primaryOrg = org;
+            }
+        });
+        
+        console.log('🏷️ All names found:', allNames);
+        console.log('⭐ Primary name selected:', primaryName);
+        
+        // Get address information from primary organisation
+        const address = primaryOrg?.postadressOrganisation?.postadress || {};
+        const fullAddress = [
+            address.utdelningsadress,
+            address.postnummer,
+            address.postort
+        ].filter(Boolean).join(', ');
+        
+        const transformedData = {
+            organisationsnummer: orgNumber,
+            namn: primaryName,
+            allaNamn: allNames,
+            form: primaryOrg?.organisationsform?.klartext || primaryOrg?.juridiskForm?.klartext || 'N/A',
+            status: (() => {
+                // Om verksamOrganisation är 'JA', är företaget aktivt
+                if (primaryOrg?.verksamOrganisation?.kod === 'JA') {
+                    return 'Aktiv';
+                }
+                // Om avregistreradOrganisation har ett fel-objekt, betyder det att den inte är avregistrerad
+                if (primaryOrg?.avregistreradOrganisation?.fel) {
+                    return 'Aktiv';
+                }
+                // Om avregistreringsorsak har ett fel-objekt, betyder det att den inte är avregistrerad
+                if (primaryOrg?.avregistreringsorsak?.fel) {
+                    return 'Aktiv';
+                }
+                // Annars är den avregistrerad
+                return 'Avregistrerad';
+            })(),
+            registreringsdatum: primaryOrg?.organisationsdatum?.registreringsdatum || 'N/A',
+            registreringsland: primaryOrg?.registreringsland?.klartext || 'Sverige',
+            adress: {
+                gatuadress: address.utdelningsadress || 'N/A',
+                postnummer: address.postnummer || 'N/A',
+                postort: address.postort || 'N/A',
+                fullAddress: fullAddress || 'N/A'
+            },
+            verksamhet: primaryOrg?.verksamhetsbeskrivning?.beskrivning || 'N/A',
+            sniKoder: primaryOrg?.naringsgrenOrganisation?.sni || [],
+            aktivtForetag: !primaryOrg?.avregistreradOrganisation,
+            // Add more fields as they become available
+            antal_anstallda: 'Okänt',
+            omsattning: 'Okänt',
+            // Lägg till debug-information
+            debug: {
+                rawData: primaryOrg,
+                hasOrganisationsform: !!primaryOrg?.organisationsform,
+                hasJuridiskForm: !!primaryOrg?.juridiskForm,
+                hasOrganisationsdatum: !!primaryOrg?.organisationsdatum,
+                hasRegistreringsland: !!primaryOrg?.registreringsland,
+                hasVerksamhetsbeskrivning: !!primaryOrg?.verksamhetsbeskrivning
+            }
+        };
+        
+        console.log('✅ Transformed data:', transformedData);
+        console.log('🔍 Debug information:', transformedData.debug);
+        return transformedData;
+    }
+
+    displayCompanyInfo(companyData) {
+        console.log('🎨 Displaying company info with data:', companyData);
+        
+        // Hide any error messages when showing company info
+        this.hideError();
+        
+        const companyInfoSection = document.getElementById('company-info');
+        const companyDetails = document.getElementById('company-details');
+        
+        if (!companyInfoSection || !companyDetails) {
+            console.error('❌ Company info elements not found');
+            return;
+        }
+
+        // Create HTML for company information with all Bolagsverket data
+        const html = `
+            <div class="company-grid">
+                <div class="company-basic">
+                    <h3>${companyData.namn || 'Namn saknas'}</h3>
+                    <p class="org-number">${companyData.organisationsnummer || 'N/A'}</p>
+                    <div class="company-status ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">
+                        <i class="fas fa-circle"></i>
+                        ${companyData.status || 'Okänd'}
+                    </div>
+                </div>
+                
+                ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
+                <div class="company-names">
+                    <h4>Alla företagsnamn</h4>
+                    <ul>
+                        ${companyData.allaNamn.map(namn => `<li>${namn}</li>`).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+                
+                <div class="company-details-grid">
+                    <div class="detail-item">
+                        <label>Företagsform</label>
+                        <span>${companyData.form || 'N/A'}</span>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <label>Registreringsdatum</label>
+                        <span>${companyData.registreringsdatum || 'N/A'}</span>
+                    </div>
+                    
+                    <div class="detail-item">
+                        <label>Registreringsland</label>
+                        <span>${companyData.registreringsland || 'N/A'}</span>
+                    </div>
+                   
+                </div>
+                
+                <div class="company-verksamhet">
+                    <h4>Verksamhetsbeskrivning</h4>
+                    <p>${companyData.verksamhet || 'Ingen beskrivning tillgänglig'}</p>
+                </div>
+                
+                <div class="company-sni">
+                    <h4>SNI-koder</h4>
+                    ${companyData.sniKoder && companyData.sniKoder.length > 0 ? `
+                        <div class="sni-codes">
+                            ${companyData.sniKoder
+                                .filter(sni => sni.klartext && sni.klartext.trim() !== '')
+                                .map(sni => `
+                                    <div class="sni-code">
+                                        <strong>${sni.kod || 'N/A'}</strong>
+                                        <span>${sni.klartext}</span>
+                                    </div>
+                                `).join('')}
+                        </div>
+
+                    ` : `
+                        <div class="no-sni-codes">
+                            <p>Inga SNI-koder tillgängliga för detta företag</p>
+                            <small>SCB har inte registrerat näringsgrenskoder för detta företag</small>
+                        </div>
+                    `}
+                </div>
+                
+                <div class="company-address">
+                    <h4>Adress</h4>
+                    <p><strong>Gatuadress:</strong> ${companyData.adress?.gatuadress || 'N/A'}</p>
+                    <p><strong>Postnummer:</strong> ${companyData.adress?.postnummer || 'N/A'}</p>
+                    <p><strong>Postort:</strong> ${companyData.adress?.postort || 'N/A'}</p>
+                    <p class="full-address"><strong>Fullständig adress:</strong> ${companyData.adress?.fullAddress || 'N/A'}</p>
+                </div>
+                
+
+            </div>
+        `;
+        
+        console.log('📝 Generated HTML:', html);
+        companyDetails.innerHTML = html;
+        companyInfoSection.style.display = 'block';
+        
+        // Scroll to company info
+        companyInfoSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    hideCompanyInfo() {
+        const companyInfoSection = document.getElementById('company-info');
+        companyInfoSection.style.display = 'none';
+        // Also hide any error messages
+        this.hideError();
+    }
+
+    async saveToAirtable() {
+        const companyDetails = document.getElementById('company-details');
+        if (!companyDetails.innerHTML.trim()) {
+            this.showMessage('Ingen företagsdata att spara', 'error');
+            return;
+        }
+
+        const saveBtn = document.getElementById('save-to-airtable');
+        const originalText = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+        saveBtn.disabled = true;
+
+        try {
+            // Get company data from the displayed information
+            const companyData = this.extractCompanyDataFromDisplay();
+            
+            // Add user and bureau IDs
+            companyData.userId = this.userId;
+            companyData.bureauId = this.bureauId;
+            companyData.timestamp = new Date().toISOString();
+
+            // Debug: Log what we're sending
+            console.log('🔍 Sending to Airtable:', companyData);
+
+            const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(companyData)
+            });
+
+            if (response.ok) {
+                this.showMessage('Företagsdata sparad till Airtable!', 'success');
+                // Update recent searches
+                this.loadRecentSearches();
+            } else {
+                throw new Error('Failed to save to Airtable');
+            }
+        } catch (error) {
+            console.error('Error saving to Airtable:', error);
+            this.showMessage('Kunde inte spara till Airtable', 'error');
+        } finally {
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
+        }
+    }
+
+    extractCompanyDataFromDisplay() {
+        // Extract data from the displayed company information
+        const companyName = document.querySelector('.company-basic h3')?.textContent || '';
+        const orgNumber = document.querySelector('.org-number')?.textContent || '';
+        const status = document.querySelector('.company-status')?.textContent.trim() || '';
+        
+        // Debug: Log what we found in DOM
+        console.log('🔍 DOM elements found:', {
+            companyName,
+            orgNumber,
+            status,
+            companyNameElement: document.querySelector('.company-basic h3'),
+            orgNumberElement: document.querySelector('.org-number'),
+            statusElement: document.querySelector('.company-status')
+        });
+        
+        return {
+            namn: companyName,
+            organisationsnummer: orgNumber,
+            status: status,
+            // Add other fields as needed
+        };
+    }
+
+    exportCompanyData() {
+        const companyDetails = document.getElementById('company-details');
+        if (!companyDetails.innerHTML.trim()) {
+            this.showMessage('Ingen företagsdata att exportera', 'error');
+            return;
+        }
+
+        // Create a simple export (you can enhance this)
+        const exportData = {
+            exportDate: new Date().toISOString(),
+            companyInfo: this.extractCompanyDataFromDisplay()
+        };
+
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(dataBlob);
+        link.download = `company-data-${Date.now()}.json`;
+        link.click();
+        
+        this.showMessage('Data exporterad!', 'success');
+    }
+
+    clearSearch() {
+        document.getElementById('org-number').value = '';
+        document.getElementById('company-info').style.display = 'none';
+        document.getElementById('company-details').innerHTML = '';
+    }
+
+    addToRecentSearches(orgNumber, companyData) {
+        const recentSearches = JSON.parse(localStorage.getItem('recentSearches') || '[]');
+        
+        // Add new search to the beginning
+        const newSearch = {
+            orgNumber,
+            companyName: companyData.namn || 'Okänt företag',
+            timestamp: new Date().toISOString()
+        };
+        
+        // Remove duplicates and keep only last 5 searches
+        const filteredSearches = recentSearches.filter(search => search.orgNumber !== orgNumber);
+        filteredSearches.unshift(newSearch);
+        
+        if (filteredSearches.length > 5) {
+            filteredSearches.splice(5);
+        }
+        
+        localStorage.setItem('recentSearches', JSON.stringify(filteredSearches));
+        this.loadRecentSearches();
+    }
+
+    loadRecentSearches() {
+        const recentSearchesList = document.getElementById('recent-searches-list');
+        if (!recentSearchesList) return;
+
+        const recentSearches = JSON.parse(localStorage.getItem('recentSearches') || '[]');
+        
+        if (recentSearches.length === 0) {
+            recentSearchesList.innerHTML = '<p class="no-data">Inga sökningar än. Börja med att söka efter ett företag ovan.</p>';
+            return;
+        }
+
+        const html = recentSearches.map(search => `
+            <div class="recent-search-item">
+                <div class="recent-search-info">
+                    <strong>${search.companyName}</strong>
+                    <span class="org-number">${search.orgNumber}</span>
+                </div>
+                <small>${new Date(search.timestamp).toLocaleDateString('sv-SE')}</small>
+            </div>
+        `).join('');
+
+        recentSearchesList.innerHTML = html;
+    }
+
+    showMessage(message, type = 'info') {
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = `message message-${type}`;
+        messageEl.innerHTML = `
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        `;
+
+        // Add to page
+        document.body.appendChild(messageEl);
+
+        // Show message
+        setTimeout(() => messageEl.classList.add('show'), 100);
+
+        // Remove after 5 seconds
+        setTimeout(() => {
+            messageEl.classList.remove('show');
+            setTimeout(() => messageEl.remove(), 300);
+        }, 5000);
+    }
+
+    // Error handling methods
+    showError(message, technicalDetails = null) {
+        console.error('❌ Showing error to user:', message);
+        
+        // Hide company info and show error
+        this.hideCompanyInfo();
+        this.hideError();
+        
+        const errorSection = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const errorTechnical = document.getElementById('error-technical');
+        const errorDetails = document.getElementById('error-details');
+        
+        // Set error message
+        errorText.textContent = message;
+        
+        // Set technical details if provided
+        if (technicalDetails) {
+            errorTechnical.textContent = typeof technicalDetails === 'string' 
+                ? technicalDetails 
+                : JSON.stringify(technicalDetails, null, 2);
+            errorDetails.style.display = 'block';
+        } else {
+            errorDetails.style.display = 'none';
+        }
+        
+        // Show error section
+        errorSection.style.display = 'block';
+        
+        // Scroll to error
+        errorSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    
+    hideError() {
+        const errorSection = document.getElementById('error-message');
+        errorSection.style.display = 'none';
+    }
+    
+    showLoadingError() {
+        const errorSection = document.getElementById('error-message');
+        const errorCard = errorSection.querySelector('.error-card');
+        errorCard.classList.add('loading');
+        
+        const errorText = document.getElementById('error-text');
+        errorText.textContent = 'Hämtar företagsdata...';
+        
+        errorSection.style.display = 'block';
+    }
+    
+    hideLoadingError() {
+        const errorSection = document.getElementById('error-message');
+        const errorCard = errorSection.querySelector('.error-card');
+        errorCard.classList.remove('loading');
+        errorSection.style.display = 'none';
+    }
+
+    // Test navigation function for debugging
+    testNavigation(pageName) {
+        console.log('🧪 Test navigation to:', pageName);
+        if (this.navigation) {
+            this.navigation.navigateToPage(pageName);
+        } else {
+            console.error('❌ Navigation not initialized');
+            // Fallback navigation
+            window.location.href = `./${pageName}.html`;
+        }
+    }
+}
+
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.clientFlowApp = new ClientFlowApp();
+});
+
+// Make testNavigation globally available
+window.testNavigation = function(pageName) {
+    if (window.clientFlowApp) {
+        window.clientFlowApp.testNavigation(pageName);
+    } else {
+        console.error('❌ ClientFlowApp not initialized');
+        // Direct fallback navigation
+        window.location.href = `./${pageName}.html`;
+    }
+};
+
+        // Error message event listeners
+        const showErrorDetailsBtn = document.getElementById('show-error-details');
+        const hideErrorDetailsBtn = document.getElementById('hide-error-details');
+        const errorDetails = document.getElementById('error-details');
+        
+        if (showErrorDetailsBtn) {
+            showErrorDetailsBtn.addEventListener('click', () => {
+                errorDetails.style.display = 'block';
+                showErrorDetailsBtn.style.display = 'none';
+                hideErrorDetailsBtn.style.display = 'inline-block';
+            });
+        }
+        
+        if (hideErrorDetailsBtn) {
+            hideErrorDetailsBtn.addEventListener('click', () => {
+                errorDetails.style.display = 'none';
+                showErrorDetailsBtn.style.display = 'inline-block';
+                hideErrorDetailsBtn.style.display = 'none';
+            });
+        }
+
+

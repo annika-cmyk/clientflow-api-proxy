@@ -1,0 +1,323 @@
+﻿Scenario;"Svar utan fel
+Aktiebolag
+
+Response with no errors
+Limited company";"Svar utan fel
+Handelsbolag
+
+Response with no errors
+Trading partnership";"Svar utan fel
+Bostadsrättsförening
+
+Response with no errors
+Tenant-owner association";"Svar utan fel
+Ekonomisk förening
+
+Response with no errors
+Economic association";"Svar utan fel 
+Enskild firma
+
+Response with no errors
+Sole trader";"Svar utan fel
+Enskild firma
+Två namnskyddslöpnummer 
+
+Response with no errors
+Sole trader with two companies sharing the same ""identitetsbeteckning""";;"Svar utan fel
+Enskild firma
+Två namnskyddslöpnummer 
+
+Response with no errors
+Sole trader with two  company sharing the same ""identitetsbeteckning""";;"Svar med fel
+Aktiebolag
+Organisation finns ej hos SCB
+
+Response with error
+Limited company
+Organisation does not exist at SCB";"Svar med fel
+Organisation finns inte registrerad 
+
+Response with error
+Organisation is not registered";"400 - Bad request
+""Identitetsbeteckning har ogiltig kontrollsiffra.""
+
+""Company registration number has an invalid check digit.""";;;;;;;;;;;;;;
+"Identitetsbeteckning 
+Company registration number";5560021361;9124001992;7164099017;7020008350;198101032384;198101052382;;193403223328;;5567223705;7164148970;198210300004;;;;;;;;;;;;;;
+"Informationsmängd  
+Dataset";;;;;;;;;;;;;;;;;;;;;;;;;;
+"Organisationsidentitet 
+Company registration number
+
+Dataproducent: Bolagsverket eller SCB";"5560021361
+ORGNR";"9124001992
+ORGNR";"7164099017
+ORGNR";"7020008350
+ORGNR";"198101032384
+PERSONNR";"198101052382
+PERSONNR";;"193403223328
+PERSONNR";;"5567223705
+ORGNR";N/A;N/A;;;;;;;;;;;;;;
+"Namnskyddslöpnummer
+Is used to separeate companies for organisation types that can have more than one company sharing the same company registration number
+
+Dataproducent: Bolagsverket eller SCB";-;-;-;-;1;1;2;1;2;-;N/A;N/A;;;;;;;;;;;;;;
+"Registreringsland
+Country of registration
+
+Dataproducent: Bolagsverket";"SE-LAND
+Sverige";"SE-LAND
+Sverige";"SE-LAND
+Sverige";"SE-LAND
+Sverige";"SE-LAND
+Sverige";"SE-LAND
+Sverige";;"SE-LAND
+Sverige";;"SE-LAND
+Sverige";N/A;N/A;;;;;;;;;;;;;;
+"Reklamspärr
+No advertising
+
+Dataproducent: SCB";NEJ;NEJ;NEJ;NEJ;NEJ;NEJ;;NEJ;;Se Fel - SCB nedan;N/A;N/A;;;;;;;;;;;;;;
+"Organisationsnamn
+Business name
+
+Dataproducent: Bolagsverket eller SCB";"Testbolag 4 bokat av SKV Aktiebolag
+FORETAGSNAMN
+2024-03-27";"Testbolag 16 bokat av SKV Handelsbolag
+FORETAGSNAMN
+2024-03-28";"Testbolag 24 bokat av SKV Bostadsrättsförening
+FORETAGSNAMN
+2024-03-28";"Testbolag 25 bokat av SKV Ekonomisk förening
+FORETAGSNAMN
+2024-03-28";"Testbolag 60 bokat
+FORETAGSNAMN
+2024-05-14";"Snö i april
+FORETAGSNAMN
+2024-05-14";"Sol i maj
+FORETAGSNAMN
+2024-05-14";"Blekinge Mäklarbyrå Birgitta Andersson Karlshamn
+FORETAGSNAMN
+-";"Blekinge Mäklarbyrå Birgitta Andersson Ronneby
+FORETAGSNAMN
+-";"Testbolaget Aktiebolag
+FORETAGSNAMN
+-";N/A;N/A;;;;;;;;;;;;;;
+"Organisationsform
+Company form
+
+Dataproducent: Bolagsverket";"AB
+Aktiebolag";"HB
+Handelsbolag";"BRF
+Bostadsrättsförening";"EK
+Ekonomisk förening";"E
+Enskild näringsverksamhet";"E
+Enskild näringsverksamhet";;"E
+Enskild näringsverksamhet";;"AB
+Aktiebolag";N/A;N/A;;;;;;;;;;;;;;
+"Avregistrerad organisation
+Deregistered organisation
+
+Dataproducent: Bolagsverket";-;-;-;-;-;-;;2016-08-24;2016-08-24;-;N/A;N/A;;;;;;;;;;;;;;
+"Avregistreringsorsak
+The reason an organisation was removed from the register
+
+Dataproducent: Bolagsverket";-;-;-;-;-;-;;"OVERK
+Overksamhet";"OVERK
+Overksamhet";-;N/A;N/A;;;;;;;;;;;;;;
+"Pågående avvecklings- eller omstrukuteringsförfarande
+Ongoing liquidation or restructuring proceedings
+
+Dataproducent: Bolagsverket";-;-;-;-;-;-;;-;;-;N/A;N/A;;;;;;;;;;;;;;
+"Juridisk form
+Legal form
+
+Dataproducent: SCB";"49
+Övriga aktiebolag";"49 
+Övriga aktiebolag";"49
+Övriga aktiebolag";"49
+Övriga aktiebolag";"10
+Fysiska personer";"10
+Fysiska personer";;"10
+Fysiska personer";-;Se Fel - SCB nedan;N/A;N/A;;;;;;;;;;;;;;
+"Verksam organisation
+Active organisation
+
+Dataproducent: SCB";JA;JA;JA;JA;JA;JA;;JA;JA;Se Fel - SCB nedan;N/A;N/A;;;;;;;;;;;;;;
+"Organisationsdatum
+Date of registration
+
+Dataproducent: Bolagsverket eller SCB";1898-02-28;1972-03-16;1986-10-24;1950-04-01;2024-05-14;2024-05-14;2024-05-14;1988-09-14;1988-10-06;1897-02-08;N/A;N/A;;;;;;;;;;;;;;
+"Verksamhetsbeskrivning
+Description of the business activities
+
+Dataproducent: Bolagsverket";Testverksamhet;Testverksamhet;Testverksamhet;Testverksamhet;Testverksamhet;SKV verksamhetsbeskrivning för namnskydd Enskild 198101052382;SKV verksamhetsbeskrivning för namnskydd Enskild 198101052382;Fastighetsmäkleri;OVERK Overksamhet;Bolaget skall bedriva test samt idka därmed förenlig verksamhet.;N/A;N/A;;;;;;;;;;;;;;
+"Näringsgren organisation
+Industrial classification (SNI)
+
+Dataproducent: SCB";"46699
+Partihandel med diverse andra maskiner och diverse annan utrustning
+46620
+Partihandel med verktygsmaskiner";"68204
+Förvaltning i bostadsrättsföreningar";"35110
+Generering av elektricitet";"58131
+Dagstidningsutgivning";"43320
+Byggnadssnickeriarbeten";"02200
+Drivning";"02200
+Drivning";"02101
+Skogsförvaltning";"02101
+Skogsförvaltning";Se Fel - SCB nedan;N/A;N/A;;;;;;;;;;;;;;
+"Postadress organisation
+Postal code
+
+Dataproducent: Bolagsverket eller SCB";"Testgatan 1 
+85181 
+SUNDSVALL";"Testgatan 1 
+85181 
+SUNDSVALL";"Testgatan 1 
+85181 
+SUNDSVALL";"Testgatan 1 
+85181 
+SUNDSVALL";"Testvägen 1 
+85181 
+SUNDSVALL";"Box 1
+85181
+SUNDSVALL";;"Kaptensgatan 7
+37438
+KARLSHAMN";"Strandgatan 11
+37230
+RONNEBY";"Testvägen 1
+c/o AB Testbolaget
+11111 
+TESTHOLMEN";N/A;N/A;;;;;;;;;;;;;;
+"Fel - Bolagsverket
+Error
+
+Dataproducent: Bolagsverket";N/A;N/A;N/A;N/A;N/A;N/A;;N/A;N/A;N/A;"ORGANISATION_FINNS_EJ
+Begärd organisation finns inte registrerad i sökbar form hos aktuell dataproducent. Observera att en organisation ändå kan existera och eventuellt också finnas registrerad i sökbar form hos en annan dataproducent trots detta fel.";N/A;;;;;;;;;;;;;;
+"Fel - SCB
+Error
+
+Dataproducent: SCB";N/A;N/A;N/A;N/A;N/A;N/A;;N/A;N/A;"ORGANISATION_FINNS_EJ
+Den efterfrågade informationen gick inte att hitta.";"ORGANISATION_FINNS_EJ
+Den efterfrågade informationen gick inte att hitta.";N/A;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+"Övriga identitetsbeteckningar som är möjliga att använda i testmiljö:
+Additional company registration numbers available for use in the test environment:";5164050253;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560000002;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560004755;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560038860;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560047473;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560065087;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560068255;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560069618;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560085119;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560107053;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560125006;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560127093;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560130717;;;;;;;;;;;;;;;;;;;;;;;;;
+;5560134123;;;;;;;;;;;;;;;;;;;;;;;;;
+;5567575872;;;;;;;;;;;;;;;;;;;;;;;;;
+;7020011628;;;;;;;;;;;;;;;;;;;;;;;;;
+;7020015538;;;;;;;;;;;;;;;;;;;;;;;;;
+;7140000001;;;;;;;;;;;;;;;;;;;;;;;;;
+;7140001111;;;;;;;;;;;;;;;;;;;;;;;;;
+;7164019478;;;;;;;;;;;;;;;;;;;;;;;;;
+;7164034089;;;;;;;;;;;;;;;;;;;;;;;;;
+;7164040292;;;;;;;;;;;;;;;;;;;;;;;;;
+;7164043601;;;;;;;;;;;;;;;;;;;;;;;;;
+;7164074200;;;;;;;;;;;;;;;;;;;;;;;;;
+;7696154462;;;;;;;;;;;;;;;;;;;;;;;;;
+;8023647822;;;;;;;;;;;;;;;;;;;;;;;;;
+;8025252027;;;;;;;;;;;;;;;;;;;;;;;;;
+;9020000999;;;;;;;;;;;;;;;;;;;;;;;;;
+;9020025012;;;;;;;;;;;;;;;;;;;;;;;;;
+;9020037603;;;;;;;;;;;;;;;;;;;;;;;;;
+;9140001042;;;;;;;;;;;;;;;;;;;;;;;;;
+;9140001398;;;;;;;;;;;;;;;;;;;;;;;;;
+;9144002897;;;;;;;;;;;;;;;;;;;;;;;;;
+;9152002656;;;;;;;;;;;;;;;;;;;;;;;;;
+;9160000001;;;;;;;;;;;;;;;;;;;;;;;;;
+;9164005002;;;;;;;;;;;;;;;;;;;;;;;;;
+;9164012354;;;;;;;;;;;;;;;;;;;;;;;;;
+;9164012719;;;;;;;;;;;;;;;;;;;;;;;;;
+;9697173434;;;;;;;;;;;;;;;;;;;;;;;;;
+;9697174515;;;;;;;;;;;;;;;;;;;;;;;;;
+;9697258623;;;;;;;;;;;;;;;;;;;;;;;;;
+;9697400522;;;;;;;;;;;;;;;;;;;;;;;;;
+;198101012386;;;;;;;;;;;;;;;;;;;;;;;;;
+;198101042383;;;;;;;;;;;;;;;;;;;;;;;;;
+;198102212381;;;;;;;;;;;;;;;;;;;;;;;;;
+;198104112381;;;;;;;;;;;;;;;;;;;;;;;;;
+;198104142388;;;;;;;;;;;;;;;;;;;;;;;;;
+;198104152387;;;;;;;;;;;;;;;;;;;;;;;;;
+;198104162386;;;;;;;;;;;;;;;;;;;;;;;;;
+;198210300002;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;

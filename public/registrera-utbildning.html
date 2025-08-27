@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Registrera utbildning</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container nav" role="navigation" aria-label="Huvudnavigation">
+            <a class="brand" href="index.html">
+                <div class="brand-icon">CF</div>
+                <span>ClientFlow</span>
+            </a>
+            <nav class="nav-links">
+                <!-- Verktyg för riskbedömning -->
+                <div class="nav-section">
+                    <a href="#riskbedomning" class="nav-item">
+                        <span class="nav-icon">👁️</span>
+                        <span class="nav-text">Verktyg för riskbedö...</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="riskbedomning-byra.html" class="nav-subitem">Riskbedömning av byrå...</a>
+                        <a href="ovriga-riskfaktorer.html" class="nav-subitem">Övriga riskfaktorer</a>
+                        <a href="allman-riskbedomning.html" class="nav-subitem">Allmän riskbedömning</a>
+                    </div>
+                </div>
+
+                <!-- Dokument -->
+                <div class="nav-section">
+                    <a href="#dokument" class="nav-item">
+                        <span class="nav-icon">📁</span>
+                        <span class="nav-text">Dokument</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="statistik-riskbedomning.html" class="nav-subitem">Statistik för riskbedömning</a>
+                        <a href="byra-anvandare.html" class="nav-subitem">Uppgifter byrå & användare</a>
+                    </div>
+                </div>
+
+                <!-- Statistik -->
+                <a href="statistik-riskbedomning.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Statistik för riskbedömning</span>
+                </a>
+
+                <!-- Uppgifter -->
+                <a href="byra-anvandare.html" class="nav-item">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Uppgifter byrå & användare</span>
+                </a>
+
+                <!-- Avdelare -->
+                <div class="nav-divider"></div>
+
+                <!-- Åtgärder/Klienter -->
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Nytt Lead</span>
+                </a>
+
+                <a href="kundkort.html" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Alla Klienter</span>
+                </a>
+
+                <a href="avvikelser.html" class="nav-item">
+                    <span class="nav-icon">❗</span>
+                    <span class="nav-text">Avvikelser</span>
+                </a>
+
+                <a href="registrera-utbildning.html" class="nav-item">
+                    <span class="nav-icon">🔗</span>
+                    <span class="nav-text">Registrera utbildning</span>
+                </a>
+            </nav>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" onclick="loadAirtableRecords()">Visa alla</button>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">Nytt lead</button>
+            </div>
+        </div>
+    </header>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead">
+                            <a href="index.html">Nytt Lead</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+        <!-- Sidebar Container - Navigation will be loaded here -->
+        
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Planerade utbildningar</h3>
+                            <div class="overview-number">23</div>
+                            <div class="overview-description">Kommande 30 dagar</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-user-graduate"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Aktiva deltagare</h3>
+                            <div class="overview-number">89</div>
+                            <div class="overview-description">Pågående kurser</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card">
+                        <div class="overview-icon">
+                            <i class="fas fa-certificate"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Utfärdade certifikat</h3>
+                            <div class="overview-number">234</div>
+                            <div class="overview-description>Totalt antal</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="training-form">
+                    <h3>Registrera ny utbildning</h3>
+                    <form class="form-container">
+                        <div class="form-section">
+                            <h4>Utbildningsinformation</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Utbildningens namn *</label>
+                                    <input type="text" class="form-input" placeholder="T.ex. GDPR-grundkurs" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Utbildningstyp *</label>
+                                    <select class="form-select" required>
+                                        <option value="">Välj typ</option>
+                                        <option value="online">Online-kurs</option>
+                                        <option value="classroom">Klassrumsutbildning</option>
+                                        <option value="hybrid">Hybrid (blandad)</option>
+                                        <option value="workshop">Workshop</option>
+                                        <option value="certifiering">Certifiering</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Kategori *</label>
+                                    <select class="form-select" required>
+                                        <option value="">Välj kategori</option>
+                                        <option value="compliance">Compliance & Lagstiftning</option>
+                                        <option value="security">IT-säkerhet</option>
+                                        <option value="quality">Kvalitet & Processer</option>
+                                        <option value="risk">Riskhantering</option>
+                                        <option value="technical">Teknisk kompetens</option>
+                                        <option value="soft-skills">Mjuka färdigheter</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Leverantör</label>
+                                    <input type="text" class="form-input" placeholder="Utbildningsleverantör">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4>Tidplan</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Startdatum *</label>
+                                    <input type="date" class="form-input" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Slutdatum *</label>
+                                    <input type="date" class="form-input" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Starttid</label>
+                                    <input type="time" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Sluttid</label>
+                                    <input type="time" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label>Varaktighet (timmar)</label>
+                                    <input type="number" class="form-input" min="0.5" step="0.5" placeholder="8">
+                                </div>
+                                <div class="form-group">
+                                    <label>Deadline för anmälan</label>
+                                    <input type="date" class="form-input">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4>Plats & Kapacitet</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Plats *</label>
+                                    <input type="text" class="form-input" placeholder="T.ex. Konferensrum A, Stockholm" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Max antal deltagare</label>
+                                    <input type="number" class="form-input" min="1" placeholder="20">
+                                </div>
+                                <div class="form-group">
+                                    <label>Min antal deltagare</label>
+                                    <input type="number" class="form-input" min="1" placeholder="5">
+                                </div>
+                                <div class="form-group">
+                                    <label>Kostnad per deltagare (SEK)</label>
+                                    <input type="number" class="form-input" min="0" placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4>Beskrivning & Mål</h4>
+                            <div class="form-group full-width">
+                                <label>Beskrivning av utbildningen</label>
+                                <textarea class="form-textarea" rows="4" placeholder="Beskriv innehållet och syftet med utbildningen..."></textarea>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Lärandemål</label>
+                                <textarea class="form-textarea" rows="3" placeholder="Vad ska deltagarna kunna efter utbildningen?"></textarea>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Förkunskaper</label>
+                                <textarea class="form-textarea" rows="2" placeholder="Vilka förkunskaper krävs?"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4>Deltagare</h4>
+                            <div class="participants-section">
+                                <div class="participants-header">
+                                    <h5>Välj deltagare</h5>
+                                    <button type="button" class="btn-secondary">Lägg till deltagare</button>
+                                </div>
+                                
+                                <div class="participants-list">
+                                    <div class="participant-item">
+                                        <div class="participant-info">
+                                            <input type="checkbox" id="participant1" checked>
+                                            <label for="participant1">Annika Rydén (annika@rydenred.se)</label>
+                                        </div>
+                                        <span class="participant-role">Administratör</span>
+                                    </div>
+                                    
+                                    <div class="participant-item">
+                                        <div class="participant-info">
+                                            <input type="checkbox" id="participant2" checked>
+                                            <label for="participant2">Maria Rydén (maria@rydenred.se)</label>
+                                        </div>
+                                        <span class="participant-role">Chef</span>
+                                    </div>
+                                    
+                                    <div class="participant-item">
+                                        <div class="participant-info">
+                                            <input type="checkbox" id="participant3">
+                                            <label for="participant3">Erik Andersson (erik@rydenred.se)</label>
+                                        </div>
+                                        <span class="participant-role">Användare</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4>Uppföljning & Certifiering</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Krav på närvaro</label>
+                                    <select class="form-select">
+                                        <option value="100">100% närvaro krävs</option>
+                                        <option value="80">80% närvaro krävs</option>
+                                        <option value="60">60% närvaro krävs</option>
+                                        <option value="0">Inget krav</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Examination</label>
+                                    <select class="form-select">
+                                        <option value="none">Ingen examination</option>
+                                        <option value="quiz">Quiz/Test</option>
+                                        <option value="assignment">Uppgift</option>
+                                        <option value="exam">Skriftligt prov</option>
+                                        <option value="practical">Praktisk examination</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Certifikat</label>
+                                    <select class="form-select">
+                                        <option value="none">Inget certifikat</option>
+                                        <option value="participation">Deltagarcertifikat</option>
+                                        <option value="completion">Slutförandecertifikat</option>
+                                        <option value="accredited">Ackrediterat certifikat</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Giltighetstid (månader)</label>
+                                    <input type="number" class="form-input" min="0" placeholder="12">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary">Spara som utkast</button>
+                            <button type="submit" class="btn-primary">Registrera utbildning</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="upcoming-trainings">
+                    <h3>Kommande utbildningar</h3>
+                    <div class="trainings-list">
+                        <div class="training-item">
+                            <div class="training-date">
+                                <div class="date-day">18</div>
+                                <div class="date-month">Jan</div>
+                            </div>
+                            <div class="training-info">
+                                <h4>GDPR-grundkurs 2025</h4>
+                                <p>Online-kurs • 4 timmar • Compliance & Lagstiftning</p>
+                                <div class="training-participants">
+                                    <span class="participants-count">12 deltagare</span>
+                                    <span class="training-status confirmed">Bekräftad</span>
+                                </div>
+                            </div>
+                            <div class="training-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Visa detaljer</button>
+                            </div>
+                        </div>
+
+                        <div class="training-item">
+                            <div class="training-date">
+                                <div class="date-day">25</div>
+                                <div class="date-month">Jan</div>
+                            </div>
+                            <div class="training-info">
+                                <h4>IT-säkerhet för medarbetare</h4>
+                                <p>Workshop • 6 timmar • IT-säkerhet</p>
+                                <div class="training-participants">
+                                    <span class="participants-count">8 deltagare</span>
+                                    <span class="training-status pending">Väntar på bekräftelse</span>
+                                </div>
+                            </div>
+                            <div class="training-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Visa detaljer</button>
+                            </div>
+                        </div>
+
+                        <div class="training-item">
+                            <div class="training-date">
+                                <div class="date-day">02</div>
+                                <div class="date-month">Feb</div>
+                            </div>
+                            <div class="training-info">
+                                <h4>Riskhantering i praktiken</h4>
+                                <p>Klassrumsutbildning • 8 timmar • Riskhantering</p>
+                                <div class="training-participants">
+                                    <span class="participants-count">15 deltagare</span>
+                                    <span class="training-status confirmed">Bekräftad</span>
+                                </div>
+                            </div>
+                            <div class="training-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Visa detaljer</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+
+    <!-- Load navigation module first -->
+    <script src="js/navigation.js"></script>
+    <!-- Then load the main app -->
+    <script src="app.js"></script>
+</body>
+</html>

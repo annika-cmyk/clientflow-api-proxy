@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClientFlow • Välkommen</title>
+  <meta name="description" content="ClientFlow - Välkommen till PTL processen" />
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container nav" role="navigation" aria-label="Huvudnavigation">
+            <a class="brand" href="index.html">
+                <div class="brand-icon">CF</div>
+                <span>ClientFlow</span>
+            </a>
+            <nav class="nav-links">
+                <!-- Verktyg för riskbedömning -->
+                <div class="nav-section">
+                    <a href="#riskbedomning" class="nav-item">
+                        <span class="nav-icon">👁️</span>
+                        <span class="nav-text">Verktyg för riskbedö...</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="riskbedomning-byra.html" class="nav-subitem">Riskbedömning av byrå...</a>
+                        <a href="ovriga-riskfaktorer.html" class="nav-subitem">Övriga riskfaktorer</a>
+                        <a href="allman-riskbedomning.html" class="nav-subitem">Allmän riskbedömning</a>
+                    </div>
+                </div>
+
+                <!-- Dokument -->
+                <div class="nav-section">
+                    <a href="#dokument" class="nav-item">
+                        <span class="nav-icon">📁</span>
+                        <span class="nav-text">Dokument</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="statistik-riskbedomning.html" class="nav-subitem">Statistik för riskbedömning</a>
+                        <a href="byra-anvandare.html" class="nav-subitem">Uppgifter byrå & användare</a>
+                    </div>
+                </div>
+
+                <!-- Statistik -->
+                <a href="statistik-riskbedomning.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Statistik för riskbedömning</span>
+                </a>
+
+                <!-- Uppgifter -->
+                <a href="byra-anvandare.html" class="nav-item">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Uppgifter byrå & användare</span>
+                </a>
+
+                <!-- Avdelare -->
+                <div class="nav-divider"></div>
+
+                <!-- Åtgärder/Klienter -->
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Nytt Lead</span>
+                </a>
+
+                <a href="kundkort.html" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Alla Klienter</span>
+                </a>
+
+                <a href="avvikelser.html" class="nav-item">
+                    <span class="nav-icon">❗</span>
+                    <span class="nav-text">Avvikelser</span>
+                </a>
+
+                <a href="registrera-utbildning.html" class="nav-item">
+                    <span class="nav-icon">🔗</span>
+                    <span class="nav-text">Registrera utbildning</span>
+                </a>
+            </nav>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" onclick="loadAirtableRecords()">Visa alla</button>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">Nytt lead</button>
+            </div>
+        </div>
+    </header>
+  <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead">
+                            <a href="index.html">Nytt Lead</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+    <!-- Sidebar Container - Navigation will be loaded here -->
+    
+        </section>
+      </div>
+    </main>
+
+    <!-- Footer Component Placeholder -->
+    <div data-component="footer"></div>
+  </div>
+
+  <!-- Scripts -->    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+  <!-- Load navigation module first -->
+  <script src="js/navigation.js"></script>
+  <!-- Then load the main app -->
+  <script src="app.js"></script>
+</body>
+</html>

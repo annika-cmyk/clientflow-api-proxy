@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - ClientFlow</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button { padding: 10px 20px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container nav" role="navigation" aria-label="Huvudnavigation">
+            <a class="brand" href="index.html">
+                <div class="brand-icon">CF</div>
+                <span>ClientFlow</span>
+            </a>
+            <nav class="nav-links">
+                <!-- Verktyg för riskbedömning -->
+                <div class="nav-section">
+                    <a href="#riskbedomning" class="nav-item">
+                        <span class="nav-icon">👁️</span>
+                        <span class="nav-text">Verktyg för riskbedö...</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="riskbedomning-byra.html" class="nav-subitem">Riskbedömning av byrå...</a>
+                        <a href="ovriga-riskfaktorer.html" class="nav-subitem">Övriga riskfaktorer</a>
+                        <a href="allman-riskbedomning.html" class="nav-subitem">Allmän riskbedömning</a>
+                    </div>
+                </div>
+
+                <!-- Dokument -->
+                <div class="nav-section">
+                    <a href="#dokument" class="nav-item">
+                        <span class="nav-icon">📁</span>
+                        <span class="nav-text">Dokument</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="statistik-riskbedomning.html" class="nav-subitem">Statistik för riskbedömning</a>
+                        <a href="byra-anvandare.html" class="nav-subitem">Uppgifter byrå & användare</a>
+                    </div>
+                </div>
+
+                <!-- Statistik -->
+                <a href="statistik-riskbedomning.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Statistik för riskbedömning</span>
+                </a>
+
+                <!-- Uppgifter -->
+                <a href="byra-anvandare.html" class="nav-item">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Uppgifter byrå & användare</span>
+                </a>
+
+                <!-- Avdelare -->
+                <div class="nav-divider"></div>
+
+                <!-- Åtgärder/Klienter -->
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Nytt Lead</span>
+                </a>
+
+                <a href="kundkort.html" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Alla Klienter</span>
+                </a>
+
+                <a href="avvikelser.html" class="nav-item">
+                    <span class="nav-icon">❗</span>
+                    <span class="nav-text">Avvikelser</span>
+                </a>
+
+                <a href="registrera-utbildning.html" class="nav-item">
+                    <span class="nav-icon">🔗</span>
+                    <span class="nav-text">Registrera utbildning</span>
+                </a>
+            </nav>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" onclick="loadAirtableRecords()">Visa alla</button>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">Nytt lead</button>
+            </div>
+        </div>
+    </header>
+    <h1>🔧 API Test - ClientFlow</h1>
+    
+    <div class="test-section">
+        <h2>1. Server Status</h2>
+        <button onclick="testServerHealth()">Testa Server Health</button>
+        <div id="server-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Bolagsverket API</h2>
+        <button onclick="testBolagsverket()">Testa Bolagsverket</button>
+        <div id="bolagsverket-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. Airtable API</h2>
+        <button onclick="testAirtable()">Testa Airtable</button>
+        <div id="airtable-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. Komplett Flöde</h2>
+        <input type="text" id="org-number" placeholder="Organisationsnummer (t.ex. 5567223705)" style="width: 300px; padding: 5px;">
+        <button onclick="testCompleteFlow()">Testa Komplett Flöde</button>
+        <div id="complete-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:10000';
+        
+        async function testServerHealth() {
+            const resultDiv = document.getElementById('server-result');
+            resultDiv.innerHTML = '<span class="info">Testar...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Server OK</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Server Error: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Server Error: ${error.message}</span>`;
+            }
+        }
+        
+        async function testBolagsverket() {
+            const resultDiv = document.getElementById('bolagsverket-result');
+            resultDiv.innerHTML = '<span class="info">Testar...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/bolagsverket/isalive`);
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `<span class="success">✅ Bolagsverket OK</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Bolagsverket Error: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Bolagsverket Error: ${error.message}</span>`;
+            }
+        }
+        
+        async function testAirtable() {
+            const resultDiv = document.getElementById('airtable-result');
+            resultDiv.innerHTML = '<span class="info">Testar...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/bolagsverket/save-to-airtable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        organisationsnummer: '5567223705',
+                        namn: 'Testföretag AB',
+                        userId: 10,
+                        bureauId: 10
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Airtable API OK</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Airtable Error: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Airtable Error: ${error.message}</span>`;
+            }
+        }
+        
+        async function testCompleteFlow() {
+            const orgNumber = document.getElementById('org-number').value.trim();
+            if (!orgNumber) {
+                alert('Ange ett organisationsnummer');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('complete-result');
+            resultDiv.innerHTML = '<span class="info">Testar komplett flöde...</span>';
+            
+            try {
+                // 1. Hämta från Bolagsverket
+                const bolagsverketResponse = await fetch(`${API_BASE}/api/bolagsverket/organisationer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ organisationsnummer: orgNumber })
+                });
+                
+                const bolagsverketData = await bolagsverketResponse.json();
+                
+                if (!bolagsverketResponse.ok) {
+                    throw new Error(`Bolagsverket Error: ${bolagsverketResponse.status}`);
+                }
+                
+                // 2. Spara till Airtable
+                const airtableResponse = await fetch(`${API_BASE}/api/bolagsverket/save-to-airtable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        organisationsnummer: orgNumber,
+                        namn: bolagsverketData.data?.organisationsnamn?.organisationsnamnLista?.[0]?.namn || 'Okänt namn',
+                        userId: 10,
+                        bureauId: 10
+                    })
+                });
+                
+                const airtableData = await airtableResponse.json();
+                
+                resultDiv.innerHTML = `
+                    <span class="success">✅ Komplett flöde OK!</span>
+                    <h3>Bolagsverket Data:</h3>
+                    <pre>${JSON.stringify(bolagsverketData, null, 2)}</pre>
+                    <h3>Airtable Resultat:</h3>
+                    <pre>${JSON.stringify(airtableData, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Flöde Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

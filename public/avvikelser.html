@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Avvikelser</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container nav" role="navigation" aria-label="Huvudnavigation">
+            <a class="brand" href="index.html">
+                <div class="brand-icon">CF</div>
+                <span>ClientFlow</span>
+            </a>
+            <nav class="nav-links">
+                <!-- Verktyg för riskbedömning -->
+                <div class="nav-section">
+                    <a href="#riskbedomning" class="nav-item">
+                        <span class="nav-icon">👁️</span>
+                        <span class="nav-text">Verktyg för riskbedö...</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="riskbedomning-byra.html" class="nav-subitem">Riskbedömning av byrå...</a>
+                        <a href="ovriga-riskfaktorer.html" class="nav-subitem">Övriga riskfaktorer</a>
+                        <a href="allman-riskbedomning.html" class="nav-subitem">Allmän riskbedömning</a>
+                    </div>
+                </div>
+
+                <!-- Dokument -->
+                <div class="nav-section">
+                    <a href="#dokument" class="nav-item">
+                        <span class="nav-icon">📁</span>
+                        <span class="nav-text">Dokument</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="statistik-riskbedomning.html" class="nav-subitem">Statistik för riskbedömning</a>
+                        <a href="byra-anvandare.html" class="nav-subitem">Uppgifter byrå & användare</a>
+                    </div>
+                </div>
+
+                <!-- Statistik -->
+                <a href="statistik-riskbedomning.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Statistik för riskbedömning</span>
+                </a>
+
+                <!-- Uppgifter -->
+                <a href="byra-anvandare.html" class="nav-item">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Uppgifter byrå & användare</span>
+                </a>
+
+                <!-- Avdelare -->
+                <div class="nav-divider"></div>
+
+                <!-- Åtgärder/Klienter -->
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Nytt Lead</span>
+                </a>
+
+                <a href="kundkort.html" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Alla Klienter</span>
+                </a>
+
+                <a href="avvikelser.html" class="nav-item active">
+                    <span class="nav-icon">❗</span>
+                    <span class="nav-text">Avvikelser</span>
+                </a>
+
+                <a href="registrera-utbildning.html" class="nav-item">
+                    <span class="nav-icon">🔗</span>
+                    <span class="nav-text">Registrera utbildning</span>
+                </a>
+            </nav>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" onclick="loadAirtableRecords()">Visa alla</button>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">Nytt lead</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead">
+                            <a href="index.html">Nytt Lead</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser" class="active">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>AVVIKELSER</h1>
+                <p class="subtitle">Hantera och uppfölj avvikelser i riskbedömningar</p>
+            </header>
+
+            <div class="content-body">
+                <div class="deviations-overview">
+                    <div class="overview-card critical">
+                        <div class="overview-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Kritiska avvikelser</h3>
+                            <div class="overview-number">3</div>
+                            <div class="overview-description">Kräver omedelbar åtgärd</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card high">
+                        <div class="overview-icon">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Höga avvikelser</h3>
+                            <div class="overview-number">7</div>
+                            <div class="overview-description">Åtgärdas inom 24h</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card medium">
+                        <div class="overview-icon">
+                            <i class="fas fa-info-circle"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Medel avvikelser</h3>
+                            <div class="overview-number">12</div>
+                            <div class="overview-description">Åtgärdas inom 72h</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overview-card low">
+                        <div class="overview-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="overview-content">
+                            <h3>Låga avvikelser</h3>
+                            <div class="overview-number">5</div>
+                            <div class="overview-description>Åtgärdas inom 1 vecka</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="deviations-filters">
+                    <div class="filter-group">
+                        <label>Prioritet:</label>
+                        <select class="form-select">
+                            <option>Alla prioriter</option>
+                            <option>Kritisk</option>
+                            <option>Hög</option>
+                            <option>Medel</option>
+                            <option>Låg</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Status:</label>
+                        <select class="form-select">
+                            <option>Alla statusar</option>
+                            <option>Ny</option>
+                            <option>Under utredning</option>
+                            <option>Åtgärdas</option>
+                            <option>Löst</option>
+                            <option>Stängt</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Kategori:</label>
+                        <select class="form-select">
+                            <option>Alla kategorier</option>
+                            <option>IT-säkerhet</option>
+                            <option>Compliance</option>
+                            <option>Kvalitet</option>
+                            <option>Process</option>
+                            <option>Personal</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Från datum:</label>
+                        <input type="date" class="form-input">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Till datum:</label>
+                        <input type="date" class="form-input">
+                    </div>
+                    
+                    <button class="btn-primary">Filtrera</button>
+                    <button class="btn-secondary">Rensa filter</button>
+                </div>
+
+                <div class="deviations-list">
+                    <div class="deviation-item critical">
+                        <div class="deviation-header">
+                            <div class="deviation-priority">
+                                <span class="priority-badge critical">Kritisk</span>
+                                <span class="deviation-id">#DEV-001</span>
+                            </div>
+                            <div class="deviation-date">2025-01-15 14:30</div>
+                        </div>
+                        
+                        <div class="deviation-content">
+                            <h4>IT-säkerhetsrisk - Otillräcklig lösenordspolicy</h4>
+                            <p>Kund: Testbolaget Aktiebolag (ID: 5567223705)</p>
+                            <p>Beskrivning: Lösenordspolicyn uppfyller inte säkerhetskraven. Lösenord har ingen minimilängd och inga komplexitetskrav.</p>
+                            
+                            <div class="deviation-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Kategori:</span>
+                                    <span class="detail-value">IT-säkerhet</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Rapporterad av:</span>
+                                    <span class="detail-value">Annika Rydén</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Deadline:</span>
+                                    <span class="detail-value deadline-critical">Idag 17:00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="deviation-actions">
+                            <button class="btn-primary">Åtgärda</button>
+                            <button class="btn-secondary">Visa detaljer</button>
+                            <button class="btn-secondary">Tilldela</button>
+                        </div>
+                    </div>
+
+                    <div class="deviation-item high">
+                        <div class="deviation-header">
+                            <div class="deviation-priority">
+                                <span class="priority-badge high">Hög</span>
+                                <span class="deviation-id">#DEV-002</span>
+                            </div>
+                            <div class="deviation-date">2025-01-15 13:45</div>
+                        </div>
+                        
+                        <div class="deviation-content">
+                            <h4>Compliance-risk - Saknad GDPR-dokumentation</h4>
+                            <p>Kund: Samfraktlogistik Sweden AB (ID: 5592988686)</p>
+                            <p>Beskrivning: Kundens hantering av personuppgifter saknar dokumentation enligt GDPR. Ingen dataskyddsanalys finns.</p>
+                            
+                            <div class="deviation-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Kategori:</span>
+                                    <span class="detail-value">Compliance</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Rapporterad av:</span>
+                                    <span class="detail-value">Maria Rydén</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Deadline:</span>
+                                    <span class="detail-value deadline-high">Imorgon 12:00</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="deviation-actions">
+                            <button class="btn-primary">Åtgärda</button>
+                            <button class="btn-secondary">Visa detaljer</button>
+                            <button class="btn-secondary">Tilldela</button>
+                        </div>
+                    </div>
+
+                    <div class="deviation-item medium">
+                        <div class="deviation-header">
+                            <div class="deviation-priority">
+                                <span class="priority-badge medium">Medel</span>
+                                <span class="deviation-id">#DEV-003</span>
+                            </div>
+                            <div class="deviation-date">2025-01-15 12:20</div>
+                        </div>
+                        
+                        <div class="deviation-content">
+                            <h4>Kvalitetsrisk - Otillräcklig dokumentation</h4>
+                            <p>Kund: Operandi AB (ID: 5592385982)</p>
+                            <p>Beskrivning: Kundens interna processer saknar tillräcklig dokumentation. Rutiner är inte standardiserade.</p>
+                            
+                            <div class="deviation-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">Kategori:</span>
+                                    <span class="detail-value">Kvalitet</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Rapporterad av:</span>
+                                    <span class="detail-value">Erik Andersson</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Deadline:</span>
+                                    <span class="detail-value deadline-medium">2025-01-18</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="deviation-actions">
+                            <button class="btn-primary">Åtgärda</button>
+                            <button class="btn-secondary">Visa detaljer</button>
+                            <button class="btn-secondary">Tilldela</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="deviations-summary">
+                    <h3>Sammanfattning av avvikelser</h3>
+                    <div class="summary-stats">
+                        <div class="summary-item">
+                            <span class="summary-label">Totalt antal:</span>
+                            <span class="summary-value">27</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Över deadline:</span>
+                            <span class="summary-value overdue">2</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Lösta denna månad:</span>
+                            <span class="summary-value">18</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Genomsnittlig löstid:</span>
+                            <span class="summary-value">2.3 dagar</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="deviations-actions">
+                    <h3>Snabbåtgärder</h3>
+                    <div class="quick-actions">
+                        <button class="btn-primary">
+                            <i class="fas fa-plus"></i>
+                            Rapportera ny avvikelse
+                        </button>
+                        <button class="btn-secondary">
+                            <i class="fas fa-file-export"></i>
+                            Exportera avvikelserapport
+                        </button>
+                        <button class="btn-secondary">
+                            <i class="fas fa-chart-bar"></i>
+                            Visa trendanalys
+                        </button>
+                        <button class="btn-secondary">
+                            <i class="fas fa-bell"></i>
+                            Konfigurera aviseringar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <!-- Load navigation module first -->
+    <script src="js/navigation.js"></script>
+    <!-- Then load the main app -->
+    <script src="app.js"></script>
+</body>
+</html>

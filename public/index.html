@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow - Nytt Lead</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+      
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead active">
+                            <a href="index.html">Nytt Lead</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>NYTT LEAD</h1>
+                <p>Fyll i organisationsnummer här för at påbörja riskbedömningen. Detta ska alltid göras vid en ny förfrågan för att fastställa kundens risknivå</p>
+            </header>
+
+            <!-- Search Section -->
+            <section class="search-section">
+                <div class="search-card">
+                    <div class="search-header">
+                        <i class="fas fa-search"></i>
+                        <h2>Företagssökning</h2>
+                    </div>
+                    <p class="search-description">
+                      Fyll i organisationsnummer här för at påbörja riskbedömningen. Detta ska alltid göras vid en ny förfrågan för att fastställa kundens risknivå
+                    </p>
+                    
+                    <form id="search-form" class="search-form">
+                        <div class="form-group">
+                            <label for="org-number">Organisationsnummer</label>
+                            <input 
+                                type="text" 
+                                id="org-number" 
+                                name="org-number" 
+                                placeholder="5164050253, 5560000002, 198101012386, 193403223328" 
+                                pattern="[0-9\-]{8,12}"
+                                required
+                            >
+                            <small>Format: 8-12 siffror, bindestreck tillåtna (t.ex. 5164050253, 5560000002, 198101012386)</small>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i>
+                                Hämta företagsdata
+                            </button>
+                            <button type="button" id="clear-search" class="btn btn-ghost">
+                                <i class="fas fa-times"></i>
+                                Rensa
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- System Status -->
+            <section class="status-section">
+                <div class="status-card">
+                    <h3>System Status</h3>
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <i class="fas fa-server"></i>
+                            <span>Server</span>
+                            <small id="server-status">Kontrollerar...</small>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-database"></i>
+                            <span>Airtable</span>
+                            <small id="airtable-status">Kontrollerar...</small>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-building"></i>
+                            <span>Bolagsverket</span>
+                            <small id="bolagsverket-status">Kontrollerar...</small>
+                        </div>
+                    </div>
+                    <button id="check-status" class="btn btn-ghost btn-sm">
+                        <i class="fas fa-sync-alt"></i>
+                        Uppdatera status
+                    </button>
+                    
+                    <!-- Test Navigation Button -->
+                    <button id="test-nav" class="btn btn-ghost btn-sm" style="margin-left: 1rem;">
+                        <i class="fas fa-link"></i>
+                        Testa Navigation
+                    </button>
+                </div>
+            </section>
+
+        
+
+            <!-- Error Message Display -->
+            <section id="error-message" class="error-section" style="display: none;">
+                <div class="error-card">
+                    <div class="error-header">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h3>Fel uppstod</h3>
+                    </div>
+                    <div class="error-content">
+                        <p id="error-text">Ett fel uppstod vid hämtning av företagsdata.</p>
+                        <div class="error-details" id="error-details" style="display: none;">
+                            <h4>Teknisk information:</h4>
+                            <pre id="error-technical"></pre>
+                        </div>
+                    </div>
+                    <div class="error-actions">
+                        <button id="show-error-details" class="btn btn-ghost btn-sm">
+                            <i class="fas fa-info-circle"></i>
+                            Visa teknisk information
+                        </button>
+                        <button id="hide-error-details" class="btn btn-ghost btn-sm" style="display: none;">
+                            <i class="fas fa-eye-slash"></i>
+                            Dölj teknisk information
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Company Information Display -->
+            <section id="company-info" class="company-info-section" style="display: none;">
+                <div class="company-card">
+                    <div class="company-header">
+                        <i class="fas fa-building"></i>
+                        <h2>Företagsinformation</h2>
+                        <div class="company-actions">
+                            <button id="save-to-airtable" class="btn btn-success">
+                                <i class="fas fa-save"></i>
+                                GÅ vidare med riskbedömningen
+                            </button>
+                            <button id="export-data" class="btn btn-ghost">
+                                <i class="fas fa-download"></i>
+                                Exportera
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="company-details" class="company-details">
+                        <!-- Company information will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Searches -->
+            <section class="recent-searches">
+                <div class="recent-card">
+                    <h3>Senaste sökningar</h3>
+                    <div id="recent-searches-list">
+                        <p class="no-data">Inga sökningar än. Börja med att söka efter ett företag ovan.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <!-- Load navigation module first -->
+    <script src="js/navigation.js"></script>
+    <!-- Then load the main app -->
+    <script src="app.js"></script>
+</body>
+</html>
+
+

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Byrå & Användare</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container nav" role="navigation" aria-label="Huvudnavigation">
+            <a class="brand" href="index.html">
+                <div class="brand-icon">CF</div>
+                <span>ClientFlow</span>
+            </a>
+            <nav class="nav-links">
+                <!-- Verktyg för riskbedömning -->
+                <div class="nav-section">
+                    <a href="#riskbedomning" class="nav-item">
+                        <span class="nav-icon">👁️</span>
+                        <span class="nav-text">Verktyg för riskbedö...</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="riskbedomning-byra.html" class="nav-subitem">Riskbedömning av byrå...</a>
+                        <a href="ovriga-riskfaktorer.html" class="nav-subitem">Övriga riskfaktorer</a>
+                        <a href="allman-riskbedomning.html" class="nav-subitem">Allmän riskbedömning</a>
+                    </div>
+                </div>
+
+                <!-- Dokument -->
+                <div class="nav-section">
+                    <a href="#dokument" class="nav-item">
+                        <span class="nav-icon">📁</span>
+                        <span class="nav-text">Dokument</span>
+                    </a>
+                    <div class="nav-submenu">
+                        <a href="statistik-riskbedomning.html" class="nav-subitem">Statistik för riskbedömning</a>
+                        <a href="byra-anvandare.html" class="nav-subitem">Uppgifter byrå & användare</a>
+                    </div>
+                </div>
+
+                <!-- Statistik -->
+                <a href="statistik-riskbedomning.html" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Statistik för riskbedömning</span>
+                </a>
+
+                <!-- Uppgifter -->
+                <a href="byra-anvandare.html" class="nav-item">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Uppgifter byrå & användare</span>
+                </a>
+
+                <!-- Avdelare -->
+                <div class="nav-divider"></div>
+
+                <!-- Åtgärder/Klienter -->
+                <a href="index.html" class="nav-item">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Nytt Lead</span>
+                </a>
+
+                <a href="kundkort.html" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Alla Klienter</span>
+                </a>
+
+                <a href="avvikelser.html" class="nav-item">
+                    <span class="nav-icon">❗</span>
+                    <span class="nav-text">Avvikelser</span>
+                </a>
+
+                <a href="registrera-utbildning.html" class="nav-item">
+                    <span class="nav-icon">🔗</span>
+                    <span class="nav-text">Registrera utbildning</span>
+                </a>
+            </nav>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" onclick="loadAirtableRecords()">Visa alla</button>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">Nytt lead</button>
+            </div>
+        </div>
+    </header>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead">
+                            <a href="index.html">Nytt Lead</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+        <!-- Sidebar Container - Navigation will be loaded here -->
+        
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Verksamhetsinformation</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Bransch</label>
+                                <select class="form-select">
+                                    <option>Redovisning & Revisionsbyrå</option>
+                                    <option>Juridisk byrå</option>
+                                    <option>IT-konsult</option>
+                                    <option>Övrigt</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Antal anställda</label>
+                                <input type="number" value="15" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Antal kunder</label>
+                                <input type="number" value="247" class="form-input" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>Registreringsdatum</label>
+                                <input type="date" value="2010-03-15" class="form-input">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Kontaktpersoner</h3>
+                        <div class="contact-list">
+                            <div class="contact-item">
+                                <div class="contact-info">
+                                    <h4>VD - Maria Rydén</h4>
+                                    <p>maria@rydenred.se | 070-123 45 67</p>
+                                </div>
+                                <div class="contact-actions">
+                                    <button class="btn-secondary">Redigera</button>
+                                    <button class="btn-danger">Ta bort</button>
+                                </div>
+                            </div>
+                            <div class="contact-item">
+                                <div class="contact-info">
+                                    <h4>Ekonomi - Annika Rydén</h4>
+                                    <p>annika@rydenred.se | 070-987 65 43</p>
+                                </div>
+                                <div class="contact-actions">
+                                    <button class="btn-secondary">Redigera</button>
+                                    <button class="btn-danger">Ta bort</button>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn-primary">Lägg till kontaktperson</button>
+                    </div>
+                </div>
+
+                <!-- Användare tab -->
+                <div class="tab-content" id="anvandare">
+                    <div class="users-header">
+                        <h3>Användarkonton</h3>
+                        <button class="btn-primary">Skapa nytt konto</button>
+                    </div>
+                    
+                    <div class="users-list">
+                        <div class="user-item">
+                            <div class="user-avatar">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="user-details">
+                                <h4>Annika Rydén</h4>
+                                <p>annika@rydenred.se</p>
+                                <span class="user-role admin">Administratör</span>
+                            </div>
+                            <div class="user-status">
+                                <span class="status active">Aktiv</span>
+                                <span class="last-login">Senast inloggad: idag 14:30</span>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Återställ lösenord</button>
+                                <button class="btn-danger">Inaktivera</button>
+                            </div>
+                        </div>
+
+                        <div class="user-item">
+                            <div class="user-avatar">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="user-details">
+                                <h4>Maria Rydén</h4>
+                                <p>maria@rydenred.se</p>
+                                <span class="user-role manager">Chef</span>
+                            </div>
+                            <div class="user-status">
+                                <span class="status active">Aktiv</span>
+                                <span class="last-login">Senast inloggad: igår 16:45</span>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Återställ lösenord</button>
+                                <button class="btn-danger">Inaktivera</button>
+                            </div>
+                        </div>
+
+                        <div class="user-item">
+                            <div class="user-avatar">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="user-details">
+                                <h4>Erik Andersson</h4>
+                                <p>erik@rydenred.se</p>
+                                <span class="user-role user">Användare</span>
+                            </div>
+                            <div class="user-status">
+                                <span class="status inactive">Inaktiv</span>
+                                <span class="last-login">Senast inloggad: 2025-01-10</span>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn-secondary">Redigera</button>
+                                <button class="btn-secondary">Återställ lösenord</button>
+                                <button class="btn-success">Aktivera</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Behörigheter tab -->
+                <div class="tab-content" id="behorigheter">
+                    <div class="permissions-header">
+                        <h3>Behörighetshantering</h3>
+                        <p>Hantera vilka funktioner olika användarroller har tillgång till</p>
+                    </div>
+
+                    <div class="roles-section">
+                        <h4>Användarroller</h4>
+                        <div class="roles-grid">
+                            <div class="role-card">
+                                <h5>Administratör</h5>
+                                <ul class="permissions-list">
+                                    <li>Full tillgång till alla funktioner</li>
+                                    <li>Hantera användare och behörigheter</li>
+                                    <li>Systemkonfiguration</li>
+                                    <li>Exportera all data</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+
+                            <div class="role-card">
+                                <h5>Chef</h5>
+                                <ul class="permissions-list">
+                                    <li>Läsa alla kunder och rapporter</li>
+                                    <li>Skapa och redigera kunder</li>
+                                    <li>Hantera riskbedömningar</li>
+                                    <li>Exportera rapporter</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+
+                            <div class="role-card">
+                                <h5>Användare</h5>
+                                <ul class="permissions-list">
+                                    <li>Läsa tilldelade kunder</li>
+                                    <li>Uppdatera kundinformation</li>
+                                    <li>Skapa riskbedömningar</li>
+                                    <li>Begränsad export</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="custom-permissions">
+                        <h4>Anpassade behörigheter</h4>
+                        <div class="permission-matrix">
+                            <table class="permissions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Funktion</th>
+                                        <th>Administratör</th>
+                                        <th>Chef</th>
+                                        <th>Användare</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Läsa kunder</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Skapa kunder</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-times text-danger"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Riskbedömningar</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Exportera data</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-times text-danger"></i></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Aktivitetsloggar tab -->
+                <div class="tab-content" id="loggar">
+                    <div class="logs-header">
+                        <h3>Aktivitetsloggar</h3>
+                        <div class="logs-filters">
+                            <select class="form-select">
+                                <option>Alla användare</option>
+                                <option>Annika Rydén</option>
+                                <option>Maria Rydén</option>
+                                <option>Erik Andersson</option>
+                            </select>
+                            <select class="form-select">
+                                <option>Alla aktiviteter</option>
+                                <option>Inloggning</option>
+                                <option>Kundhantering</option>
+                                <option>Riskbedömning</option>
+                            </select>
+                            <input type="date" class="form-input" placeholder="Från datum">
+                            <input type="date" class="form-input" placeholder="Till datum">
+                        </div>
+                    </div>
+
+                    <div class="logs-list">
+                        <div class="log-item">
+                            <div class="log-time">2025-01-15 14:30:25</div>
+                            <div class="log-user">Annika Rydén</div>
+                            <div class="log-action">Inloggning</div>
+                            <div class="log-details">Framgångsrik inloggning från 192.168.1.100</div>
+                        </div>
+
+                        <div class="log-item">
+                            <div class="log-time">2025-01-15 14:32:18</div>
+                            <div class="log-user">Annika Rydén</div>
+                            <div class="log-action">Kundhantering</div>
+                            <div class="log-details">Uppdaterade kund: Testbolaget Aktiebolag</div>
+                        </div>
+
+                        <div class="log-item">
+                            <div class="log-time">2025-01-15 14:35:42</div>
+                            <div class="log-user">Annika Rydén</div>
+                            <div class="log-action">Riskbedömning</div>
+                            <div class="log-details">Skapade ny riskbedömning för kund ID: 5567223705</div>
+                        </div>
+
+                        <div class="log-item">
+                            <div class="log-time">2025-01-15 14:40:15</div>
+                            <div class="log-user">Maria Rydén</div>
+                            <div class="log-action">Inloggning</div>
+                            <div class="log-details">Framgångsrik inloggning från 192.168.1.101</div>
+                        </div>
+
+                        <div class="log-item">
+                            <div class="log-time">2025-01-15 14:45:33</div>
+                            <div class="log-user">Maria Rydén</div>
+                            <div class="log-action">Rapport</div>
+                            <div class="log-details">Exporterade riskstatistik till Excel</div>
+                        </div>
+                    </div>
+
+                    <div class="logs-pagination">
+                        <button class="btn-secondary">Föregående</button>
+                        <span class="page-info">Sida 1 av 5</span>
+                        <button class="btn-secondary">Nästa</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+
+    <!-- Load navigation module first -->
+    <script src="js/navigation.js"></script>
+    <!-- Then load the main app -->
+    <script src="app.js"></script>
+</body>
+</html>
