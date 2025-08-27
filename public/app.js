@@ -1,7 +1,7 @@
 // ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Airtable
 class ClientFlowApp {
     constructor() {
-        this.baseUrl = 'http://localhost:3000'; // Use port 3000 where server is running
+        this.baseUrl = 'http://localhost:3001'; // Use port 3001 where server is running
         this.userId = 10; // Automatisk användar-ID
         this.bureauId = 10; // Automatisk byrå-ID
         this.navigation = null;

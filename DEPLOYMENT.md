@@ -17,7 +17,7 @@ I Railway dashboard, gå till "Variables" och lägg till:
 
 ```env
 # Server Configuration
-PORT=3000
+PORT=3001
 NODE_ENV=production
 ALLOWED_ORIGINS=https://din-softr-app.softr.app,https://din-softr-app.com
 
@@ -96,7 +96,7 @@ curl -X POST https://din-app-name.railway.app/api/bolagsverket/organisationer \
 
 I din Softr-applikation, ändra API URL:en från:
 ```
-http://localhost:3000
+http://localhost:3001
 ```
 Till:
 ```

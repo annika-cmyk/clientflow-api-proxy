@@ -9,7 +9,7 @@ const config = {
     
     // Proxy Server Configuration
     proxy: {
-        url: 'http://localhost:3000/api/lookup'
+        url: 'http://localhost:3001/api/lookup'
     }
 };
 

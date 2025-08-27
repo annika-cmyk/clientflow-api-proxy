@@ -54,5 +54,5 @@ node -e "require('dotenv').config(); console.log('Token:', process.env.AIRTABLE_
 node test_token.js
 
 # Testa servern
-curl http://localhost:3000/api/airtable/test
+curl http://localhost:3001/api/airtable/test
 ```

@@ -31,7 +31,7 @@ En Node.js-baserad API-proxy som fungerar som mellanhand mellan din Softr-applik
    Redigera `.env`-filen med dina inställningar:
    ```env
    # Server Configuration
-   PORT=3000
+   PORT=3001
    NODE_ENV=production
    ALLOWED_ORIGINS=https://din-softr-app.softr.app
    
@@ -50,6 +50,20 @@ En Node.js-baserad API-proxy som fungerar som mellanhand mellan din Softr-applik
 
 ### Starta servern
 
+**Option 1: Using Start Scripts (Recommended)**
+
+**Windows Batch:**
+```bash
+start-server.bat
+```
+
+**PowerShell:**
+```powershell
+.\start-server.ps1
+```
+
+**Option 2: Manual Start**
+
 **Utvecklingsläge:**
 ```bash
 npm run dev
@@ -59,6 +73,8 @@ npm run dev
 ```bash
 npm start
 ```
+
+**Important:** The API server runs on port 3001. All frontend files are configured to use this port.
 
 ### API Endpoints
 
@@ -277,7 +293,7 @@ pm2 startup
 ### Docker
 ```bash
 docker build -t api-proxy .
-docker run -p 3000:3000 --env-file .env api-proxy
+docker run -p 3001:3001 --env-file .env api-proxy
 ```
 
 ## Testning
