@@ -35,6 +35,7 @@
         <div id="risk-data-result"></div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
         async function testUserData() {
             const resultDiv = document.getElementById('user-data-result');
@@ -47,7 +48,7 @@
                     return;
                 }
                 
-                const response = await fetch('http://localhost:3001/api/auth/me', {
+                const response = await fetch(`${window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com'}/api/auth/me`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -141,7 +142,7 @@
             resultDiv.innerHTML = '<p>Laddar riskdata för Byrå 49...</p>';
             
             try {
-                const response = await fetch('http://localhost:3001/api/risk-assessments', {
+                const response = await fetch(`${window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com'}/api/risk-assessments`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
@@ -183,7 +184,7 @@
             const token = localStorage.getItem('authToken');
             if (token) {
                 try {
-                    const response = await fetch('http://localhost:3001/api/auth/me', {
+                    const response = await fetch(`${window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com'}/api/auth/me`, {
                         method: 'GET',
                         headers: {
                             'Authorization': `Bearer ${token}`,
