@@ -9,7 +9,7 @@ const config = {
     
     // Proxy Server Configuration
     proxy: {
-        url: 'http://localhost:3001/api/lookup'
+        url: 'https://clientflow-api-proxy-1.onrender.com/api/lookup'
     }
 };
 

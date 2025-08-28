@@ -1,6 +1,6 @@
 class AuthManager {
     constructor() {
-        this.baseUrl = 'http://localhost:3001';
+        this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
         this.currentUser = null;
         this.init();
     }

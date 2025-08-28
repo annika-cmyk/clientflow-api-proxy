@@ -26,7 +26,7 @@ class RiskAssessmentManager {
     async loadAirtableConfig() {
         try {
             // Try to get config from environment or use default
-                            const response = await fetch('http://localhost:3001/api/airtable/config');
+                            const response = await fetch(`${window.apiConfig.baseUrl}/api/airtable/config`);
             if (response.ok) {
                 const config = await response.json();
                 this.airtableApiKey = config.apiKey;
@@ -49,7 +49,7 @@ class RiskAssessmentManager {
                 return;
             }
 
-            const response = await fetch('http://localhost:3001/api/auth/me', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -235,7 +235,7 @@ class RiskAssessmentManager {
             `;
 
             // Load from Airtable via our API
-            const response = await fetch('http://localhost:3001/api/risk-assessments', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -616,7 +616,7 @@ class RiskAssessmentManager {
         };
 
         try {
-            const response = await fetch('http://localhost:3001/api/risk-assessments', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -651,7 +651,7 @@ class RiskAssessmentManager {
         };
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -680,7 +680,7 @@ class RiskAssessmentManager {
         const newStatus = !currentStatus;
         
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -709,7 +709,7 @@ class RiskAssessmentManager {
         }
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'DELETE'
             });
 

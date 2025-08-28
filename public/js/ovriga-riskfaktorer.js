@@ -26,7 +26,7 @@ class RiskFactorsManager {
     async loadAirtableConfig() {
         try {
             // Try to get config from environment or use default
-            const response = await fetch('http://localhost:3001/api/airtable/config');
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/airtable/config`);
             if (response.ok) {
                 const config = await response.json();
                 this.airtableApiKey = config.apiKey;
@@ -49,7 +49,7 @@ class RiskFactorsManager {
                 return;
             }
 
-            const response = await fetch('http://localhost:3001/api/auth/me', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -233,7 +233,7 @@ class RiskFactorsManager {
             `;
 
             // Load from Airtable via our API
-            const response = await fetch('http://localhost:3001/api/risk-factors', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -629,7 +629,7 @@ class RiskFactorsManager {
         };
 
         try {
-            const response = await fetch('http://localhost:3001/api/risk-factors', {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -665,7 +665,7 @@ class RiskFactorsManager {
         };
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -694,7 +694,7 @@ class RiskFactorsManager {
         const newStatus = !currentStatus;
         
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -723,7 +723,7 @@ class RiskFactorsManager {
         }
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'DELETE'
             });
 

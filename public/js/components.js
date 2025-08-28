@@ -2,7 +2,7 @@
 class ComponentLoader {
     constructor() {
         this.components = {};
-        this.baseUrl = 'http://localhost:3001';
+        this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
         this.loadedComponents = new Set(); // Track which components are already loaded
     }
 
