@@ -49,7 +49,10 @@ app.use(cors({
             'http://localhost:3001',
             'https://clientflow.onrender.com',
             'https://clientflow-api.onrender.com',
-            'https://clientflow-api-proxy-1.onrender.com'
+            'https://clientflow-api-proxy-1.onrender.com',
+            'https://clientflow.se',
+            'https://www.clientflow.se',
+            'https://app.clientflow.se'
         ];
         
         if (allowedOrigins.indexOf(origin) !== -1) {

@@ -19,6 +19,11 @@ class APIConfig {
             return 'http://localhost:3001';
         }
         
+        // Check if we're running on app subdomain
+        if (window.location.hostname === 'app.clientflow.se') {
+            return 'https://clientflow-api-proxy-1.onrender.com';
+        }
+        
         // Default fallback
         return 'https://clientflow-api-proxy-1.onrender.com';
     }
