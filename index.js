@@ -38,7 +38,25 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
-    origin: ['http://127.0.0.1:5500', 'http://localhost:5500', 'http://127.0.0.1:3001', 'http://localhost:3001'],
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            'http://127.0.0.1:5500', 
+            'http://localhost:5500', 
+            'http://127.0.0.1:3001', 
+            'http://localhost:3001',
+            'https://clientflow.onrender.com',
+            'https://clientflow-api.onrender.com'
+        ];
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -47,6 +65,22 @@ app.use(express.json());
  
  // Serve static frontend
  app.use(express.static(path.join(__dirname, 'public')));
+
+// Root endpoint for Render
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'ClientFlow API Proxy Service is running!',
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    service: 'API Proxy Service',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      test: '/test',
+      docs: 'https://clientflow.onrender.com'
+    }
+  });
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
