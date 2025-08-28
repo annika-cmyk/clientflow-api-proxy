@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Logout Button</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Debug Logout Button</h1>
+        
+        <!-- Test the logout button directly -->
+        <div class="user-info-section">
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="user-details">
+                    <span class="user-name">Test Användare</span>
+                    <span class="user-role">Admin</span>
+                </div>
+            </div>
+            <button class="logout-btn" onclick="testLogout()">
+                <i class="fas fa-sign-out-alt"></i>
+                Logga ut
+            </button>
+        </div>
+        
+        <div id="debug-info">
+            <h3>Debug Information:</h3>
+            <p>Logout button should be visible above.</p>
+            <p>Check browser console for debug logs.</p>
+        </div>
+    </div>
+
+    <script>
+        function testLogout() {
+            console.log('🔍 Logout button clicked!');
+            alert('Logout button works!');
+        }
+        
+        // Test if elements exist
+        document.addEventListener('DOMContentLoaded', function() {
+            const logoutBtn = document.querySelector('.logout-btn');
+            const userInfo = document.querySelector('.user-info');
+            
+            console.log('🔍 DOM loaded');
+            console.log('🔍 Logout button found:', !!logoutBtn);
+            console.log('🔍 User info found:', !!userInfo);
+            
+            if (logoutBtn) {
+                console.log('🔍 Logout button display style:', logoutBtn.style.display);
+                console.log('🔍 Logout button computed style:', window.getComputedStyle(logoutBtn).display);
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -5,6 +5,8 @@ const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 let chromium = null;
 let puppeteer = null;
 try {
@@ -19,7 +21,7 @@ const path = require('path');
 require('dotenv').config();
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
-console.log('🔧 Environment Variables Debug:');
+console.log('Environment Variables Debug:');
 console.log('  PORT:', process.env.PORT);
 console.log('  BOLAGSVERKET_ENVIRONMENT:', process.env.BOLAGSVERKET_ENVIRONMENT);
 console.log('  BOLAGSVERKET_CLIENT_ID:', process.env.BOLAGSVERKET_CLIENT_ID ? 'SET' : 'NOT SET');
@@ -62,6 +64,200 @@ app.get('/test', (req, res) => {
     message: 'API is working!',
     timestamp: new Date().toISOString()
   });
+});
+
+// Authentication endpoints
+// Airtable Users table integration
+const USERS_TABLE = 'Application Users';
+
+// Function to get user from Airtable
+async function getAirtableUser(email) {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      console.error('Airtable Access Token saknas');
+      return null;
+    }
+
+    // Search for user by email
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${USERS_TABLE}?filterByFormula={Email}="${email}"`;
+    
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (response.data.records && response.data.records.length > 0) {
+      const userRecord = response.data.records[0];
+      const fields = userRecord.fields;
+      
+      return {
+        id: userRecord.id,
+        email: fields['Email'] || '',
+        password: fields['password'] || '',
+        name: fields['fldU9goXGJs7wk7OZ'] || fields['Full Name'] || '',
+        role: fields['Role'] || 'user',
+        byra: fields['fldcZZOiC9y5BKFWf'] || fields['Byrå'] || '',
+        orgnr: fields['Orgnr Byrå'] || '',
+        byraId: fields['Byrå ID i text 2'] || '',
+        byraIds: fields['Byråer'] || [], // Lookup field with byrå IDs
+        logo: fields['Logga'] || ''
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching user from Airtable:', error.message);
+    return null;
+  }
+}
+
+// JWT Secret (in production, use a strong secret from environment variables)
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+// Middleware to verify JWT token
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Login endpoint
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'E-post och lösenord krävs' 
+      });
+    }
+
+    // Get user from Airtable
+    const user = await getAirtableUser(email);
+    if (!user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Felaktig e-post eller lösenord' 
+      });
+    }
+
+    // Check password (plain text comparison)
+    const isValidPassword = password === user.password;
+    if (!isValidPassword) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Felaktig e-post eller lösenord' 
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role,
+        byra: user.byra,
+        orgnr: user.orgnr,
+        byraId: user.byraId,
+        byraIds: user.byraIds,
+        logo: user.logo
+      }, 
+      JWT_SECRET, 
+      { expiresIn: '24h' }
+    );
+
+    // Return user data (without password) and token
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      byra: user.byra,
+      orgnr: user.orgnr,
+      byraId: user.byraId,
+      byraIds: user.byraIds,
+      logo: user.logo
+    };
+
+    console.log(`🔐 User logged in: ${user.email} (${user.role}) from ${user.byra}`);
+
+    res.json({
+      success: true,
+      message: 'Inloggning lyckades',
+      token,
+      user: userData
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Ett fel uppstod vid inloggning' 
+    });
+  }
+});
+
+// Verify token endpoint
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Token is valid',
+    user: req.user
+  });
+});
+
+// Logout endpoint
+app.post('/api/auth/logout', authenticateToken, (req, res) => {
+  console.log(`🔐 User logged out: ${req.user.email}`);
+  res.json({
+    success: true,
+    message: 'Utloggning lyckades'
+  });
+});
+
+// Get current user endpoint
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    // Hämta komplett användardata från Airtable
+    const userData = await getAirtableUser(req.user.email);
+    
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Användare hittades inte'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: userData
+    });
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Kunde inte hämta användardata'
+    });
+  }
 });
 
 // Endpoint för att ladda ner base64-fil
@@ -295,6 +491,10 @@ async function getBolagsverketToken() {
       scope: 'vardefulla-datamangder:read vardefulla-datamangder:ping'
     });
 
+    console.log(`🔑 Försöker hämta OAuth token från: ${tokenUrl}`);
+    console.log(`🔑 Client ID: ${process.env.BOLAGSVERKET_CLIENT_ID.substring(0, 10)}...`);
+    console.log(`🔑 Client Secret: ${process.env.BOLAGSVERKET_CLIENT_SECRET.substring(0, 10)}...`);
+    
     const response = await axios.post(tokenUrl, tokenData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -307,10 +507,19 @@ async function getBolagsverketToken() {
     tokenExpiry = new Date(Date.now() + (response.data.expires_in - 300) * 1000);
 
     console.log(`🔑 Ny Bolagsverket OAuth token genererad, utgång: ${tokenExpiry.toISOString()}`);
+    console.log(`🔑 Token börjar med: ${bolagsverketToken.substring(0, 20)}...`);
     return bolagsverketToken;
 
   } catch (error) {
-    console.error('Error getting Bolagsverket token:', error.message);
+    console.error('❌ Error getting Bolagsverket token:', error.message);
+    if (error.response) {
+      console.error('❌ Bolagsverket token response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers
+      });
+    }
     throw error;
   }
 }
@@ -845,68 +1054,7 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
   }
 });
 
-// Simple mock data save to Airtable endpoint
-app.post('/api/save-mock-to-airtable', async (req, res) => {
-  const startTime = Date.now();
-  
-  try {
-    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
-    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
 
-    if (!airtableAccessToken || !airtableBaseId) {
-      throw new Error('Airtable not configured');
-    }
-
-    // Mock data
-    const mockData = {
-      records: [{
-        fields: {
-          'Orgnr': req.body.organisationsnummer || '1234567890',
-          'Namn': req.body.namn || 'Test Företag AB',
-          'Bolagsform': req.body.bolagsform || 'Aktiebolag',
-          'Address': req.body.address || 'Testgatan 1, 12345 Stockholm',
-          'Verksamhetsbeskrivning': req.body.verksamhetsbeskrivning || 'Test verksamhet'
-        }
-      }]
-    };
-
-    console.log('💾 Saving mock data to Airtable...');
-    
-    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
-    
-    const airtableResponse = await axios.post(createUrl, mockData, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    });
-
-    const duration = Date.now() - startTime;
-
-    res.json({
-      success: true,
-      message: 'Mock data sparad till Airtable',
-      airtableRecordId: airtableResponse.data.records[0].id,
-      organisationsnummer: req.body.organisationsnummer || '1234567890',
-      timestamp: new Date().toISOString(),
-      duration: duration
-    });
-
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error('Error saving to Airtable:', error.message);
-    
-    res.status(500).json({
-      success: false,
-      message: 'Fel vid sparande till Airtable',
-      error: error.message,
-      timestamp: new Date().toISOString(),
-      duration: duration
-    });
-  }
-});
 
 // Airtable integration endpoint
 app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
@@ -1668,12 +1816,12 @@ async function saveFileLocally(fileBuffer, filename, contentType) {
 // Risk Assessment API Endpoints
 const RISK_ASSESSMENT_TABLE = 'Risker kopplad till tjänster';
 
-// GET /api/risk-assessments - Hämta alla riskbedömningar
+// GET /api/risk-assessments - Hämta alla riskbedömningar med pagination
 app.get('/api/risk-assessments', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    console.log('📋 Hämtar riskbedömningar från Airtable...');
+    console.log('Hämtar alla riskbedömningar från Airtable med pagination...');
     
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -1685,23 +1833,46 @@ app.get('/api/risk-assessments', async (req, res) => {
       });
     }
 
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}`;
+    let allRecords = [];
+    let offset = null;
+    let pageCount = 0;
     
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    });
+    do {
+      pageCount++;
+      console.log(`Hämtar sida ${pageCount}...`);
+      
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}?pageSize=100`;
+      if (offset) {
+        url += `&offset=${offset}`;
+      }
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+
+      // Lägg till poster från denna sida
+      allRecords = allRecords.concat(response.data.records);
+      
+      // Hämta offset för nästa sida
+      offset = response.data.offset;
+      
+      console.log(`Sida ${pageCount}: ${response.data.records.length} poster (total: ${allRecords.length})`);
+      
+    } while (offset);
 
     const duration = Date.now() - startTime;
     
-    console.log(`✅ Riskbedömningar hämtade: ${response.data.records.length} st`);
+    console.log(`Alla riskbedömningar hämtade: ${allRecords.length} st (${pageCount} sidor)`);
     
     res.json({
       success: true,
-      records: response.data.records,
+      records: allRecords,
+      totalRecords: allRecords.length,
+      pagesFetched: pageCount,
       duration: duration
     });
 
@@ -1735,22 +1906,49 @@ app.post('/api/risk-assessments', async (req, res) => {
     }
 
     const riskData = req.body;
+    console.log('📝 Mottaget riskbedömningsdata:', riskData);
+    
+    // Konvertera fältnamn till fält-ID:n för Airtable
+    const fieldMapping = {
+      'Task Name': 'fld4yI8yL4PyHO5LX',
+      'TJÄNSTTYP': 'fldA3OjtA9IOnH0XL',
+      'Beskrivning av riskfaktor': 'fldxHa72ao5Zpekt2',
+      'Riskbedömning': 'fldFQcjlerFO8GGQf',
+      'Åtgjärd': 'fldnrHoCosECXWaQM',
+      'Åtgärd': 'fldnrHoCosECXWaQM',
+      'Åtgjörd': 'fldnrHoCosECXWaQM'
+    };
+    
+    // Skapa nytt objekt med fält-ID:n
+    const airtableData = {};
+    Object.keys(riskData).forEach(key => {
+      const fieldId = fieldMapping[key];
+      if (fieldId) {
+        airtableData[fieldId] = riskData[key];
+        console.log(`📝 Mappat ${key} -> ${fieldId}`);
+      } else {
+        airtableData[key] = riskData[key]; // Behåll andra fält som de är
+      }
+    });
     
     // Validera obligatoriska fält
-    const requiredFields = ['Task Name', 'TJÄNSTTYP', 'Beskrivning av riskfaktor', 'Riskbedömning', 'Åtgärd'];
-    const missingFields = requiredFields.filter(field => !riskData[field]);
+    const requiredFieldIds = ['fld4yI8yL4PyHO5LX', 'fldA3OjtA9IOnH0XL', 'fldxHa72ao5Zpekt2', 'fldFQcjlerFO8GGQf', 'fldnrHoCosECXWaQM'];
+    const missingFields = requiredFieldIds.filter(fieldId => !airtableData[fieldId]);
     
     if (missingFields.length > 0) {
+      console.log('📝 Riskbedömning data:', airtableData);
+      console.log('📝 Missing field IDs:', missingFields);
       return res.status(400).json({
         error: 'Saknade obligatoriska fält',
-        message: `Följande fält är obligatoriska: ${missingFields.join(', ')}`
+        message: `Följande fält är obligatoriska: ${missingFields.join(', ')}`,
+        receivedData: airtableData
       });
     }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}`;
     
     const response = await axios.post(url, {
-      records: [{ fields: riskData }]
+      records: [{ fields: airtableData }]
     }, {
       headers: {
         'Authorization': `Bearer ${airtableAccessToken}`,
@@ -1773,11 +1971,21 @@ app.post('/api/risk-assessments', async (req, res) => {
     const duration = Date.now() - startTime;
     console.error('Error creating risk assessment:', error.message);
     
-    res.status(500).json({
-      error: 'Fel vid skapande av riskbedömning',
-      message: error.message,
-      duration: duration
-    });
+    if (error.response) {
+      console.error('Airtable API Error:', error.response.data);
+      res.status(error.response.status).json({
+        error: 'Airtable API-fel',
+        message: error.response.data.error || error.message,
+        airtableError: error.response.data,
+        duration: duration
+      });
+    } else {
+      res.status(500).json({
+        error: 'Fel vid skapande av riskbedömning',
+        message: error.message,
+        duration: duration
+      });
+    }
   }
 });
 
@@ -1800,11 +2008,35 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
     }
 
     const riskData = req.body;
+    console.log(`📝 Mottaget uppdateringsdata för ${id}:`, riskData);
+    
+    // Konvertera fältnamn till fält-ID:n för Airtable
+    const fieldMapping = {
+      'Task Name': 'fld4yI8yL4PyHO5LX',
+      'TJÄNSTTYP': 'fldA3OjtA9IOnH0XL',
+      'Beskrivning av riskfaktor': 'fldxHa72ao5Zpekt2',
+      'Riskbedömning': 'fldFQcjlerFO8GGQf',
+      'Åtgjärd': 'fldnrHoCosECXWaQM',
+      'Åtgärd': 'fldnrHoCosECXWaQM',
+      'Åtgjörd': 'fldnrHoCosECXWaQM'
+    };
+    
+    // Skapa nytt objekt med fält-ID:n
+    const airtableData = {};
+    Object.keys(riskData).forEach(key => {
+      const fieldId = fieldMapping[key];
+      if (fieldId) {
+        airtableData[fieldId] = riskData[key];
+        console.log(`📝 Mappat ${key} -> ${fieldId}`);
+      } else {
+        airtableData[key] = riskData[key]; // Behåll andra fält som de är
+      }
+    });
     
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`;
     
     const response = await axios.patch(url, {
-      fields: riskData
+      fields: airtableData
     }, {
       headers: {
         'Authorization': `Bearer ${airtableAccessToken}`,
@@ -1951,22 +2183,644 @@ app.get('/api/airtable/config', (req, res) => {
   });
 });
 
+// GET /api/auth/test-users - Testa användaranslutning till Airtable
+app.get('/api/auth/test-users', async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Testa att hämta användare från Airtable
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${USERS_TABLE}?maxRecords=5`;
+    
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    const users = response.data.records || [];
+    console.log(`✅ Användare hämtade från Airtable: ${users.length} st`);
+
+         // Visa alla användare med fältnamn (utan lösenord)
+     const usersData = users.map(user => ({
+       id: user.id,
+       fields: Object.keys(user.fields),
+       email: user.fields['Email'] || 'N/A',
+       name: user.fields['fldU9goXGJs7wk7OZ'] || user.fields['Full Name'] || 'N/A',
+       role: user.fields['Role'] || 'N/A',
+       byra: user.fields['fldcZZOiC9y5BKFWf'] || user.fields['Byrå'] || 'N/A',
+       logo: user.fields['Logga'] || 'N/A',
+       hasPassword: !!user.fields['password']
+     }));
+
+    res.json({
+      success: true,
+      message: 'Användaranslutning till Airtable fungerar!',
+      userCount: users.length,
+      users: usersData,
+      tableName: USERS_TABLE
+    });
+
+  } catch (error) {
+    console.error('Error testing users connection:', error.message);
+    
+    res.status(500).json({
+      error: 'Fel vid test av användaranslutning',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/kunddata - Hämta KUNDDATA med rollbaserad filtrering
+app.get('/api/kunddata', authenticateToken, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🔍 Hämtar KUNDDATA med rollbaserad filtrering...');
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Hämta komplett användardata för att få roll och byrå-ID
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Användare hittades inte'
+      });
+    }
+
+    console.log(`👤 Användare: ${userData.name} (${userData.role}) från ${userData.byra}`);
+    console.log(`🏢 Byrå ID: ${userData.byraId}`);
+
+    let filterFormula = '';
+    
+    // Rollbaserad filtrering
+    switch (userData.role) {
+      case 'ClientFlowAdmin':
+        // Se allt - ingen filtrering
+        console.log('🔓 ClientFlowAdmin: Visar alla poster');
+        break;
+        
+      case 'Ledare':
+        // Se alla poster med samma Byrå ID
+        if (userData.byraId) {
+          filterFormula = `{Byrå ID}="${userData.byraId}"`;
+          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId}`);
+        } else {
+          console.log('⚠️ Ledare utan Byrå ID: Visar inga poster');
+          return res.json({
+            success: true,
+            message: 'Ledare utan Byrå ID - inga poster att visa',
+            records: [],
+            userRole: userData.role,
+            userByraId: userData.byraId,
+            timestamp: new Date().toISOString(),
+            duration: Date.now() - startTime
+          });
+        }
+        break;
+        
+      case 'Anställd':
+        // Se poster där användarens ID finns i Användare-fältet
+        if (userData.id) {
+          filterFormula = `SEARCH("${userData.id}", {Användare})`;
+          console.log(`👷 Anställd: Filtrerar på användar-ID: ${userData.id}`);
+        } else {
+          console.log('⚠️ Anställd utan användar-ID: Visar inga poster');
+          return res.json({
+            success: true,
+            message: 'Anställd utan användar-ID - inga poster att visa',
+            records: [],
+            userRole: userData.role,
+            userId: userData.id,
+            timestamp: new Date().toISOString(),
+            duration: Date.now() - startTime
+          });
+        }
+        break;
+        
+      default:
+        console.log(`⚠️ Okänd roll: ${userData.role} - visar inga poster`);
+        return res.json({
+          success: true,
+          message: `Okänd användarroll: ${userData.role}`,
+          records: [],
+          userRole: userData.role,
+          timestamp: new Date().toISOString(),
+          duration: Date.now() - startTime
+        });
+    }
+
+    // Bygg URL för Airtable API
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    if (filterFormula) {
+      url += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
+    }
+    
+    console.log(`🌐 Airtable URL: ${url}`);
+
+    // Hämta data från Airtable
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const records = response.data.records || [];
+    console.log(`✅ Hämtade ${records.length} poster från KUNDDATA`);
+
+    // Formatera svaret
+    const formattedRecords = records.map(record => ({
+      id: record.id,
+      createdTime: record.createdTime,
+      fields: record.fields
+    }));
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: `KUNDDATA hämtad för ${userData.role}`,
+      records: formattedRecords,
+      recordCount: records.length,
+      userRole: userData.role,
+      userByraId: userData.byraId,
+      userId: userData.id,
+      filterApplied: filterFormula || 'Ingen filtrering (ClientFlowAdmin)',
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching KUNDDATA:', error.message);
+    
+    if (error.response) {
+      console.error('Airtable API Error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid hämtning av KUNDDATA',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+  }
+});
+
+// GET /api/kunddata/test - Test endpoint för KUNDDATA (utan autentisering för utveckling)
+app.get('/api/kunddata/test', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🧪 Test: Hämtar KUNDDATA med rollbaserad filtrering...');
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Test med olika roller
+    const testRoles = [
+      { role: 'ClientFlowAdmin', byraId: null, userId: null },
+      { role: 'Ledare', byraId: 'BYRA123', userId: null },
+      { role: 'Anställd', byraId: null, userId: 'recF3IYVte4066KMx' }
+    ];
+
+    const results = [];
+
+    for (const testRole of testRoles) {
+      console.log(`🧪 Testar roll: ${testRole.role}`);
+      
+      let filterFormula = '';
+      
+      // Rollbaserad filtrering
+      switch (testRole.role) {
+        case 'ClientFlowAdmin':
+          console.log('🔓 ClientFlowAdmin: Visar alla poster');
+          break;
+          
+        case 'Ledare':
+          if (testRole.byraId) {
+            filterFormula = `{Byrå ID}="${testRole.byraId}"`;
+            console.log(`👔 Ledare: Filtrerar på Byrå ID: ${testRole.byraId}`);
+          }
+          break;
+          
+        case 'Anställd':
+          if (testRole.userId) {
+            filterFormula = `SEARCH("${testRole.userId}", {Användare})`;
+            console.log(`👷 Anställd: Filtrerar på användar-ID: ${testRole.userId}`);
+          }
+          break;
+      }
+
+      // Bygg URL för Airtable API
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+      if (filterFormula) {
+        url += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
+      }
+      
+      console.log(`🌐 Airtable URL: ${url}`);
+
+      try {
+        // Hämta data från Airtable
+        const response = await axios.get(url, {
+          headers: {
+            'Authorization': `Bearer ${airtableAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+
+        const records = response.data.records || [];
+        console.log(`✅ Hämtade ${records.length} poster för ${testRole.role}`);
+
+        results.push({
+          role: testRole.role,
+          success: true,
+          recordCount: records.length,
+          filterApplied: filterFormula || 'Ingen filtrering',
+          records: records.map(record => ({
+            id: record.id,
+            createdTime: record.createdTime,
+            fields: record.fields
+          }))
+        });
+
+      } catch (error) {
+        console.error(`❌ Fel för ${testRole.role}:`, error.message);
+        results.push({
+          role: testRole.role,
+          success: false,
+          error: error.message,
+          filterApplied: filterFormula || 'Ingen filtrering'
+        });
+      }
+    }
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'Test av KUNDDATA med rollbaserad filtrering',
+      results: results,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error in KUNDDATA test:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid test av KUNDDATA',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+  }
+});
+
+// Risk Factors API endpoints
+const RISK_FACTORS_TABLE = 'Risker kopplade till kunden';
+
+// GET /api/risk-factors - Hämta alla riskfaktorer med pagination
+app.get('/api/risk-factors', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('Hämtar alla riskfaktorer från Airtable med pagination...');
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    let allRecords = [];
+    let offset = null;
+    let pageCount = 0;
+    
+    do {
+      pageCount++;
+      console.log(`Hämtar sida ${pageCount}...`);
+      
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}?pageSize=100`;
+      if (offset) {
+        url += `&offset=${offset}`;
+      }
+      
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+
+      // Lägg till poster från denna sida
+      allRecords = allRecords.concat(response.data.records);
+      
+      // Hämta offset för nästa sida
+      offset = response.data.offset;
+      
+      console.log(`Sida ${pageCount}: ${response.data.records.length} poster (total: ${allRecords.length})`);
+      
+    } while (offset);
+
+    const duration = Date.now() - startTime;
+    
+    console.log(`Alla riskfaktorer hämtade: ${allRecords.length} st (${pageCount} sidor)`);
+    
+    res.json({
+      success: true,
+      records: allRecords,
+      totalRecords: allRecords.length,
+      pagesFetched: pageCount,
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching risk factors:', error.message);
+    
+    res.status(500).json({
+      error: 'Fel vid hämtning av riskfaktorer',
+      message: error.message,
+      duration: duration
+    });
+  }
+});
+
+// POST /api/risk-factors - Skapa ny riskfaktor
+app.post('/api/risk-factors', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    console.log('Skapar ny riskfaktor...');
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    const riskData = req.body;
+    console.log('Mottaget riskfaktordata:', riskData);
+    
+    // Konvertera fältnamn till fält-ID:n för Airtable
+    const fieldMapping = {
+      'Typ av riskfaktor': 'fldpwh7655qQRsfd2',
+      'Riskfaktor': 'fldBXz24TIPi0dayY',
+      'Beskrivning': 'fld4epowAz3n7gYxl',
+      'Riskbedömning': 'flddfJfl5yru8rKyp',
+      'Åtgärd': 'fld9EOySG5oGUNUJ0',
+      'Byrå ID': 'fld14CLMCwvjr8ReH',
+      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5',
+      'Aktuell': 'fldAktuell' // Detta fält behöver läggas till i Airtable
+    };
+
+    // Skapa Airtable-fält
+    const airtableFields = {};
+    Object.keys(riskData).forEach(key => {
+      if (fieldMapping[key]) {
+        airtableFields[fieldMapping[key]] = riskData[key];
+      } else {
+        // Om fältet inte finns i mappningen, använd fältnamnet direkt
+        airtableFields[key] = riskData[key];
+      }
+    });
+
+    console.log('Airtable-fält:', airtableFields);
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}`;
+    
+    const response = await axios.post(url, {
+      fields: airtableFields
+    }, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+    
+    console.log('Riskfaktor skapad:', response.data);
+    
+    res.json({
+      success: true,
+      record: response.data,
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error creating risk factor:', error.message);
+    
+    res.status(500).json({
+      error: 'Fel vid skapande av riskfaktor',
+      message: error.message,
+      duration: duration
+    });
+  }
+});
+
+// PUT /api/risk-factors/:id - Uppdatera riskfaktor
+app.put('/api/risk-factors/:id', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id } = req.params;
+    console.log(`Uppdaterar riskfaktor: ${id}`);
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    const riskData = req.body;
+    console.log('Uppdateringsdata:', riskData);
+    
+    // Konvertera fältnamn till fält-ID:n för Airtable
+    const fieldMapping = {
+      'Typ av riskfaktor': 'fldpwh7655qQRsfd2',
+      'Riskfaktor': 'fldBXz24TIPi0dayY',
+      'Beskrivning': 'fld4epowAz3n7gYxl',
+      'Riskbedömning': 'flddfJfl5yru8rKyp',
+      'Åtgärd': 'fld9EOySG5oGUNUJ0',
+      'Byrå ID': 'fld14CLMCwvjr8ReH',
+      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5',
+      'Aktuell': 'fldAktuell' // Detta fält behöver läggas till i Airtable
+    };
+
+    // Skapa Airtable-fält
+    const airtableFields = {};
+    Object.keys(riskData).forEach(key => {
+      if (fieldMapping[key]) {
+        airtableFields[fieldMapping[key]] = riskData[key];
+      } else {
+        // Om fältet inte finns i mappningen, använd fältnamnet direkt
+        airtableFields[key] = riskData[key];
+      }
+    });
+
+    console.log('Airtable-fält:', airtableFields);
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
+    
+    const response = await axios.patch(url, {
+      fields: airtableFields
+    }, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+    
+    console.log('Riskfaktor uppdaterad:', response.data);
+    
+    res.json({
+      success: true,
+      record: response.data,
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error updating risk factor:', error.message);
+    
+    res.status(500).json({
+      error: 'Fel vid uppdatering av riskfaktor',
+      message: error.message,
+      duration: duration
+    });
+  }
+});
+
+// DELETE /api/risk-factors/:id - Ta bort riskfaktor
+app.delete('/api/risk-factors/:id', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { id } = req.params;
+    console.log(`Tar bort riskfaktor: ${id}`);
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
+    
+    await axios.delete(url, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+    
+    console.log(`Riskfaktor borttagen: ${id}`);
+    
+    res.json({
+      success: true,
+      message: 'Riskfaktor borttagen',
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error deleting risk factor:', error.message);
+    
+    res.status(500).json({
+      error: 'Fel vid borttagning av riskfaktor',
+      message: error.message,
+      duration: duration
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Proxy Service running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
   console.log(`📋 Airtable endpoints:`);
   console.log(`   • Test connection: GET http://localhost:${PORT}/api/airtable/test`);
-  console.log(`   • Save mock data: POST http://localhost:${PORT}/api/save-mock-to-airtable`);
   console.log(`   • Config: GET http://localhost:${PORT}/api/airtable/config`);
   console.log(`🏢 Bolagsverket endpoints:`);
   console.log(`   • Health check: GET http://localhost:${PORT}/api/bolagsverket/isalive`);
   console.log(`   • Get organization: POST http://localhost:${PORT}/api/bolagsverket/organisationer`);
   console.log(`   • Save to Airtable: POST http://localhost:${PORT}/api/bolagsverket/save-to-airtable`);
+  console.log(`👥 User Management endpoints:`);
+  console.log(`   • Test users: GET http://localhost:${PORT}/api/auth/test-users`);
+  console.log(`   • Get KUNDDATA: GET http://localhost:${PORT}/api/kunddata`);
+  console.log(`   • Test KUNDDATA: GET http://localhost:${PORT}/api/kunddata/test`);
   console.log(`⚠️ Risk Assessment endpoints:`);
   console.log(`   • Get all: GET http://localhost:${PORT}/api/risk-assessments`);
   console.log(`   • Create: POST http://localhost:${PORT}/api/risk-assessments`);
   console.log(`   • Update: PUT http://localhost:${PORT}/api/risk-assessments/:id`);
   console.log(`   • Approve: PUT http://localhost:${PORT}/api/risk-assessments/:id/approve`);
   console.log(`   • Delete: DELETE http://localhost:${PORT}/api/risk-assessments/:id`);
+  console.log(`⚠️ Risk Factors endpoints:`);
+  console.log(`   • Get all: GET http://localhost:${PORT}/api/risk-factors`);
+  console.log(`   • Create: POST http://localhost:${PORT}/api/risk-factors`);
+  console.log(`   • Update: PUT http://localhost:${PORT}/api/risk-factors/:id`);
+  console.log(`   • Delete: DELETE http://localhost:${PORT}/api/risk-factors/:id`);
 });

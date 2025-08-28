@@ -1,188 +1,249 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ClientFlow • Övriga riskfaktorer</title>
-  <meta name="description" content="ClientFlow - Analys av övriga riskfaktorer" />
-
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-
-  <link rel="stylesheet" href="styles.css">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Övriga riskfaktorer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
 
-  <div class="app-container">
-        <!-- Sidebar -->
+    <div class="app-container">
+        <!-- Sidebar will be loaded dynamically -->
         <div class="sidebar-container">
-            <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>ClientFlow</h2>
-                <p>Kundhantering & Riskbedömning</p>
-            </div>
-            
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <h3>Verktyg för riskbedömning</h3>
-                    <ul>
-                        <li data-page="riskbedomning-byra">
-                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
-                        </li>
-                        <li data-page="ovriga-riskfaktorer">
-                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
-                        </li>
-                        <li data-page="allman-riskbedomning">
-                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
-                        </li>
-                    </ul>
-                </div>
-                
-                <div class="nav-section">
-                    <h3>Dokument</h3>
-                    <ul>
-                        <li data-page="statistik-riskbedomning">
-                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
-                        </li>
-                        <li data-page="byra-anvandare">
-                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
-                        </li>
-                    </ul>
-                </div>
-                
-                <div class="nav-section">
-                    <ul>
-                        <li data-page="index" class="nav-item-lead">
-                            <a href="index.html">Nytt Lead</a>
-                        </li>
-                        <li data-page="kundkort" class="nav-item-klienter">
-                            <a href="kundkort.html">Alla Klienter</a>
-                        </li>
-                        <li data-page="avvikelser">
-                            <a href="avvikelser.html">Avvikelser</a>
-                        </li>
-                        <li data-page="registrera-utbildning">
-                            <a href="registrera-utbildning.html">Registrera utbildning</a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-        </aside>
+            <!-- Sidebar content will be loaded here -->
         </div>
-    <!-- Sidebar Container - Navigation will be loaded here -->
-    
-              <div class="risk-card-content">
-                <div class="risk-detail">
-                  <strong>Beskrivning av riskfaktorn:</strong>
-                  <p>Distanskunder utan fysisk kontakt ökar risken för penningtvätt och terrorismfinansiering. Det blir svårare att verifiera identitet och bedöma avsikter.</p>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>ÖVRIGA RISKFAKTORER</h1>
+                        <br>
+                        <p><h3>Att tänka på vid riskbedömning av övriga riskfaktorer</h3>
+
+                            En noggrann riskbedömning av övriga riskfaktorer är viktigt för att identifiera och hantera risker som inte direkt är kopplade till specifika tjänster. Detta inkluderar geografiska riskfaktorer, verksamhetsspecifika risker och andra faktorer som kan påverka kundens riskprofil.
+                        </p>
+                            <p><h4>Tänk särskilt på:</h4></p>
+                            
+                            <li>Geografiska riskfaktorer som kan påverka transaktioner</li>
+                            <li>Verksamhetsspecifika risker kopplade till kundens bransch</li>
+                            <li>Vilka åtgärder ni kan vidta för att hantera och minimera dessa risker</li>
+                            
+                            <br>
+                            <p><h4></h4>Syftet är att skydda både byrån och kunden – och att följa lagens krav på riskbaserat arbetssätt.</h4></p>
+                            
+                            <br>
+                            <strong>Observera:
+ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns ansvar att anpassa och komplettera innehållet utifrån sin egen verksamhet. Inga digitala verktyg eller mallar kan garantera att alla risker är upptäckta eller hanterade – se därför texterna som ett stöd, inte en garanti. </strong>
+                    </div>
+                </header>
+            <!-- Filter Section -->
+            <section class="filter-section">
+                <div class="container">
+                    <div class="filter-card">
+                        
+                        </div>
+                        <div class="filter-controls">
+                            <div class="filter-group">
+                                <label for="byra-filter">Byrå:</label>
+                                <select id="byra-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla byråer</option>
+                                    <!-- Byrå options will be populated dynamically -->
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                           
+                                <select id="risk-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla risknivåer</option>
+                                    <option value="Låg">Låg</option>
+                                    <option value="Medel">Medel</option>
+                                    <option value="Förhöjd">Förhöjd</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                    
+                                <select id="status-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla statusar</option>
+                                    <option value="checked">Aktuell</option>
+                                    <option value="unchecked">Ej aktuell</option>
+                                </select>
+                            </div>
+                            <button id="apply-filters" class="btn btn-primary" style="display: none;">
+                                <i class="fas fa-search"></i>
+                                Applicera filter
+                            </button>
+                            <button id="clear-filters" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i>
+                                Rensa filter
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div class="risk-detail">
-                  <strong>Åtgärd:</strong>
-                  <p>BankID för identitetsbekräftelse, videomöten och extra försiktighet vid stora transaktioner eller högriskländer.</p>
+            </section>
+
+            <!-- Risk Assessment List -->
+            <section class="risk-assessment-section">
+                <div class="container">
+                    <div class="risk-list-header">
+                        <h3>Riskfaktorer</h3>
+                        <div class="risk-header-actions">
+                            <div class="risk-stats">
+                                <span class="stat-item">
+                                    <i class="fas fa-list"></i>
+                                    <span id="total-count">0</span> totalt
+                                </span>
+                                <span class="stat-item">
+                                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                                    <span id="high-risk-count">0</span> förhöjda risker
+                                </span>
+                                <span class="stat-item">
+                                    <i class="fas fa-check-circle text-success"></i>
+                                    <span id="completed-count">0</span> godkända
+                                </span>
+                            </div>
+                            <button class="btn btn-primary" onclick="riskManager.openAddModal()">
+                                <i class="fas fa-plus"></i>
+                                Lägg till riskfaktor
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="risk-list" class="risk-list">
+                        <!-- Risk items will be loaded here -->
+                        <div class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Laddar riskfaktorer...</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="risk-assessment">
-                  <strong>Riskbedömning:</strong>
-                  <span class="risk-badge elevated">Förhöjd</span>
+            </section>
+
+            <!-- Add New Risk Modal -->
+            <div id="add-risk-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Lägg till ny riskfaktor</h3>
+                        <button class="modal-close" onclick="closeModal('add-risk-modal')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <form id="add-risk-form" class="modal-form">
+                        <div class="form-group">
+                            <label for="risk-type">Typ av riskfaktor *</label>
+                            <input type="text" id="risk-type" name="risk-type" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="byra-id">Byrå ID</label>
+                            <input type="text" id="byra-id" name="byra-id">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="risk-factor">Riskfaktor *</label>
+                            <textarea id="risk-factor" name="risk-factor" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="description">Beskrivning *</label>
+                            <textarea id="description" name="description" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="risk-assessment">Riskbedömning *</label>
+                            <select id="risk-assessment" name="risk-assessment" required>
+                                <option value="">Välj risknivå</option>
+                                <option value="Låg">Låg</option>
+                                <option value="Medel">Medel</option>
+                                <option value="Förhöjd">Förhöjd</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="action">Åtgärd *</label>
+                            <textarea id="action" name="action" rows="4" required></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="closeModal('add-risk-modal')">
+                                Avbryt
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                Spara riskfaktor
+                            </button>
+                        </div>
+                    </form>
                 </div>
-              </div>
             </div>
 
-            <!-- Collapsed Cards -->
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>GEOGRAFISKA RISKFAKTORER: Europa</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
+            <!-- Edit Risk Modal -->
+            <div id="edit-risk-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Redigera riskfaktor</h3>
+                        <button class="modal-close" onclick="closeModal('edit-risk-modal')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <form id="edit-risk-form" class="modal-form">
+                        <input type="hidden" id="edit-record-id" name="record-id">
+                        <div class="form-group">
+                            <label for="edit-risk-type">Typ av riskfaktor *</label>
+                            <input type="text" id="edit-risk-type" name="risk-type" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-byra-id">Byrå ID</label>
+                            <input type="text" id="edit-byra-id" name="byra-id">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-risk-factor">Riskfaktor *</label>
+                            <textarea id="edit-risk-factor" name="risk-factor" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-description">Beskrivning *</label>
+                            <textarea id="edit-description" name="description" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-risk-assessment">Riskbedömning *</label>
+                            <select id="edit-risk-assessment" name="risk-assessment" required>
+                                <option value="">Välj risknivå</option>
+                                <option value="Låg">Låg</option>
+                                <option value="Medel">Medel</option>
+                                <option value="Förhöjd">Förhöjd</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-action">Åtgärd *</label>
+                            <textarea id="edit-action" name="action" rows="4" required></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="closeModal('edit-risk-modal')">
+                                Avbryt
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                Uppdatera riskfaktor
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
+        </main>
+    </div>
 
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>RISKFAKTORER KOPPLAT TILL KUND: Kunden verkar i högriskbransch</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
 
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>RISKFAKTORER KOPPLAT TILL KUND: Kunder med import/export</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>VERKSAMHETSSPECIFIKA RISKFAKTORER: Kunder med mycket kontanta transaktioner.</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>VERKSAMHETSSPECIFIKA RISKFAKTORER: Kunder med transaktioner via Betalkort</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>RISKFAKTORER KOPPLAT TILL KUND: Kunder med utländska huvudmän</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>GEOGRAFISKA RISKFAKTORER: Land med hög korruption/svag kontroll</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>GEOGRAFISKA RISKFAKTORER: Närområde</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>RISKFAKTORER KOPPLAT TILL KUND: PEP, familjemedlem till PEP eller känd medarbetare till PEP</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>RISKFAKTORER KOPPLAT TILL KUND: Privatkunder</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>GEOGRAFISKA RISKFAKTORER: Utanför EU</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-
-            <div class="risk-card collapsed">
-              <div class="risk-card-header">
-                <h3>DISTRUBUTIONSKANALER: Via ombud</h3>
-                <span class="expand-arrow">▶</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
-
-    <!-- Footer Component Placeholder -->
-    <div data-component="footer"></div>
-  </div>
-
-  <!-- Scripts -->
-  <script src="js/navigation.js"></script>
-  <script src="app.js"></script>
+    <!-- Load scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script src="app.js?v=1.1"></script>
+    <script src="js/ovriga-riskfaktorer.js"></script>
 </body>
 </html>

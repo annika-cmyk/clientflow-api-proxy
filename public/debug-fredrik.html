@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Fredrik Grengby</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+        .warning { color: orange; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Fredrik Grengby</h1>
+    
+    <div class="debug-section">
+        <h2>1. Test Användardata</h2>
+        <button onclick="testUserData()">Ladda Fredriks användardata</button>
+        <div id="user-data-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. Test Byrå-ID Extraktion</h2>
+        <button onclick="testByraExtraction()">Testa byrå-ID extraktion</button>
+        <div id="byra-extraction-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>3. Test Riskdata för Byrå 49</h2>
+        <button onclick="testRiskData()">Hitta risker för Byrå 49</button>
+        <div id="risk-data-result"></div>
+    </div>
+
+    <script>
+        async function testUserData() {
+            const resultDiv = document.getElementById('user-data-result');
+            resultDiv.innerHTML = '<p>Laddar användardata...</p>';
+            
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    resultDiv.innerHTML = '<p class="error">❌ Ingen token hittad - du är inte inloggad</p>';
+                    return;
+                }
+                
+                const response = await fetch('http://localhost:3001/api/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const user = data.user;
+                    
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Användardata laddad</p>
+                        <h3>Användarinfo:</h3>
+                        <ul>
+                            <li><strong>Namn:</strong> ${user.name || 'Saknas'}</li>
+                            <li><strong>Roll:</strong> ${user.role || 'Saknas'}</li>
+                            <li><strong>Email:</strong> ${user.email || 'Saknas'}</li>
+                        </ul>
+                        <h3>Byrå-fält:</h3>
+                        <ul>
+                            <li><strong>byraIds:</strong> ${JSON.stringify(user.byraIds)}</li>
+                            <li><strong>byraId:</strong> ${JSON.stringify(user.byraId)}</li>
+                            <li><strong>byra:</strong> ${JSON.stringify(user.byra)}</li>
+                        </ul>
+                        <h3>Alla fält:</h3>
+                        <pre>${JSON.stringify(user, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ HTTP ${response.status}: ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Fel: ${error.message}</p>`;
+            }
+        }
+        
+        function testByraExtraction() {
+            const resultDiv = document.getElementById('byra-extraction-result');
+            resultDiv.innerHTML = '<p>Testar byrå-ID extraktion...</p>';
+            
+            // Simulera samma logik som riskbedomning-byra.js
+            const userData = JSON.parse(localStorage.getItem('debugUserData') || '{}');
+            let userByraIds = [];
+            
+            resultDiv.innerHTML = `
+                <h3>Testar extraktion för:</h3>
+                <pre>${JSON.stringify(userData, null, 2)}</pre>
+            `;
+            
+            // Method 1: Check byraIds array
+            if (userData.byraIds && Array.isArray(userData.byraIds)) {
+                userByraIds = userData.byraIds.map(id => id.toString());
+                resultDiv.innerHTML += `<p class="success">✅ Method 1 (byraIds array): ${userByraIds.join(', ')}</p>`;
+            }
+            // Method 2: Check byraId field
+            else if (userData.byraId) {
+                userByraIds = [userData.byraId.toString()];
+                resultDiv.innerHTML += `<p class="success">✅ Method 2 (byraId field): ${userByraIds.join(', ')}</p>`;
+            }
+            // Method 3: Check byra field (string)
+            else if (userData.byra) {
+                const match = userData.byra.match(/Byrå\s+(\d+)/);
+                if (match) {
+                    userByraIds = [match[1]];
+                    resultDiv.innerHTML += `<p class="success">✅ Method 3 (byra string): ${userByraIds.join(', ')}</p>`;
+                }
+            }
+            // Method 4: Check byra field (object)
+            else if (userData.byra && typeof userData.byra === 'object') {
+                if (userData.byra.id) {
+                    userByraIds = [userData.byra.id.toString()];
+                    resultDiv.innerHTML += `<p class="success">✅ Method 4 (byra object.id): ${userByraIds.join(', ')}</p>`;
+                } else if (userData.byra.name) {
+                    const match = userData.byra.name.match(/Byrå\s+(\d+)/);
+                    if (match) {
+                        userByraIds = [match[1]];
+                        resultDiv.innerHTML += `<p class="success">✅ Method 4 (byra object.name): ${userByraIds.join(', ')}</p>`;
+                    }
+                }
+            }
+            
+            if (userByraIds.length === 0) {
+                resultDiv.innerHTML += `<p class="warning">⚠️ Inga byrå-ID:n hittades!</p>`;
+            } else {
+                resultDiv.innerHTML += `<p class="success">✅ Slutliga byrå-ID:n: ${userByraIds.join(', ')}</p>`;
+            }
+        }
+        
+        async function testRiskData() {
+            const resultDiv = document.getElementById('risk-data-result');
+            resultDiv.innerHTML = '<p>Laddar riskdata för Byrå 49...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/risk-assessments', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const risks = data.records || [];
+                    
+                    // Hitta risker för Byrå 49
+                    const byra49Risks = risks.filter(risk => {
+                        const byraId = risk.fields['Byrå ID'];
+                        return byraId && byraId.toString() === '49';
+                    });
+                    
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Riskdata laddad (${risks.length} totalt)</p>
+                        <h3>Risker för Byrå 49 (${byra49Risks.length} st):</h3>
+                        ${byra49Risks.length > 0 ? 
+                            `<ul>${byra49Risks.map(risk => 
+                                `<li><strong>${risk.fields['Task Name']}</strong> - Risk: ${risk.fields['Riskbedömning']}</li>`
+                            ).join('')}</ul>` :
+                            '<p class="warning">⚠️ Inga risker hittades för Byrå 49</p>'
+                        }
+                        <h3>Alla unika byrå-ID:n i data:</h3>
+                        <p>${[...new Set(risks.map(r => r.fields['Byrå ID']).filter(id => id))].sort((a,b) => a-b).join(', ')}</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ HTTP ${response.status}: ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Fel: ${error.message}</p>`;
+            }
+        }
+        
+        // Spara användardata för byrå-extraktion test
+        async function saveUserData() {
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                try {
+                    const response = await fetch('http://localhost:3001/api/auth/me', {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        localStorage.setItem('debugUserData', JSON.stringify(data.user));
+                    }
+                } catch (error) {
+                    console.error('Error saving user data:', error);
+                }
+            }
+        }
+        
+        // Ladda användardata när sidan laddas
+        window.addEventListener('load', saveUserData);
+    </script>
+</body>
+</html>

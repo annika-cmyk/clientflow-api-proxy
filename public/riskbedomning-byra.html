@@ -11,191 +11,114 @@
 <body>
 
     <div class="app-container">
-        <!-- Sidebar -->
+        <!-- Sidebar will be loaded dynamically -->
         <div class="sidebar-container">
-            <aside class="sidebar">
-                <div class="sidebar-header">
-                    <h2><i class="fas fa-chart-line"></i> ClientFlow</h2>
-                    <p>Kundhantering & Riskbedömning</p>
-                </div>
-                
-                <nav class="sidebar-nav">
-                    <div class="nav-section">
-                        <h3><i class="fas fa-shield-alt"></i> Verktyg för riskbedömning</h3>
-                        <ul>
-                            <li data-page="riskbedomning-byra" class="active">
-                                <a href="riskbedomning-byra.html">
-                                    <i class="fas fa-building"></i>
-                                    <span>Riskbedömning av byrå</span>
-                                </a>
-                            </li>
-                            <li data-page="ovriga-riskfaktorer">
-                                <a href="ovriga-riskfaktorer.html">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    <span>Övriga riskfaktorer</span>
-                                </a>
-                            </li>
-                            <li data-page="allman-riskbedomning">
-                                <a href="allman-riskbedomning.html">
-                                    <i class="fas fa-clipboard-check"></i>
-                                    <span>Allmän riskbedömning</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                    
-                    <div class="nav-section">
-                        <h3><i class="fas fa-file-alt"></i> Dokument</h3>
-                        <ul>
-                            <li data-page="statistik-riskbedomning">
-                                <a href="statistik-riskbedomning.html">
-                                    <i class="fas fa-chart-bar"></i>
-                                    <span>Statistik för riskbedömning</span>
-                                </a>
-                            </li>
-                            <li data-page="byra-anvandare">
-                                <a href="byra-anvandare.html">
-                                    <i class="fas fa-users"></i>
-                                    <span>Uppgifter byrå & användare</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                    
-                    <div class="nav-section">
-                        <h3><i class="fas fa-cogs"></i> Hantering</h3>
-                        <ul>
-                            <li data-page="index" class="nav-item-lead">
-                                <a href="index.html">
-                                    <i class="fas fa-plus-circle"></i>
-                                    <span>Nytt Lead</span>
-                                </a>
-                            </li>
-                            <li data-page="kundkort" class="nav-item-klienter">
-                                <a href="kundkort.html">
-                                    <i class="fas fa-address-book"></i>
-                                    <span>Alla Klienter</span>
-                                </a>
-                            </li>
-                            <li data-page="avvikelser">
-                                <a href="avvikelser.html">
-                                    <i class="fas fa-exclamation-circle"></i>
-                                    <span>Avvikelser</span>
-                                </a>
-                            </li>
-                            <li data-page="registrera-utbildning">
-                                <a href="registrera-utbildning.html">
-                                    <i class="fas fa-graduation-cap"></i>
-                                    <span>Registrera utbildning</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-                </nav>
-            </aside>
+            <!-- Sidebar content will be loaded here -->
         </div>
 
         <!-- Main Content -->
         <main class="main-content">
-            <header class="content-header">
-                <h1>Riskbedömning av byråns tjänster</h1>
-                <p>Hantera och bedöm risker kopplade till olika tjänster som byrån utför</p>
-            </header>
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>RISKBEDÖMNING AV BYRÅNS TJÄNSTER</h1>
+                        <br>
+                        <p><h3>Att tänka på vid riskbedömning av byråns tjänster</h3>
 
+                            En noggrann riskbedömning av byråns tjänster är grunden för ett effektivt arbete mot penningtvätt och andra oegentligheter. Som redovisningsbyrå behöver du identifiera vilka risker som är kopplade till varje tjänst – till exempel risk för felaktig redovisning, vilseledande information eller bristande kundkontroll.
+                        </p>
+                            <p><h4>Tänk särskilt på:</h4></p>
+                            
+                            <li>Hur tjänsten kan utnyttjas för otillåtna ändamål</li>
+                            <li>Om det finns moment där det är svårt att upptäcka fel eller manipulation</li>
+                            <li>Vilka åtgärder ni kan vidta för att hantera och minimera dessa risker</li>
+                            
+                            <br>
+                            <p><h4></h4>Syftet är att skydda både byrån och kunden – och att följa lagens krav på riskbaserat arbetssätt.</h4></p>
+                            
+                            <br>
+                            <strong>Observera:
+ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns ansvar att anpassa och komplettera innehållet utifrån sin egen verksamhet. Inga digitala verktyg eller mallar kan garantera att alla risker är upptäckta eller hanterade – se därför texterna som ett stöd, inte en garanti. </strong>
+                    </div>
+                </header>
             <!-- Filter Section -->
             <section class="filter-section">
-                <div class="filter-card">
-                    <div class="filter-header">
-                        <h3><i class="fas fa-filter"></i> Filtrera riskbedömningar</h3>
-                    </div>
-                    <div class="filter-controls">
-                        <div class="filter-group">
-                            <label for="byra-filter">Byrå:</label>
-                            <select id="byra-filter" class="form-select">
-                                <option value="">Alla byråer</option>
-                                <option value="31">Byrå 31</option>
-                                <option value="32">Byrå 32</option>
-                                <option value="33">Byrå 33</option>
-                                <option value="39">Byrå 39</option>
-                            </select>
+                <div class="container">
+                    <div class="filter-card">
+                        
                         </div>
-                        <div class="filter-group">
-                            <label for="tjänsttyp-filter">Tjänsttyp:</label>
-                            <select id="tjänsttyp-filter" class="form-select">
-                                <option value="">Alla tjänsttyper</option>
-                                <option value="AVSTÄMNING">Avstämning</option>
-                                <option value="BOKSLUT">Bokslut</option>
-                                <option value="DEKLARATION">Deklaration</option>
-                                <option value="KUNDRESKONTRA">Kundreskontra</option>
-                                <option value="LÖNEHANTERING">Lönehantering</option>
-                                <option value="LEVERANTÖRSRESKONTRA">Leverantörsreskontra</option>
-                                <option value="LÖPANDE BOKFÖRING">Löpande bokföring</option>
-                                <option value="MOMS">Moms</option>
-                                <option value="ÅRSREDOVISNING">Årsredovisning</option>
-                                <option value="RÅDGIVNING">Rådgivning</option>
-                                <option value="UPPRÄTTA KONTROLLBALANSRÄKNING">Kontrollbalansräkning</option>
-                            </select>
+                        <div class="filter-controls">
+                            <div class="filter-group">
+                                <label for="byra-filter">Byrå:</label>
+                                <select id="byra-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla byråer</option>
+                                    <!-- Byrå options will be populated dynamically -->
+                                </select>
+                            </div>
+
+                            <div class="filter-group">
+                           
+                                <select id="risk-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla risknivåer</option>
+                                    <option value="Låg">Låg</option>
+                                    <option value="Medel">Medel</option>
+                                    <option value="Hög">Hög</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                    
+                                <select id="status-filter" class="form-select" style="width: 150px;">
+                                    <option value="">Alla statusar</option>
+                                    <option value="checked">Aktuell</option>
+                                    <option value="unchecked">Ej aktuell</option>
+                                </select>
+                            </div>
+                            <button id="apply-filters" class="btn btn-primary" style="display: none;">
+                                <i class="fas fa-search"></i>
+                                Applicera filter
+                            </button>
+                            <button id="clear-filters" class="btn btn-secondary" style="display: none;">
+                                <i class="fas fa-times"></i>
+                                Rensa filter
+                            </button>
                         </div>
-                        <div class="filter-group">
-                            <label for="risk-filter">Risknivå:</label>
-                            <select id="risk-filter" class="form-select">
-                                <option value="">Alla risknivåer</option>
-                                <option value="Låg">Låg</option>
-                                <option value="Medel">Medel</option>
-                                <option value="Hög">Hög</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="status-filter">Status:</label>
-                            <select id="status-filter" class="form-select">
-                                <option value="">Alla statusar</option>
-                                <option value="checked">Aktuell</option>
-                                <option value="unchecked">Ej aktuell</option>
-                            </select>
-                        </div>
-                        <button id="apply-filters" class="btn btn-primary">
-                            <i class="fas fa-search"></i>
-                            Applicera filter
-                        </button>
-                        <button id="clear-filters" class="btn btn-secondary">
-                            <i class="fas fa-times"></i>
-                            Rensa filter
-                        </button>
                     </div>
                 </div>
             </section>
 
             <!-- Risk Assessment List -->
             <section class="risk-assessment-section">
-                <div class="risk-list-header">
-                    <h3>Riskbedömningar</h3>
-                    <div class="risk-header-actions">
-                        <div class="risk-stats">
-                            <span class="stat-item">
-                                <i class="fas fa-list"></i>
-                                <span id="total-count">0</span> totalt
-                            </span>
-                            <span class="stat-item">
-                                <i class="fas fa-exclamation-triangle text-warning"></i>
-                                <span id="high-risk-count">0</span> höga risker
-                            </span>
-                            <span class="stat-item">
-                                <i class="fas fa-check-circle text-success"></i>
-                                <span id="completed-count">0</span> godkända
-                            </span>
+                <div class="container">
+                    <div class="risk-list-header">
+                        <h3>Riskbedömningar</h3>
+                        <div class="risk-header-actions">
+                            <div class="risk-stats">
+                                <span class="stat-item">
+                                    <i class="fas fa-list"></i>
+                                    <span id="total-count">0</span> totalt
+                                </span>
+                                <span class="stat-item">
+                                    <i class="fas fa-exclamation-triangle text-warning"></i>
+                                    <span id="high-risk-count">0</span> höga risker
+                                </span>
+                                <span class="stat-item">
+                                    <i class="fas fa-check-circle text-success"></i>
+                                    <span id="completed-count">0</span> klarmarkerade
+                                </span>
+                            </div>
+                            <button class="btn btn-primary" onclick="riskManager.openAddModal()">
+                                <i class="fas fa-plus"></i>
+                                Lägg till riskbedömning
+                            </button>
                         </div>
-                        <button class="btn btn-primary" onclick="riskManager.openAddModal()">
-                            <i class="fas fa-plus"></i>
-                            Lägg till riskbedömning
-                        </button>
                     </div>
-                </div>
 
-                <div id="risk-list" class="risk-list">
-                    <!-- Risk items will be loaded here -->
-                    <div class="loading-spinner">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Laddar riskbedömningar...</p>
+                    <div id="risk-list" class="risk-list">
+                        <!-- Risk items will be loaded here -->
+                        <div class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Laddar riskbedömningar...</p>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -218,23 +141,7 @@
                             <label for="byra-id">Byrå ID</label>
                             <input type="text" id="byra-id" name="byra-id">
                         </div>
-                        <div class="form-group">
-                            <label for="tjansttyp">Tjänsttyp *</label>
-                            <select id="tjansttyp" name="tjansttyp" required>
-                                <option value="">Välj tjänsttyp</option>
-                                <option value="AVSTÄMNING">Avstämning</option>
-                                <option value="BOKSLUT">Bokslut</option>
-                                <option value="DEKLARATION">Deklaration</option>
-                                <option value="KUNDRESKONTRA">Kundreskontra</option>
-                                <option value="LÖNEHANTERING">Lönehantering</option>
-                                <option value="LEVERANTÖRSRESKONTRA">Leverantörsreskontra</option>
-                                <option value="LÖPANDE BOKFÖRING">Löpande bokföring</option>
-                                <option value="MOMS">Moms</option>
-                                <option value="ÅRSREDOVISNING">Årsredovisning</option>
-                                <option value="RÅDGIVNING">Rådgivning</option>
-                                <option value="UPPRÄTTA KONTROLLBALANSRÄKNING">Kontrollbalansräkning</option>
-                            </select>
-                        </div>
+
                         <div class="form-group">
                             <label for="risk-description">Beskrivning av riskfaktor *</label>
                             <textarea id="risk-description" name="risk-description" rows="4" required></textarea>
@@ -284,23 +191,7 @@
                             <label for="edit-byra-id">Byrå ID</label>
                             <input type="text" id="edit-byra-id" name="byra-id">
                         </div>
-                        <div class="form-group">
-                            <label for="edit-tjansttyp">Tjänsttyp *</label>
-                            <select id="edit-tjansttyp" name="tjansttyp" required>
-                                <option value="">Välj tjänsttyp</option>
-                                <option value="AVSTÄMNING">Avstämning</option>
-                                <option value="BOKSLUT">Bokslut</option>
-                                <option value="DEKLARATION">Deklaration</option>
-                                <option value="KUNDRESKONTRA">Kundreskontra</option>
-                                <option value="LÖNEHANTERING">Lönehantering</option>
-                                <option value="LEVERANTÖRSRESKONTRA">Leverantörsreskontra</option>
-                                <option value="LÖPANDE BOKFÖRING">Löpande bokföring</option>
-                                <option value="MOMS">Moms</option>
-                                <option value="ÅRSREDOVISNING">Årsredovisning</option>
-                                <option value="RÅDGIVNING">Rådgivning</option>
-                                <option value="UPPRÄTTA KONTROLLBALANSRÄKNING">Kontrollbalansräkning</option>
-                            </select>
-                        </div>
+
                         <div class="form-group">
                             <label for="edit-risk-description">Beskrivning av riskfaktor *</label>
                             <textarea id="edit-risk-description" name="risk-description" rows="4" required></textarea>
@@ -341,7 +232,10 @@
     </footer>
 
     <!-- Load scripts -->
+    <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script src="app.js?v=1.1"></script>
     <script src="js/riskbedomning-byra.js"></script>
 </body>
 </html>

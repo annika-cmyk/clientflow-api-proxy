@@ -11,60 +11,9 @@
 
 
     <div class="app-container">
-        <!-- Sidebar -->
+        <!-- Sidebar will be loaded dynamically -->
         <div class="sidebar-container">
-            <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>ClientFlow</h2>
-                <p>Kundhantering & Riskbedömning</p>
-            </div>
-            
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <h3>Verktyg för riskbedömning</h3>
-                    <ul>
-                        <li data-page="riskbedomning-byra">
-                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
-                        </li>
-                        <li data-page="ovriga-riskfaktorer">
-                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
-                        </li>
-                        <li data-page="allman-riskbedomning">
-                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
-                        </li>
-                    </ul>
-                </div>
-                
-                <div class="nav-section">
-                    <h3>Dokument</h3>
-                    <ul>
-                        <li data-page="statistik-riskbedomning">
-                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
-                        </li>
-                        <li data-page="byra-anvandare">
-                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
-                        </li>
-                    </ul>
-                </div>
-                
-                <div class="nav-section">
-                    <ul>
-                        <li data-page="index" class="nav-item-lead">
-                            <a href="index.html">Nytt Lead</a>
-                        </li>
-                        <li data-page="kundkort" class="nav-item-klienter">
-                            <a href="kundkort.html">Alla Klienter</a>
-                        </li>
-                        <li data-page="avvikelser" class="active">
-                            <a href="avvikelser.html">Avvikelser</a>
-                        </li>
-                        <li data-page="registrera-utbildning">
-                            <a href="registrera-utbildning.html">Registrera utbildning</a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-        </aside>
+            <!-- Sidebar content will be loaded here -->
         </div>
 
         <!-- Main Content -->
@@ -339,7 +288,9 @@
     </footer>
 
     <!-- Load navigation module first -->
+    <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
     <!-- Then load the main app -->
     <script src="app.js"></script>
 </body>

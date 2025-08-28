@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug User Data</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Debug User Data</h1>
+    
+    <div class="debug-section">
+        <h2>1. Test User Data Loading</h2>
+        <button onclick="testUserData()">Ladda användardata</button>
+        <div id="user-data-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. Test Risk Data Loading</h2>
+        <button onclick="testRiskData()">Ladda riskdata</button>
+        <div id="risk-data-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>3. Test Role-Based Filtering</h2>
+        <button onclick="testFiltering()">Testa filtrering</button>
+        <div id="filtering-result"></div>
+    </div>
+
+    <script>
+        let userData = null;
+        let riskData = null;
+
+        async function testUserData() {
+            const resultDiv = document.getElementById('user-data-result');
+            resultDiv.innerHTML = '<p>Laddar användardata...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    userData = data.user;
+                    
+                    // Extract byrå IDs
+                    let userByraIds = [];
+                    
+                    console.log('Raw user data:', userData);
+                    
+                    // Method 1: Check byraIds array
+                    if (userData.byraIds && Array.isArray(userData.byraIds)) {
+                        userByraIds = userData.byraIds.map(id => id.toString());
+                        console.log('Found byrå IDs from byraIds array:', userByraIds);
+                    }
+                    // Method 2: Check byraId field
+                    else if (userData.byraId) {
+                        userByraIds = [userData.byraId.toString()];
+                        console.log('Found byrå ID from byraId field:', userByraIds);
+                    }
+                    // Method 3: Check byra field (string)
+                    else if (userData.byra) {
+                        const match = userData.byra.match(/Byrå\s+(\d+)/);
+                        if (match) {
+                            userByraIds = [match[1]];
+                            console.log('Found byrå ID from byra field:', userByraIds);
+                        }
+                    }
+                    // Method 4: Check byra field (object)
+                    else if (userData.byra && typeof userData.byra === 'object') {
+                        if (userData.byra.id) {
+                            userByraIds = [userData.byra.id.toString()];
+                            console.log('Found byrå ID from byra object:', userByraIds);
+                        } else if (userData.byra.name) {
+                            const match = userData.byra.name.match(/Byrå\s+(\d+)/);
+                            if (match) {
+                                userByraIds = [match[1]];
+                                console.log('Found byrå ID from byra object name:', userByraIds);
+                            }
+                        }
+                    }
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <h3>✅ Användardata laddad</h3>
+                            <p><strong>Namn:</strong> ${userData.name}</p>
+                            <p><strong>Roll:</strong> ${userData.role}</p>
+                            <p><strong>Byrå IDs:</strong> ${userByraIds.length > 0 ? userByraIds.join(', ') : 'Inga hittade'}</p>
+                            <p><strong>Byrå fält:</strong> ${JSON.stringify(userData.byra)}</p>
+                            <details>
+                                <summary>Full användardata</summary>
+                                <pre>${JSON.stringify(userData, null, 2)}</pre>
+                            </details>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Fel vid laddning av användardata</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function testRiskData() {
+            const resultDiv = document.getElementById('risk-data-result');
+            resultDiv.innerHTML = '<p>Laddar riskdata...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/risk-assessments', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    riskData = data.records || [];
+                    
+                    // Get unique byrå IDs
+                    const uniqueByraIds = [...new Set(riskData.map(risk => risk.fields['Byrå ID']).filter(id => id))];
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            <h3>✅ Riskdata laddad</h3>
+                            <p><strong>Antal risker:</strong> ${riskData.length}</p>
+                            <p><strong>Unika byrå IDs:</strong> ${uniqueByraIds.sort((a, b) => a - b).join(', ')}</p>
+                            <details>
+                                <summary>Första 3 riskerna</summary>
+                                <pre>${JSON.stringify(riskData.slice(0, 3), null, 2)}</pre>
+                            </details>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Fel vid laddning av riskdata</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function testFiltering() {
+            const resultDiv = document.getElementById('filtering-result');
+            
+            if (!userData || !riskData) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Saknar data</h3>
+                        <p>Ladda först användardata och riskdata.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Extract user byrå IDs (same logic as above)
+            let userByraIds = [];
+            
+            if (userData.byraIds && Array.isArray(userData.byraIds)) {
+                userByraIds = userData.byraIds.map(id => id.toString());
+            } else if (userData.byraId) {
+                userByraIds = [userData.byraId.toString()];
+            } else if (userData.byra) {
+                const match = userData.byra.match(/Byrå\s+(\d+)/);
+                if (match) {
+                    userByraIds = [match[1]];
+                }
+            } else if (userData.byra && typeof userData.byra === 'object') {
+                if (userData.byra.id) {
+                    userByraIds = [userData.byra.id.toString()];
+                } else if (userData.byra.name) {
+                    const match = userData.byra.name.match(/Byrå\s+(\d+)/);
+                    if (match) {
+                        userByraIds = [match[1]];
+                    }
+                }
+            }
+            
+            // Apply role-based filtering
+            let filteredRisks = [];
+            
+            if (userData.role !== 'ClientFlowAdmin') {
+                // For non-admin users, only show risks from their byrå
+                if (userByraIds.length === 0) {
+                    filteredRisks = [];
+                } else {
+                    filteredRisks = riskData.filter(risk => {
+                        const riskByraId = risk.fields['Byrå ID']?.toString();
+                        return userByraIds.includes(riskByraId);
+                    });
+                }
+            } else {
+                // For admin users, show all risks
+                filteredRisks = riskData;
+            }
+            
+            resultDiv.innerHTML = `
+                <div class="success">
+                    <h3>✅ Filtrering testad</h3>
+                    <p><strong>Användarroll:</strong> ${userData.role}</p>
+                    <p><strong>Användarens byrå IDs:</strong> ${userByraIds.length > 0 ? userByraIds.join(', ') : 'Inga'}</p>
+                    <p><strong>Totalt antal risker:</strong> ${riskData.length}</p>
+                    <p><strong>Filtrerade risker:</strong> ${filteredRisks.length}</p>
+                    <p><strong>Förväntat resultat:</strong> ${userData.role === 'ClientFlowAdmin' ? 'Alla risker' : 'Endast risker från användarens byrå'}</p>
+                    ${filteredRisks.length > 0 ? `
+                        <details>
+                            <summary>Filtrerade risker (första 5)</summary>
+                            <pre>${JSON.stringify(filteredRisks.slice(0, 5).map(r => ({
+                                task: r.fields['Task Name'],
+                                byraId: r.fields['Byrå ID'],
+                                riskLevel: r.fields['Riskbedömning']
+                            })), null, 2)}</pre>
+                        </details>
+                    ` : ''}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Byrå 49 - Alla Data</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+        .warning { color: orange; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; max-height: 400px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .data-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        .data-table th, .data-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .data-table th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug Byrå 49 - Alla Data</h1>
+    
+    <div class="debug-section">
+        <h2>1. Risker kopplad till tjänster (Byrå 49)</h2>
+        <button onclick="loadRiskAssessments()">Ladda riskbedömningar</button>
+        <div id="risk-assessments-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. Alla Airtable-tabeller</h2>
+        <button onclick="listAllTables()">Lista alla tabeller</button>
+        <div id="tables-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>3. Sök efter "tjänster" eller "services"</h2>
+        <button onclick="searchForServices()">Sök efter tjänster</button>
+        <div id="services-result"></div>
+    </div>
+
+    <script>
+        async function loadRiskAssessments() {
+            const resultDiv = document.getElementById('risk-assessments-result');
+            resultDiv.innerHTML = '<p>Laddar riskbedömningar...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/risk-assessments', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const risks = data.records || [];
+                    
+                    // Hitta risker för Byrå 49
+                    const byra49Risks = risks.filter(risk => {
+                        const byraId = risk.fields['Byrå ID'];
+                        return byraId && byraId.toString() === '49';
+                    });
+                    
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Riskbedömningar laddade (${risks.length} totalt)</p>
+                        <p><strong>Pagination info:</strong> ${data.pagesFetched || 'N/A'} sidor, ${data.totalRecords || 'N/A'} totala poster</p>
+                        <h3>Risker för Byrå 49 (${byra49Risks.length} st):</h3>
+                        ${byra49Risks.length > 0 ? 
+                            `<table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Task Name</th>
+                                        <th>Riskbedömning</th>
+                                        <th>Aktuell</th>
+                                        <th>Beskrivning</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${byra49Risks.map(risk => `
+                                        <tr>
+                                            <td>${risk.fields['Task Name'] || 'Saknas'}</td>
+                                            <td>${risk.fields['Riskbedömning'] || 'Saknas'}</td>
+                                            <td>${risk.fields['Aktuell'] ? 'Ja' : 'Nej'}</td>
+                                            <td>${(risk.fields['Beskrivning av riskfaktor'] || '').substring(0, 100)}...</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>` :
+                            '<p class="warning">⚠️ Inga risker hittades för Byrå 49</p>'
+                        }
+                        <h3>Alla unika byrå-ID:n i riskdata:</h3>
+                        <p>${[...new Set(risks.map(r => r.fields['Byrå ID']).filter(id => id))].sort((a,b) => a-b).join(', ')}</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p class="error">❌ HTTP ${response.status}: ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Fel: ${error.message}</p>`;
+            }
+        }
+        
+        async function listAllTables() {
+            const resultDiv = document.getElementById('tables-result');
+            resultDiv.innerHTML = '<p>Laddar tabellista...</p>';
+            
+            try {
+                // Försök hämta alla tillgängliga endpoints
+                const endpoints = [
+                    '/api/risk-assessments',
+                    '/api/users',
+                    '/api/byraer',
+                    '/api/kunddata',
+                    '/api/avvikelser',
+                    '/api/utbildningar',
+                    '/api/statistik'
+                ];
+                
+                let results = '<h3>Testar tillgängliga API-endpoints:</h3>';
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        const response = await fetch(`http://localhost:3001${endpoint}`, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const count = data.records ? data.records.length : data.length || 0;
+                            results += `<p class="success">✅ ${endpoint}: ${count} poster</p>`;
+                            
+                            // Om det finns data, visa första posten som exempel
+                            if (data.records && data.records.length > 0) {
+                                const firstRecord = data.records[0];
+                                if (firstRecord.fields && firstRecord.fields['Byrå ID']) {
+                                    const byra49Count = data.records.filter(r => 
+                                        r.fields['Byrå ID'] && r.fields['Byrå ID'].toString() === '49'
+                                    ).length;
+                                    results += `<p>  - Byrå 49: ${byra49Count} poster</p>`;
+                                }
+                            }
+                        } else {
+                            results += `<p class="error">❌ ${endpoint}: HTTP ${response.status}</p>`;
+                        }
+                    } catch (error) {
+                        results += `<p class="error">❌ ${endpoint}: ${error.message}</p>`;
+                    }
+                }
+                
+                resultDiv.innerHTML = results;
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Fel: ${error.message}</p>`;
+            }
+        }
+        
+        async function searchForServices() {
+            const resultDiv = document.getElementById('services-result');
+            resultDiv.innerHTML = '<p>Söker efter tjänster...</p>';
+            
+            try {
+                // Testa olika möjliga tjänste-tabeller
+                const serviceEndpoints = [
+                    '/api/services',
+                    '/api/tjanster',
+                    '/api/risk-assessments',
+                    '/api/kunddata'
+                ];
+                
+                let results = '<h3>Söker efter tjänster i olika tabeller:</h3>';
+                
+                for (const endpoint of serviceEndpoints) {
+                    try {
+                        const response = await fetch(`http://localhost:3001${endpoint}`, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const records = data.records || [];
+                            
+                            // Sök efter poster som kan vara tjänster
+                            const serviceKeywords = ['tjänst', 'service', 'uppgift', 'task', 'bokföring', 'redovisning', 'moms', 'lön'];
+                            const potentialServices = records.filter(record => {
+                                const fields = record.fields;
+                                const allText = JSON.stringify(fields).toLowerCase();
+                                return serviceKeywords.some(keyword => allText.includes(keyword));
+                            });
+                            
+                            if (potentialServices.length > 0) {
+                                results += `<p class="success">✅ ${endpoint}: ${potentialServices.length} potentiella tjänster</p>`;
+                                
+                                // Visa exempel på tjänster
+                                potentialServices.slice(0, 3).forEach(service => {
+                                    const taskName = service.fields['Task Name'] || service.fields['Namn'] || service.fields['Tjänst'] || 'Okänt';
+                                    const byraId = service.fields['Byrå ID'];
+                                    results += `<p>  - ${taskName} (Byrå: ${byraId || 'Saknas'})</p>`;
+                                });
+                            } else {
+                                results += `<p>ℹ️ ${endpoint}: ${records.length} poster (inga tjänster hittade)</p>`;
+                            }
+                        } else {
+                            results += `<p class="error">❌ ${endpoint}: HTTP ${response.status}</p>`;
+                        }
+                    } catch (error) {
+                        results += `<p class="error">❌ ${endpoint}: ${error.message}</p>`;
+                    }
+                }
+                
+                resultDiv.innerHTML = results;
+            } catch (error) {
+                resultDiv.innerHTML = `<p class="error">❌ Fel: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

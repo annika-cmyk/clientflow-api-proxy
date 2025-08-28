@@ -14,8 +14,10 @@ class ClientFlowApp {
         
         // Then initialize other components
         this.bindEvents();
-        this.loadRecentSearches();
         this.checkSystemStatus();
+        
+        // Apply role-based UI restrictions
+        this.applyRoleBasedUI();
     }
 
     initNavigation() {
@@ -60,6 +62,74 @@ class ClientFlowApp {
         if (orgNumberInput) {
             orgNumberInput.addEventListener('input', (e) => this.validateOrgNumber(e.target));
             orgNumberInput.addEventListener('blur', (e) => this.validateOrgNumber(e.target));
+        }
+    }
+
+    async applyRoleBasedUI() {
+        try {
+            // Check if user is logged in
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                console.log('No auth token found - hiding system status for non-logged in users');
+                this.hideSystemStatus();
+                return;
+            }
+
+            // Get user data from localStorage or fetch from server
+            let userData = localStorage.getItem('userData');
+            if (userData) {
+                userData = JSON.parse(userData);
+            } else {
+                // Fetch user data from server
+                const response = await fetch(`${this.baseUrl}/api/auth/me`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    userData = data.user;
+                    // Store in localStorage for future use
+                    localStorage.setItem('userData', JSON.stringify(userData));
+                } else {
+                    console.log('Could not fetch user data - hiding system status');
+                    this.hideSystemStatus();
+                    return;
+                }
+            }
+
+            console.log('User role:', userData.role);
+
+            // Only show system status for ClientFlowAdmin users
+            if (userData.role !== 'ClientFlowAdmin') {
+                console.log('User is not ClientFlowAdmin - hiding system status');
+                this.hideSystemStatus();
+            } else {
+                console.log('User is ClientFlowAdmin - showing system status');
+                this.showSystemStatus();
+            }
+
+        } catch (error) {
+            console.error('Error applying role-based UI:', error);
+            // Hide system status on error to be safe
+            this.hideSystemStatus();
+        }
+    }
+
+    hideSystemStatus() {
+        const statusSection = document.querySelector('.status-section');
+        if (statusSection) {
+            statusSection.style.display = 'none';
+        }
+    }
+
+    showSystemStatus() {
+        const statusSection = document.querySelector('.status-section');
+        if (statusSection) {
+            statusSection.style.display = 'block';
         }
     }
 
@@ -520,8 +590,6 @@ class ClientFlowApp {
 
             if (response.ok) {
                 this.showMessage('Företagsdata sparad till Airtable!', 'success');
-                // Update recent searches
-                this.loadRecentSearches();
             } else {
                 throw new Error('Failed to save to Airtable');
             }
@@ -607,32 +675,9 @@ class ClientFlowApp {
         }
         
         localStorage.setItem('recentSearches', JSON.stringify(filteredSearches));
-        this.loadRecentSearches();
     }
 
-    loadRecentSearches() {
-        const recentSearchesList = document.getElementById('recent-searches-list');
-        if (!recentSearchesList) return;
 
-        const recentSearches = JSON.parse(localStorage.getItem('recentSearches') || '[]');
-        
-        if (recentSearches.length === 0) {
-            recentSearchesList.innerHTML = '<p class="no-data">Inga sökningar än. Börja med att söka efter ett företag ovan.</p>';
-            return;
-        }
-
-        const html = recentSearches.map(search => `
-            <div class="recent-search-item">
-                <div class="recent-search-info">
-                    <strong>${search.companyName}</strong>
-                    <span class="org-number">${search.orgNumber}</span>
-                </div>
-                <small>${new Date(search.timestamp).toLocaleDateString('sv-SE')}</small>
-            </div>
-        `).join('');
-
-        recentSearchesList.innerHTML = html;
-    }
 
     showMessage(message, type = 'info') {
         // Create message element

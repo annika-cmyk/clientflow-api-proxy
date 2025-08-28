@@ -4,8 +4,8 @@ Write-Host "Environment: PRODUCTION" -ForegroundColor Yellow
 Write-Host ""
 
 $env:BOLAGSVERKET_ENVIRONMENT = "prod"
-$env:BOLAGSVERKET_CLIENT_ID = "ivtjfo81tY1J0H9aSdALV8pV6XIa"
-$env:BOLAGSVERKET_CLIENT_SECRET = "JetRMoVWInJPuyJwfQsEtpZRW9Aa"
+$env:BOLAGSVERKET_CLIENT_ID = "O_MKFi5uAzNN1VPjeHyvtnE7G4Ea"
+$env:BOLAGSVERKET_CLIENT_SECRET = "uTH9r9yroLu6jpPby_05fr3icWEa"
 $env:PORT = "3001"
 
 node index.js

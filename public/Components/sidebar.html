@@ -1,7 +1,9 @@
 <!-- Sidebar Navigation Component -->
 <aside class="sidebar">
     <div class="sidebar-header">
-        <h2><i class="fas fa-chart-line"></i> ClientFlow</h2>
+        <div class="sidebar-logo-container">
+            <img src="Components/rekt logga vit text.webp" alt="ClientFlow" class="sidebar-logo">
+        </div>
         <p>Kundhantering & Riskbedömning</p>
     </div>
     
@@ -78,4 +80,22 @@
             </ul>
         </div>
     </nav>
+    
+    <!-- User Info Section -->
+    <div class="user-info-section">
+        <div class="user-info">
+            <div class="user-avatar">
+                <img id="company-logo" src="" alt="Företagslogo" style="display: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                <i id="default-avatar" class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-details">
+                <span class="user-name">Laddar...</span>
+                <span class="user-role">Laddar...</span>
+            </div>
+        </div>
+        <button class="logout-btn" onclick="testLogout()" style="display: flex !important;">
+            <i class="fas fa-sign-out-alt"></i>
+            Logga ut
+        </button>
+    </div>
 </aside>

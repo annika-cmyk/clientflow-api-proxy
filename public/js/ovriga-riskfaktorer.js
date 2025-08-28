@@ -1,8 +1,8 @@
-// Risk Assessment Management System
-class RiskAssessmentManager {
+// Risk Factors Management System
+class RiskFactorsManager {
     constructor() {
         this.airtableBaseId = 'appPF8F7VvO5XYB50';
-        this.airtableTableName = 'Risker kopplad till tjänster';
+        this.airtableTableName = 'Risker kopplade till kunden';
         this.airtableApiKey = null; // Will be set from environment
         this.risks = [];
         this.filteredRisks = [];
@@ -17,7 +17,7 @@ class RiskAssessmentManager {
         await this.loadUserData();
         this.setupEventListeners();
         this.setupRoleBasedUI();
-        await this.loadRiskAssessments();
+        await this.loadRiskFactors();
         
         // Apply initial filtering based on user role
         this.applyFilters();
@@ -26,7 +26,7 @@ class RiskAssessmentManager {
     async loadAirtableConfig() {
         try {
             // Try to get config from environment or use default
-                            const response = await fetch('http://localhost:3001/api/airtable/config');
+            const response = await fetch('http://localhost:3001/api/airtable/config');
             if (response.ok) {
                 const config = await response.json();
                 this.airtableApiKey = config.apiKey;
@@ -159,7 +159,7 @@ class RiskAssessmentManager {
                 <div class="access-info" style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px;">
                     <i class="fas fa-exclamation-triangle"></i>
                     <strong>Inloggning krävs</strong>
-                    <p>Du måste logga in för att se riskbedömningar. 
+                    <p>Du måste logga in för att se riskfaktorer. 
                     <a href="/login.html" style="color: #856404; text-decoration: underline;">Klicka här för att logga in</a></p>
                 </div>
             `;
@@ -187,7 +187,7 @@ class RiskAssessmentManager {
             infoDiv.innerHTML = `
                 <div class="access-info">
                     <span class="user-byra-info">${byraInfo}</span>
-                    <span class="access-note">Visar endast risker för din byrå</span>
+                    <span class="access-note">Visar endast riskfaktorer för din byrå</span>
                 </div>
             `;
             header.appendChild(infoDiv);
@@ -195,8 +195,6 @@ class RiskAssessmentManager {
             console.log('Added user access info:', byraInfo);
         }
     }
-
-
 
     setupEventListeners() {
         // Filter controls
@@ -223,19 +221,19 @@ class RiskAssessmentManager {
         });
     }
 
-    async loadRiskAssessments() {
+    async loadRiskFactors() {
         const riskList = document.getElementById('risk-list');
         
         try {
             riskList.innerHTML = `
                 <div class="loading-spinner">
                     <i class="fas fa-spinner fa-spin"></i>
-                    <p>Laddar riskbedömningar...</p>
+                    <p>Laddar riskfaktorer...</p>
                 </div>
             `;
 
             // Load from Airtable via our API
-            const response = await fetch('http://localhost:3001/api/risk-assessments', {
+            const response = await fetch('http://localhost:3001/api/risk-factors', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
@@ -256,13 +254,13 @@ class RiskAssessmentManager {
             }
 
         } catch (error) {
-            console.error('Error loading risk assessments:', error);
+            console.error('Error loading risk factors:', error);
             riskList.innerHTML = `
                 <div class="error-message">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <h3>Fel vid laddning av riskbedömningar</h3>
+                    <h3>Fel vid laddning av riskfaktorer</h3>
                     <p>${error.message}</p>
-                    <button class="btn btn-primary" onclick="riskManager.loadRiskAssessments()">
+                    <button class="btn btn-primary" onclick="riskManager.loadRiskFactors()">
                         <i class="fas fa-refresh"></i>
                         Försök igen
                     </button>
@@ -306,24 +304,45 @@ class RiskAssessmentManager {
             riskList.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-clipboard-list"></i>
-                    <h3>Inga riskbedömningar hittades</h3>
-                    <p>Prova att justera dina filter eller lägg till en ny riskbedömning.</p>
+                    <h3>Inga riskfaktorer hittades</h3>
+                    <p>Prova att justera dina filter eller lägg till en ny riskfaktor.</p>
                     <button class="btn btn-primary" onclick="this.openAddModal()">
                         <i class="fas fa-plus"></i>
-                        Lägg till riskbedömning
+                        Lägg till riskfaktor
                     </button>
                 </div>
             `;
             return;
         }
 
-        const riskItems = this.filteredRisks.map(risk => this.createRiskItem(risk)).join('');
-        
-        riskList.innerHTML = `
-            <div class="risk-items">
-                ${riskItems}
-            </div>
-        `;
+        // Group risks by "Typ av riskfaktor"
+        const groupedRisks = {};
+        this.filteredRisks.forEach(risk => {
+            const riskType = risk.fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+            if (!groupedRisks[riskType]) {
+                groupedRisks[riskType] = [];
+            }
+            groupedRisks[riskType].push(risk);
+        });
+
+        // Create HTML for each group
+        const groupHTML = Object.keys(groupedRisks).map(riskType => {
+            const risksInGroup = groupedRisks[riskType];
+            const riskItems = risksInGroup.map(risk => this.createRiskItem(risk)).join('');
+            
+            return `
+                <div class="risk-group">
+                    <div class="risk-group-header">
+                        <h3>${riskType}</h3>
+                    </div>
+                    <div class="risk-items">
+                        ${riskItems}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        riskList.innerHTML = groupHTML;
 
         // Add event listeners to buttons
         this.setupRiskItemEventListeners();
@@ -332,7 +351,8 @@ class RiskAssessmentManager {
     createRiskItem(risk) {
         const riskLevelClass = this.getRiskLevelClass(risk.fields['Riskbedömning'] || 'Medel');
         const isChecked = risk.fields['Aktuell'] === true;
-        const taskName = risk.fields['Task Name'] || 'Namnlös uppgift';
+        const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
+        const riskFactor = risk.fields['Riskfaktor'] || '';
         const riskLevel = risk.fields['Riskbedömning'] || 'Medel';
         const approvalDate = risk.fields['Riskbedömning godkänd datum'] || '';
         
@@ -344,7 +364,7 @@ class RiskAssessmentManager {
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${taskName}</h4>
+                            <h4 class="risk-task-name">${riskFactor}</h4>
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}">${riskLevel}</span>
                                 ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
@@ -360,16 +380,23 @@ class RiskAssessmentManager {
                 
                 <div class="risk-item-content">
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-exclamation-triangle"></i> Beskrivning av riskfaktor</h5>
+                        <h5><i class="fas fa-exclamation-triangle"></i> Riskfaktor</h5>
                         <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Beskrivning av riskfaktor'] || '')}
+                            ${this.formatDescription(riskFactor)}
+                        </p>
+                    </div>
+                    
+                    <div class="risk-content-section">
+                        <h5><i class="fas fa-info-circle"></i> Beskrivning</h5>
+                        <p class="risk-content-text">
+                            ${this.formatDescription(risk.fields['Beskrivning'] || '')}
                         </p>
                     </div>
                     
                     <div class="risk-content-section">
                         <h5><i class="fas fa-tools"></i> Åtgärd</h5>
                         <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Åtgjärd'] || '')}
+                            ${this.formatDescription(risk.fields['Åtgärd'] || '')}
                         </p>
                     </div>
                     
@@ -401,7 +428,7 @@ class RiskAssessmentManager {
 
     getRiskLevelClass(level) {
         switch (level) {
-            case 'Hög': return 'risk-high';
+            case 'Förhöjd': return 'risk-high';
             case 'Medel': return 'risk-medium';
             case 'Låg': return 'risk-low';
             default: return 'risk-medium';
@@ -485,7 +512,7 @@ class RiskAssessmentManager {
             const fields = risk.fields;
             const riskByraId = fields['Byrå ID']?.toString();
             
-            console.log('Checking risk:', fields['Task Name'], 'with byrå ID:', riskByraId);
+            console.log('Checking risk:', fields['Typ av riskfaktor'], 'with byrå ID:', riskByraId);
             
             // Role-based byrå filtering
             if (this.userData && this.userData.role !== 'ClientFlowAdmin') {
@@ -496,22 +523,17 @@ class RiskAssessmentManager {
                 }
                 
                 if (!this.userByraIds.includes(riskByraId)) {
-                    // console.log('Filtered out risk - not in user\'s byrå (user has:', this.userByraIds, ', risk has:', riskByraId, ')');
                     return false;
                 }
-                // console.log('Risk included - matches user\'s byrå');
             } else {
                 // For admin users, apply manual byrå filter if selected
                 if (byraFilter && riskByraId !== byraFilter) {
-                    // console.log('Filtered out risk - doesn\'t match selected byrå');
                     return false;
                 }
-                // console.log('Risk included - admin user or matches selected byrå');
             }
             
             // Risk level filter
             if (riskFilter && fields['Riskbedömning'] !== riskFilter) {
-                // console.log('Filtered out risk - doesn\'t match risk level filter');
                 return false;
             }
             
@@ -520,12 +542,10 @@ class RiskAssessmentManager {
                 const isChecked = fields['Aktuell'] === true;
                 const status = isChecked ? 'checked' : 'unchecked';
                 if (status !== statusFilter) {
-                    // console.log('Filtered out risk - doesn\'t match status filter');
                     return false;
                 }
             }
             
-            // console.log('Risk included - passed all filters');
             return true;
         });
 
@@ -556,7 +576,7 @@ class RiskAssessmentManager {
     updateStats() {
         const totalCount = this.filteredRisks.length;
         const highRiskCount = this.filteredRisks.filter(risk => 
-            risk.fields['Riskbedömning'] === 'Hög'
+            risk.fields['Riskbedömning'] === 'Förhöjd'
         ).length;
         const completedCount = this.filteredRisks.filter(risk => 
             risk.fields['Aktuell'] === true
@@ -583,23 +603,15 @@ class RiskAssessmentManager {
         
         // Populate form fields
         document.getElementById('edit-record-id').value = recordId;
-        document.getElementById('edit-task-name').value = fields['Task Name'] || '';
+        document.getElementById('edit-risk-type').value = fields['Typ av riskfaktor'] || '';
         document.getElementById('edit-byra-id').value = fields['Byrå ID'] || '';
         
-        document.getElementById('edit-risk-description').value = fields['Beskrivning av riskfaktor'] || '';
-        document.getElementById('edit-risk-level').value = fields['Riskbedömning'] || '';
-        document.getElementById('edit-action').value = fields['Åtgjärd'] || '';
+        document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
+        document.getElementById('edit-description').value = fields['Beskrivning'] || '';
+        document.getElementById('edit-risk-assessment').value = fields['Riskbedömning'] || '';
+        document.getElementById('edit-action').value = fields['Åtgärd'] || '';
 
         document.getElementById('edit-risk-modal').style.display = 'flex';
-    }
-
-    closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-        
-        // Clear forms
-        if (modalId === 'add-risk-modal') {
-            document.getElementById('add-risk-form').reset();
-        }
     }
 
     async handleAddRisk(event) {
@@ -607,16 +619,17 @@ class RiskAssessmentManager {
         
         const formData = new FormData(event.target);
         const riskData = {
-            'Task Name': formData.get('task-name'),
+            'Typ av riskfaktor': formData.get('risk-type'),
             'Byrå ID': formData.get('byra-id'),
-            'Beskrivning av riskfaktor': formData.get('risk-description'),
-            'Riskbedömning': formData.get('risk-level'),
-            'Åtgjärd': formData.get('action'),
+            'Riskfaktor': formData.get('risk-factor'),
+            'Beskrivning': formData.get('description'),
+            'Riskbedömning': formData.get('risk-assessment'),
+            'Åtgärd': formData.get('action'),
             'Aktuell': true
         };
 
         try {
-            const response = await fetch('http://localhost:3001/api/risk-assessments', {
+            const response = await fetch('http://localhost:3001/api/risk-factors', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -626,14 +639,14 @@ class RiskAssessmentManager {
 
             if (response.ok) {
                 this.closeModal('add-risk-modal');
-                await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning tillagd framgångsrikt', 'success');
+                await this.loadRiskFactors();
+                this.showNotification('Riskfaktor tillagd framgångsrikt', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error adding risk assessment:', error);
-            this.showNotification('Fel vid tillägg av riskbedömning', 'error');
+            console.error('Error adding risk factor:', error);
+            this.showNotification('Fel vid tillägg av riskfaktor', 'error');
         }
     }
 
@@ -643,15 +656,16 @@ class RiskAssessmentManager {
         const formData = new FormData(event.target);
         const recordId = formData.get('record-id');
         const riskData = {
-            'Task Name': formData.get('task-name'),
+            'Typ av riskfaktor': formData.get('risk-type'),
             'Byrå ID': formData.get('byra-id'),
-            'Beskrivning av riskfaktor': formData.get('risk-description'),
-            'Riskbedömning': formData.get('risk-level'),
-            'Åtgjärd': formData.get('action')
+            'Riskfaktor': formData.get('risk-factor'),
+            'Beskrivning': formData.get('description'),
+            'Riskbedömning': formData.get('risk-assessment'),
+            'Åtgärd': formData.get('action')
         };
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -661,14 +675,14 @@ class RiskAssessmentManager {
 
             if (response.ok) {
                 this.closeModal('edit-risk-modal');
-                await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning uppdaterad framgångsrikt', 'success');
+                await this.loadRiskFactors();
+                this.showNotification('Riskfaktor uppdaterad framgångsrikt', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error updating risk assessment:', error);
-            this.showNotification('Fel vid uppdatering av riskbedömning', 'error');
+            console.error('Error updating risk factor:', error);
+            this.showNotification('Fel vid uppdatering av riskfaktor', 'error');
         }
     }
 
@@ -680,7 +694,7 @@ class RiskAssessmentManager {
         const newStatus = !currentStatus;
         
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -691,8 +705,8 @@ class RiskAssessmentManager {
             });
 
             if (response.ok) {
-                await this.loadRiskAssessments();
-                const message = newStatus ? 'Riskbedömning klarmarkerad' : 'Klarmarkering avtagen';
+                await this.loadRiskFactors();
+                const message = newStatus ? 'Riskfaktor klarmarkerad' : 'Klarmarkering avtagen';
                 this.showNotification(message, 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -704,24 +718,24 @@ class RiskAssessmentManager {
     }
 
     async deleteRisk(recordId) {
-        if (!confirm('Är du säker på att du vill ta bort denna riskbedömning?')) {
+        if (!confirm('Är du säker på att du vill ta bort denna riskfaktor?')) {
             return;
         }
 
         try {
-            const response = await fetch(`http://localhost:3001/api/risk-assessments/${recordId}`, {
+            const response = await fetch(`http://localhost:3001/api/risk-factors/${recordId}`, {
                 method: 'DELETE'
             });
 
             if (response.ok) {
-                await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning borttagen', 'success');
+                await this.loadRiskFactors();
+                this.showNotification('Riskfaktor borttagen', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error deleting risk assessment:', error);
-            this.showNotification('Fel vid borttagning av riskbedömning', 'error');
+            console.error('Error deleting risk factor:', error);
+            this.showNotification('Fel vid borttagning av riskfaktor', 'error');
         }
     }
 
@@ -758,5 +772,5 @@ function closeModal(modalId) {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.riskManager = new RiskAssessmentManager();
+    window.riskManager = new RiskFactorsManager();
 });

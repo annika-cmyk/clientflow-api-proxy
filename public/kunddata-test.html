@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KUNDDATA Test - Rollbaserad Filtrering</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="sidebar-container"></div>
+    
+    <div class="main-content">
+        <div class="container">
+            <div class="page-header">
+                <h1><i class="fas fa-users"></i> KUNDDATA Test - Rollbaserad Filtrering</h1>
+                <p>Testa rollbaserad dataåtkomst för KUNDDATA-tabellen</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Användarinformation</h2>
+                </div>
+                <div class="card-body">
+                    <div id="user-info" class="user-info">
+                        <p><i class="fas fa-spinner fa-spin"></i> Laddar användarinformation...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>KUNDDATA - Rollbaserad Filtrering</h2>
+                    <button id="load-data-btn" class="btn btn-primary">
+                        <i class="fas fa-sync"></i> Ladda KUNDDATA
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="data-status" class="data-status">
+                        <p>Klicka på "Ladda KUNDDATA" för att testa rollbaserad filtrering</p>
+                    </div>
+                    
+                    <div id="data-results" class="data-results" style="display: none;">
+                        <div class="results-summary">
+                            <h3>Resultat</h3>
+                            <div id="results-summary-content"></div>
+                        </div>
+                        
+                        <div class="results-details">
+                            <h3>Detaljerad Data</h3>
+                            <div id="results-details-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Test Endpoint (Utveckling)</h2>
+                    <button id="test-endpoint-btn" class="btn btn-secondary">
+                        <i class="fas fa-flask"></i> Testa Endpoint
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="test-results" class="test-results" style="display: none;">
+                        <h3>Test Resultat</h3>
+                        <div id="test-results-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/components.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        class KunddataTest {
+            constructor() {
+                this.baseUrl = 'http://localhost:3001';
+                this.init();
+            }
+
+            init() {
+                this.loadUserInfo();
+                this.bindEvents();
+            }
+
+            bindEvents() {
+                document.getElementById('load-data-btn').addEventListener('click', () => {
+                    this.loadKunddata();
+                });
+
+                document.getElementById('test-endpoint-btn').addEventListener('click', () => {
+                    this.testEndpoint();
+                });
+            }
+
+            async loadUserInfo() {
+                try {
+                    const token = localStorage.getItem('authToken');
+                    if (!token) {
+                        document.getElementById('user-info').innerHTML = 
+                            '<p class="error"><i class="fas fa-exclamation-triangle"></i> Inte inloggad</p>';
+                        return;
+                    }
+
+                    const response = await fetch(`${this.baseUrl}/api/auth/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const user = data.user;
+                        
+                        document.getElementById('user-info').innerHTML = `
+                            <div class="user-details">
+                                <p><strong>Namn:</strong> ${user.name || 'N/A'}</p>
+                                <p><strong>E-post:</strong> ${user.email || 'N/A'}</p>
+                                <p><strong>Roll:</strong> <span class="role-badge role-${user.role?.toLowerCase()}">${user.role || 'N/A'}</span></p>
+                                <p><strong>Byrå:</strong> ${user.byra || 'N/A'}</p>
+                                <p><strong>Byrå ID:</strong> ${user.byraId || 'N/A'}</p>
+                                <p><strong>Användar ID:</strong> ${user.id || 'N/A'}</p>
+                            </div>
+                        `;
+                    } else {
+                        document.getElementById('user-info').innerHTML = 
+                            '<p class="error"><i class="fas fa-exclamation-triangle"></i> Kunde inte hämta användarinformation</p>';
+                    }
+                } catch (error) {
+                    console.error('Error loading user info:', error);
+                    document.getElementById('user-info').innerHTML = 
+                        '<p class="error"><i class="fas fa-exclamation-triangle"></i> Fel vid laddning av användarinformation</p>';
+                }
+            }
+
+            async loadKunddata() {
+                const statusEl = document.getElementById('data-status');
+                const resultsEl = document.getElementById('data-results');
+                
+                statusEl.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Laddar KUNDDATA...</p>';
+                resultsEl.style.display = 'none';
+
+                try {
+                    const token = localStorage.getItem('authToken');
+                    if (!token) {
+                        statusEl.innerHTML = '<p class="error"><i class="fas fa-exclamation-triangle"></i> Inte inloggad</p>';
+                        return;
+                    }
+
+                    const response = await fetch(`${this.baseUrl}/api/kunddata`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.displayResults(data);
+                    } else {
+                        const errorData = await response.json();
+                        statusEl.innerHTML = `<p class="error"><i class="fas fa-exclamation-triangle"></i> ${errorData.message || 'Fel vid laddning av data'}</p>`;
+                    }
+                } catch (error) {
+                    console.error('Error loading KUNDDATA:', error);
+                    statusEl.innerHTML = '<p class="error"><i class="fas fa-exclamation-triangle"></i> Fel vid laddning av data</p>';
+                }
+            }
+
+            async testEndpoint() {
+                const resultsEl = document.getElementById('test-results');
+                const contentEl = document.getElementById('test-results-content');
+                
+                contentEl.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Testar endpoint...</p>';
+                resultsEl.style.display = 'block';
+
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/kunddata/test`);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.displayTestResults(data);
+                    } else {
+                        const errorData = await response.json();
+                        contentEl.innerHTML = `<p class="error"><i class="fas fa-exclamation-triangle"></i> ${errorData.message || 'Fel vid test'}</p>`;
+                    }
+                } catch (error) {
+                    console.error('Error testing endpoint:', error);
+                    contentEl.innerHTML = '<p class="error"><i class="fas fa-exclamation-triangle"></i> Fel vid test</p>';
+                }
+            }
+
+            displayResults(data) {
+                const statusEl = document.getElementById('data-status');
+                const resultsEl = document.getElementById('data-results');
+                const summaryEl = document.getElementById('results-summary-content');
+                const detailsEl = document.getElementById('results-details-content');
+
+                statusEl.innerHTML = `<p class="success"><i class="fas fa-check-circle"></i> Data laddad framgångsrikt</p>`;
+                
+                // Visa sammanfattning
+                summaryEl.innerHTML = `
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <strong>Roll:</strong> <span class="role-badge role-${data.userRole?.toLowerCase()}">${data.userRole}</span>
+                        </div>
+                        <div class="summary-item">
+                            <strong>Antal poster:</strong> ${data.recordCount}
+                        </div>
+                        <div class="summary-item">
+                            <strong>Filtrering:</strong> ${data.filterApplied}
+                        </div>
+                        <div class="summary-item">
+                            <strong>Tid:</strong> ${data.duration}ms
+                        </div>
+                    </div>
+                `;
+
+                // Visa detaljerad data
+                if (data.records && data.records.length > 0) {
+                    const recordsHtml = data.records.map(record => `
+                        <div class="record-item">
+                            <h4>${record.fields.Namn || 'Namnlös'}</h4>
+                            <div class="record-details">
+                                <p><strong>Organisationsnummer:</strong> ${record.fields.Orgnr || 'N/A'}</p>
+                                <p><strong>Byrå ID:</strong> ${record.fields['Byrå ID'] || 'N/A'}</p>
+                                <p><strong>Användare:</strong> ${record.fields.Användare || 'N/A'}</p>
+                                <p><strong>Skapad:</strong> ${new Date(record.createdTime).toLocaleDateString('sv-SE')}</p>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    detailsEl.innerHTML = recordsHtml;
+                } else {
+                    detailsEl.innerHTML = '<p class="no-data">Inga poster hittades för din roll</p>';
+                }
+
+                resultsEl.style.display = 'block';
+            }
+
+            displayTestResults(data) {
+                const contentEl = document.getElementById('test-results-content');
+                
+                if (data.results && data.results.length > 0) {
+                    const resultsHtml = data.results.map(result => `
+                        <div class="test-result-item">
+                            <h4>${result.role}</h4>
+                            <div class="test-result-details">
+                                <p><strong>Status:</strong> ${result.success ? '✅ Framgång' : '❌ Fel'}</p>
+                                <p><strong>Antal poster:</strong> ${result.recordCount || 0}</p>
+                                <p><strong>Filtrering:</strong> ${result.filterApplied}</p>
+                                ${result.error ? `<p><strong>Fel:</strong> ${result.error}</p>` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    contentEl.innerHTML = resultsHtml;
+                } else {
+                    contentEl.innerHTML = '<p class="no-data">Inga testresultat</p>';
+                }
+            }
+        }
+
+        // Starta applikationen när DOM är redo
+        document.addEventListener('DOMContentLoaded', () => {
+            new KunddataTest();
+        });
+    </script>
+
+    <style>
+        .user-info {
+            padding: 1rem;
+            background: var(--muted);
+            border-radius: var(--radius);
+        }
+
+        .user-details p {
+            margin: 0.5rem 0;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .role-clientflowadmin {
+            background: #dc2626;
+            color: white;
+        }
+
+        .role-ledare {
+            background: #2563eb;
+            color: white;
+        }
+
+        .role-anställd {
+            background: #059669;
+            color: white;
+        }
+
+        .data-status {
+            padding: 1rem;
+            background: var(--muted);
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+        }
+
+        .data-results {
+            margin-top: 1rem;
+        }
+
+        .results-summary {
+            margin-bottom: 2rem;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .summary-item {
+            padding: 1rem;
+            background: var(--muted);
+            border-radius: var(--radius);
+        }
+
+        .record-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .record-item h4 {
+            margin: 0 0 0.5rem 0;
+            color: var(--title-text);
+        }
+
+        .record-details p {
+            margin: 0.25rem 0;
+            font-size: 0.875rem;
+        }
+
+        .test-result-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .test-result-item h4 {
+            margin: 0 0 0.5rem 0;
+            color: var(--title-text);
+        }
+
+        .test-result-details p {
+            margin: 0.25rem 0;
+            font-size: 0.875rem;
+        }
+
+        .success {
+            color: var(--success);
+        }
+
+        .error {
+            color: var(--error);
+        }
+
+        .no-data {
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-light);
+        }
+
+        .btn-secondary {
+            background: var(--muted);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+    </style>
+</body>
+</html>

@@ -64,6 +64,17 @@ class NavigationManager {
     setActivePage() {
         console.log('📍 Setting active page:', this.currentPage);
         
+        // Use ComponentLoader if available, otherwise fall back to manual approach
+        if (window.componentLoader) {
+            const sidebarContainer = document.querySelector('.sidebar-container');
+            if (sidebarContainer) {
+                window.componentLoader.updateActivePage(sidebarContainer);
+                console.log('✅ Active page set via ComponentLoader:', this.currentPage);
+                return;
+            }
+        }
+        
+        // Fallback: manual approach
         // Remove all active classes
         const allNavItems = document.querySelectorAll('.nav-item, .sidebar-nav li');
         allNavItems.forEach(item => {
@@ -74,7 +85,7 @@ class NavigationManager {
         const currentNavItem = document.querySelector(`[data-page="${this.currentPage}"]`);
         if (currentNavItem) {
             currentNavItem.classList.add('active');
-            console.log('✅ Active page set:', this.currentPage);
+            console.log('✅ Active page set manually:', this.currentPage);
         } else {
             console.log('⚠️ No nav item found for page:', this.currentPage);
         }
