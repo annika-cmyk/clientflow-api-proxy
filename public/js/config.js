@@ -12,13 +12,13 @@ class APIConfig {
         // Check if we're running on app subdomain (prioritize this)
         if (window.location.hostname === 'app.clientflow.se' || window.location.hostname === 'www.app.clientflow.se') {
             console.log(`🔧 Detected ${window.location.hostname} domain, using Render API`);
-            return 'https://clientflow-api-proxy.onrender.com';
+            return 'https://clientflow-api-proxy-1.onrender.com';
         }
         
         // Check if we're running on Render
         if (window.location.hostname.includes('onrender.com')) {
             console.log('🔧 Detected Render domain, using Render API');
-            return 'https://clientflow-api-proxy.onrender.com';
+            return 'https://clientflow-api-proxy-1.onrender.com';
         }
         
         // Check if we're running locally
@@ -29,7 +29,7 @@ class APIConfig {
         
         // Default fallback
         console.log('🔧 Using default API URL');
-        return 'https://clientflow-api-proxy.onrender.com';
+        return 'https://clientflow-api-proxy-1.onrender.com';
     }
 
     getApiUrl(endpoint = '') {
