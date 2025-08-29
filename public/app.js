@@ -363,7 +363,7 @@ class ClientFlowApp {
         console.log('🏢 Processing organisations:', organisations.length);
         
         // Use the original orgNumber that was searched for
-        const orgNumber = this.lastSearchedOrgNumber || 'N/A';
+        const orgNumber = this.lastSearchedOrgNumber || 'Saknas';
         console.log('🔢 Original orgNumber searched:', this.lastSearchedOrgNumber);
         
         // Collect all organization names from all organisations
@@ -402,7 +402,7 @@ class ClientFlowApp {
             organisationsnummer: orgNumber,
             namn: primaryName,
             allaNamn: allNames,
-            form: primaryOrg?.organisationsform?.klartext || primaryOrg?.juridiskForm?.klartext || 'N/A',
+            form: primaryOrg?.organisationsform?.klartext || primaryOrg?.juridiskForm?.klartext || 'Saknas',
             status: (() => {
                 // Om verksamOrganisation är 'JA', är företaget aktivt
                 if (primaryOrg?.verksamOrganisation?.kod === 'JA') {
@@ -419,15 +419,15 @@ class ClientFlowApp {
                 // Annars är den avregistrerad
                 return 'Avregistrerad';
             })(),
-            registreringsdatum: primaryOrg?.organisationsdatum?.registreringsdatum || 'N/A',
+            registreringsdatum: primaryOrg?.organisationsdatum?.registreringsdatum || 'Saknas',
             registreringsland: primaryOrg?.registreringsland?.klartext || 'Sverige',
             adress: {
-                gatuadress: address.utdelningsadress || 'N/A',
-                postnummer: address.postnummer || 'N/A',
-                postort: address.postort || 'N/A',
-                fullAddress: fullAddress || 'N/A'
+                gatuadress: address.utdelningsadress || 'Saknas',
+                postnummer: address.postnummer || 'Saknas',
+                postort: address.postort || 'Saknas',
+                fullAddress: fullAddress || 'Saknas'
             },
-            verksamhet: primaryOrg?.verksamhetsbeskrivning?.beskrivning || 'N/A',
+            verksamhet: primaryOrg?.verksamhetsbeskrivning?.beskrivning || 'Saknas',
             sniKoder: primaryOrg?.naringsgrenOrganisation?.sni || [],
             aktivtForetag: !primaryOrg?.avregistreradOrganisation,
             // Add more fields as they become available
@@ -463,17 +463,25 @@ class ClientFlowApp {
             return;
         }
 
+        // Helper function to replace N/A with Saknas
+        const formatValue = (value) => {
+            if (!value || value === 'N/A' || value === 'null' || value === 'undefined') {
+                return 'Saknas';
+            }
+            return value;
+        };
+
         // Create HTML for company information with clean, organized structure
         const html = `
             <div class="company-info-clean">
                 <!-- Company Header -->
                 <div class="company-header-section">
-                    <h3 class="company-name">${companyData.namn || 'Namn saknas'}</h3>
+                    <h3 class="company-name">${formatValue(companyData.namn)}</h3>
                     <div class="company-meta">
-                        <span class="org-number">${companyData.organisationsnummer || 'N/A'}</span>
+                        <span class="org-number">${formatValue(companyData.organisationsnummer)}</span>
                         <span class="company-status ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">
                             <i class="fas fa-circle"></i>
-                            ${companyData.status || 'Okänd'}
+                            ${formatValue(companyData.status)}
                         </span>
                     </div>
                 </div>
@@ -483,15 +491,15 @@ class ClientFlowApp {
                     <div class="detail-row">
                         <div class="detail-group">
                             <label>Företagsform</label>
-                            <span>${companyData.form || 'N/A'}</span>
+                            <span>${formatValue(companyData.form)}</span>
                         </div>
                         <div class="detail-group">
                             <label>Registreringsdatum</label>
-                            <span>${companyData.registreringsdatum || 'N/A'}</span>
+                            <span>${formatValue(companyData.registreringsdatum)}</span>
                         </div>
                         <div class="detail-group">
                             <label>Registreringsland</label>
-                            <span>${companyData.registreringsland || 'N/A'}</span>
+                            <span>${formatValue(companyData.registreringsland)}</span>
                         </div>
                     </div>
                 </div>
@@ -511,7 +519,7 @@ class ClientFlowApp {
                                 .filter(sni => sni.klartext && sni.klartext.trim() !== '')
                                 .map(sni => `
                                     <div class="sni-item">
-                                        <span class="sni-code">${sni.kod || 'N/A'}</span>
+                                        <span class="sni-code">${formatValue(sni.kod)}</span>
                                         <span class="sni-text">${sni.klartext}</span>
                                     </div>
                                 `).join('')}
@@ -527,16 +535,16 @@ class ClientFlowApp {
                     <h4>Adress</h4>
                     <div class="address-info">
                         <div class="address-line">
-                            <strong>Gatuadress:</strong> ${companyData.adress?.gatuadress || 'N/A'}
+                            <strong>Gatuadress:</strong> ${formatValue(companyData.adress?.gatuadress)}
                         </div>
                         <div class="address-line">
-                            <strong>Postnummer:</strong> ${companyData.adress?.postnummer || 'N/A'}
+                            <strong>Postnummer:</strong> ${formatValue(companyData.adress?.postnummer)}
                         </div>
                         <div class="address-line">
-                            <strong>Postort:</strong> ${companyData.adress?.postort || 'N/A'}
+                            <strong>Postort:</strong> ${formatValue(companyData.adress?.postort)}
                         </div>
                         <div class="address-line full-address">
-                            <strong>Fullständig adress:</strong> ${companyData.adress?.fullAddress || 'N/A'}
+                            <strong>Fullständig adress:</strong> ${formatValue(companyData.adress?.fullAddress)}
                         </div>
                     </div>
                 </div>
