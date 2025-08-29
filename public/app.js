@@ -858,26 +858,5 @@ window.testNavigation = function(pageName) {
     }
 };
 
-        // Error message event listeners
-        const showErrorDetailsBtn = document.getElementById('show-error-details');
-        const hideErrorDetailsBtn = document.getElementById('hide-error-details');
-        const errorDetails = document.getElementById('error-details');
-        
-        if (showErrorDetailsBtn) {
-            showErrorDetailsBtn.addEventListener('click', () => {
-                errorDetails.style.display = 'block';
-                showErrorDetailsBtn.style.display = 'none';
-                hideErrorDetailsBtn.style.display = 'inline-block';
-            });
-        }
-        
-        if (hideErrorDetailsBtn) {
-            hideErrorDetailsBtn.addEventListener('click', () => {
-                errorDetails.style.display = 'none';
-                showErrorDetailsBtn.style.display = 'inline-block';
-                hideErrorDetailsBtn.style.display = 'none';
-            });
-        }
-
 
 
