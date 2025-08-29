@@ -476,13 +476,15 @@ class ClientFlowApp {
             <div class="company-info-clean">
                 <!-- Company Header -->
                 <div class="company-header-section">
-                    <h3 class="company-name">${formatValue(companyData.namn)}</h3>
-                    <div class="company-meta">
-                        <span class="org-number">${formatValue(companyData.organisationsnummer)}</span>
-                        <span class="company-status ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">
-                            <i class="fas fa-circle"></i>
-                            ${formatValue(companyData.status)}
-                        </span>
+                    <div class="company-header-left">
+                        <i class="fas fa-eye company-icon"></i>
+                        <div class="company-title">
+                            <h3 class="company-name">${formatValue(companyData.namn)}</h3>
+                            <div class="company-meta">
+                                <span class="org-number">${formatValue(companyData.organisationsnummer)}</span>
+                                <span class="company-form-tag">${formatValue(companyData.form)}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -490,7 +492,7 @@ class ClientFlowApp {
                 <div class="company-tabs">
                     <button class="tab-button active" data-tab="foretagsuppgifter">
                         <i class="fas fa-building"></i>
-                        Företagsuppgifter
+                        ${formatValue(companyData.namn)}
                     </button>
                     <button class="tab-button" data-tab="riskbedomning">
                         <i class="fas fa-shield-alt"></i>
@@ -504,79 +506,62 @@ class ClientFlowApp {
                 
                 <!-- Tab Content -->
                 <div class="tab-content">
-                    <!-- Tab 1: Företagsuppgifter -->
+                    <!-- Tab 1: Company Information -->
                     <div class="tab-pane active" id="foretagsuppgifter">
-                        <div class="company-details-section">
-                            <div class="detail-row">
-                                <div class="detail-group">
-                                    <label>Företagsform</label>
-                                    <span>${formatValue(companyData.form)}</span>
+                        <!-- Contact Information Section -->
+                        <div class="contact-info-section">
+                            <div class="contact-grid">
+                                <div class="contact-item">
+                                    <label>E-post</label>
+                                    <span>${formatValue(companyData.email || 'Saknas')}</span>
                                 </div>
-                                <div class="detail-group">
-                                    <label>Registreringsdatum</label>
-                                    <span>${formatValue(companyData.registreringsdatum)}</span>
+                                <div class="contact-item">
+                                    <label>Postadress</label>
+                                    <span>${formatValue(companyData.adress?.fullAddress || 'Saknas')}</span>
                                 </div>
-                                <div class="detail-group">
-                                    <label>Registreringsland</label>
-                                    <span>${formatValue(companyData.registreringsland)}</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Business Description -->
-                        <div class="company-section">
-                            <h4>Verksamhetsbeskrivning</h4>
-                            <p>${companyData.verksamhet || 'Ingen beskrivning tillgänglig'}</p>
-                        </div>
-                        
-                        <!-- SNI Codes -->
-                        <div class="company-section">
-                            <h4>SNI-koder</h4>
-                            ${companyData.sniKoder && companyData.sniKoder.length > 0 ? `
-                                <div class="sni-list">
-                                    ${companyData.sniKoder
-                                        .filter(sni => sni.klartext && sni.klartext.trim() !== '')
-                                        .map(sni => `
-                                            <div class="sni-item">
-                                                <span class="sni-code">${formatValue(sni.kod)}</span>
-                                                <span class="sni-text">${sni.klartext}</span>
-                                            </div>
-                                        `).join('')}
-                                </div>
-                            ` : `
-                                <p class="no-data">Inga SNI-koder tillgängliga för detta företag</p>
-                                <small>SCB har inte registrerat näringsgrenskoder för detta företag</small>
-                            `}
-                        </div>
-                        
-                        <!-- Address -->
-                        <div class="company-section">
-                            <h4>Adress</h4>
-                            <div class="address-info">
-                                <div class="address-line">
-                                    <strong>Gatuadress:</strong> ${formatValue(companyData.adress?.gatuadress)}
-                                </div>
-                                <div class="address-line">
-                                    <strong>Postnummer:</strong> ${formatValue(companyData.adress?.postnummer)}
-                                </div>
-                                <div class="address-line">
-                                    <strong>Postort:</strong> ${formatValue(companyData.adress?.postort)}
-                                </div>
-                                <div class="address-line full-address">
-                                    <strong>Fullständig adress:</strong> ${formatValue(companyData.adress?.fullAddress)}
+                                <div class="contact-item">
+                                    <label>Telefonnr</label>
+                                    <span>${formatValue(companyData.telefon || 'Saknas')}</span>
                                 </div>
                             </div>
                         </div>
                         
-                        ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
-                        <!-- Alternative Names -->
-                        <div class="company-section">
-                            <h4>Alla företagsnamn</h4>
-                            <ul class="company-names-list">
-                                ${companyData.allaNamn.map(namn => `<li>${namn}</li>`).join('')}
-                            </ul>
+                        <!-- Detailed Information Section -->
+                        <div class="detailed-info-section">
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>SNI kod</label>
+                                    <span>
+                                        ${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
+                                            companyData.sniKoder
+                                                .filter(sni => sni.klartext && sni.klartext.trim() !== '')
+                                                .map(sni => `<span class="sni-code">${formatValue(sni.kod)}</span> <span class="sni-text">${sni.klartext}</span>`).join('<br>')
+                                            : 'Saknas'
+                                        }
+                                    </span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Verksamhetsbeskrivning</label>
+                                    <span>${formatValue(companyData.verksamhet || 'Saknas')}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Omsättning</label>
+                                    <span>${formatValue(companyData.omsattning || 'Saknas')}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Befattningshavare</label>
+                                    <span>${formatValue(companyData.befattningshavare || 'Saknas')}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Verklig huvudman</label>
+                                    <span>${formatValue(companyData.verkligHuvudman || 'Saknas')}</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Firmateckning</label>
+                                    <span>${formatValue(companyData.firmateckning || 'Saknas')}</span>
+                                </div>
+                            </div>
                         </div>
-                        ` : ''}
                     </div>
                     
                     <!-- Tab 2: Riskbedömning -->
@@ -893,5 +878,6 @@ window.testNavigation = function(pageName) {
                 hideErrorDetailsBtn.style.display = 'none';
             });
         }
+
 
 
