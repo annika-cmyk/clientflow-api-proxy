@@ -2679,8 +2679,7 @@ app.post('/api/risk-factors', async (req, res) => {
       'Riskbedömning': 'flddfJfl5yru8rKyp',
       'Åtgärd': 'fld9EOySG5oGUNUJ0',
       'Byrå ID': 'fld14CLMCwvjr8ReH',
-      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5',
-      'Aktuell': 'fldAktuell' // Detta fält behöver läggas till i Airtable
+      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5'
     };
 
     // Skapa Airtable-fält
@@ -2688,10 +2687,8 @@ app.post('/api/risk-factors', async (req, res) => {
     Object.keys(riskData).forEach(key => {
       if (fieldMapping[key]) {
         airtableFields[fieldMapping[key]] = riskData[key];
-      } else {
-        // Om fältet inte finns i mappningen, använd fältnamnet direkt
-        airtableFields[key] = riskData[key];
       }
+      // Ignorera fält som inte finns i mappningen (som 'Aktuell')
     });
 
     console.log('Airtable-fält:', airtableFields);
