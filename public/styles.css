@@ -1378,7 +1378,7 @@ p, small { line-height: 1.6; }
     flex-wrap: wrap;
 }
 
-/* Company Information Styles */
+/* Company Information Styles - Clean Version */
 .company-info-section {
     margin-bottom: 2rem;
 }
@@ -1386,13 +1386,201 @@ p, small { line-height: 1.6; }
 .company-card {
     background: white;
     border-radius: 12px;
-    padding: 2.5rem;
+    padding: 2rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border: 1px solid #e1e5e9;
     width: 100%;
-    max-width: 1500px;
+    max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
+}
+
+/* Clean Company Info Layout */
+.company-info-clean {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.company-header-section {
+    text-align: center;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid #f8f9fa;
+}
+
+.company-name {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 2rem;
+    font-family: 'Merriweather Sans', sans-serif;
+    font-weight: 700;
+}
+
+.company-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.org-number {
+    font-size: 1.1rem;
+    color: #6c757d;
+    font-family: 'Courier New', monospace;
+    background: #f8f9fa;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #e1e5e9;
+}
+
+.company-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.company-status.active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.company-status.inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.company-status i {
+    font-size: 0.75rem;
+}
+
+.company-details-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.detail-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.detail-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detail-group label {
+    font-weight: 600;
+    color: #6c757d;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.detail-group span {
+    font-size: 1rem;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.company-section {
+    background: white;
+    border: 1px solid #e1e5e9;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.company-section h4 {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 1.25rem;
+    font-weight: 600;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 0.5rem;
+}
+
+.company-section p {
+    margin: 0;
+    line-height: 1.6;
+    color: #495057;
+}
+
+.sni-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.sni-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.sni-item strong {
+    color: #007bff;
+    font-size: 0.9rem;
+}
+
+.sni-item span {
+    color: #495057;
+    font-size: 0.95rem;
+}
+
+.no-data {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.address-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.address-line {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+}
+
+.address-line strong {
+    min-width: 120px;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.address-line.full-address {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e1e5e9;
+}
+
+.company-names-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.company-names-list li {
+    padding: 0.5rem 1rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
 }
 
 .company-header {
@@ -1422,83 +1610,6 @@ p, small { line-height: 1.6; }
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
-}
-
-.company-grid {
-    display: grid;
-    gap: 2.5rem;
-    max-width: 100%;
-}
-
-.company-basic {
-    text-align: center;
-    padding: 2.5rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e1e5e9;
-    max-width: 100%;
-}
-
-.company-basic h3 {
-    margin: 0 0 0.5rem 0;
-    color: #2c3e50;
-    font-size: 1.75rem;
-    font-family: 'Merriweather Sans', sans-serif;
-}
-
-.org-number {
-    font-size: 1.1rem;
-    color: #6c757d;
-    font-family: 'Courier New', monospace;
-    background: white;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    display: inline-block;
-    margin: 0.5rem 0;
-}
-
-.company-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-weight: 600;
-    font-size: 0.875rem;
-}
-
-.company-status.active {
-    background: #d4edda;
-    color: #155724;
-}
-
-.company-status.inactive {
-    background: #f8d7da;
-    color: #721c24;
-}
-
-.company-status i {
-    font-size: 0.75rem;
-}
-
-.company-details-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 1.5rem;
-}
-
-.detail-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.detail-item label {
-    font-weight: 600;
-    color: #6c757d;
-    font-size: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 .detail-item span {
