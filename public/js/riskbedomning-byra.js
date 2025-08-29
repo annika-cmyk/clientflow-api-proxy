@@ -584,7 +584,6 @@ class RiskAssessmentManager {
         // Populate form fields
         document.getElementById('edit-record-id').value = recordId;
         document.getElementById('edit-task-name').value = fields['Task Name'] || '';
-        document.getElementById('edit-byra-id').value = fields['Byrå ID'] || '';
         
         document.getElementById('edit-risk-description').value = fields['Beskrivning av riskfaktor'] || '';
         document.getElementById('edit-risk-level').value = fields['Riskbedömning'] || '';
@@ -606,9 +605,18 @@ class RiskAssessmentManager {
         event.preventDefault();
         
         const formData = new FormData(event.target);
+        
+        // Use the first byrå ID from user's data
+        const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
+        
+        if (!userByraId) {
+            this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
+            return;
+        }
+        
         const riskData = {
             'Task Name': formData.get('task-name'),
-            'Byrå ID': formData.get('byra-id'),
+            'Byrå ID': userByraId,
             'Beskrivning av riskfaktor': formData.get('risk-description'),
             'Riskbedömning': formData.get('risk-level'),
             'Åtgjärd': formData.get('action'),
@@ -642,9 +650,18 @@ class RiskAssessmentManager {
         
         const formData = new FormData(event.target);
         const recordId = formData.get('record-id');
+        
+        // Use the first byrå ID from user's data
+        const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
+        
+        if (!userByraId) {
+            this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
+            return;
+        }
+        
         const riskData = {
             'Task Name': formData.get('task-name'),
-            'Byrå ID': formData.get('byra-id'),
+            'Byrå ID': userByraId,
             'Beskrivning av riskfaktor': formData.get('risk-description'),
             'Riskbedömning': formData.get('risk-level'),
             'Åtgjärd': formData.get('action')
