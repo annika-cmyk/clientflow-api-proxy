@@ -511,8 +511,8 @@ class ClientFlowApp {
                                 .filter(sni => sni.klartext && sni.klartext.trim() !== '')
                                 .map(sni => `
                                     <div class="sni-item">
-                                        <strong>${sni.kod || 'N/A'}</strong>
-                                        <span>${sni.klartext}</span>
+                                        <span class="sni-code">${sni.kod || 'N/A'}</span>
+                                        <span class="sni-text">${sni.klartext}</span>
                                     </div>
                                 `).join('')}
                         </div>
