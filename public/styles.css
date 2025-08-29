@@ -3279,3 +3279,95 @@ p, small { line-height: 1.6; }
     font-size: 0.85rem;
     font-style: italic;
 }
+
+/* Tab Navigation */
+.company-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+    margin-bottom: 1.5rem;
+}
+
+.tab-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #6c757d;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+}
+
+.tab-button:hover {
+    color: var(--accent);
+    background: #f8f9fa;
+}
+
+.tab-button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: #f8f9fa;
+}
+
+.tab-button i {
+    font-size: 0.85rem;
+}
+
+/* Tab Content */
+.tab-content {
+    position: relative;
+}
+
+.tab-pane {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Tab Placeholder */
+.tab-placeholder {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6c757d;
+}
+
+.placeholder-icon {
+    font-size: 3rem;
+    color: #dee2e6;
+    margin-bottom: 1rem;
+}
+
+.tab-placeholder h4 {
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.tab-placeholder p {
+    margin-bottom: 0.5rem;
+    color: #6c757d;
+}
+
+.tab-placeholder small {
+    color: #adb5bd;
+    font-style: italic;
+}

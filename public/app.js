@@ -471,7 +471,7 @@ class ClientFlowApp {
             return value;
         };
 
-        // Create HTML for company information with clean, organized structure
+        // Create HTML for tabbed company information
         const html = `
             <div class="company-info-clean">
                 <!-- Company Header -->
@@ -486,78 +486,123 @@ class ClientFlowApp {
                     </div>
                 </div>
                 
-                <!-- Company Details -->
-                <div class="company-details-section">
-                    <div class="detail-row">
-                        <div class="detail-group">
-                            <label>Företagsform</label>
-                            <span>${formatValue(companyData.form)}</span>
+                <!-- Tab Navigation -->
+                <div class="company-tabs">
+                    <button class="tab-button active" data-tab="foretagsuppgifter">
+                        <i class="fas fa-building"></i>
+                        Företagsuppgifter
+                    </button>
+                    <button class="tab-button" data-tab="riskbedomning">
+                        <i class="fas fa-shield-alt"></i>
+                        Riskbedömning
+                    </button>
+                    <button class="tab-button" data-tab="kundens-tjanster">
+                        <i class="fas fa-cogs"></i>
+                        Kundens tjänster
+                    </button>
+                </div>
+                
+                <!-- Tab Content -->
+                <div class="tab-content">
+                    <!-- Tab 1: Företagsuppgifter -->
+                    <div class="tab-pane active" id="foretagsuppgifter">
+                        <div class="company-details-section">
+                            <div class="detail-row">
+                                <div class="detail-group">
+                                    <label>Företagsform</label>
+                                    <span>${formatValue(companyData.form)}</span>
+                                </div>
+                                <div class="detail-group">
+                                    <label>Registreringsdatum</label>
+                                    <span>${formatValue(companyData.registreringsdatum)}</span>
+                                </div>
+                                <div class="detail-group">
+                                    <label>Registreringsland</label>
+                                    <span>${formatValue(companyData.registreringsland)}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="detail-group">
-                            <label>Registreringsdatum</label>
-                            <span>${formatValue(companyData.registreringsdatum)}</span>
+                        
+                        <!-- Business Description -->
+                        <div class="company-section">
+                            <h4>Verksamhetsbeskrivning</h4>
+                            <p>${companyData.verksamhet || 'Ingen beskrivning tillgänglig'}</p>
                         </div>
-                        <div class="detail-group">
-                            <label>Registreringsland</label>
-                            <span>${formatValue(companyData.registreringsland)}</span>
+                        
+                        <!-- SNI Codes -->
+                        <div class="company-section">
+                            <h4>SNI-koder</h4>
+                            ${companyData.sniKoder && companyData.sniKoder.length > 0 ? `
+                                <div class="sni-list">
+                                    ${companyData.sniKoder
+                                        .filter(sni => sni.klartext && sni.klartext.trim() !== '')
+                                        .map(sni => `
+                                            <div class="sni-item">
+                                                <span class="sni-code">${formatValue(sni.kod)}</span>
+                                                <span class="sni-text">${sni.klartext}</span>
+                                            </div>
+                                        `).join('')}
+                                </div>
+                            ` : `
+                                <p class="no-data">Inga SNI-koder tillgängliga för detta företag</p>
+                                <small>SCB har inte registrerat näringsgrenskoder för detta företag</small>
+                            `}
+                        </div>
+                        
+                        <!-- Address -->
+                        <div class="company-section">
+                            <h4>Adress</h4>
+                            <div class="address-info">
+                                <div class="address-line">
+                                    <strong>Gatuadress:</strong> ${formatValue(companyData.adress?.gatuadress)}
+                                </div>
+                                <div class="address-line">
+                                    <strong>Postnummer:</strong> ${formatValue(companyData.adress?.postnummer)}
+                                </div>
+                                <div class="address-line">
+                                    <strong>Postort:</strong> ${formatValue(companyData.adress?.postort)}
+                                </div>
+                                <div class="address-line full-address">
+                                    <strong>Fullständig adress:</strong> ${formatValue(companyData.adress?.fullAddress)}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
+                        <!-- Alternative Names -->
+                        <div class="company-section">
+                            <h4>Alla företagsnamn</h4>
+                            <ul class="company-names-list">
+                                ${companyData.allaNamn.map(namn => `<li>${namn}</li>`).join('')}
+                            </ul>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <!-- Tab 2: Riskbedömning -->
+                    <div class="tab-pane" id="riskbedomning">
+                        <div class="tab-placeholder">
+                            <div class="placeholder-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <h4>Riskbedömning</h4>
+                            <p>Här kommer riskbedömningsdata att visas när den är tillgänglig.</p>
+                            <small>Funktionalitet under utveckling</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab 3: Kundens tjänster -->
+                    <div class="tab-pane" id="kundens-tjanster">
+                        <div class="tab-placeholder">
+                            <div class="placeholder-icon">
+                                <i class="fas fa-cogs"></i>
+                            </div>
+                            <h4>Kundens tjänster</h4>
+                            <p>Här kommer information om kundens tjänster att visas när den är tillgänglig.</p>
+                            <small>Funktionalitet under utveckling</small>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Business Description -->
-                <div class="company-section">
-                    <h4>Verksamhetsbeskrivning</h4>
-                    <p>${companyData.verksamhet || 'Ingen beskrivning tillgänglig'}</p>
-                </div>
-                
-                <!-- SNI Codes -->
-                <div class="company-section">
-                    <h4>SNI-koder</h4>
-                    ${companyData.sniKoder && companyData.sniKoder.length > 0 ? `
-                        <div class="sni-list">
-                            ${companyData.sniKoder
-                                .filter(sni => sni.klartext && sni.klartext.trim() !== '')
-                                .map(sni => `
-                                    <div class="sni-item">
-                                        <span class="sni-code">${formatValue(sni.kod)}</span>
-                                        <span class="sni-text">${sni.klartext}</span>
-                                    </div>
-                                `).join('')}
-                        </div>
-                    ` : `
-                        <p class="no-data">Inga SNI-koder tillgängliga för detta företag</p>
-                        <small>SCB har inte registrerat näringsgrenskoder för detta företag</small>
-                    `}
-                </div>
-                
-                <!-- Address -->
-                <div class="company-section">
-                    <h4>Adress</h4>
-                    <div class="address-info">
-                        <div class="address-line">
-                            <strong>Gatuadress:</strong> ${formatValue(companyData.adress?.gatuadress)}
-                        </div>
-                        <div class="address-line">
-                            <strong>Postnummer:</strong> ${formatValue(companyData.adress?.postnummer)}
-                        </div>
-                        <div class="address-line">
-                            <strong>Postort:</strong> ${formatValue(companyData.adress?.postort)}
-                        </div>
-                        <div class="address-line full-address">
-                            <strong>Fullständig adress:</strong> ${formatValue(companyData.adress?.fullAddress)}
-                        </div>
-                    </div>
-                </div>
-                
-                ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
-                <!-- Alternative Names -->
-                <div class="company-section">
-                    <h4>Alla företagsnamn</h4>
-                    <ul class="company-names-list">
-                        ${companyData.allaNamn.map(namn => `<li>${namn}</li>`).join('')}
-                    </ul>
-                </div>
-                ` : ''}
             </div>
         `;
         
@@ -565,8 +610,30 @@ class ClientFlowApp {
         companyDetails.innerHTML = html;
         companyInfoSection.style.display = 'block';
         
+        // Initialize tab functionality
+        this.initTabs();
+        
         // Scroll to company info
         companyInfoSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    initTabs() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+        
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetTab = button.getAttribute('data-tab');
+                
+                // Remove active class from all buttons and panes
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabPanes.forEach(pane => pane.classList.remove('active'));
+                
+                // Add active class to clicked button and corresponding pane
+                button.classList.add('active');
+                document.getElementById(targetTab).classList.add('active');
+            });
+        });
     }
     
     hideCompanyInfo() {
