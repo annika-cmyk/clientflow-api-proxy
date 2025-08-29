@@ -1422,8 +1422,9 @@ p, small { line-height: 1.6; }
 
 .company-icon {
     color: var(--accent);
-    font-size: 1.5rem;
+    font-size: 2rem;
     margin-top: 0.25rem;
+    flex-shrink: 0;
 }
 
 .company-title {
