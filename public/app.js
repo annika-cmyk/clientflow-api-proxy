@@ -457,6 +457,7 @@ class ClientFlowApp {
         
         const companyInfoSection = document.getElementById('company-info');
         const companyDetails = document.getElementById('company-details');
+        const companyHeader = document.querySelector('.company-header h2');
         
         if (!companyInfoSection || !companyDetails) {
             console.error('❌ Company info elements not found');
@@ -470,6 +471,11 @@ class ClientFlowApp {
             }
             return value;
         };
+
+        // Update the main card header with company name
+        if (companyHeader) {
+            companyHeader.textContent = formatValue(companyData.namn);
+        }
 
         // Create HTML for tabbed company information
         const html = `
