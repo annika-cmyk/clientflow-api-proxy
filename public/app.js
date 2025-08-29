@@ -492,7 +492,7 @@ class ClientFlowApp {
                 <div class="company-tabs">
                     <button class="tab-button active" data-tab="foretagsuppgifter">
                         <i class="fas fa-building"></i>
-                        ${formatValue(companyData.namn)}
+                        Företagsuppgifter
                     </button>
                     <button class="tab-button" data-tab="riskbedomning">
                         <i class="fas fa-shield-alt"></i>
