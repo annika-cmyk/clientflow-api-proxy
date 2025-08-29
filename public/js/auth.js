@@ -38,6 +38,8 @@ class AuthManager {
         loading.classList.add('show');
         this.hideMessages();
 
+        console.log('🔐 Attempting login with:', { email, baseUrl: this.baseUrl });
+
         try {
             const response = await fetch(`${this.baseUrl}/api/auth/login`, {
                 method: 'POST',
@@ -47,7 +49,11 @@ class AuthManager {
                 body: JSON.stringify({ email, password })
             });
 
+            console.log('🔐 Login response status:', response.status);
+            console.log('🔐 Login response headers:', Object.fromEntries(response.headers.entries()));
+
             const data = await response.json();
+            console.log('🔐 Login response data:', data);
 
             if (response.ok && data.success) {
                 // Store user data and token
@@ -55,6 +61,7 @@ class AuthManager {
                 localStorage.setItem('userData', JSON.stringify(data.user));
                 this.currentUser = data.user;
 
+                console.log('🔐 Login successful, user data stored');
                 this.showSuccess('Inloggning lyckades! Omdirigerar...');
                 
                 // Redirect to main page after short delay
@@ -62,11 +69,25 @@ class AuthManager {
                     window.location.href = 'index.html';
                 }, 1500);
             } else {
+                console.log('🔐 Login failed:', data.message);
                 this.showError(data.message || 'Inloggning misslyckades');
             }
         } catch (error) {
-            console.error('Login error:', error);
-            this.showError('Ett fel uppstod vid inloggning. Kontrollera din internetanslutning.');
+            console.error('🔐 Login error:', error);
+            console.error('🔐 Error details:', {
+                message: error.message,
+                stack: error.stack,
+                baseUrl: this.baseUrl
+            });
+            
+            let errorMessage = 'Ett fel uppstod vid inloggning.';
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                errorMessage = 'Kunde inte ansluta till servern. Kontrollera din internetanslutning.';
+            } else if (error.name === 'TypeError' && error.message.includes('JSON')) {
+                errorMessage = 'Ogiltigt svar från servern.';
+            }
+            
+            this.showError(errorMessage);
         } finally {
             // Reset loading state
             loginBtn.disabled = false;

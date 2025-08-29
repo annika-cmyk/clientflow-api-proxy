@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enkel Test - ClientFlow</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #bee5eb;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Enkel Test - ClientFlow</h1>
+    
+    <div class="result info">
+        <strong>Domän:</strong> <span id="domain"></span><br>
+        <strong>API URL:</strong> <span id="api-url"></span>
+    </div>
+    
+    <button onclick="testCORS()">Testa CORS</button>
+    <button onclick="testLogin()">Testa Inloggning</button>
+    <button onclick="clearLog()">Rensa Log</button>
+    
+    <div id="results"></div>
+    <div id="log"></div>
+
+    <script src="js/config.js"></script>
+    <script>
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function showInfo() {
+            document.getElementById('domain').textContent = window.location.hostname;
+            document.getElementById('api-url').textContent = window.apiConfig ? window.apiConfig.baseUrl : 'Ej tillgänglig';
+        }
+
+        async function testCORS() {
+            log('=== CORS TEST ===');
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
+                log(`Försöker ansluta till: ${baseUrl}/health`);
+                
+                const response = await fetch(`${baseUrl}/health`);
+                const data = await response.json();
+                
+                log(`✅ CORS fungerar! Status: ${data.status}`);
+                
+                resultsDiv.innerHTML = `
+                    <div class="result success">
+                        <strong>✅ CORS fungerar!</strong><br>
+                        <strong>Status:</strong> ${data.status}<br>
+                        <strong>Service:</strong> ${data.service}
+                    </div>
+                `;
+            } catch (error) {
+                log(`❌ CORS-fel: ${error.message}`);
+                resultsDiv.innerHTML = `
+                    <div class="result error">
+                        <strong>❌ CORS-fel:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function testLogin() {
+            log('=== INLOGGNINGSTEST ===');
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
+                log(`Försöker logga in via: ${baseUrl}/api/auth/login`);
+                
+                const response = await fetch(`${baseUrl}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        email: 'hej@rydenredovisning.se', 
+                        password: 'test123' 
+                    })
+                });
+                
+                const data = await response.json();
+                log(`Response status: ${response.status}`);
+                
+                if (response.ok && data.success) {
+                    log(`✅ Inloggning lyckades för: ${data.user.name}`);
+                    resultsDiv.innerHTML = `
+                        <div class="result success">
+                            <strong>✅ Inloggning lyckades!</strong><br>
+                            <strong>Användare:</strong> ${data.user.name} (${data.user.role})<br>
+                            <strong>Byrå:</strong> ${data.user.byra}
+                        </div>
+                    `;
+                } else {
+                    log(`❌ Inloggning misslyckades: ${data.message}`);
+                    resultsDiv.innerHTML = `
+                        <div class="result error">
+                            <strong>❌ Inloggning misslyckades:</strong> ${data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                log(`❌ Inloggningsfel: ${error.message}`);
+                resultsDiv.innerHTML = `
+                    <div class="result error">
+                        <strong>❌ Inloggningsfel:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // Visa information när sidan laddas
+        window.addEventListener('load', () => {
+            showInfo();
+            log('=== SIDA LADDAD ===');
+            log(`Hostname: ${window.location.hostname}`);
+            log(`API Base URL: ${window.apiConfig ? window.apiConfig.baseUrl : 'Ej tillgänglig'}`);
+        });
+    </script>
+</body>
+</html>
