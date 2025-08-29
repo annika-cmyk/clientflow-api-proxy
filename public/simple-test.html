@@ -3,177 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enkel Test - ClientFlow</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .result {
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-        }
-        .success {
-            background: #d4edda;
-            color: #155724;
-            border-color: #c3e6cb;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            border-color: #f5c6cb;
-        }
-        .info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border-color: #bee5eb;
-        }
-        button {
-            padding: 10px 20px;
-            margin: 5px;
-            cursor: pointer;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        #log {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-    </style>
+    <title>Enkel Test - Nya Layouten</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <h1>🔧 Enkel Test - ClientFlow</h1>
-    
-    <div class="result info">
-        <strong>Domän:</strong> <span id="domain"></span><br>
-        <strong>API URL:</strong> <span id="api-url"></span>
+    <div class="container">
+        <h1>Test av nya layouten</h1>
+        
+        <div id="company-info" style="display: block;">
+            <div id="company-details">
+                <!-- Test data will be inserted here -->
+            </div>
+        </div>
     </div>
-    
-    <button onclick="testCORS()">Testa CORS</button>
-    <button onclick="testLogin()">Testa Inloggning</button>
-    <button onclick="clearLog()">Rensa Log</button>
-    
-    <div id="results"></div>
-    <div id="log"></div>
 
-    <script src="js/config.js"></script>
     <script>
-        function log(message) {
-            const logDiv = document.getElementById('log');
-            const timestamp = new Date().toLocaleTimeString();
-            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
-
-        function showInfo() {
-            document.getElementById('domain').textContent = window.location.hostname;
-            document.getElementById('api-url').textContent = window.apiConfig ? window.apiConfig.baseUrl : 'Ej tillgänglig';
-        }
-
-        async function testCORS() {
-            log('=== CORS TEST ===');
-            const resultsDiv = document.getElementById('results');
-            
-            try {
-                const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
-                log(`Försöker ansluta till: ${baseUrl}/health`);
-                
-                const response = await fetch(`${baseUrl}/health`);
-                const data = await response.json();
-                
-                log(`✅ CORS fungerar! Status: ${data.status}`);
-                
-                resultsDiv.innerHTML = `
-                    <div class="result success">
-                        <strong>✅ CORS fungerar!</strong><br>
-                        <strong>Status:</strong> ${data.status}<br>
-                        <strong>Service:</strong> ${data.service}
-                    </div>
-                `;
-            } catch (error) {
-                log(`❌ CORS-fel: ${error.message}`);
-                resultsDiv.innerHTML = `
-                    <div class="result error">
-                        <strong>❌ CORS-fel:</strong> ${error.message}
-                    </div>
-                `;
+        // Helper function to replace N/A with Saknas
+        const formatValue = (value) => {
+            if (!value || value === 'N/A' || value === 'null' || value === 'undefined') {
+                return 'Saknas';
             }
-        }
+            return value;
+        };
 
-        async function testLogin() {
-            log('=== INLOGGNINGSTEST ===');
-            const resultsDiv = document.getElementById('results');
-            
-            try {
-                const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
-                log(`Försöker logga in via: ${baseUrl}/api/auth/login`);
-                
-                const response = await fetch(`${baseUrl}/api/auth/login`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        email: 'hej@rydenredovisning.se', 
-                        password: 'test123' 
-                    })
-                });
-                
-                const data = await response.json();
-                log(`Response status: ${response.status}`);
-                
-                if (response.ok && data.success) {
-                    log(`✅ Inloggning lyckades för: ${data.user.name}`);
-                    resultsDiv.innerHTML = `
-                        <div class="result success">
-                            <strong>✅ Inloggning lyckades!</strong><br>
-                            <strong>Användare:</strong> ${data.user.name} (${data.user.role})<br>
-                            <strong>Byrå:</strong> ${data.user.byra}
-                        </div>
-                    `;
-                } else {
-                    log(`❌ Inloggning misslyckades: ${data.message}`);
-                    resultsDiv.innerHTML = `
-                        <div class="result error">
-                            <strong>❌ Inloggning misslyckades:</strong> ${data.message}
-                        </div>
-                    `;
+        // Test data
+        const testCompanyData = {
+            namn: "Test Företag AB",
+            organisationsnummer: "556123-4567",
+            form: "AB - Privat svenskt utan koncern",
+            status: "Aktiv",
+            email: "test@foretag.se",
+            telefon: "070-123 45 67",
+            adress: {
+                fullAddress: "Testgatan 1, 123 45 Stockholm"
+            },
+            verksamhet: "Testverksamhet för att verifiera nya layouten",
+            omsattning: "2024 : < 1 tkr",
+            befattningshavare: "STYRELSELEDAMOT Test Person",
+            verkligHuvudman: "Saknas",
+            firmateckning: "Firman tecknas av styrelsen",
+            sniKoder: [
+                {
+                    kod: "46770",
+                    klartext: "Skrothandel"
                 }
-            } catch (error) {
-                log(`❌ Inloggningsfel: ${error.message}`);
-                resultsDiv.innerHTML = `
-                    <div class="result error">
-                        <strong>❌ Inloggningsfel:</strong> ${error.message}
-                    </div>
-                `;
+            ]
+        };
+
+        // Function to initialize tabs
+        function initTabs() {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabPanes = document.querySelectorAll('.tab-pane');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetTab = button.getAttribute('data-tab');
+                    
+                    // Remove active class from all buttons and panes
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabPanes.forEach(pane => pane.classList.remove('active'));
+                    
+                    // Add active class to clicked button and corresponding pane
+                    button.classList.add('active');
+                    document.getElementById(targetTab).classList.add('active');
+                });
+            });
+        }
+
+        // Function to display company info (copied from app.js)
+        function displayCompanyInfo(companyData) {
+            console.log('🎨 Displaying company info with data:', companyData);
+            
+            const companyDetails = document.getElementById('company-details');
+            
+            if (!companyDetails) {
+                console.error('❌ Company details element not found');
+                return;
             }
+
+            // Create HTML for tabbed company information
+            const html = `
+                <div class="company-info-clean">
+                    <!-- Company Header -->
+                    <div class="company-header-section">
+                        <div class="company-header-left">
+                            <i class="fas fa-eye company-icon"></i>
+                            <div class="company-title">
+                                <h3 class="company-name">${formatValue(companyData.namn)}</h3>
+                                <div class="company-meta">
+                                    <span class="org-number">${formatValue(companyData.organisationsnummer)}</span>
+                                    <span class="company-form-tag">${formatValue(companyData.form)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Navigation -->
+                    <div class="company-tabs">
+                        <button class="tab-button active" data-tab="foretagsuppgifter">
+                            <i class="fas fa-building"></i>
+                            ${formatValue(companyData.namn)}
+                        </button>
+                        <button class="tab-button" data-tab="riskbedomning">
+                            <i class="fas fa-shield-alt"></i>
+                            Riskbedömning
+                        </button>
+                        <button class="tab-button" data-tab="kundens-tjanster">
+                            <i class="fas fa-cogs"></i>
+                            Kundens tjänster
+                        </button>
+                    </div>
+                    
+                    <!-- Tab Content -->
+                    <div class="tab-content">
+                        <!-- Tab 1: Company Information -->
+                        <div class="tab-pane active" id="foretagsuppgifter">
+                            <!-- Contact Information Section -->
+                            <div class="contact-info-section">
+                                <div class="contact-grid">
+                                    <div class="contact-item">
+                                        <label>E-post</label>
+                                        <span>${formatValue(companyData.email || 'Saknas')}</span>
+                                    </div>
+                                    <div class="contact-item">
+                                        <label>Postadress</label>
+                                        <span>${formatValue(companyData.adress?.fullAddress || 'Saknas')}</span>
+                                    </div>
+                                    <div class="contact-item">
+                                        <label>Telefonnr</label>
+                                        <span>${formatValue(companyData.telefon || 'Saknas')}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Detailed Information Section -->
+                            <div class="detailed-info-section">
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <label>SNI kod</label>
+                                        <span>
+                                            ${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
+                                                companyData.sniKoder
+                                                    .filter(sni => sni.klartext && sni.klartext.trim() !== '')
+                                                    .map(sni => `<span class="sni-code">${formatValue(sni.kod)}</span> <span class="sni-text">${sni.klartext}</span>`).join('<br>')
+                                                : 'Saknas'
+                                            }
+                                        </span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Verksamhetsbeskrivning</label>
+                                        <span>${formatValue(companyData.verksamhet || 'Saknas')}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Omsättning</label>
+                                        <span>${formatValue(companyData.omsattning || 'Saknas')}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Befattningshavare</label>
+                                        <span>${formatValue(companyData.befattningshavare || 'Saknas')}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Verklig huvudman</label>
+                                        <span>${formatValue(companyData.verkligHuvudman || 'Saknas')}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Firmateckning</label>
+                                        <span>${formatValue(companyData.firmateckning || 'Saknas')}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tab 2: Riskbedömning -->
+                        <div class="tab-pane" id="riskbedomning">
+                            <div class="tab-placeholder">
+                                <div class="placeholder-icon">
+                                    <i class="fas fa-shield-alt"></i>
+                                </div>
+                                <h4>Riskbedömning</h4>
+                                <p>Här kommer riskbedömningsdata att visas när den är tillgänglig.</p>
+                                <small>Funktionalitet under utveckling</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Tab 3: Kundens tjänster -->
+                        <div class="tab-pane" id="kundens-tjanster">
+                            <div class="tab-placeholder">
+                                <div class="placeholder-icon">
+                                    <i class="fas fa-cogs"></i>
+                                </div>
+                                <h4>Kundens tjänster</h4>
+                                <p>Här kommer information om kundens tjänster att visas när den är tillgänglig.</p>
+                                <small>Funktionalitet under utveckling</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            console.log('📝 Generated HTML:', html);
+            companyDetails.innerHTML = html;
+            
+            // Initialize tab functionality
+            initTabs();
         }
 
-        function clearLog() {
-            document.getElementById('log').innerHTML = '';
-            document.getElementById('results').innerHTML = '';
-        }
-
-        // Visa information när sidan laddas
-        window.addEventListener('load', () => {
-            showInfo();
-            log('=== SIDA LADDAD ===');
-            log(`Hostname: ${window.location.hostname}`);
-            log(`API Base URL: ${window.apiConfig ? window.apiConfig.baseUrl : 'Ej tillgänglig'}`);
+        // Test the new layout when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Page loaded, testing new layout...');
+            displayCompanyInfo(testCompanyData);
         });
     </script>
 </body>
