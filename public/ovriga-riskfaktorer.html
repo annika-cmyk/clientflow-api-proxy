@@ -135,7 +135,13 @@ ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns 
                     <form id="add-risk-form" class="modal-form">
                         <div class="form-group">
                             <label for="risk-type">Typ av riskfaktor *</label>
-                            <input type="text" id="risk-type" name="risk-type" required>
+                            <select id="risk-type" name="risk-type" required>
+                                <option value="">Välj typ av riskfaktor</option>
+                                <option value="Geografiska riskfaktorer">Geografiska riskfaktorer</option>
+                                <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
+                                <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
+                                <option value="Distrubutionskanaler">Distrubutionskanaler</option>
+                            </select>
                         </div>
 
 
@@ -186,7 +192,13 @@ ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns 
                         <input type="hidden" id="edit-record-id" name="record-id">
                         <div class="form-group">
                             <label for="edit-risk-type">Typ av riskfaktor *</label>
-                            <input type="text" id="edit-risk-type" name="risk-type" required>
+                            <select id="edit-risk-type" name="risk-type" required>
+                                <option value="">Välj typ av riskfaktor</option>
+                                <option value="Geografiska riskfaktorer">Geografiska riskfaktorer</option>
+                                <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
+                                <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
+                                <option value="Distrubutionskanaler">Distrubutionskanaler</option>
+                            </select>
                         </div>
 
 
