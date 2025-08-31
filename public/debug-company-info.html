@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Company Info - ClientFlow</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .debug-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
+        .company-card { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; background: #f9f9f9; }
+        .field { margin: 10px 0; padding: 10px; background: white; border-radius: 4px; }
+        .field label { font-weight: bold; display: inline-block; width: 200px; }
+        .field span { color: #666; }
+        .missing-data { color: #dc3545; font-style: italic; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug Company Info - ClientFlow</h1>
+        
+        <div class="debug-section">
+            <h2>1. Testa Bolagsverket API</h2>
+            <input type="text" id="org-number" placeholder="Organisationsnummer (t.ex. 5567223705)" value="5567223705">
+            <button onclick="testBolagsverket()">Hämta Företagsdata</button>
+            <div id="api-result"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>2. Transformed Data</h2>
+            <div id="transformed-result"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>3. Company Info Display</h2>
+            <div id="company-display"></div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>4. Raw API Response</h2>
+            <div id="raw-response"></div>
+        </div>
+    </div>
+
+    <script>
+        // Simple API config for testing
+        const API_BASE = 'http://localhost:3001';
+        
+        async function testBolagsverket() {
+            const orgNumber = document.getElementById('org-number').value.trim();
+            if (!orgNumber) {
+                alert('Ange ett organisationsnummer');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.innerHTML = '<span class="info">Hämtar data...</span>';
+            
+            try {
+                // 1. Hämta från Bolagsverket
+                const response = await fetch(`${API_BASE}/api/bolagsverket/organisationer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ organisationsnummer: orgNumber })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Visa API-resultat
+                resultDiv.innerHTML = `<span class="success">✅ API-anrop lyckades</span>`;
+                
+                // Visa raw response
+                document.getElementById('raw-response').innerHTML = `
+                    <h3>Raw API Response:</h3>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                // Transform data
+                const transformedData = transformBolagsverketData(data.data, orgNumber);
+                
+                // Visa transformed data
+                document.getElementById('transformed-result').innerHTML = `
+                    <h3>Transformed Data:</h3>
+                    <pre>${JSON.stringify(transformedData, null, 2)}</pre>
+                `;
+                
+                // Display company info
+                displayCompanyInfo(transformedData);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Fel: ${error.message}</span>`;
+                console.error('Error:', error);
+            }
+        }
+        
+        function transformBolagsverketData(bolagsverketData, orgNumber) {
+            console.log('🔄 Transforming Bolagsverket data...');
+            console.log('📊 Raw Bolagsverket data:', bolagsverketData);
+            
+            // Handle both single organization and multiple organizations
+            const organisations = Array.isArray(bolagsverketData) ? bolagsverketData : [bolagsverketData];
+            console.log('🏢 Processing organisations:', organisations.length);
+            
+            // Collect all organization names from all organisations
+            let allNames = [];
+            let primaryName = 'Namn saknas';
+            let primaryOrg = null;
+            
+            organisations.forEach((org, index) => {
+                console.log(`📋 Processing organisation ${index + 1}:`, {
+                    namnskyddslopnummer: org.namnskyddslopnummer,
+                    organisationsnamn: org.organisationsnamn
+                });
+                
+                const orgNames = org.organisationsnamn?.organisationsnamnLista?.map(n => n.namn).filter(Boolean) || [];
+                allNames = allNames.concat(orgNames);
+                
+                // Use the first organisation as primary
+                if (index === 0) {
+                    primaryName = orgNames[0] || 'Namn saknas';
+                    primaryOrg = org;
+                }
+            });
+            
+            console.log('🏷️ All names found:', allNames);
+            console.log('⭐ Primary name selected:', primaryName);
+            
+            // Get address information from primary organisation
+            const address = primaryOrg?.postadressOrganisation?.postadress || {};
+            const fullAddress = [
+                address.utdelningsadress,
+                address.postnummer,
+                address.postort
+            ].filter(Boolean).join(', ');
+            
+            const transformedData = {
+                organisationsnummer: orgNumber,
+                namn: primaryName,
+                allaNamn: allNames,
+                form: primaryOrg?.organisationsform?.klartext || primaryOrg?.juridiskForm?.klartext || 'Saknas',
+                status: (() => {
+                    if (primaryOrg?.verksamOrganisation?.kod === 'JA') {
+                        return 'Aktiv';
+                    }
+                    if (primaryOrg?.avregistreradOrganisation?.fel) {
+                        return 'Aktiv';
+                    }
+                    if (primaryOrg?.avregistreringsorsak?.fel) {
+                        return 'Aktiv';
+                    }
+                    return 'Avregistrerad';
+                })(),
+                registreringsdatum: (() => {
+                    if (primaryOrg?.organisationsdatum?.registreringsdatum) {
+                        return primaryOrg.organisationsdatum.registreringsdatum;
+                    }
+                    if (primaryOrg?.registreringsdatum) {
+                        return primaryOrg.registreringsdatum;
+                    }
+                    if (primaryOrg?.datum?.registrering) {
+                        return primaryOrg.datum.registrering;
+                    }
+                    if (primaryOrg?.registrering) {
+                        return primaryOrg.registrering;
+                    }
+                    if (primaryOrg?.bildad) {
+                        return primaryOrg.bildad;
+                    }
+                    if (primaryOrg?.startdatum) {
+                        return primaryOrg.startdatum;
+                    }
+                    return 'Saknas';
+                })(),
+                registreringsland: primaryOrg?.registreringsland?.klartext || 'Sverige',
+                adress: {
+                    gatuadress: address.utdelningsadress || 'Saknas',
+                    postnummer: address.postnummer || 'Saknas',
+                    postort: address.postort || 'Saknas',
+                    fullAddress: fullAddress || 'Saknas'
+                },
+                verksamhet: (() => {
+                    if (primaryOrg?.verksamhetsbeskrivning?.beskrivning) {
+                        return primaryOrg.verksamhetsbeskrivning.beskrivning;
+                    }
+                    if (typeof primaryOrg?.verksamhetsbeskrivning === 'string') {
+                        return primaryOrg.verksamhetsbeskrivning;
+                    }
+                    if (primaryOrg?.beskrivning) {
+                        return primaryOrg.beskrivning;
+                    }
+                    if (primaryOrg?.verksamhet) {
+                        return primaryOrg.verksamhet;
+                    }
+                    if (primaryOrg?.affarsidé) {
+                        return primaryOrg.affarsidé;
+                    }
+                    return 'Saknas';
+                })(),
+                sniKoder: (() => {
+                    if (primaryOrg?.naringsgrenOrganisation?.sni) {
+                        return primaryOrg.naringsgrenOrganisation.sni;
+                    }
+                    if (primaryOrg?.sniKoder) {
+                        return primaryOrg.sniKoder;
+                    }
+                    if (primaryOrg?.sni) {
+                        return primaryOrg.sni;
+                    }
+                    if (primaryOrg?.naringsgren) {
+                        return primaryOrg.naringsgren;
+                    }
+                    return [];
+                })(),
+                aktivtForetag: !primaryOrg?.avregistreradOrganisation
+            };
+            
+            console.log('✅ Transformed data:', transformedData);
+            return transformedData;
+        }
+        
+        function displayCompanyInfo(companyData) {
+            console.log('🎨 Displaying company info with data:', companyData);
+            
+            const helper = (value) => {
+                if (!value || value === 'N/A' || value === 'null' || value === 'undefined' || value === '') {
+                    return '<span class="missing-data">Saknas</span>';
+                }
+                return value;
+            };
+            
+            const html = `
+                <div class="company-card">
+                    <h3>${helper(companyData.namn)}</h3>
+                    <div class="field">
+                        <label>Organisationsnummer:</label>
+                        <span>${helper(companyData.organisationsnummer)}</span>
+                    </div>
+                    <div class="field">
+                        <label>Status:</label>
+                        <span>${helper(companyData.status)}</span>
+                    </div>
+                    <div class="field">
+                        <label>Registreringsdatum:</label>
+                        <span>${helper(companyData.registreringsdatum)}</span>
+                    </div>
+                    <div class="field">
+                        <label>Organisationsform:</label>
+                        <span>${helper(companyData.form)}</span>
+                    </div>
+                    <div class="field">
+                        <label>Verksamhetsbeskrivning:</label>
+                        <span>${helper(companyData.verksamhet)}</span>
+                    </div>
+                    <div class="field">
+                        <label>Adress:</label>
+                        <span>${helper(companyData.adress?.fullAddress)}</span>
+                    </div>
+                    <div class="field">
+                        <label>SNI-koder:</label>
+                        <span>${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
+                            companyData.sniKoder.map(sni => `${sni.kod}: ${sni.klartext}`).join(', ') : 
+                            helper('Inga SNI-koder')}</span>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('company-display').innerHTML = html;
+        }
+    </script>
+</body>
+</html>

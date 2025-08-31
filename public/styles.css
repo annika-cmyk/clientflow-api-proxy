@@ -1467,8 +1467,10 @@ p, small { line-height: 1.6; }
 /* Contact Information Section */
 .contact-info-section {
     margin-bottom: 2rem;
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid #e9ecef;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
 }
 
 .contact-grid {
@@ -1480,21 +1482,32 @@ p, small { line-height: 1.6; }
 .contact-item {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
 }
 
 .contact-item label {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: #6c757d;
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
 }
 
 .contact-item span {
     font-size: 0.9rem;
     color: #212529;
     font-weight: 500;
+}
+
+.contact-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
 }
 
 /* Detailed Information Section */
@@ -2231,12 +2244,28 @@ p, small { line-height: 1.6; }
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
-.risk-assessment-section {
+.form-input {
+    padding: 0.75rem;
+    border: 1px solid #d1d8e0;
+    border-radius: 8px;
     background: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    border: 1px solid #e1e8ed;
+    font-size: 0.9rem;
+    transition: border-color 0.3s ease;
+    width: 200px;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.risk-assessment-section {
+        background: #dc545400;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgb(255 255 255 / 10%);
+        overflow: hidden;
+        border: 1px solid #ffffff;
 }
 
 .risk-list-header {
@@ -2894,7 +2923,7 @@ p, small { line-height: 1.6; }
 
 /* Enhanced Risk List Header */
 .risk-list-header {
-    background: #ffffff;
+
     border-bottom: 2px solid var(--accent);
 }
 
@@ -3330,6 +3359,338 @@ p, small { line-height: 1.6; }
     }
 }
 
+/* Company Overview Section */
+.company-overview-section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.overview-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+}
+
+.overview-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.overview-icon {
+    color: var(--accent);
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.overview-content {
+    flex: 1;
+}
+
+.overview-content label {
+    display: block;
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.25rem;
+}
+
+.overview-content span {
+    display: block;
+    font-size: 0.9rem;
+    color: #212529;
+    font-weight: 500;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.active {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.status-badge.inactive {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* Info Sections */
+.info-section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.section-header i {
+    color: var(--accent);
+    font-size: 1.1rem;
+}
+
+.section-header h4 {
+    margin: 0;
+    color: #212529;
+    font-size: 1.1rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Address Details */
+.address-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.address-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.address-item label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.address-item span {
+    font-size: 0.9rem;
+    color: #212529;
+    font-weight: 500;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
+.address-item.full-address {
+    grid-column: 1 / -1;
+}
+
+.address-item.full-address span {
+    background: #e3f2fd;
+    border-color: #2196f3;
+    font-weight: 500;
+}
+
+/* Business Details */
+.business-details {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+.business-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.business-item label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.business-item span {
+    font-size: 0.9rem;
+    color: #212529;
+    font-weight: 500;
+    line-height: 1.5;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+/* SNI Codes Container */
+.sni-codes-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.sni-code-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+}
+
+.sni-code-item:hover {
+    background: #e9ecef;
+    transform: translateX(2px);
+}
+
+.sni-code-badge {
+    background: var(--accent);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+    flex-shrink: 0;
+}
+
+.sni-description {
+    color: #212529;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.no-data {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+    font-style: italic;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.missing-data {
+    color: #dc3545;
+    font-style: italic;
+    font-weight: 500;
+}
+
+/* Company Names List */
+.company-names-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.company-name-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    transition: all 0.2s ease;
+}
+
+.company-name-item:hover {
+    background: #e9ecef;
+    transform: translateX(2px);
+}
+
+.company-name-item.primary {
+    background: #e3f2fd;
+    border-color: #2196f3;
+}
+
+.name-number {
+    background: var(--accent);
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.name-text {
+    flex: 1;
+    color: #212529;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.primary-badge {
+    background: #10b981;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+/* Additional Details */
+.additional-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.additional-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.additional-item label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.additional-item span {
+    font-size: 0.9rem;
+    color: #212529;
+    font-weight: 500;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+
 /* Tab Placeholder */
 .tab-placeholder {
     text-align: center;
@@ -3357,3 +3718,147 @@ p, small { line-height: 1.6; }
     color: #adb5bd;
     font-style: italic;
 }
+
+/* =====================================
+   Customer List Styles
+   ===================================== */
+
+/* Customer Header */
+.kund-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 3rem 0;
+    margin-bottom: 2rem;
+    border-radius: 0;
+}
+
+.kund-header-content h1 {
+    color: white;
+    margin-bottom: 1rem;
+    text-align: center;
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.kund-header-content h3 {
+    color: white;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.kund-header-content h4 {
+    color: white;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.kund-header-content p {
+    color: rgba(255,255,255,0.9);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.kund-header-content ul {
+    color: rgba(255,255,255,0.9);
+    margin-left: 1.5rem;
+}
+
+.kund-header-content li {
+    margin-bottom: 0.5rem;
+}
+
+
+
+
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-sm {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+}
+
+
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-active {
+    background: var(--success);
+    color: white;
+}
+
+.status-inactive {
+    background: var(--warning);
+    color: white;
+}
+
+
+
+
+
+/* No Results */
+.no-results {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text);
+}
+
+.no-results i {
+    font-size: 3rem;
+    color: var(--accent-light);
+    margin-bottom: 1rem;
+}
+
+.no-results p {
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text);
+}
+
+.loading-spinner i {
+    font-size: 2rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+}
+
+.loading-spinner p {
+    color: var(--text);
+    font-size: 1rem;
+}
+
+
+
+

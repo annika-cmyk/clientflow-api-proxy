@@ -2,8 +2,8 @@
 class ClientFlowApp {
     constructor() {
         this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
-        this.userId = 10; // Automatisk användar-ID
-        this.bureauId = 10; // Automatisk byrå-ID
+        this.userId = null; // Sätts dynamiskt baserat på inloggad användare
+        this.bureauId = null; // Sätts dynamiskt baserat på inloggad användare
         this.navigation = null;
         this.init();
     }
@@ -103,6 +103,23 @@ class ClientFlowApp {
 
             console.log('User role:', userData.role);
 
+            // Sätt användar-ID och byrå-ID baserat på inloggad användare
+            // Använd rätt fältnamn från Airtable - både direkta fält och fields-strukturen
+            this.userId = userData.id || userData.fields?.UserID || userData.fields?.userID || userData.fields?.user_id || userData.fields?.['Användar-ID'] || userData.fields?.id || null;
+            this.bureauId = userData.byraId || userData.fields?.byraId || userData.fields?.byra_id || userData.fields?.['Byrå ID'] || null;
+            
+            console.log('🔍 Satt användar-ID och byrå-ID:', {
+                userId: this.userId,
+                bureauId: this.bureauId,
+                userData: userData,
+                availableFields: Object.keys(userData),
+                userDataFields: userData.fields ? Object.keys(userData.fields) : 'No fields',
+                userDataId: userData.id,
+                userDataFieldsId: userData.fields?.id,
+                userDataFieldsUserID: userData.fields?.UserID,
+                userDataFieldsUserIDLower: userData.fields?.userID
+            });
+
             // Only show system status for ClientFlowAdmin users
             if (userData.role !== 'ClientFlowAdmin') {
                 console.log('User is not ClientFlowAdmin - hiding system status');
@@ -181,17 +198,18 @@ class ClientFlowApp {
         // Check Airtable status
         this.updateStatus('airtable-status', 'Kontrollerar...', 'checking');
         try {
-            const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
+            const response = await fetch(`${this.baseUrl}/api/test-airtable-connection`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ test: true })
+                headers: { 'Content-Type': 'application/json' }
             });
             
-            if (response.status === 400) {
-                // 400 means endpoint exists but validation failed - Airtable is accessible
-                this.updateStatus('airtable-status', 'Connected', 'connected');
-            } else if (response.ok) {
-                this.updateStatus('airtable-status', 'Connected', 'connected');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    this.updateStatus('airtable-status', 'Connected', 'connected');
+                } else {
+                    this.updateStatus('airtable-status', 'Error', 'error');
+                }
             } else {
                 this.updateStatus('airtable-status', 'Disconnected', 'error');
             }
@@ -419,7 +437,28 @@ class ClientFlowApp {
                 // Annars är den avregistrerad
                 return 'Avregistrerad';
             })(),
-            registreringsdatum: primaryOrg?.organisationsdatum?.registreringsdatum || 'Saknas',
+            registreringsdatum: (() => {
+                // Try different possible field structures for registration date
+                if (primaryOrg?.organisationsdatum?.registreringsdatum) {
+                    return primaryOrg.organisationsdatum.registreringsdatum;
+                }
+                if (primaryOrg?.registreringsdatum) {
+                    return primaryOrg.registreringsdatum;
+                }
+                if (primaryOrg?.datum?.registrering) {
+                    return primaryOrg.datum.registrering;
+                }
+                if (primaryOrg?.registrering) {
+                    return primaryOrg.registrering;
+                }
+                if (primaryOrg?.bildad) {
+                    return primaryOrg.bildad;
+                }
+                if (primaryOrg?.startdatum) {
+                    return primaryOrg.startdatum;
+                }
+                return 'Saknas';
+            })(),
             registreringsland: primaryOrg?.registreringsland?.klartext || 'Sverige',
             adress: {
                 gatuadress: address.utdelningsadress || 'Saknas',
@@ -427,8 +466,41 @@ class ClientFlowApp {
                 postort: address.postort || 'Saknas',
                 fullAddress: fullAddress || 'Saknas'
             },
-            verksamhet: primaryOrg?.verksamhetsbeskrivning?.beskrivning || 'Saknas',
-            sniKoder: primaryOrg?.naringsgrenOrganisation?.sni || [],
+            verksamhet: (() => {
+                // Try different possible field structures for verksamhetsbeskrivning
+                if (primaryOrg?.verksamhetsbeskrivning?.beskrivning) {
+                    return primaryOrg.verksamhetsbeskrivning.beskrivning;
+                }
+                if (typeof primaryOrg?.verksamhetsbeskrivning === 'string') {
+                    return primaryOrg.verksamhetsbeskrivning;
+                }
+                if (primaryOrg?.beskrivning) {
+                    return primaryOrg.beskrivning;
+                }
+                if (primaryOrg?.verksamhet) {
+                    return primaryOrg.verksamhet;
+                }
+                if (primaryOrg?.affarsidé) {
+                    return primaryOrg.affarsidé;
+                }
+                return 'Saknas';
+            })(),
+            sniKoder: (() => {
+                // Try different possible field structures for SNI codes
+                if (primaryOrg?.naringsgrenOrganisation?.sni) {
+                    return primaryOrg.naringsgrenOrganisation.sni;
+                }
+                if (primaryOrg?.sniKoder) {
+                    return primaryOrg.sniKoder;
+                }
+                if (primaryOrg?.sni) {
+                    return primaryOrg.sni;
+                }
+                if (primaryOrg?.naringsgren) {
+                    return primaryOrg.naringsgren;
+                }
+                return [];
+            })(),
             aktivtForetag: !primaryOrg?.avregistreradOrganisation,
             // Add more fields as they become available
             antal_anstallda: 'Okänt',
@@ -446,11 +518,62 @@ class ClientFlowApp {
         
         console.log('✅ Transformed data:', transformedData);
         console.log('🔍 Debug information:', transformedData.debug);
+        
+        console.log('🔍 Raw data structure check:');
+        console.log('  - primaryOrg.verksamhetsbeskrivning:', primaryOrg?.verksamhetsbeskrivning);
+        console.log('  - primaryOrg.organisationsdatum:', primaryOrg?.organisationsdatum);
+        console.log('  - primaryOrg.organisationsform:', primaryOrg?.organisationsform);
+        console.log('  - primaryOrg.juridiskForm:', primaryOrg?.juridiskForm);
+        console.log('  - primaryOrg.naringsgrenOrganisation:', primaryOrg?.naringsgrenOrganisation);
+        console.log('🔍 All available fields in primaryOrg:', Object.keys(primaryOrg || {}));
+        
+        // Check for alternative field names for verksamhetsbeskrivning
+        const possibleVerksamhetFields = [
+            'verksamhetsbeskrivning',
+            'beskrivning',
+            'verksamhet',
+            'affarsidé',
+            'affarsidePrimary',
+            'huvudsakligVerksamhet'
+        ];
+        
+        console.log('🔍 Checking for verksamhet fields:');
+        possibleVerksamhetFields.forEach(field => {
+            if (primaryOrg?.[field]) {
+                console.log(`  - Found ${field}:`, primaryOrg[field]);
+            }
+        });
+        
+        // Check for alternative field names for registration date
+        const possibleDateFields = [
+            'organisationsdatum',
+            'registreringsdatum',
+            'datum',
+            'bildad',
+            'startdatum'
+        ];
+        
+        console.log('🔍 Checking for date fields:');
+        possibleDateFields.forEach(field => {
+            if (primaryOrg?.[field]) {
+                console.log(`  - Found ${field}:`, primaryOrg[field]);
+            }
+        });
+        
         return transformedData;
     }
 
     displayCompanyInfo(companyData) {
         console.log('🎨 Displaying company info with data:', companyData);
+        console.log('🔍 Key fields check:');
+        console.log('  - verksamhet:', companyData.verksamhet);
+        console.log('  - registreringsdatum:', companyData.registreringsdatum);
+        console.log('  - status:', companyData.status);
+        console.log('  - form:', companyData.form);
+        console.log('  - adress:', companyData.adress);
+        console.log('  - sniKoder:', companyData.sniKoder);
+        console.log('🔍 All available fields:', Object.keys(companyData));
+        console.log('🔍 Full companyData object:', companyData);
         
         // Hide any error messages when showing company info
         this.hideError();
@@ -466,8 +589,8 @@ class ClientFlowApp {
 
         // Helper function to replace N/A with Saknas
         const formatValue = (value) => {
-            if (!value || value === 'N/A' || value === 'null' || value === 'undefined') {
-                return 'Saknas';
+            if (!value || value === 'N/A' || value === 'null' || value === 'undefined' || value === '') {
+                return '<span class="missing-data">Saknas</span>';
             }
             return value;
         };
@@ -500,6 +623,10 @@ class ClientFlowApp {
                         <i class="fas fa-building"></i>
                         Företagsuppgifter
                     </button>
+                    <button class="tab-button" data-tab="roller">
+                        <i class="fas fa-users-cog"></i>
+                        Roller
+                    </button>
                     <button class="tab-button" data-tab="riskbedomning">
                         <i class="fas fa-shield-alt"></i>
                         Riskbedömning
@@ -518,59 +645,136 @@ class ClientFlowApp {
                         <div class="contact-info-section">
                             <div class="contact-grid">
                                 <div class="contact-item">
-                                    <label>E-post</label>
-                                    <span>${formatValue(companyData.email || 'Saknas')}</span>
+                                    <label>Status</label>
+                                    <span class="status-badge ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">${formatValue(companyData.status)}</span>
                                 </div>
                                 <div class="contact-item">
-                                    <label>Postadress</label>
-                                    <span>${formatValue(companyData.adress?.fullAddress || 'Saknas')}</span>
+                                    <label>Registreringsdatum</label>
+                                    <span>${formatValue(companyData.registreringsdatum)}</span>
                                 </div>
                                 <div class="contact-item">
-                                    <label>Telefonnr</label>
-                                    <span>${formatValue(companyData.telefon || 'Saknas')}</span>
+                                    <label>Registreringsland</label>
+                                    <span>${formatValue(companyData.registreringsland)}</span>
+                                </div>
+                                <div class="contact-item">
+                                    <label>Organisationsform</label>
+                                    <span>${formatValue(companyData.form)}</span>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Detailed Information Section -->
+
+                        <!-- Company Names Section (if multiple names exist) -->
+                        ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
                         <div class="detailed-info-section">
-                            <div class="info-grid">
-                                <div class="info-item">
-                                    <label>SNI kod</label>
-                                    <span>
-                                        ${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
-                                            companyData.sniKoder
-                                                .filter(sni => sni.klartext && sni.klartext.trim() !== '')
-                                                .map(sni => `<span class="sni-code">${formatValue(sni.kod)}</span> <span class="sni-text">${sni.klartext}</span>`).join('<br>')
-                                            : 'Saknas'
-                                        }
-                                    </span>
+                            <div class="section-header">
+                                <i class="fas fa-tags"></i>
+                                <h4>Företagsnamn</h4>
+                            </div>
+                            <div class="company-names-list">
+                                ${companyData.allaNamn.map((namn, index) => `
+                                    <div class="company-name-item ${index === 0 ? 'primary' : ''}">
+                                        <span class="name-number">${index + 1}</span>
+                                        <span class="name-text">${namn}</span>
+                                        ${index === 0 ? '<span class="primary-badge">Huvudnamn</span>' : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Address Information Section -->
+                        <div class="detailed-info-section">
+                            <div class="section-header">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <h4>Adressinformation</h4>
+                            </div>
+                            <div class="address-details">
+                                <div class="address-item">
+                                    <label>Gatuadress</label>
+                                    <span>${formatValue(companyData.adress?.gatuadress)}</span>
                                 </div>
-                                <div class="info-item">
+                                <div class="address-item">
+                                    <label>Postnummer</label>
+                                    <span>${formatValue(companyData.adress?.postnummer)}</span>
+                                </div>
+                                <div class="address-item">
+                                    <label>Postort</label>
+                                    <span>${formatValue(companyData.adress?.postort)}</span>
+                                </div>
+                                <div class="address-item full-address">
+                                    <label>Fullständig adress</label>
+                                    <span>${formatValue(companyData.adress?.fullAddress)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Business Information Section -->
+                        <div class="detailed-info-section">
+                            <div class="section-header">
+                                <i class="fas fa-briefcase"></i>
+                                <h4>Verksamhetsinformation</h4>
+                            </div>
+                            <div class="business-details">
+                                <div class="business-item">
                                     <label>Verksamhetsbeskrivning</label>
-                                    <span>${formatValue(companyData.verksamhet || 'Saknas')}</span>
+                                    <span>${formatValue(companyData.verksamhet)}</span>
                                 </div>
-                                <div class="info-item">
+                            </div>
+                        </div>
+
+                        <!-- SNI Codes Section -->
+                        <div class="detailed-info-section">
+                            <div class="section-header">
+                                <i class="fas fa-tags"></i>
+                                <h4>SNI-koder</h4>
+                            </div>
+                            <div class="sni-codes-container">
+                                ${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
+                                    companyData.sniKoder
+                                        .filter(sni => sni.klartext && sni.klartext.trim() !== '')
+                                        .map(sni => `
+                                            <div class="sni-code-item">
+                                                <span class="sni-code-badge">${formatValue(sni.kod)}</span>
+                                                <span class="sni-description">${formatValue(sni.klartext)}</span>
+                                            </div>
+                                        `).join('')
+                                    : '<div class="no-data">Inga SNI-koder tillgängliga</div>'
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Additional Information Section -->
+                        <div class="detailed-info-section">
+                            <div class="section-header">
+                                <i class="fas fa-info-circle"></i>
+                                <h4>Övrig information</h4>
+                            </div>
+                            <div class="additional-details">
+                                <div class="additional-item">
+                                    <label>Antal anställda</label>
+                                    <span>${formatValue(companyData.antal_anstallda)}</span>
+                                </div>
+                                <div class="additional-item">
                                     <label>Omsättning</label>
-                                    <span>${formatValue(companyData.omsattning || 'Saknas')}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Befattningshavare</label>
-                                    <span>${formatValue(companyData.befattningshavare || 'Saknas')}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Verklig huvudman</label>
-                                    <span>${formatValue(companyData.verkligHuvudman || 'Saknas')}</span>
-                                </div>
-                                <div class="info-item">
-                                    <label>Firmateckning</label>
-                                    <span>${formatValue(companyData.firmateckning || 'Saknas')}</span>
+                                    <span>${formatValue(companyData.omsattning)}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <!-- Tab 2: Riskbedömning -->
+                    <!-- Tab 2: Roller -->
+                    <div class="tab-pane" id="roller">
+                        <div class="roles-section">
+                            <h4><i class="fas fa-users-cog"></i> Roller och ansvar</h4>
+                            <div class="role-info">
+                                <p><strong>VD/Ansvarig:</strong> ${formatValue(companyData.namn)}</p>
+                                <p><strong>Ekonomiansvarig:</strong> ${companyData.form === 'Aktiebolag' ? 'Krävs enligt lag' : 'Rekommenderas'}</p>
+                                <p><strong>Riskansvarig:</strong> Under utveckling</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab 3: Riskbedömning -->
                     <div class="tab-pane" id="riskbedomning">
                         <div class="tab-placeholder">
                             <div class="placeholder-icon">
@@ -598,8 +802,20 @@ class ClientFlowApp {
         `;
         
         console.log('📝 Generated HTML:', html);
+        console.log('🔍 HTML length:', html.length);
         companyDetails.innerHTML = html;
         companyInfoSection.style.display = 'block';
+        
+        // Debug: Check if elements are actually in the DOM
+        setTimeout(() => {
+            const verksamhetElement = document.querySelector('.business-item span');
+            const registreringsdatumElement = document.querySelector('.overview-item:nth-child(2) span');
+            console.log('🔍 DOM check:');
+            console.log('  - verksamhet element:', verksamhetElement);
+            console.log('  - registreringsdatum element:', registreringsdatumElement);
+            if (verksamhetElement) console.log('  - verksamhet text:', verksamhetElement.textContent);
+            if (registreringsdatumElement) console.log('  - registreringsdatum text:', registreringsdatumElement.textContent);
+        }, 100);
         
         // Initialize tab functionality
         this.initTabs();
@@ -650,26 +866,84 @@ class ClientFlowApp {
             // Get company data from the displayed information
             const companyData = this.extractCompanyDataFromDisplay();
             
-            // Add user and bureau IDs
-            companyData.userId = this.userId;
-            companyData.bureauId = this.bureauId;
+            // Add user and bureau IDs with correct field names
+            companyData.anvandareId = this.userId;
+            companyData.byraId = this.bureauId;
             companyData.timestamp = new Date().toISOString();
+            
+            // Kontrollera att vi har rätt data
+            if (!this.userId || !this.bureauId) {
+                console.warn('⚠️ Varning: Saknar användar-ID eller byrå-ID:', {
+                    userId: this.userId,
+                    bureauId: this.bureauId
+                });
+            }
 
             // Debug: Log what we're sending
-            console.log('🔍 Sending to Airtable:', companyData);
+            console.log('🔍 Final data being sent to Airtable:', {
+                companyData: companyData,
+                userId: this.userId,
+                bureauId: this.bureauId,
+                hasUserId: !!this.userId,
+                hasBureauId: !!this.bureauId,
+                userIdType: typeof this.userId,
+                bureauIdType: typeof this.bureauId
+            });
 
-            const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
+            // Först testa debug-endpointen för att se vad som skickas
+            console.log('🔍 Testing debug endpoint first...');
+            const debugResponse = await fetch(`${this.baseUrl}/api/debug/save-to-airtable`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(companyData)
             });
+            
+            if (debugResponse.ok) {
+                const debugData = await debugResponse.json();
+                console.log('🔍 Debug endpoint response:', debugData);
+            } else {
+                console.warn('⚠️ Debug endpoint failed:', debugResponse.status);
+            }
+            
+            // Sedan skicka till riktiga endpointen
+            console.log('🔍 Sending to real Airtable endpoint...');
+            let response;
+            
+            try {
+                response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(companyData)
+                });
+            } catch (error) {
+                console.warn('⚠️ Bolagsverket endpoint failed, trying simple endpoint:', error);
+                
+                // Fallback till enkel endpoint
+                response = await fetch(`${this.baseUrl}/api/simple/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(companyData)
+                });
+            }
 
+            // Debug: Log response details
+            console.log('🔍 Response status:', response.status);
+            console.log('🔍 Response headers:', response.headers);
+            
             if (response.ok) {
+                const responseData = await response.json();
+                console.log('✅ Success response:', responseData);
                 this.showMessage('Företagsdata sparad till Airtable!', 'success');
             } else {
-                throw new Error('Failed to save to Airtable');
+                const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+                console.error('❌ Error response:', errorData);
+                throw new Error(`Failed to save to Airtable: ${response.status} - ${errorData.message || errorData.error || 'Unknown error'}`);
             }
         } catch (error) {
             console.error('Error saving to Airtable:', error);
@@ -689,19 +963,28 @@ class ClientFlowApp {
         // Debug: Log what we found in DOM
         console.log('🔍 DOM elements found:', {
             companyName,
-            orgNumber,
-            status,
             companyNameElement: document.querySelector('.company-basic h3'),
+            orgNumber,
             orgNumberElement: document.querySelector('.org-number'),
+            status,
             statusElement: document.querySelector('.company-status')
         });
         
-        return {
+        // Debug: Log current userId and bureauId
+        console.log('🔍 Current user data:', {
+            userId: this.userId,
+            bureauId: this.bureauId
+        });
+        
+        const extractedData = {
             namn: companyName,
             organisationsnummer: orgNumber,
             status: status,
             // Add other fields as needed
         };
+        
+        console.log('🔍 Extracted data:', extractedData);
+        return extractedData;
     }
 
     exportCompanyData() {

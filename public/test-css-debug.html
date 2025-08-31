@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSS Debug - ClientFlow</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
+        
+        /* Test CSS rules */
+        .test-tab-pane {
+            display: none;
+            background: #f0f0f0;
+            padding: 20px;
+            border: 2px solid #ccc;
+            margin: 10px 0;
+        }
+        
+        .test-tab-pane.active {
+            display: block;
+            background: #e8f5e8;
+            border-color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 CSS Debug - ClientFlow</h1>
+        
+        <div class="test-section">
+            <h2>Testa CSS-regler</h2>
+            <button onclick="testCSSRules()">Testa CSS-regler</button>
+            <button onclick="testTabPanes()">Testa Tab-panes</button>
+            <button onclick="inspectCSS()">Inspektera CSS</button>
+            <div id="test-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test Tab-panes</h2>
+            <div class="test-tab-pane active" id="test-tab-1">
+                <h3>Tab 1 - Aktiv</h3>
+                <p>Detta tab-innehåll ska vara synligt eftersom det har klassen "active".</p>
+                <p>Om du ser detta, fungerar CSS:en korrekt.</p>
+            </div>
+            
+            <div class="test-tab-pane" id="test-tab-2">
+                <h3>Tab 2 - Inaktiv</h3>
+                <p>Detta tab-innehåll ska vara dolt eftersom det inte har klassen "active".</p>
+            </div>
+            
+            <div class="test-tab-pane" id="test-tab-3">
+                <h3>Tab 3 - Inaktiv</h3>
+                <p>Detta tab-innehåll ska också vara dolt.</p>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Real Tab-panes (från styles.css)</h2>
+            <div class="tab-pane active" id="real-tab-1">
+                <h3>Real Tab 1 - Aktiv</h3>
+                <p>Detta använder riktiga CSS-klasser från styles.css.</p>
+                <p>Om du ser detta, fungerar riktiga CSS-reglerna.</p>
+            </div>
+            
+            <div class="tab-pane" id="real-tab-2">
+                <h3>Real Tab 2 - Inaktiv</h3>
+                <p>Detta ska vara dolt enligt riktiga CSS-regler.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testCSSRules() {
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.innerHTML = '<h3>CSS-regler test:</h3>';
+            
+            // Testa våra test CSS-regler
+            const testTab1 = document.getElementById('test-tab-1');
+            const testTab2 = document.getElementById('test-tab-2');
+            
+            const computedStyle1 = window.getComputedStyle(testTab1);
+            const computedStyle2 = window.getComputedStyle(testTab2);
+            
+            resultDiv.innerHTML += `
+                <div style="margin: 10px 0;">
+                    <strong>Test Tab 1 (aktiv):</strong><br>
+                    - display: ${computedStyle1.display}<br>
+                    - background: ${computedStyle1.backgroundColor}<br>
+                    - border-color: ${computedStyle1.borderColor}
+                </div>
+                <div style="margin: 10px 0;">
+                    <strong>Test Tab 2 (inaktiv):</strong><br>
+                    - display: ${computedStyle2.display}<br>
+                    - background: ${computedStyle2.backgroundColor}<br>
+                    - border-color: ${computedStyle2.borderColor}
+                </div>
+            `;
+        }
+        
+        function testTabPanes() {
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.innerHTML = '<h3>Tab-panes test:</h3>';
+            
+            // Testa riktiga tab-panes
+            const realTab1 = document.getElementById('real-tab-1');
+            const realTab2 = document.getElementById('real-tab-2');
+            
+            const computedStyle1 = window.getComputedStyle(realTab1);
+            const computedStyle2 = window.getComputedStyle(realTab2);
+            
+            resultDiv.innerHTML += `
+                <div style="margin: 10px 0;">
+                    <strong>Real Tab 1 (aktiv):</strong><br>
+                    - display: ${computedStyle1.display}<br>
+                    - visibility: ${computedStyle1.visibility}<br>
+                    - opacity: ${computedStyle1.opacity}
+                </div>
+                <div style="margin: 10px 0;">
+                    <strong>Real Tab 2 (inaktiv):</strong><br>
+                    - display: ${computedStyle2.display}<br>
+                    - visibility: ${computedStyle2.visibility}<br>
+                    - opacity: ${computedStyle2.opacity}
+                </div>
+            `;
+            
+            // Kontrollera om elementen finns i DOM
+            resultDiv.innerHTML += `
+                <div style="margin: 10px 0;">
+                    <strong>DOM-kontroll:</strong><br>
+                    - realTab1 element: ${realTab1 ? '✅ Hittad' : '❌ Saknas'}<br>
+                    - realTab2 element: ${realTab2 ? '✅ Hittad' : '❌ Saknas'}
+                </div>
+            `;
+        }
+        
+        function inspectCSS() {
+            const resultDiv = document.getElementById('test-result');
+            resultDiv.innerHTML = '<h3>CSS-inspektion:</h3>';
+            
+            // Hitta alla tab-pane element
+            const allTabPanes = document.querySelectorAll('.tab-pane');
+            const allTestTabPanes = document.querySelectorAll('.test-tab-pane');
+            
+            resultDiv.innerHTML += `
+                <div style="margin: 10px 0;">
+                    <strong>Antal tab-pane element:</strong><br>
+                    - .tab-pane: ${allTabPanes.length}<br>
+                    - .test-tab-pane: ${allTestTabPanes.length}
+                </div>
+            `;
+            
+            // Kontrollera klasser
+            allTabPanes.forEach((pane, index) => {
+                const classes = pane.className;
+                const isActive = pane.classList.contains('active');
+                const display = window.getComputedStyle(pane).display;
+                
+                resultDiv.innerHTML += `
+                    <div style="margin: 5px 0; padding: 5px; background: #f0f0f0;">
+                        Tab-pane ${index + 1}: classes="${classes}", active=${isActive}, display=${display}
+                    </div>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>

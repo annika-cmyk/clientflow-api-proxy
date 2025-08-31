@@ -10,7 +10,6 @@
 </head>
 <body>
 
-
     <div class="app-container">
         <!-- Sidebar will be loaded dynamically -->
         <div class="sidebar-container">
@@ -20,25 +19,119 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="content-header">
-                <h1>Kundkort</h1>
-                <p>Hantera och visa kundinformation</p>
+                <h1><i class="fas fa-users"></i> Kundkort</h1>
+                <p>Hantera och visa kundinformation baserat på din roll</p>
             </header>
 
-            <!-- Content Section -->
-            <section class="content-section">
-                <div class="content-card">
-                    <h2>Kundöversikt</h2>
-                    <p>Här kan du se och hantera information om alla kunder.</p>
-                    
-                    <div class="form-group">
-                        <label for="search-customer">Sök kund</label>
-                        <input type="text" id="search-customer" placeholder="Ange kundnamn eller organisationsnummer">
+            <!-- User Role Info -->
+            <section class="role-info-section">
+                <div class="role-info-card">
+                    <div class="role-header">
+                        <i class="fas fa-user-shield"></i>
+                        <h3>Din roll: <span id="user-role">Laddar...</span></h3>
+                    </div>
+                    <div class="role-details">
+                        <p id="role-description">Laddar rollinformation...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search and Filter Section -->
+            <section class="search-section">
+                <div class="search-card">
+                    <div class="search-header">
+                        <h2><i class="fas fa-search"></i> Sök och filtrera kunder</h2>
                     </div>
                     
-                    <button class="btn btn-primary">
-                        <i class="fas fa-search"></i>
-                        Sök kund
+                    <div class="search-controls">
+                        <div class="form-group">
+                            <label for="search-customer">Sök kund</label>
+                            <input type="text" id="search-customer" placeholder="Ange kundnamn eller organisationsnummer">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="filter-status">Filtrera på status</label>
+                            <select id="filter-status">
+                                <option value="">Alla statusar</option>
+                                <option value="Aktiv">Aktiv</option>
+                                <option value="Inaktiv">Inaktiv</option>
+                                <option value="Avregistrerad">Avregistrerad</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="filter-form">Filtrera på organisationsform</label>
+                            <select id="filter-form">
+                                <option value="">Alla former</option>
+                                <option value="Aktiebolag">Aktiebolag</option>
+                                <option value="Enskild näringsverksamhet">Enskild näringsverksamhet</option>
+                                <option value="Handelsbolag">Handelsbolag</option>
+                                <option value="Fysiska personer">Fysiska personer</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="search-actions">
+                        <button id="search-btn" class="btn btn-primary">
+                            <i class="fas fa-search"></i>
+                            Sök kunder
+                        </button>
+                        <button id="clear-filters-btn" class="btn btn-ghost">
+                            <i class="fas fa-times"></i>
+                            Rensa filter
+                        </button>
+                        <button id="refresh-btn" class="btn btn-ghost">
+                            <i class="fas fa-sync-alt"></i>
+                            Uppdatera
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Customer List Section -->
+            <section class="customers-section">
+                <div class="customers-header">
+                    <h2><i class="fas fa-list"></i> Kundlista</h2>
+                    <div class="customers-stats">
+                        <span id="customer-count">0 kunder</span>
+                        <span id="loading-indicator" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Laddar...
+                        </span>
+                    </div>
+                </div>
+                
+                <div id="customers-container" class="customers-container">
+                    <!-- Customer cards will be loaded here -->
+                    <div class="loading-placeholder">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Laddar kunder...</p>
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="pagination" style="display: none;">
+                    <button id="prev-page" class="btn btn-ghost">
+                        <i class="fas fa-chevron-left"></i>
+                        Föregående
                     </button>
+                    <span id="page-info">Sida 1 av 1</span>
+                    <button id="next-page" class="btn btn-ghost">
+                        Nästa
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Error Message Section -->
+            <section id="error-section" class="error-section" style="display: none;">
+                <div class="error-card">
+                    <div class="error-header">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h3>Fel uppstod</h3>
+                    </div>
+                    <div class="error-content">
+                        <p id="error-message">Ett fel uppstod vid hämtning av kunddata.</p>
+                    </div>
                 </div>
             </section>
         </main>
@@ -58,5 +151,410 @@
     <script src="js/components.js"></script>
     <!-- Then load the main app -->
     <script src="app.js"></script>
+    
+    <!-- Customer management script -->
+    <script>
+        class CustomerManager {
+            constructor() {
+                this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
+                this.userData = null;
+                this.customers = [];
+                this.filteredCustomers = [];
+                this.currentPage = 1;
+                this.itemsPerPage = 10;
+                this.filters = {
+                    search: '',
+                    status: '',
+                    form: ''
+                };
+                
+                this.init();
+            }
+            
+            async init() {
+                console.log('🔍 Initializing CustomerManager...');
+                
+                // Wait for auth to be ready
+                if (window.AuthManager) {
+                    await this.waitForAuth();
+                } else {
+                    setTimeout(() => this.init(), 100);
+                    return;
+                }
+                
+                this.bindEvents();
+                this.loadUserData();
+                this.loadCustomers();
+            }
+            
+            async waitForAuth() {
+                return new Promise((resolve) => {
+                    const checkAuth = () => {
+                        if (window.AuthManager && window.AuthManager.isAuthenticated()) {
+                            resolve();
+                        } else {
+                            setTimeout(checkAuth, 100);
+                        }
+                    };
+                    checkAuth();
+                });
+            }
+            
+            bindEvents() {
+                // Search and filter events
+                document.getElementById('search-btn').addEventListener('click', () => this.searchCustomers());
+                document.getElementById('clear-filters-btn').addEventListener('click', () => this.clearFilters());
+                document.getElementById('refresh-btn').addEventListener('click', () => this.loadCustomers());
+                
+                // Search input events
+                document.getElementById('search-customer').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.searchCustomers();
+                });
+                
+                // Filter change events
+                document.getElementById('filter-status').addEventListener('change', () => this.applyFilters());
+                document.getElementById('filter-form').addEventListener('change', () => this.applyFilters());
+                
+                // Pagination events
+                document.getElementById('prev-page').addEventListener('click', () => this.previousPage());
+                document.getElementById('next-page').addEventListener('click', () => this.nextPage());
+            }
+            
+            loadUserData() {
+                const userData = localStorage.getItem('userData');
+                if (userData) {
+                    this.userData = JSON.parse(userData);
+                    this.updateRoleInfo();
+                } else {
+                    console.error('❌ No user data found');
+                    this.showError('Ingen användardata hittad. Logga in igen.');
+                }
+            }
+            
+            updateRoleInfo() {
+                const roleElement = document.getElementById('user-role');
+                const descriptionElement = document.getElementById('role-description');
+                
+                if (!this.userData) return;
+                
+                roleElement.textContent = this.userData.role || 'Okänd';
+                
+                let description = '';
+                switch (this.userData.role) {
+                    case 'ClientFlowAdmin':
+                        description = 'Du kan se alla kunder i systemet.';
+                        break;
+                    case 'Ledare':
+                        description = `Du kan se alla kunder för byrå ID: ${this.userData.byraId || 'Okänt'}`;
+                        break;
+                    case 'Anställd':
+                        description = `Du kan se kunder tilldelade till dig (Användar-ID: ${this.userData.id || 'Okänt'})`;
+                        break;
+                    default:
+                        description = 'Din roll är inte konfigurerad korrekt.';
+                }
+                
+                descriptionElement.textContent = description;
+            }
+            
+            async loadCustomers() {
+                console.log('🔍 Loading customers...');
+                this.showLoading(true);
+                this.hideError();
+                
+                try {
+                    const token = localStorage.getItem('authToken');
+                    if (!token) {
+                        throw new Error('Ingen autentiseringstoken hittad');
+                    }
+                    
+                    // Build filter based on user role
+                    let filterFormula = '';
+                    
+                    switch (this.userData.role) {
+                        case 'ClientFlowAdmin':
+                            console.log('🔓 ClientFlowAdmin: Visar alla poster');
+                            // No filter needed - show all
+                            break;
+                            
+                        case 'Ledare':
+                            if (this.userData.byraId) {
+                                filterFormula = `{Byrå ID} = "${this.userData.byraId}"`;
+                                console.log(`👔 Ledare: Filtrerar på Byrå ID: ${this.userData.byraId}`);
+                            } else {
+                                console.log('⚠️ Ledare utan Byrå ID: Visar inga poster');
+                                this.showError('Ledare utan Byrå ID - inga poster att visa');
+                                return;
+                            }
+                            break;
+                            
+                        case 'Anställd':
+                            if (this.userData.id) {
+                                filterFormula = `{Användar-ID} = "${this.userData.id}"`;
+                                console.log(`👷 Anställd: Filtrerar på användar-ID: ${this.userData.id}`);
+                            } else {
+                                console.log('⚠️ Anställd utan användar-ID: Visar inga poster');
+                                this.showError('Anställd utan användar-ID - inga poster att visa');
+                                return;
+                            }
+                            break;
+                            
+                        default:
+                            throw new Error(`Okänd roll: ${this.userData.role}`);
+                    }
+                    
+                    const response = await fetch(`${this.baseUrl}/api/kunddata`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            filterFormula: filterFormula,
+                            maxRecords: 1000
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('📊 Customer data received:', data);
+                    
+                    if (data.success) {
+                        this.customers = data.data || [];
+                        this.applyFilters();
+                        this.renderCustomers();
+                    } else {
+                        throw new Error(data.message || 'Kunde inte hämta kunddata');
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Error loading customers:', error);
+                    this.showError(`Fel vid hämtning av kunder: ${error.message}`);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+            
+            searchCustomers() {
+                this.filters.search = document.getElementById('search-customer').value.trim();
+                this.applyFilters();
+            }
+            
+            applyFilters() {
+                this.filters.status = document.getElementById('filter-status').value;
+                this.filters.form = document.getElementById('filter-form').value;
+                
+                console.log('🔍 Applying filters:', this.filters);
+                
+                this.filteredCustomers = this.customers.filter(customer => {
+                    // Search filter
+                    if (this.filters.search) {
+                        const searchTerm = this.filters.search.toLowerCase();
+                        const customerName = (customer.fields?.Namn || '').toLowerCase();
+                        const orgNumber = (customer.fields?.['Organisationsnummer'] || '').toLowerCase();
+                        
+                        if (!customerName.includes(searchTerm) && !orgNumber.includes(searchTerm)) {
+                            return false;
+                        }
+                    }
+                    
+                    // Status filter
+                    if (this.filters.status && customer.fields?.Status !== this.filters.status) {
+                        return false;
+                    }
+                    
+                    // Form filter
+                    if (this.filters.form && customer.fields?.Form !== this.filters.form) {
+                        return false;
+                    }
+                    
+                    return true;
+                });
+                
+                this.currentPage = 1;
+                this.renderCustomers();
+            }
+            
+            clearFilters() {
+                document.getElementById('search-customer').value = '';
+                document.getElementById('filter-status').value = '';
+                document.getElementById('filter-form').value = '';
+                
+                this.filters = {
+                    search: '',
+                    status: '',
+                    form: ''
+                };
+                
+                this.filteredCustomers = [...this.customers];
+                this.currentPage = 1;
+                this.renderCustomers();
+            }
+            
+            renderCustomers() {
+                const container = document.getElementById('customers-container');
+                const countElement = document.getElementById('customer-count');
+                
+                // Update count
+                countElement.textContent = `${this.filteredCustomers.length} kunder`;
+                
+                if (this.filteredCustomers.length === 0) {
+                    container.innerHTML = `
+                        <div class="no-customers">
+                            <i class="fas fa-users-slash"></i>
+                            <h3>Inga kunder hittades</h3>
+                            <p>Inga kunder matchar dina sökkriterier.</p>
+                        </div>
+                    `;
+                    document.getElementById('pagination').style.display = 'none';
+                    return;
+                }
+                
+                // Calculate pagination
+                const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+                const endIndex = startIndex + this.itemsPerPage;
+                const pageCustomers = this.filteredCustomers.slice(startIndex, endIndex);
+                
+                // Render customer cards
+                const customerCards = pageCustomers.map(customer => this.createCustomerCard(customer)).join('');
+                container.innerHTML = customerCards;
+                
+                // Update pagination
+                this.updatePagination();
+            }
+            
+            createCustomerCard(customer) {
+                const fields = customer.fields || {};
+                const recordId = customer.id;
+                
+                return `
+                    <div class="customer-card" data-record-id="${recordId}">
+                        <div class="customer-header">
+                            <div class="customer-title">
+                                <h3>${fields.Namn || 'Namn saknas'}</h3>
+                                <span class="org-number">${fields['Organisationsnummer'] || 'Org.nr saknas'}</span>
+                            </div>
+                            <div class="customer-status">
+                                <span class="status-badge ${fields.Status === 'Aktiv' ? 'active' : 'inactive'}">
+                                    ${fields.Status || 'Okänd'}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="customer-details">
+                            <div class="detail-item">
+                                <label>Organisationsform:</label>
+                                <span>${fields.Form || 'Saknas'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Registreringsdatum:</label>
+                                <span>${fields.Registreringsdatum || 'Saknas'}</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Adress:</label>
+                                <span>${fields.Adress || 'Saknas'}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="customer-actions">
+                            <button class="btn btn-primary btn-sm" onclick="customerManager.viewCustomer('${recordId}')">
+                                <i class="fas fa-eye"></i>
+                                Visa detaljer
+                            </button>
+                            <button class="btn btn-ghost btn-sm" onclick="customerManager.editCustomer('${recordId}')">
+                                <i class="fas fa-edit"></i>
+                                Redigera
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            updatePagination() {
+                const totalPages = Math.ceil(this.filteredCustomers.length / this.itemsPerPage);
+                const pagination = document.getElementById('pagination');
+                const pageInfo = document.getElementById('page-info');
+                const prevBtn = document.getElementById('prev-page');
+                const nextBtn = document.getElementById('next-page');
+                
+                if (totalPages <= 1) {
+                    pagination.style.display = 'none';
+                    return;
+                }
+                
+                pagination.style.display = 'flex';
+                pageInfo.textContent = `Sida ${this.currentPage} av ${totalPages}`;
+                
+                prevBtn.disabled = this.currentPage === 1;
+                nextBtn.disabled = this.currentPage === totalPages;
+            }
+            
+            previousPage() {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                    this.renderCustomers();
+                }
+            }
+            
+            nextPage() {
+                const totalPages = Math.ceil(this.filteredCustomers.length / this.itemsPerPage);
+                if (this.currentPage < totalPages) {
+                    this.currentPage++;
+                    this.renderCustomers();
+                }
+            }
+            
+            viewCustomer(recordId) {
+                console.log('🔍 Viewing customer:', recordId);
+                // TODO: Implement customer detail view
+                alert(`Visa detaljer för kund: ${recordId}`);
+            }
+            
+            editCustomer(recordId) {
+                console.log('🔍 Editing customer:', recordId);
+                // TODO: Implement customer edit
+                alert(`Redigera kund: ${recordId}`);
+            }
+            
+            showLoading(show) {
+                const indicator = document.getElementById('loading-indicator');
+                const container = document.getElementById('customers-container');
+                
+                if (show) {
+                    indicator.style.display = 'inline';
+                    container.innerHTML = `
+                        <div class="loading-placeholder">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Laddar kunder...</p>
+                        </div>
+                    `;
+                } else {
+                    indicator.style.display = 'none';
+                }
+            }
+            
+            showError(message) {
+                const errorSection = document.getElementById('error-section');
+                const errorMessage = document.getElementById('error-message');
+                
+                errorMessage.textContent = message;
+                errorSection.style.display = 'block';
+            }
+            
+            hideError() {
+                document.getElementById('error-section').style.display = 'none';
+            }
+        }
+        
+        // Initialize customer manager when page loads
+        let customerManager;
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔍 Initializing CustomerManager...');
+            customerManager = new CustomerManager();
+        });
+    </script>
 </body>
 </html>

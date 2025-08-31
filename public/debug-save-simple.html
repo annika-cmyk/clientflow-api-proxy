@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Enkel Sparning</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .debug-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .debug-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .debug-content {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1>🔍 Debug - Enkel Sparning till Airtable</h1>
+        
+        <div class="debug-section">
+            <div class="debug-title">📝 Testdata för Sparning</div>
+            <form id="test-form">
+                <div class="form-group">
+                    <label for="org-number">Organisationsnummer:</label>
+                    <input type="text" id="org-number" value="5567223705" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="company-name">Företagsnamn:</label>
+                    <input type="text" id="company-name" value="Test Företag AB" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="user-id">Användar-ID:</label>
+                    <input type="text" id="user-id" value="1" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="bureau-id">Byrå-ID:</label>
+                    <input type="text" id="bureau-id" value="BYRA001" required>
+                </div>
+                
+                <button type="submit" class="btn">💾 Testa Sparning</button>
+            </form>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">🧪 Snabbtester</div>
+            <button type="button" onclick="testSimpleEndpoint()" class="btn btn-secondary">🧪 Testa Enkel Endpoint</button>
+            <button type="button" onclick="testSimplifiedEndpoint()" class="btn btn-success">🔧 Testa Förenklad Endpoint</button>
+            <button type="button" onclick="testBolagsverketEndpoint()" class="btn btn-secondary">🏢 Testa Bolagsverket Endpoint</button>
+            <button type="button" onclick="testAirtableConnection()" class="btn btn-secondary">🔌 Testa Airtable-anslutning</button>
+            <button type="button" onclick="testAirtableSave()" class="btn btn-secondary">💾 Testa Airtable-sparning</button>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">📊 Resultat</div>
+            <div id="result" class="debug-content">Inget resultat än...</div>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">🔧 API Config</div>
+            <div id="api-config" class="debug-content">Laddar...</div>
+        </div>
+        
+        <a href="index.html" class="btn btn-secondary">← Tillbaka till Index</a>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        // Visa API config
+        document.getElementById('api-config').textContent = JSON.stringify({
+            baseUrl: window.apiConfig?.baseUrl,
+            apiUrl: window.apiConfig?.apiUrl
+        }, null, 2);
+        
+        // Hantera formulär
+        document.getElementById('test-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                organisationsnummer: document.getElementById('org-number').value,
+                namn: document.getElementById('company-name').value,
+                anvandareId: document.getElementById('user-id').value,
+                byraId: document.getElementById('bureau-id').value
+            };
+            
+            document.getElementById('result').textContent = 'Skickar data...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/simple/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        });
+        
+        async function testSimpleEndpoint() {
+            document.getElementById('result').textContent = 'Testar enkel endpoint...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/simple/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        organisationsnummer: '5567223705',
+                        namn: 'Test Företag AB',
+                        anvandareId: '1',
+                        byraId: 'BYRA001'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        }
+        
+        async function testSimplifiedEndpoint() {
+            document.getElementById('result').textContent = 'Testar förenklad endpoint...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/simple/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        organisationsnummer: '5567223705',
+                        namn: 'Test Företag AB',
+                        anvandareId: '1',
+                        byraId: 'BYRA001'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        }
+        
+        async function testBolagsverketEndpoint() {
+            document.getElementById('result').textContent = 'Testar Bolagsverket endpoint...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/bolagsverket/save-to-airtable`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        organisationsnummer: '5567223705',
+                        anvandareId: '1',
+                        byraId: 'BYRA001'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        }
+        
+        async function testAirtableConnection() {
+            document.getElementById('result').textContent = 'Testar Airtable-anslutning...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/test-airtable-connection`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        }
+        
+        async function testAirtableSave() {
+            document.getElementById('result').textContent = 'Testar Airtable-sparning...';
+            
+            try {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/test-airtable-save`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        organisationsnummer: '5567223705',
+                        namn: 'Test Företag AB',
+                        anvandareId: '1',
+                        byraId: 'BYRA001'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('result').textContent = JSON.stringify({
+                    status: response.status,
+                    ok: response.ok,
+                    data: data
+                }, null, 2);
+                
+            } catch (error) {
+                document.getElementById('result').textContent = `Fel: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

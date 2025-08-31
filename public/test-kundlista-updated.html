@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Kundlista - Uppdaterad</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>Test Kundlista - Uppdaterad</h1>
+                        <p>Denna sida testar de uppdaterade kundkorten med utökad information</p>
+                    </div>
+                </header>
+
+                <section class="risk-assessment-section">
+                    <div class="container">
+                        <div class="risk-list-header">
+                            <h3>Testkunder</h3>
+                            <div class="risk-header-actions">
+                                <div class="risk-stats">
+                                    <span class="stat-item">
+                                        <i class="fas fa-users"></i>
+                                        <span id="total-count">2</span> totalt
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="customer-list" class="risk-list">
+                            <!-- Testkunder kommer att visas här -->
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Testdata med alla nya fält
+        const testCustomers = [
+            {
+                id: 'test1',
+                namn: 'Skumma affärer AB',
+                organisationsnummer: '123456-7890',
+                byraId: '49',
+                anvandareId: 'test123',
+                status: 'aktiv',
+                notes: 'Detta är en testkund med utökad information',
+                timestamp: new Date().toISOString(),
+                kycUtford: '2024-01-15',
+                verksamhetsbeskrivning: 'Testverksamhet inom IT-konsultation och utveckling',
+                adress: 'Testgatan 123, 12345 Teststad',
+                telefon: '08-123 45 67',
+                email: 'info@skummaaffarer.se'
+            },
+            {
+                id: 'test2',
+                namn: 'Test Kund 2',
+                organisationsnummer: '987654-3210',
+                byraId: '49',
+                anvandareId: 'test456',
+                status: 'inaktiv',
+                notes: 'En till testkund med utökad information',
+                timestamp: new Date().toISOString(),
+                kycUtford: '2024-02-20',
+                verksamhetsbeskrivning: 'Testverksamhet inom redovisning och bokföring',
+                adress: 'Testvägen 456, 54321 Testort',
+                telefon: '08-987 65 43',
+                email: 'info@testkund2.se'
+            }
+        ];
+
+        function createCustomerCard(customer) {
+            const timestamp = customer.timestamp ? new Date(customer.timestamp).toLocaleDateString('sv-SE') : 'N/A';
+            const isActive = customer.status === 'aktiv' || customer.status === 'checked';
+            const statusClass = isActive ? 'checked' : 'unchecked';
+            
+            return `
+                <div class="risk-item ${statusClass}" data-customer-id="${customer.id}">
+                    <div class="risk-item-header" onclick="toggleCustomerItem(this)">
+                        <div class="risk-item-title">
+                            <div class="risk-status-indicator ${statusClass}">
+                                ${isActive ? '✓' : '○'}
+                            </div>
+                            <div class="risk-item-info">
+                                <h4 class="risk-task-name">${customer.namn || 'Namn saknas'}</h4>
+                                                            <div class="risk-meta-info">
+                                <span class="risk-level-badge">${customer.organisationsnummer || 'Org.nr saknas'}</span>
+                            </div>
+                            </div>
+                        </div>
+                        <div class="risk-item-actions">
+                            <button class="expand-toggle" onclick="event.stopPropagation(); toggleCustomerItem(this.closest('.risk-item-header'))">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="risk-item-content">
+                        <div class="risk-content-section">
+                            <h5><i class="fas fa-building"></i> Kundinformation</h5>
+                            <p class="risk-content-text">
+                                <strong>Organisationsnummer:</strong> ${customer.organisationsnummer || 'Saknas'}<br>
+                                <strong>Byrå ID:</strong> ${customer.byraId || 'Saknas'}<br>
+                                <strong>Användar ID:</strong> ${customer.anvandareId || 'Saknas'}
+                            </p>
+                        </div>
+                        
+                        <div class="risk-content-section">
+                            <h5><i class="fas fa-calendar-check"></i> KYC Information</h5>
+                            <p class="risk-content-text">
+                                KYC utförd datum: ${customer.kycUtford || 'N/A'}
+                            </p>
+                        </div>
+                        
+                        <div class="risk-content-section">
+                            <h5><i class="fas fa-briefcase"></i> Verksamhet</h5>
+                            <p class="risk-content-text">
+                                Verksamhetsbeskrivning: ${customer.verksamhetsbeskrivning || 'N/A'}
+                            </p>
+                        </div>
+                        
+                        <div class="risk-content-section">
+                            <h5><i class="fas fa-map-marker-alt"></i> Kontaktinformation</h5>
+                            <p class="risk-content-text">
+                                Adress: ${customer.adress || 'N/A'}<br>
+                                Telefon: ${customer.telefon || 'N/A'}<br>
+                                E-post: ${customer.email || 'N/A'}
+                            </p>
+                        </div>
+                        
+                        <div class="risk-content-section">
+                            <h5><i class="fas fa-sticky-note"></i> Anteckningar</h5>
+                            <p class="risk-content-text">
+                                ${customer.notes || 'Inga anteckningar'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleCustomerItem(headerElement) {
+            const riskItem = headerElement.closest('.risk-item');
+            const content = riskItem.querySelector('.risk-item-content');
+            const expandToggle = headerElement.querySelector('.expand-toggle i');
+            
+            console.log('🔍 Toggle function called for:', headerElement);
+            console.log('🔍 Content element:', content);
+            console.log('🔍 Current expanded class:', riskItem.classList.contains('expanded'));
+            
+            if (riskItem.classList.contains('expanded')) {
+                // Collapse
+                riskItem.classList.remove('expanded');
+                expandToggle.className = 'fas fa-chevron-down';
+                console.log('✅ Content collapsed');
+            } else {
+                // Expand
+                riskItem.classList.add('expanded');
+                expandToggle.className = 'fas fa-chevron-up';
+                console.log('✅ Content expanded');
+            }
+        }
+
+        function renderCustomerList() {
+            const customerList = document.getElementById('customer-list');
+            const customerItems = testCustomers.map(customer => createCustomerCard(customer)).join('');
+            
+            customerList.innerHTML = `
+                <div class="risk-items">
+                    ${customerItems}
+                </div>
+            `;
+        }
+
+        // Ladda sidan när DOM är redo
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCustomerList();
+        });
+    </script>
+</body>
+</html>
