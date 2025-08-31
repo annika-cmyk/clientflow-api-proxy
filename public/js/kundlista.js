@@ -447,14 +447,14 @@ class CustomerManager {
                     <div class="risk-content-section">
                         <h5><i class="fas fa-calendar-check"></i> KYC Information</h5>
                         <p class="risk-content-text">
-                            KYC utförd datum: ${customer.kycUtford || 'N/A'}
+                            Utförd datum: ${customer.kycUtford || 'N/A'}
                         </p>
                     </div>
                     
                     <div class="risk-content-section">
                         <h5><i class="fas fa-briefcase"></i> Verksamhet</h5>
                         <p class="risk-content-text">
-                            Verksamhetsbeskrivning: ${customer.verksamhetsbeskrivning || 'N/A'}
+                            ${customer.verksamhetsbeskrivning || 'N/A'}
                         </p>
                     </div>
                     
@@ -464,13 +464,6 @@ class CustomerManager {
                             Adress: ${customer.adress || 'N/A'}<br>
                             Telefon: ${customer.telefon || 'N/A'}<br>
                             E-post: ${customer.email || 'N/A'}
-                        </p>
-                    </div>
-                    
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-sticky-note"></i> Anteckningar</h5>
-                        <p class="risk-content-text">
-                            ${customer.notes || 'Inga anteckningar'}
                         </p>
                     </div>
                     
