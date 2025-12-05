@@ -3625,6 +3625,354 @@ app.delete('/api/risk-factors/:id', async (req, res) => {
   }
 });
 
+// GET /api/notes - Hämta anteckningar för en kund
+app.get('/api/notes', authenticateToken, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { customerId } = req.query;
+    
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'customerId parameter saknas'
+      });
+    }
+
+    console.log(`🔍 Hämtar anteckningar för kund: ${customerId}`);
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    
+    // Tabell-ID för Anteckningar från Airtable API-dokumentation
+    // Tabell-ID: tblXswCwopx7l02Mu (kan också använda "Anteckningar")
+    const NOTES_TABLE_NAMES = [
+      'tblXswCwopx7l02Mu', // Tabell-ID (rekommenderat)
+      'Anteckningar',       // Tabellnamn (fungerar också)
+      'Notes'               // Fallback
+    ];
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Hämta användardata för rollbaserad filtrering
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Användare hittades inte'
+      });
+    }
+
+    // Först: Hämta kunddata för att få Byrå ID och Orgnr
+    console.log(`🔍 Hämtar kunddata för ID: ${customerId}`);
+    const customerUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`;
+    
+    let customerData = null;
+    let byraId = null;
+    let orgnr = null;
+    
+    try {
+      const customerResponse = await axios.get(customerUrl, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+
+      customerData = customerResponse.data;
+      const fields = customerData.fields || {};
+      
+      // Hämta Byrå ID och Orgnr med olika möjliga fältnamn
+      byraId = fields['Byrå ID'] || fields['ByråID'] || fields['Byra ID'] || fields['ByraID'] || fields['Byrå'] || null;
+      orgnr = fields['Orgnr'] || fields['Orgnr.'] || fields['Org.nr'] || fields['Organisationsnummer'] || fields['Org nr'] || null;
+      
+      console.log(`📋 Kunddata hämtad - Byrå ID: ${byraId}, Orgnr: ${orgnr}`);
+      
+      if (!byraId && !orgnr) {
+        console.warn('⚠️ Varken Byrå ID eller Orgnr hittades i kunddata');
+      }
+    } catch (error) {
+      console.error('❌ Kunde inte hämta kunddata:', error.message);
+      return res.status(404).json({
+        success: false,
+        message: 'Kund hittades inte',
+        error: error.message
+      });
+    }
+
+    // Nu: Hämta anteckningar baserat på Byrå ID och Orgnr
+    let notes = [];
+    let workingTableName = null;
+    
+    // Exakta fältnamn för Byrå ID och Orgnr i Anteckningar-tabellen
+    // Från Airtable API-dokumentation:
+    // - Byrå ID: fldudECe6P466Aau6 (Text)
+    // - Orgnr: fldUWIzd230yo60pj (Text)
+    const BYRA_ID_FIELD_NAMES = ['Byrå ID', 'fldudECe6P466Aau6']; // Exakt fältnamn först
+    const ORGNR_FIELD_NAMES = ['Orgnr', 'fldUWIzd230yo60pj']; // Exakt fältnamn först
+    
+    if (!byraId && !orgnr) {
+      console.warn('⚠️ Inga filterkriterier tillgängliga (varken Byrå ID eller Orgnr)');
+      return res.json({
+        success: true,
+        notes: [],
+        count: 0,
+        customerId: customerId,
+        byraId: null,
+        orgnr: null,
+        message: 'Inga filterkriterier tillgängliga',
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime
+      });
+    }
+    
+    for (const tableName of NOTES_TABLE_NAMES) {
+      // Försök alla kombinationer av fältnamn
+      for (const byraFieldName of byraId ? BYRA_ID_FIELD_NAMES : [null]) {
+        for (const orgnrFieldName of orgnr ? ORGNR_FIELD_NAMES : [null]) {
+          try {
+            // Bygg filterformel
+            let filterFormula = '';
+            
+            if (byraId && byraFieldName && orgnr && orgnrFieldName) {
+              // Både Byrå ID och Orgnr
+              filterFormula = `AND({${byraFieldName}}="${byraId}", {${orgnrFieldName}}="${orgnr}")`;
+            } else if (byraId && byraFieldName) {
+              // Endast Byrå ID
+              filterFormula = `{${byraFieldName}}="${byraId}"`;
+            } else if (orgnr && orgnrFieldName) {
+              // Endast Orgnr
+              filterFormula = `{${orgnrFieldName}}="${orgnr}"`;
+            } else {
+              continue; // Hoppa över om ingen filter kan byggas
+            }
+            
+            const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableName}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+            
+            console.log(`🌐 Försöker hämta från tabell: ${tableName}`);
+            console.log(`🌐 Byrå ID fält: ${byraFieldName || 'N/A'}, Orgnr fält: ${orgnrFieldName || 'N/A'}`);
+            console.log(`🌐 Filter: ${filterFormula}`);
+            
+            const response = await axios.get(url, {
+              headers: {
+                'Authorization': `Bearer ${airtableAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 15000
+            });
+
+            const records = response.data.records || [];
+            console.log(`✅ Hittade ${records.length} anteckningar i tabell: ${tableName}`);
+            
+            if (records.length > 0) {
+              notes = records;
+              workingTableName = tableName;
+              break; // Hittade poster, avbryt looparna
+            }
+          } catch (error) {
+            // Om det är ett 404 eller 422, tabellen/fältet finns inte - hoppa över
+            if (error.response && (error.response.status === 404 || error.response.status === 422)) {
+              console.log(`⚠️ Tabell/fält verkar inte finnas: ${tableName}`);
+              continue;
+            }
+            console.log(`⚠️ Fel vid hämtning från ${tableName}:`, error.message);
+            if (error.response) {
+              console.log(`⚠️ Airtable error:`, error.response.data);
+            }
+            continue;
+          }
+        }
+        if (notes.length > 0) break; // Hittade poster, avbryt yttre loopen
+      }
+      if (notes.length > 0) break; // Hittade poster, avbryt tabellnamn-loopen
+      
+      // Om första tabellnamnet inte gav resultat, testa om tabellen finns
+      if (tableName === NOTES_TABLE_NAMES[0] && notes.length === 0) {
+        try {
+          const testUrl = `https://api.airtable.com/v0/${airtableBaseId}/${tableName}?maxRecords=1`;
+          await axios.get(testUrl, {
+            headers: {
+              'Authorization': `Bearer ${airtableAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 15000
+          });
+          console.log(`✅ Tabell ${tableName} finns, men inga poster matchade filtret`);
+          workingTableName = tableName;
+        } catch (testError) {
+          console.log(`⚠️ Tabell ${tableName} verkar inte finnas:`, testError.message);
+        }
+      }
+    }
+
+    // Om vi inte hittade några notes, logga information
+    if (notes.length === 0) {
+      console.log('⚠️ Inga anteckningar hittades.');
+      console.log(`💡 Sökte med Byrå ID: ${byraId}, Orgnr: ${orgnr}`);
+      console.log(`💡 Tabellnamn som testades: ${NOTES_TABLE_NAMES.join(', ')}`);
+    }
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      notes: notes.map(record => ({
+        id: record.id,
+        createdTime: record.createdTime,
+        fields: record.fields
+      })),
+      count: notes.length,
+      customerId: customerId,
+      byraId: byraId,
+      orgnr: orgnr,
+      userRole: userData.role,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching notes:', error.message);
+    
+    if (error.response) {
+      console.error('Airtable API Error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid hämtning av anteckningar',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+  }
+});
+
+// POST /api/notes - Skapa ny anteckning
+app.post('/api/notes', authenticateToken, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const noteData = req.body;
+    
+    console.log('🔍 Skapar ny anteckning:', noteData);
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const NOTES_TABLE = 'tblXswCwopx7l02Mu'; // Anteckningar tabell-ID
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Hämta användardata
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Användare hittades inte'
+      });
+    }
+
+    // Bygg Airtable-fält
+    const airtableFields = {
+      'Typ av anteckning': noteData.typAvAnteckning || [],
+      'Datum': noteData.datum || new Date().toISOString().split('T')[0],
+      'Notes': noteData.notes || '',
+      'Byrå ID': noteData.byraId || '',
+      'Orgnr': noteData.orgnr || ''
+    };
+    
+    // Lägg till valfria fält
+    if (noteData.foretagsnamn) {
+      airtableFields['Företagsnamn'] = noteData.foretagsnamn;
+    }
+    
+    if (noteData.person) {
+      airtableFields['Person'] = noteData.person;
+    }
+    
+    // Lägg till UserID (användarens ID)
+    if (userData.id) {
+      airtableFields['UserID'] = parseInt(userData.id) || userData.id;
+    }
+    
+    // Lägg till Name (användarens namn)
+    if (userData.name) {
+      airtableFields['Name'] = userData.name;
+    }
+    
+    // Lägg till ToDo-uppgifter
+    for (let i = 1; i <= 8; i++) {
+      if (noteData[`ToDo${i}`]) {
+        airtableFields[`ToDo${i}`] = noteData[`ToDo${i}`];
+      }
+      if (noteData[`Status${i}`]) {
+        airtableFields[`Status${i}`] = noteData[`Status${i}`];
+      }
+    }
+    
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}`;
+    
+    console.log('🌐 Skapar anteckning i Airtable:', url);
+    console.log('📋 Fält:', airtableFields);
+    
+    const response = await axios.post(url, {
+      fields: airtableFields
+    }, {
+      headers: {
+        'Authorization': `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    const duration = Date.now() - startTime;
+    
+    console.log('✅ Anteckning skapad:', response.data);
+    
+    res.json({
+      success: true,
+      record: response.data,
+      message: 'Anteckning skapad',
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error creating note:', error.message);
+    
+    if (error.response) {
+      console.error('Airtable API Error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid skapande av anteckning',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 API Proxy Service running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
@@ -3643,6 +3991,8 @@ app.listen(PORT, () => {
     console.log(`   • Post KUNDDATA: POST http://localhost:${PORT}/api/kunddata`);
     console.log(`   • Debug KUNDDATA: GET http://localhost:${PORT}/api/kunddata/debug`);
     console.log(`   • Test KUNDDATA: GET http://localhost:${PORT}/api/kunddata/test`);
+    console.log(`📝 Notes endpoints:`);
+    console.log(`   • Get notes: GET http://localhost:${PORT}/api/notes?customerId=:id`);
   console.log(`⚠️ Risk Assessment endpoints:`);
   console.log(`   • Get all: GET http://localhost:${PORT}/api/risk-assessments`);
   console.log(`   • Create: POST http://localhost:${PORT}/api/risk-assessments`);

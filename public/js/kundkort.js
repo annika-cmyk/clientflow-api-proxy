@@ -486,8 +486,22 @@ class CustomerCardManager {
         }
 
         try {
+            // Get auth token from localStorage
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                console.warn('No auth token found');
+                this.displayEmptyRoles();
+                return;
+            }
+
             // Try to load roles from API endpoint if it exists
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/kunddata/${this.customerId}/roller`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/kunddata/${this.customerId}/roller`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.displayRoles(data.roles || []);
@@ -651,8 +665,22 @@ class CustomerCardManager {
         const content = document.getElementById('risk-assessment-content');
         
         try {
+            // Get auth token from localStorage
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                console.warn('No auth token found');
+                this.displayEmptyRiskAssessment();
+                return;
+            }
+
             // Load risk assessment data
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments?customerId=${this.customerId}`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments?customerId=${this.customerId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.displayRiskAssessment(data.records || []);
@@ -866,16 +894,44 @@ class CustomerCardManager {
         const content = document.getElementById('notes-content');
         
         try {
+            // Get auth token from localStorage
+            const token = localStorage.getItem('authToken');
+            console.log('🔍 Loading notes - Token exists:', !!token);
+            console.log('🔍 Loading notes - Customer ID:', this.customerId);
+            console.log('🔍 Loading notes - API URL:', `${window.apiConfig.baseUrl}/api/notes?customerId=${this.customerId}`);
+            
+            if (!token) {
+                console.error('❌ No auth token found');
+                this.displayEmptyNotes();
+                return;
+            }
+
             // Load notes data
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/notes?customerId=${this.customerId}`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/notes?customerId=${this.customerId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            console.log('🔍 Notes response status:', response.status);
+            
             if (response.ok) {
                 const data = await response.json();
+                console.log('✅ Notes loaded successfully:', data);
                 this.displayNotes(data.notes || []);
+            } else if (response.status === 401 || response.status === 403) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('❌ Authentication failed:', response.status, errorData);
+                this.displayEmptyNotes();
             } else {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('❌ Error loading notes:', response.status, response.statusText, errorData);
                 this.displayEmptyNotes();
             }
         } catch (error) {
-            console.error('Error loading notes:', error);
+            console.error('❌ Error loading notes:', error);
             this.displayEmptyNotes();
         }
     }
@@ -911,23 +967,59 @@ class CustomerCardManager {
 
     createNoteCard(note) {
         const fields = note.fields || {};
+        
+        // Typ av anteckning är en array (multiple select)
+        const typAvAnteckning = fields['Typ av anteckning'];
+        const typAvAnteckningText = Array.isArray(typAvAnteckning) && typAvAnteckning.length > 0 
+            ? typAvAnteckning.join(', ') 
+            : 'Anteckning';
+        
+        const date = fields['Datum'] || '-';
+        const author = fields['Name'] || (fields['UserID'] ? `User ${fields['UserID']}` : 'Okänd');
+        const companyName = fields['Företagsnamn'] || '';
+        const person = fields['Person'] || '';
+        const content = fields['Notes'] || '';
+        const attachments = fields['Attachments'] || [];
+        
+        // Skapa ToDo-lista
+        const todoList = this.createTodoList(fields);
+        
+        // Skapa attachments HTML
+        const attachmentsHTML = this.createAttachmentsHTML(attachments);
+        
         return `
             <div class="note-card">
                 <div class="note-header">
-                    <h4>${fields['Titel'] || 'Titel saknas'}</h4>
-                    <span class="note-date">${fields['Datum'] || '-'}</span>
+                    <div class="note-header-left">
+                        <h4>${typAvAnteckningText}</h4>
+                        <span class="note-date"><i class="fas fa-calendar"></i> ${date}</span>
+                    </div>
                 </div>
+                
+                <div class="note-meta">
+                    ${author ? `<div class="note-meta-item"><i class="fas fa-user"></i> <strong>Skapad av:</strong> ${author}</div>` : ''}
+                    ${companyName ? `<div class="note-meta-item"><i class="fas fa-building"></i> <strong>Företag:</strong> ${companyName}</div>` : ''}
+                    ${person ? `<div class="note-meta-item"><i class="fas fa-user-tie"></i> <strong>Person:</strong> ${person}</div>` : ''}
+                </div>
+                
+                ${content ? `
                 <div class="note-content">
-                    <p>${fields['Innehåll'] || 'Inget innehåll'}</p>
+                    <h5><i class="fas fa-sticky-note"></i> Anteckning</h5>
+                    <p>${content.replace(/\n/g, '<br>')}</p>
                 </div>
+                ` : ''}
+                
+                ${attachmentsHTML}
+                
+                ${todoList}
+                
                 <div class="note-footer">
-                    <span class="note-author">Skapad av: ${fields['SkapadAv'] || 'Okänd'}</span>
                     <div class="note-actions">
-                        <button class="btn btn-secondary btn-sm">
+                        <button class="btn btn-secondary btn-sm" onclick="customerCardManager.editNote('${note.id}')">
                             <i class="fas fa-edit"></i>
                             Redigera
                         </button>
-                        <button class="btn btn-danger btn-sm">
+                        <button class="btn btn-danger btn-sm" onclick="customerCardManager.deleteNote('${note.id}')">
                             <i class="fas fa-trash"></i>
                             Ta bort
                         </button>
@@ -937,12 +1029,124 @@ class CustomerCardManager {
         `;
     }
 
+    createTodoList(fields) {
+        const todos = [];
+        for (let i = 1; i <= 8; i++) {
+            const todo = fields[`ToDo${i}`];
+            const status = fields[`Status${i}`];
+            
+            if (todo && todo.trim() !== '' && todo.trim() !== '\n') {
+                todos.push({ todo, status, index: i });
+            }
+        }
+        
+        if (todos.length === 0) {
+            return '';
+        }
+        
+        const todoItems = todos.map(item => {
+            const statusIcon = this.getStatusIcon(item.status);
+            const statusClass = this.getStatusClass(item.status);
+            return `
+                <div class="todo-item">
+                    <span class="todo-status ${statusClass}">${statusIcon}</span>
+                    <span class="todo-text">${item.todo.replace(/\n/g, '<br>')}</span>
+                </div>
+            `;
+        }).join('');
+        
+        return `
+            <div class="note-todo-section">
+                <h5><i class="fas fa-tasks"></i> Att göra-lista</h5>
+                <div class="todo-list">
+                    ${todoItems}
+                </div>
+            </div>
+        `;
+    }
+
+    getStatusIcon(status) {
+        if (!status) return '<i class="fas fa-circle" style="color: #94a3b8;"></i>';
+        
+        const statusLower = status.toLowerCase();
+        if (statusLower === 'klart' || statusLower === 'klar') {
+            return '<i class="fas fa-check-circle" style="color: #10b981;"></i>';
+        } else if (statusLower === 'pågående') {
+            return '<i class="fas fa-clock" style="color: #f59e0b;"></i>';
+        } else if (statusLower === 'att göra') {
+            return '<i class="fas fa-circle" style="color: #64748b;"></i>';
+        }
+        return '<i class="fas fa-circle" style="color: #94a3b8;"></i>';
+    }
+
+    getStatusClass(status) {
+        if (!status) return 'status-unknown';
+        
+        const statusLower = status.toLowerCase();
+        if (statusLower === 'klart' || statusLower === 'klar') {
+            return 'status-done';
+        } else if (statusLower === 'pågående') {
+            return 'status-in-progress';
+        } else if (statusLower === 'att göra') {
+            return 'status-todo';
+        }
+        return 'status-unknown';
+    }
+
+    createAttachmentsHTML(attachments) {
+        if (!attachments || attachments.length === 0) {
+            return '';
+        }
+        
+        const attachmentItems = attachments.map(attachment => {
+            const filename = attachment.filename || 'Bilaga';
+            const url = attachment.url || '#';
+            const size = attachment.size ? `(${(attachment.size / 1024).toFixed(1)} KB)` : '';
+            const thumbnail = attachment.thumbnails?.small?.url || attachment.thumbnails?.large?.url;
+            
+            return `
+                <div class="attachment-item">
+                    ${thumbnail ? `<img src="${thumbnail}" alt="${filename}" class="attachment-thumbnail">` : ''}
+                    <div class="attachment-info">
+                        <a href="${url}" target="_blank" class="attachment-link">
+                            <i class="fas fa-file"></i> ${filename}
+                        </a>
+                        <span class="attachment-size">${size}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        return `
+            <div class="note-attachments">
+                <h5><i class="fas fa-paperclip"></i> Bilagor (${attachments.length})</h5>
+                <div class="attachments-list">
+                    ${attachmentItems}
+                </div>
+            </div>
+        `;
+    }
+
     async loadDocuments() {
         const content = document.getElementById('documents-content');
         
         try {
+            // Get auth token from localStorage
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                console.warn('No auth token found');
+                this.displayEmptyDocuments();
+                return;
+            }
+
             // Load documents data
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/documents?customerId=${this.customerId}`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/documents?customerId=${this.customerId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
             if (response.ok) {
                 const data = await response.json();
                 this.displayDocuments(data.documents || []);
@@ -1045,7 +1249,230 @@ class CustomerCardManager {
     }
 
     addNote() {
-        alert('Funktionalitet för att lägga till anteckning kommer snart!');
+        // Visa modal för att lägga till anteckning
+        this.showAddNoteModal();
+    }
+
+    showAddNoteModal() {
+        // Hämta kunddata för att få Byrå ID och Orgnr
+        const byraId = this.customerData?.fields?.['Byrå ID'] || this.customerData?.fields?.['ByråID'] || '';
+        const orgnr = this.customerData?.fields?.['Orgnr'] || this.customerData?.fields?.['Organisationsnummer'] || '';
+        const companyName = this.customerData?.fields?.['Namn'] || this.customerData?.fields?.['Företagsnamn'] || '';
+        
+        const modalHTML = `
+            <div id="add-note-modal" class="modal-overlay">
+                <div class="modal-content modal-large">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-plus-circle"></i> Lägg till anteckning</h3>
+                        <button class="modal-close" onclick="customerCardManager.closeAddNoteModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="add-note-form">
+                            <div class="form-group">
+                                <label for="note-type">Typ av anteckning *</label>
+                                <select id="note-type" name="typAvAnteckning" required>
+                                    <option value="">Välj typ...</option>
+                                    <option value="Bokslutsgenomgång">Bokslutsgenomgång</option>
+                                    <option value="Arbetsanteckningar">Arbetsanteckningar</option>
+                                    <option value="Emailkonversation">Emailkonversation</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="note-date">Datum *</label>
+                                <input type="date" id="note-date" name="datum" required value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="note-company">Företagsnamn</label>
+                                <input type="text" id="note-company" name="foretagsnamn" value="${companyName}" readonly>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="note-person">Person</label>
+                                <input type="text" id="note-person" name="person" placeholder="Namn på person">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="note-content">Anteckning *</label>
+                                <textarea id="note-content" name="notes" rows="6" placeholder="Skriv din anteckning här..." required></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Att göra-lista</label>
+                                <div id="todo-items">
+                                    ${this.createTodoInputFields(3)}
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.addTodoItem()">
+                                    <i class="fas fa-plus"></i> Lägg till fler uppgifter
+                                </button>
+                            </div>
+                            
+                            <input type="hidden" name="byraId" value="${byraId}">
+                            <input type="hidden" name="orgnr" value="${orgnr}">
+                            
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="customerCardManager.closeAddNoteModal()">
+                                    Avbryt
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Spara anteckning
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Ta bort befintlig modal om den finns
+        const existingModal = document.getElementById('add-note-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Lägg till modal till body
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Lägg till event listener för formulär
+        document.getElementById('add-note-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveNote(e.target);
+        });
+    }
+
+    createTodoInputFields(count = 3) {
+        let html = '';
+        for (let i = 1; i <= count; i++) {
+            html += `
+                <div class="todo-input-item" data-index="${i}">
+                    <div class="todo-input-row">
+                        <input type="text" name="todo${i}" placeholder="Uppgift ${i}" class="todo-input">
+                        <select name="status${i}" class="todo-status-select">
+                            <option value="">Välj status...</option>
+                            <option value="Att göra">Att göra</option>
+                            <option value="Pågående">Pågående</option>
+                            <option value="Klart">Klart</option>
+                        </select>
+                        ${i > 1 ? `<button type="button" class="btn btn-sm btn-danger" onclick="customerCardManager.removeTodoItem(${i})"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        return html;
+    }
+
+    addTodoItem() {
+        const todoItems = document.getElementById('todo-items');
+        const currentCount = todoItems.children.length;
+        const newIndex = currentCount + 1;
+        
+        if (newIndex > 8) {
+            alert('Max 8 uppgifter tillåtna');
+            return;
+        }
+        
+        const newItem = document.createElement('div');
+        newItem.className = 'todo-input-item';
+        newItem.setAttribute('data-index', newIndex);
+        newItem.innerHTML = `
+            <div class="todo-input-row">
+                <input type="text" name="todo${newIndex}" placeholder="Uppgift ${newIndex}" class="todo-input">
+                <select name="status${newIndex}" class="todo-status-select">
+                    <option value="">Välj status...</option>
+                    <option value="Att göra">Att göra</option>
+                    <option value="Pågående">Pågående</option>
+                    <option value="Klart">Klart</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-danger" onclick="customerCardManager.removeTodoItem(${newIndex})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        todoItems.appendChild(newItem);
+    }
+
+    removeTodoItem(index) {
+        const item = document.querySelector(`.todo-input-item[data-index="${index}"]`);
+        if (item) {
+            item.remove();
+        }
+    }
+
+    closeAddNoteModal() {
+        const modal = document.getElementById('add-note-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    async saveNote(form) {
+        try {
+            const formData = new FormData(form);
+            const noteData = {
+                typAvAnteckning: [formData.get('typAvAnteckning')],
+                datum: formData.get('datum'),
+                foretagsnamn: formData.get('foretagsnamn') || '',
+                person: formData.get('person') || '',
+                notes: formData.get('notes'),
+                byraId: formData.get('byraId'),
+                orgnr: formData.get('orgnr')
+            };
+            
+            // Lägg till ToDo-uppgifter
+            for (let i = 1; i <= 8; i++) {
+                const todo = formData.get(`todo${i}`);
+                const status = formData.get(`status${i}`);
+                if (todo && todo.trim() !== '') {
+                    noteData[`ToDo${i}`] = todo;
+                    if (status) {
+                        noteData[`Status${i}`] = status;
+                    }
+                }
+            }
+            
+            // Get auth token
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                alert('Du måste vara inloggad för att spara anteckningar');
+                return;
+            }
+            
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/notes`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(noteData)
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('✅ Anteckning sparad:', data);
+                this.closeAddNoteModal();
+                // Ladda om anteckningar
+                this.loadNotes();
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(`Kunde inte spara anteckning: ${errorData.message || response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error saving note:', error);
+            alert('Ett fel uppstod vid sparande av anteckning');
+        }
+    }
+
+    editNote(noteId) {
+        alert('Redigering kommer snart!');
+    }
+
+    deleteNote(noteId) {
+        if (confirm('Är du säker på att du vill ta bort denna anteckning?')) {
+            alert('Borttagning kommer snart!');
+        }
     }
 
     uploadDocument() {
