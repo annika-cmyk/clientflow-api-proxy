@@ -554,7 +554,6 @@ class RiskAssessmentManager {
     }
 
     updateStats() {
-        const totalCount = this.filteredRisks.length;
         const highRiskCount = this.filteredRisks.filter(risk => 
             risk.fields['Riskbedömning'] === 'Hög'
         ).length;
@@ -562,7 +561,6 @@ class RiskAssessmentManager {
             risk.fields['Aktuell'] === true
         ).length;
 
-        document.getElementById('total-count').textContent = totalCount;
         document.getElementById('high-risk-count').textContent = highRiskCount;
         document.getElementById('completed-count').textContent = completedCount;
     }

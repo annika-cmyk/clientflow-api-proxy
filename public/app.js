@@ -47,7 +47,7 @@ class ClientFlowApp {
         }
 
         if (saveToAirtableBtn) {
-            saveToAirtableBtn.addEventListener('click', () => this.saveToAirtable());
+            saveToAirtableBtn.addEventListener('click', () => this.goToKYC());
         }
 
         if (exportDataBtn) {
@@ -575,6 +575,10 @@ class ClientFlowApp {
         console.log('🔍 All available fields:', Object.keys(companyData));
         console.log('🔍 Full companyData object:', companyData);
         
+        // Store company data for later use
+        this.currentCompanyData = companyData;
+        console.log('💾 Stored currentCompanyData:', this.currentCompanyData);
+        
         // Hide any error messages when showing company info
         this.hideError();
         
@@ -850,11 +854,64 @@ class ClientFlowApp {
         this.hideError();
     }
 
+    async goToKYC() {
+        console.log('🚀 Navigating to KYC page...');
+        
+        const companyDetails = document.getElementById('company-details');
+        console.log('🔍 Company details element:', companyDetails);
+        console.log('🔍 Company details innerHTML length:', companyDetails?.innerHTML?.length || 0);
+        
+        if (!companyDetails || !companyDetails.innerHTML.trim()) {
+            console.error('❌ No company details found');
+            this.showMessage('Ingen företagsdata att gå vidare med', 'error');
+            return;
+        }
+        
+        // Get the current company data
+        const companyData = this.currentCompanyData;
+        console.log('🔍 Current company data:', companyData);
+        console.log('🔍 Company data exists:', !!companyData);
+        
+        if (!companyData) {
+            console.error('❌ No current company data available');
+            this.showMessage('Ingen företagsdata tillgänglig', 'error');
+            return;
+        }
+        
+        try {
+            console.log('💾 Storing company data in localStorage for KYC page...');
+            
+            // Store company data in localStorage for KYC page
+            localStorage.setItem('kycCompanyData', JSON.stringify(companyData));
+            console.log('✅ Company data stored in localStorage:', companyData);
+            
+            // Try to save to Airtable in background (non-blocking)
+            console.log('🔍 Attempting to save to Airtable in background...');
+            this.saveToAirtable().then(success => {
+                if (success) {
+                    console.log('✅ Successfully saved to Airtable in background');
+                } else {
+                    console.warn('⚠️ Failed to save to Airtable, but continuing to KYC');
+                }
+            }).catch(error => {
+                console.warn('⚠️ Error saving to Airtable, but continuing to KYC:', error);
+            });
+            
+            // Navigate to KYC page immediately
+            console.log('🌐 Navigating to KYC page...');
+            window.location.href = 'kyc.html';
+            
+        } catch (error) {
+            console.error('❌ Error in goToKYC:', error);
+            this.showMessage('Ett fel uppstod vid navigering till KYC-sidan', 'error');
+        }
+    }
+
     async saveToAirtable() {
         const companyDetails = document.getElementById('company-details');
         if (!companyDetails.innerHTML.trim()) {
             this.showMessage('Ingen företagsdata att spara', 'error');
-            return;
+            return false;
         }
 
         const saveBtn = document.getElementById('save-to-airtable');
@@ -940,6 +997,7 @@ class ClientFlowApp {
                 const responseData = await response.json();
                 console.log('✅ Success response:', responseData);
                 this.showMessage('Företagsdata sparad till Airtable!', 'success');
+                return true;
             } else {
                 const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
                 console.error('❌ Error response:', errorData);
@@ -948,6 +1006,7 @@ class ClientFlowApp {
         } catch (error) {
             console.error('Error saving to Airtable:', error);
             this.showMessage('Kunde inte spara till Airtable', 'error');
+            return false;
         } finally {
             saveBtn.innerHTML = originalText;
             saveBtn.disabled = false;
@@ -955,7 +1014,13 @@ class ClientFlowApp {
     }
 
     extractCompanyDataFromDisplay() {
-        // Extract data from the displayed company information
+        // Use stored company data if available, otherwise extract from DOM
+        if (this.currentCompanyData) {
+            console.log('🔍 Using stored currentCompanyData:', this.currentCompanyData);
+            return this.currentCompanyData;
+        }
+        
+        // Fallback: Extract data from the displayed company information
         const companyName = document.querySelector('.company-basic h3')?.textContent || '';
         const orgNumber = document.querySelector('.org-number')?.textContent || '';
         const status = document.querySelector('.company-status')?.textContent.trim() || '';

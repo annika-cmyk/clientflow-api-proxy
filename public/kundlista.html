@@ -39,44 +39,7 @@
                     </div>
                 </header>
 
-                <!-- Filter Section -->
-                <section class="filter-section">
-                    <div class="container">
-                        <div class="filter-card">
-                            
-                            </div>
-                            <div class="filter-controls">
-                                <div class="filter-group">
-                                    <label for="byra-filter">Byrå:</label>
-                                    <select id="byra-filter" class="form-select" style="width: 150px;">
-                                        <option value="">Alla byråer</option>
-                                        <!-- Byrå options will be populated dynamically -->
-                                    </select>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label for="user-filter">Användare:</label>
-                                    <select id="user-filter" class="form-select" style="width: 150px;">
-                                        <option value="">Alla användare</option>
-                                        <!-- Användar options will be populated dynamically -->
-                                    </select>
-                                </div>
-                                <div class="filter-group">
-                                    <label for="search-filter">Sök:</label>
-                                    <input type="text" id="search-filter" class="form-control" placeholder="Sök på namn eller organisationsnummer..." style="width: 200px;">
-                                </div>
-                                <button id="apply-filters" class="btn btn-primary" style="display: none;">
-                                    <i class="fas fa-search"></i>
-                                    Applicera filter
-                                </button>
-                                <button id="clear-filters" class="btn btn-secondary" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                    Rensa filter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+                
 
                 <!-- Customer List Section -->
                 <section class="risk-assessment-section">
@@ -84,14 +47,39 @@
                         <div class="risk-list-header">
                             <h3>Kunder</h3>
                             <div class="risk-header-actions">
+                                <div class="filter-controls">
+                                    <div class="filter-group">
+                                        <label for="byra-filter">Byrå:</label>
+                                        <select id="byra-filter" class="form-select" style="width: 150px;">
+                                            <option value="">Alla byråer</option>
+                                            <!-- Byrå options will be populated dynamically -->
+                                        </select>
+                                    </div>
+
+                                    <div class="filter-group">
+                                        <label for="user-filter">Användare:</label>
+                                        <select id="user-filter" class="form-select" style="width: 150px;">
+                                            <option value="">Alla användare</option>
+                                            <!-- Användar options will be populated dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="filter-group">
+                                        <label for="search-filter">Sök:</label>
+                                        <input type="text" id="search-filter" class="form-control" placeholder="Sök på namn eller organisationsnummer..." style="width: 200px;">
+                                    </div>
+                                    <button id="apply-filters" class="btn btn-primary" style="display: none;">
+                                        <i class="fas fa-search"></i>
+                                        Applicera filter
+                                    </button>
+                                    <button id="clear-filters" class="btn btn-secondary" style="display: none;">
+                                        <i class="fas fa-times"></i>
+                                        Rensa filter
+                                    </button>
+                                </div>
                                 <div class="risk-stats">
                                     <span class="stat-item">
                                         <i class="fas fa-users"></i>
                                         <span id="total-count">0</span> totalt
-                                    </span>
-                                    <span class="stat-item">
-                                        <i class="fas fa-building"></i>
-                                        <span id="byra-count">0</span> byråer
                                     </span>
                                     <span class="stat-item">
                                         <i class="fas fa-check-circle text-success"></i>
@@ -105,7 +93,7 @@
                             </div>
                         </div>
 
-                        <div id="customer-list" class="risk-list">
+                        <div id="customer-list" class="risk-items">
                             <!-- Customer items will be loaded here -->
                             <div class="loading-spinner">
                                 <i class="fas fa-spinner fa-spin"></i>

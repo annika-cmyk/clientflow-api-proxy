@@ -41,50 +41,7 @@
 ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns ansvar att anpassa och komplettera innehållet utifrån sin egen verksamhet. Inga digitala verktyg eller mallar kan garantera att alla risker är upptäckta eller hanterade – se därför texterna som ett stöd, inte en garanti. </strong>
                     </div>
                 </header>
-            <!-- Filter Section -->
-            <section class="filter-section">
-                <div class="container">
-                    <div class="filter-card">
-                        
-                        </div>
-                        <div class="filter-controls">
-                            <div class="filter-group">
-                                <label for="byra-filter">Byrå:</label>
-                                <select id="byra-filter" class="form-select" style="width: 150px;">
-                                    <option value="">Alla byråer</option>
-                                    <!-- Byrå options will be populated dynamically -->
-                                </select>
-                            </div>
 
-                            <div class="filter-group">
-                           
-                                <select id="risk-filter" class="form-select" style="width: 150px;">
-                                    <option value="">Alla risknivåer</option>
-                                    <option value="Låg">Låg</option>
-                                    <option value="Medel">Medel</option>
-                                    <option value="Förhöjd">Förhöjd</option>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                    
-                                <select id="status-filter" class="form-select" style="width: 150px;">
-                                    <option value="">Alla statusar</option>
-                                    <option value="checked">Aktuell</option>
-                                    <option value="unchecked">Ej aktuell</option>
-                                </select>
-                            </div>
-                            <button id="apply-filters" class="btn btn-primary" style="display: none;">
-                                <i class="fas fa-search"></i>
-                                Applicera filter
-                            </button>
-                            <button id="clear-filters" class="btn btn-secondary" style="display: none;">
-                                <i class="fas fa-times"></i>
-                                Rensa filter
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
             <!-- Risk Assessment List -->
             <section class="risk-assessment-section">
@@ -92,18 +49,47 @@ ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns 
                     <div class="risk-list-header">
                         <h3>Riskfaktorer</h3>
                         <div class="risk-header-actions">
+                            <div class="filter-controls">
+                                <div class="filter-group">
+                                    <label for="byra-filter">Byrå:</label>
+                                    <select id="byra-filter" class="form-select" style="width: 150px;">
+                                        <option value="">Alla byråer</option>
+                                        <!-- Byrå options will be populated dynamically -->
+                                    </select>
+                                </div>
+
+                                <div class="filter-group">
+                                    <select id="risk-filter" class="form-select" style="width: 150px;">
+                                        <option value="">Alla risknivåer</option>
+                                        <option value="Låg">Låg</option>
+                                        <option value="Medel">Medel</option>
+                                        <option value="Förhöjd">Förhöjd</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <select id="status-filter" class="form-select" style="width: 150px;">
+                                        <option value="">Alla statusar</option>
+                                        <option value="checked">Aktuell</option>
+                                        <option value="unchecked">Ej aktuell</option>
+                                    </select>
+                                </div>
+                                <button id="apply-filters" class="btn btn-primary" style="display: none;">
+                                    <i class="fas fa-search"></i>
+                                    Applicera filter
+                                </button>
+                                <button id="clear-filters" class="btn btn-secondary" style="display: none;">
+                                    <i class="fas fa-times"></i>
+                                    Rensa filter
+                                </button>
+                            </div>
                             <div class="risk-stats">
                                 <span class="stat-item">
-                                    <i class="fas fa-list"></i>
-                                    <span id="total-count">0</span> totalt
-                                </span>
-                                <span class="stat-item">
                                     <i class="fas fa-exclamation-triangle text-warning"></i>
-                                    <span id="high-risk-count">0</span> förhöjda risker
+                                    <span id="high-risk-count">0</span> höga risker
                                 </span>
                                 <span class="stat-item">
                                     <i class="fas fa-check-circle text-success"></i>
-                                    <span id="completed-count">0</span> godkända
+                                    <span id="completed-count">0</span> klarmarkerade
                                 </span>
                             </div>
                             <button class="btn btn-primary" onclick="riskManager.openAddModal()">

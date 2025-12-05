@@ -2631,6 +2631,146 @@ app.get('/api/auth/test-users', async (req, res) => {
   }
 });
 
+// GET /api/kunddata/:id - Hämta en specifik kund baserat på ID (måste komma före /api/kunddata)
+app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const customerId = req.params.id;
+    console.log(`🔍 Hämtar kund med ID: ${customerId}`);
+    
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    
+    if (!airtableAccessToken) {
+      return res.status(500).json({
+        error: 'Airtable API-nyckel saknas',
+        message: 'AIRTABLE_ACCESS_TOKEN är inte konfigurerad'
+      });
+    }
+
+    // Hämta komplett användardata för att få roll och byrå-ID
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Användare hittades inte'
+      });
+    }
+
+    console.log(`👤 Användare: ${userData.name} (${userData.role}) från ${userData.byra}`);
+    console.log(`🏢 Byrå ID: ${userData.byraId}`);
+
+    // Hämta kunden från Airtable
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`;
+    console.log(`🌐 Airtable URL: ${url}`);
+
+    let customerRecord;
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+      customerRecord = response.data;
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        return res.status(404).json({
+          success: false,
+          message: 'Kund hittades inte',
+          error: 'Kunden med det angivna ID:t finns inte i systemet'
+        });
+      }
+      throw error;
+    }
+
+    // Kontrollera behörighet baserat på roll
+    let hasAccess = false;
+    
+    switch (userData.role) {
+      case 'ClientFlowAdmin':
+        // Se allt
+        hasAccess = true;
+        console.log('🔓 ClientFlowAdmin: Har behörighet');
+        break;
+        
+      case 'Ledare':
+        // Se poster med samma Byrå ID
+        const customerByraId = customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
+        if (userData.byraId && customerByraId && userData.byraId.toString() === customerByraId.toString()) {
+          hasAccess = true;
+          console.log(`👔 Ledare: Har behörighet (Byrå ID matchar: ${userData.byraId})`);
+        } else {
+          console.log(`⚠️ Ledare: Ingen behörighet (Byrå ID: ${userData.byraId} vs ${customerByraId})`);
+        }
+        break;
+        
+      case 'Anställd':
+        // Se poster där användarens ID finns i Användare-fältet
+        const customerUsers = customerRecord.fields['Användare'] || [];
+        const userIdString = userData.id ? userData.id.toString() : '';
+        if (userIdString && (Array.isArray(customerUsers) ? customerUsers.includes(userIdString) : customerUsers === userIdString)) {
+          hasAccess = true;
+          console.log(`👷 Anställd: Har behörighet (Användare matchar: ${userData.id})`);
+        } else {
+          console.log(`⚠️ Anställd: Ingen behörighet (Användare: ${userData.id} vs ${JSON.stringify(customerUsers)})`);
+        }
+        break;
+        
+      default:
+        console.log(`⚠️ Okänd roll: ${userData.role} - ingen behörighet`);
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Du har inte behörighet att se denna kund',
+        error: 'Otillåten åtkomst'
+      });
+    }
+
+    // Formatera svaret
+    const formattedRecord = {
+      id: customerRecord.id,
+      createdTime: customerRecord.createdTime,
+      fields: customerRecord.fields
+    };
+
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      ...formattedRecord,
+      message: 'Kund hämtad',
+      userRole: userData.role,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error('Error fetching customer:', error.message);
+    
+    if (error.response) {
+      console.error('Airtable API Error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Fel vid hämtning av kund',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      duration: duration
+    });
+  }
+});
+
 // GET /api/kunddata - Hämta KUNDDATA med rollbaserad filtrering
 app.get('/api/kunddata', authenticateToken, async (req, res) => {
   const startTime = Date.now();
@@ -3499,6 +3639,7 @@ app.listen(PORT, () => {
   console.log(`👥 User Management endpoints:`);
   console.log(`   • Test users: GET http://localhost:${PORT}/api/auth/test-users`);
       console.log(`   • Get KUNDDATA: GET http://localhost:${PORT}/api/kunddata`);
+    console.log(`   • Get KUNDDATA by ID: GET http://localhost:${PORT}/api/kunddata/:id`);
     console.log(`   • Post KUNDDATA: POST http://localhost:${PORT}/api/kunddata`);
     console.log(`   • Debug KUNDDATA: GET http://localhost:${PORT}/api/kunddata/debug`);
     console.log(`   • Test KUNDDATA: GET http://localhost:${PORT}/api/kunddata/test`);

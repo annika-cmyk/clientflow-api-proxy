@@ -169,22 +169,28 @@ class CustomerManager {
                 
                 if (data.success && data.data) {
                     // Konvertera Airtable-format till kundformat
-                    this.customers = data.data.map(record => ({
-                        id: record.id,
-                        namn: record.fields.Namn || record.fields['Företagsnamn'] || 'Namn saknas',
-                        organisationsnummer: record.fields.Orgnr || record.fields.Organisationsnummer || record.fields['Org.nr'] || 'N/A',
-                        byraId: record.fields['Byrå ID'] || record.fields.Byrå || 'N/A',
-                        anvandareId: record.fields['Användare'] || record.fields.UserID || 'N/A',
-                        status: record.fields.Status || 'aktiv',
-                        notes: record.fields.Anteckningar || record.fields.Notes || 'Inga anteckningar',
-                        timestamp: record.createdTime || new Date().toISOString(),
-                        // Nya fält för utökad kundinformation
-                        kycUtford: record.fields['KYC utförd'] || record.fields['KYC utförd datum'] || 'N/A',
-                        verksamhetsbeskrivning: record.fields.Verksamhetsbeskrivning || 'N/A',
-                        adress: record.fields.Adress || 'N/A',
-                        telefon: record.fields.Telefon || 'N/A',
-                        email: record.fields['E-post'] || record.fields.Email || 'N/A'
-                    }));
+                    this.customers = data.data.map(record => {
+                        if (!record.id) {
+                            console.warn('⚠️ Customer record missing ID:', record);
+                        }
+                        return {
+                            id: record.id,
+                            recordId: record.id, // Alias for compatibility
+                            namn: record.fields.Namn || record.fields['Företagsnamn'] || 'Namn saknas',
+                            organisationsnummer: record.fields.Orgnr || record.fields.Organisationsnummer || record.fields['Org.nr'] || 'N/A',
+                            byraId: record.fields['Byrå ID'] || record.fields.Byrå || 'N/A',
+                            anvandareId: record.fields['Användare'] || record.fields.UserID || 'N/A',
+                            status: record.fields.Status || 'aktiv',
+                            notes: record.fields.Anteckningar || record.fields.Notes || 'Inga anteckningar',
+                            timestamp: record.createdTime || new Date().toISOString(),
+                            // Nya fält för utökad kundinformation
+                            kycUtford: record.fields['KYC utförd'] || record.fields['KYC utförd datum'] || 'N/A',
+                            verksamhetsbeskrivning: record.fields.Verksamhetsbeskrivning || 'N/A',
+                            adress: record.fields.Adress || 'N/A',
+                            telefon: record.fields.Telefon || 'N/A',
+                            email: record.fields['E-post'] || record.fields.Email || 'N/A'
+                        };
+                    });
                 } else {
                     console.log('⚠️ No customers in response data');
                     this.customers = [];
@@ -436,15 +442,6 @@ class CustomerManager {
                 
                 <div class="risk-item-content">
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-building"></i> Kundinformation</h5>
-                        <p class="risk-content-text">
-                            <strong>Organisationsnummer:</strong> ${customer.organisationsnummer || 'Saknas'}<br>
-                            <strong>Byrå ID:</strong> ${customer.byraId || 'Saknas'}<br>
-                            <strong>Användar ID:</strong> ${customer.anvandareId || 'Saknas'}
-                        </p>
-                    </div>
-                    
-                    <div class="risk-content-section">
                         <h5><i class="fas fa-calendar-check"></i> KYC Information</h5>
                         <p class="risk-content-text">
                             Utförd datum: ${customer.kycUtford || 'N/A'}
@@ -466,36 +463,32 @@ class CustomerManager {
                             E-post: ${customer.email || 'N/A'}
                         </p>
                     </div>
-                    
-                    <div class="risk-item-footer">
-                        <button class="btn btn-secondary btn-sm view-customer" data-customer-id="${customer.id || customer.recordId}">
-                            <i class="fas fa-eye"></i>
-                            Visa detaljer
-                        </button>
-                        <button class="btn btn-primary btn-sm edit-customer" data-customer-id="${customer.id || customer.recordId}">
-                            <i class="fas fa-edit"></i>
-                            Redigera
-                        </button>
-                        <button class="btn btn-danger btn-sm delete-customer" data-customer-id="${customer.id || customer.recordId}">
-                            <i class="fas fa-trash"></i>
-                            Ta bort
-                        </button>
-                    </div>
+                </div>
+                
+                <div class="risk-item-footer">
+                    <button class="btn btn-secondary btn-sm view-customer" data-customer-id="${customer.id || customer.recordId || ''}" ${!(customer.id || customer.recordId) ? 'disabled title="Kund-ID saknas"' : ''}>
+                        <i class="fas fa-eye"></i>
+                        Visa detaljer
+                    </button>
+                    <button class="btn btn-primary btn-sm edit-customer" data-customer-id="${customer.id || customer.recordId}">
+                        <i class="fas fa-edit"></i>
+                        Redigera
+                    </button>
+                    <button class="btn btn-danger btn-sm delete-customer" data-customer-id="${customer.id || customer.recordId}">
+                        <i class="fas fa-trash"></i>
+                        Ta bort
+                    </button>
+                </div>
                 </div>
             </div>
         `;
     }
 
     updateStats() {
-        const totalCount = document.getElementById('total-count');
-        const byraCount = document.getElementById('byra-count');
         const activeCount = document.getElementById('active-count');
 
-        totalCount.textContent = this.filteredCustomers.length;
-        
         // Count unique byråer
         const uniqueByra = new Set(this.filteredCustomers.map(c => c.byraId).filter(Boolean));
-        byraCount.textContent = uniqueByra.size;
         
         // Count active customers (assuming all are active for now)
         activeCount.textContent = this.filteredCustomers.length;
@@ -558,6 +551,23 @@ class CustomerManager {
         document.getElementById('edit-customer-modal').style.display = 'block';
     }
 
+    viewCustomer(customerId) {
+        // Debug logging
+        console.log('🔍 Viewing customer with ID:', customerId);
+        console.log('🔍 Customer ID type:', typeof customerId);
+        console.log('🔍 Customer ID value:', customerId);
+        
+        // Validate customer ID
+        if (!customerId || customerId === 'null' || customerId === 'undefined' || customerId === null || customerId === undefined) {
+            console.error('❌ Invalid customer ID:', customerId);
+            this.showError('Ogiltigt kund-ID. Kan inte visa kundkort.');
+            return;
+        }
+        
+        // Redirect to customer card page
+        window.location.href = `kundkort.html?id=${encodeURIComponent(customerId)}`;
+    }
+
     async updateCustomer() {
         const formData = new FormData(document.getElementById('edit-customer-form'));
         const customerId = formData.get('record-id');
@@ -595,61 +605,7 @@ class CustomerManager {
         }
     }
 
-    async viewCustomer(customerId) {
-        const customer = this.customers.find(c => c.id === customerId || c.recordId === customerId);
-        if (!customer) return;
 
-        const detailsContent = document.getElementById('customer-details-content');
-        const timestamp = customer.timestamp ? new Date(customer.timestamp).toLocaleDateString('sv-SE') : 'N/A';
-
-        detailsContent.innerHTML = `
-            <div class="customer-details-grid">
-                <div class="detail-section">
-                    <h4>Grundinformation</h4>
-                    <div class="detail-row">
-                        <span class="detail-label">Organisationsnummer:</span>
-                        <span class="detail-value">${customer.organisationsnummer || 'N/A'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Företagsnamn:</span>
-                        <span class="detail-value">${customer.namn || 'N/A'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Registrerad:</span>
-                        <span class="detail-value">${timestamp}</span>
-                    </div>
-                </div>
-
-                <div class="detail-section">
-                    <h4>Kopplingar</h4>
-                    <div class="detail-row">
-                        <span class="detail-label">Byrå ID:</span>
-                        <span class="detail-value">${customer.byraId || 'N/A'}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Användar ID:</span>
-                        <span class="detail-value">${customer.anvandareId || 'N/A'}</span>
-                    </div>
-                </div>
-
-                <div class="detail-section">
-                    <h4>Anteckningar</h4>
-                    <div class="detail-content">
-                        ${customer.notes || 'Inga anteckningar'}
-                    </div>
-                </div>
-            </div>
-
-            <div class="detail-actions">
-                <button class="btn btn-primary" onclick="customerManager.editCustomer('${customerId}')">
-                    <i class="fas fa-edit"></i>
-                    Redigera
-                </button>
-            </div>
-        `;
-
-        document.getElementById('customer-details-modal').style.display = 'block';
-    }
 
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
@@ -676,11 +632,15 @@ class CustomerManager {
 
     setupCustomerItemEventListeners() {
         // View customer button
-        document.querySelectorAll('.view-customer').forEach(button => {
+        document.querySelectorAll('.view-customer:not([disabled])').forEach(button => {
             button.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const customerId = button.getAttribute('data-customer-id');
-                this.viewCustomer(customerId);
+                if (customerId) {
+                    this.viewCustomer(customerId);
+                } else {
+                    this.showError('Kund-ID saknas för denna kund');
+                }
             });
         });
 
