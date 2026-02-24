@@ -3692,6 +3692,17 @@ p, small { line-height: 1.6; }
     background: #f7f9fc;
 }
 
+/* Huvudkort p? Riskbedömning-fliken: ingen pil, ingen hover-färg */
+.collapsible-card--kyc > .collapsible-header {
+    cursor: default;
+}
+.collapsible-card--kyc > .collapsible-header:hover {
+    background: transparent;
+}
+.collapsible-card--kyc > .collapsible-header .collapsible-chevron {
+    display: none;
+}
+
 .collapsible-title {
     display: flex;
     align-items: center;
@@ -3724,6 +3735,114 @@ p, small { line-height: 1.6; }
     flex-shrink: 0;
 }
 
+/* Penna i nedre högra hörnet av kort-body */
+.card-edit-fab {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.75rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    z-index: 2;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    z-index: 2;
+}
+.card-edit-fab:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.card-edit-fab.is-active {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fca5a5;
+}
+/* FAB-penna: collapsible-body m?ste vara position:relative */
+.collapsible-body {
+    position: relative;
+    padding-bottom: 2.5rem !important;
+}
+
+/* Uppdrag kan antas ? interaktiv checkbox-sektion */
+.uppdrag-antas-section {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid #e2e8f0;
+}
+.uppdrag-antas-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.uppdrag-antas-label {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: #1e293b;
+    user-select: none;
+}
+.uppdrag-antas-label input[type="checkbox"] {
+    display: none;
+}
+.uppdrag-antas-check-box {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: 2px solid #64748b;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s, border-color 0.18s;
+    flex-shrink: 0;
+}
+.uppdrag-antas-label input[type="checkbox"]:checked + .uppdrag-antas-check-box {
+    background: #16a34a;
+    border-color: #16a34a;
+}
+.uppdrag-antas-label input[type="checkbox"]:checked + .uppdrag-antas-check-box::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 9px;
+    border: 2px solid #fff;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg) translateY(-1px);
+}
+.uppdrag-antas-disabled {
+    opacity: 0.45;
+    cursor: not-allowed !important;
+}
+.uppdrag-antas-datum {
+    font-size: 0.82rem;
+    color: #16a34a;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.uppdrag-antas-hint {
+    margin-top: 0.45rem;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 .collapsible-card.is-collapsed .collapsible-chevron {
     transform: rotate(-90deg);
 }
@@ -3734,10 +3853,71 @@ p, small { line-height: 1.6; }
     gap: 0.25rem;
 }
 
-/* Chevron alltid synlig */
-.collapsible-chevron {
-    display: inline-block !important;
+/* Dölj pil p? alla huvud-kort */
+.collapsible-card > .collapsible-header .collapsible-chevron {
+    display: none !important;
 }
+
+/* ============================================================
+   AI Riskbedömning-kort
+   ============================================================ */
+.ai-rb-niva-btns {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.ai-rb-niva-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    border: 2px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.ai-rb-niva-btn:hover { background: #f1f5f9; }
+.ai-rb-niva-btn.is-active.is-lag  { background: #dcfce7; border-color: #16a34a; color: #15803d; }
+.ai-rb-niva-btn.is-active.is-medel { background: #fef9c3; border-color: #ca8a04; color: #a16207; }
+.ai-rb-niva-btn.is-active.is-hog  { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
+
+.ai-rb-ai-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: #f5f3ff;
+    border: 1px dashed #c4b5fd;
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+.btn-ai-suggest {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.btn-ai-suggest:hover { background: #4f46e5; }
+.btn-ai-suggest:disabled { opacity: 0.6; cursor: not-allowed; }
+.ai-rb-ai-hint {
+    font-size: 0.75rem;
+    color: #7c3aed;
+    line-height: 1.4;
+}
+.ai-rb-riskniva-row { margin-bottom: 0.75rem; }
 
 .collapsible-edit-grid {
     display: grid;
@@ -7261,3 +7441,239 @@ textarea.kunduppgifter-input {
 }
 .kundlista-loading i,
 .kundlista-empty i { font-size: 1.8rem; }
+
+/* =====================================
+   AI Chat (Chatta med AI)
+   ===================================== */
+.sidebar-ai-chat {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.sidebar-ai-chat-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: rgba(102, 126, 234, 0.25);
+    color: #e2e8f0;
+    border: 1px solid rgba(102, 126, 234, 0.4);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.sidebar-ai-chat-btn:hover {
+    background: rgba(102, 126, 234, 0.4);
+    color: #fff;
+}
+.sidebar-ai-chat-btn i { font-size: 1rem; }
+
+.ai-chat-panel {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    max-width: 420px;
+    max-height: 85vh;
+    background: var(--card-bg, #fff);
+    box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.ai-chat-panel--closed {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+.ai-chat-panel--open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+.ai-chat-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+.ai-chat-panel__header-annika {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.ai-chat-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.5);
+    animation: ai-chat-avatar-in 0.4s ease;
+}
+.ai-chat-avatar--header { flex-shrink: 0; }
+.ai-chat-avatar-fallback {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    flex-shrink: 0;
+    animation: ai-chat-avatar-in 0.4s ease;
+}
+@keyframes ai-chat-avatar-in {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+.ai-chat-panel--open .ai-chat-panel__header-annika .ai-chat-avatar,
+.ai-chat-panel--open .ai-chat-panel__header-annika .ai-chat-avatar-fallback {
+    animation: ai-chat-avatar-in 0.5s ease 0.15s both;
+}
+.ai-chat-panel__header-titles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.ai-chat-panel__header h3,
+.ai-chat-panel__header-titles h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: inherit;
+}
+.ai-chat-panel__header-subtitle {
+    font-size: 0.75rem;
+    opacity: 0.9;
+    font-weight: 400;
+}
+.ai-chat-panel__close {
+    background: none;
+    border: none;
+    color: inherit;
+    padding: 0.35rem;
+    cursor: pointer;
+    border-radius: 6px;
+    opacity: 0.9;
+}
+.ai-chat-panel__close:hover { opacity: 1; }
+.ai-chat-panel__intro {
+    padding: 0.75rem 1.25rem;
+    margin: 0;
+    font-size: 0.85rem;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
+.ai-chat-panel__messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    min-height: 180px;
+    max-height: 40vh;
+}
+.ai-chat-msg { margin-bottom: 0.75rem; }
+.ai-chat-msg__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.ai-chat-msg--assistant .ai-chat-msg__inner {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+.ai-chat-msg__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+    animation: ai-chat-avatar-in 0.35s ease;
+}
+.ai-chat-msg__avatar-fallback {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.9rem;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    animation: ai-chat-avatar-in 0.35s ease;
+}
+.ai-chat-msg__body { flex: 1; min-width: 0; }
+.ai-chat-msg__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.ai-chat-msg__label .fas { color: #667eea; }
+.ai-chat-msg--user .ai-chat-msg__label .fas { color: #10b981; }
+.ai-chat-msg__text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text, #1e293b);
+}
+.ai-chat-msg--user .ai-chat-msg__inner { align-items: flex-end; }
+.ai-chat-msg--user .ai-chat-msg__text {
+    background: #e0e7ff;
+    color: #3730a3;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    max-width: 90%;
+}
+.ai-chat-panel__input-wrap {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #e2e8f0;
+    background: #fff;
+}
+.ai-chat-panel__input {
+    flex: 1;
+    resize: none;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    min-height: 44px;
+}
+.ai-chat-panel__input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+.ai-chat-panel__send {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s;
+}
+.ai-chat-panel__send:hover:not(:disabled) { opacity: 0.9; }
+.ai-chat-panel__send:disabled { opacity: 0.6; cursor: not-allowed; }

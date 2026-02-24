@@ -504,14 +504,7 @@ class CustomerCardManager {
             <div class="collapsible-card is-collapsed" id="kunduppgifter-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('kunduppgifter-card')">
                     <div class="collapsible-title"><i class="fas fa-address-card"></i><span>Kontaktuppgifter</span></div>
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
-                    <div class="collapsible-header-actions" onclick="event.stopPropagation()">
-                        <button class="btn-icon-note" id="kunduppgifter-edit-btn" title="Redigera" onclick="customerCardManager.toggleKunduppgifterEdit()">
-                            <i class="fas fa-pencil-alt"></i>
-                        </button>
-                    </div>
-                    </div>
                 </div>
                 <div class="collapsible-body" id="kunduppgifter-collapsible-body">
                     <div id="kunduppgifter-view" class="kunduppgifter-view">
@@ -538,6 +531,9 @@ class CustomerCardManager {
                             <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleKunduppgifterEdit()">Avbryt</button>
                         </div>
                     </div>
+                    <button class="card-edit-fab" id="kunduppgifter-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleKunduppgifterEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -545,16 +541,9 @@ class CustomerCardManager {
             <div class="collapsible-card is-collapsed" id="beskrivning-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('beskrivning-card')">
                     <div class="collapsible-title"><i class="fas fa-align-left"></i><span>Beskrivning av kunden</span></div>
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
-                        <i class="fas fa-chevron-down collapsible-chevron"></i>
-                        <div class="collapsible-header-actions" onclick="event.stopPropagation()">
-                            <button class="btn-icon-note" id="beskrivning-edit-btn" title="Redigera" onclick="customerCardManager.toggleBeskrivningEdit()">
-                                <i class="fas fa-pencil-alt"></i>
-                            </button>
-                        </div>
-                    </div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
-                <div class="collapsible-body">
+                <div class="collapsible-body" style="position:relative;">
                     <div id="beskrivning-view">
                         <div id="ku-beskrivning-view" class="kunduppgifter-beskrivning-view">${kundBeskrivning || mis}</div>
                     </div>
@@ -570,6 +559,9 @@ class CustomerCardManager {
                             <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningEdit()">Avbryt</button>
                         </div>
                     </div>
+                    <button class="card-edit-fab" id="beskrivning-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -577,16 +569,9 @@ class CustomerCardManager {
             <div class="collapsible-card is-collapsed" id="redovisning-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('redovisning-card')">
                     <div class="collapsible-title"><i class="fas fa-calculator"></i><span>Redovisningsuppgifter</span></div>
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
-                        <i class="fas fa-chevron-down collapsible-chevron"></i>
-                        <div class="collapsible-header-actions" onclick="event.stopPropagation()">
-                            <button class="btn-icon-note" id="redovisning-edit-btn" title="Redigera" onclick="customerCardManager.toggleRedovisningEdit()">
-                                <i class="fas fa-pencil-alt"></i>
-                            </button>
-                        </div>
-                    </div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
-                <div class="collapsible-body">
+                <div class="collapsible-body" style="position:relative;">
                     <div id="redovisning-view" class="kunduppgifter-view kunduppgifter-view--aligned">
                         <div class="kunduppgifter-row">
                             <span class="kunduppgifter-label"><i class="fas fa-file-invoice"></i> Redovisningsmetod</span>
@@ -674,6 +659,9 @@ class CustomerCardManager {
                             <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleRedovisningEdit()">Avbryt</button>
                         </div>
                     </div>
+                    <button class="card-edit-fab" id="redovisning-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleRedovisningEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -1070,8 +1058,89 @@ class CustomerCardManager {
                 ikonEl.setAttribute('onclick', `event.stopPropagation(); customerCardManager.toggleKycStatus('${safeField}', ${värde}, this);`);
             }
             if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
+            this._updateUppdragAntasLock();
         } catch (error) {
             console.error('❌ Fel vid sparande av KYC-status:', error);
+            this.showNotification('Kunde inte spara: ' + error.message, 'error');
+        }
+    }
+
+    _updateUppdragAntasLock() {
+        const f = this.customerData?.fields || {};
+        const kycFält = [
+            'KYC genomgången - Tjänster',
+            'KYC genomgången - Geografiska riskfaktorer',
+            'KYC genomgången - Riskfaktorer kund',
+            'KYC genomgången - Distributionskanaler',
+            'KYC genomgången - Verksamhetsspecifika riskfaktorer',
+            'KYC genomgången - Riskhöjande faktorer övrigt',
+            'KYC genomgången - Risksänkande faktorer',
+            'KYC genomgången - Kommentar riskfaktorer',
+        ];
+        const allaKlara = kycFält.every(k => f[k] === true);
+        const cb = document.getElementById('uppdrag-kan-antas-cb');
+        const label = cb?.closest('.uppdrag-antas-label');
+        const hint = document.querySelector('.uppdrag-antas-hint');
+        if (cb) {
+            cb.disabled = !allaKlara;
+        }
+        if (label) {
+            if (allaKlara) {
+                label.classList.remove('uppdrag-antas-disabled');
+                label.title = '';
+            } else {
+                label.classList.add('uppdrag-antas-disabled');
+                label.title = 'Alla KYC-kort måste vara klarmarkerade först';
+            }
+        }
+        if (hint) {
+            hint.style.display = allaKlara ? 'none' : '';
+        }
+    }
+
+    async saveUppdragKanAntas(checked) {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const fields = checked
+            ? { 'Uppdraget kan antas': true, 'Avtalet gäller ifrån': today }
+            : { 'Uppdraget kan antas': false };
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            if (this.customerData?.fields) {
+                this.customerData.fields['Uppdraget kan antas'] = checked;
+                this.customerData.fields['Avtalet gäller ifrån'] = checked ? today : null;
+            }
+
+            // Visa datum bredvid checkboxen
+            const datumEl = document.querySelector('.uppdrag-antas-datum');
+            if (checked) {
+                const fmtDate = new Date(today).toLocaleDateString('sv-SE');
+                if (datumEl) {
+                    datumEl.innerHTML = `<i class="fas fa-calendar-check"></i> ${fmtDate}`;
+                } else {
+                    const row = document.querySelector('.uppdrag-antas-row');
+                    if (row) {
+                        const span = document.createElement('span');
+                        span.className = 'uppdrag-antas-datum';
+                        span.innerHTML = `<i class="fas fa-calendar-check"></i> ${fmtDate}`;
+                        row.appendChild(span);
+                    }
+                }
+            } else if (datumEl) {
+                datumEl.remove();
+            }
+
+            this.showNotification(checked ? 'Uppdraget markerat som godkänt ✅' : 'Godkännande borttaget', checked ? 'success' : 'info');
+        } catch (error) {
+            console.error('❌ Fel vid sparande av uppdragsstatus:', error);
             this.showNotification('Kunde inte spara: ' + error.message, 'error');
         }
     }
@@ -1199,7 +1268,26 @@ class CustomerCardManager {
         const container = document.getElementById('ovrigkyc-content');
         if (!container) return;
 
-        // Ladda bas, tjänster och risker
+        // Hämta dynamiska alternativ för riskfaktorfälten om ej cachade
+        if (!this._riskhojAlternativ || !this._risksankAlternativ) {
+            try {
+                const token = localStorage.getItem('authToken');
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const [resHoj, resSank] = await Promise.all([
+                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Riskhöjande faktorer övrigt')}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const dataHoj = resHoj.ok ? await resHoj.json() : {};
+                const dataSank = resSank.ok ? await resSank.json() : {};
+                this._riskhojAlternativ = (dataHoj.choices || []).filter(c => c && c !== '---');
+                this._risksankAlternativ = (dataSank.choices || []).filter(c => c && c !== '---');
+            } catch (e) {
+                console.warn('⚠️ Kunde inte hämta riskfaktor-alternativ:', e.message);
+                this._riskhojAlternativ = this._riskhojAlternativ || [];
+                this._risksankAlternativ = this._risksankAlternativ || [];
+            }
+        }
+
         this.renderOvrigKYCBase();
         this.loadServices(); // fyller #ovrigkyc-tjanster
         await this.loadKundRisker();
@@ -1257,37 +1345,87 @@ class CustomerCardManager {
             const map = { 'Hög': 'risk-pill--high', 'Förhöjd': 'risk-pill--high', 'Medel': 'risk-pill--medium', 'Låg': 'risk-pill--low', 'Normal': 'risk-pill--low' };
             return `<span class="risk-pill ${map[nivå] || 'risk-pill--medium'}">${nivå}</span>`;
         };
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+        const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
 
         const valda = risker.filter(r => linkedIds.has(r.id));
-        const countId = `risker-count-${typId}`;
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
 
-        const viewContent = valda.length === 0
-            ? '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>'
-            : valda.map(r => `
-                <div class="risker-vald-item">
-                    <div class="risker-vald-top">
-                        <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}</span>
-                        ${r.fields['Riskbedömning'] ? riskBadge(r.fields['Riskbedömning']) : ''}
+        // Högriskbransch – bara för kund-kortet
+        const valdaHogrisk = typId === 'kund'
+            ? fmtList(this.customerData?.fields?.['Kunden verkar i en högriskbransch']).filter(v => v && v !== '---')
+            : [];
+
+        const hogriskUid = 'hogrisk-sub-body';
+        const hogriskViewHtml = (typId === 'kund' && valdaHogrisk.length > 0) ? `
+            <div class="tjanst-collapsible-item" onclick="customerCardManager.toggleTjanstDetails('${hogriskUid}')">
+                <div class="tjanst-collapsible-header">
+                    <span class="risker-vald-namn"><i class="fas fa-industry" style="color:#ef4444;margin-right:0.4rem;font-size:0.85em;"></i>Kunden verkar i en högriskbransch</span>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>
+                        <i class="fas fa-chevron-down tjanst-chevron" id="chevron-${hogriskUid}"></i>
                     </div>
-                    ${r.fields['Beskrivning'] ? `<div class="risker-vald-section-label">Beskrivning av riskfaktorn</div><div class="risker-vald-desc">${r.fields['Beskrivning']}</div>` : ''}
-                    ${r.fields['Åtgjärd'] ? `<div class="risker-vald-section-label">Åtgärder</div><div class="risker-vald-desc">${r.fields['Åtgjärd']}</div>` : ''}
-                </div>`).join('');
+                </div>
+                <div class="tjanst-collapsible-body" id="${hogriskUid}" style="display:none;">
+                    <div class="riskf-chips" style="margin-top:0.25rem;">${valdaHogrisk.map(v => `<span class="kyc-chip riskf-chip">${v}</span>`).join('')}</div>
+                </div>
+            </div>` : '';
+
+        const hogriskEditHtml = typId === 'kund' ? `
+            <div class="risker-checkgrupp" style="margin-bottom:1.25rem;border:1px solid #fee2e2;border-radius:8px;padding:0.75rem 0.85rem;background:#fff5f5;">
+                <div class="risker-checkgrupp-titel" style="color:#dc2626;margin-bottom:0.6rem;">
+                    <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
+                </div>
+                ${HOGRISK_ALTERNATIV.map(alt => `
+                    <label class="risker-check-item">
+                        <input type="checkbox" name="hogrisk-kund" value="${alt}" ${valdaHogrisk.includes(alt) ? 'checked' : ''}>
+                        <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
+                        <span class="risker-check-label"><span class="risker-check-namn">${alt}</span></span>
+                    </label>`).join('')}
+            </div>
+            <div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>` : '';
+
+        const riskListViewHtml = valda.length === 0
+            ? (typId === 'kund' ? '' : '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>')
+            : valda.map((r, i) => {
+                const uid = `risk-details-${typId}-${i}`;
+                const hasDetails = r.fields['Beskrivning'] || r.fields['Åtgjärd'];
+                return `
+                <div class="tjanst-collapsible-item" onclick="${hasDetails ? `customerCardManager.toggleTjanstDetails('${uid}')` : ''}">
+                    <div class="tjanst-collapsible-header">
+                        <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}</span>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            ${r.fields['Riskbedömning'] ? riskBadge(r.fields['Riskbedömning']) : ''}
+                            ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
+                        </div>
+                    </div>
+                    ${hasDetails ? `
+                    <div class="tjanst-collapsible-body" id="${uid}" style="display:none;">
+                        ${r.fields['Beskrivning'] ? `
+                            <div class="risker-vald-section-label">Beskrivning av riskfaktorn</div>
+                            <div class="risker-vald-desc">${r.fields['Beskrivning']}</div>` : ''}
+                        ${r.fields['Åtgjärd'] ? `
+                            <div class="risker-vald-section-label">Åtgärder</div>
+                            <div class="risker-vald-desc">${r.fields['Åtgjärd']}</div>` : ''}
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+        const emptyMsg = (valda.length === 0 && valdaHogrisk.length === 0)
+            ? '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>' : '';
 
         container.innerHTML = `
             <div class="risker-selector">
-                <div class="risker-selector-header">
-                    <span class="risker-selector-count" id="${countId}">${valda.length} valda</span>
-                    <button class="btn-icon-edit" id="${btnId}" title="Redigera"
-                        onclick="customerCardManager.toggleRiskerEdit('${typId}')">
-                        <i class="fas fa-pencil-alt"></i>
-                    </button>
+                <div id="${viewId}">
+                    ${hogriskViewHtml}
+                    ${riskListViewHtml}
+                    ${emptyMsg}
                 </div>
-                <div id="${viewId}">${viewContent}</div>
                 <div id="${editId}" style="display:none;">
                     <p class="tjanster-edit-hint">Markera de risker som gäller för kunden.</p>
+                    ${hogriskEditHtml}
                     ${risker.map(r => `
                         <label class="risker-check-item">
                             <input type="checkbox" name="risk-${typId}" value="${r.id}" ${linkedIds.has(r.id) ? 'checked' : ''}
@@ -1309,6 +1447,21 @@ class CustomerCardManager {
                     </div>
                 </div>
             </div>`;
+
+        // Lägg pennan direkt i collapsible-body så den positioneras rätt
+        const body = container.closest('.collapsible-body');
+        if (body) {
+            let fab = body.querySelector(`#${btnId}`);
+            if (!fab) {
+                fab = document.createElement('button');
+                fab.className = 'card-edit-fab';
+                fab.id = btnId;
+                fab.title = 'Redigera';
+                fab.setAttribute('onclick', `event.stopPropagation(); customerCardManager.toggleRiskerEdit('${typId}')`);
+                fab.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+                body.appendChild(fab);
+            }
+        }
     }
 
     toggleRiskerEdit(typId) {
@@ -1322,6 +1475,11 @@ class CustomerCardManager {
         if (btn) {
             btn.innerHTML = isEditing ? '<i class="fas fa-pencil-alt"></i>' : '<i class="fas fa-times"></i>';
             btn.classList.toggle('is-active', !isEditing);
+        }
+        // Öppna kortet automatiskt om det är stängt
+        if (!isEditing) {
+            const card = btn?.closest('.collapsible-card');
+            if (card && !card.classList.contains('open')) card.classList.add('open');
         }
     }
 
@@ -1357,10 +1515,21 @@ class CustomerCardManager {
         try {
             const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+            const fieldsToSave = { 'risker kopplat till tjänster': totalChecked };
+
+            // Spara högriskbranscher om det är kund-kortet
+            let nyaHogrisk = null;
+            if (typId === 'kund') {
+                nyaHogrisk = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
+                    .map(cb => cb.value);
+                fieldsToSave['Kunden verkar i en högriskbransch'] = nyaHogrisk;
+            }
+
             const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fields: { 'risker kopplat till tjänster': totalChecked } })
+                body: JSON.stringify({ fields: fieldsToSave })
             });
 
             if (!response.ok) {
@@ -1369,6 +1538,9 @@ class CustomerCardManager {
             }
 
             this._linkedRiskIds = allChecked;
+            if (typId === 'kund' && nyaHogrisk !== null && this.customerData?.fields) {
+                this.customerData.fields['Kunden verkar i en högriskbransch'] = nyaHogrisk;
+            }
 
             // Rita om detta kortets visningsläge
             const container = document.getElementById(`ovrigkyc-risker-${typId}`);
@@ -1423,22 +1595,23 @@ class CustomerCardManager {
                 ${body}
             </div>` : '';
 
+        // Kolla om alla KYC-statusfält är klarmarkerade
+        const kycFält = [
+            'KYC genomgången - Tjänster',
+            'KYC genomgången - Geografiska riskfaktorer',
+            'KYC genomgången - Riskfaktorer kund',
+            'KYC genomgången - Distributionskanaler',
+            'KYC genomgången - Verksamhetsspecifika riskfaktorer',
+            'KYC genomgången - Riskhöjande faktorer övrigt',
+            'KYC genomgången - Risksänkande faktorer',
+            'KYC genomgången - Kommentar riskfaktorer',
+        ];
+        const allaKlara = kycFält.every(k => f[k] === true);
         const uppdragCheck = f['Uppdraget kan antas'];
-        const uppdragText = uppdragCheck === true ? '✅ Ja' : uppdragCheck === false ? '❌ Nej' : null;
+        const avtalsDatum = f['Avtalet gäller ifrån'] ? fmtDate(f['Avtalet gäller ifrån']) : null;
 
         container.innerHTML = `
             <div class="kyc-layout">
-
-                ${section('Uppdrag & avtal', 'fa-file-contract', `
-                    ${row('Uppdrag', fmt(f['Uppdrag']), 'fa-briefcase')}
-                    ${row('Uppdrag 2', fmt(f['Uppdrag 2']), 'fa-briefcase')}
-                    ${row('Uppdraget kan antas', uppdragText, 'fa-check-circle')}
-                    ${row('Avtalet gäller ifrån', fmtDate(f['Avtalet gäller ifrån']), 'fa-calendar-alt')}
-                    ${chipsRow('Momsuppdrag', f['Momsuppdrag'], 'fa-receipt')}
-                    ${f['Uppdragstext'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-align-left"></i> Uppdragstext</span><div class="kyc-richtext">${f['Uppdragstext']}</div></div>` : ''}
-                `)}
-
-                ${this.renderByranHarCard(f['Byrån har'])}
 
                 ${section('Affärsförbindelsen', 'fa-handshake', `
                     ${chipsRow('Syfte med affärsförbindelsen', f['Syfte med affärsförbindelsen'], 'fa-bullseye')}
@@ -1448,8 +1621,8 @@ class CustomerCardManager {
                     ${chipsRow('Ursprung kapital', f['Vilket ursprung har företagets kapital?'], 'fa-coins')}
                 `)}
 
-                <!-- Tjänster – fylls i av loadServices() -->
-                <div class="kyc-section collapsible-card" id="tjanster-kort">
+                <!-- Kunden & verksamheten + Tjänster – fylls i av loadServices() -->
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="tjanster-kort">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Tjänster', f['KYC genomgången - Tjänster'], 'fa-cogs')} Tjänster</div>
                         <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -1478,7 +1651,7 @@ class CustomerCardManager {
 
 
                 <!-- Riskfaktorkort per typ – fylls i av loadKundRisker() -->
-                <div class="kyc-section collapsible-card" id="risker-kort-geografiska">
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="risker-kort-geografiska">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Geografiska riskfaktorer', f['KYC genomgången - Geografiska riskfaktorer'], 'fa-globe-europe')} Geografiska riskfaktorer</div>
                         <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -1490,7 +1663,7 @@ class CustomerCardManager {
                     </div>
                 </div>
 
-                <div class="kyc-section collapsible-card" id="risker-kort-kund">
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="risker-kort-kund">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Riskfaktorer kund', f['KYC genomgången - Riskfaktorer kund'], 'fa-user-shield')} Riskfaktorer kopplat till kund</div>
                         <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -1502,7 +1675,7 @@ class CustomerCardManager {
                     </div>
                 </div>
 
-                <div class="kyc-section collapsible-card" id="risker-kort-distribution">
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="risker-kort-distribution">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Distributionskanaler', f['KYC genomgången - Distributionskanaler'], 'fa-network-wired')} Distributionskanaler</div>
                         <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -1514,7 +1687,7 @@ class CustomerCardManager {
                     </div>
                 </div>
 
-                <div class="kyc-section collapsible-card" id="risker-kort-verksamhet">
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="risker-kort-verksamhet">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Verksamhetsspecifika riskfaktorer', f['KYC genomgången - Verksamhetsspecifika riskfaktorer'], 'fa-building')} Verksamhetsspecifika riskfaktorer</div>
                         <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -1527,31 +1700,62 @@ class CustomerCardManager {
                 </div>
 
                 <!-- Redigerbara riskfaktorkort -->
-                ${this.renderRiskfaktorCard('högriskbransch', 'Kunden verkar i en högriskbransch', 'fa-industry',
-                    f['Kunden verkar i en högriskbransch'],
-                    ['---','Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'],
-                    'multi')}
 
                 ${this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
                     f['Riskhöjande faktorer övrigt'],
-                    ['Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer','---'],
-                    'multi', 'high')}
+                    this._riskhojAlternativ?.length ? this._riskhojAlternativ : ['Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer'],
+                    'multi', 'high', 'KYC genomgången - Riskhöjande faktorer övrigt', f['KYC genomgången - Riskhöjande faktorer övrigt'])}
 
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
                     f['Risksänkande faktorer'],
-                    ['Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
-                    'multi')}
+                    this._risksankAlternativ?.length ? this._risksankAlternativ : ['Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
+                    'multi', '', 'KYC genomgången - Risksänkande faktorer', f['KYC genomgången - Risksänkande faktorer'])}
 
                 ${this.renderRiskfaktorCard('kommentar-risk', 'Kommentar till riskfaktorerna ovan', 'fa-comment-alt',
                     f['Kommentar till riskfaktorerna ovan'],
                     [],
-                    'text')}
+                    'text', '', 'KYC genomgången - Kommentar riskfaktorer', f['KYC genomgången - Kommentar riskfaktorer'])}
+
+                <!-- Byråns riskbedömning av kunden -->
+                ${this.renderRiskbedomningAiCard(f)}
+
+                <!-- Byrån har – näst sist -->
+                ${this.renderByranHarCard(f['Byrån har'])}
+
+                <!-- Uppdrag & avtal – allra sist -->
+                <div class="kyc-section collapsible-card collapsible-card--kyc" id="uppdrag-avtal-kort">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title"><i class="fas fa-file-contract"></i> Uppdrag & avtal</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        ${row('Uppdrag', fmt(f['Uppdrag']), 'fa-briefcase')}
+                        ${row('Uppdrag 2', fmt(f['Uppdrag 2']), 'fa-briefcase')}
+                        ${chipsRow('Momsuppdrag', f['Momsuppdrag'], 'fa-receipt')}
+                        ${f['Uppdragstext'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-align-left"></i> Uppdragstext</span><div class="kyc-richtext">${f['Uppdragstext']}</div></div>` : ''}
+
+                        <div class="uppdrag-antas-section">
+                            <div class="uppdrag-antas-row">
+                                <label class="uppdrag-antas-label ${allaKlara ? '' : 'uppdrag-antas-disabled'}"
+                                    title="${allaKlara ? '' : 'Alla KYC-kort måste vara klarmarkerade först'}">
+                                    <input type="checkbox" id="uppdrag-kan-antas-cb"
+                                        ${allaKlara ? '' : 'disabled'}
+                                        onchange="customerCardManager.saveUppdragKanAntas(this.checked)">
+                                    <span class="uppdrag-antas-check-box"></span>
+                                    <span class="uppdrag-antas-text">Uppdraget kan antas</span>
+                                </label>
+                                ${uppdragCheck && avtalsDatum ? `<span class="uppdrag-antas-datum"><i class="fas fa-calendar-check"></i> ${avtalsDatum}</span>` : ''}
+                            </div>
+                            ${!allaKlara ? `<p class="uppdrag-antas-hint"><i class="fas fa-lock"></i> Klarmarkera alla kort ovan för att låsa upp</p>` : ''}
+                        </div>
+                    </div>
+                </div>
 
             </div>
         `;
     }
 
-    renderRiskfaktorCard(id, titel, icon, värde, alternativ, typ, chipVariant = '') {
+    renderRiskfaktorCard(id, titel, icon, värde, alternativ, typ, chipVariant = '', kycFält = null, kycVärde = null) {
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const valda = fmtList(värde).filter(v => v && v !== '---');
         const filtAlt = alternativ.filter(a => a !== '---');
@@ -1577,27 +1781,260 @@ class CustomerCardManager {
                </div>`;
 
         return `
-            <div class="kyc-section">
-                <div class="kyc-section-title-row">
-                    <div class="kyc-section-title"><i class="fas ${icon}"></i> ${titel}</div>
-                    <button class="btn-icon-edit" id="riskf-btn-${id}" title="Redigera"
-                        onclick="customerCardManager.toggleRiskfaktorEdit('${id}')">
+            <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}">
+                <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                    <div class="collapsible-title">
+                        ${kycFält ? this._kycStatusIcon(kycFält, kycVärde, icon) : `<i class="fas ${icon}"></i>`}
+                        ${titel}
+                    </div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body" style="position:relative;">
+                    <div id="riskf-view-${id}" data-chip-variant="${chipVariant}">${viewContent}</div>
+                    <div id="riskf-edit-${id}" style="display:none;">
+                        ${editContent}
+                        <div class="kunduppgifter-actions" style="margin-top:0.75rem;">
+                            <button class="btn btn-primary btn-sm"
+                                onclick="customerCardManager.saveRiskfaktor('${id}', '${titel}', '${typ}')">
+                                <i class="fas fa-save"></i> Spara
+                            </button>
+                            <button class="btn btn-ghost btn-sm"
+                                onclick="customerCardManager.toggleRiskfaktorEdit('${id}')">Avbryt</button>
+                        </div>
+                    </div>
+                    <button class="card-edit-fab" id="riskf-btn-${id}" title="Redigera"
+                        onclick="event.stopPropagation(); customerCardManager.toggleRiskfaktorEdit('${id}')">
                         <i class="fas fa-pencil-alt"></i>
                     </button>
                 </div>
-                <div id="riskf-view-${id}" data-chip-variant="${chipVariant}">${viewContent}</div>
-                <div id="riskf-edit-${id}" style="display:none;">
-                    ${editContent}
-                    <div class="kunduppgifter-actions" style="margin-top:0.75rem;">
-                        <button class="btn btn-primary btn-sm"
-                            onclick="customerCardManager.saveRiskfaktor('${id}', '${titel}', '${typ}')">
-                            <i class="fas fa-save"></i> Spara
-                        </button>
-                        <button class="btn btn-ghost btn-sm"
-                            onclick="customerCardManager.toggleRiskfaktorEdit('${id}')">Avbryt</button>
+            </div>`;
+    }
+
+    renderRiskbedomningAiCard(f) {
+        const riskniva = f['Riskniva'] || '';
+        const riskbedomning = f['Byrans riskbedomning'] || '';
+        const atgarder = f['Atgarder riskbedomning'] || '';
+
+        const nivaBadge = (n) => {
+            if (!n) return '';
+            const map = { 'Lag': 'risk-pill--low', 'Medel': 'risk-pill--medium', 'Hog': 'risk-pill--high' };
+            const label = { 'Lag': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk' };
+            return `<span class="risk-pill ${map[n] || 'risk-pill--medium'}">${label[n] || n}</span>`;
+        };
+
+        return `
+            <div class="kyc-section collapsible-card collapsible-card--kyc" id="ai-riskbedomning-kort">
+                <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                    <div class="collapsible-title">
+                        <i class="fas fa-robot" style="color:#6366f1;margin-right:0.4rem;"></i>
+                        Byråns riskbedömning av kunden
+                        ${riskniva ? nivaBadge(riskniva) : ''}
                     </div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body" id="ai-riskbedomning-body">
+                    <!-- Visningsläge -->
+                    <div id="ai-rb-view">
+                        <div class="ai-rb-riskniva-row">
+                            <span class="risker-vald-section-label" style="margin-top:0;">Sammanlagd risknivå</span>
+                            <div id="ai-rb-niva-display" style="margin-top:0.4rem;">
+                                ${riskniva ? nivaBadge(riskniva) : '<span class="missing-data">Ej bedömd</span>'}
+                            </div>
+                        </div>
+                        ${riskbedomning ? `
+                        <div class="risker-vald-section-label">Byråns riskbedömning</div>
+                        <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
+                        ${atgarder ? `
+                        <div class="risker-vald-section-label">Åtgärder</div>
+                        <div class="risker-vald-desc" id="ai-rb-atg-display" style="white-space:pre-wrap;">${atgarder}</div>` : ''}
+                        ${!riskbedomning && !atgarder ? '<p class="lead-empty">Ingen bedömning gjord ännu. Klicka redigera eller låt AI analysera.</p>' : ''}
+                    </div>
+
+                    <!-- Redigeringsläge -->
+                    <div id="ai-rb-edit" style="display:none;">
+                        <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Sammanlagd risknivå</label>
+                            <div class="ai-rb-niva-btns">
+                                <button class="ai-rb-niva-btn ${riskniva === 'Lag' ? 'is-active is-lag' : ''}" onclick="customerCardManager.setRiskniva('Lag')">
+                                    <i class="fas fa-circle"></i> Låg
+                                </button>
+                                <button class="ai-rb-niva-btn ${riskniva === 'Medel' ? 'is-active is-medel' : ''}" onclick="customerCardManager.setRiskniva('Medel')">
+                                    <i class="fas fa-circle"></i> Medel
+                                </button>
+                                <button class="ai-rb-niva-btn ${riskniva === 'Hog' ? 'is-active is-hog' : ''}" onclick="customerCardManager.setRiskniva('Hog')">
+                                    <i class="fas fa-circle"></i> Hög
+                                </button>
+                            </div>
+                        </div>
+                        <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Byråns riskbedömning</label>
+                            <textarea id="ai-rb-text-input" class="kunduppgifter-input" rows="5" placeholder="Skriv byråns samlade riskbedömning av kunden...">${riskbedomning}</textarea>
+                        </div>
+                        <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Åtgärder</label>
+                            <textarea id="ai-rb-atg-input" class="kunduppgifter-input" rows="5" placeholder="Beskriv vilka åtgärder byrån vidtar...">${atgarder}</textarea>
+                        </div>
+
+                        <!-- AI-knapp -->
+                        <div class="ai-rb-ai-row">
+                            <button class="btn-ai-suggest" id="ai-rb-btn" onclick="customerCardManager.getAiRiskbedomning()">
+                                <i class="fas fa-robot"></i> Generera AI-förslag
+                            </button>
+                            <span class="ai-rb-ai-hint">AI analyserar all KYC-data och föreslår risknivå, bedömning och åtgärder</span>
+                        </div>
+
+                        <div class="kunduppgifter-actions" style="margin-top:1rem;">
+                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveRiskbedomning()">
+                                <i class="fas fa-save"></i> Spara
+                            </button>
+                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleRiskbedomningEdit()">Avbryt</button>
+                        </div>
+                    </div>
+
+                    <button class="card-edit-fab" id="ai-rb-edit-btn" title="Redigera"
+                        onclick="event.stopPropagation(); customerCardManager.toggleRiskbedomningEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>`;
+    }
+
+    toggleRiskbedomningEdit() {
+        const view = document.getElementById('ai-rb-view');
+        const edit = document.getElementById('ai-rb-edit');
+        const btn  = document.getElementById('ai-rb-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        edit.style.display = isEditing ? 'none' : '';
+        view.style.display = isEditing ? '' : 'none';
+        if (btn) {
+            btn.innerHTML = isEditing ? '<i class="fas fa-pencil-alt"></i>' : '<i class="fas fa-times"></i>';
+            btn.classList.toggle('is-active', !isEditing);
+        }
+        if (!isEditing) {
+            const card = document.getElementById('ai-riskbedomning-kort');
+            if (card && !card.classList.contains('open')) card.classList.add('open');
+        }
+    }
+
+    setRiskniva(nivå) {
+        document.querySelectorAll('.ai-rb-niva-btn').forEach(b => {
+            b.classList.remove('is-active', 'is-lag', 'is-medel', 'is-hog');
+        });
+        const map = { 'Lag': 'is-lag', 'Medel': 'is-medel', 'Hog': 'is-hog' };
+        const btn = [...document.querySelectorAll('.ai-rb-niva-btn')]
+            .find(b => b.textContent.trim().startsWith(nivå === 'Lag' ? 'Låg' : nivå === 'Hog' ? 'Hög' : 'Medel'));
+        if (btn) btn.classList.add('is-active', map[nivå]);
+        // Spara valt värde som data-attribut
+        document.getElementById('ai-rb-edit').dataset.riskniva = nivå;
+    }
+
+    async saveRiskbedomning() {
+        const editEl = document.getElementById('ai-rb-edit');
+        const riskniva = editEl?.dataset.riskniva || '';
+        const riskbedomning = document.getElementById('ai-rb-text-input')?.value || '';
+        const atgarder = document.getElementById('ai-rb-atg-input')?.value || '';
+
+        const fields = {
+            'Riskniva': riskniva || null,
+            'Byrans riskbedomning': riskbedomning,
+            'Atgarder riskbedomning': atgarder
+        };
+        // Rensa tomma null-fält
+        Object.keys(fields).forEach(k => { if (fields[k] === null) delete fields[k]; });
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            // Uppdatera customerData
+            if (this.customerData?.fields) {
+                if (riskniva) this.customerData.fields['Riskniva'] = riskniva;
+                this.customerData.fields['Byrans riskbedomning'] = riskbedomning;
+                this.customerData.fields['Atgarder riskbedomning'] = atgarder;
+            }
+
+            // Uppdatera visningsvyn direkt
+            this._updateRiskbedomningView(riskniva, riskbedomning, atgarder);
+            this.toggleRiskbedomningEdit();
+            this.showNotification('Riskbedömning sparad!', 'success');
+        } catch (err) {
+            console.error('❌ Fel vid sparande av riskbedömning:', err);
+            this.showNotification('Kunde inte spara: ' + err.message, 'error');
+        }
+    }
+
+    _updateRiskbedomningView(riskniva, riskbedomning, atgarder) {
+        const nivaBadge = (n) => {
+            if (!n) return '<span class="missing-data">Ej bedömd</span>';
+            const map = { 'Lag': 'risk-pill--low', 'Medel': 'risk-pill--medium', 'Hog': 'risk-pill--high' };
+            const label = { 'Lag': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk' };
+            return `<span class="risk-pill ${map[n] || 'risk-pill--medium'}">${label[n] || n}</span>`;
+        };
+
+        const nivaDisplay = document.getElementById('ai-rb-niva-display');
+        if (nivaDisplay) nivaDisplay.innerHTML = nivaBadge(riskniva);
+
+        const view = document.getElementById('ai-rb-view');
+        if (view) {
+            view.innerHTML = `
+                <div class="ai-rb-riskniva-row">
+                    <span class="risker-vald-section-label" style="margin-top:0;">Sammanlagd risknivå</span>
+                    <div style="margin-top:0.4rem;">${nivaBadge(riskniva)}</div>
+                </div>
+                ${riskbedomning ? `<div class="risker-vald-section-label">Byråns riskbedömning</div>
+                <div class="risker-vald-desc" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
+                ${atgarder ? `<div class="risker-vald-section-label">Åtgärder</div>
+                <div class="risker-vald-desc" style="white-space:pre-wrap;">${atgarder}</div>` : ''}
+                ${!riskbedomning && !atgarder ? '<p class="lead-empty">Ingen bedömning gjord ännu.</p>' : ''}`;
+        }
+
+        // Uppdatera badge i kortrubriken
+        const title = document.querySelector('#ai-riskbedomning-kort .collapsible-title');
+        if (title) {
+            const existingPill = title.querySelector('.risk-pill');
+            if (existingPill) existingPill.remove();
+            if (riskniva) title.insertAdjacentHTML('beforeend', nivaBadge(riskniva));
+        }
+    }
+
+    async getAiRiskbedomning() {
+        const btn = document.getElementById('ai-rb-btn');
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyserar...'; btn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/ai-riskbedomning/${this.customerId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+
+            // Fyll i fälten
+            const textInput = document.getElementById('ai-rb-text-input');
+            const atgInput = document.getElementById('ai-rb-atg-input');
+            if (textInput) textInput.value = data.riskbedomning || '';
+            if (atgInput) atgInput.value = data.atgarder || '';
+            if (data.riskniva) this.setRiskniva(data.riskniva);
+
+            this.showNotification('AI-analys klar! Granska och spara.', 'success');
+        } catch (err) {
+            console.error('❌ AI-riskbedömning fel:', err);
+            this.showNotification('AI-analys misslyckades: ' + err.message, 'error');
+        } finally {
+            if (btn) { btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag'; btn.disabled = false; }
+        }
     }
 
     renderByranHarCard(värde) {
@@ -1666,6 +2103,9 @@ class CustomerCardManager {
             edit.style.display = '';
             btn.innerHTML = '<i class="fas fa-times"></i>';
             btn.classList.add('is-active');
+            // Öppna kortet automatiskt om det är stängt
+            const card = btn?.closest('.collapsible-card');
+            if (card && !card.classList.contains('open')) card.classList.add('open');
         }
     }
 
@@ -2033,15 +2473,6 @@ class CustomerCardManager {
 
         content.innerHTML = `
             <div class="risker-selector">
-                <div class="risker-selector-header">
-                    <span class="risker-selector-count" id="tjanster-count-${p}">${aktiva.length} aktiva</span>
-                    <div class="risker-selector-actions">
-                        <button class="btn-icon-edit" id="tjanster-edit-btn-${p}" title="Redigera"
-                            onclick="customerCardManager.toggleTjansterEdit('${p}')">
-                            <i class="fas fa-pencil-alt"></i>
-                        </button>
-                    </div>
-                </div>
                 <div id="tjanster-view-${p}">${viewContent}</div>
                 <div id="tjanster-edit-${p}" style="display:none;">
                     <p class="tjanster-edit-hint">Markera de tjänster som ska vara aktiva för kunden.</p>
@@ -2054,6 +2485,21 @@ class CustomerCardManager {
                     </div>
                 </div>
             </div>`;
+
+        // Lägg pennan direkt i collapsible-body
+        const tjanstBody = content.closest('.collapsible-body');
+        if (tjanstBody) {
+            let fab = tjanstBody.querySelector(`#tjanster-edit-btn-${p}`);
+            if (!fab) {
+                fab = document.createElement('button');
+                fab.className = 'card-edit-fab';
+                fab.id = `tjanster-edit-btn-${p}`;
+                fab.title = 'Redigera';
+                fab.setAttribute('onclick', `event.stopPropagation(); customerCardManager.toggleTjansterEdit('${p}')`);
+                fab.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+                tjanstBody.appendChild(fab);
+            }
+        }
     }
 
     toggleTjanstDetails(uid) {
@@ -2081,6 +2527,9 @@ class CustomerCardManager {
             edit.style.display = '';
             btn.innerHTML = '<i class="fas fa-times"></i>';
             btn.classList.add('is-active');
+            // Öppna kortet automatiskt om det är stängt
+            const card = btn?.closest('.collapsible-card');
+            if (card && !card.classList.contains('open')) card.classList.add('open');
         }
     }
 

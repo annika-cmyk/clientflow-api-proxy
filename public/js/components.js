@@ -193,6 +193,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebarContainer = document.querySelector('.sidebar-container');
     if (sidebarContainer) {
         componentLoader.loadComponent('sidebar', sidebarContainer);
+        if (!document.querySelector('script[src*="ai-chat.js"]')) {
+            const s = document.createElement('script');
+            s.src = 'js/ai-chat.js';
+            s.async = false;
+            document.body.appendChild(s);
+        }
     }
 
     // Load footer if footer-container exists

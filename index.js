@@ -6,6 +6,7 @@ const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const OpenAI = require('openai');
 let puppeteer = null;
 try {
   puppeteer = require('puppeteer');
@@ -313,6 +314,78 @@ app.post('/api/auth/logout', authenticateToken, (req, res) => {
     success: true,
     message: 'Utloggning lyckades'
   });
+});
+
+// ============================================================
+// GET /api/ai-chat/status — Kontrollera att chat-routen är laddad (för felsökning)
+// ============================================================
+app.get('/api/ai-chat/status', (req, res) => {
+  res.json({ ok: true, message: 'Annika-chat är tillgänglig' });
+});
+
+// Kända användare – extra kontext så Annika AI kan skoja/vara personlig (nycklar: namn i lowercase)
+const CHAT_PERSONAS = {
+  fredrik: 'Fredrik bor i Alvesta och jobbar på Slipp Redovisning. Hans särbo Marit bor i Jönköping – Fredrik vill flytta dit också. Han har två barn: Siri och Lilly (Lilly är transtjej). Du får gärna skoja vänligt med honom och nämna Alvesta, Jönköping, flytten, Marit, Slipp eller barnen när det passar.',
+  annika: 'Det är Annika själv – hon bor i Ljungby. Du kan vara extra avslappnad och kanske skoja om att hon pratar med sig själv.'
+};
+
+// ============================================================
+// POST /api/ai-chat — Chatta med AI (Annika) om systemet och riskbedömningar
+// ============================================================
+app.post('/api/ai-chat', authenticateToken, async (req, res) => {
+  console.log('💬 POST /api/ai-chat anropad');
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  const { message, history = [] } = req.body;
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'Meddelande krävs.' });
+  }
+
+  const userName = (req.user && req.user.name) ? String(req.user.name).trim() : 'Okänd';
+  const userByra = (req.user && req.user.byra) ? String(req.user.byra).trim() : '';
+  const whoChats = userByra ? `${userName} från ${userByra}` : userName;
+  const nameLower = userName.toLowerCase();
+  let personaExtra = '';
+  for (const [key, text] of Object.entries(CHAT_PERSONAS)) {
+    if (nameLower.includes(key)) {
+      personaExtra = `\nKontext om den som chattar: ${text}`;
+      break;
+    }
+  }
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const systemContent = `Du är Annika – en vänlig, kunnig och klämkäck person som hjälper användare av ClientFlow (kundhantering och riskbedömning på svenska redovisningsbyråer). Du svarar alltid i första person som Annika, på svenska.
+
+Om mig: Jag bor i Ljungby och har tre barn – Rakel som är 2, Lilly 15 och Tove 18. Fredrik Grengby är min kompis och driver också egen redovisningsbyrå. Du kan nämna det när det passar i samtalet.
+
+Vem som chattar nu: ${whoChats}.${personaExtra}
+
+Du hjälper till med:
+- Hur systemet fungerar (kundkort, riskbedömning, KYC, tjänster, PEP, åtgärder)
+- Hur man tänker och arbetar vid riskbedömning av kunder och tjänster enligt PVML (penningtvättslagen)
+- Rekommendationer och bästa praxis för motiveringar och risksänkande åtgärder
+Var varm och professionell men också lite käck och rolig – t.ex. "Hallå brottsbekämpare" eller "Inte alla hjältar bär cape, en del bär terminalglasögon och miniräknare". Håll svaren tydliga och koncisa, med en lätt humor när det passar. Om du inte vet något, säg det ärligt.`;
+
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message.trim() }
+    ];
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages,
+      temperature: 0.5
+    });
+
+    const reply = completion.choices[0]?.message?.content?.trim() || 'Kunde inte generera svar.';
+    res.json({ reply });
+  } catch (error) {
+    console.error('❌ AI-chat fel:', error.message);
+    res.status(500).json({ error: 'Chatten svarade inte: ' + error.message });
+  }
 });
 
 // Get current user endpoint
@@ -4657,6 +4730,26 @@ app.patch('/api/uppdragsavtal/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/falt-alternativ?tabell=KUNDDATA&falt=Riskhöjande faktorer övrigt – Hämta choices för ett multiselect-fält
+app.get('/api/falt-alternativ', authenticateToken, async (req, res) => {
+  try {
+    const { falt } = req.query;
+    if (!falt) return res.status(400).json({ error: 'falt saknas' });
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID;
+    const r = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const kundTable = r.data.tables.find(t => t.name === 'KUNDDATA');
+    const field = kundTable?.fields?.find(f => f.name === falt);
+    const choices = field?.options?.choices?.map(c => c.name) || [];
+    res.json({ choices });
+  } catch (err) {
+    console.error('❌ falt-alternativ:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/byra-tjanster?byraId=XXX – Hämta byråns tjänster från "Risker kopplad till tjänster"
 app.get('/api/byra-tjanster', authenticateToken, async (req, res) => {
   try {
@@ -5246,11 +5339,15 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
         });
         const checkData = checkRes.data;
 
-        console.log(`✅ PEP-screening klar: ${checkData.total_hits} träffar för ${namn}`);
+        const totalHits = checkData.total_hits || 0;
+        console.log(`✅ PEP-screening klar: ${totalHits} träffar för ${namn}`);
+
+        // PEP-status sätts av användaren på fliken Riskbedömning (Airtable), inte från rapporten.
+        // Screening ger endast PDF + träffar i svaret; användaren bockar i PEP själv om det gäller.
 
         res.json({
             namn,
-            total_hits: checkData.total_hits || 0,
+            total_hits: totalHits,
             found_records: checkData.found_records || [],
             pdf_base64: pdfBase64,
             filnamn,
@@ -5386,3 +5483,264 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
   }
 });
 
+// ============================================================
+// POST /api/ai-riskbedomning/:kundId
+// Genererar AI-baserad riskbedömning och åtgärdsförslag
+// ============================================================
+app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) => {
+  const { kundId } = req.params;
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const baseId = process.env.AIRTABLE_BASE_ID;
+  const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
+  const assistantId = process.env.OPENAI_ASSISTANT_ID || 'asst_OOsa6mD2D2aQHAFqsh0ch5Rs';
+  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_ID || 'vs_6849e4132d7c8191a60176f4403d6da4';
+
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!assistantId) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
+
+  try {
+    const kundRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/KUNDDATA/${kundId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = kundRes.data.fields || {};
+
+    const arr = (v) => Array.isArray(v) ? v.join(', ') : (v || '–');
+
+    // Hämta kundens aktiva tjänster parallellt med länkade riskposter
+    let tjansterText = '–';
+    let lankadeRiskerText = '';
+
+    await Promise.all([
+      // Tjänster
+      (async () => {
+        try {
+          const tjansterIds = f['Kundens utvalda tjänster'] || [];
+          if (Array.isArray(tjansterIds) && tjansterIds.length > 0) {
+            const tjNamn = await Promise.all(tjansterIds.map(async (id) => {
+              try {
+                const r = await axios.get(
+                  `https://api.airtable.com/v0/${baseId}/Olika%20valbara%20uppdrag/${id}`,
+                  { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+                );
+                return r.data.fields?.['Task Name'] || id;
+              } catch { return id; }
+            }));
+            tjansterText = tjNamn.join(', ');
+          }
+        } catch (e) { /* ignorera */ }
+      })(),
+
+      // Länkade riskposter (per tjänst och riskfaktortyp)
+      (async () => {
+        try {
+          const linkedIds = f['risker kopplat till tjänster'] || [];
+          if (Array.isArray(linkedIds) && linkedIds.length > 0) {
+            const formula = encodeURIComponent('OR(' + linkedIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
+            const riskRes = await axios.get(
+              `https://api.airtable.com/v0/${baseId}/${RISKER_TABLE}?filterByFormula=${formula}`,
+              { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+            );
+            const riskPoster = riskRes.data.records || [];
+            if (riskPoster.length > 0) {
+              lankadeRiskerText = riskPoster.map(r => {
+                const rf = r.fields;
+                const namn = rf['Riskfaktor'] || '–';
+                const typ = rf['Typ av riskfaktor'] || '';
+                const niva = rf['Riskbedömning'] || '';
+                const beskr = rf['Beskrivning'] || '';
+                const atg = rf['Åtgjärd'] || '';
+                return `  • ${namn}${typ ? ` [${typ}]` : ''}${niva ? ` — ${niva}` : ''}` +
+                  (beskr ? `\n    Beskrivning: ${beskr}` : '') +
+                  (atg ? `\n    Åtgärd: ${atg}` : '');
+              }).join('\n');
+            }
+          }
+        } catch (e) { /* ignorera */ }
+      })()
+    ]);
+
+    // Syftet med affärsförbindelsen: använd registrerat syfte om finns, annars tjänsterna
+    const syfteRaw = arr(f['Syfte med affärsförbindelsen']);
+    const syfteMedTjanster = syfteRaw !== '–'
+      ? `${syfteRaw} (Tjänster byrån utför: ${tjansterText})`
+      : `Byråns tjänster till kunden (= syftet med affärsförbindelsen): ${tjansterText}`;
+
+    const pepStatus = arr(f['PEP']);
+    const pepTraffar = f['Antal träffar PEP och sanktionslistor'] ?? '–';
+
+    const sparadRiskniva = f['Riskniva'] || '';
+    const sparadBedomning = (f['Byrans riskbedomning'] || '').trim();
+    const sparadeAtgarder = (f['Atgarder riskbedomning'] || '').trim();
+    const harSparadBedomning = sparadBedomning.length > 0 || sparadeAtgarder.length > 0;
+
+    const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
+Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbedömning enligt PVML (Penningtvättslagen).
+Väg in all tillgänglig information — varje ifyllt fält bidrar till helhetsbilden av kunden.
+${harSparadBedomning ? `
+BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Ta hänsyn till dem och förfina/uppdatera istället för att skriva om från noll. Behåll formuleringar som fortfarande stämmer.
+- Sparad risknivå: ${sparadRiskniva || '–'}
+- Sparad riskbedömning: ${sparadBedomning || '–'}
+- Sparade åtgärder: ${sparadeAtgarder || '–'}
+` : ''}
+
+VIKTIGT: Syftet med affärsförbindelsen definieras av vilka tjänster byrån utför åt kunden. Dessa tjänster ska framgå tydligt i riskbedömningen.
+
+KUNDUPPGIFTER:
+- Företagsnamn: ${f['Name'] || f['Namn'] || '–'}
+- Organisationsform: ${f['Bolagsform'] || '–'}
+- Bransch/SNI: ${f['SNI-bransch'] || f['Bransch'] || '–'}
+- Omsättning: ${f['Omsättning'] || '–'}
+- Verklig huvudman: ${f['Verklig huvudman'] || '–'}
+- Skatterättslig hemvist: ${arr(f['Skatterättslig hemvist'])}
+- Betalningar: ${arr(f['Betalningar'])}
+- Syfte med affärsförbindelsen / Tjänster: ${syfteMedTjanster}
+- Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}
+- Kapitalets ursprung: ${arr(f['Vilket ursprung har företagets kapital?'])}
+- Affärsmodell: ${f['Affärsmodell'] || '–'}
+- Byråns beskrivning av kunden: ${f['Beskrivning av kunden'] || '–'}
+- Ytterligare beskrivning av kunden och verksamheten: ${f['Ytterligare beskrivning av kunden och verksamheten'] || '–'}
+
+PEP & SANKTIONER (från fliken Riskbedömning — vad som är bockat/registrerat i Airtable):
+- PEP-status: ${pepStatus}
+- Antal träffar PEP/sanktionslistor: ${pepTraffar}
+
+RISKFAKTORER (övergripande):
+- Kunden verkar i högriskbransch: ${arr(f['Kunden verkar i en högriskbransch'])}
+- Riskhöjande faktorer övrigt: ${arr(f['Riskhöjande faktorer övrigt'])}
+- Risksänkande faktorer: ${arr(f['Risksänkande faktorer'])}
+- Kommentar till riskfaktorer: ${f['Kommentar till riskfaktorerna ovan'] || '–'}
+
+IDENTIFIERADE RISKFAKTORER PER TJÄNST/KATEGORI (detta är vad användaren har valt på fliken Riskbedömning — t.ex. "PEP, familjemedlem till PEP..." med nivå Förhöjd/Medel/Låg, eller "Privatkunder" med Medel):
+${lankadeRiskerText || '  Inga specifika riskfaktorer registrerade.'}
+
+Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt.
+
+ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
+
+1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd", ska kundens sammanlagda risknivå vara "Hog" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Medel" på PEP-faktorn ska sammanlagd risk vara minst "Medel". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
+
+2. ÅTGÄRDER — detta är kritiskt:
+   - "Hog": Lista 3-5 konkreta åtgärder specifikt anpassade till just denna kunds riskbild (PEP, sanktioner, högriskbransch etc.).
+   - "Medel": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Generella formuleringar är FÖRBJUDNA.
+   - "Lag": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder. Övervakningsrutiner, uppdatering av dokumentation och liknande standardpåminnelser ska ALDRIG listas.
+
+3. RISKBEDÖMNINGSTEXT: 2-4 meningar. Motivera risknivån konkret utifrån kundens faktiska profil. Nämn vilka tjänster byrån utför.
+
+Svara EXAKT i detta JSON-format (inget annat):
+{
+  "riskniva": "Lag" eller "Medel" eller "Hog",
+  "riskbedomning": "2-4 meningar som motiverar risknivån konkret.",
+  "atgarder": "Punkter med bindestreck (-) vid Hog eller specifik risk, annars exakt tom sträng."
+}`;
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const apiBase = 'https://api.openai.com/v1';
+    const authHeader = { Authorization: `Bearer ${openaiKey}` };
+
+    const extractFirstJsonObject = (text) => {
+      if (!text) return null;
+      const start = text.indexOf('{');
+      if (start === -1) return null;
+      let depth = 0;
+      for (let i = start; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) return text.slice(start, i + 1);
+        }
+      }
+      return null;
+    };
+
+    let result = null;
+
+    try {
+      // Assistants API via REST (tydliga URL:er, undviker SDK undefined-bug)
+      const threadRes = await axios.post(
+        `${apiBase}/threads`,
+        { messages: [{ role: 'user', content: prompt }] },
+        { headers: { ...authHeader, 'Content-Type': 'application/json' } }
+      );
+      const threadId = threadRes.data?.id;
+      if (!threadId) throw new Error('Inget thread-id i svar');
+
+      const runBody = {
+        assistant_id: assistantId,
+        ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
+      };
+      const runRes = await axios.post(
+        `${apiBase}/threads/${threadId}/runs`,
+        runBody,
+        { headers: { ...authHeader, 'Content-Type': 'application/json' } }
+      );
+      const runId = runRes.data?.id;
+      if (!runId) throw new Error('Inget run-id i svar');
+
+      let runStatus = runRes.data;
+      const startMs = Date.now();
+      while (['queued', 'in_progress', 'cancelling'].includes(runStatus.status)) {
+        if (Date.now() - startMs > 60000) throw new Error('Timeout – assistenten svarade inte i tid');
+        await new Promise(r => setTimeout(r, 1000));
+        const statusRes = await axios.get(
+          `${apiBase}/threads/${threadId}/runs/${runId}`,
+          { headers: authHeader }
+        );
+        runStatus = statusRes.data;
+      }
+
+      if (runStatus.status !== 'completed') {
+        throw new Error(runStatus.last_error?.message || `Run status: ${runStatus.status}`);
+      }
+
+      const msgRes = await axios.get(
+        `${apiBase}/threads/${threadId}/messages?limit=10`,
+        { headers: authHeader }
+      );
+      const messages = msgRes.data?.data || [];
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.run_id === runId) || messages.find(m => m.role === 'assistant');
+      const parts = assistantMsg?.content || [];
+      const assistantText = parts.map(c => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
+
+      const jsonText = extractFirstJsonObject(assistantText) || assistantText;
+      result = JSON.parse(jsonText);
+    } catch (assistantErr) {
+      console.warn('⚠️ Assistants API misslyckades, använder Chat Completions:', assistantErr.message);
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.4,
+        response_format: { type: 'json_object' }
+      });
+      const rawContent = completion.choices[0]?.message?.content || '';
+      const jsonText = extractFirstJsonObject(rawContent) || rawContent;
+      result = JSON.parse(jsonText);
+    }
+
+    if (!result) throw new Error('Kunde inte tolka AI-svar');
+
+    res.json({
+      riskniva: result.riskniva || 'Medel',
+      riskbedomning: result.riskbedomning || '',
+      atgarder: result.atgarder || ''
+    });
+
+  } catch (error) {
+    console.error('❌ AI-riskbedömning fel:', error.message);
+    res.status(500).json({ error: 'Kunde inte generera AI-analys: ' + error.message });
+  }
+});
+
+// API-rutter som inte matchar → alltid JSON (inga HTML-svar)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint hittades inte', path: req.path });
+});
+
+// Global felhanterare så att oväntade fel ger JSON, inte HTML
+app.use((err, req, res, next) => {
+  console.error('❌ Oväntat serverfel:', err.message);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Serverfel: ' + (err.message || 'Något gick fel') });
+});
