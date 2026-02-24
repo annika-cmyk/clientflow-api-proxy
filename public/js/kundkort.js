@@ -361,16 +361,19 @@ class CustomerCardManager {
                 this.loadCompanyInfo();
                 break;
             case 'roller':
-                this.loadRoles();
+                // Fliken Roller är borttagen — roller visas på Företagsinformation
                 break;
-            case 'riskbedomning':
-                this.loadRiskAssessment();
+            case 'uppdragsavtal':
+                this.loadUppdragsavtal();
                 break;
-            case 'tjanster':
-                this.loadServices();
+            case 'ovrigkyc':
+                this.loadOvrigKYC();
                 break;
             case 'anteckningar':
                 this.loadNotes();
+                break;
+            case 'avvikelser':
+                this.loadAvvikelser();
                 break;
             case 'dokumentation':
                 this.loadDocuments();
@@ -379,494 +382,1775 @@ class CustomerCardManager {
     }
 
     loadCompanyInfo() {
+        const container = document.getElementById('foretagsinformation-content');
+        if (!container) return;
+
         if (!this.customerData) {
-            console.warn('⚠️ No customer data to display in company info');
+            container.innerHTML = '<p class="lead-empty">Ingen företagsinformation tillgänglig.</p>';
             return;
         }
 
         const fields = this.customerData.fields || {};
         console.log('📋 Loading company info with fields:', fields);
-        
-        // Debug: Check if tab pane is visible
-        const tabPane = document.getElementById('foretagsinformation');
-        if (tabPane) {
-            console.log('🔍 Tab pane visibility:', {
-                display: window.getComputedStyle(tabPane).display,
-                visibility: window.getComputedStyle(tabPane).visibility,
-                opacity: window.getComputedStyle(tabPane).opacity,
-                hasActive: tabPane.classList.contains('active'),
-                innerHTML: tabPane.innerHTML.substring(0, 200)
-            });
-        }
-        
-        // Helper function to safely update element
-        const updateElement = (id, value) => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.textContent = value || '-';
-                console.log(`✅ Updated ${id}:`, value || '-');
-            } else {
-                console.warn(`⚠️ Element not found: ${id}`);
+
+        const fmt = (val) => {
+            if (!val || val === 'N/A' || val === 'null' || val === 'undefined' || val === '') {
+                return '<span class="missing-data">Saknas</span>';
             }
+            return val;
         };
-        
-        // Update company information fields - try multiple field name variations
-        updateElement('customer-email', fields.Epost || fields.Email || fields['E-post']);
-        updateElement('customer-address', fields.Address || fields.Adress || fields['Postadress']);
-        updateElement('customer-phone', fields.Telefon || fields.Phone || fields['Telefonnr']);
-        updateElement('customer-sni', fields['SNI kod'] || fields.SNIKod || fields.SNI);
-        updateElement('customer-description', fields['Beskrivning av kunden'] || fields.Verksamhetsbeskrivning || fields.Beskrivning);
-        updateElement('customer-turnover', fields.Omsattning || fields['Omsättning']);
-        updateElement('customer-executives', fields.Befattningshavare);
-        updateElement('customer-owner', fields.VerkligHuvudman || fields['Verklig huvudman']);
-        updateElement('customer-signature', fields.Firmateckning || fields['Firmateckning']);
-        
-        // Additional fields
-        updateElement('customer-active', fields['Aktivt företag'] || fields.Aktivt || '-');
-        
-        // Format agreement date
-        const agreementDate = fields['Avtalet gäller ifrån'] || fields['Avtalsdatum'];
-        if (agreementDate) {
-            try {
-                const date = new Date(agreementDate);
-                updateElement('customer-agreement-date', date.toLocaleDateString('sv-SE'));
-            } catch (e) {
-                updateElement('customer-agreement-date', agreementDate);
-            }
-        } else {
-            updateElement('customer-agreement-date', '-');
-        }
-        
-        // Format "Uppdraget kan antas"
-        const canAccept = fields['Uppdraget kan antas'];
-        if (canAccept !== undefined && canAccept !== null) {
-            updateElement('customer-can-accept', canAccept === true || canAccept === 'true' ? 'Ja' : 'Nej');
-        } else {
-            updateElement('customer-can-accept', '-');
-        }
-        
-        // Format "Byrån har" as a list
-        const byraHas = fields['Byrån har'] || fields['Byråns egenskaper'];
-        const byraHasElement = document.getElementById('customer-byra-has');
-        if (byraHasElement) {
-            if (Array.isArray(byraHas) && byraHas.length > 0) {
-                byraHasElement.innerHTML = '<ul class="byra-has-list">' + 
-                    byraHas.map(item => `<li><i class="fas fa-check-circle"></i> ${item}</li>`).join('') + 
-                    '</ul>';
-            } else if (byraHas) {
-                byraHasElement.textContent = byraHas;
-            } else {
-                byraHasElement.textContent = '-';
+
+        // Namn och orgnr
+        const namn = fields.Namn || fields.namn || '';
+        const orgnr = fields.Orgnr || fields.orgnr || '';
+        const status = fields['aktiv/inaktiv'] || '';
+        const regdatum = fields.regdatum || '';
+        const regland = fields.registreringsland || '';
+        const bolagsform = fields.Bolagsform || '';
+        const adress = fields.Address || fields.Adress || '';
+        const verksamhet = fields.Verksamhetsbeskrivning || fields['Beskrivning av kunden'] || '';
+        const sniRaw = fields['SNI kod'] || fields['SNI-koder'] || '';
+        const befattning = fields.Befattningshavare || '';
+
+        // SNI-koder — sparade som "62010 Dataprogrammering\n62020 Konsultverksamhet"
+        let sniHTML = '<span class="lead-empty">Saknas</span>';
+        if (sniRaw) {
+            const rows = sniRaw.split('\n').map(r => r.trim()).filter(Boolean);
+            if (rows.length > 0) {
+                sniHTML = rows.map(row => {
+                    const spaceIdx = row.indexOf(' ');
+                    if (spaceIdx > 0) {
+                        const kod = row.substring(0, spaceIdx);
+                        const label = row.substring(spaceIdx + 1);
+                        return `<span class="sni-code-badge">${kod}</span><span class="sni-code-label">${label}</span>`;
+                    }
+                    return `<span class="sni-code-badge">${row}</span>`;
+                }).join('');
             }
         }
-        
-        // Format created date
-        const created = fields.Skapad || this.customerData.createdTime;
-        if (created) {
-            try {
-                const date = new Date(created);
-                updateElement('customer-created', date.toLocaleDateString('sv-SE') + ' ' + date.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }));
-            } catch (e) {
-                updateElement('customer-created', created);
+
+        // Befattningshavare — kan vara JSON-array eller gammal textsträng
+        const kontaktPersonerRaw = fields['Kontaktpersoner'] || fields['Befattningshavare'] || '';
+        let kontaktPersoner = [];
+        try {
+            if (kontaktPersonerRaw && kontaktPersonerRaw.trim().startsWith('[')) {
+                kontaktPersoner = JSON.parse(kontaktPersonerRaw);
+            } else if (kontaktPersonerRaw) {
+                // Bakåtkompatibilitet: "Anna Svensson (VD)\nKalle Karlsson (Styrelseledamot)"
+                kontaktPersoner = kontaktPersonerRaw.split('\n').map(r => r.trim()).filter(Boolean).map(r => {
+                    const match = r.match(/^(.+?)\s*\((.+)\)$/);
+                    return match ? { namn: match[1].trim(), roll: match[2].trim(), epost: '', personnr: '' } : { namn: r, roll: '', epost: '', personnr: '' };
+                });
             }
-        } else {
-            updateElement('customer-created', '-');
+        } catch(e) { kontaktPersoner = []; }
+
+        // Om fysisk person och ingen Ägare EF finns — skapa en automatiskt
+        const arFysiskPerson = bolagsform === 'Fysiska personer' || bolagsform === 'Enskild firma';
+        const harAgareEF = kontaktPersoner.some(p => p.roll === 'Ägare EF');
+        if (arFysiskPerson && !harAgareEF) {
+            const agare = {
+                namn: namn,
+                roll: 'Ägare EF',
+                epost: fields['e-post'] || fields['Email'] || fields['E-post'] || '',
+                personnr: orgnr
+            };
+            kontaktPersoner = [agare, ...kontaktPersoner];
         }
-        
-        console.log('✅ Company info loaded');
+
+        this._kontaktPersoner = kontaktPersoner;
+
+        const rollerHTML = this._renderRollerView(kontaktPersoner);
+
+        // Redigerbara kunduppgifter
+        const email = fields['e-post'] || fields['Email'] || fields['E-post'] || '';
+        const telefon = fields['Telefonnr'] || fields['telefon'] || '';
+        const kundBeskrivning = fields['Beskrivning av kunden'] || '';
+
+        // Redovisningsuppgifter
+        const redovisningsmetod = fields['Redovisningsmetod'] || '';
+        const redovisningsperiod = fields['Redovisningsperiod'] || '';
+        const rakenskapsår = fields['Räkenskapsår'] || '';
+        const bokforingsprogram = fields['Bokforingsprogram'] || fields['Bokföringsprogram'] || '';
+        const bank = fields['Bank'] || '';
+
+        const mis = '<span class="missing-data">Ej angiven</span>';
+
+        container.innerHTML = `
+
+            <!-- KORT 1: Uppgifter från Bolagsverket -->
+            <div class="collapsible-card" id="bolagsverket-card" >
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('bolagsverket-card')">
+                    <div class="collapsible-title"><i class="fas fa-building"></i><span>Uppgifter från Bolagsverket</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    <div class="lead-fields">
+                        <div class="lead-field"><label>Företagsnamn</label><span>${fmt(namn)}</span></div>
+                        <div class="lead-field"><label>Organisationsnummer</label><span>${fmt(orgnr)}</span></div>
+                        <div class="lead-field"><label>Registreringsdatum</label><span>${fmt(regdatum)}</span></div>
+                        <div class="lead-field"><label>Registreringsland</label><span>${fmt(regland)}</span></div>
+                        <div class="lead-field"><label>Organisationsform</label><span>${fmt(bolagsform)}</span></div>
+                        <div class="lead-field lead-field--full"><label>Adress</label><span>${fmt(adress)}</span></div>
+                        <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span>${fmt(verksamhet)}</span></div>
+                    </div>
+                    <div class="lead-section" style="margin-top:1rem;">
+                        <label>SNI-koder</label>
+                        <div class="lead-sni">${sniHTML}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KORT 2: Kontaktuppgifter -->
+            <div class="collapsible-card is-collapsed" id="kunduppgifter-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('kunduppgifter-card')">
+                    <div class="collapsible-title"><i class="fas fa-address-card"></i><span>Kontaktuppgifter</span></div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    <div class="collapsible-header-actions" onclick="event.stopPropagation()">
+                        <button class="btn-icon-note" id="kunduppgifter-edit-btn" title="Redigera" onclick="customerCardManager.toggleKunduppgifterEdit()">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                    </div>
+                    </div>
+                </div>
+                <div class="collapsible-body" id="kunduppgifter-collapsible-body">
+                    <div id="kunduppgifter-view" class="kunduppgifter-view">
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-envelope"></i> E-post</span>
+                            <span class="kunduppgifter-value" id="ku-email-view">${email || mis}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-phone"></i> Telefonnummer</span>
+                            <span class="kunduppgifter-value" id="ku-telefon-view">${telefon || mis}</span>
+                        </div>
+                    </div>
+                    <div id="kunduppgifter-edit" class="kunduppgifter-edit" style="display:none;">
+                        <div class="kunduppgifter-form-row">
+                            <label for="ku-email-input"><i class="fas fa-envelope"></i> E-post</label>
+                            <input type="email" id="ku-email-input" class="kunduppgifter-input" value="${email}" placeholder="exempel@foretag.se">
+                        </div>
+                        <div class="kunduppgifter-form-row">
+                            <label for="ku-telefon-input"><i class="fas fa-phone"></i> Telefonnummer</label>
+                            <input type="text" id="ku-telefon-input" class="kunduppgifter-input" value="${telefon}" placeholder="08-123 456 78">
+                        </div>
+                        <div class="kunduppgifter-actions">
+                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveKunduppgifter()"><i class="fas fa-save"></i> Spara</button>
+                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleKunduppgifterEdit()">Avbryt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KORT 3: Beskrivning av kunden -->
+            <div class="collapsible-card is-collapsed" id="beskrivning-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('beskrivning-card')">
+                    <div class="collapsible-title"><i class="fas fa-align-left"></i><span>Beskrivning av kunden</span></div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                        <div class="collapsible-header-actions" onclick="event.stopPropagation()">
+                            <button class="btn-icon-note" id="beskrivning-edit-btn" title="Redigera" onclick="customerCardManager.toggleBeskrivningEdit()">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="collapsible-body">
+                    <div id="beskrivning-view">
+                        <div id="ku-beskrivning-view" class="kunduppgifter-beskrivning-view">${kundBeskrivning || mis}</div>
+                    </div>
+                    <div id="beskrivning-edit" style="display:none;">
+                        <div class="richtext-toolbar">
+                            <button type="button" title="Fet" onclick="document.execCommand('bold')"><b>B</b></button>
+                            <button type="button" title="Punktlista" onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
+                        </div>
+                        <div id="ku-beskrivning-input" class="kunduppgifter-richtext" contenteditable="true"
+                             data-placeholder="Beskriv kundens verksamhet, bakgrund eller övrigt...">${kundBeskrivning}</div>
+                        <div class="kunduppgifter-actions">
+                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveBeskrivning()"><i class="fas fa-save"></i> Spara</button>
+                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningEdit()">Avbryt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KORT 4: Redovisningsuppgifter -->
+            <div class="collapsible-card is-collapsed" id="redovisning-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('redovisning-card')">
+                    <div class="collapsible-title"><i class="fas fa-calculator"></i><span>Redovisningsuppgifter</span></div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                        <div class="collapsible-header-actions" onclick="event.stopPropagation()">
+                            <button class="btn-icon-note" id="redovisning-edit-btn" title="Redigera" onclick="customerCardManager.toggleRedovisningEdit()">
+                                <i class="fas fa-pencil-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="collapsible-body">
+                    <div id="redovisning-view" class="kunduppgifter-view kunduppgifter-view--aligned">
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-file-invoice"></i> Redovisningsmetod</span>
+                            <span class="kunduppgifter-value" id="redov-metod-view">${redovisningsmetod || mis}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-calendar-alt"></i> Redovisningsperiod (moms)</span>
+                            <span class="kunduppgifter-value" id="redov-period-view">${redovisningsperiod || mis}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-calendar-check"></i> Räkenskapsår</span>
+                            <span class="kunduppgifter-value" id="redov-rakenskapsår-view">${rakenskapsår || mis}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-laptop"></i> Bokföringsprogram</span>
+                            <span class="kunduppgifter-value" id="redov-bokforing-view">${bokforingsprogram || mis}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-university"></i> Bank</span>
+                            <span class="kunduppgifter-value" id="redov-bank-view">${bank || mis}</span>
+                        </div>
+                    </div>
+                    <div id="redovisning-edit" style="display:none;">
+                        <div class="collapsible-edit-grid">
+                            <div class="kunduppgifter-form-row">
+                                <label>Redovisningsmetod</label>
+                                <select id="redov-metod-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    <option value="Bokslutsmetoden" ${redovisningsmetod === 'Bokslutsmetoden' ? 'selected' : ''}>Bokslutsmetoden</option>
+                                    <option value="Fakturametoden" ${redovisningsmetod === 'Fakturametoden' ? 'selected' : ''}>Fakturametoden</option>
+                                </select>
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label>Redovisningsperiod (moms)</label>
+                                <select id="redov-period-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    <option value="Ej registrerad för moms" ${redovisningsperiod === 'Ej registrerad för moms' ? 'selected' : ''}>Ej registrerad för moms</option>
+                                    <option value="Månad" ${redovisningsperiod === 'Månad' ? 'selected' : ''}>Månad</option>
+                                    <option value="Kvartal" ${redovisningsperiod === 'Kvartal' ? 'selected' : ''}>Kvartal</option>
+                                    <option value="Årsvis i samband med deklarationen" ${redovisningsperiod === 'Årsvis i samband med deklarationen' ? 'selected' : ''}>Årsvis i samband med deklarationen</option>
+                                    <option value="Årsvis, 26/2" ${redovisningsperiod === 'Årsvis, 26/2' ? 'selected' : ''}>Årsvis, 26/2</option>
+                                </select>
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label>Räkenskapsår</label>
+                                <input type="text" id="redov-rakenskapsår-input" class="kunduppgifter-input"
+                                    value="${rakenskapsår}" placeholder="t.ex. 0101-1231 eller 0501-0430">
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label>Bokföringsprogram</label>
+                                <select id="redov-bokforing-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    <option value="Fortnox" ${bokforingsprogram === 'Fortnox' ? 'selected' : ''}>Fortnox</option>
+                                    <option value="Visma Spcs" ${bokforingsprogram === 'Visma Spcs' ? 'selected' : ''}>Visma Spcs</option>
+                                    <option value="Visma eEkonomi" ${bokforingsprogram === 'Visma eEkonomi' ? 'selected' : ''}>Visma eEkonomi</option>
+                                    <option value="Bokio" ${bokforingsprogram === 'Bokio' ? 'selected' : ''}>Bokio</option>
+                                    <option value="SpeedLedger" ${bokforingsprogram === 'SpeedLedger' ? 'selected' : ''}>SpeedLedger</option>
+                                    <option value="Kassabok" ${bokforingsprogram === 'Kassabok' ? 'selected' : ''}>Kassabok</option>
+                                    <option value="Spirius" ${bokforingsprogram === 'Spirius' ? 'selected' : ''}>Spirius</option>
+                                    <option value="PE Accounting" ${bokforingsprogram === 'PE Accounting' ? 'selected' : ''}>PE Accounting</option>
+                                    <option value="Hogia" ${bokforingsprogram === 'Hogia' ? 'selected' : ''}>Hogia</option>
+                                    <option value="Björn Lundén" ${bokforingsprogram === 'Björn Lundén' ? 'selected' : ''}>Björn Lundén</option>
+                                    <option value="Annat" ${bokforingsprogram === 'Annat' ? 'selected' : ''}>Annat</option>
+                                </select>
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label>Bank</label>
+                                <select id="redov-bank-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    <option value="Swedbank" ${bank === 'Swedbank' ? 'selected' : ''}>Swedbank</option>
+                                    <option value="Handelsbanken" ${bank === 'Handelsbanken' ? 'selected' : ''}>Handelsbanken</option>
+                                    <option value="SEB" ${bank === 'SEB' ? 'selected' : ''}>SEB</option>
+                                    <option value="Nordea" ${bank === 'Nordea' ? 'selected' : ''}>Nordea</option>
+                                    <option value="Danske Bank" ${bank === 'Danske Bank' ? 'selected' : ''}>Danske Bank</option>
+                                    <option value="ICA Banken" ${bank === 'ICA Banken' ? 'selected' : ''}>ICA Banken</option>
+                                    <option value="Länsförsäkringar Bank" ${bank === 'Länsförsäkringar Bank' ? 'selected' : ''}>Länsförsäkringar Bank</option>
+                                    <option value="Sparbanken" ${bank === 'Sparbanken' ? 'selected' : ''}>Sparbanken</option>
+                                    <option value="Marginalen Bank" ${bank === 'Marginalen Bank' ? 'selected' : ''}>Marginalen Bank</option>
+                                    <option value="Annan" ${bank === 'Annan' ? 'selected' : ''}>Annan</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="kunduppgifter-actions">
+                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveRedovisning()"><i class="fas fa-save"></i> Spara</button>
+                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleRedovisningEdit()">Avbryt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KORT 5: Roller -->
+            <div class="collapsible-card is-collapsed" id="roller-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('roller-card')">
+                    <div class="collapsible-title"><i class="fas fa-users"></i><span>Roller</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    <div id="roles-list" class="roles-list">${rollerHTML}</div>
+                    <div style="margin-top:0.75rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        console.log('✅ Company info loaded with lead-card layout');
+    }
+
+    toggleKunduppgifterEdit() {
+        this._ensureCardOpen('kunduppgifter-card');
+        const view = document.getElementById('kunduppgifter-view');
+        const edit = document.getElementById('kunduppgifter-edit');
+        const btn = document.getElementById('kunduppgifter-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-times"></i>';
+        }
+    }
+
+    async saveKunduppgifter() {
+        const customerId = this.customerId;
+        if (!customerId) {
+            this.showNotification('Kund-ID saknas', 'error');
+            return;
+        }
+
+        const email = document.getElementById('ku-email-input')?.value.trim() || '';
+        const telefon = document.getElementById('ku-telefon-input')?.value.trim() || '';
+        const beskrivning = ''; // Beskrivning sparas nu separat via saveBeskrivning
+
+        const saveBtn = document.querySelector('#kunduppgifter-edit .btn-primary');
+        const originalText = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('Inte inloggad — authToken saknas');
+            }
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+            const fields = {};
+            if (email) fields['e-post'] = email;
+            if (telefon) fields['Telefonnr'] = telefon;
+
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+
+            const missing = '<span class="missing-data">Ej angiven</span>';
+            const emailEl = document.getElementById('ku-email-view');
+            const telefonEl = document.getElementById('ku-telefon-view');
+            if (emailEl) emailEl.innerHTML = email || missing;
+            if (telefonEl) telefonEl.innerHTML = telefon || missing;
+
+            if (this.customerData?.fields) {
+                this.customerData.fields['e-post'] = email;
+                this.customerData.fields['Telefonnr'] = telefon;
+            }
+
+            this.toggleKunduppgifterEdit();
+            this.showNotification('Kontaktuppgifter sparade!', 'success');
+
+        } catch (error) {
+            console.error('❌ Fel vid sparande av kunduppgifter:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.innerHTML = originalText; saveBtn.disabled = false; }
+        }
+    }
+
+    toggleCard(cardId) {
+        const card = document.getElementById(cardId);
+        if (!card) return;
+        card.classList.toggle('is-collapsed');
+    }
+
+    _ensureCardOpen(cardId) {
+        const card = document.getElementById(cardId);
+        if (card) card.classList.remove('is-collapsed');
+    }
+
+    toggleBeskrivningEdit() {
+        this._ensureCardOpen('beskrivning-card');
+        const view = document.getElementById('beskrivning-view');
+        const edit = document.getElementById('beskrivning-edit');
+        const btn = document.getElementById('beskrivning-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-times"></i>';
+        }
+    }
+
+    async saveBeskrivning() {
+        const customerId = this.customerId;
+        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
+
+        const beskrivningEl = document.getElementById('ku-beskrivning-input');
+        const beskrivning = beskrivningEl?.innerHTML.trim() || '';
+
+        const saveBtn = document.querySelector('#beskrivning-edit .btn-primary');
+        const orig = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { 'Beskrivning av kunden': beskrivning } })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const viewEl = document.getElementById('ku-beskrivning-view');
+            if (viewEl) viewEl.innerHTML = beskrivning || '<span class="missing-data">Ej angiven</span>';
+            if (this.customerData?.fields) this.customerData.fields['Beskrivning av kunden'] = beskrivning;
+            this.toggleBeskrivningEdit();
+            this.showNotification('Beskrivning sparad!', 'success');
+        } catch (error) {
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
+        }
+    }
+
+    toggleRedovisningEdit() {
+        this._ensureCardOpen('redovisning-card');
+        const view = document.getElementById('redovisning-view');
+        const edit = document.getElementById('redovisning-edit');
+        const btn = document.getElementById('redovisning-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            if (btn) btn.innerHTML = '<i class="fas fa-times"></i>';
+        }
+    }
+
+    async saveRedovisning() {
+        const customerId = this.customerId;
+        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
+
+        const metod = document.getElementById('redov-metod-input')?.value || '';
+        const period = document.getElementById('redov-period-input')?.value || '';
+        const rakenskapsår = document.getElementById('redov-rakenskapsår-input')?.value.trim() || '';
+        const bokforing = document.getElementById('redov-bokforing-input')?.value || '';
+        const bank = document.getElementById('redov-bank-input')?.value || '';
+
+        const saveBtn = document.querySelector('#redovisning-edit .btn-primary');
+        const orig = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const fields = {};
+            if (metod) fields['Redovisningsmetod'] = metod;
+            if (period) fields['Redovisningsperiod'] = period;
+            if (rakenskapsår) fields['Räkenskapsår'] = rakenskapsår;
+            if (bokforing) fields['Bokforingsprogram'] = bokforing;
+            if (bank) fields['Bank'] = bank;
+
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const mis = '<span class="missing-data">Ej angiven</span>';
+            const metodEl = document.getElementById('redov-metod-view');
+            const periodEl = document.getElementById('redov-period-view');
+            const rakEl = document.getElementById('redov-rakenskapsår-view');
+            const bokEl = document.getElementById('redov-bokforing-view');
+            const bankEl = document.getElementById('redov-bank-view');
+            if (metodEl) metodEl.innerHTML = metod || mis;
+            if (periodEl) periodEl.innerHTML = period || mis;
+            if (rakEl) rakEl.innerHTML = rakenskapsår || mis;
+            if (bokEl) bokEl.innerHTML = bokforing || mis;
+            if (bankEl) bankEl.innerHTML = bank || mis;
+
+            if (this.customerData?.fields) {
+                this.customerData.fields['Redovisningsmetod'] = metod;
+                this.customerData.fields['Redovisningsperiod'] = period;
+                this.customerData.fields['Räkenskapsår'] = rakenskapsår;
+                this.customerData.fields['Bokforingsprogram'] = bokforing;
+                this.customerData.fields['Bank'] = bank;
+            }
+            this.toggleRedovisningEdit();
+            this.showNotification('Redovisningsuppgifter sparade!', 'success');
+        } catch (error) {
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
+        }
     }
 
     async loadRoles() {
-        const rolesList = document.getElementById('roles-list');
-        
         if (!this.customerData || !this.customerData.fields) {
-            console.warn('⚠️ No customer data available for roles');
             this.displayEmptyRoles();
             return;
         }
 
-        try {
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.warn('No auth token found');
-                this.displayEmptyRoles();
-                return;
-            }
+        const fields = this.customerData.fields;
+        // Befattningshavare är sparat som "Anna Svensson (VD)\nKalle Karlsson (Styrelseledamot)"
+        const befattning = fields['Befattningshavare'] || '';
 
-            // Try to load roles from API endpoint if it exists
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/kunddata/${this.customerId}/roller`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                this.displayRoles(data.roles || []);
-            } else {
-                // No API endpoint or no roles found - show empty state
-                this.displayEmptyRoles();
-            }
-        } catch (error) {
-            console.log('ℹ️ Roles endpoint not available, showing empty state');
+        if (!befattning.trim()) {
             this.displayEmptyRoles();
+            return;
+        }
+
+        const roller = befattning.split('\n')
+            .map(r => r.trim())
+            .filter(Boolean)
+            .map(r => {
+                const match = r.match(/^(.+?)\s*\((.+)\)$/);
+                return match
+                    ? { namn: match[1].trim(), roll: match[2].trim() }
+                    : { namn: r, roll: '' };
+            });
+
+        this.displayRoles(roller);
+    }
+
+    showNotification(message, type = 'success') {
+        // Ta bort eventuell befintlig notis
+        const existing = document.getElementById('kundkort-notification');
+        if (existing) existing.remove();
+
+        const colors = { success: '#10b981', error: '#ef4444', info: '#6366f1' };
+        const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' };
+
+        const el = document.createElement('div');
+        el.id = 'kundkort-notification';
+        el.style.cssText = `
+            position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999;
+            background: ${colors[type] || colors.info};
+            color: #fff; padding: 0.85rem 1.2rem;
+            border-radius: 10px; font-size: 0.9rem; font-weight: 500;
+            display: flex; align-items: center; gap: 0.5rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            animation: slideInRight 0.2s ease;
+        `;
+        el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i> ${message}`;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3500);
+    }
+
+    _renderRollerView(personer) {
+        if (!personer || personer.length === 0) {
+            return `<span class="lead-empty">Inga kontaktpersoner registrerade. Klicka på <strong>Lägg till</strong> för att lägga till.</span>`;
+        }
+        return `<div class="roller-person-list">
+            ${personer.map((p, idx) => `
+                <div class="roller-person-item" data-idx="${idx}">
+                    <div class="roller-person-info">
+                        <span class="roller-person-name"><i class="fas fa-user"></i> ${this._esc(p.namn || 'Namnlös')}</span>
+                        ${p.roll ? `<span class="roller-person-roll">${this._esc(p.roll)}</span>` : ''}
+                    </div>
+                    <div class="roller-person-details">
+                        ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas</span>'}
+                        ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> Personnr saknas</span>'}
+                    </div>
+                    <div class="roller-person-actions">
+                        <button class="btn-icon-note btn-pep-screen" title="PEP & Sanktionsscreening"
+                            onclick="customerCardManager.pepScreening(${idx})" id="pep-btn-${idx}">
+                            <i class="fas fa-search-dollar"></i>
+                        </button>
+                        <button class="btn-icon-note" title="Redigera" onclick="customerCardManager.editRollePerson(${idx})"><i class="fas fa-edit"></i></button>
+                        <button class="btn-icon-note btn-icon-delete" title="Ta bort" onclick="customerCardManager.deleteRollePerson(${idx})"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
+    }
+
+    _esc(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    _kycStatusIcon(fältnamn, värde, iconClass) {
+        const done = värde === true;
+        const safeField = fältnamn.replace(/'/g, "\\'");
+        const color = done ? '#16a34a' : '#ef4444';
+        const title = done ? 'Klarmarkerad – klicka för att ångra' : 'Ej genomgången – klicka för att klarmarkera';
+        return `<i class="fas ${iconClass} kyc-status-icon" id="kyc-icon-${safeField.replace(/\s+/g,'-')}"
+            style="color:${color};cursor:pointer;transition:color 0.2s;"
+            title="${title}"
+            onclick="event.stopPropagation(); customerCardManager.toggleKycStatus('${safeField}', ${done ? 'true' : 'false'}, this);">
+        </i>`;
+    }
+
+    toggleKycStatus(fältnamn, nuvarandeVärde, ikonEl) {
+        if (nuvarandeVärde) {
+            // Redan klarmarkerad — fråga om ångra
+            this._showKycConfirmModal(
+                'Vill du ta bort klarmarkeringen?',
+                () => this._saveKycStatus(fältnamn, false, ikonEl)
+            );
+        } else {
+            // Ej genomgången — fråga om klarmarkera
+            this._showKycConfirmModal(
+                'Vill du klarmarkera kortet?',
+                () => this._saveKycStatus(fältnamn, true, ikonEl)
+            );
+        }
+    }
+
+    _showKycConfirmModal(fråga, onJa) {
+        const existing = document.getElementById('kyc-confirm-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'kyc-confirm-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        modal.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:340px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2);text-align:center;">
+                <i class="fas fa-question-circle" style="font-size:2rem;color:#0369a1;margin-bottom:1rem;"></i>
+                <p style="font-size:1rem;font-weight:600;color:#1e293b;margin:0 0 1.5rem;">${fråga}</p>
+                <div style="display:flex;gap:0.75rem;justify-content:center;">
+                    <button id="kyc-confirm-ja" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:0.55rem 1.5rem;font-size:0.9rem;font-weight:600;cursor:pointer;">Ja</button>
+                    <button id="kyc-confirm-nej" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:0.55rem 1.5rem;font-size:0.9rem;font-weight:600;cursor:pointer;">Nej</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        document.getElementById('kyc-confirm-ja').onclick = () => { modal.remove(); onJa(); };
+        document.getElementById('kyc-confirm-nej').onclick = () => modal.remove();
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    }
+
+    async _saveKycStatus(fältnamn, värde, ikonEl) {
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { [fältnamn]: värde } })
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            // Uppdatera ikonens färg och onclick direkt
+            if (ikonEl) {
+                ikonEl.style.color = värde ? '#16a34a' : '#ef4444';
+                ikonEl.title = värde ? 'Klarmarkerad – klicka för att ångra' : 'Ej genomgången – klicka för att klarmarkera';
+                const safeField = fältnamn.replace(/'/g, "\\'");
+                ikonEl.setAttribute('onclick', `event.stopPropagation(); customerCardManager.toggleKycStatus('${safeField}', ${värde}, this);`);
+            }
+            if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
+        } catch (error) {
+            console.error('❌ Fel vid sparande av KYC-status:', error);
+            this.showNotification('Kunde inte spara: ' + error.message, 'error');
+        }
+    }
+
+    _refreshRollerList() {
+        const el = document.getElementById('roles-list');
+        if (el) el.innerHTML = this._renderRollerView(this._kontaktPersoner || []);
+    }
+
+    addRollePerson() {
+        this._ensureCardOpen('roller-card');
+        this._showRollePersonModal(null, null);
+    }
+
+    editRollePerson(idx) {
+        const p = (this._kontaktPersoner || [])[idx];
+        this._showRollePersonModal(p, idx);
+    }
+
+    deleteRollePerson(idx) {
+        if (!confirm('Ta bort kontaktpersonen?')) return;
+        this._kontaktPersoner = (this._kontaktPersoner || []).filter((_, i) => i !== idx);
+        this._saveKontaktPersoner();
+        this._refreshRollerList();
+    }
+
+    _showRollePersonModal(person, idx) {
+        const isNew = (idx === null || idx === undefined);
+        const existing = document.getElementById('rolle-person-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'rolle-person-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:460px;">
+                <div class="modal-header">
+                    <h3>${isNew ? 'Lägg till kontaktperson' : 'Redigera kontaktperson'}</h3>
+                    <button class="modal-close" onclick="document.getElementById('rolle-person-modal').remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Namn</label>
+                        <input type="text" id="rp-namn" class="form-control" value="${this._esc(person?.namn || '')}" placeholder="Förnamn Efternamn">
+                    </div>
+                    <div class="form-group">
+                        <label>Roll / befattning</label>
+                        <input type="text" id="rp-roll" class="form-control" value="${this._esc(person?.roll || '')}" placeholder="t.ex. VD, Styrelseledamot">
+                    </div>
+                    <div class="form-group">
+                        <label>E-postadress</label>
+                        <input type="email" id="rp-epost" class="form-control" value="${this._esc(person?.epost || '')}" placeholder="namn@foretag.se">
+                    </div>
+                    <div class="form-group">
+                        <label>Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span></label>
+                        <input type="text" id="rp-personnr" class="form-control" value="${this._esc(person?.personnr || '')}" placeholder="YYYYMMDD-XXXX">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('rolle-person-modal').remove()">Avbryt</button>
+                    <button class="btn btn-primary btn-sm" onclick="customerCardManager._saveRollePersonModal(${isNew ? 'null' : idx})"><i class="fas fa-save"></i> Spara</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        document.getElementById('rp-namn').focus();
+    }
+
+    _saveRollePersonModal(idx) {
+        const namn = document.getElementById('rp-namn').value.trim();
+        const roll = document.getElementById('rp-roll').value.trim();
+        const epost = document.getElementById('rp-epost').value.trim();
+        const personnr = document.getElementById('rp-personnr').value.trim();
+        if (!namn) { alert('Namn är obligatoriskt.'); return; }
+
+        const person = { namn, roll, epost, personnr };
+        if (!this._kontaktPersoner) this._kontaktPersoner = [];
+
+        if (idx === null || idx === undefined) {
+            this._kontaktPersoner.push(person);
+        } else {
+            this._kontaktPersoner[idx] = person;
+        }
+        this._saveKontaktPersoner();
+        this._refreshRollerList();
+        document.getElementById('rolle-person-modal')?.remove();
+    }
+
+    async _saveKontaktPersoner() {
+        const custId = this.customerId || this.currentCustomerId;
+        if (!custId) return;
+        const token = localStorage.getItem('clientflow_token') || localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        try {
+            const resp = await fetch(`${baseUrl}/api/kunddata/${custId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ fields: { Kontaktpersoner: JSON.stringify(this._kontaktPersoner) } })
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                console.error('Fel vid sparande av kontaktpersoner:', err);
+                this.showNotification('Kunde inte spara kontaktpersoner', 'error');
+            } else {
+                if (this.customerData) this.customerData.fields['Kontaktpersoner'] = JSON.stringify(this._kontaktPersoner);
+                this.showNotification('Kontaktpersoner sparade', 'success');
+            }
+        } catch(e) {
+            console.error(e);
+            this.showNotification('Kunde inte spara kontaktpersoner', 'error');
         }
     }
 
     displayEmptyRoles() {
         const rolesList = document.getElementById('roles-list');
-        rolesList.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-users"></i>
-                <h3>Inga roller hittades</h3>
-                <p>Lägg till personer/ombud för att se roller här.</p>
-                <button class="btn btn-primary" onclick="customerCardManager.addPerson()">
-                    <i class="fas fa-plus"></i>
-                    Lägg till person/ombud
-                </button>
-            </div>
-        `;
+        if (rolesList) rolesList.innerHTML = this._renderRollerView([]);
     }
 
     displayRoles(roles) {
         const rolesList = document.getElementById('roles-list');
-        
-        if (roles.length === 0) {
-            rolesList.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-users"></i>
-                    <h3>Inga roller hittades</h3>
-                    <p>Lägg till personer/ombud för att se roller här.</p>
+        if (!rolesList) return;
+        rolesList.innerHTML = this._renderRollerView(roles);
+    }
+
+    async loadOvrigKYC() {
+        const container = document.getElementById('ovrigkyc-content');
+        if (!container) return;
+
+        // Ladda bas, tjänster och risker
+        this.renderOvrigKYCBase();
+        this.loadServices(); // fyller #ovrigkyc-tjanster
+        await this.loadKundRisker();
+    }
+
+    // Mappning: typnamn (Airtable) -> container-id-suffix och rubrik
+    _riskTypMap() {
+        return [
+            { typ: 'Geografiska riskfaktorer',           id: 'geografiska',  icon: 'fa-globe-europe' },
+            { typ: 'Riskfaktorer kopplat till kund',     id: 'kund',         icon: 'fa-user-shield' },
+            { typ: 'Distrubutionskanaler',               id: 'distribution', icon: 'fa-network-wired' },
+            { typ: 'Verksamhetsspecifika riskfaktorer',  id: 'verksamhet',   icon: 'fa-building' },
+        ];
+    }
+
+    async loadKundRisker() {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+        try {
+            const byraId = this.userData?.byraId || this.userByraIds?.[0] || '';
+            const [byraRes, kundRes] = await Promise.all([
+                fetch(`${baseUrl}/api/risker-kunden?byraId=${byraId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${baseUrl}/api/kunddata/${this.customerId}/risker`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
+
+            const byraData = byraRes.ok ? await byraRes.json() : { records: [] };
+            const kundData = kundRes.ok ? await kundRes.json() : { records: [], linkedIds: [] };
+
+            const allaRisker = byraData.records || [];
+            const linkedIds = new Set(kundData.linkedIds || []);
+
+            this._allaRisker = allaRisker;
+            this._linkedRiskIds = linkedIds;
+
+            this._riskTypMap().forEach(({ typ, id }) => {
+                const container = document.getElementById(`ovrigkyc-risker-${id}`);
+                if (!container) return;
+                const riskerForTyp = allaRisker.filter(r => r.fields['Typ av riskfaktor'] === typ);
+                this._renderRiskerForTyp(container, riskerForTyp, linkedIds, id);
+            });
+
+        } catch (error) {
+            console.error('❌ Fel vid hämtning av risker:', error);
+            this._riskTypMap().forEach(({ id }) => {
+                const c = document.getElementById(`ovrigkyc-risker-${id}`);
+                if (c) c.innerHTML = '<p class="lead-empty">Kunde inte ladda risker.</p>';
+            });
+        }
+    }
+
+    _renderRiskerForTyp(container, risker, linkedIds, typId) {
+        const riskBadge = (nivå) => {
+            if (!nivå) return '';
+            const map = { 'Hög': 'risk-pill--high', 'Förhöjd': 'risk-pill--high', 'Medel': 'risk-pill--medium', 'Låg': 'risk-pill--low', 'Normal': 'risk-pill--low' };
+            return `<span class="risk-pill ${map[nivå] || 'risk-pill--medium'}">${nivå}</span>`;
+        };
+
+        const valda = risker.filter(r => linkedIds.has(r.id));
+        const countId = `risker-count-${typId}`;
+        const viewId = `risker-view-${typId}`;
+        const editId = `risker-edit-${typId}`;
+        const btnId  = `risker-edit-btn-${typId}`;
+
+        const viewContent = valda.length === 0
+            ? '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>'
+            : valda.map(r => `
+                <div class="risker-vald-item">
+                    <div class="risker-vald-top">
+                        <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}</span>
+                        ${r.fields['Riskbedömning'] ? riskBadge(r.fields['Riskbedömning']) : ''}
+                    </div>
+                    ${r.fields['Beskrivning'] ? `<div class="risker-vald-section-label">Beskrivning av riskfaktorn</div><div class="risker-vald-desc">${r.fields['Beskrivning']}</div>` : ''}
+                    ${r.fields['Åtgjärd'] ? `<div class="risker-vald-section-label">Åtgärder</div><div class="risker-vald-desc">${r.fields['Åtgjärd']}</div>` : ''}
+                </div>`).join('');
+
+        container.innerHTML = `
+            <div class="risker-selector">
+                <div class="risker-selector-header">
+                    <span class="risker-selector-count" id="${countId}">${valda.length} valda</span>
+                    <button class="btn-icon-edit" id="${btnId}" title="Redigera"
+                        onclick="customerCardManager.toggleRiskerEdit('${typId}')">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
-            `;
+                <div id="${viewId}">${viewContent}</div>
+                <div id="${editId}" style="display:none;">
+                    <p class="tjanster-edit-hint">Markera de risker som gäller för kunden.</p>
+                    ${risker.map(r => `
+                        <label class="risker-check-item">
+                            <input type="checkbox" name="risk-${typId}" value="${r.id}" ${linkedIds.has(r.id) ? 'checked' : ''}
+                                onchange="customerCardManager.updateRiskerCount('${typId}')">
+                            <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
+                            <span class="risker-check-label">
+                                <span class="risker-check-top">
+                                    <span class="risker-check-namn">${r.fields['Riskfaktor'] || ''}</span>
+                                    ${riskBadge(r.fields['Riskbedömning'] || '')}
+                                </span>
+                                ${r.fields['Beskrivning'] ? `<span class="risker-check-desc">${r.fields['Beskrivning']}</span>` : ''}
+                            </span>
+                        </label>`).join('')}
+                    <div class="tjanster-edit-actions">
+                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveRisker('${typId}')">
+                            <i class="fas fa-save"></i> Spara
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleRiskerEdit('${typId}')">Avbryt</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    toggleRiskerEdit(typId) {
+        const view = document.getElementById(`risker-view-${typId}`);
+        const edit = document.getElementById(`risker-edit-${typId}`);
+        const btn  = document.getElementById(`risker-edit-btn-${typId}`);
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        edit.style.display = isEditing ? 'none' : '';
+        view.style.display = isEditing ? '' : 'none';
+        if (btn) {
+            btn.innerHTML = isEditing ? '<i class="fas fa-pencil-alt"></i>' : '<i class="fas fa-times"></i>';
+            btn.classList.toggle('is-active', !isEditing);
+        }
+    }
+
+    updateRiskerCount(typId) {
+        const checked = document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]:checked`);
+        const el = document.getElementById(`risker-count-${typId}`);
+        if (el) el.textContent = `${checked.length} valda`;
+    }
+
+    async saveRisker(typId) {
+        // Samla ihop valda från ALLA kort, ersätt det aktuella kortets val
+        const allChecked = new Set(this._linkedRiskIds || []);
+
+        // Ta bort alla risker av denna typ ur setet
+        const riskerForTyp = (this._allaRisker || []).filter(r => {
+            const typMap = this._riskTypMap();
+            const match = typMap.find(t => t.id === typId);
+            return match && r.fields['Typ av riskfaktor'] === match.typ;
+        });
+        riskerForTyp.forEach(r => allChecked.delete(r.id));
+
+        // Lägg till de nya valen för detta kort
+        const nyaChecked = [...document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]:checked`)]
+            .map(cb => cb.value);
+        nyaChecked.forEach(id => allChecked.add(id));
+
+        const totalChecked = [...allChecked];
+
+        const saveBtn = document.querySelector(`#risker-edit-${typId} .btn-primary`);
+        const origText = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { 'risker kopplat till tjänster': totalChecked } })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+
+            this._linkedRiskIds = allChecked;
+
+            // Rita om detta kortets visningsläge
+            const container = document.getElementById(`ovrigkyc-risker-${typId}`);
+            if (container && this._allaRisker) {
+                const match = this._riskTypMap().find(t => t.id === typId);
+                const risker = this._allaRisker.filter(r => r.fields['Typ av riskfaktor'] === match?.typ);
+                this._renderRiskerForTyp(container, risker, allChecked, typId);
+            }
+
+            this.showNotification('Risker sparade!', 'success');
+
+        } catch (error) {
+            console.error('❌ Fel vid sparande av risker:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+            if (saveBtn) { saveBtn.innerHTML = origText; saveBtn.disabled = false; }
+        }
+    }
+
+    renderOvrigKYCBase() {
+        const container = document.getElementById('ovrigkyc-content');
+        if (!container) return;
+
+        if (!this.customerData?.fields) {
+            container.innerHTML = '<p class="lead-empty">Ingen KYC-information tillgänglig.</p>';
             return;
         }
 
-        const rolesHTML = roles.map(role => this.createRoleCard(role)).join('');
-        rolesList.innerHTML = rolesHTML;
-    }
+        const f = this.customerData.fields;
 
-    displaySampleRoles() {
-        const rolesList = document.getElementById('roles-list');
-        
-        // Show sample roles for demonstration
-        rolesList.innerHTML = `
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">
-                        <i class="fas fa-user"></i>
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : null;
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+        const fmt = (v) => (v !== undefined && v !== null && v !== '') ? v : null;
+
+        const chips = (items) => fmtList(items).map(i =>
+            `<span class="kyc-chip">${i}</span>`).join('');
+
+        const row = (label, content, icon = '') => content ? `
+            <div class="kyc-row">
+                <span class="kyc-row-label">${icon ? `<i class="fas ${icon}"></i> ` : ''}${label}</span>
+                <span class="kyc-row-value">${content}</span>
+            </div>` : '';
+
+        const chipsRow = (label, items, icon = '') => fmtList(items).length ? `
+            <div class="kyc-row kyc-row--chips">
+                <span class="kyc-row-label">${icon ? `<i class="fas ${icon}"></i> ` : ''}${label}</span>
+                <div class="kyc-chips-wrap">${chips(items)}</div>
+            </div>` : '';
+
+        const section = (title, icon, body) => body.trim() ? `
+            <div class="kyc-section">
+                <div class="kyc-section-title"><i class="fas ${icon}"></i> ${title}</div>
+                ${body}
+            </div>` : '';
+
+        const uppdragCheck = f['Uppdraget kan antas'];
+        const uppdragText = uppdragCheck === true ? '✅ Ja' : uppdragCheck === false ? '❌ Nej' : null;
+
+        container.innerHTML = `
+            <div class="kyc-layout">
+
+                ${section('Uppdrag & avtal', 'fa-file-contract', `
+                    ${row('Uppdrag', fmt(f['Uppdrag']), 'fa-briefcase')}
+                    ${row('Uppdrag 2', fmt(f['Uppdrag 2']), 'fa-briefcase')}
+                    ${row('Uppdraget kan antas', uppdragText, 'fa-check-circle')}
+                    ${row('Avtalet gäller ifrån', fmtDate(f['Avtalet gäller ifrån']), 'fa-calendar-alt')}
+                    ${chipsRow('Momsuppdrag', f['Momsuppdrag'], 'fa-receipt')}
+                    ${f['Uppdragstext'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-align-left"></i> Uppdragstext</span><div class="kyc-richtext">${f['Uppdragstext']}</div></div>` : ''}
+                `)}
+
+                ${this.renderByranHarCard(f['Byrån har'])}
+
+                ${section('Affärsförbindelsen', 'fa-handshake', `
+                    ${chipsRow('Syfte med affärsförbindelsen', f['Syfte med affärsförbindelsen'], 'fa-bullseye')}
+                    ${chipsRow('Tidshorisont', f['Tidshorisont affärsförbindelsen'], 'fa-clock')}
+                    ${chipsRow('Betalningar', f['Betalningar'], 'fa-credit-card')}
+                    ${row('Har företaget transaktioner med andra länder?', fmt(f['Har företaget transaktioner med andra länder?']), 'fa-globe')}
+                    ${chipsRow('Ursprung kapital', f['Vilket ursprung har företagets kapital?'], 'fa-coins')}
+                `)}
+
+                <!-- Tjänster – fylls i av loadServices() -->
+                <div class="kyc-section collapsible-card" id="tjanster-kort">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Tjänster', f['KYC genomgången - Tjänster'], 'fa-cogs')} Tjänster</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
                     </div>
-                    <div class="role-info">
-                        <h4>Förnamn Efternamn</h4>
-                        <span class="role-title">Styrelseledamot</span>
-                    </div>
-                    <button class="btn btn-primary btn-sm">
-                        <i class="fas fa-id-card"></i>
-                        Skicka ID koll
-                    </button>
-                </div>
-                <div class="role-details">
-                    <div class="detail-item">
-                        <label>Personnr:</label>
-                        <span>1980-XX-XX-XXXX</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Adress:</label>
-                        <span>Byavägen 13, 341 99 STADEN</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Övriga bolagsengagemang:</label>
-                        <span>Saknas</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Varningar på personnivå:</label>
-                        <span>Saknas</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <div class="role-info">
-                        <h4>Fru Efternamn</h4>
-                        <span class="role-title">Styrelsesuppleant</span>
-                    </div>
-                    <button class="btn btn-primary btn-sm">
-                        <i class="fas fa-id-card"></i>
-                        Skicka ID koll
-                    </button>
-                </div>
-                <div class="role-details">
-                    <div class="detail-item">
-                        <label>Personnr:</label>
-                        <span>1980-XX-XX-XXXX</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Adress:</label>
-                        <span>Byavägen 13, 341 99 STADEN</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Övriga bolagsengagemang:</label>
-                        <span>Saknas</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Varningar på personnivå:</label>
-                        <span>Saknas</span>
+                    <div class="collapsible-body">
+                        <div id="ovrigkyc-tjanster">
+                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar tjänster...</p></div>
+                        </div>
                     </div>
                 </div>
+
+                ${section('Kunden & verksamheten', 'fa-building', `
+                    ${row('Omsättning', fmt(f['Omsättning']), 'fa-chart-line')}
+                    ${row('Frekvens', fmtList(f['Frekvens']).join(', ') || null, 'fa-sync')}
+                    ${row('Omfattning (h)', fmt(f['omfattning i h']), 'fa-hourglass-half')}
+                    ${row('Verklig huvudman', fmt(f['Verklig huvudman']), 'fa-user-shield')}
+                    ${row('Ombud', fmt(f['Ombud']), 'fa-user-tie')}
+                    ${chipsRow('Skatterättslig hemvist', f['Skatterättslig hemvist'], 'fa-flag')}
+                    ${f['Affärsmodell'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-project-diagram"></i> Affärsmodell</span><div class="kyc-richtext">${f['Affärsmodell']}</div></div>` : ''}
+                    ${f['Ytterligare beskrivning av kunden och verksamheten'] ? `
+                    <div class="kyc-richtext-row">
+                        <span class="kyc-row-label"><i class="fas fa-align-left"></i> Ytterligare beskrivning</span>
+                        <div class="kyc-richtext">${f['Ytterligare beskrivning av kunden och verksamheten']}</div>
+                    </div>` : ''}
+                `)}
+
+
+                <!-- Riskfaktorkort per typ – fylls i av loadKundRisker() -->
+                <div class="kyc-section collapsible-card" id="risker-kort-geografiska">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Geografiska riskfaktorer', f['KYC genomgången - Geografiska riskfaktorer'], 'fa-globe-europe')} Geografiska riskfaktorer</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        <div id="ovrigkyc-risker-geografiska">
+                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kyc-section collapsible-card" id="risker-kort-kund">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Riskfaktorer kund', f['KYC genomgången - Riskfaktorer kund'], 'fa-user-shield')} Riskfaktorer kopplat till kund</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        <div id="ovrigkyc-risker-kund">
+                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kyc-section collapsible-card" id="risker-kort-distribution">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Distributionskanaler', f['KYC genomgången - Distributionskanaler'], 'fa-network-wired')} Distributionskanaler</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        <div id="ovrigkyc-risker-distribution">
+                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kyc-section collapsible-card" id="risker-kort-verksamhet">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Verksamhetsspecifika riskfaktorer', f['KYC genomgången - Verksamhetsspecifika riskfaktorer'], 'fa-building')} Verksamhetsspecifika riskfaktorer</div>
+                        <i class="fas fa-chevron-down collapsible-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        <div id="ovrigkyc-risker-verksamhet">
+                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Redigerbara riskfaktorkort -->
+                ${this.renderRiskfaktorCard('högriskbransch', 'Kunden verkar i en högriskbransch', 'fa-industry',
+                    f['Kunden verkar i en högriskbransch'],
+                    ['---','Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'],
+                    'multi')}
+
+                ${this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
+                    f['Riskhöjande faktorer övrigt'],
+                    ['Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer','---'],
+                    'multi', 'high')}
+
+                ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
+                    f['Risksänkande faktorer'],
+                    ['Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
+                    'multi')}
+
+                ${this.renderRiskfaktorCard('kommentar-risk', 'Kommentar till riskfaktorerna ovan', 'fa-comment-alt',
+                    f['Kommentar till riskfaktorerna ovan'],
+                    [],
+                    'text')}
+
             </div>
         `;
     }
 
-    createRoleCard(role) {
+    renderRiskfaktorCard(id, titel, icon, värde, alternativ, typ, chipVariant = '') {
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+        const valda = fmtList(värde).filter(v => v && v !== '---');
+        const filtAlt = alternativ.filter(a => a !== '---');
+
+        const chipClass = chipVariant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
+
+        const viewContent = typ === 'text'
+            ? (värde ? `<div class="kyc-richtext">${värde}</div>` : '<span class="missing-data">Ej angiven</span>')
+            : (valda.length
+                ? `<div class="riskf-chips">${valda.map(v => `<span class="${chipClass}">${v}</span>`).join('')}</div>`
+                : '<span class="missing-data">Inga valda</span>');
+
+        const editContent = typ === 'text'
+            ? `<textarea id="riskf-input-${id}" class="kunduppgifter-input" rows="3">${värde || ''}</textarea>`
+            : `<div class="riskf-checkgrid">
+                ${filtAlt.map(alt => `
+                    <label class="riskf-check-item">
+                        <input type="checkbox" name="riskf-${id}" value="${alt}" ${valda.includes(alt) ? 'checked' : ''}
+                            onchange="customerCardManager.updateRiskfaktorChips('${id}')">
+                        <span class="tjanst-check-box"></span>
+                        <span class="tjanst-check-label">${alt}</span>
+                    </label>`).join('')}
+               </div>`;
+
         return `
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <div class="role-info">
-                        <h4>${role.namn || 'Namn saknas'}</h4>
-                        <span class="role-title">${role.roll || 'Roll saknas'}</span>
-                    </div>
-                    <button class="btn btn-primary btn-sm">
-                        <i class="fas fa-id-card"></i>
-                        Skicka ID koll
+            <div class="kyc-section">
+                <div class="kyc-section-title-row">
+                    <div class="kyc-section-title"><i class="fas ${icon}"></i> ${titel}</div>
+                    <button class="btn-icon-edit" id="riskf-btn-${id}" title="Redigera"
+                        onclick="customerCardManager.toggleRiskfaktorEdit('${id}')">
+                        <i class="fas fa-pencil-alt"></i>
                     </button>
                 </div>
-                <div class="role-details">
-                    <div class="detail-item">
-                        <label>Personnr:</label>
-                        <span>${role.personnummer || '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Adress:</label>
-                        <span>${role.adress || '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Övriga bolagsengagemang:</label>
-                        <span>${role.ovrigaEngagemang || 'Saknas'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Varningar på personnivå:</label>
-                        <span>${role.varningar || 'Saknas'}</span>
+                <div id="riskf-view-${id}" data-chip-variant="${chipVariant}">${viewContent}</div>
+                <div id="riskf-edit-${id}" style="display:none;">
+                    ${editContent}
+                    <div class="kunduppgifter-actions" style="margin-top:0.75rem;">
+                        <button class="btn btn-primary btn-sm"
+                            onclick="customerCardManager.saveRiskfaktor('${id}', '${titel}', '${typ}')">
+                            <i class="fas fa-save"></i> Spara
+                        </button>
+                        <button class="btn btn-ghost btn-sm"
+                            onclick="customerCardManager.toggleRiskfaktorEdit('${id}')">Avbryt</button>
                     </div>
                 </div>
-            </div>
-        `;
+            </div>`;
+    }
+
+    renderByranHarCard(värde) {
+        const alternativ = ['Kapacitet att ta emot kunden', 'Kundkännedom har uppnåtts', 'Kunden bedöms som seriös', 'Kunskap nog att hjälpa kunden'];
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+        const valda = fmtList(värde).filter(v => v);
+        const chips = alternativ.map(alt => {
+            const isActive = valda.includes(alt);
+            return `<button class="byran-har-chip ${isActive ? 'is-active' : ''}"
+                onclick="customerCardManager.toggleByranHar('${alt.replace(/'/g, "\\'")}')">${alt}</button>`;
+        }).join('');
+        return `
+            <div class="kyc-section">
+                <div class="kyc-section-title-row">
+                    <div class="kyc-section-title"><i class="fas fa-building"></i> Byrån har</div>
+                </div>
+                <div id="byran-har-chips" class="byran-har-chip-row">${chips}</div>
+            </div>`;
+    }
+
+    async toggleByranHar(alt) {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+        // Hämta nuvarande värden från DOM
+        const container = document.getElementById('byran-har-chips');
+        if (!container) return;
+        const aktiva = [...container.querySelectorAll('.byran-har-chip.is-active')].map(b => b.textContent.trim());
+
+        // Toggla
+        const idx = aktiva.indexOf(alt);
+        if (idx >= 0) aktiva.splice(idx, 1);
+        else aktiva.push(alt);
+
+        // Uppdatera UI direkt
+        container.querySelectorAll('.byran-har-chip').forEach(b => {
+            b.classList.toggle('is-active', aktiva.includes(b.textContent.trim()));
+        });
+
+        // Spara till Airtable
+        try {
+            await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { 'Byrån har': aktiva } })
+            });
+            if (this.customerData?.fields) this.customerData.fields['Byrån har'] = aktiva;
+        } catch (e) {
+            console.error('❌ Kunde inte spara Byrån har:', e);
+        }
+    }
+
+    toggleRiskfaktorEdit(id) {
+        const view = document.getElementById(`riskf-view-${id}`);
+        const edit = document.getElementById(`riskf-edit-${id}`);
+        const btn = document.getElementById(`riskf-btn-${id}`);
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+            btn.classList.remove('is-active');
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            btn.innerHTML = '<i class="fas fa-times"></i>';
+            btn.classList.add('is-active');
+        }
+    }
+
+    updateRiskfaktorChips(id) {
+        // Visuell feedback kan läggas till här vid behov
+    }
+
+    async saveRiskfaktor(id, fältnamn, typ) {
+        const customerId = this.customerId;
+        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
+
+        let värde;
+        if (typ === 'text') {
+            värde = document.getElementById(`riskf-input-${id}`)?.value.trim() || '';
+        } else {
+            värde = [...document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]:checked`)]
+                .map(cb => cb.value);
+        }
+
+        const saveBtn = document.querySelector(`#riskf-edit-${id} .btn-primary`);
+        const origText = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { [fältnamn]: värde } })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+
+            // Uppdatera customerData lokalt
+            if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
+
+            // Uppdatera view-innehållet direkt
+            const viewEl = document.getElementById(`riskf-view-${id}`);
+            if (viewEl) {
+                if (typ === 'text') {
+                    viewEl.innerHTML = värde ? `<div class="kyc-richtext">${värde}</div>` : '<span class="missing-data">Ej angiven</span>';
+                } else {
+                    const list = Array.isArray(värde) ? värde : [];
+                    const variant = viewEl.dataset.chipVariant || '';
+                    const cls = variant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
+                    viewEl.innerHTML = list.length
+                        ? `<div class="riskf-chips">${list.map(v => `<span class="${cls}">${v}</span>`).join('')}</div>`
+                        : '<span class="missing-data">Inga valda</span>';
+                }
+            }
+
+            this.toggleRiskfaktorEdit(id);
+            this.showNotification('Sparat!', 'success');
+
+        } catch (error) {
+            console.error('❌ Fel:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.innerHTML = origText; saveBtn.disabled = false; }
+        }
     }
 
     async loadRiskAssessment() {
         const content = document.getElementById('risk-assessment-content');
-        
-        try {
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.warn('No auth token found');
-                this.displayEmptyRiskAssessment();
-                return;
-            }
+        if (!content) return;
 
-            // Load risk assessment data
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments?customerId=${this.customerId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            if (response.ok) {
-                const data = await response.json();
-                this.displayRiskAssessment(data.records || []);
-            } else {
-                this.displayEmptyRiskAssessment();
-            }
-        } catch (error) {
-            console.error('Error loading risk assessment:', error);
+        if (!this.customerData || !this.customerData.fields) {
             this.displayEmptyRiskAssessment();
-        }
-    }
-
-    displayRiskAssessment(risks) {
-        const content = document.getElementById('risk-assessment-content');
-        
-        if (risks.length === 0) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-shield-alt"></i>
-                    <h3>Ingen riskbedömning hittad</h3>
-                    <p>Det finns ingen riskbedömning för denna kund ännu.</p>
-                    <button class="btn btn-primary" onclick="customerCardManager.performRiskAssessment()">
-                        <i class="fas fa-plus"></i>
-                        Skapa riskbedömning
-                    </button>
-                </div>
-            `;
             return;
         }
 
-        const risksHTML = risks.map(risk => this.createRiskCard(risk)).join('');
-        content.innerHTML = risksHTML;
-    }
+        const f = this.customerData.fields;
+        const sammanlagd = f['sammanlagd risk'] || '';
 
-    displayEmptyRiskAssessment() {
-        const content = document.getElementById('risk-assessment-content');
+        if (!sammanlagd) {
+            this.displayEmptyRiskAssessment();
+            return;
+        }
+
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '—';
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+        const riskClass = this.getRiskLevelClass(sammanlagd);
+
+        const riskHöjandeBlock = (label, items) => {
+            const list = fmtList(items);
+            if (!list.length) return '';
+            return `
+                <div class="rb-factor-group">
+                    <span class="rb-factor-label rb-factor-label--neg"><i class="fas fa-arrow-up"></i> ${label}</span>
+                    <div class="rb-chips">
+                        ${list.map(i => `<span class="rb-chip rb-chip--neg">${i}</span>`).join('')}
+                    </div>
+                </div>`;
+        };
+
+        const riskSänkandeBlock = (label, items) => {
+            const list = fmtList(items);
+            if (!list.length) return '';
+            return `
+                <div class="rb-factor-group">
+                    <span class="rb-factor-label rb-factor-label--pos"><i class="fas fa-arrow-down"></i> ${label}</span>
+                    <div class="rb-chips">
+                        ${list.map(i => `<span class="rb-chip rb-chip--pos">${i}</span>`).join('')}
+                    </div>
+                </div>`;
+        };
+
+        const pepList = fmtList(f['PEP']);
+
         content.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-shield-alt"></i>
-                <h3>Ingen riskbedömning hittad</h3>
-                <p>Det finns ingen riskbedömning för denna kund ännu.</p>
-                <button class="btn btn-primary" onclick="customerCardManager.performRiskAssessment()">
-                    <i class="fas fa-plus"></i>
-                    Skapa riskbedömning
-                </button>
+            <div class="collapsible-card" id="riskbedomning-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('riskbedomning-card')">
+                    <div class="collapsible-title"><i class="fas fa-shield-alt"></i><span>Riskbedömning</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+            <div class="rb-layout">
+
+                <!-- Sammanlagd risk – stor badge -->
+                <div class="rb-summary">
+                    <div class="rb-summary-left">
+                        <span class="rb-label">Sammanlagd risk</span>
+                        <span class="rb-risk-badge rb-risk-badge--${riskClass}">${sammanlagd}</span>
+                    </div>
+                    <div class="rb-summary-meta">
+                        ${f['Riskbedömning utförd datum'] ? `<span><i class="fas fa-calendar-alt"></i> Utförd: ${fmtDate(f['Riskbedömning utförd datum'])}</span>` : ''}
+                        ${f['Kundens riskbedömning godkänd'] ? `<span><i class="fas fa-check-circle"></i> Godkänd: ${fmtDate(f['Kundens riskbedömning godkänd'])}</span>` : ''}
+                    </div>
+                </div>
+
+                <!-- Motivering -->
+                ${f['Motivering'] ? `
+                <div class="rb-section">
+                    <div class="rb-section-title"><i class="fas fa-align-left"></i> Motivering</div>
+                    <p class="rb-text">${f['Motivering']}</p>
+                </div>` : ''}
+
+                <!-- Riskfaktorer -->
+                <div class="rb-section">
+                    <div class="rb-section-title"><i class="fas fa-balance-scale"></i> Riskfaktorer</div>
+                    <div class="rb-factors">
+                        ${riskHöjandeBlock('Högriskbransch', f['Kunden verkar i en högriskbransch'])}
+                        ${riskHöjandeBlock('Riskhöjande – tjänster', f['Riskhöjande faktorer tjänster'])}
+                        ${riskHöjandeBlock('Riskhöjande – övrigt', f['Riskhöjande faktorer övrigt'])}
+                        ${riskSänkandeBlock('Risksänkande faktorer', f['Risksänkande faktorer'])}
+                    </div>
+                    ${f['Kommentar till riskfaktorerna ovan'] ? `<p class="rb-comment"><i class="fas fa-comment-alt"></i> ${f['Kommentar till riskfaktorerna ovan']}</p>` : ''}
+                </div>
+
+                <!-- Risksänkande åtgärder -->
+                ${f['Risksänkande åtgjärder'] ? `
+                <div class="rb-section">
+                    <div class="rb-section-title"><i class="fas fa-shield-alt"></i> Risksänkande åtgärder</div>
+                    <p class="rb-text">${f['Risksänkande åtgjärder']}</p>
+                </div>` : ''}
+
+                <!-- PEP & sanktioner -->
+                <div class="rb-section">
+                    <div class="rb-section-title"><i class="fas fa-search"></i> PEP & sanktioner</div>
+                    <div class="rb-pep-row">
+                        <div class="rb-pep-item">
+                            <span class="rb-label">PEP-status</span>
+                            <span class="rb-pep-badge ${pepList.includes('Inte PEP') ? 'rb-pep-badge--ok' : pepList.length ? 'rb-pep-badge--warn' : 'rb-pep-badge--unknown'}">
+                                ${pepList.length ? pepList.join(', ') : '—'}
+                            </span>
+                        </div>
+                        <div class="rb-pep-item">
+                            <span class="rb-label">Antal träffar</span>
+                            <span class="rb-value">${f['Antal träffar PEP och sanktionslistor'] ?? '—'}</span>
+                        </div>
+                        ${f['Rapport PEP'] ? `
+                        <div class="rb-pep-item">
+                            <span class="rb-label">Rapport</span>
+                            <a href="${f['Rapport PEP']}" target="_blank" class="rb-link"><i class="fas fa-external-link-alt"></i> Öppna rapport</a>
+                        </div>` : ''}
+                    </div>
+                </div>
+
+            </div>
+                </div>
             </div>
         `;
     }
 
-    createRiskCard(risk) {
-        const fields = risk.fields || {};
-        const riskLevel = fields['Riskbedömning'] || 'Medel';
-        const riskLevelClass = this.getRiskLevelClass(riskLevel);
-        
-        return `
-            <div class="risk-card ${riskLevelClass}">
-                <div class="risk-header">
-                    <h4>${fields['Task Name'] || 'Namnlös risk'}</h4>
-                    <span class="risk-level-badge ${riskLevelClass}">${riskLevel}</span>
+    displayEmptyRiskAssessment() {
+        const content = document.getElementById('risk-assessment-content');
+        if (!content) return;
+        content.innerHTML = `
+            <div class="collapsible-card" id="riskbedomning-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('riskbedomning-card')">
+                    <div class="collapsible-title"><i class="fas fa-shield-alt"></i><span>Riskbedömning</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
-                <div class="risk-content">
-                    <p><strong>Beskrivning:</strong> ${fields['Beskrivning av riskfaktor'] || 'Ingen beskrivning'}</p>
-                    <p><strong>Åtgärd:</strong> ${fields['Åtgjärd'] || 'Ingen åtgärd'}</p>
-                </div>
-                <div class="risk-footer">
-                    <button class="btn btn-secondary btn-sm">
-                        <i class="fas fa-edit"></i>
-                        Redigera
-                    </button>
-                    <button class="btn btn-success btn-sm">
-                        <i class="fas fa-check"></i>
-                        ${fields['Aktuell'] ? 'Avmarkera' : 'Klarmarkera'}
-                    </button>
+                <div class="collapsible-body">
+                    <div class="empty-state">
+                        <i class="fas fa-shield-alt"></i>
+                        <p>Det finns ännu ingen riskbedömning registrerad för denna kund.</p>
+                    </div>
                 </div>
             </div>
         `;
     }
 
     getRiskLevelClass(level) {
-        switch (level) {
-            case 'Hög':
-            case 'Förhöjd':
-                return 'risk-high';
-            case 'Medel':
-                return 'risk-medium';
-            case 'Låg':
-                return 'risk-low';
-            default:
-                return 'risk-medium';
-        }
+        if (!level) return 'medium';
+        const l = level.toLowerCase();
+        if (l === 'hög' || l === 'förhöjd' || l === 'high') return 'high';
+        if (l === 'låg' || l === 'low' || l === 'normal') return 'low';
+        return 'medium';
+    }
+
+    // Alla tillgängliga tjänster från Airtable-fältets choices
+    getAllTjanster() {
+        return [
+            'Löpande bokföring',
+            'Lönehantering',
+            'Kundreskontra',
+            'Leverantörsreskontra',
+            'Avstämning',
+            'AVSTÄMNING',
+            'ÅRSREDOVISNING',
+            'Årsredovisning',
+            'Deklaration',
+            'Moms',
+            'Rådgivning',
+            'ROT/RUT',
+            'ROT/RUT-hantering',
+            'Inlämning periodisk sammanställning',
+            'Utföra betalningsuppdrag',
+            'Hantering av anlägningsregister och avskrivningar',
+            'Upprätta kontrollbalansräkning'
+        ];
     }
 
     async loadServices() {
-        const content = document.getElementById('services-content');
-        
         if (!this.customerData || !this.customerData.fields) {
-            console.warn('⚠️ No customer data available for services');
             this.displayEmptyServices();
             return;
         }
 
-        const fields = this.customerData.fields;
-        
-        // Get services from customer data fields
-        // Try different field name variations
-        const services = fields['Kundens utvalda tjänster'] || 
-                        fields['Utvalda tjänster'] || 
-                        fields.Tjänster || 
-                        [];
-        
-        const highRiskServices = fields['Utvalda Högrisktjänster'] || 
-                                fields['Högrisktjänster'] || 
-                                '';
-        
-        const byraHighRiskServices = fields['Lookup Byråns högrisktjänster'] || 
-                                     fields['Byråns högrisktjänster'] || 
-                                     [];
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const byraId = this.userByraIds?.[0] || this.userData?.byraId || '';
+        const byraHighRisk = this.customerData.fields['Lookup Byråns högrisktjänster'] || [];
 
-        console.log('📋 Services data:', { services, highRiskServices, byraHighRiskServices });
-
-        if (!services || (Array.isArray(services) && services.length === 0)) {
-            this.displayEmptyServices();
-            return;
+        // Hämta byråns alla tillgängliga tjänster {id, namn}, cacha per byrå
+        if (!this._byransTjanster && byraId) {
+            try {
+                const res = await fetch(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = res.ok ? await res.json() : {};
+                // data.tjanster är nu [{id, namn}] — se /api/byra-tjanster
+                this._byransTjanster = data.tjanster?.length ? data.tjanster : [];
+            } catch (e) {
+                console.warn('⚠️ Kunde inte hämta tjänster:', e.message);
+                this._byransTjanster = [];
+            }
         }
 
-        // Display services
-        this.displayServices(services, highRiskServices, byraHighRiskServices);
+        // Hämta kundens aktiva tjänster (länkade record ID:n → namn)
+        try {
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/tjanster`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = res.ok ? await res.json() : {};
+            // Spara aktiva som array av record ID:n
+            this._aktivaTjansterIds = new Set((data.tjanster || []).map(t => t.id));
+            // Uppdatera customerData för andra delar av koden
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kundens utvalda tjänster'] = data.linkedIds || [];
+            }
+        } catch (e) {
+            console.warn('⚠️ Kunde inte hämta kundens tjänster:', e.message);
+            this._aktivaTjansterIds = new Set();
+        }
+
+        if (document.getElementById('services-content')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'services-content');
+        }
+        if (document.getElementById('ovrigkyc-tjanster')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
+        }
     }
 
-    displayServices(services, highRiskServices, byraHighRiskServices) {
-        const content = document.getElementById('services-content');
-        
-        if (!services || (Array.isArray(services) && services.length === 0)) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-cogs"></i>
-                    <h3>Inga tjänster hittades</h3>
-                    <p>Det finns inga registrerade tjänster för denna kund ännu.</p>
-                </div>
-            `;
+    renderTjanster(aktivaIds, byraHighRisk, targetId = 'services-content') {
+        const content = document.getElementById(targetId);
+        if (!content) return;
+
+        const p = targetId;
+        const alla = this._byransTjanster || [];
+        const aktSet = aktivaIds instanceof Set ? aktivaIds : new Set();
+
+        if (alla.length === 0) {
+            content.innerHTML = '<p class="lead-empty">Inga tjänster registrerade för din byrå.</p>';
             return;
         }
 
-        // Convert services array to list
-        const servicesList = Array.isArray(services) ? services : [services];
-        
-        let html = '<div class="services-list">';
-        
-        // Regular services
-        if (servicesList.length > 0) {
-            html += '<div class="services-section">';
-            html += '<h4><i class="fas fa-list"></i> Utvalda tjänster</h4>';
-            html += '<ul class="services-ul">';
-            servicesList.forEach(service => {
-                const isHighRisk = byraHighRiskServices.includes(service);
-                html += `<li class="service-item ${isHighRisk ? 'high-risk' : ''}">`;
-                html += `<i class="fas ${isHighRisk ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i>`;
-                html += `<span>${service}</span>`;
-                if (isHighRisk) {
-                    html += '<span class="high-risk-badge">Högrisk</span>';
-                }
-                html += '</li>';
+        const riskBadge = (nivå) => {
+            if (!nivå) return '';
+            const map = { 'Hög': 'risk-pill--high', 'Förhöjd': 'risk-pill--high', 'Medel': 'risk-pill--medium', 'Låg': 'risk-pill--low', 'Normal': 'risk-pill--low' };
+            return `<span class="risk-pill ${map[nivå] || 'risk-pill--medium'}">${nivå}</span>`;
+        };
+
+        // Gruppera per TJÄNSTTYP
+        const grupper = {};
+        alla.forEach(t => {
+            const typ = t.typ || 'Övrigt';
+            if (!grupper[typ]) grupper[typ] = [];
+            grupper[typ].push(t);
+        });
+
+        const aktiva = alla.filter(t => aktSet.has(t.id));
+
+        // Visningsläge — klickbara grå kort, info fälls ut
+        const viewContent = aktiva.length === 0
+            ? '<p class="lead-empty">Inga tjänster kopplade till kunden. Klicka Redigera för att välja.</p>'
+            : aktiva.map((t, i) => {
+                const uid = `tjanst-details-${p}-${i}`;
+                const hasDetails = t.beskrivning || t.atgard;
+                return `
+                <div class="tjanst-collapsible-item" onclick="${hasDetails ? `customerCardManager.toggleTjanstDetails('${uid}')` : ''}">
+                    <div class="tjanst-collapsible-header">
+                        <span class="risker-vald-namn">${this._esc(t.namn)}</span>
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            ${t.riskbedomning ? riskBadge(t.riskbedomning) : ''}
+                            ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
+                        </div>
+                    </div>
+                    ${hasDetails ? `
+                    <div class="tjanst-collapsible-body" id="${uid}" style="display:none;">
+                        ${t.beskrivning ? `
+                            <div class="risker-vald-section-label">Beskrivning av riskfaktorn</div>
+                            <div class="risker-vald-desc">${this._esc(t.beskrivning)}</div>` : ''}
+                        ${t.atgard ? `
+                            <div class="risker-vald-section-label">Åtgärder</div>
+                            <div class="risker-vald-desc">${this._esc(t.atgard)}</div>` : ''}
+                    </div>` : ''}
+                </div>`;
+            }).join('');
+
+        // Redigeringsläge — grupperade checkboxar med riskbadge och beskrivning
+        const editContent = Object.entries(grupper).map(([typ, tjanster]) => `
+            <div class="risker-checkgrupp">
+                ${tjanster.map(t => `
+                    <label class="risker-check-item">
+                        <input type="checkbox" name="tjanst-${p}" value="${t.id}" ${aktSet.has(t.id) ? 'checked' : ''}
+                            onchange="customerCardManager.updateTjansterCount('${p}')">
+                        <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
+                        <span class="risker-check-label">
+                            <span class="risker-check-top">
+                                <span class="risker-check-namn">${this._esc(t.namn)}</span>
+                                ${riskBadge(t.riskbedomning)}
+                            </span>
+                        </span>
+                    </label>
+                `).join('')}
+            </div>
+        `).join('');
+
+        content.innerHTML = `
+            <div class="risker-selector">
+                <div class="risker-selector-header">
+                    <span class="risker-selector-count" id="tjanster-count-${p}">${aktiva.length} aktiva</span>
+                    <div class="risker-selector-actions">
+                        <button class="btn-icon-edit" id="tjanster-edit-btn-${p}" title="Redigera"
+                            onclick="customerCardManager.toggleTjansterEdit('${p}')">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="tjanster-view-${p}">${viewContent}</div>
+                <div id="tjanster-edit-${p}" style="display:none;">
+                    <p class="tjanster-edit-hint">Markera de tjänster som ska vara aktiva för kunden.</p>
+                    ${editContent}
+                    <div class="tjanster-edit-actions">
+                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveTjanster('${p}')">
+                            <i class="fas fa-save"></i> Spara
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleTjansterEdit('${p}')">Avbryt</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    toggleTjanstDetails(uid) {
+        const body = document.getElementById(uid);
+        const chevron = document.getElementById(`chevron-${uid}`);
+        if (!body) return;
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : '';
+        if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
+    }
+
+    toggleTjansterEdit(p = 'services-content') {
+        const view = document.getElementById(`tjanster-view-${p}`);
+        const edit = document.getElementById(`tjanster-edit-${p}`);
+        const btn = document.getElementById(`tjanster-edit-btn-${p}`);
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+            btn.classList.remove('is-active');
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            btn.innerHTML = '<i class="fas fa-times"></i>';
+            btn.classList.add('is-active');
+        }
+    }
+
+    updateTjansterCount(p = 'services-content') {
+        const checked = document.querySelectorAll(`#tjanster-edit-${p} input[name="tjanst-${p}"]:checked`);
+        const countEl = document.getElementById(`tjanster-count-${p}`);
+        if (countEl) countEl.textContent = `${checked.length} aktiva`;
+    }
+
+    async saveTjanster(p = 'services-content') {
+        const customerId = this.customerId;
+        if (!customerId) {
+            this.showNotification('Kund-ID saknas', 'error');
+            return;
+        }
+
+        // Incheckade värden är nu record ID:n
+        const checkedIds = [...document.querySelectorAll(`#tjanster-edit-${p} input[name="tjanst-${p}"]:checked`)]
+            .map(cb => cb.value);
+
+        const saveBtn = document.querySelector(`#tjanster-edit-${p} .btn-primary`);
+        const originalText = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fields: { 'Kundens utvalda tjänster': checkedIds }
+                })
             });
-            html += '</ul>';
-            html += '</div>';
-        }
 
-        // High risk services info
-        if (highRiskServices) {
-            html += '<div class="services-section high-risk-section">';
-            html += '<h4><i class="fas fa-exclamation-triangle"></i> Högrisktjänster</h4>';
-            html += '<p class="high-risk-info">' + highRiskServices + '</p>';
-            html += '</div>';
-        }
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
 
-        html += '</div>';
-        content.innerHTML = html;
+            // Uppdatera lokal cache
+            this._aktivaTjansterIds = new Set(checkedIds);
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kundens utvalda tjänster'] = checkedIds;
+            }
+
+            const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
+            ['services-content', 'ovrigkyc-tjanster'].forEach(tid => {
+                if (document.getElementById(tid)) this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, tid);
+            });
+            this.showNotification(`Tjänster sparade — ${checkedIds.length} aktiva`, 'success');
+
+        } catch (error) {
+            console.error('❌ Fel vid sparande av tjänster:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+            if (saveBtn) { saveBtn.innerHTML = originalText; saveBtn.disabled = false; }
+        }
     }
 
     displayEmptyServices() {
         const content = document.getElementById('services-content');
+        if (!content) return;
         content.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-cogs"></i>
-                <h3>Inga tjänster hittades</h3>
-                <p>Det finns inga registrerade tjänster för denna kund ännu.</p>
+                <h3>Inga tjänster</h3>
+                <p>Klicka på Redigera för att välja tjänster för kunden.</p>
             </div>
         `;
     }
@@ -888,6 +2172,665 @@ class CustomerCardManager {
                 </div>
             </div>
         `;
+    }
+
+    async loadUppdragsavtal() {
+        const container = document.getElementById('uppdragsavtal-content');
+        if (!container) return;
+
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+        try {
+            // Hämta avtal och byråinfo parallellt
+            const [avtalRes, byraRes] = await Promise.all([
+                fetch(`${baseUrl}/api/uppdragsavtal?customerId=${this.customerId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch(`${baseUrl}/api/byra-info`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+            ]);
+
+            const avtalData = avtalRes.ok ? await avtalRes.json() : { avtal: null };
+            const byraData  = byraRes.ok  ? await byraRes.json()  : {};
+
+            this.renderUppdragsavtal(avtalData.avtal, byraData);
+        } catch (e) {
+            console.error('❌ loadUppdragsavtal:', e);
+            this.renderUppdragsavtal(null, {});
+        }
+    }
+
+    renderUppdragsavtal(avtal, byraData = {}) {
+        const container = document.getElementById('uppdragsavtal-content');
+        if (!container) return;
+
+        const rawF = avtal?.fields || {};
+        // Normalisera fältnamn — stöd både gamla (å/ä/ö) och nya ASCII-namn
+        const f = {
+            'Uppdragsansvarig':    rawF['Uppdragsansvarig'] || '',
+            'Avtalsdatum':         rawF['Avtalsdatum'] || '',
+            'Avtalet gäller ifrån': rawF['Avtalet galler fran'] || rawF['Avtalet gäller ifrån'] || '',
+            'Uppsägningstid':      rawF['Uppsagningstid'] ?? rawF['Uppsägningstid'] ?? '',
+            'Övrigt uppdrag':      rawF['Ovrigt uppdrag'] || rawF['Övrigt uppdrag'] || '',
+            'Ersättningsmodell':   rawF['Ersattningsmodell'] || rawF['Ersättningsmodell'] || '',
+            'Arvode':              rawF['Arvode'] || '',
+            'Arvodesperiod':       rawF['Arvodesperiod'] || 'månad',
+            'Arvodekommentar':     rawF['Arvodekommentar'] || '',
+            'Fakturaperiod':       rawF['Fakturaperiod'] || '',
+            'Betalningsvillkor':   rawF['Betalningsvillkor'] ?? '',
+            'Kunden godkänner allmänna villkor':            rawF['Kunden godkanner allm villkor'] || rawF['Kunden godkänner allmänna villkor'] || false,
+            'Kunden godkänner personuppgiftsbiträdesavtal': rawF['Kunden godkanner puba'] || rawF['Kunden godkänner personuppgiftsbiträdesavtal'] || false,
+            'Status':              rawF['Avtalsstatus'] || rawF['Status'] || '',
+            'Signeringsdatum':     rawF['Signeringsdatum'] || '',
+            'Signerat av kund':    rawF['Signerat av kund'] || rawF['Signerat av byra'] || '',
+            'Signerat av byrå':    rawF['Signerat av byra'] || rawF['Signerat av byrå'] || '',
+        };
+        const isNew = !avtal;
+
+        const today = new Date().toISOString().split('T')[0];
+        const fmtDate = (d) => d ? d.split('T')[0] : '';
+        const chk = (val) => val ? 'checked' : '';
+        const sel = (opts, cur) => opts.map(v => `<option value="${v}" ${cur === v ? 'selected' : ''}>${v}</option>`).join('');
+
+        // Byrådata — allt hämtat från Airtable via /api/byra-info
+        const byraNamn     = byraData.byraNamn     || '';
+        const byraOrgnr    = byraData.byraOrgnr    || this.userData?.orgnr || '';
+        const konsulter    = byraData.konsulter     || [];
+        const inloggadNamn = byraData.inloggadNamn  || this.userData?.name || '';
+
+        // byransTjanster används bara för högrisk-kontroll — hämta namn ur {id, namn}-objekt
+        const byransTjanster = this._byransTjanster?.length
+            ? this._byransTjanster.map(t => t.namn)
+            : this.getAllTjanster();
+        const byraHighRisk = byraData.highRiskTjanster || this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
+
+        const aktivaIds = new Set(this.customerData?.fields?.['Kundens utvalda tjänster'] || []);
+        // Hämta tjänstnamnen från _byransTjanster via ID-matchning
+        const aktiva = (this._byransTjanster || [])
+            .filter(t => aktivaIds.has(t.id))
+            .map(t => t.namn);
+        const kundNamn = this.customerData?.fields?.['Namn'] || '';
+        const orgnr    = this.customerData?.fields?.['Orgnr'] || '';
+
+        // Förvalt ansvarig: sparat värde i avtalet, annars inloggad användares namn
+        const ansvarig = f['Uppdragsansvarig'] || inloggadNamn;
+
+        // Tjänster visas direkt från kundens valda tjänster (sätts på fliken Övrig KYC)
+        const tjansterDisplay = aktiva.length
+            ? aktiva.map(t => {
+                const isHR = byraHighRisk.some(h => h.trim().toLowerCase() === t.toLowerCase());
+                return `<div class="uppdrag-tjanst-row">
+                    <i class="fas fa-check-circle" style="color:#10b981;"></i>
+                    <span>${t}${isHR ? ' <span class="tjanst-highrisk-badge">Högrisk</span>' : ''}</span>
+                </div>`;
+            }).join('')
+            : '<p class="uppdrag-hint" style="color:#94a3b8;"><i class="fas fa-info-circle"></i> Inga tjänster valda. Välj tjänster på fliken <strong>Övrig KYC</strong>.</p>';
+
+        container.innerHTML = `
+            <div class="uppdrag-wrap">
+
+                <!-- STATUS-BANNER -->
+                ${isNew ? `
+                <div class="uppdrag-banner uppdrag-banner--ny">
+                    <i class="fas fa-info-circle"></i>
+                    Inget uppdragsavtal finns ännu. Fyll i och spara som utkast.
+                </div>` : f['Status'] === 'Signerat' ? `
+                <div class="uppdrag-banner uppdrag-banner--ok">
+                    <i class="fas fa-check-circle"></i>
+                    Signerat ${fmtDate(f['Signeringsdatum']) || ''} — gäller fr.o.m. ${fmtDate(f['Avtalet gäller ifrån']) || '–'}.
+                </div>` : `
+                <div class="uppdrag-banner uppdrag-banner--utkast">
+                    <i class="fas fa-pencil-alt"></i>
+                    Utkast — ej signerat ännu.
+                </div>`}
+
+                <!-- AVTALSHUVUD -->
+                <div class="uppdrag-doc-header">
+                    <div class="uppdrag-doc-titel">UPPDRAGSAVTAL</div>
+                    <div class="uppdrag-doc-välkommen">
+                        Varmt välkommen som kund hos oss på ${byraNamn}. Vi ser fram emot ett långt och givande samarbete.
+                    </div>
+                </div>
+
+                <form id="uppdragsavtal-form" onsubmit="return false;">
+
+                    <!-- PARTER -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-handshake"></i> Avtalsparter</div>
+                        <div class="uppdrag-parter-grid">
+                            <div class="uppdrag-part">
+                                <div class="uppdrag-part-label">Uppdragstagare</div>
+                                <div class="uppdrag-part-value">${byraNamn}</div>
+                                ${byraOrgnr ? `<div class="uppdrag-part-sub">${byraOrgnr}</div>` : ''}
+                            </div>
+                            <div class="uppdrag-part">
+                                <div class="uppdrag-part-label">Uppdragsgivare</div>
+                                <div class="uppdrag-part-value">${kundNamn}</div>
+                                <div class="uppdrag-part-sub">${orgnr}</div>
+                            </div>
+                        </div>
+                        <div class="uppdrag-grid" style="margin-top:1rem;">
+                            <div class="uppdrag-field">
+                                <label>Ansvarig hos byrån</label>
+                                ${konsulter.length ? `
+                                <select id="ua-ansvarig" class="uppdrag-input">
+                                    ${konsulter.map(k => `<option value="${k.namn}" ${k.namn === ansvarig ? 'selected' : ''}>${k.namn}</option>`).join('')}
+                                </select>` : `
+                                <input type="text" id="ua-ansvarig" class="uppdrag-input" value="${ansvarig}" placeholder="Namn på ansvarig">`}
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Avtalsdatum</label>
+                                <input type="date" id="ua-avtalsdatum" class="uppdrag-input" value="${fmtDate(f['Avtalsdatum']) || today}">
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Avtalet gäller fr.o.m.</label>
+                                <input type="date" id="ua-galler-fran" class="uppdrag-input" value="${fmtDate(f['Avtalet gäller ifrån'])}">
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Uppsägningstid (månader)</label>
+                                <input type="number" id="ua-uppsagningstid" class="uppdrag-input" value="${f['Uppsägningstid'] ?? 3}" min="0" placeholder="3">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ARBETET OMFATTAR -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-list-check"></i> Arbetet omfattar följande tjänster</div>
+                        <p class="uppdrag-hint">Byrån åtar sig att utföra de tjänster som angetts nedan. Uppdragsavtalet kan fortlöpande utökas eller ändras till sin omfattning.</p>
+                        <div class="uppdrag-tjanster-list">
+                            ${tjansterDisplay}
+                        </div>
+                        <div class="uppdrag-field uppdrag-field--full" style="margin-top:1rem;">
+                            <label>Övrigt (specificera vid behov)</label>
+                            <textarea id="ua-tjanster-ovrigt" class="uppdrag-input uppdrag-textarea" rows="2"
+                                placeholder="Eventuell specificering av uppdraget...">${f['Övrigt uppdrag'] || ''}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- ERSÄTTNING -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-coins"></i> Ersättning</div>
+                        <div class="uppdrag-checks" style="margin-bottom:1rem;">
+                            <label class="uppdrag-check">
+                                <input type="radio" name="ua-ersattningsmodell" id="ua-lopande" value="Löpande räkning"
+                                    ${(f['Ersättningsmodell'] || 'Fast pris') === 'Löpande räkning' ? 'checked' : ''}
+                                    onchange="document.getElementById('ua-fastpris-fields').style.display='none'">
+                                <span>På löpande räkning enligt vid varje tidpunkt gällande prislista</span>
+                            </label>
+                            <label class="uppdrag-check">
+                                <input type="radio" name="ua-ersattningsmodell" id="ua-fastpris" value="Fast pris"
+                                    ${(f['Ersättningsmodell'] || 'Fast pris') !== 'Löpande räkning' ? 'checked' : ''}
+                                    onchange="document.getElementById('ua-fastpris-fields').style.display=''">
+                                <span>Fast pris</span>
+                            </label>
+                        </div>
+                        <div id="ua-fastpris-fields" style="${(f['Ersättningsmodell'] || 'Fast pris') === 'Löpande räkning' ? 'display:none;' : ''}">
+                            <div class="uppdrag-grid">
+                                <div class="uppdrag-field">
+                                    <label>Pris (kr exkl. moms)</label>
+                                    <input type="number" id="ua-arvode" class="uppdrag-input" value="${f['Arvode'] || ''}" placeholder="0">
+                                </div>
+                                <div class="uppdrag-field">
+                                    <label>Per</label>
+                                    <select id="ua-arvode-period" class="uppdrag-input">
+                                        <option value="månad" ${(f['Arvodesperiod'] || 'månad') === 'månad' ? 'selected' : ''}>Månad</option>
+                                        <option value="kvartal" ${f['Arvodesperiod'] === 'kvartal' ? 'selected' : ''}>Kvartal</option>
+                                        <option value="år" ${f['Arvodesperiod'] === 'år' ? 'selected' : ''}>År</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p class="uppdrag-hint" style="margin-top:0.75rem;">Vid fast pris har byrån därutöver rätt till ersättning för kostnader och utlägg som ansöknings- och registreringsavgifter, utlägg för resor, kost, logi, porto, bud, etc. Tilläggsarbeten och övertidsarbete på grund av försenad eller ofullständig materialleverans från kunden, ej avtalade extraarbeten till följd av lagändringar eller liknande är aldrig inräknade i det fasta priset utan ska ersättas separat.</p>
+                        </div>
+                        <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
+                            <label>Kommentar till arvodet</label>
+                            <textarea id="ua-arvode-kommentar" class="uppdrag-input uppdrag-textarea" rows="2"
+                                placeholder="T.ex. fast pris enl. tidigare avtal, extra arbete debiteras separat...">${f['Arvodekommentar'] || ''}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- BETALNINGSVILLKOR -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-file-invoice"></i> Betalningsvillkor</div>
+                        <p class="uppdrag-hint">Betalning görs mot faktura. Vid för sen betalning utgår dröjsmålsränta enligt räntelagen.</p>
+                        <div class="uppdrag-grid">
+                            <div class="uppdrag-field">
+                                <label>Fakturaperiod</label>
+                                <select id="ua-fakturaperiod" class="uppdrag-input">
+                                    <option value="">Välj...</option>
+                                    ${sel(['Månadsvis','Kvartalsvis','Halvårsvis','Årsvis','Löpande'], f['Fakturaperiod'])}
+                                </select>
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Betalningsvillkor (dagar)</label>
+                                <input type="number" id="ua-betvillkor" class="uppdrag-input" value="${f['Betalningsvillkor'] ?? 10}" placeholder="10">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BILAGA 2: ALLMÄNNA VILLKOR -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-file-alt"></i> Bilaga 2 – Allmänna villkor</div>
+                        <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
+                            <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
+                            Visa fullständiga allmänna villkor
+                        </div>
+                        <div class="uppdrag-bilaga-text">
+                            <p>Dessa allmänna villkor gäller för uppdrag avseende redovisnings-, rådgivnings- och andra granskningstjänster som inte utgör lagstadgad revision eller lagstadgade tilläggsuppdrag ("Uppdraget") som Byrån åtar sig att utföra för Uppdragsgivarens räkning.</p>
+                            <p>Dessa allmänna villkor utgör tillsammans med uppdragsavtalet ("Uppdragsavtalet"), eller annan skriftlig överenskommelse, hela avtalet mellan Byrån och Uppdragsgivaren. Vid eventuella motstridigheter ska Uppdragsavtalet ha företräde.</p>
+                            <h5>Byråns ansvar</h5>
+                            <ul>
+                                <li>Byrån ska utföra Uppdraget med sådan skicklighet och omsorg som följer av tillämpliga lagar, förordningar och föreskrifter samt god yrkessed i branschen.</li>
+                                <li>Byrån ansvarar inte för slutsatser, rekommendationer och rapporter baserade på felaktig eller bristfällig information från Uppdragsgivaren eller tredje man som Uppdragsgivaren anvisat.</li>
+                                <li>Byrån förpliktas att ta ansvar för skador som orsakats till följd av Byråns brott mot överenskommet avtal eller om fel i den levererade tjänsten har begåtts.</li>
+                                <li>Byrån ska meddela Uppdragsgivaren avseende betydande fel eller uppgifter som upptäcks i räkenskapsmaterialet.</li>
+                                <li>Byrån kan inte göras skadeståndsskyldig för skador orsakade av att Uppdragsgivaren lämnat ofullständiga eller felaktiga uppgifter eller anvisningar.</li>
+                            </ul>
+                            <h5>Uppdragsgivarens ansvar</h5>
+                            <ul>
+                                <li>Uppdragsgivaren ansvarar för att de upplysningar och anvisningar som lämnas till Byrån är korrekta och inte strider mot gällande lagar.</li>
+                                <li>Uppdragsgivaren förpliktas att företagets skatter och avgifter redovisas och betalas och att aktuella tillstånd för verksamheten är aktuella.</li>
+                                <li>Uppdragsgivaren förpliktas till att räkenskapsmaterial samlas in och bevaras.</li>
+                                <li>Uppdragsgivaren ska på begäran av Byrån utan dröjsmål tillhandahålla sådan komplett och korrekt information som behövs för Uppdragets genomförande. Om Uppdragsgivaren dröjer med att tillhandahålla information kan detta orsaka förseningar och ökade kostnader. Byrån ansvarar inte för sådana förseningar och ökade kostnader.</li>
+                            </ul>
+                            <h5>Materialleveranser</h5>
+                            <p>Material ska levereras till Byrån i så god tid att Byrån kan utföra sina tjänster på normal arbetstid och inom gällande tidsfrister. Om parterna inte avtalat annat ska Uppdragsgivaren lämna material enligt följande:</p>
+                            <ul>
+                                <li>Underlag för den löpande bokföringen lämnas senast tio dagar efter utgången av den period redovisningen gäller.</li>
+                                <li>Underlag för löneadministration och löneberäkning lämnas minst sju dagar före attest- och löneutbetalningsdag.</li>
+                                <li>Bokslutsmaterial lämnas senast 30 dagar efter räkenskapsperiodens slut.</li>
+                                <li>Deklarations- och beskattningsmaterial lämnas senast 30 dagar efter beskattningsårets slut.</li>
+                            </ul>
+                            <h5>Sekretess och elektronisk kommunikation</h5>
+                            <p>Respektive Part förbinder sig att inte lämna konfidentiell information om Uppdraget till utomstående, inte heller information om den andra Partens verksamhet, utan den andra Partens skriftliga samtycke – med undantag för vad som följer av lag, professionell skyldighet eller myndighetsbeslut. Denna sekretesskyldighet fortsätter att gälla även efter att avtalet har upphört. Parterna accepterar elektronisk kommunikation dem emellan och de risker denna medför.</p>
+                            <h5>Uppsägning</h5>
+                            <p>Uppdragsavtalet börjar gälla från den dag som anges i Uppdragsavtalet. En Part får, om inget annat avtalats, genom skriftligt meddelande säga upp Uppdragsavtal som gäller tillsvidare med tre (3) månaders uppsägningstid.</p>
+                            <h5>Uppsägning – arvode</h5>
+                            <p>Vid uppsägning av Uppdragsavtalet ska Uppdragsgivaren betala Byrån arvode, utlägg och kostnader enligt Uppdragsavtalet fram till upphörandetidpunkten. Om uppsägningen inte grundar sig på ett väsentligt avtalsbrott från Byråns sida ska Uppdragsgivaren även ersätta Byrån för andra rimliga kostnader som uppstått i samband med Uppdraget.</p>
+                            <h5>Byråns rätt att omedelbart häva avtalet</h5>
+                            <ul>
+                                <li>Uppdragsgivaren är mer än sju dagar försenad med sina betalningar.</li>
+                                <li>Uppdragsgivaren levererar inte material eller orsakar på annat sätt att uppdraget inte kan utföras såsom avtalats.</li>
+                                <li>Uppdragsgivaren bryter mot ingånget avtal, lagar eller regler och underlåter att korrigera det påtalade felet inom sju dagar efter meddelande från Byrån.</li>
+                                <li>Uppdragsgivaren bemöter Byråns personal på ett oetiskt eller kränkande sätt.</li>
+                                <li>Uppdragsgivaren kan inte betala sina skulder, har konkursförvaltare, företagsrekonstruktör eller likvidator utsedd.</li>
+                            </ul>
+                            <h5>Uppdragsgivarens rätt att omedelbart häva avtalet</h5>
+                            <p>Om Byrån bryter mot avtalet och underlåter att vidta åtgärder för att korrigera avtalsbrottet inom rimlig tid har Uppdragsgivaren rätt att med omedelbar verkan säga upp avtalet.</p>
+                            <h5>Force majeure</h5>
+                            <p>Yttre händelser utanför parternas kontroll (t.ex. myndighetsåtgärder, krig, mobilisering, arbetsmarknadskonflikt, naturkatastrof) och som inte endast är av tillfällig natur och som förhindrar uppdragets genomförande berättigar vardera parten att helt inställa uppdraget utan rätt till skadestånd. Avtalspart ska genast meddela den andra parten när force majeure uppkommer och när den upphör.</p>
+                            <h5>Tvist</h5>
+                            <p>Tvist mellan parterna ska i första hand lösas genom förhandling och i andra hand av allmän domstol på den ort där Byrån har sitt säte.</p>
+                            <h5>Överlåtelse</h5>
+                            <p>Parts rättigheter och skyldigheter enligt detta avtal kan överlåtas endast om den andra parten ger sitt samtycke till överlåtelsen.</p>
+                            <h5>Prioritetsordning</h5>
+                            <ol><li>Uppdragsavtal</li><li>Bilagor till uppdragsavtal</li><li>Dessa allmänna villkor</li></ol>
+                        </div>
+                    </div>
+
+                    <!-- BILAGA 3: PERSONUPPGIFTSBITRÄDESAVTAL -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-shield-alt"></i> Bilaga 3 – Personuppgiftsbiträdesavtal (GDPR)</div>
+                        <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
+                            <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
+                            Visa fullständigt personuppgiftsbiträdesavtal
+                        </div>
+                        <div class="uppdrag-bilaga-text">
+                            <h5>1 Bakgrund</h5>
+                            <p>Parterna har i samband med detta Avtal ingått Tjänsteavtal avseende redovisningstjänster ("Tjänsteavtalet"). Inom åtagandena som följer av Tjänsteavtalet kan Byrån komma att behandla personuppgifter samt annan information för Uppdragsgivarens räkning. Med anledning härav ingår Parterna detta Avtal för att reglera förutsättningarna för behandling av – och tillgång till – Personuppgifter tillhöriga Uppdragsgivaren. Avtalet gäller så länge Byrån behandlar Personuppgifter för Uppdragsgivarens räkning.</p>
+                            <h5>2 Definitioner</h5>
+                            <p><strong>"Behandling"</strong> – en åtgärd eller kombination av åtgärder beträffande Personuppgifter, såsom insamling, registrering, lagring, bearbetning, utlämning eller radering.</p>
+                            <p><strong>"Dataskyddsförordningen"</strong> – Europaparlamentets och Rådets Förordning (EU) 2016/679 (GDPR).</p>
+                            <p><strong>"Personuppgifter"</strong> – varje upplysning som avser en identifierad eller identifierbar fysisk person.</p>
+                            <p><strong>"Personuppgiftsansvarig"</strong> – den som bestämmer ändamålen och medlen för Behandlingen av Personuppgifter.</p>
+                            <p><strong>"Personuppgiftsbiträde"</strong> – den som Behandlar Personuppgifter för den Personuppgiftsansvariges räkning.</p>
+                            <p><strong>"Personuppgiftsincident"</strong> – en säkerhetsincident som leder till oavsiktlig eller olaglig förstöring, förlust, ändring eller obehörigt röjande av Personuppgifter.</p>
+                            <h5>4 Allmänt om personuppgiftsbehandlingen</h5>
+                            <p>Uppdragsgivaren är Personuppgiftsansvarig för de Personuppgifter som Behandlas inom ramen för Uppdraget. Byrån är att betrakta som Personuppgiftsbiträde åt Uppdragsgivaren. Byrån har gett tillräckliga garantier om att genomföra lämpliga tekniska och organisatoriska åtgärder för att Behandlingen uppfyller kraven i Dataskyddsförordningen och att den Registrerades rättigheter skyddas.</p>
+                            <h5>6 Personal</h5>
+                            <p>Byråns anställda och andra personer som utför arbete under dess överinseende och som får del av Personuppgifter tillhöriga Uppdragsgivaren, får endast Behandla dessa på instruktion från Uppdragsgivaren. Byrån ska tillse att dessa personer åtagit sig att iaktta konfidentialitet.</p>
+                            <h5>7 Säkerhet</h5>
+                            <p>Byrån ska vidta alla åtgärder avseende säkerhet som krävs enligt artikel 32 i Dataskyddsförordningen. Vid bedömningen av lämplig säkerhetsnivå ska särskild hänsyn tas till de risker som Behandling medför, i synnerhet från oavsiktlig eller olaglig förstöring, förlust eller obehörigt röjande.</p>
+                            <h5>8 Personuppgiftsincident</h5>
+                            <p>Byrån ska, med beaktande av typen av Behandling och den information Byrån har att tillgå, bistå Uppdragsgivaren med att tillse att skyldigheterna i samband med eventuell Personuppgiftsincident kan fullgöras på sätt som följer av artikel 33–34 i Dataskyddsförordningen.</p>
+                            <h5>10 Underbiträde</h5>
+                            <p>Genom att teckna avtal med Byrån ska Uppdragsgivaren anses ha lämnat ett generellt skriftligt godkännande att anlita underbiträde. Byrån ska digitalt informera Uppdragsgivaren om ett nytt underbiträde ska anlitas och ge Uppdragsgivaren möjlighet att göra invändningar. Byrån ska tillse att nytt underbiträde ingår ett skriftligt personuppgiftsbiträdesavtal innan arbetet påbörjas. Om underbiträdet inte fullgör sina skyldigheter ska Byrån vara ansvarig gentemot Uppdragsgivaren.</p>
+                            <h5>11 Överföring till tredje land</h5>
+                            <p>Byrån får förflytta, förvara, överföra eller på annat sätt Behandla Personuppgifter utanför EU/EES om sådan överföring uppfyller de krav som följer av Dataskyddsförordningen.</p>
+                            <h5>12 Rätt till insyn</h5>
+                            <p>Byrån ska ge Uppdragsgivaren tillgång till all information som krävs för att visa att skyldigheterna enligt artikel 28 i Dataskyddsförordningen har fullgjorts. Byrån ska alltid ha rätt till skäligt varsel inför en granskning och Uppdragsgivaren ska ersätta Byrån för kostnader i samband med sådan granskning.</p>
+                            <h5>13 Register över behandlingen</h5>
+                            <p>Byrån ska föra ett elektroniskt register över alla kategorier av Behandling som utförts för Uppdragsgivarens räkning, innehållande bl.a. ändamålen med Behandlingen, kategorier av Registrerade och Personuppgifter, kategorier av mottagare och tidsfristerna för radering.</p>
+                            <h5>14 Ansvar</h5>
+                            <p>De ansvarsbegränsningar som framgår av Tjänsteavtalet gäller också i detta Avtal. Om dessa ansvarsbegränsningar inte skulle visa sig gälla begränsas ansvar till etthundratusen (100 000) kronor.</p>
+                            <h5>15 Avtalets upphörande</h5>
+                            <p>När Byrån upphör med Behandling av Personuppgifter för Uppdragsgivaren räkning ska Byrån återlämna alla Personuppgifter till Uppdragsgivaren – eller, om Uppdragsgivaren så skriftligen meddelar, förstöra och radera dem. Efter att Avtalet upphör äger Byrån inte rätt att spara Personuppgifter tillhöriga Uppdragsgivaren.</p>
+                            <h5>17 Tillämplig lag och tvister</h5>
+                            <p>Svensk lag ska tillämpas på Avtalet. Tvister som uppstår i anledning av Avtalet ska slutligt avgöras genom skiljedomsförfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljeförfarandets säte ska vara Stockholm och språket ska vara svenska. Skiljeförfarande som påkallats med hänvisning till denna skiljeklausul omfattas av sekretess. Part har rätt att vid svensk domstol anhängiggöra tvist om tvisteföremålets storlek understiger 100 000 kr.</p>
+                        </div>
+                    </div>
+
+                    <!-- SIGNERING -->
+                    <div class="uppdrag-section">
+                        <div class="uppdrag-section-title"><i class="fas fa-signature"></i> Signering & status</div>
+                        <div class="uppdrag-grid">
+                            <div class="uppdrag-field">
+                                <label>Status</label>
+                                <select id="ua-status" class="uppdrag-input">
+                                    ${sel(['Utkast','Skickat till kund','Signerat','Avslutat'], f['Status'] || 'Utkast')}
+                                </select>
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Signeringsdatum</label>
+                                <input type="date" id="ua-signdatum" class="uppdrag-input" value="${fmtDate(f['Signeringsdatum'])}">
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Signerat av (kund)</label>
+                                <input type="text" id="ua-sign-kund" class="uppdrag-input" value="${f['Signerat av kund'] || ''}" placeholder="Namn">
+                            </div>
+                            <div class="uppdrag-field">
+                                <label>Signerat av (byrå)</label>
+                                <input type="text" id="ua-sign-byra" class="uppdrag-input" value="${f['Signerat av byrå'] || ''}" placeholder="Namn">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ÅTGÄRDER -->
+                    <div class="uppdrag-actions">
+                        <button type="button" class="btn btn-primary" onclick="customerCardManager.saveUppdragsavtal(${avtal ? `'${avtal.id}'` : 'null'})">
+                            <i class="fas fa-save"></i> Spara utkast
+                        </button>
+                        ${avtal ? `
+                        <button type="button" class="btn btn-secondary" onclick="customerCardManager.downloadUppdragsavtalPdf('${avtal.id}')">
+                            <i class="fas fa-file-pdf"></i> Ladda ner PDF
+                        </button>
+                        <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaInleed('${avtal.id}')">
+                            <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
+                        </button>` : `<span class="uppdrag-hint" style="margin:0;">Spara utkastet först för att kunna generera PDF.</span>`}
+                    </div>
+
+                </form>
+            </div>
+        `;
+    }
+
+    async saveUppdragsavtal(avtalId) {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+        const val = (id) => document.getElementById(id)?.value || '';
+        const chk = (id) => document.getElementById(id)?.checked || false;
+
+        // Valda tjänster — hämta namn via ID-matchning mot _byransTjanster
+        const aktivaIds = new Set(this.customerData?.fields?.['Kundens utvalda tjänster'] || []);
+        const valdaTjanster = (this._byransTjanster || [])
+            .filter(t => aktivaIds.has(t.id))
+            .map(t => t.namn);
+
+        // Ersättningsmodell (radio)
+        const ersattningsmodell = document.querySelector('#uppdragsavtal-form input[name="ua-ersattningsmodell"]:checked')?.value || 'Fast pris';
+
+        const fields = {
+            'KundID':                               this.customerId,
+            'Byra ID':                              this.customerData?.fields?.['Byrå ID'] || '',
+            'Kundnamn':                             this.customerData?.fields?.['Namn'] || '',
+            'Orgnr':                                this.customerData?.fields?.['Orgnr'] || '',
+            'Uppdragsansvarig':                     val('ua-ansvarig'),
+            'Avtalsdatum':                          val('ua-avtalsdatum') || null,
+            'Avtalet galler fran':                  val('ua-galler-fran') || null,
+            'Uppsagningstid':                       parseInt(val('ua-uppsagningstid')) || null,
+            'Valda tjanster':                       valdaTjanster.join(', '),
+            'Ovrigt uppdrag':                       val('ua-tjanster-ovrigt'),
+            'Ersattningsmodell':                    ersattningsmodell,
+            'Arvode':                               parseFloat(val('ua-arvode')) || null,
+            'Arvodesperiod':                        val('ua-arvode-period') || 'manad',
+            'Arvodekommentar':                      val('ua-arvode-kommentar'),
+            'Fakturaperiod':                        val('ua-fakturaperiod'),
+            'Betalningsvillkor':                    parseInt(val('ua-betvillkor')) || null,
+            'Kunden godkanner allm villkor':        chk('ua-godkanner-villkor'),
+            'Kunden godkanner puba':                chk('ua-godkanner-puba'),
+            'Avtalsstatus':                          val('ua-status'),
+            'Signeringsdatum':                      val('ua-signdatum') || null,
+            'Signerat av kund':                     val('ua-sign-kund'),
+            'Signerat av byra':                     val('ua-sign-byra'),
+        };
+
+        // Ta bort tomma / null-värden
+        Object.keys(fields).forEach(k => {
+            if (fields[k] === null || fields[k] === '' || fields[k] !== fields[k]) delete fields[k];
+        });
+
+        const saveBtn = document.querySelector('#uppdragsavtal-form .btn-primary');
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            const method = avtalId ? 'PATCH' : 'POST';
+            const url = avtalId
+                ? `${baseUrl}/api/uppdragsavtal/${avtalId}`
+                : `${baseUrl}/api/uppdragsavtal`;
+
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ fields })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            // Ladda om med det sparade avtalet
+            this.renderUppdragsavtal(data.avtal);
+            this.showNotification('Uppdragsavtal sparat!', 'success');
+
+        } catch (error) {
+            console.error('❌ Fel vid sparande av uppdragsavtal:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+            if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-save"></i> Spara utkast'; saveBtn.disabled = false; }
+        }
+    }
+
+    async downloadUppdragsavtalPdf(avtalId) {
+        const btn = document.querySelector('.btn-inleed')?.previousElementSibling;
+        const origText = btn?.innerHTML;
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar...'; btn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/pdf`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+
+            // Ladda ner PDF i webbläsaren
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+            a.download = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'Uppdragsavtal.pdf';
+            a.href = url;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.showNotification('PDF nedladdad!', 'success');
+        } catch (error) {
+            this.showNotification(`Kunde inte generera PDF: ${error.message}`, 'error');
+        } finally {
+            if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+        }
+    }
+
+    async skickaInleed(avtalId) {
+        // Visa modal för att välja signerare
+        const kontaktPersoner = this._kontaktPersoner || [];
+        const existing = document.getElementById('inleed-modal');
+        if (existing) existing.remove();
+
+        const personOptions = kontaktPersoner.length > 0
+            ? kontaktPersoner.map((p, idx) => `
+                <label class="inleed-person-option ${!p.epost ? 'inleed-person-incomplete' : ''}">
+                    <input type="radio" name="signerare-choice" value="${idx}" ${idx === 0 ? 'checked' : ''} ${!p.epost ? 'disabled' : ''}>
+                    <div class="inleed-person-info">
+                        <span class="inleed-person-name">${this._esc(p.namn)}</span>
+                        ${p.roll ? `<span class="inleed-person-roll">${this._esc(p.roll)}</span>` : ''}
+                        ${p.epost
+                            ? `<span class="inleed-person-contact"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>`
+                            : `<span class="inleed-person-warn"><i class="fas fa-exclamation-triangle"></i> E-post saknas — kan ej väljas</span>`}
+                        ${p.personnr ? `<span class="inleed-person-contact"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : ''}
+                    </div>
+                </label>`).join('')
+            : '';
+
+        const modal = document.createElement('div');
+        modal.id = 'inleed-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:520px;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-pen-nib" style="color:var(--accent)"></i> Skicka för BankID-signering</h3>
+                    <button class="modal-close" onclick="document.getElementById('inleed-modal').remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    ${kontaktPersoner.length > 0 ? `
+                        <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
+                            Välj vilken kontaktperson som ska signera uppdragsavtalet via BankID.
+                            Personen får ett e-postmeddelande med signeringslänk.
+                        </p>
+                        <div class="inleed-person-list">${personOptions}</div>
+                        <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0;">
+                            <p style="color:#64748b;font-size:0.82rem;margin-bottom:0.5rem;">Eller ange en person manuellt:</p>
+                    ` : `
+                        <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
+                            Inga kontaktpersoner är registrerade på Roller-kortet. Fyll i mottagarens uppgifter:
+                        </p>
+                    `}
+                        <div class="inleed-manual-form ${kontaktPersoner.length > 0 ? 'inleed-manual-collapsed' : ''}">
+                            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                                <div class="form-group" style="flex:1;min-width:180px;">
+                                    <label>Namn</label>
+                                    <input type="text" id="inleed-namn" class="form-control" placeholder="Förnamn Efternamn">
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:180px;">
+                                    <label>E-postadress</label>
+                                    <input type="email" id="inleed-epost" class="form-control" placeholder="epost@foretag.se">
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                                <div class="form-group" style="flex:1;min-width:180px;">
+                                    <label>Personnummer <span style="color:#94a3b8;font-size:0.82em">(BankID)</span></label>
+                                    <input type="text" id="inleed-personnr" class="form-control" placeholder="YYYYMMDD-XXXX">
+                                </div>
+                                <div class="form-group" style="flex:1;min-width:180px;">
+                                    <label>Telefonnummer <span style="color:#94a3b8;font-size:0.82em">(SMS-avisering)</span></label>
+                                    <input type="text" id="inleed-telefon" class="form-control" placeholder="+46701234567">
+                                </div>
+                            </div>
+                        </div>
+                    ${kontaktPersoner.length > 0 ? '</div>' : ''}
+                    <div id="inleed-status-msg" style="display:none;margin-top:1rem;padding:0.75rem;border-radius:8px;font-size:0.9rem;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inleed-modal').remove()">Avbryt</button>
+                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')">
+                        <i class="fas fa-paper-plane"></i> Skicka för signering
+                    </button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        // Fyll i manuellt formulär automatiskt om person väljs
+        const radios = modal.querySelectorAll('input[name="signerare-choice"]');
+        radios.forEach(r => r.addEventListener('change', () => {
+            const idx = parseInt(r.value);
+            const p = kontaktPersoner[idx];
+            if (p) {
+                document.getElementById('inleed-namn').value = p.namn || '';
+                document.getElementById('inleed-epost').value = p.epost || '';
+                document.getElementById('inleed-personnr').value = p.personnr || '';
+                document.getElementById('inleed-telefon').value = p.telefon || '';
+            }
+        }));
+
+        // Fyll i automatiskt om det finns en vald person
+        if (kontaktPersoner.length > 0) {
+            const firstEnabled = kontaktPersoner.findIndex(p => p.epost);
+            if (firstEnabled >= 0) {
+                const p = kontaktPersoner[firstEnabled];
+                document.getElementById('inleed-namn').value = p.namn || '';
+                document.getElementById('inleed-epost').value = p.epost || '';
+                document.getElementById('inleed-personnr').value = p.personnr || '';
+                const radio = modal.querySelector(`input[value="${firstEnabled}"]`);
+                if (radio) radio.checked = true;
+            }
+        }
+    }
+
+    async _genomforSignering(avtalId) {
+        const namn = document.getElementById('inleed-namn')?.value.trim();
+        const epost = document.getElementById('inleed-epost')?.value.trim();
+        const personnr = document.getElementById('inleed-personnr')?.value.trim();
+        const telefon = document.getElementById('inleed-telefon')?.value.trim();
+
+        if (!namn || !epost) {
+            this._showInleedStatus('Fyll i namn och e-postadress för signeraren.', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('inleed-send-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...'; }
+
+        this._showInleedStatus('Genererar PDF och skickar till Inleed...', 'info');
+
+        try {
+            const token = localStorage.getItem('clientflow_token') || localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/skicka-for-signering`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ signerare: { namn, epost, personnr, telefon } })
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this._showInleedStatus(`Fel: ${data.error || 'Okänt fel'}`, 'error');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Försök igen'; }
+                return;
+            }
+            this._showInleedStatus(`✅ ${data.message}`, 'success');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check"></i> Skickat!'; }
+            setTimeout(() => document.getElementById('inleed-modal')?.remove(), 2500);
+            this.showNotification(`Avtalet skickat till ${epost} för BankID-signering`, 'success');
+            // Ladda om uppdragsavtalet för att visa ny status
+            this.loadUppdragsavtal();
+        } catch (e) {
+            this._showInleedStatus(`Fel: ${e.message}`, 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Försök igen'; }
+        }
+    }
+
+    _showInleedStatus(msg, type) {
+        const el = document.getElementById('inleed-status-msg');
+        if (!el) return;
+        const colors = { success: '#dcfce7', error: '#fee2e2', info: '#eff6ff' };
+        const textColors = { success: '#166534', error: '#991b1b', info: '#1e40af' };
+        el.style.display = 'block';
+        el.style.background = colors[type] || colors.info;
+        el.style.color = textColors[type] || textColors.info;
+        el.textContent = msg;
     }
 
     async loadNotes() {
@@ -938,95 +2881,101 @@ class CustomerCardManager {
 
     displayNotes(notes) {
         const content = document.getElementById('notes-content');
-        
-        if (notes.length === 0) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-sticky-note"></i>
-                    <h3>Inga anteckningar hittades</h3>
-                    <p>Lägg till anteckningar för att spåra viktig information om kunden.</p>
-                </div>
-            `;
-            return;
-        }
+        this._notes = notes;
 
-        const notesHTML = notes.map(note => this.createNoteCard(note)).join('');
-        content.innerHTML = notesHTML;
+        const bodyHTML = notes.length === 0
+            ? `<div class="empty-state"><i class="fas fa-sticky-note"></i><p>Inga anteckningar ännu.</p></div>`
+            : notes.map(note => this.createNoteCard(note)).join('');
+
+        content.innerHTML = `
+            <div class="collapsible-card" id="anteckningar-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('anteckningar-card')">
+                    <div class="collapsible-title"><i class="fas fa-sticky-note"></i><span>Anteckningar</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    ${bodyHTML}
+                    <div style="margin-top:0.75rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.addNote()">
+                            <i class="fas fa-plus"></i> Lägg till anteckning
+                        </button>
+                    </div>
+                </div>
+            </div>`;
     }
 
     displayEmptyNotes() {
         const content = document.getElementById('notes-content');
         content.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-sticky-note"></i>
-                <h3>Inga anteckningar hittades</h3>
-                <p>Lägg till anteckningar för att spåra viktig information om kunden.</p>
-            </div>
-        `;
+            <div class="collapsible-card" id="anteckningar-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('anteckningar-card')">
+                    <div class="collapsible-title"><i class="fas fa-sticky-note"></i><span>Anteckningar</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    <div class="empty-state"><i class="fas fa-sticky-note"></i><p>Inga anteckningar ännu.</p></div>
+                    <div style="margin-top:0.75rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.addNote()">
+                            <i class="fas fa-plus"></i> Lägg till anteckning
+                        </button>
+                    </div>
+                </div>
+            </div>`;
     }
 
     createNoteCard(note) {
         const fields = note.fields || {};
-        
-        // Typ av anteckning är en array (multiple select)
+        const noteId = note.id;
+
         const typAvAnteckning = fields['Typ av anteckning'];
-        const typAvAnteckningText = Array.isArray(typAvAnteckning) && typAvAnteckning.length > 0 
-            ? typAvAnteckning.join(', ') 
+        const typAvAnteckningText = Array.isArray(typAvAnteckning) && typAvAnteckning.length > 0
+            ? typAvAnteckning.join(', ')
             : 'Anteckning';
-        
+
         const date = fields['Datum'] || '-';
-        const author = fields['Name'] || (fields['UserID'] ? `User ${fields['UserID']}` : 'Okänd');
-        const companyName = fields['Företagsnamn'] || '';
-        const person = fields['Person'] || '';
         const content = fields['Notes'] || '';
+        const person = fields['Person'] || '';
         const attachments = fields['Attachments'] || [];
-        
-        // Skapa ToDo-lista
         const todoList = this.createTodoList(fields);
-        
-        // Skapa attachments HTML
         const attachmentsHTML = this.createAttachmentsHTML(attachments);
-        
+
+        const hasDetails = content || person || todoList || attachments.length > 0;
+
         return `
-            <div class="note-card">
-                <div class="note-header">
-                    <div class="note-header-left">
-                        <h4>${typAvAnteckningText}</h4>
-                        <span class="note-date"><i class="fas fa-calendar"></i> ${date}</span>
+            <div class="note-card" id="note-${noteId}">
+                <div class="note-summary" onclick="customerCardManager.toggleNote('${noteId}')">
+                    <div class="note-summary-left">
+                        <i class="fas fa-chevron-right note-chevron"></i>
+                        <span class="note-type-label">${typAvAnteckningText}</span>
+                        <span class="note-date"><i class="fas fa-calendar-alt"></i> ${date}</span>
                     </div>
-                </div>
-                
-                <div class="note-meta">
-                    ${author ? `<div class="note-meta-item"><i class="fas fa-user"></i> <strong>Skapad av:</strong> ${author}</div>` : ''}
-                    ${companyName ? `<div class="note-meta-item"><i class="fas fa-building"></i> <strong>Företag:</strong> ${companyName}</div>` : ''}
-                    ${person ? `<div class="note-meta-item"><i class="fas fa-user-tie"></i> <strong>Person:</strong> ${person}</div>` : ''}
-                </div>
-                
-                ${content ? `
-                <div class="note-content">
-                    <h5><i class="fas fa-sticky-note"></i> Anteckning</h5>
-                    <p>${content.replace(/\n/g, '<br>')}</p>
-                </div>
-                ` : ''}
-                
-                ${attachmentsHTML}
-                
-                ${todoList}
-                
-                <div class="note-footer">
-                    <div class="note-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="customerCardManager.editNote('${note.id}')">
-                            <i class="fas fa-edit"></i>
-                            Redigera
+                    <div class="note-summary-actions" onclick="event.stopPropagation()">
+                        <button class="btn-icon-note" title="Redigera" onclick="customerCardManager.editNote('${noteId}')">
+                            <i class="fas fa-pencil-alt"></i>
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="customerCardManager.deleteNote('${note.id}')">
+                        <button class="btn-icon-note btn-icon-note--danger" title="Ta bort" onclick="customerCardManager.deleteNote('${noteId}')">
                             <i class="fas fa-trash"></i>
-                            Ta bort
                         </button>
                     </div>
                 </div>
+                ${hasDetails ? `
+                <div class="note-details" id="note-details-${noteId}" style="display:none;">
+                    ${person ? `<p class="note-person"><i class="fas fa-user"></i> ${person}</p>` : ''}
+                    ${content ? `<div class="note-content"><p>${content.replace(/\n/g, '<br>')}</p></div>` : ''}
+                    ${todoList}
+                    ${attachmentsHTML}
+                </div>` : ''}
             </div>
         `;
+    }
+
+    toggleNote(noteId) {
+        const details = document.getElementById(`note-details-${noteId}`);
+        const card = document.getElementById(`note-${noteId}`);
+        if (!details) return;
+        const isOpen = details.style.display !== 'none';
+        details.style.display = isOpen ? 'none' : 'block';
+        card.querySelector('.note-chevron')?.classList.toggle('note-chevron--open', !isOpen);
     }
 
     createTodoList(fields) {
@@ -1127,6 +3076,255 @@ class CustomerCardManager {
         `;
     }
 
+    async loadAvvikelser() {
+        const content = document.getElementById('avvikelser-content');
+
+        try {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                this.displayEmptyAvvikelser();
+                return;
+            }
+
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/avvikelser?customerId=${this.customerId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.displayAvvikelser(data.avvikelser || []);
+            } else {
+                this.displayEmptyAvvikelser();
+            }
+        } catch (error) {
+            console.log('ℹ️ Avvikelser endpoint not available, showing empty state');
+            this.displayEmptyAvvikelser();
+        }
+    }
+
+    displayAvvikelser(avvikelser) {
+        const content = document.getElementById('avvikelser-content');
+
+        const bodyHTML = avvikelser.length === 0
+            ? `<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Inga avvikelser registrerade.</p></div>`
+            : avvikelser.map(a => this.createAvvikelseCard(a)).join('');
+
+        content.innerHTML = `
+            <div class="collapsible-card" id="avvikelser-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('avvikelser-card')">
+                    <div class="collapsible-title"><i class="fas fa-exclamation-circle"></i><span>Avvikelser enligt PTL</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    ${bodyHTML}
+                    <div style="margin-top:0.75rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.addAvvikelse()">
+                            <i class="fas fa-plus"></i> Registrera avvikelse
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    displayEmptyAvvikelser() {
+        this.displayAvvikelser([]);
+    }
+
+    createAvvikelseCard(avvikelse) {
+        const fields = avvikelse.fields || {};
+        const statusColor = {
+            'Öppen': '#ef4444',
+            'Under utredning': '#f59e0b',
+            'Rapporterad till FM': '#8b5cf6',
+            'Avslutad': '#10b981'
+        }[fields['Status']] || '#ef4444';
+
+        // Fältnamn matchar Airtable: Date, Date 2, Förklararing, Typ av avvikelse
+        const beskrivning = fields['Förklararing'] || '';
+        const datum = fields['Date'] || '-';
+        const rapporteratDatum = fields['Date 2'] || '';
+
+        return `
+            <div class="note-card" style="border-left: 4px solid ${statusColor};">
+                <div class="note-header">
+                    <div class="note-header-left">
+                        <h4><i class="fas fa-exclamation-circle" style="color:${statusColor};"></i> ${fields['Typ av avvikelse'] || 'Avvikelse'}</h4>
+                        <span class="note-date"><i class="fas fa-calendar"></i> ${datum}</span>
+                    </div>
+                    <span style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}40; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600;">
+                        ${fields['Status'] || 'Öppen'}
+                    </span>
+                </div>
+                ${beskrivning ? `
+                <div class="note-content">
+                    <h5><i class="fas fa-align-left"></i> Beskrivning / Förklaring</h5>
+                    <p>${beskrivning.replace(/\n/g, '<br>')}</p>
+                </div>` : ''}
+                ${rapporteratDatum ? `
+                <div class="note-content">
+                    <h5><i class="fas fa-university"></i> Rapporterad till Finanspolisen</h5>
+                    <p>${rapporteratDatum}</p>
+                </div>` : ''}
+                <div class="note-footer">
+                    <span style="color:#94a3b8; font-size:0.85rem;">${fields['Företagsnamn'] || ''}</span>
+                    <div class="note-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="customerCardManager.editAvvikelse('${avvikelse.id}')">
+                            <i class="fas fa-edit"></i> Redigera
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    addAvvikelse() {
+        this.showAddAvvikelseModal();
+    }
+
+    showAddAvvikelseModal() {
+        const byraId = this.customerData?.fields?.['Byrå ID'] || '';
+        const orgnr = this.customerData?.fields?.['Orgnr'] || '';
+        const companyName = this.customerData?.fields?.['Namn'] || '';
+
+        const modalHTML = `
+            <div id="add-avvikelse-modal" class="modal-overlay">
+                <div class="modal-content modal-large">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-exclamation-circle"></i> Registrera avvikelse enligt PTL</h3>
+                        <button class="modal-close" onclick="customerCardManager.closeAvvikelseModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="add-avvikelse-form">
+                            <div class="form-group">
+                                <label for="avvikelse-typ">Typ av avvikelse *</label>
+                                <select id="avvikelse-typ" name="typ" required>
+                                    <option value="">Välj typ...</option>
+                                    <option value="Misstänkt penningtvätt">Misstänkt penningtvätt</option>
+                                    <option value="Misstänkt finansiering av terrorism">Misstänkt finansiering av terrorism</option>
+                                    <option value="Ovanlig transaktion">Ovanlig transaktion</option>
+                                    <option value="Bristande kundkännedom">Bristande kundkännedom</option>
+                                    <option value="Avvikande beteende">Avvikande beteende</option>
+                                    <option value="Annan avvikelse">Annan avvikelse</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="avvikelse-datum">Datum *</label>
+                                <input type="date" id="avvikelse-datum" name="datum" required value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="avvikelse-foretag">Företag</label>
+                                <input type="text" id="avvikelse-foretag" value="${companyName}" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="avvikelse-beskrivning">Beskrivning / Förklaring *</label>
+                                <textarea id="avvikelse-beskrivning" name="beskrivning" rows="6" placeholder="Beskriv avvikelsen i detalj, vad som observerats och varför det bedöms som avvikande..." required></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="avvikelse-status">Status *</label>
+                                <select id="avvikelse-status" name="status" required>
+                                    <option value="Öppen">Öppen</option>
+                                    <option value="Under utredning">Under utredning</option>
+                                    <option value="Rapporterad till FM">Rapporterad till Finanspolisen (FM)</option>
+                                    <option value="Avslutad">Avslutad</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="avvikelse-fm-datum">Datum för rapportering till FM (om aktuellt)</label>
+                                <input type="date" id="avvikelse-fm-datum" name="rapporteratDatum">
+                            </div>
+
+                            <input type="hidden" name="byraId" value="${byraId}">
+                            <input type="hidden" name="orgnr" value="${orgnr}">
+                            <input type="hidden" name="foretagsnamn" value="${companyName}">
+
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="customerCardManager.closeAvvikelseModal()">
+                                    Avbryt
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Spara avvikelse
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const existing = document.getElementById('add-avvikelse-modal');
+        if (existing) existing.remove();
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        document.getElementById('add-avvikelse-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveAvvikelse(e.target);
+        });
+    }
+
+    closeAvvikelseModal() {
+        const modal = document.getElementById('add-avvikelse-modal');
+        if (modal) modal.remove();
+    }
+
+    async saveAvvikelse(form) {
+        try {
+            const formData = new FormData(form);
+            const avvikelseData = {
+                typ: formData.get('typ'),
+                datum: formData.get('datum'),
+                beskrivning: formData.get('beskrivning'),
+                status: formData.get('status'),
+                rapporteratDatum: formData.get('rapporteratDatum') || '',
+                byraId: formData.get('byraId'),
+                orgnr: formData.get('orgnr'),
+                foretagsnamn: formData.get('foretagsnamn')
+            };
+
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                alert('Du måste vara inloggad för att spara avvikelser');
+                return;
+            }
+
+            const response = await fetch(`${baseUrl}/api/avvikelser`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(avvikelseData)
+            });
+
+            if (response.ok) {
+                this.closeAvvikelseModal();
+                this.loadAvvikelser();
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(`Kunde inte spara avvikelse: ${errorData.message || response.statusText}`);
+            }
+        } catch (error) {
+            console.error('❌ Error saving avvikelse:', error);
+            alert(`Fel vid sparande av avvikelse: ${error.message}`);
+        }
+    }
+
+    editAvvikelse(avvikelseId) {
+        alert('Redigering av avvikelse kommer snart!');
+    }
+
     async loadDocuments() {
         const content = document.getElementById('documents-content');
         
@@ -1161,31 +3359,30 @@ class CustomerCardManager {
 
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
-        
-        if (documents.length === 0) {
-            content.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-file-alt"></i>
-                    <h3>Inga dokument hittades</h3>
-                    <p>Ladda upp dokument för att spara viktiga filer relaterade till kunden.</p>
-                </div>
-            `;
-            return;
-        }
 
-        const documentsHTML = documents.map(doc => this.createDocumentCard(doc)).join('');
-        content.innerHTML = documentsHTML;
+        const bodyHTML = documents.length === 0
+            ? `<div class="empty-state"><i class="fas fa-file-alt"></i><p>Inga dokument uppladdade ännu.</p></div>`
+            : documents.map(doc => this.createDocumentCard(doc)).join('');
+
+        content.innerHTML = `
+            <div class="collapsible-card" id="dokumentation-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('dokumentation-card')">
+                    <div class="collapsible-title"><i class="fas fa-file-alt"></i><span>Dokumentation</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    ${bodyHTML}
+                    <div style="margin-top:0.75rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
+                            <i class="fas fa-upload"></i> Ladda upp dokument
+                        </button>
+                    </div>
+                </div>
+            </div>`;
     }
 
     displayEmptyDocuments() {
-        const content = document.getElementById('documents-content');
-        content.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-file-alt"></i>
-                <h3>Inga dokument hittades</h3>
-                <p>Ladda upp dokument för att spara viktiga filer relaterade till kunden.</p>
-            </div>
-        `;
+        this.displayDocuments([]);
     }
 
     createDocumentCard(doc) {
@@ -1274,6 +3471,8 @@ class CustomerCardManager {
                                 <label for="note-type">Typ av anteckning *</label>
                                 <select id="note-type" name="typAvAnteckning" required>
                                     <option value="">Välj typ...</option>
+                                    <option value="Nykundsmöte">Nykundsmöte</option>
+                                    <option value="Övrig anteckning">Övrig anteckning</option>
                                     <option value="Bokslutsgenomgång">Bokslutsgenomgång</option>
                                     <option value="Arbetsanteckningar">Arbetsanteckningar</option>
                                     <option value="Emailkonversation">Emailkonversation</option>
@@ -1297,12 +3496,12 @@ class CustomerCardManager {
                             
                             <div class="form-group">
                                 <label for="note-content">Anteckning *</label>
-                                <textarea id="note-content" name="notes" rows="6" placeholder="Skriv din anteckning här..." required></textarea>
+                                <textarea id="note-content" name="notes" rows="10" placeholder="Skriv din anteckning här..." required></textarea>
                             </div>
                             
                             <div class="form-group">
-                                <label>Att göra-lista</label>
-                                <div id="todo-items">
+                                <label><i class="fas fa-tasks"></i> Att göra-lista</label>
+                                <div id="todo-items" class="todo-items-container">
                                     ${this.createTodoInputFields(3)}
                                 </div>
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.addTodoItem()">
@@ -1348,15 +3547,24 @@ class CustomerCardManager {
         for (let i = 1; i <= count; i++) {
             html += `
                 <div class="todo-input-item" data-index="${i}">
+                    <div class="todo-item-header">
+                        <span class="todo-item-number">Uppgift ${i}</span>
+                        ${i > 1 ? `<button type="button" class="btn btn-sm btn-danger btn-remove-todo" onclick="customerCardManager.removeTodoItem(${i})" title="Ta bort uppgift">
+                            <i class="fas fa-times"></i>
+                        </button>` : ''}
+                    </div>
                     <div class="todo-input-row">
-                        <input type="text" name="todo${i}" placeholder="Uppgift ${i}" class="todo-input">
-                        <select name="status${i}" class="todo-status-select">
-                            <option value="">Välj status...</option>
-                            <option value="Att göra">Att göra</option>
-                            <option value="Pågående">Pågående</option>
-                            <option value="Klart">Klart</option>
-                        </select>
-                        ${i > 1 ? `<button type="button" class="btn btn-sm btn-danger" onclick="customerCardManager.removeTodoItem(${i})"><i class="fas fa-times"></i></button>` : ''}
+                        <div class="todo-text-field">
+                            <textarea name="todo${i}" placeholder="Beskriv vad som ska göras..." class="todo-input-textarea" rows="2"></textarea>
+                        </div>
+                        <div class="todo-status-field">
+                            <select name="status${i}" class="todo-status-select">
+                                <option value="">Välj status...</option>
+                                <option value="Att göra">Att göra</option>
+                                <option value="Pågående">Pågående</option>
+                                <option value="Klart">Klart</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1378,17 +3586,24 @@ class CustomerCardManager {
         newItem.className = 'todo-input-item';
         newItem.setAttribute('data-index', newIndex);
         newItem.innerHTML = `
-            <div class="todo-input-row">
-                <input type="text" name="todo${newIndex}" placeholder="Uppgift ${newIndex}" class="todo-input">
-                <select name="status${newIndex}" class="todo-status-select">
-                    <option value="">Välj status...</option>
-                    <option value="Att göra">Att göra</option>
-                    <option value="Pågående">Pågående</option>
-                    <option value="Klart">Klart</option>
-                </select>
-                <button type="button" class="btn btn-sm btn-danger" onclick="customerCardManager.removeTodoItem(${newIndex})">
+            <div class="todo-item-header">
+                <span class="todo-item-number">Uppgift ${newIndex}</span>
+                <button type="button" class="btn btn-sm btn-danger btn-remove-todo" onclick="customerCardManager.removeTodoItem(${newIndex})" title="Ta bort uppgift">
                     <i class="fas fa-times"></i>
                 </button>
+            </div>
+            <div class="todo-input-row">
+                <div class="todo-text-field">
+                    <textarea name="todo${newIndex}" placeholder="Beskriv vad som ska göras..." class="todo-input-textarea" rows="2"></textarea>
+                </div>
+                <div class="todo-status-field">
+                    <select name="status${newIndex}" class="todo-status-select">
+                        <option value="">Välj status...</option>
+                        <option value="Att göra">Att göra</option>
+                        <option value="Pågående">Pågående</option>
+                        <option value="Klart">Klart</option>
+                    </select>
+                </div>
             </div>
         `;
         todoItems.appendChild(newItem);
@@ -1426,12 +3641,14 @@ class CustomerCardManager {
                 const todo = formData.get(`todo${i}`);
                 const status = formData.get(`status${i}`);
                 if (todo && todo.trim() !== '') {
-                    noteData[`ToDo${i}`] = todo;
+                    noteData[`ToDo${i}`] = todo.trim();
                     if (status) {
                         noteData[`Status${i}`] = status;
                     }
                 }
             }
+            
+            console.log('📤 Sending note data:', noteData);
             
             // Get auth token
             const token = localStorage.getItem('authToken');
@@ -1457,22 +3674,341 @@ class CustomerCardManager {
                 this.loadNotes();
             } else {
                 const errorData = await response.json().catch(() => ({}));
-                alert(`Kunde inte spara anteckning: ${errorData.message || response.statusText}`);
+                console.error('❌ Error response:', errorData);
+                
+                // Visa mer detaljerad information om Airtable-felet
+                let errorMessage = errorData.message || errorData.error || response.statusText;
+                if (errorData.airtableError) {
+                    console.error('❌ Airtable Error Details:', errorData.airtableError);
+                    if (errorData.airtableError.error) {
+                        errorMessage += `\n\nAirtable: ${errorData.airtableError.error.message || JSON.stringify(errorData.airtableError.error)}`;
+                    }
+                }
+                
+                alert(`Kunde inte spara anteckning: ${errorMessage}`);
             }
         } catch (error) {
-            console.error('Error saving note:', error);
-            alert('Ett fel uppstod vid sparande av anteckning');
+            console.error('❌ Error saving note:', error);
+            
+            // Bättre felhantering med diagnostik
+            let errorMessage = error.message;
+            
+            // Kontrollera om det är ett nätverksfel
+            if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                errorMessage = `❌ Kan inte ansluta till servern!\n\nServern körs inte på ${baseUrl}\n\n🔧 Lösning:\n1. Öppna en NY terminal i VS Code\n2. Kör: npm run dev\n3. Vänta tills du ser: "🚀 API Proxy Service running on port 3001"\n4. Försök spara anteckningen igen`;
+                
+                console.error('🔍 API Config:', window.apiConfig);
+                console.error('🔍 Base URL:', baseUrl);
+                console.error('🔍 Full URL skulle vara:', `${baseUrl}/api/notes`);
+            }
+            
+            alert(errorMessage);
         }
     }
 
     editNote(noteId) {
-        alert('Redigering kommer snart!');
+        const note = (this._notes || []).find(n => n.id === noteId);
+        if (!note) return;
+        this.showEditNoteModal(note);
     }
 
-    deleteNote(noteId) {
-        if (confirm('Är du säker på att du vill ta bort denna anteckning?')) {
-            alert('Borttagning kommer snart!');
+    showEditNoteModal(note) {
+        const fields = note.fields || {};
+        const byraId = this.customerData?.fields?.['Byrå ID'] || '';
+        const orgnr = this.customerData?.fields?.['Orgnr'] || '';
+        const companyName = this.customerData?.fields?.['Namn'] || '';
+
+        const typOptions = ['Nykundsmöte', 'Övrig anteckning', 'Bokslutsgenomgång', 'Arbetsanteckningar', 'Emailkonversation'];
+        const currentTyp = Array.isArray(fields['Typ av anteckning']) ? fields['Typ av anteckning'][0] : '';
+        const typOptionsHTML = typOptions.map(t =>
+            `<option value="${t}" ${currentTyp === t ? 'selected' : ''}>${t}</option>`
+        ).join('');
+
+        // Bygg todo-fält förifyllda
+        let todoHTML = '';
+        for (let i = 1; i <= 8; i++) {
+            const todo = fields[`ToDo${i}`] || '';
+            const status = fields[`Status${i}`] || '';
+            if (i <= 3 || todo) {
+                todoHTML += `
+                <div class="todo-input-item" data-index="${i}">
+                    <div class="todo-item-header">
+                        <span class="todo-item-number">Uppgift ${i}</span>
+                        ${i > 1 ? `<button type="button" class="btn btn-sm btn-danger btn-remove-todo" onclick="customerCardManager.removeTodoItem(${i})" title="Ta bort uppgift"><i class="fas fa-times"></i></button>` : ''}
+                    </div>
+                    <div class="todo-input-row">
+                        <div class="todo-text-field">
+                            <textarea name="todo${i}" class="todo-input-textarea" rows="2">${todo}</textarea>
+                        </div>
+                        <div class="todo-status-field">
+                            <select name="status${i}" class="todo-status-select">
+                                <option value="">Välj status...</option>
+                                <option value="Att göra" ${status === 'Att göra' ? 'selected' : ''}>Att göra</option>
+                                <option value="Pågående" ${status === 'Pågående' ? 'selected' : ''}>Pågående</option>
+                                <option value="Klart" ${status === 'Klart' ? 'selected' : ''}>Klart</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>`;
+            }
         }
+
+        const modalHTML = `
+            <div id="add-note-modal" class="modal-overlay">
+                <div class="modal-content modal-large">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-edit"></i> Redigera anteckning</h3>
+                        <button class="modal-close" onclick="customerCardManager.closeAddNoteModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="add-note-form">
+                            <div class="form-group">
+                                <label>Typ av anteckning *</label>
+                                <select name="typAvAnteckning" required>
+                                    <option value="">Välj typ...</option>
+                                    ${typOptionsHTML}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Datum *</label>
+                                <input type="date" name="datum" required value="${fields['Datum'] || ''}">
+                            </div>
+                            <div class="form-group">
+                                <label>Företagsnamn</label>
+                                <input type="text" name="foretagsnamn" value="${fields['Företagsnamn'] || companyName}" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>Person</label>
+                                <input type="text" name="person" value="${fields['Person'] || ''}" placeholder="Namn på person">
+                            </div>
+                            <div class="form-group">
+                                <label>Anteckning *</label>
+                                <textarea name="notes" rows="10" required>${fields['Notes'] || ''}</textarea>
+                            </div>
+                            <div class="form-group">
+                                <label><i class="fas fa-tasks"></i> Att göra-lista</label>
+                                <div id="todo-items" class="todo-items-container">${todoHTML}</div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.addTodoItem()">
+                                    <i class="fas fa-plus"></i> Lägg till fler uppgifter
+                                </button>
+                            </div>
+                            <input type="hidden" name="byraId" value="${byraId}">
+                            <input type="hidden" name="orgnr" value="${orgnr}">
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="customerCardManager.closeAddNoteModal()">Avbryt</button>
+                                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Spara ändringar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>`;
+
+        const existing = document.getElementById('add-note-modal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        document.getElementById('add-note-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.updateNote(note.id, e.target);
+        });
+    }
+
+    async updateNote(noteId, form) {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const formData = new FormData(form);
+
+        const fields = {
+            typAvAnteckning: [formData.get('typAvAnteckning')],
+            datum: formData.get('datum'),
+            foretagsnamn: formData.get('foretagsnamn') || '',
+            person: formData.get('person') || '',
+            notes: formData.get('notes'),
+            byraId: formData.get('byraId'),
+            orgnr: formData.get('orgnr')
+        };
+        for (let i = 1; i <= 8; i++) {
+            const todo = formData.get(`todo${i}`);
+            const status = formData.get(`status${i}`);
+            fields[`ToDo${i}`] = todo?.trim() || '';
+            fields[`Status${i}`] = status || '';
+        }
+
+        try {
+            const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            this.closeAddNoteModal();
+            this.showNotification('Anteckning uppdaterad!', 'success');
+            this.loadNotes();
+        } catch (error) {
+            console.error('❌ Fel vid uppdatering av anteckning:', error);
+            this.showNotification(`Kunde inte uppdatera: ${error.message}`, 'error');
+        }
+    }
+
+    async deleteNote(noteId) {
+        if (!confirm('Är du säker på att du vill ta bort denna anteckning?')) return;
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        try {
+            const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            this.showNotification('Anteckning borttagen.', 'success');
+            this.loadNotes();
+        } catch (error) {
+            console.error('❌ Fel vid borttagning:', error);
+            this.showNotification(`Kunde inte ta bort: ${error.message}`, 'error');
+        }
+    }
+
+    async pepScreening(idx) {
+        const p = (this._kontaktPersoner || [])[idx];
+        if (!p || !p.namn) {
+            this.showNotification('Personen saknar namn — kan inte screena.', 'error');
+            return;
+        }
+
+        const btn = document.getElementById(`pep-btn-${idx}`);
+        const origHtml = btn?.innerHTML;
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; btn.disabled = true; }
+
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+            // Konvertera personnr (YYYYMMDD-XXXX) till dob (DD/MM/YYYY) om möjligt
+            let dob = null;
+            if (p.personnr) {
+                const digits = p.personnr.replace(/\D/g, '');
+                if (digits.length >= 8) {
+                    const year = digits.substring(0, 4);
+                    const month = digits.substring(4, 6);
+                    const day = digits.substring(6, 8);
+                    dob = `${day}/${month}/${year}`;
+                }
+            }
+
+            const response = await fetch(`${baseUrl}/api/pep-screening/${this.customerId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ namn: p.namn, personnr: p.personnr, dob })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+            // Visa resultat i modal
+            this._showPepResultModal(p.namn, data);
+
+            // Ladda ner PDF automatiskt
+            if (data.pdf_base64) {
+                this._downloadBase64Pdf(data.pdf_base64, data.filnamn);
+            }
+
+        } catch (error) {
+            console.error('❌ PEP-screening fel:', error);
+            this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
+        } finally {
+            if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
+        }
+    }
+
+    _showPepResultModal(namn, data) {
+        const hits = data.total_hits || 0;
+        const records = data.found_records || [];
+
+        const statusColor = hits === 0 ? '#16a34a' : '#dc2626';
+        const statusIcon  = hits === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
+        const statusText  = hits === 0 ? 'Inga träffar — personen finns ej på PEP- eller sanktionslistor' : `${hits} träff(ar) hittades`;
+
+        const recordsHtml = records.slice(0, 5).map(r => `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                    <span style="font-weight:600;">${this._esc(r.name || '')}</span>
+                    <span style="font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:20px;font-weight:700;
+                        background:${r.source_type === 'SANCTION' ? '#fee2e2' : r.source_type === 'PEP' ? '#fef3c7' : '#f1f5f9'};
+                        color:${r.source_type === 'SANCTION' ? '#991b1b' : r.source_type === 'PEP' ? '#92400e' : '#475569'};">
+                        ${r.source_type || ''}
+                    </span>
+                </div>
+                ${r.positions?.length ? `<div style="font-size:0.78rem;color:#64748b;">${r.positions[0]}</div>` : ''}
+                ${r.description?.length ? `<div style="font-size:0.78rem;color:#64748b;">${r.description[0]}</div>` : ''}
+            </div>`).join('');
+
+        const modalHtml = `
+            <div id="pep-result-modal" style="
+                position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;
+                display:flex;align-items:center;justify-content:center;padding:1rem;">
+                <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;
+                    max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="padding:1.5rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+                        <div>
+                            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">PEP & Sanktionsscreening</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-top:0.2rem;">${this._esc(namn)}</div>
+                        </div>
+                        <button onclick="document.getElementById('pep-result-modal').remove()"
+                            style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.2rem;padding:0.25rem;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div style="padding:1.5rem;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;border-radius:8px;margin-bottom:1.25rem;
+                            background:${hits === 0 ? '#f0fdf4' : '#fef2f2'};border:1px solid ${hits === 0 ? '#bbf7d0' : '#fecaca'};">
+                            <i class="fas ${statusIcon}" style="color:${statusColor};font-size:1.3rem;"></i>
+                            <span style="font-weight:600;color:${statusColor};">${statusText}</span>
+                        </div>
+                        ${hits > 0 ? `<div style="margin-bottom:1rem;">${recordsHtml}</div>` : ''}
+                        <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:1rem;">
+                            Sökning utförd: ${new Date().toLocaleString('sv-SE')}
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                            ${data.pdf_base64 ? `
+                            <button onclick="customerCardManager._downloadBase64Pdf('${data.pdf_base64}', '${data.filnamn}')"
+                                style="background:#007fa3;color:#fff;border:none;border-radius:6px;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                                <i class="fas fa-download"></i> Ladda ner PDF-rapport
+                            </button>` : ''}
+                            <button onclick="document.getElementById('pep-result-modal').remove()"
+                                style="background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                                Stäng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        const existing = document.getElementById('pep-result-modal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    _downloadBase64Pdf(base64, filnamn) {
+        const byteChars = atob(base64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filnamn || 'pep-screening.pdf';
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     uploadDocument() {

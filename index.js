@@ -6,13 +6,12 @@ const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-let chromium = null;
 let puppeteer = null;
 try {
-  chromium = require('@sparticuz/chromium');
-  puppeteer = require('puppeteer-core');
+  puppeteer = require('puppeteer');
+  console.log('✅ Puppeteer laddat.');
 } catch (err) {
-  console.log('ℹ️ Puppeteer/Chromium inte installerat. Förenklad PDF-rendering kommer användas.');
+  console.log('ℹ️ Puppeteer inte installerat. PDF-generering ej tillgänglig.');
 }
 const FormData = require('form-data');
 const fs = require('fs');
@@ -43,7 +42,7 @@ app.set('trust proxy', 1);
 app.use((req, res, next) => {
     // Sätt CORS headers för alla requests
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
@@ -135,18 +134,34 @@ async function getAirtableUser(email) {
       const userRecord = response.data.records[0];
       const fields = userRecord.fields;
       
+      // Hitta byrå-fältets värde robust (hanterar encoding-varianter av å/ä/ö)
+      const findField = (keys) => {
+        for (const k of keys) {
+          if (fields[k] !== undefined && fields[k] !== null && fields[k] !== '') return fields[k];
+        }
+        // Fallback: sök på nyckelns prefix (case-insensitive, för encoding-problem)
+        for (const k of keys) {
+          const prefix = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const match = Object.keys(fields).find(f => f.toLowerCase().replace(/[^a-z0-9]/g, '') === prefix);
+          if (match && fields[match]) return fields[match];
+        }
+        return '';
+      };
+
       const user = {
         id: userRecord.id,
         email: fields['Email'] || '',
         password: fields['password'] || '',
-        name: fields['fldU9goXGJs7wk7OZ'] || fields['Full Name'] || '',
+        name: findField(['Full Name', 'fldU9goXGJs7wk7OZ']),
         role: fields['Role'] || 'user',
-        byra: fields['fldcZZOiC9y5BKFWf'] || fields['Byrå'] || '',
-        orgnr: fields['Orgnr Byrå'] || '',
-        byraId: fields['Byrå ID i text 2'] || '',
-        byraIds: fields['Byråer'] || [], // Lookup field with byrå IDs
+        byra: findField(['Byrå', 'Byra', 'fldcZZOiC9y5BKFWf']),
+        orgnr: findField(['Orgnr Byrå', 'Orgnr Byra', 'OrgnrByra']),
+        byraId: findField(['Byrå ID i text 2', 'Byra ID i text 2']),
+        byraIds: fields['Byråer'] || fields['Byraer'] || [],
         logo: fields['Logga'] || ''
       };
+      
+      console.log(`🔍 User fields keys: ${Object.keys(fields).join(', ')}`);
       
       console.log(`🔍 User found: ${user.name} (${user.role}) from ${user.byra}`);
       return user;
@@ -811,6 +826,7 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     console.error('Error in Bolagsverket organisationer API:', error.message);
     
     if (error.response) {
+      console.error('❌ Bolagsverket svar:', JSON.stringify(error.response.data, null, 2));
       // Hantera specifika fel från Bolagsverket
       if (error.response.status === 404) {
         res.status(404).json({
@@ -818,6 +834,22 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
           message: 'Det angivna organisationsnumret finns inte i Bolagsverkets register',
           organisationsnummer: cleanOrgNumber,
           status: error.response.status,
+          duration: duration
+        });
+      } else if (error.response.status === 403) {
+        res.status(403).json({
+          error: 'Åtkomst nekad av Bolagsverket',
+          message: 'Din Bolagsverket-prenumeration saknar behörighet till denna tjänst. Kontakta Bolagsverket för att kontrollera vilka API-scopes som ingår i abonnemanget.',
+          bolagsverketCode: error.response.data?.code,
+          status: 403,
+          duration: duration
+        });
+      } else if (error.response.status === 400) {
+        res.status(400).json({
+          error: 'Ogiltigt organisationsnummer',
+          message: 'Bolagsverket accepterar inte det angivna numret. Kontrollera att det är ett giltigt organisationsnummer (ej personnummer för privatpersoner).',
+          bolagsverketMessage: error.response.data?.message,
+          status: 400,
           duration: duration
         });
       } else {
@@ -1331,12 +1363,9 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 let pdfBytes;
                 try {
                   console.log('🖨️ Renderar fullständig PDF med Puppeteer...');
-                  const executablePath = await chromium.executablePath();
                   const browser = await puppeteer.launch({
-                    args: chromium.args,
-                    defaultViewport: chromium.defaultViewport,
-                    executablePath,
-                    headless: chromium.headless
+                    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+                    headless: true
                   });
                   const page = await browser.newPage();
                   await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
@@ -2771,6 +2800,198 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/risker-kunden?byraId= - Hämta byråns risker ur "Risker kopplade till kunden"
+app.get('/api/risker-kunden', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const TABLE_ID = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
+
+    const byraId = req.query.byraId;
+    if (!byraId) return res.status(400).json({ error: 'byraId saknas' });
+
+    const filter = encodeURIComponent(`{Byrå ID}="${byraId}"`);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${TABLE_ID}?filterByFormula=${filter}`;
+
+    const airtableRes = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    });
+
+    res.json({ records: airtableRes.data.records || [] });
+  } catch (error) {
+    console.error('❌ Fel vid hämtning av risker:', error.response?.data || error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/kunddata/:id/tjanster - Hämta kundens länkade tjänster (expanderade med Task Name)
+app.get('/api/kunddata/:id/tjanster', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+
+    // Hämta kundens länkade tjänst-ID:n
+    const kundRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const linkedIds = kundRes.data.fields?.['Kundens utvalda tjänster'] || [];
+
+    if (linkedIds.length === 0) return res.json({ tjanster: [], linkedIds: [] });
+
+    // Expandera varje länkat tjänst-record för att få Task Name
+    const tjansterRes = await Promise.all(
+      linkedIds.map(id =>
+        axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        ).then(r => ({ id: r.data.id, namn: r.data.fields?.['Task Name'] || '' }))
+         .catch(() => null)
+      )
+    );
+
+    const tjanster = tjansterRes.filter(Boolean);
+    res.json({ tjanster, linkedIds });
+  } catch (err) {
+    console.error('❌ kunddata tjanster:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/kunddata/:id/risker - Hämta kundens länkade riskposter (expanderade)
+app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
+
+    // Hämta kundens länkade risk-ID:n (det nya länkfältet)
+    const kundRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
+      { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
+    );
+    const linkedIds = kundRes.data.fields['risker kopplat till tjänster'] || [];
+
+    if (linkedIds.length === 0) return res.json({ records: [], linkedIds: [] });
+
+    // Hämta de länkade posterna
+    const formula = encodeURIComponent('OR(' + linkedIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
+    const riskRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_TABLE}?filterByFormula=${formula}`,
+      { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
+    );
+
+    res.json({ records: riskRes.data.records || [], linkedIds });
+  } catch (error) {
+    console.error('❌ Fel vid hämtning av kundens risker:', error.response?.data || error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/kunddata/:id - Uppdatera specifika fält på en kund i KUNDDATA
+app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const { id } = req.params;
+    const { fields } = req.body;
+
+    if (!fields) {
+      return res.status(400).json({ error: 'Fält saknas i request body' });
+    }
+
+    // Ta bort tomma/undefined-värden — men behåll arrays (även tomma) för länkfält
+    const cleanedFields = Object.fromEntries(
+      Object.entries(fields).filter(([, v]) => {
+        if (Array.isArray(v)) return true; // Behåll alltid arrays (länkfält)
+        return v !== undefined && v !== null && v !== '';
+      })
+    );
+
+    console.log(`📝 Uppdaterar kund ${id} i KUNDDATA:`, JSON.stringify(cleanedFields));
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
+    const airtableRes = await axios.patch(url,
+      { fields: cleanedFields },
+      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    console.log('✅ Kund uppdaterad:', airtableRes.data.id);
+    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+
+  } catch (error) {
+    console.error('❌ Fel vid uppdatering av kund:', JSON.stringify(error.response?.data) || error.message);
+    const status = error.response?.status || 500;
+    const airtableErr = error.response?.data?.error;
+    const message = airtableErr?.message || error.message || 'Okänt fel';
+    res.status(status).json({ error: message, details: airtableErr });
+  }
+});
+
+// POST /api/kunddata/create - Skapa ny kund i KUNDDATA
+app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const { fields } = req.body;
+    if (!fields) {
+      return res.status(400).json({ error: 'Fält saknas i request body' });
+    }
+
+    // Dubblettcheck: samma Orgnr + samma Byrå ID för denna byrå
+    const orgnr  = fields['Orgnr']   || '';
+    const byraId = fields['Byrå ID'] || '';
+    if (orgnr && byraId) {
+      const checkFormula = `AND({Orgnr}="${orgnr}",{Byrå ID}="${byraId}")`;
+      const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
+      const checkRes = await axios.get(checkUrl, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+      });
+      if (checkRes.data.records?.length > 0) {
+        const existing = checkRes.data.records[0];
+        console.log(`⚠️ Dublett: ${orgnr} finns redan för byrå ${byraId} (id: ${existing.id})`);
+        return res.status(409).json({
+          error: 'duplicate',
+          message: `Företaget är redan upplagt som kund hos er byrå.`,
+          existingId: existing.id,
+          existingNamn: existing.fields?.Namn || ''
+        });
+      }
+    }
+
+    console.log('📤 Skapar ny kund i KUNDDATA:', fields);
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    const airtableRes = await axios.post(url,
+      { fields },
+      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    console.log('✅ Kund skapad i KUNDDATA:', airtableRes.data.id);
+    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+
+  } catch (error) {
+    console.error('❌ Fel vid skapande av kund i KUNDDATA:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    res.status(status).json({ error: message });
+  }
+});
+
 // GET /api/kunddata - Hämta KUNDDATA med rollbaserad filtrering
 app.get('/api/kunddata', authenticateToken, async (req, res) => {
   const startTime = Date.now();
@@ -2813,8 +3034,9 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
       case 'Ledare':
         // Se alla poster med samma Byrå ID
         if (userData.byraId) {
-          filterFormula = `{Byrå ID}="${userData.byraId}"`;
-          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId}`);
+          const _byraIdNum1 = parseInt(userData.byraId);
+          filterFormula = isNaN(_byraIdNum1) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${_byraIdNum1}`;
+          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId} (formel: ${filterFormula})`);
         } else {
           console.log('⚠️ Ledare utan Byrå ID: Visar inga poster');
           return res.json({
@@ -2968,8 +3190,9 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
       case 'Ledare':
         // Se alla poster med samma Byrå ID
         if (userData.byraId) {
-          filterFormula = `{Byrå ID}="${userData.byraId}"`;
-          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId}`);
+          const _byraIdNum2 = parseInt(userData.byraId);
+          filterFormula = isNaN(_byraIdNum2) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${_byraIdNum2}`;
+          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId} (formel: ${filterFormula})`);
         } else {
           console.log('⚠️ Ledare utan Byrå ID: Visar inga poster');
           return res.json({
@@ -3862,6 +4085,12 @@ app.get('/api/notes', authenticateToken, async (req, res) => {
 app.post('/api/notes', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
+  console.log('📥 POST /api/notes - Request received');
+  console.log('📥 Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('📥 Body:', JSON.stringify(req.body, null, 2));
+  
+  let cleanedFields = {};
+  
   try {
     const noteData = req.body;
     
@@ -3888,13 +4117,26 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
     }
 
     // Bygg Airtable-fält
+    // "Typ av anteckning" är ett multiple select-fält i Airtable, så det måste vara en array
+    let typAvAnteckning = noteData.typAvAnteckning;
+    if (!Array.isArray(typAvAnteckning)) {
+      // Om det inte är en array, gör om till array
+      typAvAnteckning = typAvAnteckning ? [typAvAnteckning] : [];
+    }
+    
     const airtableFields = {
-      'Typ av anteckning': noteData.typAvAnteckning || [],
+      'Typ av anteckning': typAvAnteckning,
       'Datum': noteData.datum || new Date().toISOString().split('T')[0],
-      'Notes': noteData.notes || '',
-      'Byrå ID': noteData.byraId || '',
-      'Orgnr': noteData.orgnr || ''
+      'Notes': noteData.notes || ''
     };
+    
+    // Lägg till Byrå ID och Orgnr endast om de finns
+    if (noteData.byraId && noteData.byraId.trim() !== '') {
+      airtableFields['Byrå ID'] = noteData.byraId.trim();
+    }
+    if (noteData.orgnr && noteData.orgnr.trim() !== '') {
+      airtableFields['Orgnr'] = noteData.orgnr.trim();
+    }
     
     // Lägg till valfria fält
     if (noteData.foretagsnamn) {
@@ -3905,33 +4147,50 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
       airtableFields['Person'] = noteData.person;
     }
     
-    // Lägg till UserID (användarens ID)
+    // Lägg till UserID — bara om det är numeriskt (Airtable-fältet är number)
     if (userData.id) {
-      airtableFields['UserID'] = parseInt(userData.id) || userData.id;
-    }
-    
-    // Lägg till Name (användarens namn)
-    if (userData.name) {
-      airtableFields['Name'] = userData.name;
-    }
-    
-    // Lägg till ToDo-uppgifter
-    for (let i = 1; i <= 8; i++) {
-      if (noteData[`ToDo${i}`]) {
-        airtableFields[`ToDo${i}`] = noteData[`ToDo${i}`];
+      const userId = parseInt(userData.id);
+      if (!isNaN(userId)) {
+        airtableFields['UserID'] = userId;
       }
-      if (noteData[`Status${i}`]) {
-        airtableFields[`Status${i}`] = noteData[`Status${i}`];
+      // userData.id är ett Airtable record ID ("recXXX") — hoppa över det
+    }
+    
+    // Lägg till Name (användarens namn) - endast om det finns
+    if (userData.name && userData.name.trim() !== '') {
+      airtableFields['Name'] = userData.name.trim();
+    }
+    
+    // Lägg till ToDo-uppgifter - endast om de har innehåll
+    for (let i = 1; i <= 8; i++) {
+      if (noteData[`ToDo${i}`] && noteData[`ToDo${i}`].trim() !== '') {
+        airtableFields[`ToDo${i}`] = noteData[`ToDo${i}`].trim();
+      }
+      if (noteData[`Status${i}`] && noteData[`Status${i}`].trim() !== '') {
+        airtableFields[`Status${i}`] = noteData[`Status${i}`].trim();
+      }
+    }
+    
+    // Ta bort tomma fält innan vi skickar till Airtable (tomma strängar kan orsaka 422-fel)
+    cleanedFields = {};
+    for (const [key, value] of Object.entries(airtableFields)) {
+      // Behåll fältet om det inte är tomt
+      if (value !== null && value !== undefined && value !== '') {
+        if (Array.isArray(value) && value.length > 0) {
+          cleanedFields[key] = value;
+        } else if (!Array.isArray(value)) {
+          cleanedFields[key] = value;
+        }
       }
     }
     
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}`;
     
     console.log('🌐 Skapar anteckning i Airtable:', url);
-    console.log('📋 Fält:', airtableFields);
+    console.log('📋 Fält som skickas till Airtable:', JSON.stringify(cleanedFields, null, 2));
     
     const response = await axios.post(url, {
-      fields: airtableFields
+      fields: cleanedFields
     }, {
       headers: {
         'Authorization': `Bearer ${airtableAccessToken}`,
@@ -3954,26 +4213,120 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Error creating note:', error.message);
+    console.error('❌ Error creating note:', error.message);
+    console.error('❌ Error stack:', error.stack);
     
     if (error.response) {
-      console.error('Airtable API Error:', {
+      console.error('❌ Airtable API Error:', {
         status: error.response.status,
+        statusText: error.response.statusText,
         data: error.response.data
+      });
+      
+      // Om det är ett 422-fel, visa mer detaljerad information
+      if (error.response.status === 422) {
+        console.error('❌ Validation Error Details:', JSON.stringify(error.response.data, null, 2));
+        console.error('❌ Fält som skickades:', JSON.stringify(cleanedFields, null, 2));
+      }
+      
+      // Returnera fel-svar istället för att krascha
+      return res.status(error.response.status || 500).json({
+        success: false,
+        message: 'Fel vid skapande av anteckning',
+        error: error.message,
+        airtableError: error.response.data || null,
+        airtableStatus: error.response.status || null,
+        sentFields: error.response.status === 422 ? cleanedFields : null,
+        timestamp: new Date().toISOString(),
+        duration: duration
       });
     }
     
+    // Om det inte är ett Airtable-fel, returnera generiskt fel
     res.status(500).json({
       success: false,
       message: 'Fel vid skapande av anteckning',
       error: error.message,
+      airtableError: null,
+      airtableStatus: null,
+      sentFields: null,
       timestamp: new Date().toISOString(),
       duration: duration
     });
   }
 });
 
-app.listen(PORT, () => {
+// PATCH /api/notes/:id – Uppdatera anteckning
+app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fields: noteData } = req.body;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const NOTES_TABLE = 'tblXswCwopx7l02Mu';
+
+    const airtableFields = {};
+
+    if (noteData.typAvAnteckning) {
+      airtableFields['Typ av anteckning'] = Array.isArray(noteData.typAvAnteckning)
+        ? noteData.typAvAnteckning : [noteData.typAvAnteckning];
+    }
+    if (noteData.datum) airtableFields['Datum'] = noteData.datum;
+    if (noteData.notes !== undefined) airtableFields['Notes'] = noteData.notes;
+    if (noteData.person !== undefined) airtableFields['Person'] = noteData.person;
+    if (noteData.foretagsnamn) airtableFields['Företagsnamn'] = noteData.foretagsnamn;
+
+    for (let i = 1; i <= 8; i++) {
+      if (noteData[`ToDo${i}`] !== undefined) airtableFields[`ToDo${i}`] = noteData[`ToDo${i}`];
+      if (noteData[`Status${i}`] !== undefined) airtableFields[`Status${i}`] = noteData[`Status${i}`];
+    }
+
+    // Ta bort tomma strängar
+    Object.keys(airtableFields).forEach(k => {
+      if (airtableFields[k] === '') delete airtableFields[k];
+    });
+
+    const response = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`,
+      { fields: airtableFields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true, note: response.data });
+  } catch (error) {
+    console.error('❌ Error updating note:', error.message);
+    if (error.response) {
+      console.error('❌ Airtable svar:', JSON.stringify(error.response.data, null, 2));
+      return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/notes/:id – Ta bort anteckning
+app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const NOTES_TABLE = 'tblXswCwopx7l02Mu';
+
+    await axios.delete(
+      `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Error deleting note:', error.message);
+    if (error.response) {
+      return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const server = app.listen(PORT, () => {
   console.log(`🚀 API Proxy Service running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🧪 Test endpoint: http://localhost:${PORT}/test`);
@@ -4004,6 +4357,22 @@ app.listen(PORT, () => {
   console.log(`   • Create: POST http://localhost:${PORT}/api/risk-factors`);
   console.log(`   • Update: PUT http://localhost:${PORT}/api/risk-factors/:id`);
   console.log(`   • Delete: DELETE http://localhost:${PORT}/api/risk-factors/:id`);
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} är redan i bruk!`);
+    console.error(`\n🔧 Lösning:`);
+    console.error(`   1. Hitta processen som använder port ${PORT}:`);
+    console.error(`      netstat -ano | findstr :${PORT}`);
+    console.error(`   2. Stäng processen:`);
+    console.error(`      taskkill /F /PID <PID-nummer>`);
+    console.error(`   3. Eller använd en annan port genom att sätta miljövariabeln:`);
+    console.error(`      set PORT=3002`);
+    console.error(`      node index.js`);
+    process.exit(1);
+  } else {
+    console.error('❌ Server error:', err);
+    process.exit(1);
+  }
 });
 
 // Test endpoint för att lista alla tillgängliga tabeller i Airtable
@@ -4067,4 +4436,953 @@ app.get('/api/airtable/list-tables', async (req, res) => {
   }
 });
 
+const AVVIKELSER_TABLE = 'tblywoL6wHuErTWBK';
+
+// GET /api/avvikelser - Hämta avvikelser för en kund
+app.get('/api/avvikelser', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+
+    // Hämta orgnr och byråID från kunddata om customerId är angivet
+    let filterFormula = '';
+    if (customerId) {
+      const kundResponse = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe/${customerId}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const orgnr = kundResponse.data?.fields?.Orgnr;
+      const byraId = kundResponse.data?.fields?.['Byrå ID'];
+      if (orgnr && byraId) {
+        filterFormula = `AND({ByråID}=${byraId},{orgnr}="${orgnr}")`;
+      }
+    }
+
+    const params = {
+      sort: [{ field: 'Date', direction: 'desc' }]
+    };
+    if (filterFormula) params.filterByFormula = filterFormula;
+
+    const response = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${AVVIKELSER_TABLE}`,
+      {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` },
+        params
+      }
+    );
+
+    res.json({ success: true, avvikelser: response.data.records || [] });
+  } catch (error) {
+    console.error('❌ Error fetching avvikelser:', error.message);
+    res.status(500).json({ success: false, message: 'Fel vid hämtning av avvikelser', error: error.message });
+  }
+});
+
+// POST /api/avvikelser - Skapa ny avvikelse
+app.post('/api/avvikelser', authenticateToken, async (req, res) => {
+  try {
+    const avvikelseData = req.body;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+    }
+
+    const fields = {};
+
+    if (avvikelseData.typ) fields['Typ av avvikelse'] = avvikelseData.typ;
+    if (avvikelseData.datum) fields['Date'] = avvikelseData.datum;
+    if (avvikelseData.rapporteratDatum) fields['Date 2'] = avvikelseData.rapporteratDatum;
+    if (avvikelseData.beskrivning) fields['Förklararing'] = avvikelseData.beskrivning;
+    if (avvikelseData.status) fields['Status'] = avvikelseData.status;
+    if (avvikelseData.orgnr) fields['orgnr'] = avvikelseData.orgnr;
+    if (avvikelseData.foretagsnamn) fields['Företagsnamn'] = avvikelseData.foretagsnamn;
+
+    // ByråID och UserID är number-fält
+    if (avvikelseData.byraId) {
+      const byraIdNum = parseInt(avvikelseData.byraId);
+      if (!isNaN(byraIdNum)) fields['ByråID'] = byraIdNum;
+    }
+    if (userData.id) {
+      // Spara namn istället för numeriskt ID om UserID är number
+      fields['Företagsnamn'] = fields['Företagsnamn'] || '';
+    }
+
+    console.log('📋 Sparar avvikelse:', JSON.stringify(fields, null, 2));
+
+    const response = await axios.post(
+      `https://api.airtable.com/v0/${airtableBaseId}/${AVVIKELSER_TABLE}`,
+      { fields },
+      {
+        headers: {
+          Authorization: `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('✅ Avvikelse sparad:', response.data.id);
+    res.json({ success: true, record: response.data, message: 'Avvikelse sparad' });
+  } catch (error) {
+    console.error('❌ Error saving avvikelse:', error.message);
+    if (error.response) {
+      console.error('❌ Airtable error:', JSON.stringify(error.response.data, null, 2));
+      return res.status(error.response.status || 500).json({
+        success: false,
+        message: 'Fel vid sparande av avvikelse',
+        error: error.message,
+        airtableError: error.response.data
+      });
+    }
+    res.status(500).json({ success: false, message: 'Fel vid sparande av avvikelse', error: error.message });
+  }
+});
+
+// ─── UPPDRAGSAVTAL ───────────────────────────────────────────────────────────
+const UPPDRAGSAVTAL_TABLE = 'tblpKIMpde6sFFqDH'; // Uppdragsavtal tabell-ID
+const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'; // Global för alla uppdragsavtal-endpoints
+
+// GET /api/uppdragsavtal?customerId=recXXX
+app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const params = { maxRecords: 1 };
+    if (customerId) params.filterByFormula = `{KundID} = '${customerId}'`;
+
+    const response = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, params }
+    );
+    const records = response.data.records || [];
+    res.json({ avtal: records[0] || null });
+  } catch (error) {
+    console.error('❌ Error fetching uppdragsavtal:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Normalisera fältnamn för uppdragsavtal: svenska → ASCII (robusthet mot cache)
+function normalizeAvtalFields(rawFields) {
+  const MAP = {
+    'Ups\u00e4gningstid':                                    'Uppsagningstid',
+    'Valda tj\u00e4nster':                                   'Valda tjanster',
+    'Ers\u00e4ttningsmodell':                                'Ersattningsmodell',
+    '\u00d6vrigt uppdrag':                                   'Ovrigt uppdrag',
+    'Kunden godk\u00e4nner allm\u00e4nna villkor':           'Kunden godkanner allm villkor',
+    'Kunden godk\u00e4nner personuppgiftsbitr\u00e4desavtal':'Kunden godkanner puba',
+    'Avtalet g\u00e4ller ifr\u00e5n':                       'Avtalet galler fran',
+    'Signerat av byr\u00e5':                                 'Signerat av byra',
+    'Byr\u00e5 ID':                                          'Byra ID',
+    'Status':                                                'Avtalsstatus',
+  };
+  return Object.fromEntries(
+    Object.entries(rawFields).map(([k, v]) => [MAP[k] || k, v])
+  );
+}
+
+// POST /api/uppdragsavtal – Skapa nytt avtal
+app.post('/api/uppdragsavtal', authenticateToken, async (req, res) => {
+  try {
+    const { fields: rawFields } = req.body;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    // Rensa tomma värden — behåll arrays även om tomma (linked fields)
+    const fields = Object.fromEntries(
+      Object.entries(normalizeAvtalFields(rawFields)).filter(([, v]) => {
+        if (Array.isArray(v)) return true;
+        return v !== null && v !== undefined && v !== '';
+      })
+    );
+
+    console.log('📤 POST /api/uppdragsavtal – skickar fält:', JSON.stringify(fields, null, 2));
+
+    const response = await axios.post(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}`,
+      { fields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ avtal: response.data });
+  } catch (error) {
+    console.error('❌ Error creating uppdragsavtal:', error.message);
+    if (error.response) {
+      console.error('❌ Airtable svar:', JSON.stringify(error.response.data, null, 2));
+      return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message, airtableError: error.response.data });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PATCH /api/uppdragsavtal/:id – Uppdatera befintligt avtal
+app.patch('/api/uppdragsavtal/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fields: rawFields } = req.body;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    // Filtrera bort tomma värden — behåll arrays
+    const fields = Object.fromEntries(
+      Object.entries(normalizeAvtalFields(rawFields)).filter(([, v]) => {
+        if (Array.isArray(v)) return true;
+        return v !== null && v !== undefined && v !== '';
+      })
+    );
+
+    console.log('📤 PATCH /api/uppdragsavtal/:id – skickar fält:', JSON.stringify(fields, null, 2));
+
+    const response = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
+      { fields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ avtal: response.data });
+  } catch (error) {
+    console.error('❌ Error updating uppdragsavtal:', error.message);
+    if (error.response) {
+      console.error('❌ Airtable svar:', JSON.stringify(error.response.data, null, 2));
+      return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message, airtableError: error.response.data });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/byra-tjanster?byraId=XXX – Hämta byråns tjänster från "Risker kopplad till tjänster"
+app.get('/api/byra-tjanster', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const byraId = req.query.byraId;
+
+    if (!byraId) return res.status(400).json({ error: 'byraId saknas' });
+
+    const formula = encodeURIComponent(`{Byrå ID}="${byraId}"`);
+    let allRecords = [];
+    let offset = null;
+
+    do {
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}?filterByFormula=${formula}`
+        + `&fields[]=Task Name&fields[]=Beskrivning av riskfaktor&fields[]=Riskbedömning&fields[]=Åtgjärd&fields[]=TJÄNSTTYP`
+        + `&pageSize=100`;
+      if (offset) url += `&offset=${offset}`;
+
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` }
+      });
+      allRecords = allRecords.concat(response.data.records || []);
+      offset = response.data.offset;
+    } while (offset);
+
+    const tjanster = allRecords
+      .filter(r => r.fields?.['Task Name'])
+      .map(r => ({
+        id: r.id,
+        namn: (r.fields['Task Name'] || '').trim(),
+        beskrivning: r.fields['Beskrivning av riskfaktor'] || '',
+        riskbedomning: r.fields['Riskbedömning'] || '',
+        atgard: r.fields['Åtgjärd'] || '',
+        typ: r.fields['TJÄNSTTYP'] || ''
+      }));
+
+    console.log(`✅ Byråns tjänster (${byraId}):`, tjanster.map(t => t.namn));
+    res.json({ tjanster });
+  } catch (err) {
+    console.error('❌ byra-tjanster:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/byra-info – Hämta byrånamn, konsulter och tjänster för inloggad användares byrå
+app.get('/api/byra-info', authenticateToken, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    // Hämta inloggad användare för att få byraId och byranamn
+    const inloggedUser = await getAirtableUser(userEmail);
+    if (!inloggedUser) return res.status(404).json({ error: 'Användaren hittades inte' });
+
+    const byraId   = inloggedUser.byraId || '';
+    const byraNamn = inloggedUser.byra   || '';
+
+    // Hämta alla konsulter på samma byrå
+    const filterFormula = byraId
+      ? `{Byrå ID i text 2}="${byraId}"`
+      : `{Byrå}="${byraNamn}"`;
+
+    const konsultRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${USERS_TABLE}`,
+      {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` },
+        params: { filterByFormula: filterFormula, fields: ['fldU9goXGJs7wk7OZ', 'Full Name', 'Email', 'Role'] }
+      }
+    );
+
+    const konsulter = (konsultRes.data.records || []).map(r => ({
+      id: r.id,
+      namn: r.fields['fldU9goXGJs7wk7OZ'] || r.fields['Full Name'] || r.fields['Email'] || '',
+      email: r.fields['Email'] || '',
+      roll: r.fields['Role'] || ''
+    })).filter(k => k.namn);
+
+    // Hämta tillåtna tjänster via Airtable Metadata API (choices på "Kundens utvalda tjänster")
+    let byransTjanster = [];
+    let byransHighRisk = [];
+    try {
+      const metaRes = await axios.get(
+        `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const kundTable = (metaRes.data.tables || []).find(
+        t => t.id === 'tblOIuLQS2DqmOQWe' || t.name === 'KUNDDATA'
+      );
+      if (kundTable) {
+        // Hitta "Kundens utvalda tjänster"-fältet och läs dess choices
+        const tjansterField = kundTable.fields.find(
+          f => f.name === 'Kundens utvalda tjänster'
+        );
+        if (tjansterField?.options?.choices) {
+          byransTjanster = tjansterField.options.choices.map(c => c.name);
+        }
+        // Hitta "Lookup Byråns högrisktjänster" om det finns
+        const highRiskField = kundTable.fields.find(
+          f => f.name === 'Lookup Byråns högrisktjänster'
+        );
+        // highRiskField är en lookup — hämta värden via ett kundpost istället
+        if (byraId) {
+          const hrRes = await axios.get(
+            `https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe`,
+            {
+              headers: { Authorization: `Bearer ${airtableAccessToken}` },
+              params: {
+                filterByFormula: `{Byrå ID}="${byraId}"`,
+                fields: ['Lookup Byråns högrisktjänster'],
+                maxRecords: 1
+              }
+            }
+          );
+          byransHighRisk = hrRes.data.records?.[0]?.fields?.['Lookup Byråns högrisktjänster'] || [];
+        }
+      }
+    } catch (metaErr) {
+      console.warn('⚠️ Kunde inte hämta tjänster via metadata:', metaErr.message);
+    }
+
+    // Hämta byråns orgnr från Application Users-posten
+    const byraOrgnr = inloggedUser.orgnr || '';
+
+    res.json({
+      byraNamn,
+      byraOrgnr,
+      byraId,
+      inloggadNamn: inloggedUser.name || '',
+      konsulter,
+      tjanster: byransTjanster,
+      highRiskTjanster: byransHighRisk
+    });
+  } catch (error) {
+    console.error('❌ Error fetching byra-info:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/uppdragsavtal/:id/pdf – Generera PDF för uppdragsavtal
+app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    const avtalRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = avtalRes.data.fields || {};
+
+    // Hämta byråinfo för den inloggade användaren
+    const pdfUser = await getAirtableUser(req.user.email);
+    // Logga-fältet i Airtable är en attachment-array: [{url, filename, ...}]
+    const logoRaw = pdfUser?.logo;
+    const logoUrl = Array.isArray(logoRaw) && logoRaw.length > 0
+      ? logoRaw[0].url
+      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+    const byraInfo = {
+      namn: pdfUser?.byra || 'Byrån',
+      orgnr: pdfUser?.orgnr || '',
+      email: pdfUser?.email || '',
+      logoUrl
+    };
+    console.log('\ud83d\uddbc\ufe0f Logo URL:', logoUrl);
+
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '\u2014';
+
+    // Normalisera fältnamn: Airtable sparar med ASCII-namn från frontend
+    const nf = {};
+    nf['Kundnamn']           = f['Kundnamn'] || f['Namn'] || '\u2014';
+    nf['Orgnr']              = f['Orgnr'] || '';
+    nf['Uppdragsansvarig']   = f['Uppdragsansvarig'] || '\u2014';
+    nf['Avtalsdatum']        = f['Avtalsdatum'] || null;
+    nf['Avtalet g\u00e4ller ifr\u00e5n'] = f['Avtalet g\u00e4ller ifr\u00e5n'] || f['Avtalet galler fran'] || null;
+    nf['Upps\u00e4gningstid']     = f['Upps\u00e4gningstid'] ?? f['Uppsagningstid'] ?? null;
+    nf['Ersättningsmodell']  = f['Ersättningsmodell'] || f['Ersattningsmodell'] || '';
+    nf['Arvode']             = f['Arvode'] ?? null;
+    nf['Arvodesperiod']      = f['Arvodesperiod'] || f['Arvodesperiod'] || 'm\u00e5nad';
+    nf['Arvodekommentar']    = f['Arvodekommentar'] || '';
+    nf['Fakturaperiod']      = f['Fakturaperiod'] || '';
+    nf['Betalningsvillkor']  = f['Betalningsvillkor'] ?? null;
+    nf['Kunden godkänner allmänna villkor']         = f['Kunden godkänner allmänna villkor'] || f['Kunden godkanner allm villkor'] || false;
+    nf['Kunden godkänner personuppgiftsbiträdesavtal'] = f['Kunden godkänner personuppgiftsbiträdesavtal'] || f['Kunden godkanner puba'] || false;
+    nf['Avtalsstatus']       = f['Avtalsstatus'] || f['Status'] || '';
+    nf['Signeringsdatum']    = f['Signeringsdatum'] || null;
+    nf['Signerat av kund']   = f['Signerat av kund'] || f['Signerat av kund'] || '';
+    nf['Signerat av byr\u00e5']  = f['Signerat av byr\u00e5'] || f['Signerat av byra'] || '';
+    nf['\u00d6vrigt uppdrag']    = f['\u00d6vrigt uppdrag'] || f['Ovrigt uppdrag'] || '';
+
+    // Valda tjänster sparas som kommaseparerad sträng
+    const valdaTjansterRaw = f['Valda tj\u00e4nster'] || f['Valda tjanster'] || '';
+    const tjanster = typeof valdaTjansterRaw === 'string'
+      ? valdaTjansterRaw.split(',').map(t => t.trim()).filter(Boolean)
+      : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw : []);
+
+    const ACCENT = '#2c4a8f';
+    const htmlContent = `<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { margin: 18mm 20mm 22mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, 'Helvetica Neue', sans-serif; font-size: 9.5pt; color: #1a1a2e; line-height: 1.6; }
+
+  /* ── Header ── */
+  .header { display: flex; justify-content: space-between; align-items: flex-start;
+            border-bottom: 3px solid ${ACCENT}; padding-bottom: 12px; margin-bottom: 20px; }
+  .header-left { display: flex; flex-direction: column; gap: 4px; }
+  .doc-title { font-size: 22pt; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase;
+               color: ${ACCENT}; margin: 0; line-height: 1; }
+  .welcome { font-size: 9pt; color: #666; font-style: italic; margin: 4px 0 0; }
+  .logo-placeholder { width: 110px; height: 38px; border: 1.5px dashed #ccc; border-radius: 4px;
+                      display: flex; align-items: center; justify-content: center;
+                      font-size: 7pt; color: #bbb; text-align: center; line-height: 1.3; }
+
+  /* ── Parter ── */
+  .parter { display: flex; gap: 16px; margin-bottom: 18px; }
+  .part { flex: 1; background: #f4f6fb; border: 1px solid #dce3f0;
+          border-left: 4px solid ${ACCENT}; border-radius: 5px; padding: 10px 14px; }
+  .part-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.08em;
+                color: ${ACCENT}; margin-bottom: 4px; font-weight: 700; }
+  .part-name { font-size: 11pt; font-weight: 700; color: #1a1a2e; }
+  .part-sub { font-size: 8.5pt; color: #666; margin-top: 2px; }
+
+  /* ── Meta-rad ── */
+  .meta-grid { display: flex; gap: 0; margin-bottom: 18px;
+               border: 1px solid #dce3f0; border-radius: 5px; overflow: hidden; }
+  .meta-item { flex: 1; padding: 8px 14px; border-right: 1px solid #dce3f0; background: #fafbfe; }
+  .meta-item:last-child { border-right: none; }
+  .meta-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.08em;
+                color: #888; font-weight: 700; margin-bottom: 3px; }
+  .meta-value { font-size: 9.5pt; font-weight: 700; color: #1a1a2e; }
+
+  /* ── Sektioner ── */
+  .section { margin-bottom: 14px; }
+  .section-title { font-size: 8pt; font-weight: 800; text-transform: uppercase;
+                   letter-spacing: 0.1em; color: ${ACCENT};
+                   border-bottom: 1.5px solid ${ACCENT}; padding-bottom: 3px; margin-bottom: 9px; }
+
+  /* ── Tjänster ── */
+  .tjanster-grid { display: flex; flex-wrap: wrap; gap: 3px 24px; padding: 2px 0; }
+  .tjanst-item { font-size: 9.5pt; min-width: 170px; line-height: 1.7; }
+
+  /* ── Ersättning ── */
+  .check-row { font-size: 9.5pt; margin-bottom: 6px; }
+  .arvode-box { display: inline-block; background: #f4f6fb; border: 1px solid #dce3f0;
+                border-radius: 4px; padding: 6px 16px; margin-top: 6px; }
+  .arvode-label { font-size: 7pt; color: #888; text-transform: uppercase;
+                  letter-spacing: 0.06em; margin-bottom: 2px; }
+  .arvode-value { font-size: 12pt; font-weight: 800; color: ${ACCENT}; }
+  .fastpris-note { font-size: 8pt; color: #555; margin-top: 8px; line-height: 1.55;
+                   background: #fafbfe; border-left: 3px solid #b0bedd;
+                   padding: 6px 10px; border-radius: 0 4px 4px 0; }
+
+  /* ── Betalning ── */
+  .betal-text { font-size: 9.5pt; line-height: 1.6; }
+
+  /* ── Bekräftelse-rad ── */
+  .confirm-row { font-size: 8.5pt; color: #333; margin-top: 8px; padding: 5px 8px;
+                 background: #f4f6fb; border-radius: 4px; }
+
+  /* ── Villkorstext ── */
+  .bilaga-wrap { padding: 0; }
+  .villkor-text { font-size: 8pt; color: #333; line-height: 1.6; }
+  .villkor-text h4 { font-size: 8pt; font-weight: 800; margin: 10px 0 4px;
+                     text-transform: uppercase; letter-spacing: 0.06em; color: ${ACCENT}; }
+  .villkor-text ul { padding-left: 16px; margin: 4px 0 6px; }
+  .villkor-text ol { padding-left: 16px; margin: 4px 0 6px; }
+  .villkor-text li { margin-bottom: 3px; }
+  .villkor-text p { margin-bottom: 5px; }
+
+  /* ── Underskrifter ── */
+  .sign-grid { display: flex; gap: 40px; margin-top: 16px; }
+  .sign-box { flex: 1; border-top: 2px solid ${ACCENT}; padding-top: 12px; }
+  .sign-label { font-size: 8pt; color: #555; margin-bottom: 30px; font-weight: 600; }
+  .sign-name { font-size: 9pt; font-weight: 700; color: #1a1a2e; }
+  .sign-datum { font-size: 8pt; color: #666; margin-top: 4px; }
+
+  /* ── Sidfot ── */
+  .footer { display: none; }
+
+  /* ── Sidbrytning ── */
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="footer"></div>
+
+<!-- ═══════════ SIDA 1: AVTALSSIDAN ═══════════ -->
+<div class="header">
+  <div class="header-left">
+    <div class="doc-title">Uppdragsavtal</div>
+    <div class="welcome">Varmt v\u00e4lkommen som kund hos oss. Vi ser fram emot ett l\u00e5ngt och givande samarbete.</div>
+  </div>
+  ${byraInfo.logoUrl
+    ? `<img src="${byraInfo.logoUrl}" style="max-height:60px; max-width:180px; object-fit:contain;" alt="Logotyp">`
+    : `<div class="logo-placeholder">Logotyp<br>placeras h\u00e4r</div>`}
+</div>
+
+<div class="parter">
+  <div class="part">
+    <div class="part-label">Uppdragstagare</div>
+    <div class="part-name">${byraInfo.namn}</div>
+    ${byraInfo.orgnr ? `<div class="part-sub">${byraInfo.orgnr}</div>` : ''}
+  </div>
+  <div class="part">
+    <div class="part-label">Uppdragsgivare</div>
+    <div class="part-name">${nf['Kundnamn']}</div>
+    <div class="part-sub">${nf['Orgnr']}</div>
+  </div>
+</div>
+
+<div class="meta-grid">
+  <div class="meta-item"><div class="meta-label">Ansvarig hos byr\u00e5n</div><div class="meta-value">${nf['Uppdragsansvarig']}</div></div>
+  <div class="meta-item"><div class="meta-label">Avtalsdatum</div><div class="meta-value">${fmtDate(nf['Avtalsdatum'])}</div></div>
+  <div class="meta-item"><div class="meta-label">G\u00e4ller fr.o.m.</div><div class="meta-value">${fmtDate(nf['Avtalet g\u00e4ller ifr\u00e5n'])}</div></div>
+  <div class="meta-item"><div class="meta-label">Upps\u00e4gningstid</div><div class="meta-value">${nf['Upps\u00e4gningstid'] != null ? nf['Upps\u00e4gningstid'] + '\u00a0m\u00e5nader' : '3\u00a0m\u00e5nader'}</div></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Arbetet omfattar f\u00f6ljande tj\u00e4nster</div>
+  <div class="tjanster-grid">
+    ${tjanster.length ? tjanster.map(t => `<div class="tjanst-item">&#9746;&nbsp;${t}</div>`).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
+    ${nf['\u00d6vrigt uppdrag'] ? `<div class="tjanst-item" style="min-width:100%;margin-top:2px;">&#9746;&nbsp;\u00d6vrigt: ${nf['\u00d6vrigt uppdrag']}</div>` : ''}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Ers\u00e4ttning</div>
+  <div class="check-row">
+    ${nf['Ersättningsmodell'] === 'Löpande räkning' ? '&#9746;' : '&#9744;'}&nbsp; P\u00e5 l\u00f6pande r\u00e4kning &emsp;
+    ${nf['Ersättningsmodell'] === 'Fast pris' ? '&#9746;' : '&#9744;'}&nbsp; Fast pris
+  </div>
+  ${nf['Arvode'] != null ? `
+  <div class="arvode-box">
+    <div class="arvode-label">Arvode per ${nf['Arvodesperiod'] || 'm\u00e5nad'} (exkl. moms)</div>
+    <div class="arvode-value">${Number(nf['Arvode']).toLocaleString('sv-SE')} kr</div>
+  </div>` : ''}
+  ${nf['Arvodekommentar'] ? `<p style="font-size:8.5pt;color:#555;font-style:italic;margin-top:6px;">${nf['Arvodekommentar']}</p>` : ''}
+  ${nf['Ersättningsmodell'] === 'Fast pris' ? `<div class="fastpris-note">Vid fast pris har byr\u00e5n d\u00e4rutöver r\u00e4tt till ers\u00e4ttning f\u00f6r kostnader och utl\u00e4gg som ans\u00f6knings- och registreringsavgifter, utl\u00e4gg f\u00f6r resor, kost, logi, porto, bud, etc. Till\u00e4ggsarbeten och \u00f6vertidsarbete p\u00e5 grund av f\u00f6rsenad eller ofullst\u00e4ndig materialleverans fr\u00e5n kunden, ej avtalade extraarbeten till f\u00f6ljd av lag\u00e4ndringar eller liknande \u00e4r aldrig inr\u00e4knade i det fasta priset utan ska ers\u00e4ttas separat.</div>` : ''}
+</div>
+
+<div class="section">
+  <div class="section-title">Betalningsvillkor</div>
+  <p class="betal-text">Betalning g\u00f6rs mot faktura. Fakturering sker ${nf['Fakturaperiod'] ? nf['Fakturaperiod'].toLowerCase() : 'l\u00f6pande'}. Betalning ska g\u00f6ras inom <strong>${nf['Betalningsvillkor'] || 10}&nbsp;dagar</strong> fr\u00e5n fakturadatum. Vid f\u00f6r sen betalning utg\u00e5r dr\u00f6jsm\u00e5lsr\u00e4nta enligt r\u00e4ntelagen.</p>
+</div>
+
+<!-- ═══════════ INFORMATION ═══════════ -->
+<div class="section">
+  <div class="section-title">Information</div>
+  <div class="villkor-text">
+    <h4 style="color:#007fa3;">Utf\u00f6rande</h4>
+    <p>Uppdraget kommer att utf\u00f6ras i enlighet med den branschstandard som fastst\u00e4llts under Rex - Svensk standard f\u00f6r redovisningsuppdrag.</p>
+    <p>Standarden har framtagits av branschorganisationen Srf konsulternas f\u00f6rbund. Standarden har som m\u00e5ls\u00e4ttning att uppn\u00e5 en h\u00f6g kvalitet p\u00e5 redovisningen och rapporteringen samt att det utf\u00f6rda arbetet utg\u00f6r ett bra beslutsunderlag i uppdragsgivarens verksamhet.</p>
+
+    <h4 style="color:#007fa3;">Ansvar</h4>
+    <p>Uppdragsgivaren har ett sj\u00e4lvst\u00e4ndigt ansvar f\u00f6r sin redovisning och rapportering mot myndigheter och utomst\u00e5ende. Det avser s\u00e5v\u00e4l brister i inl\u00e4mnade underlag som i rapporter d\u00e4r redovisningskonsulten har bitr\u00e4tt i arbetet. Detta f\u00f6ljer av lagstiftning och kan inte avtalas bort.</p>
+    <p>Byr\u00e5n har ett utf\u00f6randeansvar mot uppdragsgivaren. Detta inneb\u00e4r att det arbete som omfattas av avtalet ska utf\u00f6ras enligt lagar och regler, samt enligt Rex - Svensk standard f\u00f6r redovisningsuppdrag.</p>
+
+    <h4 style="color:#007fa3;">Uppdragsgivarens r\u00e4kenskapsinformation</h4>
+    <p>Enligt kraven i bokf\u00f6ringslagen har uppdragsgivaren ansvar att bevara komplett r\u00e4kenskapsinformation i 7 \u00e5r efter r\u00e4kenskaps\u00e5rets utg\u00e5ng. Redovisningskonsulten ska upprätta och tillhandah\u00e5lla uppdragsgivaren den r\u00e4kenskapsinformation som f\u00f6ljer av uppdraget.</p>
+
+    <h4 style="color:#007fa3;">Rapportmottagare</h4>
+    <p>Den som \u00e4r angiven som kontaktperson hos uppdragsgivaren \u00e4r den som \u00e4r utsedd mottaga den rapportering och \u00f6vrig kommunikation som sker fr\u00e5n byr\u00e5n till uppdragsgivaren. Kontaktpersonen ansvarar f\u00f6r att erh\u00e5llen information vidarebefordras till ber\u00f6rda personer inom sin organisation. Rapportering till annan \u00e4n angiven person kr\u00e4ver s\u00e4rskilt godk\u00e4nnande av uppdragsgivaren.</p>
+    <p>Om inget avtalats f\u00e5r uppdragstagaren l\u00e4mna information till bolagets revisor i samband med revision.</p>
+
+    <h4 style="color:#007fa3;">Kvalitetsuppf\u00f6ljning</h4>
+    <p>Hos byr\u00e5n anst\u00e4llda Auktoriserade Redovisningskonsulter genomg\u00e5r minst vart sj\u00e4tte \u00e5r kvalitetsuppf\u00f6ljning som genomf\u00f6rs av Srf konsulternas f\u00f6rbund. Kvalitetsuppf\u00f6ljningen \u00e4r en granskning av att den Auktoriserade Redovisningskonsulten f\u00f6ljt Rex - Svensk Standad f\u00f6r redovisningsuppdrag. Kvalitetsuppf\u00f6ljningen innefattas av tystnadplikt och sekretess. Kvalitetsuppf\u00f6ljningen inneb\u00e4r bl.a. att ett antal av byr\u00e5ns uppdrag kommer att granskas. Som underlag f\u00f6r kontrollen anv\u00e4nds ett antal transaktionsfiler fr\u00e5n bokf\u00f6ringssystemet. Filerna makuleras efter avslutad kvalitetsuppf\u00f6ljning. Uppdragsgivaren godk\u00e4nner genom detta avtal s\u00e5dan anv\u00e4ndning av material.</p>
+
+    <h4 style="color:#007fa3;">Allm\u00e4nna villkor</h4>
+    <p>Utöver vad som anges i detta avtal g\u00e4ller \u00e4ven Allm\u00e4nna villkor Srf konsulterna, vilka bifogas som bilaga.</p>
+  </div>
+</div>
+
+<!-- ═══════════ SIDA 2: BILAGA 2 ═══════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-title">Bilaga 2 \u2013 Allm\u00e4nna villkor</div>
+  <div class="bilaga-wrap"><div class="villkor-text">
+      <p>Dessa allm\u00e4nna villkor g\u00e4ller f\u00f6r uppdrag avseende redovisnings-, r\u00e5dgivnings- och andra granskningstj\u00e4nster som inte utg\u00f6r lagstadgad revision eller lagstadgade till\u00e4ggsuppdrag (\u201dUppdraget\u201d) som Byr\u00e5n \u00e5tar sig att utf\u00f6ra f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
+      <p>Dessa allm\u00e4nna villkor utg\u00f6r tillsammans med uppdragsavtalet (\u201dUppdragsavtalet\u201d), eller annan skriftlig \u00f6verenskommelse, hela avtalet mellan Byr\u00e5n och Uppdragsgivaren. Vid eventuella motstridigheter ska Uppdragsavtalet ha f\u00f6retr\u00e4de.</p>
+      <h4>Byr\u00e5ns ansvar</h4>
+      <ul>
+        <li>Byr\u00e5n ska utf\u00f6ra Uppdraget med s\u00e5dan skicklighet och omsorg som f\u00f6ljer av till\u00e4mpliga lagar, f\u00f6rordningar och f\u00f6reskrifter samt god yrkessed i branschen.</li>
+        <li>Byr\u00e5n ansvarar inte f\u00f6r slutsatser, rekommendationer och rapporter baserade p\u00e5 felaktig eller bristf\u00e4llig information fr\u00e5n Uppdragsgivaren eller tredje man som Uppdragsgivaren anvisat.</li>
+        <li>Byr\u00e5n f\u00f6rpliktas att ta ansvar f\u00f6r skador som orsakats till f\u00f6ljd av Byr\u00e5ns brott mot \u00f6verenskommet avtal eller om fel i den levererade tj\u00e4nsten har beg\u00e5tts.</li>
+        <li>Byr\u00e5n ska meddela Uppdragsgivaren avseende betydande fel eller uppgifter som uppt\u00e4cks i r\u00e4kenskapsmaterialet.</li>
+        <li>Byr\u00e5n kan inte g\u00f6ras skadest\u00e5ndsskyldig f\u00f6r skador orsakade av att Uppdragsgivaren l\u00e4mnat ofullst\u00e4ndiga eller felaktiga uppgifter eller anvisningar.</li>
+      </ul>
+      <h4>Uppdragsgivarens ansvar</h4>
+      <ul>
+        <li>Uppdragsgivaren ansvarar f\u00f6r att de upplysningar och anvisningar som l\u00e4mnas till Byr\u00e5n \u00e4r korrekta och inte strider mot g\u00e4llande lagar.</li>
+        <li>Uppdragsgivaren f\u00f6rpliktas att f\u00f6retagets skatter och avgifter redovisas och betalas och att aktuella tillst\u00e5nd f\u00f6r verksamheten \u00e4r aktuella.</li>
+        <li>Uppdragsgivaren f\u00f6rpliktas till att r\u00e4kenskapsmaterial samlas in och bevaras.</li>
+        <li>Uppdragsgivaren ska p\u00e5 beg\u00e4ran av Byr\u00e5n utan dr\u00f6jsm\u00e5l tillhandah\u00e5lla s\u00e5dan komplett och korrekt information som beh\u00f6vs f\u00f6r Uppdragets genomf\u00f6rande. Om Uppdragsgivaren dr\u00f6jer med att tillhandah\u00e5lla information kan detta orsaka f\u00f6rseningar och \u00f6kade kostnader. Byr\u00e5n ansvarar inte f\u00f6r s\u00e5dana f\u00f6rseningar och \u00f6kade kostnader.</li>
+      </ul>
+      <h4>Materialleveranser</h4>
+      <p>Material ska levereras till Byr\u00e5n i s\u00e5 god tid att Byr\u00e5n kan utf\u00f6ra sina tj\u00e4nster p\u00e5 normal arbetstid och inom g\u00e4llande tidsfrister. Om parterna inte avtalat annat ska Uppdragsgivaren l\u00e4mna material enligt f\u00f6ljande:</p>
+      <ul>
+        <li>Underlag f\u00f6r den l\u00f6pande bokf\u00f6ringen l\u00e4mnas senast tio dagar efter utg\u00e5ngen av den period redovisningen g\u00e4ller.</li>
+        <li>Underlag f\u00f6r l\u00f6neadministration och l\u00f6neber\u00e4kning l\u00e4mnas minst sju dagar f\u00f6re attest- och l\u00f6neutbetalningsdag.</li>
+        <li>Bokslutsmaterial l\u00e4mnas senast 30 dagar efter r\u00e4kenskapsperiodens slut.</li>
+        <li>Deklarations- och beskattningsmaterial l\u00e4mnas senast 30 dagar efter beskattnings\u00e5rets slut.</li>
+      </ul>
+      <h4>Sekretess och elektronisk kommunikation</h4>
+      <p>Respektive Part f\u00f6rbinder sig att inte l\u00e4mna konfidentiell information om Uppdraget till utomst\u00e5ende, inte heller information om den andra Partens verksamhet, utan den andra Partens skriftliga samtycke \u2013 med undantag f\u00f6r vad som f\u00f6ljer av lag, professionell skyldighet eller myndighetsbeslut. Denna sekretessskyldighet forts\u00e4tter att g\u00e4lla \u00e4ven efter att avtalet har upph\u00f6rt. Parterna accepterar elektronisk kommunikation dem emellan och de risker denna medf\u00f6r.</p>
+      <h4>Upps\u00e4gning</h4>
+      <p>Uppdragsavtalet b\u00f6rjar g\u00e4lla fr\u00e5n den dag som anges i Uppdragsavtalet. En Part f\u00e5r, om inget annat avtalats, genom skriftligt meddelande s\u00e4ga upp Uppdragsavtal som g\u00e4ller tillsvidare med tre (3) m\u00e5naders upps\u00e4gningstid.</p>
+      <h4>Upps\u00e4gning \u2013 arvode</h4>
+      <p>Vid upps\u00e4gning av Uppdragsavtalet ska Uppdragsgivaren betala Byr\u00e5n arvode, utl\u00e4gg och kostnader enligt Uppdragsavtalet fram till upph\u00f6randetidpunkten. Om upps\u00e4gningen inte grundar sig p\u00e5 ett v\u00e4sentligt avtalsbrott fr\u00e5n Byr\u00e5ns sida ska Uppdragsgivaren \u00e4ven ers\u00e4tta Byr\u00e5n f\u00f6r andra rimliga kostnader som uppst\u00e5tt i samband med Uppdraget.</p>
+      <h4>Byr\u00e5ns r\u00e4tt att omedelbart h\u00e4va avtalet</h4>
+      <ul>
+        <li>Uppdragsgivaren \u00e4r mer \u00e4n sju dagar f\u00f6rsenad med sina betalningar.</li>
+        <li>Uppdragsgivaren levererar inte material eller orsakar p\u00e5 annat s\u00e4tt att uppdraget inte kan utf\u00f6ras s\u00e5som avtalats.</li>
+        <li>Uppdragsgivaren bryter mot ing\u00e5nget avtal, lagar eller regler och underl\u00e5ter att korrigera det p\u00e5talade felet inom sju dagar efter meddelande fr\u00e5n Byr\u00e5n.</li>
+        <li>Uppdragsgivaren bem\u00f6ter Byr\u00e5ns personal p\u00e5 ett oetiskt eller kr\u00e4nkande s\u00e4tt.</li>
+        <li>Uppdragsgivaren kan inte betala sina skulder, har konkursf\u00f6rvaltare, f\u00f6retagsrekonstrukt\u00f6r eller likvidator utsedd.</li>
+      </ul>
+      <h4>Uppdragsgivarens r\u00e4tt att omedelbart h\u00e4va avtalet</h4>
+      <p>Om Byr\u00e5n bryter mot avtalet och underl\u00e5ter att vidta \u00e5tg\u00e4rder f\u00f6r att korrigera avtalsbrottet inom rimlig tid har Uppdragsgivaren r\u00e4tt att med omedelbar verkan s\u00e4ga upp avtalet.</p>
+      <h4>Force majeure</h4>
+      <p>Yttre h\u00e4ndelser utanf\u00f6r parternas kontroll (t.ex. myndighets\u00e5tg\u00e4rder, krig, mobilisering, arbetsmarknadskonflikt, naturkatastrof) och som inte endast \u00e4r av tillf\u00e4llig natur och som f\u00f6rhindrar uppdragets genomf\u00f6rande ber\u00e4ttigar vardera parten att helt inst\u00e4lla uppdraget utan r\u00e4tt till skadest\u00e5nd. Avtalspart ska genast meddela den andra parten n\u00e4r force majeure uppkommer och n\u00e4r den upph\u00f6r.</p>
+      <h4>Tvist</h4>
+      <p>Tvist mellan parterna ska i f\u00f6rsta hand l\u00f6sas genom f\u00f6rhandling och i andra hand av allm\u00e4n domstol p\u00e5 den ort d\u00e4r Byr\u00e5n har sitt s\u00e4te.</p>
+      <h4>\u00d6verl\u00e5telse</h4>
+      <p>Parts r\u00e4ttigheter och skyldigheter enligt detta avtal kan \u00f6verl\u00e5tas endast om den andra parten ger sitt samtycke till \u00f6verl\u00e5telsen.</p>
+      <h4>Prioritetsordning</h4>
+      <ol><li>Uppdragsavtal</li><li>Bilagor till uppdragsavtal</li><li>Dessa allm\u00e4nna villkor</li></ol>
+    </div></div>
+  ${nf['Kunden godkänner allmänna villkor'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att allm\u00e4nna villkoren (Bilaga 2) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
+</div>
+
+<!-- ═══════════ SIDA 3: BILAGA 3 ═══════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-title">Bilaga 3 \u2013 Personuppgiftsbir\u00e4desavtal</div>
+  <div class="bilaga-wrap"><div class="villkor-text">
+      <h4>1 Bakgrund</h4>
+      <p>Parterna har i samband med detta Avtal ing\u00e5tt Tj\u00e4nsteavtal avseende redovisningstj\u00e4nster (\u201dTj\u00e4nsteavtalet\u201d). Inom \u00e5tagandena som f\u00f6ljer av Tj\u00e4nsteavtalet kan Byr\u00e5n komma att behandla personuppgifter samt annan information f\u00f6r Uppdragsgivarens r\u00e4kning. Med anledning h\u00e4rav ing\u00e5r Parterna detta Avtal f\u00f6r att reglera f\u00f6ruts\u00e4ttningarna f\u00f6r behandling av \u2013 och tillg\u00e5ng till \u2013 Personuppgifter tillh\u00f6riga Uppdragsgivaren. Avtalet g\u00e4ller s\u00e5 l\u00e4nge Byr\u00e5n behandlar Personuppgifter f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
+      <h4>2 Definitioner</h4>
+      <p><strong>\u201dBehandling\u201d</strong> \u2013 en \u00e5tg\u00e4rd eller kombination av \u00e5tg\u00e4rder betr\u00e4ffande Personuppgifter, s\u00e5som insamling, registrering, lagring, bearbetning, utl\u00e4mning eller radering.</p>
+      <p><strong>\u201dDataskyddsf\u00f6rordningen\u201d</strong> \u2013 Europaparlamentets och R\u00e5dets F\u00f6rordning (EU) 2016/679 (GDPR).</p>
+      <p><strong>\u201dPersonuppgifter\u201d</strong> \u2013 varje upplysning som avser en identifierad eller identifierbar fysisk person.</p>
+      <p><strong>\u201dPersonuppgiftsansvarig\u201d</strong> \u2013 den som best\u00e4mmer \u00e4ndam\u00e5len och medlen f\u00f6r Behandlingen av Personuppgifter.</p>
+      <p><strong>\u201dPersonuppgiftsbir\u00e4de\u201d</strong> \u2013 den som Behandlar Personuppgifter f\u00f6r den Personuppgiftsansvariges r\u00e4kning.</p>
+      <p><strong>\u201dPersonuppgiftsincident\u201d</strong> \u2013 en s\u00e4kerhetsincident som leder till oavsiktlig eller olaglig f\u00f6rst\u00f6ring, f\u00f6rlust, \u00e4ndring eller obeh\u00f6rigt r\u00f6jande av Personuppgifter.</p>
+      <h4>4 Allm\u00e4nt om personuppgiftsbehandlingen</h4>
+      <p>Uppdragsgivaren \u00e4r Personuppgiftsansvarig f\u00f6r de Personuppgifter som Behandlas inom ramen f\u00f6r Uppdraget. Byr\u00e5n \u00e4r att betrakta som Personuppgiftsbir\u00e4de \u00e5t Uppdragsgivaren. Byr\u00e5n har gett tillr\u00e4ckliga garantier om att genomf\u00f6ra l\u00e4mpliga tekniska och organisatoriska \u00e5tg\u00e4rder f\u00f6r att Behandlingen uppfyller kraven i Dataskyddsf\u00f6rordningen och att den Registrerades r\u00e4ttigheter skyddas.</p>
+      <h4>6 Personal</h4>
+      <p>Byr\u00e5ns anst\u00e4llda och andra personer som utf\u00f6r arbete under dess \u00f6verinseende och som f\u00e5r del av Personuppgifter tillh\u00f6riga Uppdragsgivaren, f\u00e5r endast Behandla dessa p\u00e5 instruktion fr\u00e5n Uppdragsgivaren. Byr\u00e5n ska tillse att dessa personer \u00e5tagit sig att iaktta konfidentialitet.</p>
+      <h4>7 S\u00e4kerhet</h4>
+      <p>Byr\u00e5n ska vidta alla \u00e5tg\u00e4rder avseende s\u00e4kerhet som kr\u00e4vs enligt artikel 32 i Dataskyddsf\u00f6rordningen. Vid bed\u00f6mningen av l\u00e4mplig s\u00e4kerhetsniv\u00e5 ska s\u00e4rskild h\u00e4nsyn tas till de risker som Behandling medf\u00f6r, i synnerhet fr\u00e5n oavsiktlig eller olaglig f\u00f6rst\u00f6ring, f\u00f6rlust eller obeh\u00f6rigt r\u00f6jande.</p>
+      <h4>8 Personuppgiftsincident</h4>
+      <p>Byr\u00e5n ska, med beaktande av typen av Behandling och den information Byr\u00e5n har att tillg\u00e5, bist\u00e5 Uppdragsgivaren med att tillse att skyldigheterna i samband med eventuell Personuppgiftsincident kan fullg\u00f6ras p\u00e5 s\u00e4tt som f\u00f6ljer av artikel 33\u201334 i Dataskyddsf\u00f6rordningen.</p>
+      <h4>10 Underbir\u00e4de</h4>
+      <p>Genom att teckna avtal med Byr\u00e5n ska Uppdragsgivaren anses ha l\u00e4mnat ett generellt skriftligt godk\u00e4nnande att anlita underbir\u00e4de. Byr\u00e5n ska digitalt informera Uppdragsgivaren om ett nytt underbir\u00e4de ska anlitas och ge Uppdragsgivaren m\u00f6jlighet att g\u00f6ra inv\u00e4ndningar. Byr\u00e5n ska tillse att nytt underbir\u00e4de ing\u00e5r ett skriftligt personuppgiftsbir\u00e4desavtal innan arbetet p\u00e5b\u00f6rjas. Om underbir\u00e4det inte fullg\u00f6r sina skyldigheter ska Byr\u00e5n vara ansvarig gentemot Uppdragsgivaren.</p>
+      <h4>11 \u00d6verf\u00f6ring till tredje land</h4>
+      <p>Byr\u00e5n f\u00e5r f\u00f6rflytta, f\u00f6rvara, \u00f6verf\u00f6ra eller p\u00e5 annat s\u00e4tt Behandla Personuppgifter utanf\u00f6r EU/EES om s\u00e5dan \u00f6verf\u00f6ring uppfyller de krav som f\u00f6ljer av Dataskyddsf\u00f6rordningen.</p>
+      <h4>12 R\u00e4tt till insyn</h4>
+      <p>Byr\u00e5n ska ge Uppdragsgivaren tillg\u00e5ng till all information som kr\u00e4vs f\u00f6r att visa att skyldigheterna enligt artikel 28 i Dataskyddsf\u00f6rordningen har fullgjorts. Byr\u00e5n ska alltid ha r\u00e4tt till sk\u00e4ligt varsel inf\u00f6r en granskning och Uppdragsgivaren ska ers\u00e4tta Byr\u00e5n f\u00f6r kostnader i samband med s\u00e5dan granskning.</p>
+      <h4>13 Register \u00f6ver behandlingen</h4>
+      <p>Byr\u00e5n ska f\u00f6ra ett elektroniskt register \u00f6ver alla kategorier av Behandling som utf\u00f6rts f\u00f6r Uppdragsgivarens r\u00e4kning, inneh\u00e5llande bl.a. \u00e4ndam\u00e5len med Behandlingen, kategorier av Registrerade och Personuppgifter, kategorier av mottagare och tidsfristerna f\u00f6r radering.</p>
+      <h4>14 Ansvar</h4>
+      <p>De ansvarsbegr\u00e4nsningar som framg\u00e5r av Tj\u00e4nsteavtalet g\u00e4ller ocks\u00e5 i detta Avtal. Om dessa ansvarsbegr\u00e4nsningar inte skulle visa sig g\u00e4lla begr\u00e4nsas ansvar till etthundratusen (100\u00a0000) kronor.</p>
+      <h4>15 Avtalets upph\u00f6rande</h4>
+      <p>N\u00e4r Byr\u00e5n upph\u00f6r med Behandling av Personuppgifter f\u00f6r Uppdragsgivarens r\u00e4kning ska Byr\u00e5n \u00e5terl\u00e4mna alla Personuppgifter till Uppdragsgivaren \u2013 eller, om Uppdragsgivaren s\u00e5 skriftligen meddelar, f\u00f6rst\u00f6ra och radera dem. Efter att Avtalet upph\u00f6r \u00e4ger Byr\u00e5n inte r\u00e4tt att spara Personuppgifter tillh\u00f6riga Uppdragsgivaren.</p>
+      <h4>17 Till\u00e4mplig lag och tvister</h4>
+      <p>Svensk lag ska till\u00e4mpas p\u00e5 Avtalet. Tvister som uppst\u00e5r i anledning av Avtalet ska slutligt avg\u00f6ras genom skiljedomsf\u00f6rfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljedomsf\u00f6rfarandets s\u00e4te ska vara Stockholm och spr\u00e5ket ska vara svenska. Skiljedom omfattas av sekretess. Part har r\u00e4tt att vid svensk domstol anh\u00e4ngig\u00f6ra tvist om tvistem\u00e5lets storlek understiger 100\u00a0000 kr.</p>
+    </div></div>
+  ${nf['Kunden godkänner personuppgiftsbiträdesavtal'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att personuppgiftsbir\u00e4desavtalet (Bilaga 3) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
+</div>
+
+<!-- ═══════════ UNDERSKRIFTER ═══════════ -->
+<div class="section" style="margin-top:32px;">
+  <div class="section-title">Underskrifter</div>
+  <p style="font-size:8.5pt;color:#555;margin-bottom:24px;">Undertecknade parter bekr\u00e4ftar att de tagit del av och godk\u00e4nner detta uppdragsavtal med tillh\u00f6rande bilagor.</p>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div class="sign-label">Uppdragstagare &mdash; Redovisningsbyr\u00e5n Ryd\u00e9n &amp; Co AB</div>
+      <div class="sign-name">${nf['Signerat av byr\u00e5'] || '&nbsp;'}</div>
+      <div class="sign-datum">Datum: ${nf['Signeringsdatum'] ? fmtDate(nf['Signeringsdatum']) : '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
+    </div>
+    <div class="sign-box">
+      <div class="sign-label">Uppdragsgivare &mdash; ${nf['Kundnamn']}</div>
+      <div class="sign-name">${nf['Signerat av kund'] || '&nbsp;'}</div>
+      <div class="sign-datum">Datum: ${nf['Signeringsdatum'] ? fmtDate(nf['Signeringsdatum']) : '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>`;
+
+    if (!puppeteer) {
+      return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas). Kör: npm install puppeteer' });
+    }
+
+    console.log('\ud83d\udda8\ufe0f Startar Puppeteer för PDF-generering...');
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      headless: true,
+      timeout: 30000
+    });
+    console.log('\ud83d\udda8\ufe0f Puppeteer startat, öppnar sida...');
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 30000 });
+    console.log('\ud83d\udda8\ufe0f Sida laddad, genererar PDF...');
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' }
+    });
+    await browser.close();
+    console.log(`\u2705 PDF genererad: ${pdfBuffer.length} bytes`);
+
+    const safeNamn = (f['Kundnamn'] || 'kund').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
+    const datum = (f['Avtalsdatum'] || new Date().toISOString()).split('T')[0];
+    const filename = `${safeNamn}-Uppdragsavtal-${datum}.pdf`;
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'Content-Length': pdfBuffer.length
+    });
+    res.send(Buffer.from(pdfBuffer));
+
+  } catch (error) {
+    console.error('\u274c Error generating uppdragsavtal PDF:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// DILISENSE — PEP & Sanktionsscreening
+// ============================================================
+
+// POST /api/pep-screening/:kundId
+// Body: { namn, personnr, dob } — screena en person och spara PDF till dokumentationsfliken
+app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
+    const { kundId } = req.params;
+    const { namn, personnr, dob } = req.body;
+
+    if (!namn) return res.status(400).json({ error: 'namn krävs' });
+
+    const dilisenseKey = process.env.DILISENSE_API_KEY;
+    if (!dilisenseKey || dilisenseKey === 'din_dilisense_api_nyckel') {
+        return res.status(500).json({ error: 'DILISENSE_API_KEY är inte konfigurerad i .env' });
+    }
+
+    try {
+        // Bygg query-parametrar
+        const params = new URLSearchParams({ names: namn, fuzzy_search: '1' });
+        if (dob) params.append('dob', dob);
+
+        // 1. Hämta PDF-rapport från Dilisense
+        const reportUrl = `https://api.dilisense.com/v1/generateIndividualReport?${params.toString()}`;
+        console.log(`🔍 PEP-screening för: ${namn} → ${reportUrl}`);
+
+        const reportRes = await axios.get(reportUrl, {
+            headers: { 'x-api-key': dilisenseKey },
+            responseType: 'text'
+        });
+
+        // Svaret är en base64-sträng
+        const pdfBase64 = reportRes.data;
+        if (!pdfBase64 || typeof pdfBase64 !== 'string') {
+            throw new Error('Inget PDF-svar från Dilisense');
+        }
+
+        // 2. Spara PDF-filen som attachment till KUNDDATA via Airtable
+        const token = process.env.AIRTABLE_ACCESS_TOKEN;
+        const baseId = process.env.AIRTABLE_BASE_ID;
+        const datumStr = new Date().toISOString().split('T')[0];
+        const filnamn = `PEP-screening_${namn.replace(/\s+/g, '_')}_${datumStr}.pdf`;
+
+        // Airtable stödjer inte direkt base64-upload av attachments via PATCH —
+        // vi sparar base64 som en anteckning/notat på kunden istället och
+        // returnerar base64 till frontend som kan trigga nedladdning
+        // OCH vi skapar en anteckning med screening-metadata
+
+        // 3. Hämta snabb JSON-sökning för att visa träffar i UI
+        const checkUrl = `https://api.dilisense.com/v1/checkIndividual?${params.toString()}`;
+        const checkRes = await axios.get(checkUrl, {
+            headers: { 'x-api-key': dilisenseKey }
+        });
+        const checkData = checkRes.data;
+
+        console.log(`✅ PEP-screening klar: ${checkData.total_hits} träffar för ${namn}`);
+
+        res.json({
+            namn,
+            total_hits: checkData.total_hits || 0,
+            found_records: checkData.found_records || [],
+            pdf_base64: pdfBase64,
+            filnamn,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Fel vid PEP-screening:', error.response?.data || error.message);
+        res.status(500).json({ error: error.response?.data?.error_message || error.message });
+    }
+});
+
+// ============================================================
+// INLEED DOCSIGN — Skicka uppdragsavtal för BankID-signering
+// ============================================================
+
+// POST /api/uppdragsavtal/:id/skicka-for-signering
+// Body: { signerare: { namn, epost, personnr, telefon? } }
+app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { signerare } = req.body; // { namn, epost, personnr, telefon }
+
+    if (!signerare || !signerare.namn || !signerare.epost) {
+      return res.status(400).json({ error: 'Signerare saknar namn eller e-post.' });
+    }
+
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    if (!docsignApiKey) {
+      return res.status(500).json({ error: 'DOCSIGN_API_KEY saknas i milj\u00f6variablerna.' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    // 1. H\u00e4mta avtalsinformation fr\u00e5n Airtable
+    const avtalRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const avtalFields = avtalRes.data.fields || {};
+    const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
+
+    // 2. Generera PDF via intern anrop
+    const pdfRes = await axios.post(
+      `http://localhost:${process.env.PORT || 3001}/api/uppdragsavtal/${id}/pdf`,
+      {},
+      {
+        responseType: 'arraybuffer',
+        headers: { Authorization: req.headers.authorization }
+      }
+    );
+    const pdfBuffer = Buffer.from(pdfRes.data);
+
+    // 3. Skapa undertecknare (part) i Inleed Docsign
+    const partyPayload = {
+      api_key: docsignApiKey,
+      name: signerare.namn,
+      email: signerare.epost,
+      company: kundnamn,
+      sign_method: 'bankid',
+      debug: false
+    };
+    if (signerare.personnr) partyPayload.external_id = signerare.personnr;
+    if (signerare.telefon) partyPayload.phone_number = signerare.telefon;
+
+    console.log('\ud83d\udce4 Skapar undertecknare i Inleed:', partyPayload.name, partyPayload.email);
+
+    const partyRes = await axios.post('https://docsign.se/api/parties', partyPayload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!partyRes.data?.success) {
+      console.error('\u274c Inleed parties fel:', partyRes.data);
+      return res.status(500).json({ error: 'Kunde inte skapa undertecknare i Inleed.', details: partyRes.data });
+    }
+    const partyId = partyRes.data.party_id;
+    console.log('\u2705 Undertecknare skapad, party_id:', partyId);
+
+    // 4. Skapa dokument i Inleed med base64-kodad PDF
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const docPayload = {
+      api_key: docsignApiKey,
+      name: `Uppdragsavtal - ${kundnamn}`,
+      parties: [partyId],
+      send_reminders: true,
+      send_receipt: true,
+      attachments: [{
+        name: 'uppdragsavtal.pdf',
+        base64_content: pdfBase64
+      }]
+    };
+
+    console.log('\ud83d\udce4 Skapar dokument i Inleed f\u00f6r:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Party ID:', partyId);
+
+    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    console.log('\ud83d\udd0d Inleed documents svar:', JSON.stringify(docRes.data));
+
+    if (!docRes.data?.success) {
+      console.error('\u274c Inleed documents fel:', docRes.data);
+      return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.', details: docRes.data });
+    }
+
+    const documentId = docRes.data.document_id;
+    console.log('\u2705 Dokument skapat i Inleed, document_id:', documentId);
+
+    // 5. Uppdatera avtalsstatus i Airtable
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
+      { fields: { Avtalsstatus: 'Skickat till kund', InleedDokumentId: documentId } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    ).catch(e => console.warn('\u26a0\ufe0f Kunde inte uppdatera Airtable-status:', e.message));
+
+    res.json({
+      success: true,
+      document_id: documentId,
+      party_id: partyId,
+      message: `Uppdragsavtalet har skickats till ${signerare.epost} f\u00f6r BankID-signering.`
+    });
+
+  } catch (error) {
+    console.error('\u274c Fel vid skicka-f\u00f6r-signering:');
+    console.error('  Message:', error.message);
+    console.error('  Status:', error.response?.status);
+    console.error('  Data:', JSON.stringify(error.response?.data));
+    console.error('  Stack:', error.stack?.split('\n').slice(0,3).join(' | '));
+    res.status(500).json({
+      error: error.response?.data?.message || error.message,
+      details: error.response?.data
+    });
+  }
+});
 

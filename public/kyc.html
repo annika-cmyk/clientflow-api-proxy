@@ -49,14 +49,6 @@
                             <i class="fas fa-users"></i>
                             Roller
                         </button>
-                        <button class="tab-button" data-tab="services">
-                            <i class="fas fa-cogs"></i>
-                            Tjänster
-                        </button>
-                        <button class="tab-button" data-tab="risk-assessment">
-                            <i class="fas fa-shield-alt"></i>
-                            Riskbedömning
-                        </button>
                     </div>
 
                     <!-- Tab Content -->
@@ -112,126 +104,6 @@
                             </div>
                         </div>
 
-                        <!-- Services Tab -->
-                        <div id="services" class="tab-pane">
-                            <div class="tab-pane-content">
-                                <h3>Tjänster och verksamhet</h3>
-                                <div class="services-section">
-                                    <h4>Huvudverksamhet</h4>
-                                    <div class="info-item">
-                                        <label>Verksamhetsbeskrivning</label>
-                                        <textarea id="main-activity" rows="3" placeholder="Beskriv företagets huvudverksamhet..."></textarea>
-                                    </div>
-                                    <div class="info-item">
-                                        <label>Bransch</label>
-                                        <select id="industry">
-                                            <option value="">Välj bransch</option>
-                                            <option value="bygg">Bygg & Fastighet</option>
-                                            <option value="handel">Handel & Distribution</option>
-                                            <option value="teknik">Teknik & IT</option>
-                                            <option value="finans">Finans & Försäkring</option>
-                                            <option value="halsa">Hälsa & Vård</option>
-                                            <option value="utbildning">Utbildning</option>
-                                            <option value="konsult">Konsult & Tjänster</option>
-                                            <option value="tillverkning">Tillverkning</option>
-                                            <option value="transport">Transport & Logistik</option>
-                                            <option value="annan">Annan</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div class="services-section">
-                                    <h4>Ekonomiska uppgifter</h4>
-                                    <div class="info-grid">
-                                        <div class="info-item">
-                                            <label>Omsättning (år)</label>
-                                            <input type="number" id="revenue" placeholder="Omsättning i SEK">
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Antal anställda</label>
-                                            <input type="number" id="employees" placeholder="Antal anställda">
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Marknadsvärde</label>
-                                            <input type="number" id="market-value" placeholder="Marknadsvärde i SEK">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="additional-notes">
-                                    <label for="services-notes">Anteckningar om tjänster</label>
-                                    <textarea id="services-notes" rows="4" placeholder="Lägg till anteckningar om tjänster och verksamhet..."></textarea>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Risk Assessment Tab -->
-                        <div id="risk-assessment" class="tab-pane">
-                            <div class="tab-pane-content">
-                                <h3>Riskbedömning</h3>
-                                <div class="risk-section">
-                                    <h4>Risknivå</h4>
-                                    <div class="risk-level-selector">
-                                        <label class="radio-option">
-                                            <input type="radio" name="risk-level" value="low">
-                                            <span class="radio-label low-risk">
-                                                <i class="fas fa-check-circle"></i>
-                                                Låg risk
-                                            </span>
-                                        </label>
-                                        <label class="radio-option">
-                                            <input type="radio" name="risk-level" value="medium">
-                                            <span class="radio-label medium-risk">
-                                                <i class="fas fa-exclamation-triangle"></i>
-                                                Medel risk
-                                            </span>
-                                        </label>
-                                        <label class="radio-option">
-                                            <input type="radio" name="risk-level" value="high">
-                                            <span class="radio-label high-risk">
-                                                <i class="fas fa-times-circle"></i>
-                                                Hög risk
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="risk-factors">
-                                    <h4>Riskfaktorer</h4>
-                                    <div class="checkbox-grid">
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-politically-exposed">
-                                            <span>Politically Exposed Person (PEP)</span>
-                                        </label>
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-sanctions">
-                                            <span>Sanctions list</span>
-                                        </label>
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-adverse-media">
-                                            <span>Negativ media</span>
-                                        </label>
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-financial-difficulties">
-                                            <span>Ekonomiska svårigheter</span>
-                                        </label>
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-complex-structure">
-                                            <span>Komplex företagsstruktur</span>
-                                        </label>
-                                        <label class="checkbox-option">
-                                            <input type="checkbox" id="risk-offshore">
-                                            <span>Offshore-verksamhet</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div class="additional-notes">
-                                    <label for="risk-notes">Riskbedömning - Anteckningar</label>
-                                    <textarea id="risk-notes" rows="4" placeholder="Lägg till detaljerad riskbedömning och motivering..."></textarea>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </section>
@@ -292,6 +164,6 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <!-- Load KYC specific script -->
-    <script src="js/kyc.js?v=1.1"></script>
+    <script src="js/kyc.js?v=1.2"></script>
 </body>
 </html>

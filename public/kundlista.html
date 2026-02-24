@@ -11,228 +11,47 @@
 <body>
 
     <div class="app-container">
-        <!-- Sidebar will be loaded dynamically -->
-        <div class="sidebar-container">
-            <!-- Sidebar content will be loaded here -->
-        </div>
+        <div class="sidebar-container"></div>
 
-        <!-- Main Content -->
         <main class="main-content">
             <div class="container">
+
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>KUNDLISTA</h1>
-                        <br>
-                        <p><h3>Översikt över alla kunder i systemet</h3>
-                            Här kan du se en komplett lista över alla kunder som finns registrerade i ClientFlow. 
-                            Använd filtren för att hitta specifika kunder eller byråer, och få en överblick över 
-                            kundbasen med statistik och sökfunktioner.
-                        </p>
-                        <br>
-                        <p><h4>Funktioner:</h4></p>
-                        <ul>
-                            <li>Sök och filtrera kunder efter olika kriterier</li>
-                            <li>Visa detaljerad kundinformation</li>
-                            <li>Statistik över kundbasen</li>
-                            <li>Exportera kunddata</li>
-                        </ul>
                     </div>
                 </header>
 
-                
-
-                <!-- Customer List Section -->
-                <section class="risk-assessment-section">
-                    <div class="container">
-                        <div class="risk-list-header">
-                            <h3>Kunder</h3>
-                            <div class="risk-header-actions">
-                                <div class="filter-controls">
-                                    <div class="filter-group">
-                                        <label for="byra-filter">Byrå:</label>
-                                        <select id="byra-filter" class="form-select" style="width: 150px;">
-                                            <option value="">Alla byråer</option>
-                                            <!-- Byrå options will be populated dynamically -->
-                                        </select>
-                                    </div>
-
-                                    <div class="filter-group">
-                                        <label for="user-filter">Användare:</label>
-                                        <select id="user-filter" class="form-select" style="width: 150px;">
-                                            <option value="">Alla användare</option>
-                                            <!-- Användar options will be populated dynamically -->
-                                        </select>
-                                    </div>
-                                    <div class="filter-group">
-                                        <label for="search-filter">Sök:</label>
-                                        <input type="text" id="search-filter" class="form-control" placeholder="Sök på namn eller organisationsnummer..." style="width: 200px;">
-                                    </div>
-                                    <button id="apply-filters" class="btn btn-primary" style="display: none;">
-                                        <i class="fas fa-search"></i>
-                                        Applicera filter
-                                    </button>
-                                    <button id="clear-filters" class="btn btn-secondary" style="display: none;">
-                                        <i class="fas fa-times"></i>
-                                        Rensa filter
-                                    </button>
-                                </div>
-                                <div class="risk-stats">
-                                    <span class="stat-item">
-                                        <i class="fas fa-users"></i>
-                                        <span id="total-count">0</span> totalt
-                                    </span>
-                                    <span class="stat-item">
-                                        <i class="fas fa-check-circle text-success"></i>
-                                        <span id="active-count">0</span> aktiva
-                                    </span>
-                                </div>
-                                <button class="btn btn-primary" onclick="customerManager.openAddModal()">
-                                    <i class="fas fa-plus"></i>
-                                    Lägg till kund
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="customer-list" class="risk-items">
-                            <!-- Customer items will be loaded here -->
-                            <div class="loading-spinner">
-                                <i class="fas fa-spinner fa-spin"></i>
-                                <p>Laddar kunder...</p>
-                            </div>
-                        </div>
+                <div class="kundlista-toolbar">
+                    <div class="kundlista-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="search-filter" placeholder="Sök på namn eller organisationsnummer...">
                     </div>
-                </section>
+                    <span class="kundlista-count"><span id="total-count">0</span> kunder</span>
+                </div>
 
-                <!-- Add New Customer Modal -->
-                <div id="add-customer-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3>Lägg till ny kund</h3>
-                            <button class="modal-close" onclick="closeModal('add-customer-modal')">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <form id="add-customer-form" class="modal-form">
-                            <div class="form-group">
-                                <label for="org-number">Organisationsnummer *</label>
-                                <input type="text" id="org-number" name="org-number" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="company-name">Företagsnamn *</label>
-                                <input type="text" id="company-name" name="company-name" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="byra-id">Byrå ID</label>
-                                <input type="text" id="byra-id" name="byra-id">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="user-id">Användar ID</label>
-                                <input type="text" id="user-id" name="user-id">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="notes">Anteckningar</label>
-                                <textarea id="notes" name="notes" rows="3"></textarea>
-                            </div>
-
-                            <div class="form-actions">
-                                <button type="button" class="btn btn-secondary" onclick="closeModal('add-customer-modal')">
-                                    Avbryt
-                                </button>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save"></i>
-                                    Spara kund
-                                </button>
-                            </div>
-                        </form>
+                <div id="customer-list">
+                    <div class="kundlista-loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Laddar kunder...</span>
                     </div>
                 </div>
 
-                <!-- Edit Customer Modal -->
-                <div id="edit-customer-modal" class="modal" style="display: none;">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3>Redigera kund</h3>
-                            <button class="modal-close" onclick="closeModal('edit-customer-modal')">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <form id="edit-customer-form" class="modal-form">
-                            <input type="hidden" id="edit-record-id" name="record-id">
-                            <div class="form-group">
-                                <label for="edit-org-number">Organisationsnummer *</label>
-                                <input type="text" id="edit-org-number" name="org-number" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="edit-company-name">Företagsnamn *</label>
-                                <input type="text" id="edit-company-name" name="company-name" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="edit-byra-id">Byrå ID</label>
-                                <input type="text" id="edit-byra-id" name="byra-id">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="edit-user-id">Användar ID</label>
-                                <input type="text" id="edit-user-id" name="user-id">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="edit-notes">Anteckningar</label>
-                                <textarea id="edit-notes" name="notes" rows="3"></textarea>
-                            </div>
-
-                            <div class="form-actions">
-                                <button type="button" class="btn btn-secondary" onclick="closeModal('edit-customer-modal')">
-                                    Avbryt
-                                </button>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save"></i>
-                                    Uppdatera kund
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Customer Details Modal -->
-                <div id="customer-details-modal" class="modal" style="display: none;">
-                    <div class="modal-content modal-large">
-                        <div class="modal-header">
-                            <h3>Kunddetaljer</h3>
-                            <button class="modal-close" onclick="closeModal('customer-details-modal')">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <div class="modal-body">
-                            <div id="customer-details-content">
-                                <!-- Customer details will be loaded here -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </main>
     </div>
 
-    <!-- Footer -->
     <footer class="site-footer">
         <div class="container">
             <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
         </div>
     </footer>
 
-    <!-- Load scripts -->
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="app.js?v=1.1"></script>
-    <script src="js/kundlista.js"></script>
+    <script src="app.js?v=2.1"></script>
+    <script src="js/kundlista.js?v=2.1"></script>
 </body>
 </html>

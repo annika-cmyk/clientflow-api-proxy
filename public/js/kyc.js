@@ -907,18 +907,17 @@ class KYCManager {
                         <h4>Adressinformation</h4>
                     </div>
                     <div class="address-details">
-                        <div class="address-item">
-                            <label>Gatuadress</label>
-                            <span>${formatValue(companyData.adress?.gatuadress)}</span>
-                        </div>
-                        <div class="address-item">
-                            <label>Postnummer</label>
-                            <span>${formatValue(companyData.adress?.postnummer)}</span>
-                        </div>
-                        <div class="address-item">
-                            <label>Postort</label>
-                            <span>${formatValue(companyData.adress?.postort)}</span>
-                        </div>
+                        ${(() => {
+                            const gata = companyData.adress?.gatuadress || '';
+                            const postnr = companyData.adress?.postnummer || '';
+                            const ort = companyData.adress?.postort || '';
+                            const fullAdress = [gata, postnr, ort].filter(Boolean).join(', ') || 'Saknas';
+                            return `
+                        <div class="address-item full-width">
+                            <label>Fullständig adress</label>
+                            <span>${fullAdress}</span>
+                        </div>`;
+                        })()}
                     </div>
                 </div>
 

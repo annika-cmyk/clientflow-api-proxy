@@ -22,62 +22,35 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>KUNDKORT</h1>
-                        <br>
-                        <p><h3>Detaljerad kundinformation</h3>
-                            Här kan du se all detaljerad information om den valda kunden, inklusive företagsinformation, 
-                            roller, riskbedömningar, tjänster och dokumentation. Använd tabbarna för att navigera mellan 
-                            olika informationskategorier.
-                        </p>
+                        <h2 id="customer-name" class="kundkort-company-name">Laddar kundinformation...</h2>
+                        <p id="customer-org-number" class="kundkort-orgnr"></p>
                     </div>
                 </header>
 
                 <!-- Customer Details Section -->
                 <section class="customer-details-section">
                     <div class="container">
-                        <div class="customer-header">
-                            <div class="customer-basic-info">
-                                <div class="customer-icon">
-                                    <i class="fas fa-building"></i>
-                                </div>
-                                <div class="customer-details">
-                                    <h2 id="customer-name">Laddar kundinformation...</h2>
-                                    <p id="customer-org-number" class="customer-org-number"></p>
-                                    <span id="customer-type" class="customer-type-badge"></span>
-                                </div>
-                            </div>
-                            <div class="customer-actions">
-                                <button class="btn btn-primary" onclick="customerCardManager.sendToCustomer()">
-                                    <i class="fas fa-paper-plane"></i>
-                                    Skicka till kund för godkännande
-                                </button>
-                                <button class="btn btn-secondary" onclick="customerCardManager.performRiskAssessment()">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                    Gör riskbedömning
-                                </button>
-                            </div>
-                        </div>
-
                         <!-- Tab Navigation -->
                         <div class="tab-navigation">
                             <button class="tab-button active" data-tab="foretagsinformation">
                                 <i class="fas fa-info-circle"></i>
                                 Företagsinformation
                             </button>
-                            <button class="tab-button" data-tab="roller">
-                                <i class="fas fa-users"></i>
-                                Roller
+                            <button class="tab-button" data-tab="uppdragsavtal">
+                                <i class="fas fa-file-signature"></i>
+                                Uppdragsavtal
                             </button>
-                            <button class="tab-button" data-tab="riskbedomning">
+                            <button class="tab-button" data-tab="ovrigkyc">
                                 <i class="fas fa-shield-alt"></i>
                                 Riskbedömning
-                            </button>
-                            <button class="tab-button" data-tab="tjanster">
-                                <i class="fas fa-cogs"></i>
-                                Tjänster
                             </button>
                             <button class="tab-button" data-tab="anteckningar">
                                 <i class="fas fa-sticky-note"></i>
                                 Anteckningar
+                            </button>
+                            <button class="tab-button" data-tab="avvikelser">
+                                <i class="fas fa-exclamation-circle"></i>
+                                Avvikelser
                             </button>
                             <button class="tab-button" data-tab="dokumentation">
                                 <i class="fas fa-file-alt"></i>
@@ -89,148 +62,60 @@
                         <div class="tab-content">
                             <!-- Företagsinformation Tab -->
                             <div id="foretagsinformation" class="tab-pane active">
-                                <div class="info-card">
-                                    <h3><i class="fas fa-info-circle"></i> Företagsinformation</h3>
-                                    <div class="info-grid">
-                                        <div class="info-item">
-                                            <label>E-post:</label>
-                                            <span id="customer-email">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Postadress:</label>
-                                            <span id="customer-address">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Telefonnr:</label>
-                                            <span id="customer-phone">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>SNI kod:</label>
-                                            <span id="customer-sni">-</span>
-                                        </div>
-                                        <div class="info-item full-width">
-                                            <label>Verksamhetsbeskrivning:</label>
-                                            <p id="customer-description">-</p>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Omsättning:</label>
-                                            <span id="customer-turnover">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Befattningshavare:</label>
-                                            <span id="customer-executives">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Verklig huvudman:</label>
-                                            <span id="customer-owner">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Firmateckning:</label>
-                                            <span id="customer-signature">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Aktivt företag:</label>
-                                            <span id="customer-active">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Avtalet gäller ifrån:</label>
-                                            <span id="customer-agreement-date">-</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Uppdraget kan antas:</label>
-                                            <span id="customer-can-accept">-</span>
-                                        </div>
-                                        <div class="info-item full-width">
-                                            <label>Byrån har:</label>
-                                            <div id="customer-byra-has">-</div>
-                                        </div>
-                                        <div class="info-item">
-                                            <label>Skapad:</label>
-                                            <span id="customer-created">-</span>
-                                        </div>
+                                <div id="foretagsinformation-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar företagsinformation...</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Roller Tab -->
-                            <div id="roller" class="tab-pane">
-                                <div class="info-card">
-                                    <div class="card-header">
-                                        <h3><i class="fas fa-users"></i> Roller</h3>
-                                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.addPerson()">
-                                            <i class="fas fa-plus"></i>
-                                            Lägg till person/ombud
-                                        </button>
-                                    </div>
-                                    <div id="roles-list" class="roles-list">
-                                        <div class="loading-spinner">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p>Laddar roller...</p>
-                                        </div>
+                            <!-- Uppdragsavtal Tab -->
+                            <div id="uppdragsavtal" class="tab-pane">
+                                <div id="uppdragsavtal-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar uppdragsavtal...</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Riskbedömning Tab -->
-                            <div id="riskbedomning" class="tab-pane">
-                                <div class="info-card">
-                                    <h3><i class="fas fa-shield-alt"></i> Riskbedömning</h3>
-                                    <div id="risk-assessment-content">
-                                        <div class="loading-spinner">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p>Laddar riskbedömning...</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Tjänster Tab -->
-                            <div id="tjanster" class="tab-pane">
-                                <div class="info-card">
-                                    <h3><i class="fas fa-cogs"></i> Tjänster</h3>
-                                    <div id="services-content">
-                                        <div class="loading-spinner">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p>Laddar tjänster...</p>
-                                        </div>
+                            <!-- Övrig KYC Tab -->
+                            <div id="ovrigkyc" class="tab-pane">
+                                <div id="ovrigkyc-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar KYC-information...</p>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Anteckningar Tab -->
                             <div id="anteckningar" class="tab-pane">
-                                <div class="info-card">
-                                    <div class="card-header">
-                                        <h3><i class="fas fa-sticky-note"></i> Anteckningar</h3>
-                                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.addNote()">
-                                            <i class="fas fa-plus"></i>
-                                            Lägg till anteckning
-                                        </button>
+                                <div id="notes-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar anteckningar...</p>
                                     </div>
-                                    <div id="notes-content">
-                                        <div class="loading-spinner">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p>Laddar anteckningar...</p>
-                                        </div>
+                                </div>
+                            </div>
+
+                            <!-- Avvikelser Tab -->
+                            <div id="avvikelser" class="tab-pane">
+                                <div id="avvikelser-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar avvikelser...</p>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Dokumentation Tab -->
                             <div id="dokumentation" class="tab-pane">
-                                <div class="info-card">
-                                    <div class="card-header">
-                                        <h3><i class="fas fa-file-alt"></i> Dokumentation</h3>
-                                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.uploadDocument()">
-                                            <i class="fas fa-upload"></i>
-                                            Ladda upp dokument
-                                        </button>
-                                    </div>
-                                    <div id="documents-content">
-                                        <div class="loading-spinner">
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            <p>Laddar dokument...</p>
-                                        </div>
+                                <div id="documents-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar dokument...</p>
                                     </div>
                                 </div>
                             </div>
@@ -249,11 +134,11 @@
     </footer>
 
     <!-- Load scripts -->
-    <script src="js/config.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/navigation.js"></script>
-    <script src="js/components.js"></script>
-    <script src="app.js?v=1.1"></script>
-    <script src="js/kundkort.js"></script>
+    <script src="js/config.js?v=2.1"></script>
+    <script src="js/auth.js?v=2.1"></script>
+    <script src="js/navigation.js?v=2.1"></script>
+    <script src="js/components.js?v=2.1"></script>
+    <script src="app.js?v=2.1"></script>
+    <script src="js/kundkort.js?v=4.3"></script>
 </body>
 </html>

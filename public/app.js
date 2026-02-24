@@ -599,209 +599,94 @@ class ClientFlowApp {
             return value;
         };
 
-        // Update the main card header with company name
+        // Töm rubriken i det stora kortet
         if (companyHeader) {
-            companyHeader.textContent = formatValue(companyData.namn);
+            companyHeader.textContent = '';
         }
 
-        // Create HTML for tabbed company information
+        // Bygg fullständig adress
+        const adressParts = [
+            companyData.adress?.gatuadress,
+            companyData.adress?.postnummer,
+            companyData.adress?.postort
+        ].filter(Boolean);
+        const fullAdress = adressParts.length > 0 ? adressParts.join(', ') : 'Saknas';
+
+        // Bygg roller-lista
+        const rollerHTML = companyData.befattningshavare && companyData.befattningshavare.length > 0
+            ? companyData.befattningshavare.map(p => `
+                <div class="lead-role-item">
+                    <span class="lead-role-name">${p.namn || 'Okänt namn'}</span>
+                    <span class="lead-role-title">${p.roll || p.befattning || ''}</span>
+                </div>`).join('')
+            : companyData.roller && companyData.roller.length > 0
+                ? companyData.roller.map(p => `
+                <div class="lead-role-item">
+                    <span class="lead-role-name">${p.namn || 'Okänt namn'}</span>
+                    <span class="lead-role-title">${p.roll || p.befattning || ''}</span>
+                </div>`).join('')
+                : '<span class="lead-empty">Inga roller registrerade</span>';
+
         const html = `
-            <div class="company-info-clean">
-                <!-- Company Header -->
-                <div class="company-header-section">
-                    <div class="company-header-left">
-                        <i class="fas fa-eye company-icon"></i>
-                        <div class="company-title">
-                            <h3 class="company-name">${formatValue(companyData.namn)}</h3>
-                            <div class="company-meta">
-                                <span class="org-number">${formatValue(companyData.organisationsnummer)}</span>
-                                <span class="company-form-tag">${formatValue(companyData.form)}</span>
-                            </div>
-                        </div>
+            <div class="lead-card">
+
+                <!-- Huvud: namn + orgnr + status -->
+                <div class="lead-card-header">
+                    <div class="lead-card-title">
+                        <h3>${formatValue(companyData.namn)}</h3>
+                        <span class="lead-orgnr">${formatValue(companyData.organisationsnummer)}</span>
+                    </div>
+                    <span class="lead-status ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">
+                        ${formatValue(companyData.status)}
+                    </span>
+                </div>
+
+                <!-- Fält-grid -->
+                <div class="lead-fields">
+                    <div class="lead-field">
+                        <label>Registreringsdatum</label>
+                        <span>${formatValue(companyData.registreringsdatum)}</span>
+                    </div>
+                    <div class="lead-field">
+                        <label>Registreringsland</label>
+                        <span>${formatValue(companyData.registreringsland)}</span>
+                    </div>
+                    <div class="lead-field">
+                        <label>Organisationsform</label>
+                        <span>${formatValue(companyData.form)}</span>
+                    </div>
+                    <div class="lead-field lead-field--full">
+                        <label>Adress</label>
+                        <span>${fullAdress}</span>
+                    </div>
+                    <div class="lead-field lead-field--full">
+                        <label>Verksamhetsbeskrivning</label>
+                        <span>${formatValue(companyData.verksamhet)}</span>
                     </div>
                 </div>
-                
-                <!-- Tab Navigation -->
-                <div class="company-tabs">
-                    <button class="tab-button active" data-tab="foretagsuppgifter">
-                        <i class="fas fa-building"></i>
-                        Företagsuppgifter
-                    </button>
-                    <button class="tab-button" data-tab="roller">
-                        <i class="fas fa-users-cog"></i>
-                        Roller
-                    </button>
-                    <button class="tab-button" data-tab="riskbedomning">
-                        <i class="fas fa-shield-alt"></i>
-                        Riskbedömning
-                    </button>
-                    <button class="tab-button" data-tab="kundens-tjanster">
-                        <i class="fas fa-cogs"></i>
-                        Kundens tjänster
-                    </button>
-                </div>
-                
-                <!-- Tab Content -->
-                <div class="tab-content">
-                    <!-- Tab 1: Company Information -->
-                    <div class="tab-pane active" id="foretagsuppgifter">
-                        <!-- Contact Information Section -->
-                        <div class="contact-info-section">
-                            <div class="contact-grid">
-                                <div class="contact-item">
-                                    <label>Status</label>
-                                    <span class="status-badge ${companyData.status === 'Aktiv' ? 'active' : 'inactive'}">${formatValue(companyData.status)}</span>
-                                </div>
-                                <div class="contact-item">
-                                    <label>Registreringsdatum</label>
-                                    <span>${formatValue(companyData.registreringsdatum)}</span>
-                                </div>
-                                <div class="contact-item">
-                                    <label>Registreringsland</label>
-                                    <span>${formatValue(companyData.registreringsland)}</span>
-                                </div>
-                                <div class="contact-item">
-                                    <label>Organisationsform</label>
-                                    <span>${formatValue(companyData.form)}</span>
-                                </div>
-                            </div>
-                        </div>
 
-                        <!-- Company Names Section (if multiple names exist) -->
-                        ${companyData.allaNamn && companyData.allaNamn.length > 1 ? `
-                        <div class="detailed-info-section">
-                            <div class="section-header">
-                                <i class="fas fa-tags"></i>
-                                <h4>Företagsnamn</h4>
-                            </div>
-                            <div class="company-names-list">
-                                ${companyData.allaNamn.map((namn, index) => `
-                                    <div class="company-name-item ${index === 0 ? 'primary' : ''}">
-                                        <span class="name-number">${index + 1}</span>
-                                        <span class="name-text">${namn}</span>
-                                        ${index === 0 ? '<span class="primary-badge">Huvudnamn</span>' : ''}
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                        ` : ''}
-
-                        <!-- Address Information Section -->
-                        <div class="detailed-info-section">
-                            <div class="section-header">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <h4>Adressinformation</h4>
-                            </div>
-                            <div class="address-details">
-                                <div class="address-item">
-                                    <label>Gatuadress</label>
-                                    <span>${formatValue(companyData.adress?.gatuadress)}</span>
-                                </div>
-                                <div class="address-item">
-                                    <label>Postnummer</label>
-                                    <span>${formatValue(companyData.adress?.postnummer)}</span>
-                                </div>
-                                <div class="address-item">
-                                    <label>Postort</label>
-                                    <span>${formatValue(companyData.adress?.postort)}</span>
-                                </div>
-                                <div class="address-item full-address">
-                                    <label>Fullständig adress</label>
-                                    <span>${formatValue(companyData.adress?.fullAddress)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Business Information Section -->
-                        <div class="detailed-info-section">
-                            <div class="section-header">
-                                <i class="fas fa-briefcase"></i>
-                                <h4>Verksamhetsinformation</h4>
-                            </div>
-                            <div class="business-details">
-                                <div class="business-item">
-                                    <label>Verksamhetsbeskrivning</label>
-                                    <span>${formatValue(companyData.verksamhet)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- SNI Codes Section -->
-                        <div class="detailed-info-section">
-                            <div class="section-header">
-                                <i class="fas fa-tags"></i>
-                                <h4>SNI-koder</h4>
-                            </div>
-                            <div class="sni-codes-container">
-                                ${companyData.sniKoder && companyData.sniKoder.length > 0 ? 
-                                    companyData.sniKoder
-                                        .filter(sni => sni.klartext && sni.klartext.trim() !== '')
-                                        .map(sni => `
-                                            <div class="sni-code-item">
-                                                <span class="sni-code-badge">${formatValue(sni.kod)}</span>
-                                                <span class="sni-description">${formatValue(sni.klartext)}</span>
-                                            </div>
-                                        `).join('')
-                                    : '<div class="no-data">Inga SNI-koder tillgängliga</div>'
-                                }
-                            </div>
-                        </div>
-
-                        <!-- Additional Information Section -->
-                        <div class="detailed-info-section">
-                            <div class="section-header">
-                                <i class="fas fa-info-circle"></i>
-                                <h4>Övrig information</h4>
-                            </div>
-                            <div class="additional-details">
-                                <div class="additional-item">
-                                    <label>Antal anställda</label>
-                                    <span>${formatValue(companyData.antal_anstallda)}</span>
-                                </div>
-                                <div class="additional-item">
-                                    <label>Omsättning</label>
-                                    <span>${formatValue(companyData.omsattning)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Tab 2: Roller -->
-                    <div class="tab-pane" id="roller">
-                        <div class="roles-section">
-                            <h4><i class="fas fa-users-cog"></i> Roller och ansvar</h4>
-                            <div class="role-info">
-                                <p><strong>VD/Ansvarig:</strong> ${formatValue(companyData.namn)}</p>
-                                <p><strong>Ekonomiansvarig:</strong> ${companyData.form === 'Aktiebolag' ? 'Krävs enligt lag' : 'Rekommenderas'}</p>
-                                <p><strong>Riskansvarig:</strong> Under utveckling</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Tab 3: Riskbedömning -->
-                    <div class="tab-pane" id="riskbedomning">
-                        <div class="tab-placeholder">
-                            <div class="placeholder-icon">
-                                <i class="fas fa-shield-alt"></i>
-                            </div>
-                            <h4>Riskbedömning</h4>
-                            <p>Här kommer riskbedömningsdata att visas när den är tillgänglig.</p>
-                            <small>Funktionalitet under utveckling</small>
-                        </div>
-                    </div>
-                    
-                    <!-- Tab 3: Kundens tjänster -->
-                    <div class="tab-pane" id="kundens-tjanster">
-                        <div class="tab-placeholder">
-                            <div class="placeholder-icon">
-                                <i class="fas fa-cogs"></i>
-                            </div>
-                            <h4>Kundens tjänster</h4>
-                            <p>Här kommer information om kundens tjänster att visas när den är tillgänglig.</p>
-                            <small>Funktionalitet under utveckling</small>
-                        </div>
+                <!-- SNI-koder -->
+                <div class="lead-section">
+                    <label>SNI-koder</label>
+                    <div class="lead-sni">
+                        ${companyData.sniKoder && companyData.sniKoder.length > 0
+                            ? companyData.sniKoder
+                                .filter(s => s.klartext && s.klartext.trim())
+                                .map(s => `<span class="sni-code-badge">${s.kod}</span><span class="sni-code-label">${s.klartext}</span>`)
+                                .join('')
+                            : '<span class="lead-empty">Saknas</span>'
+                        }
                     </div>
                 </div>
+
+                <!-- Roller och ansvar -->
+                <div class="lead-section">
+                    <label>Roller och ansvar</label>
+                    <div class="lead-roles">
+                        ${rollerHTML}
+                    </div>
+                </div>
+
             </div>
         `;
         
@@ -809,20 +694,6 @@ class ClientFlowApp {
         console.log('🔍 HTML length:', html.length);
         companyDetails.innerHTML = html;
         companyInfoSection.style.display = 'block';
-        
-        // Debug: Check if elements are actually in the DOM
-        setTimeout(() => {
-            const verksamhetElement = document.querySelector('.business-item span');
-            const registreringsdatumElement = document.querySelector('.overview-item:nth-child(2) span');
-            console.log('🔍 DOM check:');
-            console.log('  - verksamhet element:', verksamhetElement);
-            console.log('  - registreringsdatum element:', registreringsdatumElement);
-            if (verksamhetElement) console.log('  - verksamhet text:', verksamhetElement.textContent);
-            if (registreringsdatumElement) console.log('  - registreringsdatum text:', registreringsdatumElement.textContent);
-        }, 100);
-        
-        // Initialize tab functionality
-        this.initTabs();
         
         // Scroll to company info
         companyInfoSection.scrollIntoView({ behavior: 'smooth' });
@@ -855,63 +726,10 @@ class ClientFlowApp {
     }
 
     async goToKYC() {
-        console.log('🚀 Navigating to KYC page...');
-        
-        const companyDetails = document.getElementById('company-details');
-        console.log('🔍 Company details element:', companyDetails);
-        console.log('🔍 Company details innerHTML length:', companyDetails?.innerHTML?.length || 0);
-        
-        if (!companyDetails || !companyDetails.innerHTML.trim()) {
-            console.error('❌ No company details found');
-            this.showMessage('Ingen företagsdata att gå vidare med', 'error');
-            return;
-        }
-        
-        // Get the current company data
         const companyData = this.currentCompanyData;
-        console.log('🔍 Current company data:', companyData);
-        console.log('🔍 Company data exists:', !!companyData);
-        
         if (!companyData) {
-            console.error('❌ No current company data available');
             this.showMessage('Ingen företagsdata tillgänglig', 'error');
             return;
-        }
-        
-        try {
-            console.log('💾 Storing company data in localStorage for KYC page...');
-            
-            // Store company data in localStorage for KYC page
-            localStorage.setItem('kycCompanyData', JSON.stringify(companyData));
-            console.log('✅ Company data stored in localStorage:', companyData);
-            
-            // Try to save to Airtable in background (non-blocking)
-            console.log('🔍 Attempting to save to Airtable in background...');
-            this.saveToAirtable().then(success => {
-                if (success) {
-                    console.log('✅ Successfully saved to Airtable in background');
-                } else {
-                    console.warn('⚠️ Failed to save to Airtable, but continuing to KYC');
-                }
-            }).catch(error => {
-                console.warn('⚠️ Error saving to Airtable, but continuing to KYC:', error);
-            });
-            
-            // Navigate to KYC page immediately
-            console.log('🌐 Navigating to KYC page...');
-            window.location.href = 'kyc.html';
-            
-        } catch (error) {
-            console.error('❌ Error in goToKYC:', error);
-            this.showMessage('Ett fel uppstod vid navigering till KYC-sidan', 'error');
-        }
-    }
-
-    async saveToAirtable() {
-        const companyDetails = document.getElementById('company-details');
-        if (!companyDetails.innerHTML.trim()) {
-            this.showMessage('Ingen företagsdata att spara', 'error');
-            return false;
         }
 
         const saveBtn = document.getElementById('save-to-airtable');
@@ -920,96 +738,122 @@ class ClientFlowApp {
         saveBtn.disabled = true;
 
         try {
-            // Get company data from the displayed information
-            const companyData = this.extractCompanyDataFromDisplay();
-            
-            // Add user and bureau IDs with correct field names
-            companyData.anvandareId = this.userId;
-            companyData.byraId = this.bureauId;
-            companyData.timestamp = new Date().toISOString();
-            
-            // Kontrollera att vi har rätt data
-            if (!this.userId || !this.bureauId) {
-                console.warn('⚠️ Varning: Saknar användar-ID eller byrå-ID:', {
-                    userId: this.userId,
-                    bureauId: this.bureauId
-                });
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                this.showMessage('Du måste vara inloggad för att spara', 'error');
+                return;
             }
 
-            // Debug: Log what we're sending
-            console.log('🔍 Final data being sent to Airtable:', {
-                companyData: companyData,
-                userId: this.userId,
-                bureauId: this.bureauId,
-                hasUserId: !!this.userId,
-                hasBureauId: !!this.bureauId,
-                userIdType: typeof this.userId,
-                bureauIdType: typeof this.bureauId
+            // Bygg SNI-koder som text
+            const sniText = companyData.sniKoder && companyData.sniKoder.length > 0
+                ? companyData.sniKoder.map(s => `${s.kod} ${s.klartext}`).join('\n')
+                : '';
+
+            // Bygg adress
+            const adressParts = [
+                companyData.adress?.gatuadress,
+                companyData.adress?.postnummer,
+                companyData.adress?.postort
+            ].filter(Boolean);
+            const fullAdress = adressParts.join(', ');
+
+            // Bygg befattningshavare som text
+            const befattningText = companyData.befattningshavare && companyData.befattningshavare.length > 0
+                ? companyData.befattningshavare.map(p => `${p.namn} (${p.roll || p.befattning || ''})`).join('\n')
+                : '';
+
+            const byraId = this.bureauId || '';
+
+            const fields = {
+                'Namn': companyData.namn || '',
+                'Orgnr': companyData.organisationsnummer || '',
+                'Byrå ID': byraId.toString(),
+                'Address': fullAdress,
+                'Verksamhetsbeskrivning': companyData.verksamhet || '',
+                'SNI kod': sniText,
+                'Bolagsform': companyData.form || '',
+                'registreringsland': companyData.registreringsland || '',
+                'regdatum': companyData.registreringsdatum || '',
+                'Befattningshavare': befattningText,
+                'aktiv/inaktiv': companyData.status === 'Aktiv' ? 'Aktiv' : 'Inaktiv'
+            };
+
+            // Ta bort tomma fält
+            Object.keys(fields).forEach(k => {
+                if (!fields[k]) delete fields[k];
             });
 
-            // Först testa debug-endpointen för att se vad som skickas
-            console.log('🔍 Testing debug endpoint first...');
-            const debugResponse = await fetch(`${this.baseUrl}/api/debug/save-to-airtable`, {
+            console.log('📤 Sparar till KUNDDATA:', fields);
+
+            const response = await fetch(`${this.baseUrl}/api/kunddata/create`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(companyData)
+                body: JSON.stringify({ fields })
             });
-            
-            if (debugResponse.ok) {
-                const debugData = await debugResponse.json();
-                console.log('🔍 Debug endpoint response:', debugData);
-            } else {
-                console.warn('⚠️ Debug endpoint failed:', debugResponse.status);
-            }
-            
-            // Sedan skicka till riktiga endpointen
-            console.log('🔍 Sending to real Airtable endpoint...');
-            let response;
-            
-            try {
-                response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(companyData)
-                });
-            } catch (error) {
-                console.warn('⚠️ Bolagsverket endpoint failed, trying simple endpoint:', error);
-                
-                // Fallback till enkel endpoint
-                response = await fetch(`${this.baseUrl}/api/simple/save-to-airtable`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(companyData)
-                });
-            }
 
-            // Debug: Log response details
-            console.log('🔍 Response status:', response.status);
-            console.log('🔍 Response headers:', response.headers);
-            
             if (response.ok) {
-                const responseData = await response.json();
-                console.log('✅ Success response:', responseData);
-                this.showMessage('Företagsdata sparad till Airtable!', 'success');
-                return true;
+                const data = await response.json();
+                console.log('✅ Lead sparat:', data);
+                saveBtn.innerHTML = '<i class="fas fa-check"></i> Sparat!';
+                saveBtn.style.background = '#10b981';
+                this.showMessage(`✅ "${companyData.namn}" har sparats! Dirigerar till kundkortet...`, 'success');
+                setTimeout(() => {
+                    window.location.href = `kundkort.html?id=${data.id}`;
+                }, 1000);
+            } else if (response.status === 409) {
+                // Duplicat – företaget finns redan hos denna byrå
+                const err = await response.json().catch(() => ({}));
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+                this.showDuplicateWarning(companyData.namn, err.existingId);
             } else {
-                const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-                console.error('❌ Error response:', errorData);
-                throw new Error(`Failed to save to Airtable: ${response.status} - ${errorData.message || errorData.error || 'Unknown error'}`);
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || `HTTP ${response.status}`);
             }
         } catch (error) {
-            console.error('Error saving to Airtable:', error);
-            this.showMessage('Kunde inte spara till Airtable', 'error');
-            return false;
-        } finally {
+            console.error('❌ Fel vid sparande:', error);
+            this.showMessage(`Kunde inte spara lead: ${error.message}`, 'error');
             saveBtn.innerHTML = originalText;
             saveBtn.disabled = false;
+        }
+    }
+
+    showDuplicateWarning(namn, existingId) {
+        // Ta bort eventuell befintlig varning
+        const prev = document.getElementById('duplicate-warning');
+        if (prev) prev.remove();
+
+        const kundkortUrl = existingId ? `kundkort.html?id=${existingId}` : null;
+
+        const el = document.createElement('div');
+        el.id = 'duplicate-warning';
+        el.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+                <i class="fas fa-exclamation-triangle" style="color:#d97706;font-size:1.2rem;margin-top:2px;flex-shrink:0;"></i>
+                <div>
+                    <strong>Företaget finns redan upplagt</strong><br>
+                    <span style="color:#92400e;">"${namn}" är redan registrerat som kund hos er byrå.</span><br>
+                    ${kundkortUrl ? `<a href="${kundkortUrl}" style="color:#b45309;font-weight:600;text-decoration:underline;margin-top:4px;display:inline-block;">
+                        <i class="fas fa-arrow-right"></i> Gå till befintligt kundkort
+                    </a>` : ''}
+                </div>
+                <button onclick="document.getElementById('duplicate-warning').remove()" 
+                    style="margin-left:auto;background:none;border:none;cursor:pointer;color:#92400e;font-size:1rem;padding:0;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>`;
+        el.style.cssText = `
+            background:#fef3c7;border:1.5px solid #f59e0b;border-radius:10px;
+            padding:1rem 1.25rem;margin-top:1rem;animation:fadeIn .25s ease;`;
+
+        // Sätt in varningen direkt under sökresultatskortet
+        const companySection = document.getElementById('company-info-section');
+        if (companySection) {
+            companySection.parentNode.insertBefore(el, companySection.nextSibling);
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }
 

@@ -3,457 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClientFlow - Nytt Lead</title>
+    <title>ClientFlow - Företagssök</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
 
-
     <div class="app-container">
-        <!-- Sidebar will be loaded dynamically -->
-        <div class="sidebar-container">
-            <!-- Sidebar content will be loaded here -->
-        </div>
+        <div class="sidebar-container"></div>
 
-        <!-- Main Content -->
         <main class="main-content">
-            <header class="content-header">
-                <h1>NYTT LEAD</h1>
-                <p>Fyll i organisationsnummer här för att påbörja riskbedömningen. Detta ska alltid göras vid en ny förfrågan för att fastställa kundens risknivå</p>
-            </header>
+            <div class="container">
 
-            <!-- Search Section -->
-            <section class="search-section">
-                <div class="search-card">
-                    <div class="search-header">
-                        <h2>Företagssökning</h2>
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>FÖRETAGSSÖK</h1>
+                        <br>
+                        <p>Sök upp ett företag via organisationsnummer för att hämta uppgifter från Bolagsverket och spara som lead i ClientFlow.</p>
+                        <br>
                     </div>
-                    <p class="search-description">
-                      Fyll i organisationsnummer här för at påbörja riskbedömningen. Detta ska alltid göras vid en ny förfrågan för att fastställa kundens risknivå
-                    </p>
-                    
-                    <form id="search-form" class="search-form">
-                        <div class="form-group">
-                            <label for="org-number">Organisationsnummer</label>
-                            <input 
-                                type="text" 
-                                id="org-number" 
-                                name="org-number" 
-                              
-                                pattern="[0-9\-]{8,12}"
-                                required
-                            >
-                            <small>Format: 8-12 siffror, bindestreck tillåtna</small>
+                </header>
+
+                <!-- Search Section -->
+                <section class="search-section">
+                    <div class="search-card">
+                        <form id="search-form" class="search-form">
+                            <div class="form-group">
+                                <label for="org-number">Organisationsnummer</label>
+                                <div class="search-input-row">
+                                    <input
+                                        type="text"
+                                        id="org-number"
+                                        name="org-number"
+                                        placeholder="t.ex. 556722-3705"
+                                        pattern="[0-9\-]{8,12}"
+                                        required
+                                    >
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-search"></i>
+                                        Hämta företagsdata
+                                    </button>
+                                    <button type="button" id="clear-search" class="btn btn-secondary">
+                                        <i class="fas fa-times"></i>
+                                        Rensa
+                                    </button>
+                                </div>
+                                <small>Format: 10 siffror, bindestreck tillåtna</small>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- Error Message -->
+                <section id="error-message" class="error-section" style="display: none;">
+                    <div class="error-card">
+                        <div class="error-header">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h3>Fel uppstod</h3>
                         </div>
-                        
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i>
-                                Hämta företagsdata
+                        <div class="error-content">
+                            <p id="error-text">Ett fel uppstod vid hämtning av företagsdata.</p>
+                            <div class="error-details" id="error-details" style="display: none;">
+                                <h4>Teknisk information:</h4>
+                                <pre id="error-technical"></pre>
+                            </div>
+                        </div>
+                        <div class="error-actions">
+                            <button id="show-error-details" class="btn btn-ghost btn-sm">
+                                <i class="fas fa-info-circle"></i>
+                                Visa teknisk information
                             </button>
-                            <button type="button" id="clear-search" class="btn btn-ghost">
-                                <i class="fas fa-times"></i>
-                                Rensa
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </section>
-
-            <!-- System Status -->
-            <section class="status-section">
-                <div class="status-card">
-                    <h3>System Status</h3>
-                    <div class="status-grid">
-                        <div class="status-item">
-                            <i class="fas fa-server"></i>
-                            <span>Server</span>
-                            <small id="server-status">Kontrollerar...</small>
-                        </div>
-                        <div class="status-item">
-                            <i class="fas fa-database"></i>
-                            <span>Airtable</span>
-                            <small id="airtable-status">Kontrollerar...</small>
-                        </div>
-                        <div class="status-item">
-                            <i class="fas fa-building"></i>
-                            <span>Bolagsverket</span>
-                            <small id="bolagsverket-status">Kontrollerar...</small>
-                        </div>
-                    </div>
-                    <button id="check-status" class="btn btn-ghost btn-sm">
-                        <i class="fas fa-sync-alt"></i>
-                        Uppdatera status
-                    </button>
-                    
-                    <!-- Test Navigation Button -->
-                    <button id="test-nav" class="btn btn-ghost btn-sm" style="margin-left: 1rem;">
-                        <i class="fas fa-link"></i>
-                        Testa Navigation
-                    </button>
-                    
-                    <!-- Debug User Data Button -->
-                    <a href="debug-user-data.html" class="btn btn-ghost btn-sm" style="margin-left: 1rem; text-decoration: none;">
-                        <i class="fas fa-bug"></i>
-                        Debug Användardata
-                    </a>
-                    
-                    <!-- Debug Save Button -->
-                    <a href="debug-save-simple.html" class="btn btn-ghost btn-sm" style="margin-left: 1rem; text-decoration: none;">
-                        <i class="fas fa-save"></i>
-                        Debug Sparning
-                    </a>
-                    
-                            <!-- Kundlista Button -->
-        <a href="kundlista.html" class="btn btn-ghost btn-sm" style="margin-left: 1rem; text-decoration: none;">
-            <i class="fas fa-users"></i>
-            Kundlista
-        </a>
-        
-        <!-- Test Kundlista Button -->
-        <a href="test-kundlista.html" class="btn btn-ghost btn-sm" style="margin-left: 1rem; text-decoration: none;">
-            <i class="fas fa-bug"></i>
-            Test Kundlista
-        </a>
-        
-        <!-- Test Uppdaterad Kundlista Button -->
-        <a href="test-kundlista-updated.html" class="btn btn-ghost btn-sm" style="margin-left: 1rem; text-decoration: none;">
-            <i class="fas fa-eye"></i>
-            Test Uppdaterad Kundlista
-        </a>
-                </div>
-            </section>
-
-        
-
-            <!-- Error Message Display -->
-            <section id="error-message" class="error-section" style="display: none;">
-                <div class="error-card">
-                    <div class="error-header">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <h3>Fel uppstod</h3>
-                    </div>
-                    <div class="error-content">
-                        <p id="error-text">Ett fel uppstod vid hämtning av företagsdata.</p>
-                        <div class="error-details" id="error-details" style="display: none;">
-                            <h4>Teknisk information:</h4>
-                            <pre id="error-technical"></pre>
-                        </div>
-                    </div>
-                    <div class="error-actions">
-                        <button id="show-error-details" class="btn btn-ghost btn-sm">
-                            <i class="fas fa-info-circle"></i>
-                            Visa teknisk information
-                        </button>
-                        <button id="hide-error-details" class="btn btn-ghost btn-sm" style="display: none;">
-                            <i class="fas fa-eye-slash"></i>
-                            Dölj teknisk information
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Company Information Display -->
-            <section id="company-info" class="company-info-section" style="display: none;">
-                <div class="company-card">
-                    <div class="company-header">
-                        <h2>Företagsinformation</h2>
-                        <div class="company-actions">
-                            <button id="save-to-airtable" class="btn btn-success">
-                                <i class="fas fa-arrow-right"></i>
-                                GÅ vidare med KYC-processen
-                            </button>
-                            <button id="export-data" class="btn btn-ghost">
-                                <i class="fas fa-download"></i>
-                                Exportera
+                            <button id="hide-error-details" class="btn btn-ghost btn-sm" style="display: none;">
+                                <i class="fas fa-eye-slash"></i>
+                                Dölj teknisk information
                             </button>
                         </div>
                     </div>
-                    
-                    <div id="company-details" class="company-details">
-                        <!-- Company information will be populated here -->
+                </section>
+
+                <!-- Company Information -->
+                <section id="company-info" class="company-info-section" style="display: none;">
+                    <div class="company-card">
+                        <div class="company-header">
+                            <h2 id="company-name-header"></h2>
+                            <div class="company-actions">
+                                <button id="save-to-airtable" class="btn btn-primary">
+                                    <i class="fas fa-arrow-right"></i>
+                                    Spara som lead
+                                </button>
+                            </div>
+                        </div>
+                        <div id="company-details" class="company-details"></div>
                     </div>
-                </div>
-            </section>
+                </section>
 
+                <!-- System Status -->
+                <section class="status-section">
+                    <div class="status-card">
+                        <div class="status-header">
+                            <h3><i class="fas fa-circle-notch"></i> Systemstatus</h3>
+                            <button id="check-status" class="btn btn-ghost btn-sm">
+                                <i class="fas fa-sync-alt"></i>
+                                Uppdatera
+                            </button>
+                        </div>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <i class="fas fa-server"></i>
+                                <span>Server</span>
+                                <small id="server-status">Kontrollerar...</small>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-database"></i>
+                                <span>Airtable</span>
+                                <small id="airtable-status">Kontrollerar...</small>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-building"></i>
+                                <span>Bolagsverket</span>
+                                <small id="bolagsverket-status">Kontrollerar...</small>
+                            </div>
+                        </div>
+                    </div>
+                </section>
 
+            </div>
         </main>
     </div>
 
-    <!-- Footer -->
     <footer class="site-footer">
         <div class="container">
             <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
         </div>
     </footer>
 
-    <!-- Load config first, then other modules -->
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <!-- Then load the main app -->
     <script src="app.js"></script>
-    
-    <!-- Test script for logout button -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('🔍 Index.html loaded');
-            console.log('🔍 AuthManager available:', !!window.authManager);
-            console.log('🔍 Logout button found:', !!document.querySelector('.logout-btn'));
-            
-            // Test if user is logged in
-            const token = localStorage.getItem('authToken');
-            const userData = localStorage.getItem('userData');
-            console.log('🔍 User logged in:', !!(token && userData));
-            
-            if (token && userData) {
-                console.log('🔍 User data:', JSON.parse(userData));
-            }
-        });
-    </script>
-    
-    <!-- Tab functionality debug script -->
-    <script>
-        // Add critical CSS to ensure tab content is visible
-        const criticalCSS = `
-            .tab-pane {
-                display: none !important;
-                opacity: 1 !important;
-                visibility: visible !important;
-                height: auto !important;
-                min-height: 100px !important;
-                overflow: visible !important;
-                position: static !important;
-                z-index: 9999 !important;
-            }
-            .tab-pane.active {
-                display: block !important;
-                opacity: 1 !important;
-                visibility: visible !important;
-                height: auto !important;
-                min-height: 100px !important;
-                overflow: visible !important;
-                position: static !important;
-                z-index: 9999 !important;
-            }
-            .tab-content {
-                display: block !important;
-                min-height: 200px !important;
-                border: 1px solid #e9ecef !important;
-                border-radius: 8px !important;
-                padding: 24px !important;
-                background: #ffffff !important;
-                position: relative !important;
-                z-index: 9999 !important;
-                visibility: visible !important;
-                opacity: 1 !important;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
-                margin-top: 16px !important;
-            }
-            .tab-content:empty::after {
-                content: "Laddar innehåll..." !important;
-                display: block !important;
-                padding: 40px 20px !important;
-                text-align: center !important;
-                color: #6c757d !important;
-                font-style: italic !important;
-                font-size: 14px !important;
-                font-weight: 400 !important;
-            }
-            /* Override any conflicting styles */
-            .company-info-clean .tab-content,
-            .company-info-clean .tab-pane,
-            .company-info-clean .tab-pane.active {
-                display: block !important;
-                visibility: visible !important;
-                opacity: 1 !important;
-                height: auto !important;
-                min-height: 100px !important;
-            }
-            /* Clean tab button styling */
-            .company-tabs {
-                border-bottom: 1px solid #e9ecef !important;
-                margin-bottom: 0 !important;
-                padding-bottom: 0 !important;
-            }
-            .tab-button {
-                border-bottom: 2px solid transparent !important;
-                transition: all 0.2s ease !important;
-            }
-            .tab-button.active {
-                border-bottom-color: #007bff !important;
-                color: #007bff !important;
-                background: transparent !important;
-            }
-            .tab-button:hover {
-                background: #f8f9fa !important;
-                color: #007bff !important;
-            }
-        `;
-        
-        // Inject critical CSS
-        const style = document.createElement('style');
-        style.textContent = criticalCSS;
-        document.head.appendChild(style);
-        
-        // Function to initialize tabs
-        function initTabs() {
-            console.log('🔍 Initializing tabs...');
-            const tabButtons = document.querySelectorAll('.tab-button');
-            const tabPanes = document.querySelectorAll('.tab-pane');
-            const tabContent = document.querySelector('.tab-content');
-            
-            console.log('🔍 Found tab buttons:', tabButtons.length);
-            console.log('🔍 Found tab panes:', tabPanes.length);
-            console.log('🔍 Tab content element:', tabContent);
-            
-            // Debug: Check current state of all panes
-            tabPanes.forEach((pane, index) => {
-                console.log(`🔍 Pane ${index} (${pane.id}):`, {
-                    display: pane.style.display,
-                    classes: pane.className,
-                    visible: pane.offsetHeight > 0,
-                    innerHTML: pane.innerHTML.substring(0, 100) + '...'
-                });
-            });
-            
-            // First, ensure only the first tab is visible
-            tabPanes.forEach((pane, index) => {
-                if (index === 0) {
-                    pane.style.display = 'block';
-                    pane.classList.add('active');
-                    console.log(`🔍 Made pane ${index} (${pane.id}) visible`);
-                } else {
-                    pane.style.display = 'none';
-                    pane.classList.remove('active');
-                    console.log(`🔍 Made pane ${index} (${pane.id}) hidden`);
-                }
-            });
-            
-            // Ensure first button is active
-            tabButtons.forEach((btn, index) => {
-                if (index === 0) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
-            });
-            
-            tabButtons.forEach((button, index) => {
-                console.log(`🔍 Tab button ${index}:`, button.textContent.trim());
-                button.addEventListener('click', () => {
-                    const targetTab = button.getAttribute('data-tab');
-                    console.log('🔍 Clicked tab:', targetTab);
-                    
-                    // Remove active class from all buttons and panes
-                    tabButtons.forEach(btn => btn.classList.remove('active'));
-                    tabPanes.forEach(pane => {
-                        pane.classList.remove('active');
-                        pane.style.display = 'none';
-                        console.log(`🔍 Hidden pane: ${pane.id}`);
-                    });
-                    
-                    // Add active class to clicked button and corresponding pane
-                    button.classList.add('active');
-                    const targetPane = document.getElementById(targetTab);
-                    if (targetPane) {
-                        targetPane.classList.add('active');
-                        targetPane.style.display = 'block';
-                        console.log('🔍 Activated tab pane:', targetTab);
-                        console.log('🔍 Pane display style:', targetPane.style.display);
-                        console.log('🔍 Pane classes:', targetPane.className);
-                        console.log('🔍 Pane content length:', targetPane.innerHTML.length);
-                        
-                        // Show what content is actually in this tab
-                        console.log('🔍 Tab content preview:', targetPane.innerHTML.substring(0, 300) + '...');
-                        
-                        // Force a reflow to ensure visibility
-                        targetPane.offsetHeight;
-                        
-                        // Debug: Check what's actually visible now
-                        setTimeout(() => {
-                            const visiblePanes = document.querySelectorAll('.tab-pane');
-                            console.log('🔍 After tab switch - All panes status:');
-                            visiblePanes.forEach((pane, idx) => {
-                                const isVisible = pane.style.display === 'block' || pane.classList.contains('active');
-                                console.log(`  - Pane ${idx} (${pane.id}):`, {
-                                    display: pane.style.display,
-                                    classes: pane.className,
-                                    isActive: pane.classList.contains('active'),
-                                    isVisible: isVisible,
-                                    contentLength: pane.innerHTML.length,
-                                    contentPreview: pane.innerHTML.substring(0, 100) + '...'
-                                });
-                            });
-                        }, 100);
-                    } else {
-                        console.error('❌ Tab pane not found:', targetTab);
-                    }
-                });
-            });
-            
-            // Force first tab to be visible
-            const firstPane = tabPanes[0];
-            if (firstPane) {
-                firstPane.style.display = 'block';
-                firstPane.classList.add('active');
-                console.log('🔍 Forced first pane to be visible:', firstPane.id);
-            }
-        }
-        
-        // Watch for company info to be displayed and then initialize tabs
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.type === 'childList') {
-                    const tabButtons = document.querySelectorAll('.tab-button');
-                    if (tabButtons.length > 0) {
-                        console.log('🔍 Tab buttons detected, initializing...');
-                        setTimeout(initTabs, 100); // Small delay to ensure DOM is ready
-                        observer.disconnect(); // Stop observing once tabs are found
-                    }
-                }
-            });
-        });
-        
-        // Start observing the company-details element
-        const companyDetails = document.getElementById('company-details');
-        if (companyDetails) {
-            observer.observe(companyDetails, { childList: true });
-        }
-        
-        // Also try to initialize tabs when the page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('🔍 DOM loaded, checking for tabs...');
-            setTimeout(() => {
-                const tabButtons = document.querySelectorAll('.tab-button');
-                if (tabButtons.length > 0) {
-                    console.log('🔍 Tabs found on page load, initializing...');
-                    initTabs();
-                }
-            }, 1000);
-        });
-        
-        // Additional check: try to initialize tabs every 2 seconds for the first 10 seconds
-        let initAttempts = 0;
-        const initInterval = setInterval(() => {
-            if (initAttempts >= 5) {
-                clearInterval(initInterval);
-                return;
-            }
-            
-            const tabButtons = document.querySelectorAll('.tab-button');
-            if (tabButtons.length > 0) {
-                console.log('🔍 Tabs found via interval check, initializing...');
-                initTabs();
-                clearInterval(initInterval);
-            }
-            initAttempts++;
-        }, 2000);
-    </script>
 </body>
 </html>
-
-
