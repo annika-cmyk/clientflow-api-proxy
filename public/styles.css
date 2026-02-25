@@ -4255,6 +4255,9 @@ p, small { line-height: 1.6; }
 .document-list-item .document-delete-btn:hover {
     color: #ef4444;
 }
+.documentation-content {
+    padding: 0.5rem 0;
+}
 .document-list-actions {
     margin-top: 1rem;
     padding-top: 0.75rem;

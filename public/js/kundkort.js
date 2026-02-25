@@ -3797,18 +3797,12 @@ class CustomerCardManager {
             : `<ul class="document-list">${documents.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`;
 
         content.innerHTML = `
-            <div class="collapsible-card" id="dokumentation-card">
-                <div class="collapsible-header" onclick="customerCardManager.toggleCard('dokumentation-card')">
-                    <div class="collapsible-title"><i class="fas fa-file-alt"></i><span>Dokumentation</span></div>
-                    <i class="fas fa-chevron-down collapsible-chevron"></i>
-                </div>
-                <div class="collapsible-body">
-                    ${bodyHTML}
-                    <div class="document-list-actions">
-                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
-                            <i class="fas fa-upload"></i> Ladda upp dokument
-                        </button>
-                    </div>
+            <div class="documentation-content">
+                ${bodyHTML}
+                <div class="document-list-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
+                        <i class="fas fa-upload"></i> Ladda upp dokument
+                    </button>
                 </div>
             </div>`;
     }

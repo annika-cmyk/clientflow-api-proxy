@@ -3072,7 +3072,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
 
     const kundnamn = f['Namn'] || f['Företagsnamn'] || 'Okänd';
     const orgnr = f['Orgnr'] || f['Organisationsnummer'] || '';
-    const riskniva = f['Riskniva'] || '';
+    const riskniva = f['Riskniva'] || f['sammanlagd risk'] || '';
     const riskbedomning = f['Byrans riskbedomning'] || '';
     const atgarder = f['Atgarder riskbedomning'] || '';
     const datumStr = new Date().toLocaleDateString('sv-SE');
@@ -3086,13 +3086,47 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       if (Array.isArray(v)) return v.map(b => b?.text ?? '').join('');
       return String(v);
     };
+    const fmtList = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
     const ACCENT = '#2c4a8f';
 
     const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[riskniva] || riskniva || 'Ej angiven';
     const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[riskniva] || 'medel';
 
-    // Beskrivning av verksamheten från Företagsinformation-fliken
+    const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
+    const chip = (items, cls) => items.length ? `<div class="chips">${items.map(i => `<span class="chip chip-${cls}">${escape(i)}</span>`).join(' ')}</div>` : '';
+    const row = (label, val) => (val != null && val !== '') ? `<p><strong>${escape(label)}:</strong> ${escape(String(val))}</p>` : '';
+
+    // Hämta länkade tjänster
+    let tjanster = [];
+    const linkedIds = f['Kundens utvalda tjänster'] || [];
+    if (linkedIds.length > 0) {
+      try {
+        const tjanstRes = await Promise.all(linkedIds.map(id =>
+          axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`,
+            { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+          ).then(r => ({
+            namn: r.data.fields?.['Task Name'] || '',
+            beskrivning: toText(r.data.fields?.['Beskrivning av riskfaktor']),
+            riskbedomning: r.data.fields?.['Riskbedömning'] || '',
+            atgard: toText(r.data.fields?.['Åtgjärd'])
+          })).catch(() => null)
+        ));
+        tjanster = tjanstRes.filter(Boolean).filter(t => t.namn);
+      } catch (e) { console.warn('Tjänster för PDF:', e.message); }
+    }
+
     const verksamhet = toText(f['Verksamhetsbeskrivning']) || toText(f['Beskrivning av kunden']) || '';
+    const motivering = f['Motivering'] || '';
+    const hogriskbransch = fmtList(f['Kunden verkar i en högriskbransch']);
+    const riskhojTjanster = fmtList(f['Riskhöjande faktorer tjänster']);
+    const riskhojOvrigt = fmtList(f['Riskhöjande faktorer övrigt']);
+    const risksankande = fmtList(f['Risksänkande faktorer']);
+    const kommentarRisk = f['Kommentar till riskfaktorerna ovan'] || '';
+    const risksankandeAtgarder = f['Risksänkande åtgärder'] || f['Risksänkande åtgjärder'] || '';
+    const pepList = fmtList(f['PEP']);
+    const pepTräffar = f['Antal träffar PEP och sanktionslistor'];
+    const riskUtford = f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '';
+    const riskGodkand = f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '';
 
     const html = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
       body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.5;color:#1a1a2e;margin:0;padding:20px;}
@@ -3104,16 +3138,90 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       .niva-lag{background:#dcfce7;color:#166534;}
       .niva-medel{background:#fef9c3;color:#854d0e;}
       .niva-hog{background:#fee2e2;color:#991b1b;}
+      .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
+      .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
+      .chip-neg{background:#fee2e2;color:#991b1b;}
+      .chip-pos{background:#dcfce7;color:#166534;}
+      .tjanst{margin:10px 0;padding:8px;background:#f8fafc;border-radius:4px;}
+      .tjanst-namn{font-weight:600;}
+      .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
     </style></head><body>
       <h1>Riskbedömning – ${escape(kundnamn)}</h1>
-      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}</p>
-      ${verksamhet ? `<h2>Beskrivning av verksamheten</h2><div class="section">${nl2br(verksamhet)}</div>` : ''}
+      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}${riskUtford ? ' | Utförd: ' + riskUtford : ''}${riskGodkand ? ' | Godkänd: ' + riskGodkand : ''}</p>
+
+      ${verksamhet ? section('Beskrivning av verksamheten', nl2br(verksamhet)) : ''}
+
       <h2>Sammanlagd risknivå</h2>
       <p><span class="niva niva-${nivaClass}">${escape(nivaLabel)}</span></p>
-      <h2>Byråns riskbedömning</h2>
+
+      ${motivering ? section('Motivering', nl2br(motivering)) : ''}
+
+      ${(hogriskbransch.length || riskhojTjanster.length || riskhojOvrigt.length || risksankande.length) ? `
+      <h2>Riskfaktorer</h2>
+      <div class="section">
+        ${hogriskbransch.length ? `<p><strong>Högriskbransch:</strong></p>${chip(hogriskbransch, 'neg')}` : ''}
+        ${riskhojTjanster.length ? `<p><strong>Riskhöjande – tjänster:</strong></p>${chip(riskhojTjanster, 'neg')}` : ''}
+        ${riskhojOvrigt.length ? `<p><strong>Riskhöjande – övrigt:</strong></p>${chip(riskhojOvrigt, 'neg')}` : ''}
+        ${risksankande.length ? `<p><strong>Risksänkande faktorer:</strong></p>${chip(risksankande, 'pos')}` : ''}
+        ${kommentarRisk ? `<p class="tjanst-meta" style="margin-top:8px;"><em>Kommentar: ${escape(kommentarRisk)}</em></p>` : ''}
+      </div>` : ''}
+
+      ${risksankandeAtgarder ? section('Risksänkande åtgärder', nl2br(risksankandeAtgarder)) : ''}
+
+      ${tjanster.length ? `
+      <h2>Tjänster och riskbedömning per tjänst</h2>
+      <div class="section">
+        ${tjanster.map(t => `<div class="tjanst">
+          <div class="tjanst-namn">${escape(t.namn)}${t.riskbedomning ? ' – ' + escape(t.riskbedomning) : ''}</div>
+          ${t.beskrivning ? `<p>${nl2br(t.beskrivning)}</p>` : ''}
+          ${t.atgard ? `<div class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(t.atgard)}</div>` : ''}
+        </div>`).join('')}
+      </div>` : ''}
+
+      ${(f['Omsättning'] || fmtList(f['Frekvens']).length || f['omfattning i h'] || f['Verklig huvudman'] || f['Ombud'] || fmtList(f['Skatterättslig hemvist']).length || toText(f['Affärsmodell']) || toText(f['Ytterligare beskrivning av kunden och verksamheten'])) ? `
+      <h2>Kunden &amp; verksamheten</h2>
+      <div class="section">
+        ${row('Omsättning', f['Omsättning'])}
+        ${row('Frekvens', fmtList(f['Frekvens']).join(', '))}
+        ${row('Omfattning (h)', f['omfattning i h'])}
+        ${row('Verklig huvudman', f['Verklig huvudman'])}
+        ${row('Ombud', f['Ombud'])}
+        ${row('Skatterättslig hemvist', fmtList(f['Skatterättslig hemvist']).join(', '))}
+        ${toText(f['Affärsmodell']) ? `<p><strong>Affärsmodell:</strong><br>${nl2br(toText(f['Affärsmodell']))}</p>` : ''}
+        ${toText(f['Ytterligare beskrivning av kunden och verksamheten']) ? `<p><strong>Ytterligare beskrivning:</strong><br>${nl2br(toText(f['Ytterligare beskrivning av kunden och verksamheten']))}</p>` : ''}
+      </div>` : ''}
+
+      ${(fmtList(f['Syfte med affärsförbindelsen']).length || fmtList(f['Tidshorisont affärsförbindelsen']).length || fmtList(f['Betalningar']).length || f['Har företaget transaktioner med andra länder?'] || fmtList(f['Vilket ursprung har företagets kapital?']).length) ? `
+      <h2>Affärsförbindelsen</h2>
+      <div class="section">
+        ${fmtList(f['Syfte med affärsförbindelsen']).length ? `<p><strong>Syfte:</strong> ${fmtList(f['Syfte med affärsförbindelsen']).map(i => escape(i)).join(', ')}</p>` : ''}
+        ${row('Tidshorisont', fmtList(f['Tidshorisont affärsförbindelsen']).join(', '))}
+        ${row('Betalningar', fmtList(f['Betalningar']).join(', '))}
+        ${row('Transaktioner med andra länder', f['Har företaget transaktioner med andra länder?'])}
+        ${row('Ursprung kapital', fmtList(f['Vilket ursprung har företagets kapital?']).join(', '))}
+      </div>` : ''}
+
+      <h2>Byråns riskbedömning av kunden</h2>
       <div class="section">${riskbedomning ? nl2br(riskbedomning) : '—'}</div>
       <h2>Åtgärder</h2>
       <div class="section">${atgarder ? nl2br(atgarder) : '—'}</div>
+
+      ${(pepList.length || (pepTräffar !== undefined && pepTräffar !== '')) ? `
+      <h2>PEP &amp; sanktioner</h2>
+      <div class="section">
+        <p><strong>PEP-status:</strong> ${pepList.length ? escape(pepList.join(', ')) : '—'}</p>
+        ${pepTräffar !== undefined && pepTräffar !== '' ? `<p><strong>Antal träffar:</strong> ${escape(String(pepTräffar))}</p>` : ''}
+      </div>` : ''}
+
+      ${(f['Byrån har'] || f['Uppdrag'] || f['Uppdrag 2']) ? `
+      <h2>Uppdrag &amp; avtal</h2>
+      <div class="section">
+        ${row('Byrån har', f['Byrån har'])}
+        ${row('Uppdrag', f['Uppdrag'])}
+        ${row('Uppdrag 2', f['Uppdrag 2'])}
+        ${row('Momsuppdrag', fmtList(f['Momsuppdrag']).join(', '))}
+      </div>` : ''}
+
       <p class="meta" style="margin-top:24px;">ClientFlow – dokumenterat ${datumStr}</p>
     </body></html>`;
 
