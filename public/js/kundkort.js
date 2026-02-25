@@ -991,52 +991,11 @@ class CustomerCardManager {
     _kycStatusIcon(fältnamn, värde, iconClass) {
         const done = värde === true;
         const safeField = fältnamn.replace(/'/g, "\\'");
-        const color = done ? '#16a34a' : '#ef4444';
-        const title = done ? 'Klarmarkerad – klicka för att ångra' : 'Ej genomgången – klicka för att klarmarkera';
+        const title = done ? 'Klarmarkerad' : 'Ej genomgången';
         return `<i class="fas ${iconClass} kyc-status-icon" id="kyc-icon-${safeField.replace(/\s+/g,'-')}"
-            style="color:${color};cursor:pointer;transition:color 0.2s;"
-            title="${title}"
-            onclick="event.stopPropagation(); customerCardManager.toggleKycStatus('${safeField}', ${done ? 'true' : 'false'}, this);">
+            style="color:var(--accent,#667eea);transition:color 0.2s;"
+            title="${title}">
         </i>`;
-    }
-
-    toggleKycStatus(fältnamn, nuvarandeVärde, ikonEl) {
-        if (nuvarandeVärde) {
-            // Redan klarmarkerad — fråga om ångra
-            this._showKycConfirmModal(
-                'Vill du ta bort klarmarkeringen?',
-                () => this._saveKycStatus(fältnamn, false, ikonEl)
-            );
-        } else {
-            // Ej genomgången — fråga om klarmarkera
-            this._showKycConfirmModal(
-                'Vill du klarmarkera kortet?',
-                () => this._saveKycStatus(fältnamn, true, ikonEl)
-            );
-        }
-    }
-
-    _showKycConfirmModal(fråga, onJa) {
-        const existing = document.getElementById('kyc-confirm-modal');
-        if (existing) existing.remove();
-
-        const modal = document.createElement('div');
-        modal.id = 'kyc-confirm-modal';
-        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center;';
-        modal.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:340px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2);text-align:center;">
-                <i class="fas fa-question-circle" style="font-size:2rem;color:#0369a1;margin-bottom:1rem;"></i>
-                <p style="font-size:1rem;font-weight:600;color:#1e293b;margin:0 0 1.5rem;">${fråga}</p>
-                <div style="display:flex;gap:0.75rem;justify-content:center;">
-                    <button id="kyc-confirm-ja" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:0.55rem 1.5rem;font-size:0.9rem;font-weight:600;cursor:pointer;">Ja</button>
-                    <button id="kyc-confirm-nej" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:0.55rem 1.5rem;font-size:0.9rem;font-weight:600;cursor:pointer;">Nej</button>
-                </div>
-            </div>`;
-        document.body.appendChild(modal);
-
-        document.getElementById('kyc-confirm-ja').onclick = () => { modal.remove(); onJa(); };
-        document.getElementById('kyc-confirm-nej').onclick = () => modal.remove();
-        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
     }
 
     async _saveKycStatus(fältnamn, värde, ikonEl) {
@@ -1050,15 +1009,13 @@ class CustomerCardManager {
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            // Uppdatera ikonens färg och onclick direkt
-            if (ikonEl) {
-                ikonEl.style.color = värde ? '#16a34a' : '#ef4444';
-                ikonEl.title = värde ? 'Klarmarkerad – klicka för att ångra' : 'Ej genomgången – klicka för att klarmarkera';
-                const safeField = fältnamn.replace(/'/g, "\\'");
-                ikonEl.setAttribute('onclick', `event.stopPropagation(); customerCardManager.toggleKycStatus('${safeField}', ${värde}, this);`);
-            }
             if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
             this._updateUppdragAntasLock();
+            const el = ikonEl || document.getElementById('kyc-icon-' + String(fältnamn).replace(/\s+/g, '-'));
+            if (el) {
+                el.style.color = 'var(--accent, #667eea)';
+                el.title = värde ? 'Klarmarkerad' : 'Ej genomgången';
+            }
         } catch (error) {
             console.error('❌ Fel vid sparande av KYC-status:', error);
             this.showNotification('Kunde inte spara: ' + error.message, 'error');
@@ -1303,6 +1260,11 @@ class CustomerCardManager {
         ];
     }
 
+    _kycFieldForRiskerTyp(typId) {
+        const map = { geografiska: 'KYC genomgången - Geografiska riskfaktorer', kund: 'KYC genomgången - Riskfaktorer kund', distribution: 'KYC genomgången - Distributionskanaler', verksamhet: 'KYC genomgången - Verksamhetsspecifika riskfaktorer' };
+        return map[typId] || null;
+    }
+
     async loadKundRisker() {
         const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -1347,8 +1309,11 @@ class CustomerCardManager {
         };
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
+        // Undvik dubbel "högriskbransch" – den hanteras ovan med branschval, visa den inte under Övriga
+        const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
+        const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
 
-        const valda = risker.filter(r => linkedIds.has(r.id));
+        const valda = riskerForList.filter(r => linkedIds.has(r.id));
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
@@ -1426,7 +1391,7 @@ class CustomerCardManager {
                 <div id="${editId}" style="display:none;">
                     <p class="tjanster-edit-hint">Markera de risker som gäller för kunden.</p>
                     ${hogriskEditHtml}
-                    ${risker.map(r => `
+                    ${riskerForList.map(r => `
                         <label class="risker-check-item">
                             <input type="checkbox" name="risk-${typId}" value="${r.id}" ${linkedIds.has(r.id) ? 'checked' : ''}
                                 onchange="customerCardManager.updateRiskerCount('${typId}')">
@@ -1476,7 +1441,10 @@ class CustomerCardManager {
             btn.innerHTML = isEditing ? '<i class="fas fa-pencil-alt"></i>' : '<i class="fas fa-times"></i>';
             btn.classList.toggle('is-active', !isEditing);
         }
-        // Öppna kortet automatiskt om det är stängt
+        if (isEditing) {
+            const kycField = this._kycFieldForRiskerTyp(typId);
+            if (kycField) this._saveKycStatus(kycField, true);
+        }
         if (!isEditing) {
             const card = btn?.closest('.collapsible-card');
             if (card && !card.classList.contains('open')) card.classList.add('open');
@@ -1549,6 +1517,8 @@ class CustomerCardManager {
                 const risker = this._allaRisker.filter(r => r.fields['Typ av riskfaktor'] === match?.typ);
                 this._renderRiskerForTyp(container, risker, allChecked, typId);
             }
+            const kycField = this._kycFieldForRiskerTyp(typId);
+            if (kycField) this._saveKycStatus(kycField, true);
 
             this.showNotification('Risker sparade!', 'success');
 
@@ -1781,7 +1751,7 @@ class CustomerCardManager {
                </div>`;
 
         return `
-            <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}">
+            <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}"${kycFält ? ` data-kyc-field="${String(kycFält).replace(/"/g, '&quot;')}"` : ''}>
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                     <div class="collapsible-title">
                         ${kycFält ? this._kycStatusIcon(kycFält, kycVärde, icon) : `<i class="fas ${icon}"></i>`}
@@ -2098,12 +2068,14 @@ class CustomerCardManager {
             view.style.display = '';
             btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
             btn.classList.remove('is-active');
+            const card = document.getElementById(`riskf-card-${id}`);
+            const kycField = card?.dataset?.kycField;
+            if (kycField) this._saveKycStatus(kycField, true);
         } else {
             view.style.display = 'none';
             edit.style.display = '';
             btn.innerHTML = '<i class="fas fa-times"></i>';
             btn.classList.add('is-active');
-            // Öppna kortet automatiskt om det är stängt
             const card = btn?.closest('.collapsible-card');
             if (card && !card.classList.contains('open')) card.classList.add('open');
         }
@@ -2522,12 +2494,12 @@ class CustomerCardManager {
             view.style.display = '';
             btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
             btn.classList.remove('is-active');
+            this._saveKycStatus('KYC genomgången - Tjänster', true);
         } else {
             view.style.display = 'none';
             edit.style.display = '';
             btn.innerHTML = '<i class="fas fa-times"></i>';
             btn.classList.add('is-active');
-            // Öppna kortet automatiskt om det är stängt
             const card = btn?.closest('.collapsible-card');
             if (card && !card.classList.contains('open')) card.classList.add('open');
         }
@@ -2583,6 +2555,7 @@ class CustomerCardManager {
             ['services-content', 'ovrigkyc-tjanster'].forEach(tid => {
                 if (document.getElementById(tid)) this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, tid);
             });
+            this._saveKycStatus('KYC genomgången - Tjänster', true);
             this.showNotification(`Tjänster sparade — ${checkedIds.length} aktiva`, 'success');
 
         } catch (error) {

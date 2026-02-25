@@ -284,6 +284,21 @@ p, small { line-height: 1.6; }
     font-weight: 600;
 }
 
+.nav-section li.sidebar-nav-item-muted a,
+.nav-section li.sidebar-nav-item-muted a span {
+    color: rgba(255, 255, 255, 0.45);
+}
+.nav-section li.sidebar-nav-item-muted i {
+    color: rgba(255, 255, 255, 0.4);
+}
+.nav-section li.sidebar-nav-item-muted:hover a,
+.nav-section li.sidebar-nav-item-muted:hover a span {
+    color: rgba(255, 255, 255, 0.65);
+}
+.nav-section li.sidebar-nav-item-muted:hover i {
+    color: rgba(255, 255, 255, 0.55);
+}
+
 /* Sidebar Navigation */
 .sidebar-nav {
   flex: 1;
@@ -3265,11 +3280,10 @@ p, small { line-height: 1.6; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #64748b;
-    margin-bottom: 0.85rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
+}
+.rb-section-title i {
+    color: var(--accent, #667eea);
+    margin-right: 0.35rem;
 }
 
 .rb-text {
@@ -7677,3 +7691,45 @@ textarea.kunduppgifter-input {
 }
 .ai-chat-panel__send:hover:not(:disabled) { opacity: 0.9; }
 .ai-chat-panel__send:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Statistik för riskbedömning */
+.risk-header-sub { margin: 0; font-size: 1rem; opacity: 0.85; }
+.statistik-error { color: #dc2626; margin-bottom: 1rem; }
+.statistik-loading { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; color: var(--text); }
+.stats-cards-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+.stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
+.stat-card .stat-icon { width: 44px; height: 44px; border-radius: 10px; background: rgba(102, 126, 234, 0.12); color: var(--accent, #667eea); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+.stat-card .stat-content h3 { margin: 0 0 0.35rem 0; font-size: 0.8rem; font-weight: 600; color: #64748b; }
+.stat-card .stat-number { font-size: 1.75rem; font-weight: 700; color: #1e293b; }
+.stat-card .stat-number--low { color: #16a34a; }
+.stat-card .stat-number--medium { color: #d97706; }
+.stat-card .stat-number--high { color: #dc2626; }
+.statistik-sections { display: grid; gap: 1.5rem; }
+.statistik-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
+.statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: #1e293b; }
+.statistik-section h3 i { color: var(--accent, #667eea); }
+.statistik-section-desc { margin: 0 0 1rem 0; font-size: 0.9rem; color: #64748b; }
+.stat-list { display: flex; flex-direction: column; gap: 0.35rem; }
+.stat-list-empty { margin: 0; font-size: 0.9rem; color: #94a3b8; }
+.stat-list-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #f8fafc; border-radius: 8px; font-size: 0.9rem; }
+.stat-list-row-clickable { cursor: pointer; transition: background 0.15s; }
+.stat-list-row-clickable:hover { background: #e2e8f0; }
+.stat-list-namn { font-weight: 500; color: #334155; }
+.stat-list-antal { font-weight: 600; color: var(--accent, #667eea); }
+.statistik-error { color: #dc2626; margin-bottom: 1rem; }
+
+/* Modal för kundlista i statistik */
+.statistik-kunder-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.statistik-kunder-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); max-width: 480px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
+.statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+.statistik-kunder-modal-header h4 { margin: 0; font-size: 1.1rem; color: #1e293b; }
+.statistik-kunder-modal-close { background: none; border: none; font-size: 1.25rem; color: #64748b; cursor: pointer; padding: 0.25rem; line-height: 1; }
+.statistik-kunder-modal-close:hover { color: #1e293b; }
+.statistik-kunder-modal-body { padding: 1rem 1.25rem; overflow-y: auto; }
+.statistik-kunder-lista { list-style: none; margin: 0; padding: 0; }
+.statistik-kunder-lista li { margin: 0 0 0.35rem 0; }
+.statistik-kunder-lista a { display: block; padding: 0.5rem 0.75rem; border-radius: 8px; color: var(--accent, #667eea); text-decoration: none; font-size: 0.95rem; transition: background 0.15s; }
+.statistik-kunder-lista a:hover { background: #f1f5f9; text-decoration: underline; }
+.statistik-kunder-modal-loading { color: #64748b; padding: 1rem; }
+.statistik-kunder-modal-empty { color: #94a3b8; padding: 1rem; }
+.statistik-kunder-modal-error { color: #dc2626; padding: 1rem; }
