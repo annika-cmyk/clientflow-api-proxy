@@ -3088,6 +3088,127 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/byra-rutiner - Hämta Byråer-post för inloggad byrå (grund för Byrårutiner)
+app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+    }
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ingen byrå kopplad till användaren',
+        byraId: null
+      });
+    }
+
+    const num = parseInt(byraId);
+    const filterFormula = isNaN(num)
+      ? `{Byrå ID}="${byraId}"`
+      : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+    const airtableRes = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    });
+
+    if (!airtableRes.data.records || airtableRes.data.records.length === 0) {
+      return res.json({
+        success: true,
+        record: null,
+        fields: {},
+        message: 'Ingen Byråer-post hittades för er byrå'
+      });
+    }
+
+    const record = airtableRes.data.records[0];
+    res.json({
+      success: true,
+      record: { id: record.id, fields: record.fields },
+      fields: record.fields,
+      id: record.id
+    });
+  } catch (error) {
+    console.error('❌ GET /api/byra-rutiner:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    res.status(status).json({ error: message });
+  }
+});
+
+// PATCH /api/byra-rutiner/:id - Uppdatera fält i Byråer
+app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+    }
+
+    const { id } = req.params;
+    const { fields } = req.body;
+
+    if (!fields || typeof fields !== 'object') {
+      return res.status(400).json({ error: 'Fält saknas i request body' });
+    }
+
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera byrårutiner' });
+    }
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) {
+      return res.status(400).json({ error: 'Ingen byrå kopplad till användaren' });
+    }
+
+    const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${id}?fields[]=Byrå ID`;
+    const getRes = await axios.get(getUrl, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    });
+    const recordByraId = getRes.data.fields?.['Byrå ID'];
+    const recordByraIdStr = recordByraId != null ? String(recordByraId).trim() : '';
+    if (recordByraIdStr !== byraId) {
+      return res.status(403).json({ error: 'Du får bara redigera er egen byrås rutiner' });
+    }
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${id}`;
+    const cleanedFields = Object.fromEntries(
+      Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)
+    );
+
+    const airtableRes = await axios.patch(url,
+      { fields: cleanedFields },
+      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+  } catch (error) {
+    console.error('❌ PATCH /api/byra-rutiner:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    res.status(status).json({ error: message });
+  }
+});
+
 // GET /api/kunddata - Hämta KUNDDATA med rollbaserad filtrering
 app.get('/api/kunddata', authenticateToken, async (req, res) => {
   const startTime = Date.now();
