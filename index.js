@@ -8,11 +8,27 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const OpenAI = require('openai');
 let puppeteer = null;
-try {
-  puppeteer = require('puppeteer');
-  console.log('✅ Puppeteer laddat.');
-} catch (err) {
-  console.log('ℹ️ Puppeteer inte installerat. PDF-generering ej tillgänglig.');
+let chromium = null;
+let _puppeteerLoadAttempted = false;
+function loadPuppeteer() {
+  if (_puppeteerLoadAttempted) return puppeteer;
+  _puppeteerLoadAttempted = true;
+  try {
+    puppeteer = require('puppeteer-core');
+    chromium = require('@sparticuz/chromium');
+    console.log('✅ Puppeteer/Chromium laddat (puppeteer-core + @sparticuz/chromium).');
+    return puppeteer;
+  } catch (err) {
+    try {
+      puppeteer = require('puppeteer');
+      console.log('✅ Puppeteer laddat (full).');
+      return puppeteer;
+    } catch (err2) {
+      puppeteer = null;
+      console.log('ℹ️ Puppeteer inte installerat. PDF-generering ej tillgänglig.');
+      return null;
+    }
+  }
 }
 const FormData = require('form-data');
 const fs = require('fs');
@@ -30,6 +46,9 @@ console.log('  BOLAGSVERKET_BASE_URL:', process.env.BOLAGSVERKET_BASE_URL);
 console.log('  AIRTABLE_ACCESS_TOKEN:', process.env.AIRTABLE_ACCESS_TOKEN ? 'SET' : 'NOT SET');
 console.log('  AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID ? 'SET' : 'NOT SET');
 console.log('  AIRTABLE_TABLE_NAME:', process.env.AIRTABLE_TABLE_NAME ? 'SET' : 'NOT SET');
+console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
+console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 'NOT SET');
+console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('');
 
 const app = express();
@@ -1434,21 +1453,25 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
                 
                 // Försök rendera fullständig PDF med Puppeteer
                 let pdfBytes;
+                const pup = loadPuppeteer();
                 try {
-                  console.log('🖨️ Renderar fullständig PDF med Puppeteer...');
-                  const browser = await puppeteer.launch({
-                    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                    headless: true
-                  });
-                  const page = await browser.newPage();
-                  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-                  pdfBytes = await page.pdf({
-                    format: 'A4',
-                    printBackground: true,
-                    margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' }
-                  });
-                  await browser.close();
-                  console.log('✅ Puppeteer-PDF skapad');
+                  if (pup) {
+                    console.log('🖨️ Renderar fullständig PDF med Puppeteer...');
+                    const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox'], headless: true };
+                    if (chromium) launchOpts.executablePath = await chromium.executablePath();
+                    const browser = await pup.launch(launchOpts);
+                    const page = await browser.newPage();
+                    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+                    pdfBytes = await page.pdf({
+                      format: 'A4',
+                      printBackground: true,
+                      margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' }
+                    });
+                    await browser.close();
+                    console.log('✅ Puppeteer-PDF skapad');
+                  } else {
+                    throw new Error('Puppeteer inte tillgänglig');
+                  }
                 } catch (puppeteerError) {
                   console.log(`⚠️ Puppeteer misslyckades, använder enkel PDF: ${puppeteerError.message}`);
                   const simpleDoc = await PDFDocument.create();
@@ -3273,6 +3296,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
     const högriskbranschAntal = {};
     const riskfaktorIdAntal = {};
     let antalKunderMedRiskfaktor = 0;
+    const pepEllerSanktionKundIds = [];
 
     for (const rec of allRecords) {
       const f = rec.fields || {};
@@ -3302,6 +3326,13 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
       for (const rid of riskIds) {
         riskfaktorIdAntal[rid] = (riskfaktorIdAntal[rid] || 0) + 1;
       }
+
+      const pepFält = f['PEP'];
+      const pepList = Array.isArray(pepFält) ? pepFält : (pepFält ? [pepFält] : []);
+      const ärPep = pepList.some(v => v && String(v).trim() && String(v).trim() !== 'Inte PEP');
+      const traffar = parseInt(f['Antal träffar PEP och sanktionslistor'], 10) || 0;
+      const harSanktioner = !isNaN(traffar) && traffar > 0;
+      if (ärPep || harSanktioner) pepEllerSanktionKundIds.push(rec.id);
     }
 
     const tjanstIdToName = {};
@@ -3334,6 +3365,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
 
     const RISKER_KUND_TABLE = 'tblWw6tM2YOTYFn2H';
     const riskfaktorIdToLabel = {};
+    const riskfaktorIdToTyp = {};
     const uniqueRiskfaktorIds = [...new Set(Object.keys(riskfaktorIdAntal))];
     await Promise.all(
       uniqueRiskfaktorIds.map(async (id) => {
@@ -3343,32 +3375,52 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
             { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
           );
           const f = r.data.fields || {};
-          const delar = [];
-          for (const [kolumnnamn, val] of Object.entries(f)) {
-            if (val == null || val === '') continue;
-            if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].startsWith('rec')) continue;
-            const värde = Array.isArray(val) ? val.join(', ') : String(val).trim();
-            if (värde) delar.push(`${kolumnnamn}: ${värde}`);
-          }
-          riskfaktorIdToLabel[id] = delar.length ? delar.join('. ') : id;
+          const typ = (f['Typ av riskfaktor'] || '').trim() || 'Övriga';
+          riskfaktorIdToTyp[id] = typ;
+          const riskfaktorNamn = (f['Riskfaktor'] || '').trim();
+          riskfaktorIdToLabel[id] = riskfaktorNamn || id;
         } catch (_) {
+          riskfaktorIdToTyp[id] = 'Övriga';
           riskfaktorIdToLabel[id] = id;
         }
       })
     );
-    const övrigaRiskfaktorer = Object.entries(riskfaktorIdAntal).map(([id, antal]) => ({
-      id,
-      namn: riskfaktorIdToLabel[id] || id,
-      antal
-    })).sort((a, b) => b.antal - a.antal);
+
+    const typToCustomerIds = {};
+    for (const rec of allRecords) {
+      const riskIds = rec.fields?.['risker kopplat till tjänster'];
+      const ids = Array.isArray(riskIds) ? riskIds : (riskIds ? [riskIds] : []);
+      for (const rid of ids) {
+        const t = riskfaktorIdToTyp[rid] || 'Övriga';
+        if (!typToCustomerIds[t]) typToCustomerIds[t] = new Set();
+        typToCustomerIds[t].add(rec.id);
+      }
+    }
+
+    const typToRiskfaktorer = {};
+    for (const [id, antal] of Object.entries(riskfaktorIdAntal)) {
+      const typ = riskfaktorIdToTyp[id] || 'Övriga';
+      if (!typToRiskfaktorer[typ]) typToRiskfaktorer[typ] = [];
+      typToRiskfaktorer[typ].push({ id, namn: riskfaktorIdToLabel[id] || id, antal });
+    }
+    for (const arr of Object.values(typToRiskfaktorer)) {
+      arr.sort((a, b) => b.antal - a.antal);
+    }
+
+    const riskfaktorerPerTyp = Object.keys(typToRiskfaktorer).map(typ => ({
+      typ,
+      antalKunder: (typToCustomerIds[typ] || new Set()).size,
+      riskfaktorer: typToRiskfaktorer[typ] || []
+    })).sort((a, b) => b.antalKunder - a.antalKunder);
 
     res.json({
       antalKunder: allRecords.length,
       riskniva,
+      antalPepEllerSanktion: pepEllerSanktionKundIds.length,
       tjänster: tjänsterMedNamn,
       högriskbransch,
       antalKunderMedRiskfaktor,
-      övrigaRiskfaktorer
+      riskfaktorerPerTyp
     });
   } catch (err) {
     console.error('❌ statistik-riskbedomning:', err.message);
@@ -3489,6 +3541,17 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
           if (ids.length > 0) {
             kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
           }
+        }
+      }
+    } else if (typ === 'pep-sanktion') {
+      for (const rec of allRecords) {
+        const pepFält = rec.fields?.['PEP'];
+        const pepList = Array.isArray(pepFält) ? pepFält : (pepFält ? [pepFält] : []);
+        const ärPep = pepList.some(v => v && String(v).trim() && String(v).trim() !== 'Inte PEP');
+        const traffar = parseInt(rec.fields?.['Antal träffar PEP och sanktionslistor'], 10) || 0;
+        const harSanktioner = !isNaN(traffar) && traffar > 0;
+        if (ärPep || harSanktioner) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
     }
@@ -5527,16 +5590,15 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 </body>
 </html>`;
 
-    if (!puppeteer) {
-      return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas). Kör: npm install puppeteer' });
+    const pup = loadPuppeteer();
+    if (!pup) {
+      return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas). Kör: npm install puppeteer-core @sparticuz/chromium' });
     }
 
     console.log('\ud83d\udda8\ufe0f Startar Puppeteer för PDF-generering...');
-    const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      headless: true,
-      timeout: 30000
-    });
+    const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'], headless: true, timeout: 30000 };
+    if (chromium) launchOpts.executablePath = await chromium.executablePath();
+    const browser = await pup.launch(launchOpts);
     console.log('\ud83d\udda8\ufe0f Puppeteer startat, öppnar sida...');
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 30000 });

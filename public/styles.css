@@ -7704,6 +7704,15 @@ textarea.kunduppgifter-input {
 .stat-card .stat-number--low { color: #16a34a; }
 .stat-card .stat-number--medium { color: #d97706; }
 .stat-card .stat-number--high { color: #dc2626; }
+.stat-card-clickable { cursor: pointer; transition: box-shadow 0.2s, background 0.2s; }
+.stat-card-clickable:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: #fafafa; }
+.statistik-riskfaktorer-kort { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1rem; }
+.statistik-riskfaktor-kort { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
+.statistik-riskfaktor-kort h4 { margin: 0 0 0.5rem 0; font-size: 1rem; color: #1e293b; display: flex; align-items: center; gap: 0.5rem; }
+.statistik-riskfaktor-kort h4 i { color: var(--accent, #667eea); }
+.statistik-riskfaktor-kort .riskfaktor-kort-antal { font-size: 0.9rem; color: #64748b; margin-bottom: 0.75rem; padding: 0.35rem 0; }
+.statistik-riskfaktor-kort .riskfaktor-kort-antal.stat-list-row-clickable { border-radius: 6px; padding: 0.5rem 0.75rem; }
+.statistik-riskfaktor-kort .stat-list { margin-top: 0; }
 .statistik-sections { display: grid; gap: 1.5rem; }
 .statistik-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
 .statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: #1e293b; }

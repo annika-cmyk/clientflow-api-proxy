@@ -32,6 +32,8 @@
     document.getElementById('stat-medel').textContent = r['Medel'] || 0;
     document.getElementById('stat-hog').textContent = r['Hög'] || 0;
     document.getElementById('stat-ovrigt').textContent = r['Övrigt'] || 0;
+    const pepEl = document.getElementById('stat-pep-sanktion');
+    if (pepEl) pepEl.textContent = typeof data.antalPepEllerSanktion === 'number' ? data.antalPepEllerSanktion : '–';
 
     const tjansterList = document.getElementById('statistik-tjanster-lista');
     if (tjansterList) {
@@ -61,16 +63,24 @@
       }
     }
 
-    const riskfaktorList = document.getElementById('statistik-riskfaktorer-lista');
-    if (riskfaktorList) {
-      const orf = data.övrigaRiskfaktorer || [];
-      if (orf.length === 0) {
-        riskfaktorList.innerHTML = '<p class="stat-list-empty">Inga kunder med riskfaktorer registrerade.</p>';
+    const riskfaktorKortWrap = document.getElementById('statistik-riskfaktorer-kort');
+    if (riskfaktorKortWrap) {
+      const rpt = data.riskfaktorerPerTyp || [];
+      if (rpt.length === 0) {
+        riskfaktorKortWrap.innerHTML = '<p class="stat-list-empty" style="grid-column:1/-1;">Inga kunder med riskfaktorer registrerade.</p>';
       } else {
-        riskfaktorList.innerHTML = orf.map(r => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="riskfaktor" data-id="${escapeAttr(r.id)}" data-titel="${escapeAttr(r.namn)}" title="Klicka för att se kunder">
-            <span class="stat-list-namn">${escapeHtml(r.namn)}</span>
-            <span class="stat-list-antal">${r.antal} kunder</span>
+        riskfaktorKortWrap.innerHTML = rpt.map(kort => `
+          <div class="statistik-riskfaktor-kort">
+            <h4><i class="fas fa-exclamation-circle"></i> ${escapeHtml(kort.typ)}</h4>
+            <div class="riskfaktor-kort-antal stat-list-row-clickable" data-typ="riskfaktor" data-namn="${escapeAttr(kort.typ)}" data-titel="${escapeAttr(kort.typ)}" title="Klicka för att se kunder">${kort.antalKunder} kunder har denna typ</div>
+            <div class="stat-list">
+              ${(kort.riskfaktorer || []).map(r => `
+                <div class="stat-list-row stat-list-row-clickable" data-typ="riskfaktor" data-id="${escapeAttr(r.id)}" data-titel="${escapeAttr(r.namn)}" title="Klicka för att se kunder">
+                  <span class="stat-list-namn">${escapeHtml(r.namn)}</span>
+                  <span class="stat-list-antal">${r.antal} kunder</span>
+                </div>
+              `).join('')}
+            </div>
           </div>
         `).join('');
       }
@@ -172,6 +182,15 @@
         if (e.target === this) closeKunderModal();
       });
     }
+    document.querySelectorAll('.stat-card-clickable').forEach(card => {
+      card.removeEventListener('click', card._statistikCardClick);
+      card._statistikCardClick = function () {
+        const typ = card.getAttribute('data-typ');
+        const titel = card.getAttribute('data-titel') || 'Kunder';
+        if (typ === 'pep-sanktion') fetchKunderForRow('pep-sanktion', null, null, titel);
+      };
+      card.addEventListener('click', card._statistikCardClick);
+    });
     document.querySelectorAll('.stat-list-row-clickable').forEach(row => {
       row.removeEventListener('click', row._statistikClick);
       row._statistikClick = function () {
@@ -182,7 +201,9 @@
         } else if (typ === 'hogriskbransch') {
           fetchKunderForRow('hogriskbransch', null, row.getAttribute('data-namn'), titel);
         } else if (typ === 'riskfaktor') {
-          fetchKunderForRow('riskfaktor', row.getAttribute('data-id'), null, titel);
+          const id = row.getAttribute('data-id');
+          const namn = row.getAttribute('data-namn');
+          fetchKunderForRow('riskfaktor', id || null, namn || undefined, titel);
         }
       };
       row.addEventListener('click', row._statistikClick);
