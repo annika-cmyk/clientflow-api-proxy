@@ -18,9 +18,8 @@
                     <div class="risk-header-content">
                         <h1>Byrårutiner</h1>
                         <p class="risk-header-sub">Rutiner och riktlinjer för att förhindra penningtvätt och finansiering av terrorism</p>
-                        <div class="byrarutiner-actions">
-                            <button type="button" id="btn-save" class="btn-primary" style="display:none;"><i class="fas fa-save"></i> Spara ändringar</button>
-                            <span id="save-status" class="save-status"></span>
+                        <div class="byrarutiner-actions" id="byrarutiner-header-actions" style="display:none;">
+                            <span class="save-status" id="save-status"></span>
                         </div>
                     </div>
                 </header>
@@ -36,130 +35,13 @@
                 <div id="content" style="display:none;">
                     <input type="hidden" id="byra-rutiner-record-id" value="">
 
-                    <!-- Allmän riskbedömning -->
-                    <section class="info-section byrarutiner-section">
-                        <h3><i class="fas fa-chart-line"></i> Allmän riskbedömning</h3>
-                        <p class="section-desc">Grund för byråns riskbaserade förhållningssätt (enligt Lag 2017:630).</p>
-                        <div class="form-grid">
-                            <div class="form-group full-width">
-                                <label>1. Syfte och Omfattning</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet (markera text först)"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                        <span class="format-tip">**fet** *kursiv* - punkt 1. numrerad</span>
-                                    </div>
-                                    <textarea id="fld-syfte-omfattning" class="form-input form-textarea" rows="10" placeholder="Beskriv syfte och omfattning..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>2. Beskrivning av Byråns verksamhet</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-beskrivning" class="form-input form-textarea" rows="10" placeholder="Beskriv byråns verksamhet..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Antal anställda</label>
-                                <input type="number" id="fld-antal-anstallda" class="form-input" min="0" placeholder="0">
-                            </div>
-                            <div class="form-group">
-                                <label>Omsättning (SEK)</label>
-                                <input type="number" id="fld-omsattning" class="form-input" min="0" placeholder="0">
-                            </div>
-                            <div class="form-group">
-                                <label>Antal kundföretag</label>
-                                <input type="number" id="fld-antal-kundforetag" class="form-input" min="0" placeholder="0">
-                            </div>
-                            <div class="form-group full-width">
-                                <label>3. Metod för Riskbedömning</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-metod-riskbedomning" class="form-input form-textarea" rows="8" placeholder="Beskriv metod för riskbedömning..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>4. Identifierade Risker och Sårbarheter</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-identifierade-risker" class="form-input form-textarea" rows="8" placeholder="Beskriv identifierade risker..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>5. Värdering av sammantagen risk</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-vardering-risk" class="form-input form-textarea" rows="8" placeholder="Värdering av sammantagen risk..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>6. Riskreducerande Åtgärder och Rutiner</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-riskreducerande" class="form-input form-textarea" rows="8" placeholder="Beskriv åtgärder och rutiner..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>7. Utvärdering och Uppdatering</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-utvardering" class="form-input form-textarea" rows="8" placeholder="Beskriv utvärdering och uppdatering..."></textarea>
-                                </div>
-                            </div>
-                            <div class="form-group full-width">
-                                <label>8. Kommunikation</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-kommunikation-risk" class="form-input form-textarea" rows="6" placeholder="Kommunikation kring riskbedömning..."></textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
                     <!-- Riktlinjer och rutiner (policy) -->
                     <section class="info-section byrarutiner-section">
                         <h3><i class="fas fa-file-contract"></i> Riktlinjer och rutiner (policy)</h3>
                         <p class="section-desc">Interna styrdokument enligt 4 kap. 3 § Lag (2017:630).</p>
                         <div class="form-grid">
                             <div class="form-group full-width">
-                                <label>1. Syfte och omfattning policy</label>
+                                <label for="fld-syfte-policy">1. Syfte och omfattning policy</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -171,7 +53,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>2. Centralt Funktionsansvarig</label>
+                                <label for="fld-centralt-funktionsansvarig">2. Centralt Funktionsansvarig</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -183,11 +65,11 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>Centralt funktionsansvarig (person)</label>
+                                <label for="fld-centralt-person">Centralt funktionsansvarig (person)</label>
                                 <input type="text" id="fld-centralt-person" class="form-input" placeholder="Namn">
                             </div>
                             <div class="form-group full-width">
-                                <label>3. Kundkännedomsåtgärder</label>
+                                <label for="fld-kundkannedom">3. Kundkännedomsåtgärder</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -199,7 +81,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>4. Övervakning och Rapportering</label>
+                                <label for="fld-overvakning">4. Övervakning och Rapportering</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -211,7 +93,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>5. Intern Kontroll</label>
+                                <label for="fld-intern-kontroll">5. Intern Kontroll</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -223,7 +105,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>6. Anställda och Utbildning</label>
+                                <label for="fld-anstallda-utbildning">6. Anställda och Utbildning</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -235,7 +117,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>7. Arkivering av dokumentation</label>
+                                <label for="fld-arkiv">7. Arkivering av dokumentation</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -247,7 +129,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>8. Uppdatering och Utvärdering</label>
+                                <label for="fld-uppdatering-utvardering">8. Uppdatering och Utvärdering</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -259,7 +141,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>9. Kommunikation</label>
+                                <label for="fld-kommunikation">9. Kommunikation</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -271,7 +153,7 @@
                                 </div>
                             </div>
                             <div class="form-group full-width">
-                                <label>10. Registrering Byrån</label>
+                                <label for="fld-registrering">10. Registrering Byrån</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -283,7 +165,7 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>Policydokumentet reviderat och godkänt</label>
+                                <label for="fld-policy-reviderat">Policydokumentet reviderat och godkänt</label>
                                 <input type="text" id="fld-policy-reviderat" class="form-input" placeholder="Datum eller beskrivning">
                             </div>
                         </div>

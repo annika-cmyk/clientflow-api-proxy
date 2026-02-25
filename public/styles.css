@@ -1822,7 +1822,7 @@ p, small { line-height: 1.6; }
     font-size: 0.9rem;
 }
 
-/* ByrÂn har list styling */
+/* Byr?n har list styling */
 .byra-has-list {
     list-style: none;
     padding: 0;
@@ -2984,12 +2984,17 @@ p, small { line-height: 1.6; }
     grid-column: 1 / -1;
 }
 
+/* Byr?rutiner: korten under varandra (vertikal layout) */
+.byrarutiner-section .form-grid {
+    grid-template-columns: 1fr;
+}
+
 .form-textarea {
     min-height: 120px;
     resize: vertical;
 }
 
-/* Byr?rutiner ? stˆrre textf‰lt och formateringsverktyg */
+/* Byr?rutiner ? st?rre textf?lt och formateringsverktyg */
 .byrarutiner-section .form-textarea,
 .byrarutiner-section textarea.form-input {
     min-height: 220px;
@@ -3034,6 +3039,153 @@ p, small { line-height: 1.6; }
 .byrarutiner-format-toolbar button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.byrarutiner-preview {
+    margin-top: 0.5rem;
+    padding: 1rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text);
+}
+
+.byrarutiner-preview p {
+    margin: 0 0 0.5rem;
+}
+
+.byrarutiner-preview p:last-child {
+    margin-bottom: 0;
+}
+
+.byrarutiner-preview ul,
+.byrarutiner-preview ol {
+    margin: 0.5rem 0 0.5rem 1.25rem;
+    padding: 0;
+}
+
+.byrarutiner-preview strong {
+    font-weight: 600;
+}
+
+.byrarutiner-preview em {
+    font-style: italic;
+}
+
+.card-save-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.card-save-btn {
+    padding: 0.4rem 0.9rem;
+    font-size: 0.875rem;
+    border: none;
+}
+
+.card-save-status {
+    font-size: 0.8rem;
+    color: var(--success);
+}
+
+.card-save-status.error {
+    color: var(--error);
+}
+
+/* Byr?-kort: visningsl?ge (gr?tt) och redigeringsl?ge */
+.byra-card {
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+.byra-card-view {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 1rem 3rem 1rem 1rem;
+    min-height: 60px;
+    position: relative;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+.byra-card-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #334155;
+    margin-bottom: 0.5rem;
+}
+
+.byra-card-formatted {
+    white-space: normal;
+    line-height: 1.5;
+}
+
+.byra-card-formatted p {
+    margin: 0 0 0.5rem;
+}
+
+.byra-card-formatted p:last-child {
+    margin-bottom: 0;
+}
+
+.byra-card-formatted ul,
+.byra-card-formatted ol {
+    margin: 0.5rem 0 0.5rem 1.25rem;
+    padding: 0;
+}
+
+.byra-card-formatted strong {
+    font-weight: 600;
+}
+
+.byra-card-formatted em {
+    font-style: italic;
+}
+
+.byra-card-view:empty::before,
+.byra-card-value:empty::before {
+    content: '?';
+    color: #94a3b8;
+}
+
+.byra-card-edit-btn {
+    position: absolute;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(102, 126, 234, 0.15);
+    color: var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.byra-card-edit-btn:hover {
+    background: rgba(102, 126, 234, 0.25);
+}
+
+.byra-card-edit {
+    display: none;
+}
+
+.byra-card--numeric-group .byra-card-view {
+    min-height: 50px;
+}
+
+.form-grid--inline {
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .byrarutiner-format-toolbar .format-tip {
@@ -3174,7 +3326,7 @@ p, small { line-height: 1.6; }
     margin: 0;
 }
 
-/* ?? ÷vrig KYC ????????????????????????????????????????? */
+/* ?? ?vrig KYC ????????????????????????????????????????? */
 .kyc-layout { display: flex; flex-direction: column; gap: 1rem; }
 .kyc-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.1rem 1.25rem; }
 .kyc-section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
@@ -3222,7 +3374,7 @@ p, small { line-height: 1.6; }
 .btn-icon-edit:hover { color: #6366f1; border-color: #a5b4fc; background: #eef2ff; }
 .btn-icon-edit.is-active { color: #ef4444; border-color: #fca5a5; background: #fef2f2; }
 
-/* ByrÂn har ñ toggle chips */
+/* Byr?n har ? toggle chips */
 .byran-har-chip-row { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 .byran-har-chip {
     padding: 0.35rem 0.85rem;
@@ -3288,7 +3440,7 @@ p, small { line-height: 1.6; }
 .risk-pill--medium { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 .risk-pill--low { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 
-/* ?? Riskbedˆmning ????????????????????????????????????? */
+/* ?? Riskbed?mning ????????????????????????????????????? */
 .rb-layout {
     display: flex;
     flex-direction: column;
@@ -3555,7 +3707,7 @@ p, small { line-height: 1.6; }
     color: #64748b;
 }
 
-/* ?? Tj‰nster-block ??????????????????????????????????? */
+/* ?? Tj?nster-block ??????????????????????????????????? */
 .tjanster-card {
     background: #fff;
     border: 1px solid #e2e8f0;
@@ -3595,7 +3747,7 @@ p, small { line-height: 1.6; }
     border-radius: 20px;
 }
 
-/* Visningsl‰ge ñ chips */
+/* Visningsl?ge ? chips */
 .tjanster-grid {
     display: flex;
     flex-wrap: wrap;
@@ -3677,7 +3829,7 @@ p, small { line-height: 1.6; }
     margin: 0 0 1rem 0;
 }
 
-/* Redigeringsl‰ge ñ checkboxar */
+/* Redigeringsl?ge ? checkboxar */
 .tjanster-edit-hint {
     font-size: 0.85rem;
     color: #64748b;
@@ -3801,7 +3953,7 @@ p, small { line-height: 1.6; }
     background: #f7f9fc;
 }
 
-/* Huvudkort p? Riskbedˆmning-fliken: ingen pil, ingen hover-f‰rg */
+/* Huvudkort p? Riskbed?mning-fliken: ingen pil, ingen hover-f?rg */
 .collapsible-card--kyc > .collapsible-header {
     cursor: default;
 }
@@ -3826,7 +3978,7 @@ p, small { line-height: 1.6; }
     font-size: 0.875rem;
 }
 
-/* Chevron: pekar NED (ˆppen), H÷GER (st‰ngd) */
+/* Chevron: pekar NED (?ppen), H?GER (st?ngd) */
 .kyc-status-icon {
     font-size: 0.95rem;
     transition: transform 0.15s, opacity 0.15s;
@@ -3844,7 +3996,7 @@ p, small { line-height: 1.6; }
     flex-shrink: 0;
 }
 
-/* Penna i nedre hˆgra hˆrnet av kort-body */
+/* Penna i nedre h?gra h?rnet av kort-body */
 .card-edit-fab {
     position: absolute;
     bottom: 0.6rem;
@@ -3962,13 +4114,13 @@ p, small { line-height: 1.6; }
     gap: 0.25rem;
 }
 
-/* Dˆlj pil p? alla huvud-kort */
+/* D?lj pil p? alla huvud-kort */
 .collapsible-card > .collapsible-header .collapsible-chevron {
     display: none !important;
 }
 
 /* ============================================================
-   AI Riskbedˆmning-kort
+   AI Riskbed?mning-kort
    ============================================================ */
 .ai-rb-niva-btns {
     display: flex;
@@ -4111,7 +4263,7 @@ p, small { line-height: 1.6; }
     white-space: pre-wrap;
 }
 
-/* Redigeringsl‰ge */
+/* Redigeringsl?ge */
 .kunduppgifter-edit {
     display: flex;
     flex-direction: column;
@@ -4160,7 +4312,7 @@ textarea.kunduppgifter-input {
     min-height: 90px;
 }
 
-/* Richtext-toolbar fˆr Beskrivning av kunden */
+/* Richtext-toolbar f?r Beskrivning av kunden */
 .richtext-toolbar {
     display: flex;
     gap: 0.3rem;
@@ -4182,7 +4334,7 @@ textarea.kunduppgifter-input {
     border-color: #6366f1;
 }
 
-/* Contenteditable-f‰lt */
+/* Contenteditable-f?lt */
 .kunduppgifter-richtext {
     width: 100%;
     min-height: 150px;
@@ -4215,7 +4367,7 @@ textarea.kunduppgifter-input {
     margin-bottom: 0.15rem;
 }
 
-/* Visningsl‰ge fˆr beskrivning ó mellanrum och formatering */
+/* Visningsl?ge f?r beskrivning ? mellanrum och formatering */
 .kunduppgifter-row--beskrivning {
     align-items: flex-start;
 }
@@ -4641,7 +4793,7 @@ textarea.kunduppgifter-input {
     letter-spacing: 0.5px;
 }
 
-.user-role.administratˆr,
+.user-role.administrat?r,
 .user-role.admin {
     background: #e74c3c;
     color: white;
@@ -4653,7 +4805,7 @@ textarea.kunduppgifter-input {
     color: white;
 }
 
-.user-role.anst‰lld,
+.user-role.anst?lld,
 .user-role.employee,
 .user-role.user {
     background: #3498db;
@@ -4841,7 +4993,7 @@ textarea.kunduppgifter-input {
     background: #f39c12;
 }
 
-.user-role-badge.anst‰lld {
+.user-role-badge.anst?lld {
     background: #3498db;
 }
 
@@ -5678,6 +5830,49 @@ textarea.kunduppgifter-input {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
+/* Avvikelser-sida lista */
+.avvikelser-lista .note-card,
+.avvikelser-lista .avvikelse-list-item {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    padding: 1rem 1.25rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.avvikelser-lista .avvikelse-list-item:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.avvikelser-lista .avvikelse-row {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+.avvikelser-lista .avvikelse-kund {
+    min-width: 140px;
+    font-weight: 500;
+    color: #334155;
+}
+.avvikelser-lista .avvikelse-typ {
+    flex: 0 0 auto;
+    color: #475569;
+}
+.avvikelser-lista .avvikelse-datum {
+    color: #64748b;
+    font-size: 0.9rem;
+}
+.avvikelser-lista .avvikelse-status {
+    margin-left: auto;
+}
+.avvikelser-lista .empty-state {
+    padding: 2rem;
+    text-align: center;
+}
+
 /* Kollapsibel sammanfattningsrad */
 .customer-details-section .note-summary {
     display: flex;
@@ -5728,7 +5923,7 @@ textarea.kunduppgifter-input {
     margin-right: 3px;
 }
 
-/* ≈tg‰rdsknappar pÂ raden */
+/* ?tg?rdsknappar p? raden */
 .customer-details-section .note-summary-actions {
     display: flex;
     gap: 0.25rem;
@@ -5756,7 +5951,7 @@ textarea.kunduppgifter-input {
     color: #ef4444;
 }
 
-/* Expanderat innehÂll */
+/* Expanderat inneh?ll */
 .customer-details-section .note-details {
     padding: 0 1.25rem 1.25rem 2.5rem;
     border-top: 1px solid #f1f5f9;
@@ -7130,7 +7325,7 @@ textarea.kunduppgifter-input {
     color: #1e293b;
     margin-top: 0.5rem;
 }
-.uppdrag-doc-v‰lkommen {
+.uppdrag-doc-v?lkommen {
     font-size: 0.9rem;
     color: #475569;
     font-style: italic;
@@ -7170,7 +7365,7 @@ textarea.kunduppgifter-input {
     color: #64748b;
 }
 
-/* Tj‰nstelista i avtalet (visningsl‰ge, l‰st frÂn ÷vrig KYC) */
+/* Tj?nstelista i avtalet (visningsl?ge, l?st fr?n ?vrig KYC) */
 .uppdrag-tjanster-list {
     display: flex;
     flex-wrap: wrap;
@@ -7207,7 +7402,7 @@ textarea.kunduppgifter-input {
 .uppdrag-bilaga-toggle:has(+ .uppdrag-bilaga-text.open) .uppdrag-bilaga-chevron {
     transform: rotate(90deg);
 }
-/* Enklare lˆsning ó rotate n‰r open-klassen finns pÂ textelementet */
+/* Enklare l?sning ? rotate n?r open-klassen finns p? textelementet */
 .uppdrag-bilaga-toggle.is-open .uppdrag-bilaga-chevron {
     transform: rotate(90deg);
 }
@@ -7437,7 +7632,7 @@ textarea.kunduppgifter-input {
 .inleed-manual-collapsed .form-group label { font-size: 0.82rem; color: #64748b; }
 
 /* =====================================================
-   Kundlista ù ny enkel listlayout
+   Kundlista ? ny enkel listlayout
    ===================================================== */
 .kundlista-toolbar {
     display: flex;
@@ -7787,7 +7982,7 @@ textarea.kunduppgifter-input {
 .ai-chat-panel__send:hover:not(:disabled) { opacity: 0.9; }
 .ai-chat-panel__send:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* Statistik fˆr riskbedˆmning */
+/* Statistik f?r riskbed?mning */
 .risk-header-sub { margin: 0; font-size: 1rem; opacity: 0.85; }
 .statistik-error { color: #dc2626; margin-bottom: 1rem; }
 .statistik-loading { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; color: var(--text); }
@@ -7822,7 +8017,7 @@ textarea.kunduppgifter-input {
 .stat-list-antal { font-weight: 600; color: var(--accent, #667eea); }
 .statistik-error { color: #dc2626; margin-bottom: 1rem; }
 
-/* Modal fˆr kundlista i statistik */
+/* Modal f?r kundlista i statistik */
 .statistik-kunder-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .statistik-kunder-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); max-width: 480px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
 .statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }

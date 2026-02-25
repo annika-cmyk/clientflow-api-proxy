@@ -2311,7 +2311,8 @@ app.get('/api/download/:filename', (req, res) => {
 });
 
 // Funktion för att spara fil lokalt och returnera URL
-async function saveFileLocally(fileBuffer, filename, contentType) {
+// baseUrlOverride: om req.get('host') används, gör URL:en åtkomlig för Airtable vid ngrok/tunnel
+async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverride) {
   try {
     console.log(`💾 Sparar fil lokalt: ${filename}`);
     
@@ -2328,8 +2329,9 @@ async function saveFileLocally(fileBuffer, filename, contentType) {
     const filePath = path.join(tempDir, uniqueFilename);
     fs.writeFileSync(filePath, fileBuffer);
     
-    // Returnera en URL som pekar på vår download endpoint
-    const baseUrl = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+    // Returnera en URL som pekar på vår download endpoint.
+    // Använd baseUrlOverride (t.ex. från req) för att Airtable ska kunna hämta filen vid ngrok/tunnel.
+    const baseUrl = baseUrlOverride || process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
     const fileUrl = `${baseUrl}/api/download/${uniqueFilename}`;
     
     console.log(`✅ Fil sparad lokalt: ${filename} -> ${fileUrl}`);
@@ -3040,6 +3042,200 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const airtableErr = error.response?.data?.error;
     const message = airtableErr?.message || error.message || 'Okänt fel';
     res.status(status).json({ error: message, details: airtableErr });
+  }
+});
+
+// POST /api/kunddata/:id/riskbedomning-pdf – Dokumentera riskbedömning som PDF, spara på kunden
+app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const { id: customerId } = req.params;
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const cust = custRes.data;
+    const f = cust.fields || {};
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet för denna kund' });
+    }
+
+    const kundnamn = f['Namn'] || f['Företagsnamn'] || 'Okänd';
+    const orgnr = f['Orgnr'] || f['Organisationsnummer'] || '';
+    const riskniva = f['Riskniva'] || '';
+    const riskbedomning = f['Byrans riskbedomning'] || '';
+    const atgarder = f['Atgarder riskbedomning'] || '';
+    const datumStr = new Date().toLocaleDateString('sv-SE');
+    const datumIso = new Date().toISOString().split('T')[0];
+
+    const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const nl2br = (s) => (s == null ? '' : String(s)).replace(/\n/g, '<br>');
+    const ACCENT = '#2c4a8f';
+
+    const nivaLabel = { 'Lag': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk' }[riskniva] || riskniva || 'Ej angiven';
+
+    const html = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
+      body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.5;color:#1a1a2e;margin:0;padding:20px;}
+      h1{color:${ACCENT};font-size:14pt;margin-bottom:8px;}
+      .meta{color:#666;font-size:8pt;margin-bottom:20px;}
+      h2{color:${ACCENT};font-size:11pt;border-bottom:1px solid ${ACCENT};padding-bottom:4px;margin-top:16px;}
+      .section{margin:12px 0;}
+      .niva{display:inline-block;padding:4px 12px;border-radius:4px;font-weight:700;}
+      .niva-lag{background:#dcfce7;color:#166534;}
+      .niva-medel{background:#fef9c3;color:#854d0e;}
+      .niva-hog{background:#fee2e2;color:#991b1b;}
+    </style></head><body>
+      <h1>Riskbedömning – ${escape(kundnamn)}</h1>
+      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}</p>
+      <h2>Sammanlagd risknivå</h2>
+      <p><span class="niva niva-${(riskniva || 'Medel').toLowerCase()}">${escape(nivaLabel)}</span></p>
+      <h2>Byråns riskbedömning</h2>
+      <div class="section">${riskbedomning ? nl2br(riskbedomning) : '—'}</div>
+      <h2>Åtgärder</h2>
+      <div class="section">${atgarder ? nl2br(atgarder) : '—'}</div>
+      <p class="meta" style="margin-top:24px;">ClientFlow – dokumenterat ${datumStr}</p>
+    </body></html>`;
+
+    const pup = loadPuppeteer();
+    if (!pup) return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas)' });
+    const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'], headless: true, timeout: 30000 };
+    if (chromium) launchOpts.executablePath = await chromium.executablePath();
+    const browser = await pup.launch(launchOpts);
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
+    await browser.close();
+
+    const safeNamn = (kundnamn || 'kund').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
+    const filename = `Riskbedomning-${safeNamn}-${datumIso}.pdf`;
+
+    // Använd requestens host så Airtable kan hämta filen vid ngrok/tunnel
+    const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const baseUrl = host ? `${protocol}://${host}` : null;
+
+    const fileUrl = await saveFileLocally(pdfBuffer, filename, 'application/pdf', baseUrl);
+    let reloadedDocuments = false;
+
+    if (fileUrl) {
+      const docFields = ['Attachments', 'Riskbedömning dokument', 'Riskbedomning dokument', 'Dokumentation'];
+      for (const fieldName of docFields) {
+        try {
+          const existing = f[fieldName] || [];
+          const arr = Array.isArray(existing) ? [...existing] : [];
+          arr.push({ url: fileUrl, filename });
+          await axios.patch(
+            `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+            {
+              fields: {
+                [fieldName]: arr,
+                'Kundens riskbedömning godkänd': datumIso
+              }
+            },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+          reloadedDocuments = true;
+          console.log('✅ Riskbedömning-PDF sparad i fält:', fieldName);
+          break;
+        } catch (patchErr) {
+          if (patchErr.response?.status === 422) continue;
+          console.warn('Kunde inte spara PDF till fält', fieldName, ':', patchErr.message);
+        }
+      }
+    }
+
+    const isLocalhost = !baseUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(fileUrl || '');
+    const message = reloadedDocuments
+      ? 'PDF sparad på fliken Dokumentation.'
+      : isLocalhost
+        ? 'PDF genererad. Vid lokal drift kan Airtable inte hämta filer från localhost. För att spara till Dokumentation: kör appen på Render (med PUBLIC_BASE_URL) eller använd ngrok.'
+        : 'PDF genererad. Lägg till fältet "Attachments" eller "Riskbedömning dokument" (Bilaga) i KUNDDATA för att spara automatiskt.';
+
+    res.json({
+      success: true,
+      filnamn: filename,
+      reloadedDocuments,
+      fileUrl,
+      message
+    });
+  } catch (error) {
+    console.error('\u274c Riskbedömning PDF:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/documents?customerId=recXXX – Dokumentation för kund (Riskbedömning dokument m.m.)
+app.get('/api/documents', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const { customerId } = req.query;
+    if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const attachments = f['Attachments'] || [];
+    const riskDocs = f['Riskbedömning dokument'] || f['Riskbedomning dokument'] || [];
+    const pepDocs = f['PEP rapporter'] || f['PEP rapport'] || [];
+    const allItems = [];
+    for (const a of Array.isArray(riskDocs) ? riskDocs : []) {
+      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'riskbedomning' });
+    }
+    for (const a of Array.isArray(pepDocs) ? pepDocs : []) {
+      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'pep' });
+    }
+    for (const a of Array.isArray(attachments) ? attachments : []) {
+      if (!a || !(a.url || a.filename)) continue;
+      const fn = (a.filename || '').toLowerCase();
+      if (fn.startsWith('riskbedomning-') || fn.includes('riskbedomning')) allItems.push({ ...a, _typ: 'riskbedomning' });
+      else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening')) allItems.push({ ...a, _typ: 'pep' });
+    }
+    const documents = allItems.map((a, i) => {
+      const isPep = a._typ === 'pep';
+      const datum = a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      return {
+        id: `${a._typ}-${i}`,
+        fields: {
+          Namn: a.filename || (isPep ? `PEP-screening ${i + 1}` : `Riskbedömning ${i + 1}`),
+          Filtyp: 'PDF',
+          Beskrivning: isPep ? 'PEP & sanktionsscreening' : 'Dokumenterad riskbedömning',
+          UppladdadDatum: datum,
+          UppladdadAv: ''
+        },
+        url: a.url,
+        filename: a.filename
+      };
+    });
+
+    res.json({ documents });
+  } catch (error) {
+    console.error('\u274c GET documents:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -6118,18 +6314,52 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
             throw new Error('Inget PDF-svar från Dilisense');
         }
 
-        // 2. Spara PDF-filen som attachment till KUNDDATA via Airtable
         const token = process.env.AIRTABLE_ACCESS_TOKEN;
         const baseId = process.env.AIRTABLE_BASE_ID;
+        const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
         const datumStr = new Date().toISOString().split('T')[0];
         const filnamn = `PEP-screening_${namn.replace(/\s+/g, '_')}_${datumStr}.pdf`;
 
-        // Airtable stödjer inte direkt base64-upload av attachments via PATCH —
-        // vi sparar base64 som en anteckning/notat på kunden istället och
-        // returnerar base64 till frontend som kan trigga nedladdning
-        // OCH vi skapar en anteckning med screening-metadata
+        // Spara PDF till KUNDDATA (Attachments / PEP rapporter) om möjligt
+        let savedToDocs = false;
+        if (token && kundId) {
+            try {
+                const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+                const host = req.get('x-forwarded-host') || req.get('host');
+                const baseUrl = host ? `${protocol}://${host}` : null;
+                const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+                const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', baseUrl);
+                if (fileUrl) {
+                    const custRes = await axios.get(
+                        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    const f = custRes.data.fields || {};
+                    const docFields = ['Attachments', 'PEP rapporter', 'PEP rapport', 'Dokumentation'];
+                    for (const fieldName of docFields) {
+                        try {
+                            const existing = f[fieldName] || [];
+                            const arr = Array.isArray(existing) ? [...existing] : [];
+                            arr.push({ url: fileUrl, filename: filnamn });
+                            await axios.patch(
+                                `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+                                { fields: { [fieldName]: arr } },
+                                { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                            );
+                            savedToDocs = true;
+                            console.log('✅ PEP-rapport sparad i fält:', fieldName);
+                            break;
+                        } catch (patchErr) {
+                            if (patchErr.response?.status === 422) continue;
+                        }
+                    }
+                }
+            } catch (saveErr) {
+                console.warn('Kunde inte spara PEP-rapport till Airtable:', saveErr.message);
+            }
+        }
 
-        // 3. Hämta snabb JSON-sökning för att visa träffar i UI
+        // Hämta snabb JSON-sökning för att visa träffar i UI
         const checkUrl = `https://api.dilisense.com/v1/checkIndividual?${params.toString()}`;
         const checkRes = await axios.get(checkUrl, {
             headers: { 'x-api-key': dilisenseKey }
@@ -6148,6 +6378,7 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
             found_records: checkData.found_records || [],
             pdf_base64: pdfBase64,
             filnamn,
+            savedToDocs,
             timestamp: new Date().toISOString()
         });
 

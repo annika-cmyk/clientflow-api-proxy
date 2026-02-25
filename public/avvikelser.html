@@ -9,290 +9,47 @@
 </head>
 <body>
 
-
     <div class="app-container">
-        <!-- Sidebar will be loaded dynamically -->
-        <div class="sidebar-container">
-            <!-- Sidebar content will be loaded here -->
-        </div>
+        <div class="sidebar-container"></div>
 
-        <!-- Main Content -->
         <main class="main-content">
-            <header class="content-header">
-                <h1>AVVIKELSER</h1>
-                <p class="subtitle">Hantera och uppfölj avvikelser i riskbedömningar</p>
-            </header>
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>Avvikelser</h1>
+                        <p class="risk-header-sub">Registrera och uppfölj avvikelser enligt PTL</p>
+                        <div class="byrarutiner-actions" style="margin-top:0.5rem;">
+                            <button type="button" class="btn btn-primary" id="btn-rapportera-avvikelse">
+                                <i class="fas fa-plus"></i> Rapportera en avvikelse här
+                            </button>
+                        </div>
+                    </div>
+                </header>
 
-            <div class="content-body">
-                <div class="deviations-overview">
-                    <div class="overview-card critical">
-                        <div class="overview-icon">
-                            <i class="fas fa-exclamation-triangle"></i>
-                        </div>
-                        <div class="overview-content">
-                            <h3>Kritiska avvikelser</h3>
-                            <div class="overview-number">3</div>
-                            <div class="overview-description">Kräver omedelbar åtgärd</div>
-                        </div>
-                    </div>
-                    
-                    <div class="overview-card high">
-                        <div class="overview-icon">
-                            <i class="fas fa-exclamation-circle"></i>
-                        </div>
-                        <div class="overview-content">
-                            <h3>Höga avvikelser</h3>
-                            <div class="overview-number">7</div>
-                            <div class="overview-description">Åtgärdas inom 24h</div>
-                        </div>
-                    </div>
-                    
-                    <div class="overview-card medium">
-                        <div class="overview-icon">
-                            <i class="fas fa-info-circle"></i>
-                        </div>
-                        <div class="overview-content">
-                            <h3>Medel avvikelser</h3>
-                            <div class="overview-number">12</div>
-                            <div class="overview-description">Åtgärdas inom 72h</div>
-                        </div>
-                    </div>
-                    
-                    <div class="overview-card low">
-                        <div class="overview-icon">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="overview-content">
-                            <h3>Låga avvikelser</h3>
-                            <div class="overview-number">5</div>
-                            <div class="overview-description>Åtgärdas inom 1 vecka</div>
-                        </div>
-                    </div>
+                <div id="loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar avvikelser...</p>
                 </div>
 
-                <div class="deviations-filters">
-                    <div class="filter-group">
-                        <label>Prioritet:</label>
-                        <select class="form-select">
-                            <option>Alla prioriter</option>
-                            <option>Kritisk</option>
-                            <option>Hög</option>
-                            <option>Medel</option>
-                            <option>Låg</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label>Status:</label>
-                        <select class="form-select">
-                            <option>Alla statusar</option>
-                            <option>Ny</option>
-                            <option>Under utredning</option>
-                            <option>Åtgärdas</option>
-                            <option>Löst</option>
-                            <option>Stängt</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label>Kategori:</label>
-                        <select class="form-select">
-                            <option>Alla kategorier</option>
-                            <option>IT-säkerhet</option>
-                            <option>Compliance</option>
-                            <option>Kvalitet</option>
-                            <option>Process</option>
-                            <option>Personal</option>
-                        </select>
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label>Från datum:</label>
-                        <input type="date" class="form-input">
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label>Till datum:</label>
-                        <input type="date" class="form-input">
-                    </div>
-                    
-                    <button class="btn-primary">Filtrera</button>
-                    <button class="btn-secondary">Rensa filter</button>
+                <div id="no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa och rapportera avvikelser.</p>
                 </div>
 
-                <div class="deviations-list">
-                    <div class="deviation-item critical">
-                        <div class="deviation-header">
-                            <div class="deviation-priority">
-                                <span class="priority-badge critical">Kritisk</span>
-                                <span class="deviation-id">#DEV-001</span>
-                            </div>
-                            <div class="deviation-date">2025-01-15 14:30</div>
+                <div id="content" style="display:none;">
+                    <section class="info-section" style="margin-top:1rem;">
+                        <h3 style="margin-bottom:1rem;"><i class="fas fa-exclamation-circle"></i> Registrerade avvikelser</h3>
+                        <div id="avvikelser-lista" class="avvikelser-lista">
+                            <!-- Fylls via JS -->
                         </div>
-                        
-                        <div class="deviation-content">
-                            <h4>IT-säkerhetsrisk - Otillräcklig lösenordspolicy</h4>
-                            <p>Kund: Testbolaget Aktiebolag (ID: 5567223705)</p>
-                            <p>Beskrivning: Lösenordspolicyn uppfyller inte säkerhetskraven. Lösenord har ingen minimilängd och inga komplexitetskrav.</p>
-                            
-                            <div class="deviation-details">
-                                <div class="detail-item">
-                                    <span class="detail-label">Kategori:</span>
-                                    <span class="detail-value">IT-säkerhet</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Rapporterad av:</span>
-                                    <span class="detail-value">Annika Rydén</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Deadline:</span>
-                                    <span class="detail-value deadline-critical">Idag 17:00</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="deviation-actions">
-                            <button class="btn-primary">Åtgärda</button>
-                            <button class="btn-secondary">Visa detaljer</button>
-                            <button class="btn-secondary">Tilldela</button>
-                        </div>
-                    </div>
-
-                    <div class="deviation-item high">
-                        <div class="deviation-header">
-                            <div class="deviation-priority">
-                                <span class="priority-badge high">Hög</span>
-                                <span class="deviation-id">#DEV-002</span>
-                            </div>
-                            <div class="deviation-date">2025-01-15 13:45</div>
-                        </div>
-                        
-                        <div class="deviation-content">
-                            <h4>Compliance-risk - Saknad GDPR-dokumentation</h4>
-                            <p>Kund: Samfraktlogistik Sweden AB (ID: 5592988686)</p>
-                            <p>Beskrivning: Kundens hantering av personuppgifter saknar dokumentation enligt GDPR. Ingen dataskyddsanalys finns.</p>
-                            
-                            <div class="deviation-details">
-                                <div class="detail-item">
-                                    <span class="detail-label">Kategori:</span>
-                                    <span class="detail-value">Compliance</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Rapporterad av:</span>
-                                    <span class="detail-value">Maria Rydén</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Deadline:</span>
-                                    <span class="detail-value deadline-high">Imorgon 12:00</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="deviation-actions">
-                            <button class="btn-primary">Åtgärda</button>
-                            <button class="btn-secondary">Visa detaljer</button>
-                            <button class="btn-secondary">Tilldela</button>
-                        </div>
-                    </div>
-
-                    <div class="deviation-item medium">
-                        <div class="deviation-header">
-                            <div class="deviation-priority">
-                                <span class="priority-badge medium">Medel</span>
-                                <span class="deviation-id">#DEV-003</span>
-                            </div>
-                            <div class="deviation-date">2025-01-15 12:20</div>
-                        </div>
-                        
-                        <div class="deviation-content">
-                            <h4>Kvalitetsrisk - Otillräcklig dokumentation</h4>
-                            <p>Kund: Operandi AB (ID: 5592385982)</p>
-                            <p>Beskrivning: Kundens interna processer saknar tillräcklig dokumentation. Rutiner är inte standardiserade.</p>
-                            
-                            <div class="deviation-details">
-                                <div class="detail-item">
-                                    <span class="detail-label">Kategori:</span>
-                                    <span class="detail-value">Kvalitet</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Rapporterad av:</span>
-                                    <span class="detail-value">Erik Andersson</span>
-                                </div>
-                                <div class="detail-item">
-                                    <span class="detail-label">Deadline:</span>
-                                    <span class="detail-value deadline-medium">2025-01-18</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="deviation-actions">
-                            <button class="btn-primary">Åtgärda</button>
-                            <button class="btn-secondary">Visa detaljer</button>
-                            <button class="btn-secondary">Tilldela</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="deviations-summary">
-                    <h3>Sammanfattning av avvikelser</h3>
-                    <div class="summary-stats">
-                        <div class="summary-item">
-                            <span class="summary-label">Totalt antal:</span>
-                            <span class="summary-value">27</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Över deadline:</span>
-                            <span class="summary-value overdue">2</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Lösta denna månad:</span>
-                            <span class="summary-value">18</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="summary-label">Genomsnittlig löstid:</span>
-                            <span class="summary-value">2.3 dagar</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="deviations-actions">
-                    <h3>Snabbåtgärder</h3>
-                    <div class="quick-actions">
-                        <button class="btn-primary">
-                            <i class="fas fa-plus"></i>
-                            Rapportera ny avvikelse
-                        </button>
-                        <button class="btn-secondary">
-                            <i class="fas fa-file-export"></i>
-                            Exportera avvikelserapport
-                        </button>
-                        <button class="btn-secondary">
-                            <i class="fas fa-chart-bar"></i>
-                            Visa trendanalys
-                        </button>
-                        <button class="btn-secondary">
-                            <i class="fas fa-bell"></i>
-                            Konfigurera aviseringar
-                        </button>
-                    </div>
+                    </section>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- Footer -->
-    <footer class="site-footer">
-        <div class="container">
-            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
-        </div>
-    </footer>
-
-    <!-- Load navigation module first -->
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <!-- Then load the main app -->
-    <script src="app.js"></script>
+    <script src="js/avvikelser.js"></script>
 </body>
 </html>

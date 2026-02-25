@@ -1721,6 +1721,14 @@ class CustomerCardManager {
                     </div>
                 </div>
 
+                <!-- Dokumentera riskbedömning – knapp längst ner -->
+                <div class="kyc-section" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #e2e8f0;">
+                    <button type="button" class="btn btn-primary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
+                        <i class="fas fa-file-pdf"></i> Dokumentera riskbedömning
+                    </button>
+                    <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Skapar en PDF med nuvarande riskbedömning, sparar på fliken Dokumentation. Görs årligen per kund.</p>
+                </div>
+
             </div>
         `;
     }
@@ -3735,7 +3743,9 @@ class CustomerCardManager {
                 this.loadAvvikelser();
             } else {
                 const errorData = await response.json().catch(() => ({}));
-                alert(`Kunde inte spara avvikelse: ${errorData.message || response.statusText}`);
+                const msg = errorData.message || response.statusText;
+                const detail = errorData.airtableError?.error?.message || errorData.airtableError?.message || '';
+                alert(`Kunde inte spara avvikelse: ${msg}${detail ? '\n\nAirtable: ' + detail : ''}`);
             }
         } catch (error) {
             console.error('❌ Error saving avvikelse:', error);
@@ -3809,6 +3819,11 @@ class CustomerCardManager {
 
     createDocumentCard(doc) {
         const fields = doc.fields || {};
+        const namn = fields['Namn'] || doc.filename || 'Namnlös fil';
+        const url = doc.url || '';
+        const downloadBtn = url
+            ? `<a href="${url}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" download="${(doc.filename || namn).replace(/"/g, '')}"><i class="fas fa-download"></i> Ladda ner</a>`
+            : `<button class="btn btn-primary btn-sm" disabled><i class="fas fa-download"></i> Ladda ner</button>`;
         return `
             <div class="document-card">
                 <div class="document-header">
@@ -3816,26 +3831,19 @@ class CustomerCardManager {
                         <i class="fas fa-file-${this.getFileIcon(fields['Filtyp'])}"></i>
                     </div>
                     <div class="document-info">
-                        <h4>${fields['Namn'] || 'Namnlös fil'}</h4>
+                        <h4>${namn}</h4>
                         <span class="document-type">${fields['Filtyp'] || 'Okänd typ'}</span>
                     </div>
                     <span class="document-size">${fields['Storlek'] || '-'}</span>
                 </div>
                 <div class="document-content">
                     <p><strong>Beskrivning:</strong> ${fields['Beskrivning'] || 'Ingen beskrivning'}</p>
-                    <p><strong>Uppladdad:</strong> ${fields['UppladdadDatum'] || '-'}</p>
+                    <p><strong>Datum:</strong> ${fields['UppladdadDatum'] || namn.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '-'}</p>
                 </div>
                 <div class="document-footer">
-                    <span class="document-author">Uppladdad av: ${fields['UppladdadAv'] || 'Okänd'}</span>
+                    <span class="document-author">${fields['UppladdadAv'] ? 'Uppladdad av: ' + fields['UppladdadAv'] : ''}</span>
                     <div class="document-actions">
-                        <button class="btn btn-primary btn-sm">
-                            <i class="fas fa-download"></i>
-                            Ladda ner
-                        </button>
-                        <button class="btn btn-danger btn-sm">
-                            <i class="fas fa-trash"></i>
-                            Ta bort
-                        </button>
+                        ${downloadBtn}
                     </div>
                 </div>
             </div>
@@ -4344,6 +4352,12 @@ class CustomerCardManager {
                 this._downloadBase64Pdf(data.pdf_base64, data.filnamn);
             }
 
+            // Uppdatera dokumentation-fliken om rapporten sparades
+            if (data.savedToDocs) {
+                this.loadDocuments();
+                this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
+            }
+
         } catch (error) {
             console.error('❌ PEP-screening fel:', error);
             this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
@@ -4431,6 +4445,44 @@ class CustomerCardManager {
         a.download = filnamn || 'pep-screening.pdf';
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    async dokumenteraRiskbedomning() {
+        const btn = document.getElementById('btn-dokumentera-riskbedomning');
+        if (!btn || !this.customerId) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
+        try {
+            const token = localStorage.getItem('authToken');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/riskbedomning-pdf`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || err.message || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            this.showNotification(data.message || 'Riskbedömning dokumenterad.', 'success');
+            if (data.reloadedDocuments) this.loadDocuments();
+            // Erbjud nedladdning om PDF genererades men inte sparades till Dokumentation (t.ex. vid localhost)
+            if (data.fileUrl && !data.reloadedDocuments && data.filnamn) {
+                const a = document.createElement('a');
+                a.href = data.fileUrl;
+                a.download = data.filnamn;
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+        } catch (err) {
+            console.error('❌ Dokumentera riskbedömning:', err);
+            this.showNotification('Kunde inte dokumentera: ' + (err.message || 'Okänt fel'), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-file-pdf"></i> Dokumentera riskbedömning';
+        }
     }
 
     uploadDocument() {

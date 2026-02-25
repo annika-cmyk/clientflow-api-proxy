@@ -1,28 +1,16 @@
 /**
- * Byrårutiner - Redigerbara rutiner från Byråer-tabellen i Airtable
- * Varje fält mappas till Airtable-fältnamn (exakt som i Byråer-tabellen)
+ * Byrårutiner - Kort med visnings-/redigeringsläge
  */
 (function () {
-  if (!document.getElementById('fld-syfte-omfattning')) return;
+  if (!document.getElementById('fld-syfte-policy')) return;
 
   const FIELD_MAP = [
-    { id: 'fld-syfte-omfattning', airtable: '1. Syfte och Omfattning' },
-    { id: 'fld-beskrivning', airtable: '2. Beskrivning av Byråns verksamhet' },
-    { id: 'fld-antal-anstallda', airtable: 'Antal anställda', type: 'number' },
-    { id: 'fld-omsattning', airtable: 'Omsättning', type: 'number' },
-    { id: 'fld-antal-kundforetag', airtable: 'Antal kundföretag', type: 'number' },
-    { id: 'fld-metod-riskbedomning', airtable: '3. Metod för Riskbedömning ' },
-    { id: 'fld-identifierade-risker', airtable: '4. Identifierade Risker och Sårbarheter' },
-    { id: 'fld-vardering-risk', airtable: '5. Värdering av sammantagen risk' },
-    { id: 'fld-riskreducerande', airtable: '6. Riskreducerande Åtgärder och Rutiner' },
-    { id: 'fld-utvardering', airtable: '7. Utvärdering och Uppdatering' },
-    { id: 'fld-kommunikation-risk', airtable: '8. Kommunikation.' },
     { id: 'fld-syfte-policy', airtable: '1. Syfte och omfattning policy' },
     { id: 'fld-centralt-funktionsansvarig', airtable: '2. Centralt Funktionsansvarig ' },
     { id: 'fld-centralt-person', airtable: 'Centralt funktionsansvarig' },
     { id: 'fld-kundkannedom', airtable: '3. Kundkännedomsåtgärder ' },
     { id: 'fld-overvakning', airtable: '4. Övervakning och Rapportering ' },
-    { id: 'fld-intern-kontroll', airtable: '5. Intern Kontroll' },
+    { id: 'fld-intern-kontroll', airtable: '5. Intern Kontroll ' },
     { id: 'fld-anstallda-utbildning', airtable: '6. Anställda och Utbildning' },
     { id: 'fld-arkiv', airtable: '7. Arkivering av dokumentation' },
     { id: 'fld-uppdatering-utvardering', airtable: '8. Uppdatering och Utvärdering ' },
@@ -31,205 +19,220 @@
     { id: 'fld-policy-reviderat', airtable: 'Policydokumentet reviderat och godkänt' }
   ];
 
-  function getEl(id) {
-    return document.getElementById(id);
-  }
-
-  function getToken() {
-    return localStorage.getItem('authToken');
-  }
-
-  function getBaseUrl() {
-    return (window.apiConfig && window.apiConfig.baseUrl) || '';
-  }
-
-  function setSaveStatus(msg, isError) {
-    const el = getEl('save-status');
-    if (el) {
-      el.textContent = msg;
-      el.className = 'save-status' + (isError ? ' error' : '');
-    }
-  }
+  function getEl(id) { return document.getElementById(id); }
+  function getToken() { return localStorage.getItem('authToken'); }
+  function getBaseUrl() { return (window.apiConfig && window.apiConfig.baseUrl) || ''; }
 
   function getFieldValue(fields, airtableKey) {
-    let val = fields[airtableKey];
-    if (val === undefined || val === null) {
-      val = fields[airtableKey.trim()];
-    }
+    var val = fields[airtableKey];
+    if (val === undefined || val === null) val = fields[airtableKey.trim()];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) return '';
     if (Array.isArray(val)) return '';
     return val;
   }
 
-  function populateForm(fields) {
-    FIELD_MAP.forEach(function (m) {
-      const el = getEl(m.id);
-      if (!el) return;
-      let val = getFieldValue(fields, m.airtable);
-      if (m.type === 'number') {
-        el.value = val === '' || val == null ? '' : Number(val);
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function markdownToHtml(text) {
+    if (!text || typeof text !== 'string') return '';
+    var t = escapeHtml(text);
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    var lines = t.split(/\r?\n/);
+    var out = [];
+    var inUl = false, inOl = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (/^-\s/.test(line)) {
+        if (!inUl) { if (inOl) { out.push('</ol>'); inOl = false; } out.push('<ul>'); inUl = true; }
+        out.push('<li>' + line.replace(/^-\s/, '') + '</li>');
+      } else if (/^\d+\.\s/.test(line)) {
+        if (!inOl) { if (inUl) { out.push('</ul>'); inUl = false; } out.push('<ol>'); inOl = true; }
+        out.push('<li>' + line.replace(/^\d+\.\s/, '') + '</li>');
       } else {
-        el.value = val == null ? '' : String(val);
+        if (inUl) { out.push('</ul>'); inUl = false; }
+        if (inOl) { out.push('</ol>'); inOl = false; }
+        out.push(line ? '<p>' + line + '</p>' : '<br>');
       }
+    }
+    if (inUl) out.push('</ul>');
+    if (inOl) out.push('</ol>');
+    return out.length ? out.join('') : '—';
+  }
+
+  function getDisplayValue(el) {
+    if (!el) return '';
+    return String(el.value || '').trim() || '—';
+  }
+
+  function updateCardView(card) {
+    var fid = card.getAttribute('data-field-id');
+    if (!fid) return;
+    var el = getEl(fid);
+    var view = card.querySelector('.byra-card-value');
+    if (view && el) {
+      var raw = getDisplayValue(el);
+      view.innerHTML = raw === '—' ? '—' : '<div class="byra-card-formatted">' + markdownToHtml(raw) + '</div>';
+    }
+  }
+
+  function showView(card) {
+    var view = card.querySelector('.byra-card-view');
+    var edit = card.querySelector('.byra-card-edit');
+    if (view) view.style.display = 'block';
+    if (edit) edit.style.display = 'none';
+  }
+
+  function showEdit(card) {
+    var view = card.querySelector('.byra-card-view');
+    var edit = card.querySelector('.byra-card-edit');
+    if (view) view.style.display = 'none';
+    if (edit) edit.style.display = 'block';
+  }
+
+  function populateForm(fields, canEdit) {
+    FIELD_MAP.forEach(function (m) {
+      var el = getEl(m.id);
+      if (!el) return;
+      var val = getFieldValue(fields, m.airtable);
+      if (m.type === 'number') el.value = val === '' || val == null ? '' : Number(val);
+      else el.value = val == null ? '' : String(val);
+    });
+    document.querySelectorAll('.byra-card').forEach(updateCardView);
+  }
+
+  function initPreviews(canEdit) {
+    document.querySelectorAll('.byrarutiner-rich-field').forEach(function (field) {
+      var ta = field.querySelector('textarea');
+      if (!ta) return;
+      ta.style.display = 'block';
+      if (canEdit && field.querySelector('.byrarutiner-format-toolbar')) field.querySelector('.byrarutiner-format-toolbar').style.display = 'flex';
+      else if (!canEdit && field.querySelector('.byrarutiner-format-toolbar')) field.querySelector('.byrarutiner-format-toolbar').style.display = 'none';
     });
   }
 
-  function collectFields() {
-    const out = {};
-    FIELD_MAP.forEach(function (m) {
-      const el = getEl(m.id);
-      if (!el) return;
-      let val = el.value.trim();
-      if (m.type === 'number') {
-        const n = parseFloat(val);
-        out[m.airtable] = isNaN(n) ? '' : n;
-      } else {
-        out[m.airtable] = val;
-      }
-    });
-    return out;
-  }
-
-  async function load() {
-    const loading = getEl('loading');
-    const noData = getEl('no-data');
-    const content = getEl('content');
-    const btnSave = getEl('btn-save');
-
-    if (!getToken()) {
-      if (loading) loading.innerHTML = '<p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa byråns rutiner.</p>';
-      return;
-    }
-
-    var canEdit = true;
+  async function saveFields(fields, card, onDone) {
+    var idEl = getEl('byra-rutiner-record-id'), recordId = idEl ? idEl.value.trim() : '';
+    if (!recordId) { if (onDone) onDone('Ingen post.', true); return; }
+    var status = card ? card.querySelector('.card-save-status') : null;
+    if (status) status.textContent = 'Sparar...';
+    var btn = card ? card.querySelector('.card-save-btn') : null;
+    if (btn) btn.disabled = true;
     try {
-      var meRes = await fetch(getBaseUrl() + '/api/auth/me', {
-        headers: { 'Authorization': 'Bearer ' + getToken() }
-      });
-      if (meRes.ok) {
-        var meData = await meRes.json();
-        canEdit = (meData.user && ['ClientFlowAdmin', 'Ledare'].includes(meData.user.role));
-      }
-    } catch (_) {}
-
-    try {
-      const res = await fetch(getBaseUrl() + '/api/byra-rutiner', {
-        headers: { 'Authorization': 'Bearer ' + getToken() }
-      });
-      const data = await res.json();
-
-      if (loading) loading.style.display = 'none';
-
-      if (!res.ok) {
-        if (noData) {
-          noData.style.display = 'block';
-          noData.querySelector('p').textContent = data.message || data.error || 'Kunde inte hämta byråns rutiner.';
-        }
-        return;
-      }
-
-      if (!data.record || !data.fields) {
-        if (noData) noData.style.display = 'block';
-        return;
-      }
-
-      const recordId = getEl('byra-rutiner-record-id');
-      if (recordId) recordId.value = data.id || data.record.id || '';
-
-      populateForm(data.fields);
-      if (content) content.style.display = 'block';
-      if (btnSave) btnSave.style.display = canEdit ? 'inline-flex' : 'none';
-      if (!canEdit) {
-        FIELD_MAP.forEach(function (m) {
-          var el = getEl(m.id);
-          if (el) el.readOnly = true;
-        });
-      }
-    } catch (err) {
-      console.error('Byrårutiner load error:', err);
-      if (loading) loading.style.display = 'none';
-      if (noData) {
-        noData.style.display = 'block';
-        noData.querySelector('p').textContent = 'Ett fel uppstod vid hämtning. Försök igen senare.';
-      }
-    }
-  }
-
-  async function save() {
-    const idEl = getEl('byra-rutiner-record-id');
-    const recordId = idEl ? idEl.value.trim() : '';
-    const btnSave = getEl('btn-save');
-
-    if (!recordId) {
-      setSaveStatus('Ingen post att spara.', true);
-      return;
-    }
-
-    if (btnSave) btnSave.disabled = true;
-    setSaveStatus('Sparar...');
-
-    try {
-      const fields = collectFields();
-      const res = await fetch(getBaseUrl() + '/api/byra-rutiner/' + encodeURIComponent(recordId), {
+      var res = await fetch(getBaseUrl() + '/api/byra-rutiner/' + encodeURIComponent(recordId), {
         method: 'PATCH',
-        headers: {
-          'Authorization': 'Bearer ' + getToken(),
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields })
       });
-
-      const data = await res.json();
-
+      var data = await res.json().catch(function () { return {}; });
       if (res.ok) {
-        setSaveStatus('Ändringarna sparades.');
-        setTimeout(function () { setSaveStatus(''); }, 3000);
+        if (status) { status.textContent = 'Sparad'; setTimeout(function () { status.textContent = ''; }, 2000); }
+        document.querySelectorAll('.byra-card').forEach(updateCardView);
+        if (card) showView(card);
       } else {
-        setSaveStatus(data.error || data.message || 'Kunde inte spara.', true);
+        var errMsg = (data && data.error) || (data && data.message) || 'Kunde inte spara';
+        var detail = (data && data.airtableError && (data.airtableError.error && data.airtableError.error.message || data.airtableError.message)) || '';
+        if (detail) errMsg += ' (' + detail + ')';
+        if (status) status.textContent = typeof errMsg === 'string' ? errMsg : 'Kunde inte spara';
+        console.error('Sparfel byrårutiner:', data);
+        if (data.attemptedPayload) console.log('Skickad payload:', data.attemptedPayload);
       }
     } catch (err) {
-      console.error('Byrårutiner save error:', err);
-      setSaveStatus('Ett fel uppstod vid sparande.', true);
+      if (status) status.textContent = 'Fel vid sparande';
     } finally {
-      if (btnSave) btnSave.disabled = false;
+      if (btn) btn.disabled = false;
     }
+  }
+
+  function wrapInCards(canEdit) {
+    var grid = document.querySelector('.byrarutiner-section .form-grid');
+    if (!grid) return;
+    var groups = grid.querySelectorAll('.form-group');
+    groups.forEach(function (formGroup) {
+      var input = formGroup.querySelector('input, textarea');
+      if (!input || !input.id) return;
+      var fid = input.id;
+      var m = FIELD_MAP.find(function (x) { return x.id === fid; });
+      if (!m) return;
+      if (formGroup.closest('.byra-card')) return;
+      var card = document.createElement('div');
+      card.className = 'byra-card';
+      card.setAttribute('data-field-id', fid);
+      var view = document.createElement('div');
+      view.className = 'byra-card-view';
+      var labelEl = document.createElement('div');
+      labelEl.className = 'byra-card-label';
+      var lbl = formGroup.querySelector('label');
+      if (lbl) labelEl.textContent = lbl.textContent;
+      var valDiv = document.createElement('div');
+      valDiv.className = 'byra-card-value';
+      var pencil = document.createElement('button');
+      pencil.type = 'button';
+      pencil.className = 'byra-card-edit-btn';
+      pencil.title = 'Redigera';
+      pencil.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+      view.appendChild(labelEl);
+      view.appendChild(valDiv);
+      view.appendChild(pencil);
+      var editWrap = document.createElement('div');
+      editWrap.className = 'byra-card-edit';
+      formGroup.parentNode.insertBefore(card, formGroup);
+      card.appendChild(view);
+      editWrap.appendChild(formGroup);
+      card.appendChild(editWrap);
+      var wrap = document.createElement('div');
+      wrap.className = 'card-save-wrap';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-primary btn-sm card-save-btn';
+      btn.innerHTML = '<i class="fas fa-save"></i> Spara';
+      var status = document.createElement('span');
+      status.className = 'card-save-status';
+      wrap.appendChild(btn);
+      wrap.appendChild(status);
+      formGroup.appendChild(wrap);
+      if (canEdit) {
+        editWrap.style.display = 'none';
+        pencil.addEventListener('click', function () {
+          view.style.display = 'none';
+          editWrap.style.display = 'block';
+        });
+        btn.addEventListener('click', function () {
+          var el = getEl(m.id);
+          if (!el) return;
+          var val = String(el.value || '').trim();
+          if (m.type === 'number') { var n = parseFloat(val); val = isNaN(n) ? '' : n; }
+          var fields = {}; fields[m.airtable] = val;
+          saveFields(fields, card);
+        });
+      } else {
+        editWrap.style.display = 'none';
+        pencil.style.display = 'none';
+        wrap.querySelector('.card-save-btn').style.display = 'none';
+      }
+    });
   }
 
   function applyFormat(ta, format) {
-    var start = ta.selectionStart;
-    var end = ta.selectionEnd;
-    var text = ta.value;
-    var selected = text.substring(start, end);
-    var before = text.substring(0, start);
-    var after = text.substring(end);
-    var replacement = '';
-
-    if (format === 'bold') {
-      replacement = selected ? '**' + selected + '**' : '**';
-    } else if (format === 'italic') {
-      replacement = selected ? '*' + selected + '*' : '*';
-    } else if (format === 'bullet') {
+    var start = ta.selectionStart, end = ta.selectionEnd, text = ta.value, selected = text.substring(start, end);
+    var before = text.substring(0, start), after = text.substring(end), replacement = '';
+    if (format === 'bold') replacement = selected ? '**' + selected + '**' : '**';
+    else if (format === 'italic') replacement = selected ? '*' + selected + '*' : '*';
+    else if (format === 'bullet' || format === 'numbered') {
       var lineStart = text.lastIndexOf('\n', start - 1) + 1;
-      var insertPos = lineStart;
-      replacement = '- ';
-      ta.selectionStart = ta.selectionEnd = insertPos;
-    } else if (format === 'numbered') {
-      var lineStart2 = text.lastIndexOf('\n', start - 1) + 1;
-      replacement = '1. ';
-      ta.selectionStart = ta.selectionEnd = lineStart2;
-    }
-
-    if (format === 'bullet' || format === 'numbered') {
-      var lineStart3 = text.lastIndexOf('\n', start - 1) + 1;
-      var newVal = text.substring(0, lineStart3) + replacement + text.substring(lineStart3);
-      ta.value = newVal;
-      ta.selectionStart = ta.selectionEnd = lineStart3 + replacement.length;
+      replacement = format === 'bullet' ? '- ' : '1. ';
+      ta.value = text.substring(0, lineStart) + replacement + text.substring(lineStart);
+      ta.selectionStart = ta.selectionEnd = lineStart + replacement.length;
       ta.focus();
       return;
-    }
-
-    var newVal2 = before + replacement + after;
-    ta.value = newVal2;
+    } else return;
+    var newVal = before + replacement + after;
+    ta.value = newVal;
     ta.selectionStart = ta.selectionEnd = start + replacement.length;
     ta.focus();
   }
@@ -239,28 +242,59 @@
       var btn = e.target && e.target.closest && e.target.closest('.format-btn');
       if (!btn) return;
       e.preventDefault();
-      var format = btn.getAttribute('data-format');
-      var field = btn.closest('.byrarutiner-rich-field');
-      if (!field) return;
-      var ta = field.querySelector('textarea');
+      var field = btn.closest('.byrarutiner-rich-field'), ta = field ? field.querySelector('textarea') : null;
       if (!ta || ta.readOnly) return;
-      applyFormat(ta, format);
+      applyFormat(ta, btn.getAttribute('data-format'));
     });
+  }
+
+  async function load() {
+    var loading = getEl('loading'), noData = getEl('no-data'), content = getEl('content');
+    if (!getToken()) {
+      if (loading) loading.innerHTML = '<p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa byråns rutiner.</p>';
+      return;
+    }
+    var canEdit = true;
+    try {
+      var meRes = await fetch(getBaseUrl() + '/api/auth/me', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+      if (meRes.ok) {
+        var meData = await meRes.json();
+        canEdit = (meData.user && ['ClientFlowAdmin', 'Ledare'].includes(meData.user.role));
+      }
+    } catch (_) {}
+    try {
+      var res = await fetch(getBaseUrl() + '/api/byra-rutiner', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+      var data = await res.json();
+      if (loading) loading.style.display = 'none';
+      if (!res.ok) {
+        if (noData) { noData.style.display = 'block'; noData.querySelector('p').textContent = data.message || data.error || 'Kunde inte hämta.'; }
+        return;
+      }
+      if (!data.record || !data.fields) {
+        if (noData) noData.style.display = 'block';
+        return;
+      }
+      var recordId = getEl('byra-rutiner-record-id');
+      if (recordId) recordId.value = data.id || data.record.id || '';
+      wrapInCards(canEdit);
+      populateForm(data.fields, canEdit);
+      initPreviews(canEdit);
+      if (content) content.style.display = 'block';
+      var headerActions = getEl('byrarutiner-header-actions');
+      if (headerActions) headerActions.style.display = 'flex';
+      if (!canEdit) FIELD_MAP.forEach(function (m) { var el = getEl(m.id); if (el) el.readOnly = true; });
+    } catch (err) {
+      console.error('Byrårutiner load error:', err);
+      if (loading) loading.style.display = 'none';
+      if (noData) { noData.style.display = 'block'; noData.querySelector('p').textContent = 'Ett fel uppstod vid hämtning.'; }
+    }
   }
 
   function init() {
     load();
     initFormatToolbars();
-
-    const btnSave = getEl('btn-save');
-    if (btnSave) {
-      btnSave.addEventListener('click', save);
-    }
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
