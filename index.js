@@ -3072,7 +3072,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
 
     const kundnamn = f['Namn'] || f['Företagsnamn'] || 'Okänd';
     const orgnr = f['Orgnr'] || f['Organisationsnummer'] || '';
-    const riskniva = f['Riskniva'] || f['sammanlagd risk'] || '';
+    const riskniva = f['Riskniva'] || '';
     const riskbedomning = f['Byrans riskbedomning'] || '';
     const atgarder = f['Atgarder riskbedomning'] || '';
     const datumStr = new Date().toLocaleDateString('sv-SE');
@@ -3086,50 +3086,13 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       if (Array.isArray(v)) return v.map(b => b?.text ?? '').join('');
       return String(v);
     };
-    const fmtList = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
     const ACCENT = '#2c4a8f';
 
     const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[riskniva] || riskniva || 'Ej angiven';
+    const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[riskniva] || 'medel';
 
-    // Hämta länkade tjänster med riskinfo
-    let tjanster = [];
-    const linkedTjansterIds = f['Kundens utvalda tjänster'] || [];
-    if (linkedTjansterIds.length > 0) {
-      try {
-        const tjanstRes = await Promise.all(
-          linkedTjansterIds.map(id =>
-            axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`,
-              { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-            ).then(r => ({
-              namn: r.data.fields?.['Task Name'] || '',
-              beskrivning: toText(r.data.fields?.['Beskrivning av riskfaktor']),
-              riskbedomning: r.data.fields?.['Riskbedömning'] || '',
-              atgard: toText(r.data.fields?.['Åtgjärd'])
-            })).catch(() => null)
-          )
-        );
-        tjanster = tjanstRes.filter(Boolean).filter(t => t.namn);
-      } catch (e) {
-        console.warn('Kunde inte hämta tjänster för PDF:', e.message);
-      }
-    }
-
-    // Bygg HTML-sektioner
-    const verksamhet = toText(f['Verksamhetsbeskrivning']) || toText(f['Beskrivning av kunden']) || toText(f['Ytterligare beskrivning av kunden och verksamheten']) || '';
-    const motivering = f['Motivering'] || '';
-    const hogriskbransch = fmtList(f['Kunden verkar i en högriskbransch']);
-    const riskhojTjanster = fmtList(f['Riskhöjande faktorer tjänster']);
-    const riskhojOvrigt = fmtList(f['Riskhöjande faktorer övrigt']);
-    const risksankande = fmtList(f['Risksänkande faktorer']);
-    const kommentarRisk = f['Kommentar till riskfaktorerna ovan'] || '';
-    const risksankandeAtgarder = f['Risksänkande åtgärder'] || f['Risksänkande åtgjärder'] || '';
-    const pepList = fmtList(f['PEP']);
-    const pepTräffar = f['Antal träffar PEP och sanktionslistor'] ?? '';
-    const riskUtford = f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '';
-    const riskGodkand = f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '';
-
-    const chip = (items, cls) => items.length ? `<div class="chips">${items.map(i => `<span class="chip chip-${cls}">${escape(i)}</span>`).join(' ')}</div>` : '';
-    const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
+    // Beskrivning av verksamheten från Företagsinformation-fliken
+    const verksamhet = toText(f['Verksamhetsbeskrivning']) || toText(f['Beskrivning av kunden']) || '';
 
     const html = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
       body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.5;color:#1a1a2e;margin:0;padding:20px;}
@@ -3141,59 +3104,16 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       .niva-lag{background:#dcfce7;color:#166534;}
       .niva-medel{background:#fef9c3;color:#854d0e;}
       .niva-hog{background:#fee2e2;color:#991b1b;}
-      .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
-      .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
-      .chip-neg{background:#fee2e2;color:#991b1b;}
-      .chip-pos{background:#dcfce7;color:#166534;}
-      .tjanst{margin:10px 0;padding:8px;background:#f8fafc;border-radius:4px;}
-      .tjanst-namn{font-weight:600;margin-bottom:4px;}
-      .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
     </style></head><body>
       <h1>Riskbedömning – ${escape(kundnamn)}</h1>
-      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}${riskUtford ? ' | Utförd: ' + riskUtford : ''}${riskGodkand ? ' | Godkänd: ' + riskGodkand : ''}</p>
-
-      ${verksamhet ? section('Beskrivning av verksamheten (företagsinformation)', nl2br(verksamhet)) : ''}
-
+      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}</p>
+      ${verksamhet ? `<h2>Beskrivning av verksamheten</h2><div class="section">${nl2br(verksamhet)}</div>` : ''}
       <h2>Sammanlagd risknivå</h2>
-      <p><span class="niva niva-${({ Lag: 'lag', Låg: 'lag', Medel: 'medel', Hog: 'hog', Hög: 'hog' }[riskniva] || 'medel')}">${escape(nivaLabel)}</span></p>
-
-      ${motivering ? section('Motivering', nl2br(motivering)) : ''}
-
-      ${(hogriskbransch.length || riskhojTjanster.length || riskhojOvrigt.length || risksankande.length) ? `
-      <h2>Riskfaktorer</h2>
-      <div class="section">
-        ${hogriskbransch.length ? `<p><strong>Högriskbransch:</strong></p>${chip(hogriskbransch, 'neg')}` : ''}
-        ${riskhojTjanster.length ? `<p><strong>Riskhöjande – tjänster:</strong></p>${chip(riskhojTjanster, 'neg')}` : ''}
-        ${riskhojOvrigt.length ? `<p><strong>Riskhöjande – övrigt:</strong></p>${chip(riskhojOvrigt, 'neg')}` : ''}
-        ${risksankande.length ? `<p><strong>Risksänkande faktorer:</strong></p>${chip(risksankande, 'pos')}` : ''}
-        ${kommentarRisk ? `<p class="tjanst-meta" style="margin-top:8px;"><em>Kommentar: ${escape(kommentarRisk)}</em></p>` : ''}
-      </div>` : ''}
-
-      ${risksankandeAtgarder ? section('Risksänkande åtgärder', nl2br(risksankandeAtgarder)) : ''}
-
-      ${tjanster.length ? `
-      <h2>Tjänster och riskbedömning per tjänst</h2>
-      <div class="section">
-        ${tjanster.map(t => `
-        <div class="tjanst">
-          <div class="tjanst-namn">${escape(t.namn)}${t.riskbedomning ? ' – ' + escape(t.riskbedomning) : ''}</div>
-          ${t.beskrivning ? `<p>${nl2br(t.beskrivning)}</p>` : ''}
-          ${t.atgard ? `<div class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(t.atgard)}</div>` : ''}
-        </div>`).join('')}
-      </div>` : ''}
-
-      <h2>Byråns riskbedömning av kunden</h2>
+      <p><span class="niva niva-${nivaClass}">${escape(nivaLabel)}</span></p>
+      <h2>Byråns riskbedömning</h2>
       <div class="section">${riskbedomning ? nl2br(riskbedomning) : '—'}</div>
       <h2>Åtgärder</h2>
       <div class="section">${atgarder ? nl2br(atgarder) : '—'}</div>
-
-      ${(pepList.length || pepTräffar !== '' && pepTräffar !== undefined) ? `
-      <h2>PEP &amp; sanktioner</h2>
-      <div class="section">
-        <p><strong>PEP-status:</strong> ${pepList.length ? escape(pepList.join(', ')) : '—'}</p>
-        ${pepTräffar !== '' && pepTräffar !== undefined ? `<p><strong>Antal träffar:</strong> ${escape(String(pepTräffar))}</p>` : ''}
-      </div>` : ''}
-
       <p class="meta" style="margin-top:24px;">ClientFlow – dokumenterat ${datumStr}</p>
     </body></html>`;
 
@@ -3290,27 +3210,33 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Ingen behörighet' });
     }
 
-    const attachments = f['Attachments'] || [];
-    const riskDocs = f['Riskbedömning dokument'] || f['Riskbedomning dokument'] || [];
-    const pepDocs = f['PEP rapporter'] || f['PEP rapport'] || [];
+    const attachments = Array.isArray(f['Attachments']) ? f['Attachments'] : [];
+    const riskField = Array.isArray(f['Riskbedömning dokument']) ? 'Riskbedömning dokument' : 'Riskbedomning dokument';
+    const pepField = Array.isArray(f['PEP rapporter']) ? 'PEP rapporter' : 'PEP rapport';
+    const riskDocs = Array.isArray(f[riskField]) ? f[riskField] : [];
+    const pepDocs = Array.isArray(f[pepField]) ? f[pepField] : [];
+
     const allItems = [];
-    for (const a of Array.isArray(riskDocs) ? riskDocs : []) {
-      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'riskbedomning' });
-    }
-    for (const a of Array.isArray(pepDocs) ? pepDocs : []) {
-      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'pep' });
-    }
-    for (const a of Array.isArray(attachments) ? attachments : []) {
-      if (!a || !(a.url || a.filename)) continue;
+    riskDocs.forEach((a, i) => {
+      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'riskbedomning', _sourceField: riskField, _sourceIndex: i });
+    });
+    pepDocs.forEach((a, i) => {
+      if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'pep', _sourceField: pepField, _sourceIndex: i });
+    });
+    attachments.forEach((a, i) => {
+      if (!a || !(a.url || a.filename)) return;
       const fn = (a.filename || '').toLowerCase();
-      if (fn.startsWith('riskbedomning-') || fn.includes('riskbedomning')) allItems.push({ ...a, _typ: 'riskbedomning' });
-      else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening')) allItems.push({ ...a, _typ: 'pep' });
-    }
+      if (fn.startsWith('riskbedomning-') || fn.includes('riskbedomning')) allItems.push({ ...a, _typ: 'riskbedomning', _sourceField: 'Attachments', _sourceIndex: i });
+      else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening')) allItems.push({ ...a, _typ: 'pep', _sourceField: 'Attachments', _sourceIndex: i });
+    });
+
     const documents = allItems.map((a, i) => {
       const isPep = a._typ === 'pep';
       const datum = a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
       return {
         id: `${a._typ}-${i}`,
+        sourceField: a._sourceField,
+        sourceIndex: a._sourceIndex,
         fields: {
           Namn: a.filename || (isPep ? `PEP-screening ${i + 1}` : `Riskbedömning ${i + 1}`),
           Filtyp: 'PDF',
@@ -3326,6 +3252,54 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     res.json({ documents });
   } catch (error) {
     console.error('\u274c GET documents:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/documents – Ta bort dokument från kund (body: { customerId, sourceField, sourceIndex })
+app.delete('/api/documents', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const { customerId, sourceField, sourceIndex } = req.body;
+    if (!customerId || !sourceField || sourceIndex == null) {
+      return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const arr = Array.isArray(f[sourceField]) ? [...f[sourceField]] : [];
+    const idx = parseInt(sourceIndex, 10);
+    if (idx < 0 || idx >= arr.length) {
+      return res.status(400).json({ error: 'Ogiltigt dokumentindex' });
+    }
+
+    arr.splice(idx, 1);
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { fields: { [sourceField]: arr } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true, message: 'Dokument borttaget' });
+  } catch (error) {
+    console.error('\u274c DELETE document:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -3826,6 +3826,9 @@ class CustomerCardManager {
         const downloadBtn = url
             ? `<a href="${url}" target="_blank" rel="noopener" class="btn btn-primary btn-sm document-download-btn" download="${(doc.filename || namn).replace(/"/g, '')}"><i class="fas fa-download"></i> Ladda ner</a>`
             : `<button class="btn btn-primary btn-sm" disabled><i class="fas fa-download"></i> Ladda ner</button>`;
+        const deleteBtn = (doc.sourceField != null && doc.sourceIndex != null)
+            ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${(doc.sourceField || '').replace(/"/g, '&quot;')}" data-source-index="${doc.sourceIndex}" data-doc-name="${(namn || '').replace(/"/g, '&quot;')}" title="Ta bort dokument" onclick="customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
+            : '';
         return `
             <li class="document-list-item">
                 <i class="fas fa-file-pdf document-list-icon"></i>
@@ -3833,9 +3836,43 @@ class CustomerCardManager {
                     <span class="document-list-name">${namn}</span>
                     <span class="document-list-meta">${beskrivning ? beskrivning + ' · ' : ''}${datum}</span>
                 </div>
-                ${downloadBtn}
+                <div class="document-list-buttons">
+                    ${downloadBtn}
+                    ${deleteBtn}
+                </div>
             </li>
         `;
+    }
+
+    deleteDocumentFromBtn(btn) {
+        const field = btn.getAttribute('data-source-field');
+        const idx = btn.getAttribute('data-source-index');
+        const name = btn.getAttribute('data-doc-name') || 'dokumentet';
+        if (field != null && idx != null) this.deleteDocument(field, parseInt(idx, 10), name);
+    }
+
+    async deleteDocument(sourceField, sourceIndex, docName) {
+        const msg = `Är du säker på att du vill ta bort "${docName}"?\n\nÅtgärden går inte att ångra.`;
+        if (!confirm(msg)) return;
+
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${baseUrl}/api/documents`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: this.customerId, sourceField, sourceIndex })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            this.showNotification('Dokument borttaget.', 'success');
+            this.loadDocuments();
+        } catch (err) {
+            console.error('❌ Ta bort dokument:', err);
+            this.showNotification('Kunde inte ta bort: ' + (err.message || 'Okänt fel'), 'error');
+        }
     }
 
     getFileIcon(fileType) {
