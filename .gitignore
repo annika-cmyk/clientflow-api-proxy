@@ -16,6 +16,10 @@ yarn-error.log*
 # Logs
 logs
 *.log
+server-log*.txt
+
+# Temp/uploaded files
+temp/
 
 # Runtime data
 pids
