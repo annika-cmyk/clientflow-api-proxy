@@ -3794,7 +3794,7 @@ class CustomerCardManager {
 
         const bodyHTML = documents.length === 0
             ? `<div class="empty-state"><i class="fas fa-file-alt"></i><p>Inga dokument uppladdade ännu.</p></div>`
-            : documents.map(doc => this.createDocumentCard(doc)).join('');
+            : `<ul class="document-list">${documents.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`;
 
         content.innerHTML = `
             <div class="collapsible-card" id="dokumentation-card">
@@ -3804,7 +3804,7 @@ class CustomerCardManager {
                 </div>
                 <div class="collapsible-body">
                     ${bodyHTML}
-                    <div style="margin-top:0.75rem;">
+                    <div class="document-list-actions">
                         <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
                             <i class="fas fa-upload"></i> Ladda upp dokument
                         </button>
@@ -3817,36 +3817,24 @@ class CustomerCardManager {
         this.displayDocuments([]);
     }
 
-    createDocumentCard(doc) {
+    createDocumentListItem(doc) {
         const fields = doc.fields || {};
         const namn = fields['Namn'] || doc.filename || 'Namnlös fil';
         const url = doc.url || '';
+        const datum = fields['UppladdadDatum'] || namn.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '-';
+        const beskrivning = fields['Beskrivning'] || '';
         const downloadBtn = url
-            ? `<a href="${url}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" download="${(doc.filename || namn).replace(/"/g, '')}"><i class="fas fa-download"></i> Ladda ner</a>`
+            ? `<a href="${url}" target="_blank" rel="noopener" class="btn btn-primary btn-sm document-download-btn" download="${(doc.filename || namn).replace(/"/g, '')}"><i class="fas fa-download"></i> Ladda ner</a>`
             : `<button class="btn btn-primary btn-sm" disabled><i class="fas fa-download"></i> Ladda ner</button>`;
         return `
-            <div class="document-card">
-                <div class="document-header">
-                    <div class="document-icon">
-                        <i class="fas fa-file-${this.getFileIcon(fields['Filtyp'])}"></i>
-                    </div>
-                    <div class="document-info">
-                        <h4>${namn}</h4>
-                        <span class="document-type">${fields['Filtyp'] || 'Okänd typ'}</span>
-                    </div>
-                    <span class="document-size">${fields['Storlek'] || '-'}</span>
+            <li class="document-list-item">
+                <i class="fas fa-file-pdf document-list-icon"></i>
+                <div class="document-list-info">
+                    <span class="document-list-name">${namn}</span>
+                    <span class="document-list-meta">${beskrivning ? beskrivning + ' · ' : ''}${datum}</span>
                 </div>
-                <div class="document-content">
-                    <p><strong>Beskrivning:</strong> ${fields['Beskrivning'] || 'Ingen beskrivning'}</p>
-                    <p><strong>Datum:</strong> ${fields['UppladdadDatum'] || namn.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '-'}</p>
-                </div>
-                <div class="document-footer">
-                    <span class="document-author">${fields['UppladdadAv'] ? 'Uppladdad av: ' + fields['UppladdadAv'] : ''}</span>
-                    <div class="document-actions">
-                        ${downloadBtn}
-                    </div>
-                </div>
-            </div>
+                ${downloadBtn}
+            </li>
         `;
     }
 

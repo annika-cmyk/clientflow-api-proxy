@@ -4195,6 +4195,59 @@ p, small { line-height: 1.6; }
     display: none;
 }
 
+/* Dokumentation – kompakt lista */
+.document-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.document-list-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.85rem;
+    background: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+.document-list-item:hover {
+    background: #f1f5f9;
+}
+.document-list-icon {
+    color: #dc2626;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+.document-list-info {
+    flex: 1;
+    min-width: 0;
+}
+.document-list-name {
+    display: block;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: #1e293b;
+}
+.document-list-meta {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.15rem;
+}
+.document-list-item .document-download-btn {
+    flex-shrink: 0;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+}
+.document-list-actions {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+}
+
 /* ?? Kunduppgifter-block ??????????????????????????????? */
 .kunduppgifter-card {
     background: #fff;
