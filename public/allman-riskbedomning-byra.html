@@ -17,12 +17,202 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Allmän riskbedömning byrå</h1>
-                        <p class="risk-header-sub">Dokument och mallar för byråns övergripande riskbedömning</p>
+                        <p class="risk-header-sub">Grund för byråns riskbaserade förhållningssätt (enligt Lag 2017:630)</p>
+                        <div class="byrarutiner-actions" id="allman-risk-header-actions" style="display:none;">
+                            <button type="button" class="btn btn-primary" id="btn-lansstyrelsen-pdf" title="Exportera samlad PDF för Länsstyrelsen">
+                                <i class="fas fa-file-pdf"></i> Exportera Länsstyrelsen-PDF
+                            </button>
+                            <span class="save-status" id="save-status"></span>
+                        </div>
                     </div>
                 </header>
 
-                <div class="statistik-section" style="margin-top:1rem;">
-                    <p class="statistik-section-desc" style="color:#94a3b8;">Sidan är under uppbyggnad. Innehåll kommer att läggas till här.</p>
+                <div id="loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar byråns riskbedömning...</p>
+                </div>
+
+                <div id="no-data" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Ingen Byråer-post hittades för er byrå. Kontakta administratören för att säkerställa att byrån är registrerad.</p>
+                </div>
+
+                <div id="content" style="display:none;">
+                    <input type="hidden" id="byra-rutiner-record-id" value="">
+
+                    <section class="info-section byrarutiner-section">
+                        <h3><i class="fas fa-clipboard-list"></i> Riskbedömning</h3>
+                        <p class="section-desc">Grund för byråns riskbaserade förhållningssätt enligt Lag (2017:630).</p>
+                        <div class="form-grid">
+                            <div class="byra-card" data-field-id="fld-syfte-omfattning">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-syfte-omfattning">1. Syfte och Omfattning</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-syfte-omfattning" class="form-input form-textarea" rows="10" placeholder="Beskriv syfte och omfattning..."></textarea>
+                                </div>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="fld-beskrivning">2. Beskrivning av Byråns verksamhet</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-beskrivning" class="form-input form-textarea" rows="10" placeholder="Beskriv byråns verksamhet..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card byra-card--numeric-group" data-card-type="numeric-group">
+                                <div class="byra-card-view">
+                                    <div class="byra-card-value" id="view-numeric-group"></div>
+                                    <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                </div>
+                                <div class="byra-card-edit">
+                                    <div class="form-grid form-grid--inline">
+                                        <div class="form-group">
+                                            <label for="fld-antal-anstallda">Antal anställda</label>
+                                            <input type="number" id="fld-antal-anstallda" class="form-input" min="0" placeholder="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="fld-omsattning">Omsättning (SEK)</label>
+                                            <input type="number" id="fld-omsattning" class="form-input" min="0" placeholder="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="fld-antal-kundforetag">Antal kundföretag</label>
+                                            <input type="number" id="fld-antal-kundforetag" class="form-input" min="0" placeholder="0">
+                                        </div>
+                                    </div>
+                                    <div class="card-save-wrap">
+                                        <button type="button" class="btn btn-primary btn-sm card-save-btn" id="save-numeric-group"><i class="fas fa-save"></i> Spara</button>
+                                        <span class="card-save-status"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-metod-riskbedomning">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-metod-riskbedomning">3. Metod för Riskbedömning</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-metod-riskbedomning" class="form-input form-textarea" rows="8" placeholder="Beskriv metod för riskbedömning..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-identifierade-risker">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-identifierade-risker">4. Identifierade Risker och Sårbarheter</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-identifierade-risker" class="form-input form-textarea" rows="8" placeholder="Beskriv identifierade risker..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-vardering-risk">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-vardering-risk">5. Värdering av sammantagen risk</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-vardering-risk" class="form-input form-textarea" rows="8" placeholder="Värdering av sammantagen risk..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-riskreducerande">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-riskreducerande">6. Riskreducerande Åtgärder och Rutiner</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-riskreducerande" class="form-input form-textarea" rows="8" placeholder="Beskriv åtgärder och rutiner..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-utvardering">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-utvardering">7. Utvärdering och Uppdatering</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-utvardering" class="form-input form-textarea" rows="8" placeholder="Beskriv utvärdering och uppdatering..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-kommunikation-risk">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-kommunikation-risk">8. Kommunikation</label>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-kommunikation-risk" class="form-input form-textarea" rows="6" placeholder="Kommunikation kring riskbedömning..."></textarea>
+                                </div>
+                            </div>
+                                </div>
+                            </div>
+                            <div class="byra-card" data-field-id="fld-uppdaterad-datum">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                                    <div class="form-group">
+                                        <label for="fld-uppdaterad-datum">Allmän riskbedömning reviderad och godkänd</label>
+                                        <div class="form-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                                            <input type="date" id="fld-uppdaterad-datum" class="form-input" style="max-width:180px;">
+                                            <button type="button" class="btn btn-primary btn-sm" id="btn-markera-reviderad-risk" title="Sätt till dagens datum"><i class="fas fa-check-circle"></i> Markera som reviderad</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>
@@ -38,6 +228,7 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
+    <script src="js/allman-riskbedomning-byra.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

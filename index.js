@@ -13,6 +13,17 @@ let _puppeteerLoadAttempted = false;
 function loadPuppeteer() {
   if (_puppeteerLoadAttempted) return puppeteer;
   _puppeteerLoadAttempted = true;
+  const isWin = process.platform === 'win32';
+  const isServerless = !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.VERCEL || !!process.env.RENDER;
+  if (isWin || !isServerless) {
+    try {
+      puppeteer = require('puppeteer');
+      console.log('✅ Puppeteer laddat (full, inkl. Chromium).');
+      return puppeteer;
+    } catch (err) {
+      console.log('ℹ️ Full Puppeteer misslyckades:', err.message);
+    }
+  }
   try {
     puppeteer = require('puppeteer-core');
     chromium = require('@sparticuz/chromium');
@@ -21,7 +32,7 @@ function loadPuppeteer() {
   } catch (err) {
     try {
       puppeteer = require('puppeteer');
-      console.log('✅ Puppeteer laddat (full).');
+      console.log('✅ Puppeteer laddat (full, fallback).');
       return puppeteer;
     } catch (err2) {
       puppeteer = null;
@@ -3147,12 +3158,74 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
   }
 });
 
-// PATCH /api/byra-rutiner/:id - Uppdatera fält i Byråer
-app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
+// GET /api/byra-rutiner/:id - Hämta specifik Byråer-post (för deep-linking / direktåtkomst)
+app.get('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const BYRAER_TABLE = 'Byråer';
+    const BYRAER_TBL = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+    const { id } = req.params;
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+    }
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) {
+      return res.status(400).json({ success: false, message: 'Ingen byrå kopplad till användaren' });
+    }
+
+    const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${BYRAER_TBL}/${id}`;
+    const airtableRes = await axios.get(getUrl, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    });
+
+    const record = airtableRes.data;
+    const recordByraId = record.fields?.['Byrå ID'];
+    const recordByraIdStr = recordByraId != null ? String(recordByraId).trim() : '';
+    if (recordByraIdStr !== byraId) {
+      return res.status(403).json({ error: 'Du får bara visa er egen byrås rutiner' });
+    }
+
+    res.json({
+      success: true,
+      record: { id: record.id, fields: record.fields },
+      fields: record.fields,
+      id: record.id
+    });
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return res.status(404).json({ success: false, message: 'Posten hittades inte' });
+    }
+    console.error('❌ GET /api/byra-rutiner/:id:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    res.status(status).json({ error: message });
+  }
+});
+
+async function patchByraerFieldToAirtable(recordId, fieldName, fieldValue) {
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const tbl = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+  const url = `https://api.airtable.com/v0/${baseId}/${tbl}/${recordId}`;
+  const res = await axios.patch(url, { fields: { [fieldName]: fieldValue ?? '' } }, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  });
+  return res.data;
+}
+
+// PATCH /api/byra-rutiner/:id - Uppdatera fält i Byråer
+app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
+  const BYRAER_TABLE = 'Byråer';
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
 
     if (!airtableAccessToken) {
       return res.status(500).json({ error: 'Airtable token saknas' });
@@ -3165,6 +3238,7 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
 
     const { id } = req.params;
     const { fields } = req.body;
+    console.log('📋 PATCH byra-rutiner mottagen:', id, 'fields keys:', fields ? Object.keys(fields) : []);
 
     if (!fields || typeof fields !== 'object') {
       return res.status(400).json({ error: 'Fält saknas i request body' });
@@ -3180,32 +3254,116 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Ingen byrå kopplad till användaren' });
     }
 
-    const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${id}?fields[]=Byrå ID`;
-    const getRes = await axios.get(getUrl, {
-      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
-    });
-    const recordByraId = getRes.data.fields?.['Byrå ID'];
-    const recordByraIdStr = recordByraId != null ? String(recordByraId).trim() : '';
-    if (recordByraIdStr !== byraId) {
-      return res.status(403).json({ error: 'Du får bara redigera er egen byrås rutiner' });
+    function sanitizeString(s) {
+      if (typeof s !== 'string') return s;
+      return s.replace(/\uFEFF/g, '').replace(/\0/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    }
+    function sanitizeKey(k) {
+      if (typeof k !== 'string') return k;
+      return k.replace(/\uFEFF/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+    }
+    function normalizeFieldName(name) {
+      try {
+        return String(name).normalize('NFC');
+      } catch (_) { return name; }
+    }
+    const cleanedFields = Object.fromEntries(
+      Object.entries(fields).filter(([, v]) => {
+        if (Array.isArray(v)) return true;
+        return v !== undefined && v !== null && v !== '';
+      }).map(([k, v]) => {
+        const key = sanitizeKey(k);
+        let val = v;
+        if (['Antal anställda', 'Omsättning', 'Antal kundföretag'].includes(key) && typeof v === 'number') {
+          val = String(v);
+        }
+        if (typeof val === 'string') val = sanitizeString(val);
+        return [key, val];
+      })
+    );
+
+    if (Object.keys(cleanedFields).length === 0) {
+      return res.status(400).json({ error: 'Inga fält att uppdatera', message: 'Inga fält att uppdatera' });
     }
 
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${id}`;
-    const cleanedFields = Object.fromEntries(
-      Object.entries(fields).filter(([, v]) => v !== undefined && v !== null)
-    );
+    console.log('📋 PATCH byra-rutiner fält:', Object.keys(cleanedFields));
 
-    const airtableRes = await axios.patch(url,
-      { fields: cleanedFields },
-      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
-
-    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+    let updated = null;
+    for (const [k, v] of Object.entries(cleanedFields)) {
+      const airtableKey = normalizeFieldName(k);
+      const rawVal = (typeof v === 'string' || typeof v === 'number') ? v : String(v);
+      try {
+        updated = await patchByraerFieldToAirtable(id, airtableKey, rawVal);
+      } catch (err) {
+        err.fieldThatFailed = k;
+        err.fieldValue = v;
+        throw err;
+      }
+    }
+    res.json({ success: true, id: updated.id, record: { id: updated.id, fields: updated.fields } });
   } catch (error) {
-    console.error('❌ PATCH /api/byra-rutiner:', error.response?.data || error.message);
-    const status = error.response?.status || 500;
-    const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
-    res.status(status).json({ error: message });
+    const at = error.response?.data || error.error || {};
+    const status = error.response?.status || error.statusCode || 500;
+    const message = at.error?.message || at.message || error.message || 'Okänt fel';
+    console.error('❌ PATCH /api/byra-rutiner:', at || error.message);
+    if (status === 422) {
+      try {
+        const sent = error.config?.data ? JSON.parse(error.config.data) : { fields: req.body?.fields };
+        console.error('📋 Vid 422 – skickad body till Airtable:', JSON.stringify(sent, null, 2));
+      } catch (_) {}
+    }
+    const json = {
+      error: message,
+      message: message,
+      airtableError: error.response?.data || (error.error ? { error: at } : undefined)
+    };
+    if (status === 422) {
+      try { json.attemptedPayload = error.config?.data ? JSON.parse(error.config.data) : { fields: req.body?.fields }; } catch (_) {}
+      json.receivedFields = req.body?.fields ? Object.keys(req.body.fields) : [];
+      if (error.fieldThatFailed) {
+        json.fieldThatFailed = error.fieldThatFailed;
+        json.fieldValue = error.fieldValue;
+      }
+    }
+    res.status(status).json(json);
+  }
+});
+
+// POST /api/debug/byraer-patch-test - Test minimal PATCH (ett fält) för felsökning
+app.post('/api/debug/byraer-patch-test', authenticateToken, async (req, res) => {
+  try {
+    const { recordId, fieldName, fieldValue } = req.body || {};
+    if (!recordId || !fieldName) return res.status(400).json({ error: 'recordId och fieldName krävs' });
+
+    const record = await patchByraerFieldToAirtable(recordId, fieldName, fieldValue ?? 'test');
+    res.json({ success: true, record });
+  } catch (e) {
+    const status = e.response?.status || 500;
+    const data = e.response?.data || {};
+    res.status(status).json({
+      error: data.error?.message || e.message,
+      airtableError: data,
+      attemptedUrl: `.../${req.body?.recordId}`,
+      attemptedField: req.body?.fieldName
+    });
+  }
+});
+
+// GET /api/debug/byraer-schema - Hämta Byråer-tabellens schema (felsökning)
+app.get('/api/debug/byraer-schema', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Token saknas' });
+    const metaRes = await axios.get(
+      `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const byraer = (metaRes.data.tables || []).find(t => t.name === 'Byråer');
+    if (!byraer) return res.json({ error: 'Byråer-tabell hittades inte', tables: (metaRes.data.tables || []).map(t => ({ id: t.id, name: t.name })) });
+    res.json({ tableId: byraer.id, tableName: byraer.name, fields: byraer.fields });
+  } catch (e) {
+    res.status(500).json({ error: e.message, details: e.response?.data });
   }
 });
 
@@ -4977,10 +5135,10 @@ app.get('/api/airtable/list-tables', async (req, res) => {
 
 const AVVIKELSER_TABLE = 'tblywoL6wHuErTWBK';
 
-// GET /api/avvikelser - Hämta avvikelser för en kund
+// GET /api/avvikelser - Hämta avvikelser för en kund eller hela byrån
 app.get('/api/avvikelser', authenticateToken, async (req, res) => {
   try {
-    const { customerId } = req.query;
+    const { customerId, byraOnly } = req.query;
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
 
@@ -4989,8 +5147,17 @@ app.get('/api/avvikelser', authenticateToken, async (req, res) => {
     }
 
     // Hämta orgnr och byråID från kunddata om customerId är angivet
+    // Eller endast ByråID om byraOnly=1 (alla avvikelser för byrån)
     let filterFormula = '';
-    if (customerId) {
+    if (byraOnly === '1' || byraOnly === 'true') {
+      const userData = await getAirtableUser(req.user.email);
+      if (!userData) return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+      const byraId = userData.byraId;
+      if (byraId) {
+        const num = parseInt(byraId);
+        filterFormula = isNaN(num) ? `{ByråID}="${byraId}"` : `{ByråID}=${byraId}`;
+      }
+    } else if (customerId) {
       const kundResponse = await axios.get(
         `https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe/${customerId}`,
         { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
@@ -5042,20 +5209,27 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
 
     if (avvikelseData.typ) fields['Typ av avvikelse'] = avvikelseData.typ;
     if (avvikelseData.datum) fields['Date'] = avvikelseData.datum;
-    if (avvikelseData.rapporteratDatum) fields['Date 2'] = avvikelseData.rapporteratDatum;
+    const rappDatum = (avvikelseData.rapporteratDatum || '').trim();
+    if (rappDatum) fields['Date 2'] = rappDatum;
     if (avvikelseData.beskrivning) fields['Förklararing'] = avvikelseData.beskrivning;
     if (avvikelseData.status) fields['Status'] = avvikelseData.status;
     if (avvikelseData.orgnr) fields['orgnr'] = avvikelseData.orgnr;
-    if (avvikelseData.foretagsnamn) fields['Företagsnamn'] = avvikelseData.foretagsnamn;
+    const foretagsnamn = (avvikelseData.foretagsnamn || '').trim();
+    if (foretagsnamn) fields['Företagsnamn'] = foretagsnamn;
 
-    // ByråID och UserID är number-fält
-    if (avvikelseData.byraId) {
-      const byraIdNum = parseInt(avvikelseData.byraId);
+    // ByråID är number-fält – använd kundens byraId eller användarens byraId som fallback
+    let byraId = avvikelseData.byraId || userData.byraId;
+    if (byraId != null && byraId !== '') {
+      const byraIdNum = parseInt(String(byraId));
       if (!isNaN(byraIdNum)) fields['ByråID'] = byraIdNum;
     }
-    if (userData.id) {
-      // Spara namn istället för numeriskt ID om UserID är number
-      fields['Företagsnamn'] = fields['Företagsnamn'] || '';
+
+    if (!fields['ByråID']) {
+      return res.status(400).json({
+        success: false,
+        message: 'Byrå ID saknas. Kontrollera att kunden är kopplad till en byrå.',
+        error: 'MISSING_BYRA_ID'
+      });
     }
 
     console.log('📋 Sparar avvikelse:', JSON.stringify(fields, null, 2));
@@ -5076,10 +5250,12 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('❌ Error saving avvikelse:', error.message);
     if (error.response) {
+      const at = error.response.data || {};
+      const atMsg = at.error?.message || at.message || JSON.stringify(at);
       console.error('❌ Airtable error:', JSON.stringify(error.response.data, null, 2));
       return res.status(error.response.status || 500).json({
         success: false,
-        message: 'Fel vid sparande av avvikelse',
+        message: atMsg || 'Fel vid sparande av avvikelse',
         error: error.message,
         airtableError: error.response.data
       });
@@ -5745,6 +5921,162 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('\u274c Error generating uppdragsavtal PDF:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/byra/lansstyrelsen-pdf – Generera samlad PDF för Länsstyrelsen (tillsyn)
+app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TBL = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
+    const baseUrl = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '—';
+
+    const [byraRes, tjansterRes, statRes, riskRes] = await Promise.all([
+      axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${BYRAER_TBL}?filterByFormula=${encodeURIComponent(`{Byrå ID}="${byraId}"`)}&maxRecords=1`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } }),
+      axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { tjanster: [] } })),
+      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerPerTyp: [] } })),
+      axios.get(`${baseUrl}/api/risk-factors`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { records: [] } }))
+    ]);
+
+    const byraRec = byraRes.data.records?.[0];
+    const byraFields = byraRec?.fields || {};
+    const byraNamn = byraFields['Byrå'] || byraFields['Namn'] || 'Byrån';
+    const tjanster = (tjansterRes.data?.tjanster || []);
+    const stat = statRes.data || {};
+    const riskRecords = riskRes.data?.records || [];
+
+    const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const nl2br = (s) => (s == null ? '' : String(s)).replace(/\n/g, '<br>');
+
+    const ACCENT = '#2c4a8f';
+    const htmlParts = [];
+
+    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Länsstyrelsen – Dokumentation penningtvätt</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Export: ${fmtDate(new Date())}</p></div>`);
+
+    const rutinerFields = [
+      ['1. Syfte och omfattning policy', '1. Syfte och omfattning policy'],
+      ['2. Centralt Funktionsansvarig', '2. Centralt Funktionsansvarig '],
+      ['3. Kundkännedomsåtgärder', '3. Kundkännedomsåtgärder '],
+      ['4. Övervakning och Rapportering', '4. Övervakning och Rapportering '],
+      ['5. Intern Kontroll', '5. Intern Kontroll '],
+      ['6. Anställda och Utbildning', '6. Anställda och Utbildning'],
+      ['7. Arkivering av dokumentation', '7. Arkivering av dokumentation'],
+      ['8. Uppdatering och Utvärdering', '8. Uppdatering och Utvärdering '],
+      ['9. Kommunikation', '9. Kommunikation'],
+      ['10. Registrering Byrån', '10. Registrering Byrån ']
+    ];
+    const getByraField = (key) => byraFields[key] ?? byraFields[key?.trim()] ?? '';
+
+    htmlParts.push(`<div class="doc-page"><h2>1. Byrårutiner</h2>`);
+    for (const [label, airtableKey] of rutinerFields) {
+      const val = getByraField(airtableKey) || '';
+      htmlParts.push(`<h3>${escape(label)}</h3><div class="doc-text">${nl2br(val || '—')}</div>`);
+    }
+    const policyRev = getByraField('Policydokumentet reviderat och godkänt') || '';
+    htmlParts.push(`<p><strong>Policydokumentet reviderat och godkänt:</strong> ${escape(policyRev) || '—'}</p></div>`);
+
+    const allmanKeys = ['1. Syfte och Omfattning', '2. Beskrivning av Byråns verksamhet', '3. Metod för Riskbedömning ', '4. Identifierade Risker och Sårbarheter', '5. Värdering av sammantagen risk', '6. Riskreducerande Åtgärder och Rutiner', '7. Utvärdering och Uppdatering', '8. Kommunikation.'];
+    htmlParts.push(`<div class="doc-page"><h2>2. Allmän riskbedömning byrå</h2>`);
+    for (const k of allmanKeys) {
+      const val = getByraField(k) || '';
+      htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${nl2br(val || '—')}</div>`);
+    }
+    const uppdateradDatum = getByraField('Uppdaterad datum') || '';
+    htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
+
+    htmlParts.push(`<div class="doc-page"><h2>Bilaga 1. Riskbedömning av byråns tjänster</h2>`);
+    if (tjanster.length === 0) htmlParts.push(`<p>Inga tjänster registrerade.</p>`);
+    else {
+      htmlParts.push(`<table class="doc-table"><thead><tr><th>Tjänst</th><th>Riskbedömning</th><th>Åtgärd</th></tr></thead><tbody>`);
+      for (const t of tjanster) {
+        htmlParts.push(`<tr><td>${escape(t.namn)}</td><td>${nl2br(t.riskbedomning || '')}</td><td>${nl2br(t.atgard || '')}</td></tr>`);
+      }
+      htmlParts.push(`</tbody></table>`);
+    }
+    htmlParts.push(`</div>`);
+
+    htmlParts.push(`<div class="doc-page"><h2>Bilaga 2. Övriga riskfaktorer</h2>`);
+    const riskForByra = riskRecords;
+    if (riskForByra.length === 0) htmlParts.push(`<p>Inga övriga riskfaktorer registrerade.</p>`);
+    else {
+      htmlParts.push(`<table class="doc-table"><thead><tr><th>Typ</th><th>Riskfaktor</th><th>Beskrivning</th></tr></thead><tbody>`);
+      for (const r of riskForByra.slice(0, 100)) {
+        const f = r.fields || {};
+        htmlParts.push(`<tr><td>${escape(f['Typ av riskfaktor'])}</td><td>${escape(f['Riskfaktor'])}</td><td>${nl2br(f['Beskrivning'] || '')}</td></tr>`);
+      }
+      htmlParts.push(`</tbody></table>`);
+    }
+    htmlParts.push(`</div>`);
+
+    htmlParts.push(`<div class="doc-page"><h2>Bilaga 3. Statistik</h2>`);
+    htmlParts.push(`<p><strong>Antal kunder:</strong> ${stat.antalKunder || 0}</p>`);
+    const rn = stat.riskniva || {};
+    htmlParts.push(`<p><strong>Risknivåer:</strong> Låg: ${rn.Låg || 0}, Medel: ${rn.Medel || 0}, Hög: ${rn.Hög || 0}</p>`);
+    if ((stat.tjänster || []).length > 0) {
+      htmlParts.push(`<h3>Tjänster (antal kunder)</h3><ul>`);
+      for (const t of stat.tjänster) htmlParts.push(`<li>${escape(t.namn)}: ${t.antal}</li>`);
+      htmlParts.push(`</ul>`);
+    }
+    if ((stat.riskfaktorerPerTyp || []).length > 0) {
+      htmlParts.push(`<h3>Riskfaktorer per typ</h3>`);
+      for (const rpt of stat.riskfaktorerPerTyp) {
+        htmlParts.push(`<p><strong>${escape(rpt.typ)}</strong> (${rpt.antalKunder} kunder)</p><ul>`);
+        for (const rf of (rpt.riskfaktorer || []).slice(0, 10)) htmlParts.push(`<li>${escape(rf.namn)}: ${rf.antal}</li>`);
+        htmlParts.push(`</ul>`);
+      }
+    }
+    htmlParts.push(`</div>`);
+
+    const fullHtml = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
+      @page { margin: 14mm; }
+      body { font-family: Arial, sans-serif; font-size: 8pt; line-height: 1.4; color: #1a1a2e; margin: 0; padding: 12px; }
+      .doc-page { page-break-after: always; }
+      .doc-page:last-child { page-break-after: auto; }
+      .doc-main-title { color: ${ACCENT}; font-size: 12pt; margin-bottom: 6px; }
+      .doc-meta { color: #666; font-size: 7pt; margin-bottom: 16px; }
+      h2 { color: ${ACCENT}; font-size: 10pt; border-bottom: 1px solid ${ACCENT}; padding-bottom: 3px; margin-top: 10px; }
+      h3 { font-size: 8.5pt; margin-top: 8px; }
+      .doc-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 7.5pt; }
+      .doc-table th, .doc-table td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+      .doc-table th { background: #f4f6fb; font-weight: 700; }
+      .doc-text { margin: 6px 0; }
+      ul, p { margin: 4px 0; }
+    </style></head><body>${htmlParts.join('')}</body></html>`;
+
+    const pup = loadPuppeteer();
+    if (!pup) return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas)' });
+    const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'], headless: true, timeout: 30000 };
+    if (chromium) launchOpts.executablePath = await chromium.executablePath();
+    const browser = await pup.launch(launchOpts);
+    const page = await browser.newPage();
+    await page.setContent(fullHtml, { waitUntil: 'networkidle0', timeout: 30000 });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
+    await browser.close();
+
+    const ar = new Date().getFullYear();
+    const safeByra = (byraNamn || 'byra').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
+    const filename = `Lansstyrelsen-${safeByra}-${ar}.pdf`;
+
+    if (byraRec && byraRec.id) {
+      try {
+        await patchByraerFieldToAirtable(byraRec.id, 'Senast Länsstyrelsen-PDF export', new Date().toISOString().split('T')[0]);
+      } catch (_) { /* fält finns kanske inte i Airtable */ }
+    }
+
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`, 'Content-Length': pdfBuffer.length });
+    res.send(Buffer.from(pdfBuffer));
+  } catch (error) {
+    console.error('\u274c Länsstyrelsen PDF:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
