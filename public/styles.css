@@ -1502,8 +1502,70 @@ p, small { line-height: 1.6; }
 }
 
 /* Search Section Styles */
+/* Dashboard sections */
+.dashboard-section {
+    margin-bottom: 1.5rem;
+}
+.dashboard-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+.dashboard-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
+}
+.dashboard-card-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--title-text, #1e293b);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.dashboard-card-header h2 i {
+    color: var(--accent, #667eea);
+}
+.dashboard-card-desc {
+    margin: 0 1.25rem 1rem;
+    font-size: 0.9rem;
+    color: #64748b;
+}
+.dashboard-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+.dashboard-row-link {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.12s;
+}
+.dashboard-row-link:last-child { border-bottom: none; }
+.dashboard-row-link:hover {
+    background: #f8fafc;
+}
+.dashboard-row-link .kundlista-row-arrow {
+    color: #cbd5e1;
+}
+.dashboard-row-link:hover .kundlista-row-arrow {
+    color: var(--accent, #4f6ef7);
+}
+
 .search-section {
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
+    padding: 0 1.25rem 1.25rem;
 }
 
 .search-card {
@@ -7228,6 +7290,7 @@ textarea.kunduppgifter-input {
 }
 .uppdrag-banner--ny      { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
 .uppdrag-banner--utkast  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.uppdrag-banner--vantar  { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
 .uppdrag-banner--ok      { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
 
 .uppdrag-section {
@@ -7336,6 +7399,17 @@ textarea.kunduppgifter-input {
     gap: 0.75rem;
     padding: 1.2rem 0 0;
     flex-wrap: wrap;
+}
+
+.uppdrag-signering-status {
+    width: 100%;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    margin-bottom: 0.25rem;
 }
 
 .btn-inleed {
@@ -7589,10 +7663,59 @@ textarea.kunduppgifter-input {
     color: #1e293b;
 }
 .roller-person-name i { color: var(--accent); margin-right: 0.35rem; }
+.roller-person-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
 .roller-person-roll {
     font-size: 0.8rem;
     color: #64748b;
     font-weight: 500;
+}
+.form-group-roller {
+    flex-shrink: 0;
+}
+.form-group-roller .roller-checkboxes {
+    min-height: 2.5rem;
+}
+.roller-person-name-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.roller-person-pep-datum {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+}
+.roller-person-pep-datum i {
+    margin-right: 0.2rem;
+}
+.roller-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+}
+.roller-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 400;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0.35rem 0;
+}
+.roller-checkbox-label input {
+    width: auto;
+    margin: 0;
 }
 .roller-person-details {
     display: flex;
@@ -7630,6 +7753,7 @@ textarea.kunduppgifter-input {
 }
 .btn-pep-screen {
     color: #0369a1 !important;
+    text-decoration: none !important;
 }
 .btn-pep-screen:hover {
     background: #e0f2fe !important;

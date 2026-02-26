@@ -18,6 +18,14 @@ class ClientFlowApp {
         
         // Apply role-based UI restrictions
         this.applyRoleBasedUI();
+        
+        // Dashboard: load kunder utan riskbedömning (only on index/dashboard)
+        if (document.getElementById('riskbedomning-list')) {
+            this.loadRiskbedomningList();
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'authToken') this.loadRiskbedomningList();
+            });
+        }
     }
 
     initNavigation() {
@@ -56,6 +64,11 @@ class ClientFlowApp {
 
         if (checkStatusBtn) {
             checkStatusBtn.addEventListener('click', () => this.checkSystemStatus());
+        }
+
+        const refreshRiskbedomning = document.getElementById('refresh-riskbedomning');
+        if (refreshRiskbedomning) {
+            refreshRiskbedomning.addEventListener('click', () => this.loadRiskbedomningList());
         }
 
         // Add real-time validation for organization number
@@ -242,6 +255,89 @@ class ClientFlowApp {
             element.textContent = text;
             element.className = `status-${status}`;
         }
+    }
+
+    async loadRiskbedomningList() {
+        const container = document.getElementById('riskbedomning-list');
+        if (!container) return;
+
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+
+        try {
+            const response = await fetch(`${this.baseUrl}/api/kunddata`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({})
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            const records = (data.success && data.data) ? data.data : [];
+
+            const utanRiskbedomning = records.filter(r => {
+                const f = r.fields || {};
+                const riskniva = (f['Riskniva'] || '').trim();
+                const bedomning = (f['Byrans riskbedomning'] || '').trim();
+                return !riskniva && !bedomning;
+            }).map(r => ({
+                id: r.id,
+                namn: r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas',
+                organisationsnummer: r.fields?.Orgnr || r.fields?.Organisationsnummer || '',
+                bolagsform: r.fields?.Bolagsform || ''
+            })).sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
+
+            if (utanRiskbedomning.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Alla kunder har genomgången riskbedömning.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${utanRiskbedomning.map(c => `
+                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(c.namn)}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
+                                ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
+                            </div>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>
+                    `).join('')}
+                </div>`;
+
+        } catch (error) {
+            console.error('Fel vid laddning av kunder utan riskbedömning:', error);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     async handleSearchSubmit(e) {

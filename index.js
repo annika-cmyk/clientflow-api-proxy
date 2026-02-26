@@ -2310,6 +2310,38 @@ app.get('/api/download/:filename', (req, res) => {
   }
 });
 
+// Hjälp: spara attachment till Airtable via base64 (när localhost-URL inte fungerar för Airtable)
+async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileBuffer, filename, contentType) {
+  const fieldNames = ['Dokumentation', 'Attachments', 'PEP rapporter', 'PEP rapport'];
+  const base64 = fileBuffer.toString('base64');
+  for (const fieldName of fieldNames) {
+    try {
+      const url = `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
+      const res = await axios.post(url, {
+        contentType: contentType || 'application/pdf',
+        file: base64,
+        filename
+      }, {
+        headers: {
+          'Authorization': `Bearer ${airtableToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 20000,
+        maxContentLength: 10 * 1024 * 1024,
+        maxBodyLength: 10 * 1024 * 1024
+      });
+      if (res.data && (res.data.url || res.data.id)) {
+        console.log('✅ PEP-rapport uppladdad till Airtable via Content API, fält:', fieldName);
+        return true;
+      }
+    } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 422) continue;
+      console.warn('Upload till fält', fieldName, 'misslyckades:', err.message);
+    }
+  }
+  return false;
+}
+
 // Funktion för att spara fil lokalt och returnera URL
 // baseUrlOverride: om req.get('host') används, gör URL:en åtkomlig för Airtable vid ngrok/tunnel
 async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverride) {
@@ -2330,8 +2362,8 @@ async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverrid
     fs.writeFileSync(filePath, fileBuffer);
     
     // Returnera en URL som pekar på vår download endpoint.
-    // Använd baseUrlOverride (t.ex. från req) för att Airtable ska kunna hämta filen vid ngrok/tunnel.
-    const baseUrl = baseUrlOverride || process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+    // Prioritera PUBLIC_BASE_URL (för prod/ngrok) så Airtable kan hämta filen. Annars använd req-host.
+    const baseUrl = process.env.PUBLIC_BASE_URL || baseUrlOverride || `http://localhost:${PORT}`;
     const fileUrl = `${baseUrl}/api/download/${uniqueFilename}`;
     
     console.log(`✅ Fil sparad lokalt: ${filename} -> ${fileUrl}`);
@@ -5605,7 +5637,43 @@ app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}` }, params }
     );
     const records = response.data.records || [];
-    res.json({ avtal: records[0] || null });
+    let avtal = records[0] || null;
+
+    // Backfill Utskickningsdatum för äldre avtal som saknar det – hämta från Inleed
+    if (avtal) {
+      const fields = avtal.fields || {};
+      const status = fields['Avtalsstatus'] || fields['Status'] || '';
+      const inleedId = fields['InleedDokumentId'];
+      const utskickningsdatum = fields['Utskickningsdatum'] || fields['fldCfjnBetFm03KES'];
+      if (inleedId && status === 'Skickat till kund' && !utskickningsdatum && process.env.DOCSIGN_API_KEY) {
+        try {
+          for (const state of ['pending', 'completed']) {
+            const docsRes = await axios.get('https://docsign.se/api/documents', {
+              params: { api_key: process.env.DOCSIGN_API_KEY, state },
+              headers: { 'Content-Type': 'application/json' }
+            });
+            const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
+            const doc = docs.find(d => String(d.id) === String(inleedId));
+            if (doc) {
+              if (doc.created_at) {
+                const datum = (doc.created_at + '').split(' ')[0].split('T')[0] || (doc.created_at + '').slice(0, 10);
+                if (datum && /^\d{4}-\d{2}-\d{2}$/.test(datum)) {
+                  await axios.patch(
+                    `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtal.id}`,
+                    { fields: { Utskickningsdatum: datum } },
+                    { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+                  );
+                  avtal = { ...avtal, fields: { ...fields, Utskickningsdatum: datum } };
+                }
+              }
+              break;
+            }
+          }
+        } catch (e) { /* ignorerar – avtal returneras utan datum */ }
+      }
+    }
+
+    res.json({ avtal });
   } catch (error) {
     console.error('❌ Error fetching uppdragsavtal:', error.message);
     res.status(500).json({ error: error.message });
@@ -6454,10 +6522,15 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
             try {
                 const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
                 const host = req.get('x-forwarded-host') || req.get('host');
-                const baseUrl = host ? `${protocol}://${host}` : null;
+                const reqBaseUrl = host ? `${protocol}://${host}` : null;
                 const pdfBuffer = Buffer.from(pdfBase64, 'base64');
-                const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', baseUrl);
-                if (fileUrl) {
+                const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', reqBaseUrl);
+                const isLocalhost = !fileUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(fileUrl || '');
+
+                if (isLocalhost) {
+                    // Airtable kan inte hämta från localhost – använd Content API med base64
+                    savedToDocs = await uploadAttachmentToAirtable(token, baseId, kundId, pdfBuffer, filnamn, 'application/pdf');
+                } else if (fileUrl) {
                     const custRes = await axios.get(
                         `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
                         { headers: { Authorization: `Bearer ${token}` } }
@@ -6479,6 +6552,7 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
                             break;
                         } catch (patchErr) {
                             if (patchErr.response?.status === 422) continue;
+                            if (!savedToDocs) console.warn('PATCH till', fieldName, ':', patchErr.message);
                         }
                     }
                 }
@@ -6522,13 +6596,14 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
 
 // POST /api/uppdragsavtal/:id/skicka-for-signering
 // Body: { signerare: { namn, epost, personnr, telefon? } }
+// Skickar till BÅDE kund OCH inloggad konsult – båda måste signera
 app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { signerare } = req.body; // { namn, epost, personnr, telefon }
 
     if (!signerare || !signerare.namn || !signerare.epost) {
-      return res.status(400).json({ error: 'Signerare saknar namn eller e-post.' });
+      return res.status(400).json({ error: 'Signerare (kund) saknar namn eller e-post.' });
     }
 
     const docsignApiKey = process.env.DOCSIGN_API_KEY;
@@ -6538,7 +6613,24 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
 
-    // 1. H\u00e4mta avtalsinformation fr\u00e5n Airtable
+    // Hämta inloggad konsult (ansvarig) för signering
+    let inloggedUser = await getAirtableUser(req.user.email);
+    if (!inloggedUser || !inloggedUser.email) {
+      // Fallback: använd JWT-payload – användaren är autentiserad och har loggat in
+      if (req.user?.email) {
+        inloggedUser = {
+          id: req.user.id,
+          email: req.user.email,
+          name: req.user.name || req.user.email.split('@')[0],
+          byra: req.user.byra || 'Byrån'
+        };
+      }
+    }
+    if (!inloggedUser || !inloggedUser.email) {
+      return res.status(400).json({ error: 'Kunde inte hämta inloggad användare – konsulten måste vara känd för signering.' });
+    }
+
+    // 1. Hämta avtalsinformation från Airtable
     const avtalRes = await axios.get(
       `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
@@ -6557,8 +6649,28 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     );
     const pdfBuffer = Buffer.from(pdfRes.data);
 
-    // 3. Skapa undertecknare (part) i Inleed Docsign
-    const partyPayload = {
+    // 3. Skapa undertecknare i Inleed: först konsult (byrå), sedan kund
+    const konsultPayload = {
+      api_key: docsignApiKey,
+      name: inloggedUser.name || req.user.email.split('@')[0],
+      email: inloggedUser.email,
+      company: inloggedUser.byra || 'Byrån',
+      sign_method: 'bankid',
+      external_id: `konsult-${inloggedUser.id}-${(inloggedUser.email || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}`,
+      debug: false
+    };
+    console.log('📤 Skapar konsult som undertecknare i Inleed:', konsultPayload.name, konsultPayload.email);
+    const konsultPartyRes = await axios.post('https://docsign.se/api/parties', konsultPayload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!konsultPartyRes.data?.success) {
+      console.error('❌ Inleed konsult-party fel:', konsultPartyRes.data);
+      return res.status(500).json({ error: 'Kunde inte skapa konsult som undertecknare.', details: konsultPartyRes.data });
+    }
+    const konsultPartyId = konsultPartyRes.data.party_id;
+    console.log('✅ Konsult skapad som undertecknare, party_id:', konsultPartyId);
+
+    const kundPartyPayload = {
       api_key: docsignApiKey,
       name: signerare.namn,
       email: signerare.epost,
@@ -6566,28 +6678,25 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       sign_method: 'bankid',
       debug: false
     };
-    if (signerare.personnr) partyPayload.external_id = signerare.personnr;
-    if (signerare.telefon) partyPayload.phone_number = signerare.telefon;
-
-    console.log('\ud83d\udce4 Skapar undertecknare i Inleed:', partyPayload.name, partyPayload.email);
-
-    const partyRes = await axios.post('https://docsign.se/api/parties', partyPayload, {
+    if (signerare.personnr) kundPartyPayload.external_id = signerare.personnr;
+    if (signerare.telefon) kundPartyPayload.phone_number = signerare.telefon;
+    console.log('📤 Skapar kund som undertecknare i Inleed:', kundPartyPayload.name, kundPartyPayload.email);
+    const kundPartyRes = await axios.post('https://docsign.se/api/parties', kundPartyPayload, {
       headers: { 'Content-Type': 'application/json' }
     });
-
-    if (!partyRes.data?.success) {
-      console.error('\u274c Inleed parties fel:', partyRes.data);
-      return res.status(500).json({ error: 'Kunde inte skapa undertecknare i Inleed.', details: partyRes.data });
+    if (!kundPartyRes.data?.success) {
+      console.error('❌ Inleed kund-party fel:', kundPartyRes.data);
+      return res.status(500).json({ error: 'Kunde inte skapa kund som undertecknare.', details: kundPartyRes.data });
     }
-    const partyId = partyRes.data.party_id;
-    console.log('\u2705 Undertecknare skapad, party_id:', partyId);
+    const kundPartyId = kundPartyRes.data.party_id;
+    console.log('✅ Kund skapad som undertecknare, party_id:', kundPartyId);
 
-    // 4. Skapa dokument i Inleed med base64-kodad PDF
+    // 4. Skapa dokument i Inleed med båda parter – konsult först, sedan kund
     const pdfBase64 = pdfBuffer.toString('base64');
     const docPayload = {
       api_key: docsignApiKey,
       name: `Uppdragsavtal - ${kundnamn}`,
-      parties: [partyId],
+      parties: [konsultPartyId, kundPartyId],
       send_reminders: true,
       send_receipt: true,
       attachments: [{
@@ -6596,7 +6705,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       }]
     };
 
-    console.log('\ud83d\udce4 Skapar dokument i Inleed f\u00f6r:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Party ID:', partyId);
+    console.log('📤 Skapar dokument i Inleed för:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Konsult:', konsultPartyId, 'Kund:', kundPartyId);
 
     const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
       headers: { 'Content-Type': 'application/json' }
@@ -6612,18 +6721,36 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     const documentId = docRes.data.document_id;
     console.log('\u2705 Dokument skapat i Inleed, document_id:', documentId);
 
-    // 5. Uppdatera avtalsstatus i Airtable
-    await axios.patch(
-      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
-      { fields: { Avtalsstatus: 'Skickat till kund', InleedDokumentId: documentId } },
-      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    ).catch(e => console.warn('\u26a0\ufe0f Kunde inte uppdatera Airtable-status:', e.message));
+    const utskickningsdatum = new Date().toISOString().split('T')[0];
+    // 5. Uppdatera avtalsstatus, InleedDokumentId och Utskickningsdatum i Airtable
+    const patchFields = {
+      Avtalsstatus: 'Skickat till kund',
+      InleedDokumentId: String(documentId),
+      Utskickningsdatum: utskickningsdatum
+    };
+    try {
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`,
+        { fields: patchFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      console.log('\u2705 Airtable uppdaterad: Avtalsstatus, InleedDokumentId, Utskickningsdatum');
+    } catch (e) {
+      console.error('\u274c Airtable PATCH misslyckades:', e.response?.status, e.response?.data?.error || e.message);
+      if (e.response?.status === 422) {
+        console.error('   Fel:', JSON.stringify(e.response?.data, null, 2));
+      }
+      return res.status(500).json({
+        error: 'Kunde inte uppdatera avtalet i Airtable.',
+        details: e.response?.data?.error?.message || e.message
+      });
+    }
 
     res.json({
       success: true,
       document_id: documentId,
-      party_id: partyId,
-      message: `Uppdragsavtalet har skickats till ${signerare.epost} f\u00f6r BankID-signering.`
+      party_ids: [konsultPartyId, kundPartyId],
+      message: `Uppdragsavtalet har skickats till konsult (${inloggedUser.email}) och kund (${signerare.epost}) f\u00f6r BankID-signering.`
     });
 
   } catch (error) {
@@ -6636,6 +6763,113 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       error: error.response?.data?.message || error.message,
       details: error.response?.data
     });
+  }
+});
+
+// POST /api/uppdragsavtal/:id/hamta-signerat
+// Hämtar signerat dokument från Inleed och sparar till Dokumentation
+app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const { id: avtalId } = req.params;
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+
+    if (!docsignApiKey || !airtableAccessToken) {
+      return res.status(500).json({ error: 'DOCSIGN_API_KEY eller Airtable-token saknas.' });
+    }
+
+    const avtalRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtalId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const avtalFields = avtalRes.data.fields || {};
+    const inleedDocId = avtalFields['InleedDokumentId'];
+    const kundId = avtalFields['KundID'];
+
+    if (!inleedDocId || !kundId) {
+      return res.status(400).json({ error: 'Avtalet saknar Inleed-dokument-ID eller KundID.' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte.' });
+    const custByraId = avtalFields['Byra ID'] || avtalFields['Byrå ID'] || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '')) {
+      return res.status(403).json({ error: 'Ingen behörighet för denna kund.' });
+    }
+
+    const docsRes = await axios.get('https://docsign.se/api/documents', {
+      params: { api_key: docsignApiKey, state: 'completed' },
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
+    const doc = docs.find(d => String(d.id) === String(inleedDocId));
+    if (!doc || !doc.signed_pdf_url) {
+      return res.status(404).json({
+        error: 'Dokumentet är ännu inte färdigsignerat.',
+        hint: 'Kontrollera att både konsult och kund har signerat i Inleed.'
+      });
+    }
+
+    const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
+    const datumStr = new Date().toISOString().split('T')[0];
+    const filnamn = `Uppdragsavtal-signerat_${(kundnamn || 'kund').replace(/\s+/g, '_')}_${datumStr}.pdf`;
+
+    const pdfRes = await axios.get(doc.signed_pdf_url, { responseType: 'arraybuffer' });
+    const pdfBuffer = Buffer.from(pdfRes.data);
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${kundId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const docFields = ['Dokumentation', 'Attachments', 'PEP rapporter', 'PEP rapport', 'Riskbedömning dokument', 'Riskbedomning dokument'];
+    let saved = false;
+
+    const baseUrl = process.env.PUBLIC_BASE_URL || (req.get('host') ? `${req.protocol}://${req.get('host')}` : null);
+    const isLocalhost = !baseUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl);
+    if (isLocalhost) {
+      saved = await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, kundId, pdfBuffer, filnamn, 'application/pdf');
+    } else {
+      const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', baseUrl);
+      if (fileUrl) {
+        for (const fieldName of docFields) {
+          try {
+            const existing = f[fieldName] || [];
+            const arr = Array.isArray(existing) ? [...existing] : [];
+            arr.push({ url: fileUrl, filename: filnamn });
+            await axios.patch(
+              `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${kundId}`,
+              { fields: { [fieldName]: arr } },
+              { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+            );
+            saved = true;
+            console.log('✅ Signerat uppdragsavtal sparad i fält:', fieldName);
+            break;
+          } catch (e) {
+            if (e.response?.status === 422) continue;
+          }
+        }
+      }
+    }
+
+    if (saved) {
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtalId}`,
+        { fields: { Avtalsstatus: 'Signerat', Signeringsdatum: datumStr } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      ).catch(() => {});
+    }
+
+    res.json({
+      success: saved,
+      message: saved ? 'Signerat uppdragsavtal har sparats på fliken Dokumentation.' : 'Kunde inte spara dokumentet.',
+      savedToDocs: saved
+    });
+  } catch (error) {
+    console.error('❌ Fel vid hämta-signerat:', error.message);
+    res.status(500).json({ error: error.message || 'Okänt fel.' });
   }
 });
 

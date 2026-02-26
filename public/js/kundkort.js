@@ -21,6 +21,7 @@ class CustomerCardManager {
         await this.loadUserData();
         this.setupEventListeners();
         this.setupTabNavigation();
+        this.setupRollerEventDelegation();
         
         // Ensure first tab is visible on load
         this.ensureFirstTabVisible();
@@ -188,7 +189,8 @@ class CustomerCardManager {
         }
 
         tabButtons.forEach(button => {
-            button.addEventListener('click', () => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
                 const targetTab = button.getAttribute('data-tab');
                 
                 // Remove active class from all buttons and panes
@@ -214,6 +216,37 @@ class CustomerCardManager {
                 this.loadTabContent(targetTab);
             });
         });
+    }
+
+    setupRollerEventDelegation() {
+        document.addEventListener('mousedown', (e) => {
+            const pepBtn = e.target.closest('.btn-pep-screen');
+            if (pepBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const idx = parseInt(pepBtn.getAttribute('data-idx'), 10);
+                if (!isNaN(idx) && idx >= 0) this.pepScreening(idx);
+                return;
+            }
+        }, true);
+        document.addEventListener('click', (e) => {
+            const editBtn = e.target.closest('.roller-edit-btn');
+            if (editBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const idx = parseInt(editBtn.getAttribute('data-idx'), 10);
+                if (!isNaN(idx) && idx >= 0) this.editRollePerson(idx);
+                return;
+            }
+            const delBtn = e.target.closest('.roller-delete-btn');
+            if (delBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const idx = parseInt(delBtn.getAttribute('data-idx'), 10);
+                if (!isNaN(idx) && idx >= 0) this.deleteRollePerson(idx);
+            }
+        }, true);
     }
 
     async loadCustomerData() {
@@ -434,23 +467,27 @@ class CustomerCardManager {
         let kontaktPersoner = [];
         try {
             if (kontaktPersonerRaw && kontaktPersonerRaw.trim().startsWith('[')) {
-                kontaktPersoner = JSON.parse(kontaktPersonerRaw);
+                kontaktPersoner = (JSON.parse(kontaktPersonerRaw) || []).map(p => {
+                    const roller = Array.isArray(p.roller) ? p.roller : (p.roll ? [p.roll] : []);
+                    return { ...p, roller, roll: undefined };
+                });
             } else if (kontaktPersonerRaw) {
                 // Bakåtkompatibilitet: "Anna Svensson (VD)\nKalle Karlsson (Styrelseledamot)"
                 kontaktPersoner = kontaktPersonerRaw.split('\n').map(r => r.trim()).filter(Boolean).map(r => {
                     const match = r.match(/^(.+?)\s*\((.+)\)$/);
-                    return match ? { namn: match[1].trim(), roll: match[2].trim(), epost: '', personnr: '' } : { namn: r, roll: '', epost: '', personnr: '' };
+                    const roll = match ? match[2].trim() : '';
+                    return { namn: match ? match[1].trim() : r, roller: roll ? [roll] : [], epost: '', personnr: '' };
                 });
             }
         } catch(e) { kontaktPersoner = []; }
 
         // Om fysisk person och ingen Ägare EF finns — skapa en automatiskt
         const arFysiskPerson = bolagsform === 'Fysiska personer' || bolagsform === 'Enskild firma';
-        const harAgareEF = kontaktPersoner.some(p => p.roll === 'Ägare EF');
+        const harAgareEF = kontaktPersoner.some(p => (p.roller || []).includes('Ägare EF') || p.roll === 'Ägare EF');
         if (arFysiskPerson && !harAgareEF) {
             const agare = {
                 namn: namn,
-                roll: 'Ägare EF',
+                roller: ['Ägare EF'],
                 epost: fields['e-post'] || fields['Email'] || fields['E-post'] || '',
                 personnr: orgnr
             };
@@ -674,7 +711,7 @@ class CustomerCardManager {
                 <div class="collapsible-body">
                     <div id="roles-list" class="roles-list">${rollerHTML}</div>
                     <div style="margin-top:0.75rem;">
-                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
                     </div>
                 </div>
             </div>
@@ -955,31 +992,41 @@ class CustomerCardManager {
         setTimeout(() => el.remove(), 3500);
     }
 
+    _rollerAlternativ() {
+        return ['Styrelseledamot', 'Revisor', 'VD', 'Suppleant', 'Firmatecknare', 'Ägare EF', 'Ombud', 'Verklig huvudman', 'Befattningshavare'];
+    }
+
     _renderRollerView(personer) {
         if (!personer || personer.length === 0) {
             return `<span class="lead-empty">Inga kontaktpersoner registrerade. Klicka på <strong>Lägg till</strong> för att lägga till.</span>`;
         }
         return `<div class="roller-person-list">
-            ${personer.map((p, idx) => `
+            ${personer.map((p, idx) => {
+                const roller = Array.isArray(p.roller) ? p.roller : (p.roll ? [p.roll] : []);
+                const rollText = roller.length ? roller.join(', ') : '';
+                const pepDatum = p.pepSoktDatum ? new Date(p.pepSoktDatum).toLocaleDateString('sv-SE') : '';
+                return `
                 <div class="roller-person-item" data-idx="${idx}">
                     <div class="roller-person-info">
-                        <span class="roller-person-name"><i class="fas fa-user"></i> ${this._esc(p.namn || 'Namnlös')}</span>
-                        ${p.roll ? `<span class="roller-person-roll">${this._esc(p.roll)}</span>` : ''}
+                        <div class="roller-person-name-row">
+                            <span class="roller-person-name"><i class="fas fa-user"></i> ${this._esc(p.namn || 'Namnlös')}</span>
+                            ${pepDatum ? `<span class="roller-person-pep-datum" title="Senaste PEP-sökning"><i class="fas fa-search-dollar"></i> ${pepDatum}</span>` : ''}
+                        </div>
+                        ${rollText ? `<div class="roller-person-meta"><span class="roller-person-roll">${this._esc(rollText)}</span></div>` : ''}
                     </div>
                     <div class="roller-person-details">
                         ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas</span>'}
                         ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> Personnr saknas</span>'}
                     </div>
                     <div class="roller-person-actions">
-                        <button class="btn-icon-note btn-pep-screen" title="PEP & Sanktionsscreening"
-                            onclick="customerCardManager.pepScreening(${idx})" id="pep-btn-${idx}">
+                        <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="PEP & Sanktionsscreening" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
                             <i class="fas fa-search-dollar"></i>
-                        </button>
-                        <button class="btn-icon-note" title="Redigera" onclick="customerCardManager.editRollePerson(${idx})"><i class="fas fa-edit"></i></button>
-                        <button class="btn-icon-note btn-icon-delete" title="Ta bort" onclick="customerCardManager.deleteRollePerson(${idx})"><i class="fas fa-trash"></i></button>
+                        </a>
+                        <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" data-idx="${idx}"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="btn-icon-note btn-icon-delete roller-delete-btn" title="Ta bort" data-idx="${idx}"><i class="fas fa-trash"></i></button>
                     </div>
-                </div>
-            `).join('')}
+                </div>`;
+            }).join('')}
         </div>`;
     }
 
@@ -1143,9 +1190,15 @@ class CustomerCardManager {
                         <label>Namn</label>
                         <input type="text" id="rp-namn" class="form-control" value="${this._esc(person?.namn || '')}" placeholder="Förnamn Efternamn">
                     </div>
-                    <div class="form-group">
-                        <label>Roll / befattning</label>
-                        <input type="text" id="rp-roll" class="form-control" value="${this._esc(person?.roll || '')}" placeholder="t.ex. VD, Styrelseledamot">
+                    <div class="form-group form-group-roller">
+                        <label>Roller / befattningar</label>
+                        <div class="roller-checkboxes" id="rp-roller-wrap">
+                            ${this._rollerAlternativ().map(r => {
+                                const roller = Array.isArray(person?.roller) ? person.roller : (person?.roll ? [person.roll] : []);
+                                const checked = roller.includes(r) ? 'checked' : '';
+                                return `<label class="roller-checkbox-label"><input type="checkbox" class="rp-roll-cb" value="${this._esc(r)}" ${checked}> ${this._esc(r)}</label>`;
+                            }).join('')}
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>E-postadress</label>
@@ -1167,12 +1220,14 @@ class CustomerCardManager {
 
     _saveRollePersonModal(idx) {
         const namn = document.getElementById('rp-namn').value.trim();
-        const roll = document.getElementById('rp-roll').value.trim();
+        const roller = [...document.querySelectorAll('.rp-roll-cb:checked')].map(cb => cb.value.trim()).filter(Boolean);
         const epost = document.getElementById('rp-epost').value.trim();
         const personnr = document.getElementById('rp-personnr').value.trim();
         if (!namn) { alert('Namn är obligatoriskt.'); return; }
 
-        const person = { namn, roll, epost, personnr };
+        const existing = (idx != null && idx !== undefined) ? (this._kontaktPersoner || [])[idx] : null;
+        const person = { namn, roller, epost, personnr };
+        if (existing?.pepSoktDatum) person.pepSoktDatum = existing.pepSoktDatum;
         if (!this._kontaktPersoner) this._kontaktPersoner = [];
 
         if (idx === null || idx === undefined) {
@@ -2654,6 +2709,7 @@ class CustomerCardManager {
             'Kunden godkänner personuppgiftsbiträdesavtal': rawF['Kunden godkanner puba'] || rawF['Kunden godkänner personuppgiftsbiträdesavtal'] || false,
             'Status':              rawF['Avtalsstatus'] || rawF['Status'] || '',
             'Signeringsdatum':     rawF['Signeringsdatum'] || '',
+            'Utskickningsdatum':   rawF['Utskickningsdatum'] || rawF['fldCfjnBetFm03KES'] || '',
             'Signerat av kund':    rawF['Signerat av kund'] || rawF['Signerat av byra'] || '',
             'Signerat av byrå':    rawF['Signerat av byra'] || rawF['Signerat av byrå'] || '',
         };
@@ -2709,7 +2765,11 @@ class CustomerCardManager {
                 </div>` : f['Status'] === 'Signerat' ? `
                 <div class="uppdrag-banner uppdrag-banner--ok">
                     <i class="fas fa-check-circle"></i>
-                    Signerat ${fmtDate(f['Signeringsdatum']) || ''} — gäller fr.o.m. ${fmtDate(f['Avtalet gäller ifrån']) || '–'}.
+                    Signerat och klart ${fmtDate(f['Signeringsdatum']) ? fmtDate(f['Signeringsdatum']) + ' —' : ''} gäller fr.o.m. ${fmtDate(f['Avtalet gäller ifrån']) || '–'}.
+                </div>` : (f['Status'] === 'Skickat till kund' && avtal?.fields?.['InleedDokumentId']) ? `
+                <div class="uppdrag-banner uppdrag-banner--vantar">
+                    <i class="fas fa-clock"></i>
+                    Utskickat och väntar signering ${fmtDate(f['Utskickningsdatum']) ? '— ' + fmtDate(f['Utskickningsdatum']) : ''}. Avtalet skickades till konsult och kund för BankID-signering.
                 </div>` : `
                 <div class="uppdrag-banner uppdrag-banner--utkast">
                     <i class="fas fa-pencil-alt"></i>
@@ -2968,6 +3028,13 @@ class CustomerCardManager {
 
                     <!-- ÅTGÄRDER -->
                     <div class="uppdrag-actions">
+                        ${avtal && (f['Status'] === 'Skickat till kund' || f['Status'] === 'Signerat') ? `
+                        <div class="uppdrag-signering-status">
+                            ${f['Status'] === 'Signerat' 
+                                ? `<i class="fas fa-check-circle" style="color:#10b981;"></i> Signerat och klart ${fmtDate(f['Signeringsdatum']) ? '— ' + fmtDate(f['Signeringsdatum']) : ''}`
+                                : `<i class="fas fa-clock" style="color:#f59e0b;"></i> Utskickat och väntar signering ${fmtDate(f['Utskickningsdatum']) ? '— ' + fmtDate(f['Utskickningsdatum']) : ''}`
+                            }
+                        </div>` : ''}
                         <button type="button" class="btn btn-primary" onclick="customerCardManager.saveUppdragsavtal(${avtal ? `'${avtal.id}'` : 'null'})">
                             <i class="fas fa-save"></i> Spara utkast
                         </button>
@@ -2977,7 +3044,11 @@ class CustomerCardManager {
                         </button>
                         <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaInleed('${avtal.id}')">
                             <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
-                        </button>` : `<span class="uppdrag-hint" style="margin:0;">Spara utkastet först för att kunna generera PDF.</span>`}
+                        </button>
+                        ${(avtal.fields?.['InleedDokumentId'] && (avtal.fields['Avtalsstatus'] || avtal.fields['Status']) === 'Skickat till kund') ? `
+                        <button type="button" class="btn btn-secondary" onclick="customerCardManager.hamtaSigneratUppdragsavtal('${avtal.id}')" title="Hämta färdigsignerat dokument från Inleed och spara till Dokumentation">
+                            <i class="fas fa-download"></i> Hämta signerat dokument
+                        </button>` : ''}` : `<span class="uppdrag-hint" style="margin:0;">Spara utkastet först för att kunna generera PDF.</span>`}
                     </div>
 
                 </form>
@@ -3066,6 +3137,31 @@ class CustomerCardManager {
         }
     }
 
+    async hamtaSigneratUppdragsavtal(avtalId) {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const btn = document.querySelector('[onclick*="hamtaSigneratUppdragsavtal"]');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar...'; }
+        try {
+            const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/hamta-signerat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+            });
+            const data = await resp.json();
+            if (resp.ok && data.savedToDocs) {
+                this.showNotification(data.message || 'Signerat dokument sparad på Dokumentation.', 'success');
+                this.loadUppdragsavtal();
+                this.loadDocuments();
+            } else {
+                this.showNotification(data.error || data.message || 'Kunde inte hämta signerat dokument.', 'error');
+            }
+        } catch (e) {
+            this.showNotification('Fel: ' + e.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download"></i> Hämta signerat dokument'; }
+        }
+    }
+
     async downloadUppdragsavtalPdf(avtalId) {
         const btn = document.querySelector('.btn-inleed')?.previousElementSibling;
         const origText = btn?.innerHTML;
@@ -3117,7 +3213,7 @@ class CustomerCardManager {
                     <input type="radio" name="signerare-choice" value="${idx}" ${idx === 0 ? 'checked' : ''} ${!p.epost ? 'disabled' : ''}>
                     <div class="inleed-person-info">
                         <span class="inleed-person-name">${this._esc(p.namn)}</span>
-                        ${p.roll ? `<span class="inleed-person-roll">${this._esc(p.roll)}</span>` : ''}
+                        ${(p.roller?.length || p.roll) ? `<span class="inleed-person-roll">${this._esc((p.roller || (p.roll ? [p.roll] : [])).join(', '))}</span>` : ''}
                         ${p.epost
                             ? `<span class="inleed-person-contact"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>`
                             : `<span class="inleed-person-warn"><i class="fas fa-exclamation-triangle"></i> E-post saknas — kan ej väljas</span>`}
@@ -4335,7 +4431,10 @@ class CustomerCardManager {
 
         const btn = document.getElementById(`pep-btn-${idx}`);
         const origHtml = btn?.innerHTML;
-        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; btn.disabled = true; }
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            btn.style.pointerEvents = 'none';
+        }
 
         try {
             const token = localStorage.getItem('authToken');
@@ -4377,11 +4476,18 @@ class CustomerCardManager {
                 this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
             }
 
+            // Spara senaste PEP-sökningens datum på personen
+            if (this._kontaktPersoner && this._kontaktPersoner[idx]) {
+                this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
+                await this._saveKontaktPersoner();
+                this._refreshRollerList();
+            }
+
         } catch (error) {
             console.error('❌ PEP-screening fel:', error);
             this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
         } finally {
-            if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
+            if (btn) { btn.innerHTML = origHtml; btn.style.pointerEvents = ''; }
         }
     }
 
