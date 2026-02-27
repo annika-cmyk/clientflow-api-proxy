@@ -1176,14 +1176,11 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    const { dokumentId } = req.params;
+    let dokumentId = (req.params.dokumentId || '').trim();
+    dokumentId = decodeURIComponent(dokumentId);
+    const orgnr = (req.query.orgnr || '').toString().replace(/[-\s]/g, '').trim();
     
-    console.log(`📥 Mottaget dokument-förfrågan:`, {
-      dokumentId: dokumentId,
-      headers: req.headers,
-      method: req.method,
-      url: req.url
-    });
+    console.log(`📥 Mottaget dokument-förfrågan:`, { dokumentId, orgnr: orgnr || '(ej angivet)' });
     
     if (!dokumentId) {
       return res.status(400).json({
@@ -1198,8 +1195,7 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
       ? `https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`
       : `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`;
 
-    // Generera unikt request ID
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     const headers = {
       'Authorization': `Bearer ${token}`,
@@ -1207,7 +1203,7 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
       'X-Request-Id': requestId
     };
 
-    console.log(`🔍 Hämtar dokument med ID: ${dokumentId}`);
+    console.log(`🔍 Hämtar dokument från Bolagsverket: dokumentId=${dokumentId}, orgnr=${orgnr || '(ej angivet)'}`);
 
     const bolagsverketResponse = await axios.get(dokumentUrl, {
       headers,
@@ -1235,15 +1231,18 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Error fetching dokument:', error.message);
+    const bvDetail = error.response?.data;
+    const bvMsg = typeof bvDetail === 'string' ? bvDetail : (bvDetail?.detail || bvDetail?.message || bvDetail?.error || (typeof bvDetail === 'object' ? JSON.stringify(bvDetail) : null));
+    console.error('❌ Bolagsverket dokument fel:', error.message, '| Status:', error.response?.status, '| Bolagsverket svar:', bvMsg || '(ingen detalj)');
     
     if (error.response) {
       res.status(error.response.status).json({
         error: 'Bolagsverket API fel',
-        message: error.response.data?.detail || error.response.data?.message || error.message,
+        message: bvMsg || error.message,
         status: error.response.status,
         duration: duration,
-        requestId: error.response.headers['x-request-id'] || null
+        requestId: error.response.headers['x-request-id'] || null,
+        dokumentId: req.params?.dokumentId
       });
     } else {
       res.status(500).json({
@@ -1816,27 +1815,50 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       });
     }
 
-    // Create record in Airtable using axios directly
-    console.log('💾 Saving to Airtable using axios...');
-    
-    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
-    
-    const airtableResponse = await axios.post(createUrl, {
-      records: [{ fields: airtableData.fields }]
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    });
+    // Kontrollera om kunden redan finns (samma Orgnr + Byrå ID)
+    const byraIdClean = (byraId || '').toString().replace(/,/g, '').trim();
+    const checkFormula = `AND({Orgnr}="${String(cleanOrgNumber).replace(/"/g, '\\"')}",{Byrå ID}="${String(byraIdClean).replace(/"/g, '\\"')}")`;
+    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id`;
+    let recordId;
+    try {
+      const checkRes = await axios.get(checkUrl, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` }
+      });
+      const existing = checkRes.data.records?.[0];
+      if (existing) {
+        console.log('⚠️ Kund finns redan, uppdaterar befintlig post med årsredovisningar:', existing.id);
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}/${existing.id}`,
+          { fields: airtableData.fields },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        recordId = existing.id;
+      }
+    } catch (checkErr) {
+      console.log('ℹ️ Dubblettkontroll misslyckades, skapar ny post:', checkErr.message);
+    }
+
+    if (!recordId) {
+      const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
+      const airtableResponse = await axios.post(createUrl, {
+        records: [{ fields: airtableData.fields }]
+      }, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+      recordId = airtableResponse.data.records[0].id;
+    }
 
     const duration = Date.now() - startTime;
 
     const responseData = {
       success: true,
       message: 'Data sparad till Airtable',
-      airtableRecordId: airtableResponse.data.records[0].id,
+      airtableRecordId: recordId,
+      id: recordId,
       organisationsnummer: req.body.organisationsnummer || '',
       anvandareId: anvandareId || null,
       byraId: byraId || null,
@@ -3384,7 +3406,40 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     const riskDocs = Array.isArray(f[riskField]) ? f[riskField] : [];
     const pepDocs = Array.isArray(f[pepField]) ? f[pepField] : [];
 
+    const baseUrl = process.env.PUBLIC_BASE_URL || (req.protocol + '://' + req.get('host'));
+    const orgnr = (f['Orgnr'] || '').toString().replace(/[-\s]/g, '').trim();
     const allItems = [];
+    const arsredovisningFields = [
+      { field: 'Senaste årsredovisning fil', dateField: 'Senaste årsredovisning', jsonField: 'Senaste årsredovisning json', label: 'Årsredovisning (senaste)' },
+      { field: 'Fg årsredovisning fil', dateField: 'Fg årsredovisning', jsonField: 'Fg årsredovisning json', label: 'Årsredovisning (föregående)' },
+      { field: 'Ffg årsredovisning fil', dateField: 'Ffg årsredovisning', jsonField: 'Ffg årsredovisning json', label: 'Årsredovisning (näst föregående)' }
+    ];
+    arsredovisningFields.forEach(({ field, dateField, jsonField, label }) => {
+      const arr = Array.isArray(f[field]) ? f[field] : [];
+      const datum = f[dateField] || '';
+      let dokumentId = (f[jsonField] || '').toString().trim();
+      if (dokumentId.startsWith('{') || dokumentId.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(dokumentId);
+          dokumentId = (parsed?.dokumentId ?? parsed?.id ?? parsed)?.toString() || dokumentId;
+        } catch (_) { /* behåll råa värdet */ }
+      } else {
+        dokumentId = dokumentId.replace(/^["']|["']$/g, '');
+      }
+      const fallbackUrl = dokumentId ? `${baseUrl}/api/bolagsverket/dokument/${encodeURIComponent(dokumentId)}${orgnr ? '?orgnr=' + encodeURIComponent(orgnr) : ''}` : null;
+      let added = false;
+      arr.forEach((a, i) => {
+        if (a && (a.url || a.filename)) {
+          const hasWorkingUrl = a.url && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(a.url);
+          const url = hasWorkingUrl ? a.url : (fallbackUrl || a.url);
+          allItems.push({ ...a, url, _typ: 'arsredovisning', _sourceField: field, _sourceIndex: i, _label: label, _datum: datum || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '' });
+          added = true;
+        }
+      });
+      if (!added && dokumentId) {
+        allItems.push({ url: fallbackUrl, filename: `${label.replace(/\s*\([^)]*\)/g, '').trim()}-${datum || 'okänd-period'}.zip`, _typ: 'arsredovisning', _sourceField: null, _sourceIndex: null, _label: label, _datum: datum });
+      }
+    });
     riskDocs.forEach((a, i) => {
       if (a && (a.url || a.filename)) allItems.push({ ...a, _typ: 'riskbedomning', _sourceField: riskField, _sourceIndex: i });
     });
@@ -3400,15 +3455,18 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
     const documents = allItems.map((a, i) => {
       const isPep = a._typ === 'pep';
-      const datum = a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      const isArs = a._typ === 'arsredovisning';
+      const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      const namn = isArs ? (a.filename || a._label) : (a.filename || (isPep ? `PEP-screening ${i + 1}` : `Riskbedömning ${i + 1}`));
+      const beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : 'Dokumenterad riskbedömning');
       return {
         id: `${a._typ}-${i}`,
         sourceField: a._sourceField,
         sourceIndex: a._sourceIndex,
         fields: {
-          Namn: a.filename || (isPep ? `PEP-screening ${i + 1}` : `Riskbedömning ${i + 1}`),
+          Namn: namn,
           Filtyp: 'PDF',
-          Beskrivning: isPep ? 'PEP & sanktionsscreening' : 'Dokumenterad riskbedömning',
+          Beskrivning: beskrivning,
           UppladdadDatum: datum,
           UppladdadAv: ''
         },

@@ -695,9 +695,23 @@ class ClientFlowApp {
             
             if (result.success && result.data) {
                 console.log('✅ Using real Bolagsverket data');
-                // Hide loading and return transformed data
                 this.hideLoadingError();
-                return this.transformBolagsverketData(result.data);
+                let transformed = this.transformBolagsverketData(result.data);
+                // Hämta dokumentlista (årredovisningar) parallellt
+                try {
+                    const docRes = await fetch(`${this.baseUrl}/api/bolagsverket/dokumentlista`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ organisationsnummer: orgNumber })
+                    });
+                    if (docRes.ok) {
+                        const docResult = await docRes.json();
+                        transformed.arsredovisningar = docResult.dokument || [];
+                    }
+                } catch (e) {
+                    console.warn('Kunde inte hämta dokumentlista:', e);
+                }
+                return transformed;
             } else {
                 console.log('❌ Invalid response format from Bolagsverket');
                 this.hideLoadingError();
@@ -851,6 +865,15 @@ class ClientFlowApp {
                     return primaryOrg.naringsgren;
                 }
                 return [];
+            })(),
+            pagandeAvveckling: (() => {
+                const v = primaryOrg?.pagandeAvvecklingsEllerOmstruktureringsforsfarande ?? primaryOrg?.pagandeAvveckling ?? primaryOrg?.avvecklingsforsfarande ?? primaryOrg?.avvecklingsOmstruktureringsforsfarande;
+                if (!v) return null;
+                if (typeof v === 'string' && v.trim() && v !== '-') return v;
+                if (v?.datum) return v.datum;
+                if (v?.klartext) return v.klartext;
+                if (v?.beskrivning) return v.beskrivning;
+                return null;
             })(),
             aktivtForetag: !primaryOrg?.avregistreradOrganisation,
             // Add more fields as they become available
@@ -1014,6 +1037,18 @@ class ClientFlowApp {
                         <label>Verksamhetsbeskrivning</label>
                         <span>${formatValue(companyData.verksamhet)}</span>
                     </div>
+                    ${companyData.allaNamn && companyData.allaNamn.length > 1
+                        ? `<div class="lead-field lead-field--full">
+                            <label>Flera organisationsnamn</label>
+                            <div class="lead-namn-lista">${companyData.allaNamn.map(n => `<span class="lead-namn-item">${n}</span>`).join('')}</div>
+                        </div>`
+                        : ''}
+                    ${companyData.pagandeAvveckling
+                        ? `<div class="lead-field lead-field--full">
+                            <label>Pågående avveckling/omstrukturering</label>
+                            <span class="lead-avveckling">${companyData.pagandeAvveckling}</span>
+                        </div>`
+                        : ''}
                 </div>
 
                 <!-- SNI-koder -->
@@ -1037,6 +1072,22 @@ class ClientFlowApp {
                         ${rollerHTML}
                     </div>
                 </div>
+
+                ${companyData.arsredovisningar && companyData.arsredovisningar.length > 0
+                    ? `<div class="lead-section">
+                        <label>Senaste årsredovisningar</label>
+                        <div class="lead-arsredovisningar">
+                            ${companyData.arsredovisningar
+                                .sort((a, b) => new Date(b.rapporteringsperiodTom || 0) - new Date(a.rapporteringsperiodTom || 0))
+                                .slice(0, 5)
+                                .map(d => `
+                                <div class="lead-ar-item">
+                                    <span class="lead-ar-period">${d.rapporteringsperiodTom || d.rapporteringsperiodFr || 'Okänd period'}</span>
+                                    ${d.dokumenttyp ? `<span class="lead-ar-typ">${d.dokumenttyp}</span>` : ''}
+                                </div>`).join('')}
+                        </div>
+                    </div>`
+                    : ''}
 
             </div>
         `;
@@ -1114,55 +1165,47 @@ class ClientFlowApp {
                 : '';
 
             const byraId = this.bureauId || '';
+            const anvandareId = this.userId || null;
 
-            const fields = {
-                'Namn': companyData.namn || '',
-                'Orgnr': companyData.organisationsnummer || '',
-                'Byrå ID': byraId.toString(),
-                'Address': fullAdress,
-                'Verksamhetsbeskrivning': companyData.verksamhet || '',
-                'SNI kod': sniText,
-                'Bolagsform': companyData.form || '',
-                'registreringsland': companyData.registreringsland || '',
-                'regdatum': companyData.registreringsdatum || '',
-                'Befattningshavare': befattningText,
-                'aktiv/inaktiv': companyData.status === 'Aktiv' ? 'Aktiv' : 'Inaktiv'
-            };
-
-            // Ta bort tomma fält
-            Object.keys(fields).forEach(k => {
-                if (!fields[k]) delete fields[k];
+            console.log('📤 Sparar till Airtable via Bolagsverket (inkl. årsredovisningar):', {
+                organisationsnummer: companyData.organisationsnummer,
+                byraId,
+                anvandareId
             });
 
-            console.log('📤 Sparar till KUNDDATA:', fields);
-
-            const response = await fetch(`${this.baseUrl}/api/kunddata/create`, {
+            const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ fields })
+                body: JSON.stringify({
+                    organisationsnummer: companyData.organisationsnummer,
+                    orgnr: companyData.organisationsnummer,
+                    byraId: byraId.toString(),
+                    anvandareId: anvandareId,
+                    userId: anvandareId
+                })
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                console.log('✅ Lead sparat:', data);
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok && data.success) {
+                const recordId = data.airtableRecordId || data.id;
+                console.log('✅ Kund sparad med årsredovisningar:', data);
                 saveBtn.innerHTML = '<i class="fas fa-check"></i> Sparat!';
                 saveBtn.style.background = '#10b981';
-                this.showMessage(`✅ "${companyData.namn}" har sparats! Dirigerar till kundkortet...`, 'success');
+                this.showMessage(`✅ "${companyData.namn}" har sparats med årsredovisningar! Dirigerar till kundkortet...`, 'success');
                 setTimeout(() => {
-                    window.location.href = `kundkort.html?id=${data.id}`;
+                    window.location.href = `kundkort.html?id=${recordId}`;
                 }, 1000);
-            } else if (response.status === 409) {
+            } else if (response.status === 409 || data.duplicate) {
                 // Duplicat – företaget finns redan hos denna byrå
-                const err = await response.json().catch(() => ({}));
                 saveBtn.innerHTML = originalText;
                 saveBtn.disabled = false;
-                this.showDuplicateWarning(companyData.namn, err.existingId);
+                this.showDuplicateWarning(companyData.namn, data.existingId || data.airtableRecordId);
             } else {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.message || `HTTP ${response.status}`);
+                throw new Error(data.error || data.message || `HTTP ${response.status}`);
             }
         } catch (error) {
             console.error('❌ Fel vid sparande:', error);

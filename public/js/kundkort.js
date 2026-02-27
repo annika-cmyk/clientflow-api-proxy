@@ -1436,8 +1436,11 @@ class CustomerCardManager {
             </div>
             <div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>` : '';
 
+        const ingaRiskLabels = { verksamhet: 'Inga verksamhetsspecifika riskfaktorer' };
         const riskListViewHtml = valda.length === 0
-            ? (typId === 'kund' ? '' : '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>')
+            ? (typId === 'kund' ? '' : (ingaRiskLabels[typId]
+                ? `<div class="riskf-chips"><span class="kyc-chip riskf-chip">${ingaRiskLabels[typId]}</span></div>`
+                : '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>'))
             : valda.map((r, i) => {
                 const uid = `risk-details-${typId}-${i}`;
                 const hasDetails = r.fields['Beskrivning'] || r.fields['Åtgjärd'];
@@ -1757,12 +1760,12 @@ class CustomerCardManager {
 
                 ${this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
                     f['Riskhöjande faktorer övrigt'],
-                    this._riskhojAlternativ?.length ? this._riskhojAlternativ : ['Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer'],
+                    this._riskhojAlternativ?.length ? this._riskhojAlternativ : ['Inga','Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer'],
                     'multi', 'high', 'KYC genomgången - Riskhöjande faktorer övrigt', f['KYC genomgången - Riskhöjande faktorer övrigt'])}
 
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
                     f['Risksänkande faktorer'],
-                    this._risksankAlternativ?.length ? this._risksankAlternativ : ['Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
+                    this._risksankAlternativ?.length ? this._risksankAlternativ : ['Inga','Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
                     'multi', '', 'KYC genomgången - Risksänkande faktorer', f['KYC genomgången - Risksänkande faktorer'])}
 
                 ${this.renderRiskfaktorCard('kommentar-risk', 'Kommentar till riskfaktorerna ovan', 'fa-comment-alt',
@@ -1823,12 +1826,19 @@ class CustomerCardManager {
         const filtAlt = alternativ.filter(a => a !== '---');
 
         const chipClass = chipVariant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
+        const isIngaVal = (id, v) => id && v.length === 1 && String(v[0]).trim().toLowerCase() === 'inga';
+        const ingaLabels = { 'riskhojande-ovrigt': 'Inga övriga riskhöjande faktorer', 'risksankande': 'Inga risksänkande faktorer' };
+        const ingaHtml = ingaLabels[id] && isIngaVal(id, valda)
+            ? `<div class="riskf-chips"><span class="kyc-chip riskf-chip">${ingaLabels[id]}</span></div>`
+            : null;
 
         const viewContent = typ === 'text'
             ? (värde ? `<div class="kyc-richtext">${värde}</div>` : '<span class="missing-data">Ej angiven</span>')
-            : (valda.length
-                ? `<div class="riskf-chips">${valda.map(v => `<span class="${chipClass}">${v}</span>`).join('')}</div>`
-                : '<span class="missing-data">Inga valda</span>');
+            : (ingaHtml
+                ? ingaHtml
+                : valda.length
+                    ? `<div class="riskf-chips">${valda.map(v => `<span class="${chipClass}">${v}</span>`).join('')}</div>`
+                    : '<span class="missing-data">Inga valda</span>');
 
         const editContent = typ === 'text'
             ? `<textarea id="riskf-input-${id}" class="kunduppgifter-input" rows="3">${värde || ''}</textarea>`
@@ -2217,11 +2227,18 @@ class CustomerCardManager {
                     viewEl.innerHTML = värde ? `<div class="kyc-richtext">${värde}</div>` : '<span class="missing-data">Ej angiven</span>';
                 } else {
                     const list = Array.isArray(värde) ? värde : [];
-                    const variant = viewEl.dataset.chipVariant || '';
-                    const cls = variant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
-                    viewEl.innerHTML = list.length
-                        ? `<div class="riskf-chips">${list.map(v => `<span class="${cls}">${v}</span>`).join('')}</div>`
-                        : '<span class="missing-data">Inga valda</span>';
+                    const ingaLabels = { 'riskhojande-ovrigt': 'Inga övriga riskhöjande faktorer', 'risksankande': 'Inga risksänkande faktorer' };
+                    const isIngaVal = list.length === 1 && String(list[0]).trim().toLowerCase() === 'inga';
+                    const ingaLabel = ingaLabels[id];
+                    if (ingaLabel && isIngaVal) {
+                        viewEl.innerHTML = `<div class="riskf-chips"><span class="kyc-chip riskf-chip">${ingaLabel}</span></div>`;
+                    } else {
+                        const variant = viewEl.dataset.chipVariant || '';
+                        const cls = variant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
+                        viewEl.innerHTML = list.length
+                            ? `<div class="riskf-chips">${list.map(v => `<span class="${cls}">${v}</span>`).join('')}</div>`
+                            : '<span class="missing-data">Inga valda</span>';
+                    }
                 }
             }
 
