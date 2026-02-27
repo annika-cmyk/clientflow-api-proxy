@@ -1462,7 +1462,7 @@ class CustomerCardManager {
                 </div>`;
             }).join('');
 
-        const emptyMsg = (valda.length === 0 && valdaHogrisk.length === 0)
+        const emptyMsg = (typId === 'kund' && valda.length === 0 && valdaHogrisk.length === 0)
             ? '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>' : '';
 
         container.innerHTML = `
@@ -2816,8 +2816,12 @@ class CustomerCardManager {
                 <form id="uppdragsavtal-form" onsubmit="return false;">
 
                     <!-- PARTER -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-handshake"></i> Avtalsparter</div>
+                    <div class="uppdrag-section uppdrag-section--card">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-handshake"></i> Avtalsparter</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
                         <div class="uppdrag-parter-grid">
                             <div class="uppdrag-part">
                                 <div class="uppdrag-part-label">Uppdragstagare</div>
@@ -2852,11 +2856,16 @@ class CustomerCardManager {
                                 <input type="number" id="ua-uppsagningstid" class="uppdrag-input" value="${f['Uppsägningstid'] ?? 3}" min="0" placeholder="3">
                             </div>
                         </div>
+                        </div>
                     </div>
 
                     <!-- ARBETET OMFATTAR -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-list-check"></i> Arbetet omfattar följande tjänster</div>
+                    <div class="uppdrag-section uppdrag-section--card is-collapsed">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-list-check"></i> Arbetet omfattar följande tjänster</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
                         <p class="uppdrag-hint">Byrån åtar sig att utföra de tjänster som angetts nedan. Uppdragsavtalet kan fortlöpande utökas eller ändras till sin omfattning.</p>
                         <div class="uppdrag-tjanster-list">
                             ${tjansterDisplay}
@@ -2866,11 +2875,16 @@ class CustomerCardManager {
                             <textarea id="ua-tjanster-ovrigt" class="uppdrag-input uppdrag-textarea" rows="2"
                                 placeholder="Eventuell specificering av uppdraget...">${f['Övrigt uppdrag'] || ''}</textarea>
                         </div>
+                        </div>
                     </div>
 
                     <!-- ERSÄTTNING -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-coins"></i> Ersättning</div>
+                    <div class="uppdrag-section uppdrag-section--card is-collapsed">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-coins"></i> Ersättning</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
                         <div class="uppdrag-checks" style="margin-bottom:1rem;">
                             <label class="uppdrag-check">
                                 <input type="radio" name="ua-ersattningsmodell" id="ua-lopande" value="Löpande räkning"
@@ -2907,11 +2921,16 @@ class CustomerCardManager {
                             <textarea id="ua-arvode-kommentar" class="uppdrag-input uppdrag-textarea" rows="2"
                                 placeholder="T.ex. fast pris enl. tidigare avtal, extra arbete debiteras separat...">${f['Arvodekommentar'] || ''}</textarea>
                         </div>
+                        </div>
                     </div>
 
                     <!-- BETALNINGSVILLKOR -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-file-invoice"></i> Betalningsvillkor</div>
+                    <div class="uppdrag-section uppdrag-section--card is-collapsed">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-file-invoice"></i> Betalningsvillkor</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
                         <p class="uppdrag-hint">Betalning görs mot faktura. Vid för sen betalning utgår dröjsmålsränta enligt räntelagen.</p>
                         <div class="uppdrag-grid">
                             <div class="uppdrag-field">
@@ -2925,6 +2944,7 @@ class CustomerCardManager {
                                 <label>Betalningsvillkor (dagar)</label>
                                 <input type="number" id="ua-betvillkor" class="uppdrag-input" value="${f['Betalningsvillkor'] ?? 10}" placeholder="10">
                             </div>
+                        </div>
                         </div>
                     </div>
 
@@ -3031,8 +3051,12 @@ class CustomerCardManager {
                     </div>
 
                     <!-- SIGNERING -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-signature"></i> Signering & status</div>
+                    <div class="uppdrag-section uppdrag-section--card">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-signature"></i> Signering & status</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
                         <div class="uppdrag-grid">
                             <div class="uppdrag-field">
                                 <label>Status</label>
@@ -3052,6 +3076,7 @@ class CustomerCardManager {
                                 <label>Signerat av (byrå)</label>
                                 <input type="text" id="ua-sign-byra" class="uppdrag-input" value="${f['Signerat av byrå'] || ''}" placeholder="Namn">
                             </div>
+                        </div>
                         </div>
                     </div>
 
@@ -3681,42 +3706,43 @@ class CustomerCardManager {
             'Öppen': '#ef4444',
             'Under utredning': '#f59e0b',
             'Rapporterad till FM': '#8b5cf6',
+            'Rapporterad till Finanspolisen (FM)': '#8b5cf6',
             'Avslutad': '#10b981'
         }[fields['Status']] || '#ef4444';
 
-        // Fältnamn matchar Airtable: Date, Date 2, Förklararing, Typ av avvikelse
         const beskrivning = fields['Förklararing'] || '';
         const datum = fields['Date'] || '-';
         const rapporteratDatum = fields['Date 2'] || '';
+        const foretag = fields['Företagsnamn'] || '';
+        const status = fields['Status'] || 'Öppen';
 
         return `
-            <div class="note-card" style="border-left: 4px solid ${statusColor};">
-                <div class="note-header">
-                    <div class="note-header-left">
-                        <h4><i class="fas fa-exclamation-circle" style="color:${statusColor};"></i> ${fields['Typ av avvikelse'] || 'Avvikelse'}</h4>
-                        <span class="note-date"><i class="fas fa-calendar"></i> ${datum}</span>
+            <div class="avvikelse-card" style="--avvikelse-color: ${statusColor};">
+                <div class="avvikelse-card-header">
+                    <div class="avvikelse-card-title">
+                        <span class="avvikelse-card-icon"><i class="fas fa-exclamation-circle"></i></span>
+                        <h4>${fields['Typ av avvikelse'] || 'Avvikelse'}</h4>
                     </div>
-                    <span style="background:${statusColor}20; color:${statusColor}; border:1px solid ${statusColor}40; padding:3px 10px; border-radius:12px; font-size:0.8rem; font-weight:600;">
-                        ${fields['Status'] || 'Öppen'}
-                    </span>
+                    <span class="avvikelse-status-badge" style="background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${status}</span>
+                </div>
+                <div class="avvikelse-card-meta">
+                    <span class="avvikelse-datum"><i class="fas fa-calendar-alt"></i> ${datum}</span>
+                    ${foretag ? `<span class="avvikelse-foretag"><i class="fas fa-building"></i> ${this._esc(foretag)}</span>` : ''}
                 </div>
                 ${beskrivning ? `
-                <div class="note-content">
-                    <h5><i class="fas fa-align-left"></i> Beskrivning / Förklaring</h5>
-                    <p>${beskrivning.replace(/\n/g, '<br>')}</p>
+                <div class="avvikelse-beskrivning">
+                    <h5 class="avvikelse-section-label"><i class="fas fa-align-left"></i> Beskrivning / Förklaring</h5>
+                    <div class="avvikelse-beskrivning-text">${beskrivning.replace(/\n/g, '<br>')}</div>
                 </div>` : ''}
                 ${rapporteratDatum ? `
-                <div class="note-content">
-                    <h5><i class="fas fa-university"></i> Rapporterad till Finanspolisen</h5>
+                <div class="avvikelse-fm-sektion">
+                    <h5 class="avvikelse-section-label"><i class="fas fa-university"></i> Rapporterad till Finanspolisen</h5>
                     <p>${rapporteratDatum}</p>
                 </div>` : ''}
-                <div class="note-footer">
-                    <span style="color:#94a3b8; font-size:0.85rem;">${fields['Företagsnamn'] || ''}</span>
-                    <div class="note-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="customerCardManager.editAvvikelse('${avvikelse.id}')">
-                            <i class="fas fa-edit"></i> Redigera
-                        </button>
-                    </div>
+                <div class="avvikelse-card-footer">
+                    <button type="button" class="btn btn-avvikelse-edit" onclick="customerCardManager.editAvvikelse('${avvikelse.id}')">
+                        <i class="fas fa-pencil-alt"></i> Redigera
+                    </button>
                 </div>
             </div>
         `;
