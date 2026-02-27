@@ -218,6 +218,28 @@ class CustomerCardManager {
         });
     }
 
+    switchToTab(targetTab) {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+        const button = document.querySelector(`.tab-button[data-tab="${targetTab}"]`);
+        if (!button) return;
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        tabPanes.forEach(pane => {
+            pane.classList.remove('active');
+            pane.style.display = 'none';
+            pane.style.visibility = 'hidden';
+            pane.style.opacity = '0';
+        });
+        button.classList.add('active');
+        const targetPane = document.getElementById(targetTab);
+        if (targetPane) {
+            targetPane.classList.add('active');
+            targetPane.style.display = 'block';
+            targetPane.style.visibility = 'visible';
+            targetPane.style.opacity = '1';
+        }
+    }
+
     setupRollerEventDelegation() {
         document.addEventListener('mousedown', (e) => {
             const pepBtn = e.target.closest('.btn-pep-screen');
@@ -326,7 +348,14 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
-                this.loadTabContent('foretagsinformation'); // Load first tab by default
+                const urlParams = new URLSearchParams(window.location.search);
+                const noteId = urlParams.get('note');
+                const hash = (window.location.hash || '').replace('#', '');
+                const shouldOpenAnteckningar = noteId || hash === 'anteckningar';
+                const shouldOpenAvvikelser = hash === 'avvikelser';
+                const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : 'foretagsinformation');
+                this.switchToTab(initialTab);
+                this.loadTabContent(initialTab);
                 
                 // Force visibility after data is loaded
                 setTimeout(() => {
@@ -3202,21 +3231,19 @@ class CustomerCardManager {
     }
 
     async skickaInleed(avtalId) {
-        // Visa modal för att välja signerare
         const kontaktPersoner = this._kontaktPersoner || [];
+        const valjbara = kontaktPersoner.filter(p => p.epost);
         const existing = document.getElementById('inleed-modal');
         if (existing) existing.remove();
 
-        const personOptions = kontaktPersoner.length > 0
-            ? kontaktPersoner.map((p, idx) => `
-                <label class="inleed-person-option ${!p.epost ? 'inleed-person-incomplete' : ''}">
-                    <input type="radio" name="signerare-choice" value="${idx}" ${idx === 0 ? 'checked' : ''} ${!p.epost ? 'disabled' : ''}>
+        const personOptions = valjbara.length > 0
+            ? valjbara.map((p, idx) => `
+                <label class="inleed-person-option">
+                    <input type="checkbox" name="signerare-choice" value="${idx}">
                     <div class="inleed-person-info">
                         <span class="inleed-person-name">${this._esc(p.namn)}</span>
                         ${(p.roller?.length || p.roll) ? `<span class="inleed-person-roll">${this._esc((p.roller || (p.roll ? [p.roll] : [])).join(', '))}</span>` : ''}
-                        ${p.epost
-                            ? `<span class="inleed-person-contact"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>`
-                            : `<span class="inleed-person-warn"><i class="fas fa-exclamation-triangle"></i> E-post saknas — kan ej väljas</span>`}
+                        <span class="inleed-person-contact"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>
                         ${p.personnr ? `<span class="inleed-person-contact"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : ''}
                     </div>
                 </label>`).join('')
@@ -3232,88 +3259,46 @@ class CustomerCardManager {
                     <button class="modal-close" onclick="document.getElementById('inleed-modal').remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body">
-                    ${kontaktPersoner.length > 0 ? `
+                    ${valjbara.length > 0 ? `
                         <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
-                            Välj vilken kontaktperson som ska signera uppdragsavtalet via BankID.
-                            Personen får ett e-postmeddelande med signeringslänk.
+                            Välj vilka kontaktpersoner som ska signera uppdragsavtalet via BankID.
+                            De får ett e-postmeddelande med signeringslänk.
                         </p>
                         <div class="inleed-person-list">${personOptions}</div>
-                        <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #e2e8f0;">
-                            <p style="color:#64748b;font-size:0.82rem;margin-bottom:0.5rem;">Eller ange en person manuellt:</p>
                     ` : `
                         <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
-                            Inga kontaktpersoner är registrerade på Roller-kortet. Fyll i mottagarens uppgifter:
+                            Inga kontaktpersoner med e-post är registrerade på Roller-kortet. Lägg till kontaktpersoner med e-postadress först.
                         </p>
                     `}
-                        <div class="inleed-manual-form ${kontaktPersoner.length > 0 ? 'inleed-manual-collapsed' : ''}">
-                            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-                                <div class="form-group" style="flex:1;min-width:180px;">
-                                    <label>Namn</label>
-                                    <input type="text" id="inleed-namn" class="form-control" placeholder="Förnamn Efternamn">
-                                </div>
-                                <div class="form-group" style="flex:1;min-width:180px;">
-                                    <label>E-postadress</label>
-                                    <input type="email" id="inleed-epost" class="form-control" placeholder="epost@foretag.se">
-                                </div>
-                            </div>
-                            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
-                                <div class="form-group" style="flex:1;min-width:180px;">
-                                    <label>Personnummer <span style="color:#94a3b8;font-size:0.82em">(BankID)</span></label>
-                                    <input type="text" id="inleed-personnr" class="form-control" placeholder="YYYYMMDD-XXXX">
-                                </div>
-                                <div class="form-group" style="flex:1;min-width:180px;">
-                                    <label>Telefonnummer <span style="color:#94a3b8;font-size:0.82em">(SMS-avisering)</span></label>
-                                    <input type="text" id="inleed-telefon" class="form-control" placeholder="+46701234567">
-                                </div>
-                            </div>
-                        </div>
-                    ${kontaktPersoner.length > 0 ? '</div>' : ''}
                     <div id="inleed-status-msg" style="display:none;margin-top:1rem;padding:0.75rem;border-radius:8px;font-size:0.9rem;"></div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inleed-modal').remove()">Avbryt</button>
-                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')">
+                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')" ${valjbara.length === 0 ? 'disabled' : ''}>
                         <i class="fas fa-paper-plane"></i> Skicka för signering
                     </button>
                 </div>
             </div>`;
         document.body.appendChild(modal);
 
-        // Fyll i manuellt formulär automatiskt om person väljs
-        const radios = modal.querySelectorAll('input[name="signerare-choice"]');
-        radios.forEach(r => r.addEventListener('change', () => {
-            const idx = parseInt(r.value);
-            const p = kontaktPersoner[idx];
-            if (p) {
-                document.getElementById('inleed-namn').value = p.namn || '';
-                document.getElementById('inleed-epost').value = p.epost || '';
-                document.getElementById('inleed-personnr').value = p.personnr || '';
-                document.getElementById('inleed-telefon').value = p.telefon || '';
-            }
-        }));
-
-        // Fyll i automatiskt om det finns en vald person
-        if (kontaktPersoner.length > 0) {
-            const firstEnabled = kontaktPersoner.findIndex(p => p.epost);
-            if (firstEnabled >= 0) {
-                const p = kontaktPersoner[firstEnabled];
-                document.getElementById('inleed-namn').value = p.namn || '';
-                document.getElementById('inleed-epost').value = p.epost || '';
-                document.getElementById('inleed-personnr').value = p.personnr || '';
-                const radio = modal.querySelector(`input[value="${firstEnabled}"]`);
-                if (radio) radio.checked = true;
-            }
+        this._valjbaraSignerare = valjbara;
+        if (valjbara.length > 0) {
+            const checkboxes = modal.querySelectorAll('input[name="signerare-choice"]');
+            checkboxes.forEach((cb, i) => { cb.value = i; });
+            if (checkboxes[0]) checkboxes[0].checked = true;
         }
     }
 
     async _genomforSignering(avtalId) {
-        const namn = document.getElementById('inleed-namn')?.value.trim();
-        const epost = document.getElementById('inleed-epost')?.value.trim();
-        const personnr = document.getElementById('inleed-personnr')?.value.trim();
-        const telefon = document.getElementById('inleed-telefon')?.value.trim();
+        const valjbara = this._valjbaraSignerare || [];
+        const checked = Array.from(document.querySelectorAll('input[name="signerare-choice"]:checked')) || [];
+        const signerare = checked
+            .map(cb => valjbara[parseInt(cb.value, 10)])
+            .filter(p => p && p.epost)
+            .map(p => ({ namn: p.namn || '', epost: p.epost || '', personnr: p.personnr || '', telefon: p.telefon || '' }));
 
-        if (!namn || !epost) {
-            this._showInleedStatus('Fyll i namn och e-postadress för signeraren.', 'error');
+        if (signerare.length === 0) {
+            this._showInleedStatus('Välj minst en kontaktperson att skicka till.', 'error');
             return;
         }
 
@@ -3328,7 +3313,7 @@ class CustomerCardManager {
             const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/skicka-for-signering`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ signerare: { namn, epost, personnr, telefon } })
+                body: JSON.stringify({ signerare })
             });
             const data = await resp.json();
             if (!resp.ok) {
@@ -3339,8 +3324,8 @@ class CustomerCardManager {
             this._showInleedStatus(`✅ ${data.message}`, 'success');
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check"></i> Skickat!'; }
             setTimeout(() => document.getElementById('inleed-modal')?.remove(), 2500);
-            this.showNotification(`Avtalet skickat till ${epost} för BankID-signering`, 'success');
-            // Ladda om uppdragsavtalet för att visa ny status
+            const epostLista = signerare.map(s => s.epost).join(', ');
+            this.showNotification(`Avtalet skickat till ${epostLista} för BankID-signering`, 'success');
             this.loadUppdragsavtal();
         } catch (e) {
             this._showInleedStatus(`Fel: ${e.message}`, 'error');
@@ -3428,6 +3413,21 @@ class CustomerCardManager {
                     </div>
                 </div>
             </div>`;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const noteId = urlParams.get('note');
+        if (noteId) {
+            requestAnimationFrame(() => {
+                const details = document.getElementById(`note-details-${noteId}`);
+                const card = document.getElementById(`note-${noteId}`);
+                if (details && card && details.style.display === 'none') {
+                    this.toggleNote(noteId);
+                }
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+        }
     }
 
     displayEmptyNotes() {
@@ -3462,7 +3462,7 @@ class CustomerCardManager {
         const content = fields['Notes'] || '';
         const person = fields['Person'] || '';
         const attachments = fields['Attachments'] || [];
-        const todoList = this.createTodoList(fields);
+        const todoList = this.createTodoList(fields, noteId);
         const attachmentsHTML = this.createAttachmentsHTML(attachments);
 
         const hasDetails = content || person || todoList || attachments.length > 0;
@@ -3504,7 +3504,7 @@ class CustomerCardManager {
         card.querySelector('.note-chevron')?.classList.toggle('note-chevron--open', !isOpen);
     }
 
-    createTodoList(fields) {
+    createTodoList(fields, noteId) {
         const todos = [];
         for (let i = 1; i <= 8; i++) {
             const todo = fields[`ToDo${i}`];
@@ -3519,20 +3519,31 @@ class CustomerCardManager {
             return '';
         }
         
+        const statusOpts = [
+            { v: '', l: 'Välj...' },
+            { v: 'Att göra', l: 'Att göra' },
+            { v: 'Pågående', l: 'Pågående' },
+            { v: 'Akut', l: 'Akut' },
+            { v: 'Klart', l: 'Klart' }
+        ];
+        
         const todoItems = todos.map(item => {
             const statusIcon = this.getStatusIcon(item.status);
             const statusClass = this.getStatusClass(item.status);
+            const opts = statusOpts.map(o => `<option value="${o.v}" ${item.status === o.v ? 'selected' : ''}>${o.l}</option>`).join('');
             return `
-                <div class="todo-item">
+                <div class="todo-item todo-item-editable" data-note-id="${noteId}" data-index="${item.index}">
                     <span class="todo-status ${statusClass}">${statusIcon}</span>
-                    <span class="todo-text">${item.todo.replace(/\n/g, '<br>')}</span>
+                    <span class="todo-text">${this._esc(item.todo).replace(/\n/g, '<br>')}</span>
+                    <select class="todo-status-select-inline" onchange="customerCardManager.updateTaskStatus('${noteId}', ${item.index}, this.value)" title="Ändra status">
+                        ${opts}
+                    </select>
                 </div>
             `;
         }).join('');
         
         return `
-            <div class="note-todo-section">
-                <h5><i class="fas fa-tasks"></i> Att göra-lista</h5>
+            <div class="note-todo-inline">
                 <div class="todo-list">
                     ${todoItems}
                 </div>
@@ -3542,10 +3553,12 @@ class CustomerCardManager {
 
     getStatusIcon(status) {
         if (!status) return '<i class="fas fa-circle" style="color: #94a3b8;"></i>';
-        
+
         const statusLower = status.toLowerCase();
         if (statusLower === 'klart' || statusLower === 'klar') {
             return '<i class="fas fa-check-circle" style="color: #10b981;"></i>';
+        } else if (statusLower === 'akut') {
+            return '<i class="fas fa-exclamation-circle" style="color: #dc2626;"></i>';
         } else if (statusLower === 'pågående') {
             return '<i class="fas fa-clock" style="color: #f59e0b;"></i>';
         } else if (statusLower === 'att göra') {
@@ -3556,10 +3569,12 @@ class CustomerCardManager {
 
     getStatusClass(status) {
         if (!status) return 'status-unknown';
-        
+
         const statusLower = status.toLowerCase();
         if (statusLower === 'klart' || statusLower === 'klar') {
             return 'status-done';
+        } else if (statusLower === 'akut') {
+            return 'status-akut';
         } else if (statusLower === 'pågående') {
             return 'status-in-progress';
         } else if (statusLower === 'att göra') {
@@ -4107,6 +4122,7 @@ class CustomerCardManager {
                                 <option value="">Välj status...</option>
                                 <option value="Att göra">Att göra</option>
                                 <option value="Pågående">Pågående</option>
+                                <option value="Akut">Akut</option>
                                 <option value="Klart">Klart</option>
                             </select>
                         </div>
@@ -4146,6 +4162,7 @@ class CustomerCardManager {
                         <option value="">Välj status...</option>
                         <option value="Att göra">Att göra</option>
                         <option value="Pågående">Pågående</option>
+                        <option value="Akut">Akut</option>
                         <option value="Klart">Klart</option>
                     </select>
                 </div>
@@ -4291,6 +4308,7 @@ class CustomerCardManager {
                                 <option value="">Välj status...</option>
                                 <option value="Att göra" ${status === 'Att göra' ? 'selected' : ''}>Att göra</option>
                                 <option value="Pågående" ${status === 'Pågående' ? 'selected' : ''}>Pågående</option>
+                                <option value="Akut" ${status === 'Akut' ? 'selected' : ''}>Akut</option>
                                 <option value="Klart" ${status === 'Klart' ? 'selected' : ''}>Klart</option>
                             </select>
                         </div>
@@ -4397,6 +4415,28 @@ class CustomerCardManager {
             this.loadNotes();
         } catch (error) {
             console.error('❌ Fel vid uppdatering av anteckning:', error);
+            this.showNotification(`Kunde inte uppdatera: ${error.message}`, 'error');
+        }
+    }
+
+    async updateTaskStatus(noteId, index, status) {
+        const token = localStorage.getItem('authToken');
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        try {
+            const fields = { [`Status${index}`]: status || '' };
+            const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            this.showNotification('Status uppdaterad', 'success');
+            this.loadNotes();
+        } catch (error) {
+            console.error('❌ Fel vid uppdatering av task:', error);
             this.showNotification(`Kunde inte uppdatera: ${error.message}`, 'error');
         }
     }

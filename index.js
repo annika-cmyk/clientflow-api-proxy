@@ -2805,6 +2805,75 @@ app.get('/api/auth/test-users', async (req, res) => {
   }
 });
 
+// GET /api/kunddata/without-uppdragsavtal - Kunder som saknar uppdragsavtal (måste komma före /api/kunddata/:id)
+app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+
+    let filterFormula = '';
+    switch (userData.role) {
+      case 'ClientFlowAdmin':
+        break;
+      case 'Ledare':
+        if (userData.byraId) {
+          const num = parseInt(userData.byraId);
+          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
+        } else {
+          return res.json({ records: [] });
+        }
+        break;
+      case 'Anställd':
+        if (userData.id) filterFormula = `SEARCH("${userData.id}", {Användare})`;
+        else return res.json({ records: [] });
+        break;
+      default:
+        return res.json({ records: [] });
+    }
+
+    let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    if (filterFormula) kundUrl += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
+
+    const [kundRes, avtalRes] = await Promise.all([
+      axios.get(kundUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` }, timeout: 15000 }),
+      axios.get(`https://api.airtable.com/v0/${airtableBaseId}/tblpKIMpde6sFFqDH?maxRecords=500`, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` }, timeout: 15000 })
+    ]);
+
+    const kundRecords = kundRes.data.records || [];
+    const avtalRecords = avtalRes.data.records || [];
+    const customerIdsWithAvtal = new Set();
+    for (const a of avtalRecords) {
+      const kid = a.fields?.KundID;
+      if (kid) (Array.isArray(kid) ? kid : [kid]).forEach(id => customerIdsWithAvtal.add(id));
+    }
+
+    const utanUppdragsavtal = kundRecords
+      .filter(r => !customerIdsWithAvtal.has(r.id))
+      .map(r => ({
+        id: r.id,
+        namn: r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas',
+        organisationsnummer: r.fields?.Orgnr || r.fields?.Organisationsnummer || '',
+        bolagsform: r.fields?.Bolagsform || ''
+      }))
+      .sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
+
+    res.json({ records: utanUppdragsavtal });
+  } catch (error) {
+    console.error('❌ Fel vid hämtning av kunder utan uppdragsavtal:', error.message);
+    res.status(500).json({ error: error.message, records: [] });
+  }
+});
+
 // GET /api/kunddata/:id - Hämta en specifik kund baserat på ID (måste komma före /api/kunddata)
 app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
@@ -5360,6 +5429,73 @@ app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/my-tasks – Användarens oklara uppgifter (från anteckningar)
+app.get('/api/my-tasks', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const NOTES_TABLE = 'tblXswCwopx7l02Mu';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = userData.byraId || userData.byraIds?.[0] || '';
+
+    if (!byraId) {
+      return res.json({ tasks: [] });
+    }
+
+    const notesFilter = isNaN(parseInt(byraId)) ? `{Byrå ID}="${String(byraId).replace(/"/g, '\\"')}"` : `{Byrå ID}=${byraId}`;
+    const notesUrl = `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}?filterByFormula=${encodeURIComponent(notesFilter)}&maxRecords=200`;
+    const notesRes = await axios.get(notesUrl, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` }
+    });
+    const notes = notesRes.data.records || [];
+
+    const orgNrToCustomer = {};
+    const custFilter = isNaN(parseInt(byraId)) ? `{Byrå ID}="${String(byraId).replace(/"/g, '\\"')}"` : `{Byrå ID}=${byraId}`;
+    const custUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(custFilter)}&maxRecords=500&fields[]=Namn&fields[]=Orgnr`;
+    try {
+      const custRes = await axios.get(custUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      for (const r of custRes.data.records || []) {
+        const o = (r.fields?.Orgnr || '').replace(/\D/g, '');
+        if (o) orgNrToCustomer[o] = { id: r.id, namn: r.fields?.Namn || '' };
+      }
+    } catch (_) {}
+
+    const tasks = [];
+    const userName = (userData.name || '').trim();
+    for (const note of notes) {
+      const f = note.fields || {};
+      const noteName = (f['Name'] || '').trim();
+      if (userName && noteName && noteName !== userName) continue;
+      const orgnr = String(f['Orgnr'] || '').replace(/\D/g, '');
+      const customer = orgnr ? orgNrToCustomer[orgnr] : null;
+      for (let i = 1; i <= 8; i++) {
+        const todo = f[`ToDo${i}`];
+        const status = (f[`Status${i}`] || '').trim();
+        if (!todo || (typeof todo === 'string' && !todo.trim())) continue;
+        const statusLower = status.toLowerCase();
+        if (statusLower === 'klart' || statusLower === 'klar') continue;
+        tasks.push({
+          noteId: note.id,
+          index: i,
+          text: typeof todo === 'string' ? todo.trim() : String(todo),
+          status: status || 'Att göra',
+          customerId: customer?.id || null,
+          customerName: customer?.namn || f['Företagsnamn'] || 'Okänd kund',
+          datum: f['Datum'] || ''
+        });
+      }
+    }
+    tasks.sort((a, b) => (b.datum || '').localeCompare(a.datum || ''));
+    res.json({ tasks });
+  } catch (error) {
+    console.error('❌ GET /api/my-tasks:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // DELETE /api/notes/:id – Ta bort anteckning
 app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
   try {
@@ -6607,15 +6743,16 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
 // ============================================================
 
 // POST /api/uppdragsavtal/:id/skicka-for-signering
-// Body: { signerare: { namn, epost, personnr, telefon? } }
-// Skickar till BÅDE kund OCH inloggad konsult – båda måste signera
+// Body: { signerare: { namn, epost, personnr, telefon? } | [{ namn, epost, personnr, telefon? }, ...] }
+// Skickar till BÅDE kund OCH inloggad konsult – alla måste signera
 app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { signerare } = req.body; // { namn, epost, personnr, telefon }
+    let { signerare } = req.body;
+    const signerareList = Array.isArray(signerare) ? signerare : (signerare && signerare.namn && signerare.epost ? [signerare] : []);
 
-    if (!signerare || !signerare.namn || !signerare.epost) {
-      return res.status(400).json({ error: 'Signerare (kund) saknar namn eller e-post.' });
+    if (signerareList.length === 0 || signerareList.some(s => !s.namn || !s.epost)) {
+      return res.status(400).json({ error: 'Välj minst en signerare med namn och e-post.' });
     }
 
     const docsignApiKey = process.env.DOCSIGN_API_KEY;
@@ -6682,33 +6819,36 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     const konsultPartyId = konsultPartyRes.data.party_id;
     console.log('✅ Konsult skapad som undertecknare, party_id:', konsultPartyId);
 
-    const kundPartyPayload = {
-      api_key: docsignApiKey,
-      name: signerare.namn,
-      email: signerare.epost,
-      company: kundnamn,
-      sign_method: 'bankid',
-      external_id: `kund-${(signerare.personnr || 'x')}-${(signerare.epost || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}`,
-      debug: false
-    };
-    if (signerare.telefon) kundPartyPayload.phone_number = signerare.telefon;
-    console.log('📤 Skapar kund som undertecknare i Inleed:', kundPartyPayload.name, kundPartyPayload.email);
-    const kundPartyRes = await axios.post('https://docsign.se/api/parties', kundPartyPayload, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!kundPartyRes.data?.success) {
-      console.error('❌ Inleed kund-party fel:', kundPartyRes.data);
-      return res.status(500).json({ error: 'Kunde inte skapa kund som undertecknare.', details: kundPartyRes.data });
+    const kundPartyIds = [];
+    for (const s of signerareList) {
+      const kundPartyPayload = {
+        api_key: docsignApiKey,
+        name: s.namn,
+        email: s.epost,
+        company: kundnamn,
+        sign_method: 'bankid',
+        external_id: `kund-${(s.personnr || 'x')}-${(s.epost || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}-${Date.now()}`,
+        debug: false
+      };
+      if (s.telefon) kundPartyPayload.phone_number = s.telefon;
+      console.log('📤 Skapar kund som undertecknare i Inleed:', kundPartyPayload.name, kundPartyPayload.email);
+      const kundPartyRes = await axios.post('https://docsign.se/api/parties', kundPartyPayload, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!kundPartyRes.data?.success) {
+        console.error('❌ Inleed kund-party fel:', kundPartyRes.data);
+        return res.status(500).json({ error: `Kunde inte skapa ${s.namn} som undertecknare.`, details: kundPartyRes.data });
+      }
+      kundPartyIds.push(kundPartyRes.data.party_id);
     }
-    const kundPartyId = kundPartyRes.data.party_id;
-    console.log('✅ Kund skapad som undertecknare, party_id:', kundPartyId);
+    console.log('✅ Kundsignerare skapade:', kundPartyIds);
 
-    // 4. Skapa dokument i Inleed med båda parter – konsult först, sedan kund
+    // 4. Skapa dokument i Inleed med alla parter – konsult först, sedan alla kunder
     const pdfBase64 = pdfBuffer.toString('base64');
     const docPayload = {
       api_key: docsignApiKey,
       name: `Uppdragsavtal - ${kundnamn}`,
-      parties: [konsultPartyId, kundPartyId],
+      parties: [konsultPartyId, ...kundPartyIds],
       send_reminders: true,
       send_receipt: true,
       attachments: [{
@@ -6717,7 +6857,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       }]
     };
 
-    console.log('📤 Skapar dokument i Inleed för:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Konsult:', konsultPartyId, 'Kund:', kundPartyId);
+    console.log('📤 Skapar dokument i Inleed för:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Konsult:', konsultPartyId, 'Kunder:', kundPartyIds);
 
     const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
       headers: { 'Content-Type': 'application/json' }
@@ -6761,8 +6901,8 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     res.json({
       success: true,
       document_id: documentId,
-      party_ids: [konsultPartyId, kundPartyId],
-      message: `Uppdragsavtalet har skickats till konsult (${inloggedUser.email}) och kund (${signerare.epost}) f\u00f6r BankID-signering.`
+      party_ids: [konsultPartyId, ...kundPartyIds],
+      message: `Uppdragsavtalet har skickats till konsult (${inloggedUser.email}) och ${signerareList.length} kundsignerare f\u00f6r BankID-signering.`
     });
 
   } catch (error) {

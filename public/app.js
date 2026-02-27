@@ -26,6 +26,27 @@ class ClientFlowApp {
                 if (e.key === 'authToken') this.loadRiskbedomningList();
             });
         }
+        // Dashboard: load mina uppgifter
+        if (document.getElementById('my-tasks-list')) {
+            this.loadMyTasks();
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'authToken') this.loadMyTasks();
+            });
+        }
+        // Dashboard: load kunder som saknar uppdragsavtal
+        if (document.getElementById('uppdragsavtal-list')) {
+            this.loadUppdragsavtalList();
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'authToken') this.loadUppdragsavtalList();
+            });
+        }
+        // Dashboard: load avvikelser
+        if (document.getElementById('avvikelser-list')) {
+            this.loadAvvikelserList();
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'authToken') this.loadAvvikelserList();
+            });
+        }
     }
 
     initNavigation() {
@@ -69,6 +90,18 @@ class ClientFlowApp {
         const refreshRiskbedomning = document.getElementById('refresh-riskbedomning');
         if (refreshRiskbedomning) {
             refreshRiskbedomning.addEventListener('click', () => this.loadRiskbedomningList());
+        }
+        const refreshMyTasks = document.getElementById('refresh-my-tasks');
+        if (refreshMyTasks) {
+            refreshMyTasks.addEventListener('click', () => this.loadMyTasks());
+        }
+        const refreshUppdragsavtal = document.getElementById('refresh-uppdragsavtal');
+        if (refreshUppdragsavtal) {
+            refreshUppdragsavtal.addEventListener('click', () => this.loadUppdragsavtalList());
+        }
+        const refreshAvvikelser = document.getElementById('refresh-avvikelser');
+        if (refreshAvvikelser) {
+            refreshAvvikelser.addEventListener('click', () => this.loadAvvikelserList());
         }
 
         // Add real-time validation for organization number
@@ -330,6 +363,228 @@ class ClientFlowApp {
                     <i class="fas fa-exclamation-circle"></i>
                     <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
                 </div>`;
+        }
+    }
+
+    async loadUppdragsavtalList() {
+        const container = document.getElementById('uppdragsavtal-list');
+        if (!container) return;
+
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+
+        try {
+            const response = await fetch(`${this.baseUrl}/api/kunddata/without-uppdragsavtal`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const utanUppdragsavtal = data.records || [];
+
+            if (utanUppdragsavtal.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Alla kunder har uppdragsavtal.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${utanUppdragsavtal.map(c => `
+                        <a href="kundkort.html?id=${c.id}#uppdragsavtal" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(c.namn)}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
+                                ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
+                            </div>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>
+                    `).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av kunder utan uppdragsavtal:', error);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadAvvikelserList() {
+        const container = document.getElementById('avvikelser-list');
+        if (!container) return;
+
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se avvikelser.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+
+        try {
+            const [avvikelserRes, kunddataRes] = await Promise.all([
+                fetch(`${this.baseUrl}/api/avvikelser?byraOnly=1`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${this.baseUrl}/api/kunddata`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({})
+                })
+            ]);
+
+            if (!avvikelserRes.ok) throw new Error(`Avvikelser HTTP ${avvikelserRes.status}`);
+            const avvikelserData = await avvikelserRes.json();
+            const avvikelser = avvikelserData.avvikelser || [];
+
+            const orgNrToId = {};
+            if (kunddataRes.ok) {
+                const kd = await kunddataRes.json();
+                const records = (kd.success && kd.data) ? kd.data : [];
+                records.forEach(r => {
+                    const orgnr = (r.fields?.Orgnr || r.fields?.Organisationsnummer || '').replace(/\D/g, '');
+                    if (orgnr && r.id) orgNrToId[orgnr] = r.id;
+                });
+            }
+
+            const statusColors = { 'Öppen': '#ef4444', 'Under utredning': '#f59e0b', 'Rapporterad till FM': '#8b5cf6', 'Rapporterad till Finanspolisen (FM)': '#8b5cf6', 'Avslutad': '#10b981' };
+
+            if (avvikelser.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga avvikelser registrerade.</p>
+                    </div>`;
+                return;
+            }
+
+            const rows = avvikelser.map(a => {
+                const f = a.fields || {};
+                const orgnr = String(f.orgnr || '').replace(/\D/g, '');
+                const customerId = orgnr ? orgNrToId[orgnr] : null;
+                const foretag = f['Företagsnamn'] || 'Okänt företag';
+                const typ = f['Typ av avvikelse'] || 'Avvikelse';
+                const datum = f['Date'] || '-';
+                const status = f['Status'] || 'Öppen';
+                const statusColor = statusColors[status] || '#ef4444';
+                const href = customerId ? `kundkort.html?id=${customerId}#avvikelser` : 'avvikelser.html';
+                return `
+                    <a href="${href}" class="dashboard-row-link avvikelse-dashboard-row ${!customerId ? 'dashboard-avvikelse-ext' : ''}" ${!customerId ? 'target="_blank"' : ''}>
+                        <span class="avvikelse-dash-kund"><i class="fas fa-building"></i> ${this.escapeHtml(foretag)}</span>
+                        <span class="avvikelse-dash-typ">${this.escapeHtml(typ)}</span>
+                        <span class="avvikelse-dash-datum">${this.escapeHtml(datum)}</span>
+                        <span class="avvikelse-dash-status" style="background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">${this.escapeHtml(status)}</span>
+                        <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                    </a>`;
+            }).join('');
+
+            container.innerHTML = `<div class="kundlista-table">${rows}</div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av avvikelser:', error);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda avvikelser. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadMyTasks() {
+        const container = document.getElementById('my-tasks-list');
+        if (!container) return;
+
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            container.innerHTML = `<div class="kundlista-empty"><p>Logga in för att se dina uppgifter.</p></div>`;
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.baseUrl}/api/my-tasks`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const tasks = data.tasks || [];
+
+            if (tasks.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga oklara uppgifter.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="my-tasks-list">
+                    ${tasks.map(t => `
+                        <div class="dashboard-row-link my-task-row" data-note-id="${t.noteId}" data-index="${t.index}">
+                            <label class="my-task-checkbox-wrap" onclick="event.stopPropagation()">
+                                <input type="checkbox" class="my-task-checkbox" title="Markera som klar" ${!t.noteId ? 'disabled' : ''}>
+                            </label>
+                            <a href="${t.customerId && t.noteId ? `kundkort.html?id=${t.customerId}&note=${t.noteId}#anteckningar` : t.customerId ? `kundkort.html?id=${t.customerId}#anteckningar` : '#'}" class="my-task-link" ${!t.customerId ? 'style="pointer-events:none"' : ''}>
+                                ${(t.status || '').toLowerCase() === 'akut' ? '<span class="my-task-akut" title="Akut"><i class="fas fa-exclamation-circle"></i></span>' : ''}
+                                <span class="my-task-text">${this.escapeHtml(t.text)}</span>
+                                <span class="my-task-meta">${this.escapeHtml(t.customerName)}${t.datum ? ` ${this.escapeHtml(t.datum)}` : ''}</span>
+                                <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                            </a>
+                        </div>
+                    `).join('')}
+                </div>`;
+            container.querySelectorAll('.my-task-checkbox').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    const row = e.target.closest('.my-task-row');
+                    if (!row || !e.target.checked) return;
+                    const noteId = row.dataset.noteId;
+                    const index = row.dataset.index;
+                    if (noteId && index) this.updateTaskStatus(noteId, parseInt(index, 10));
+                });
+            });
+        } catch (error) {
+            console.error('Fel vid laddning av mina uppgifter:', error);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda uppgifterna.</p>
+                </div>`;
+        }
+    }
+
+    async updateTaskStatus(noteId, index) {
+        const token = localStorage.getItem('authToken');
+        if (!token) return;
+        try {
+            const response = await fetch(`${this.baseUrl}/api/notes/${noteId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: { [`Status${index}`]: 'Klart' } })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            this.loadMyTasks();
+        } catch (error) {
+            console.error('Fel vid klarmarkering:', error);
         }
     }
 

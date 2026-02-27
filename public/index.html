@@ -23,6 +23,67 @@
                     </div>
                 </header>
 
+                <!-- Rad 1: Företagssök (vänster) + Mina uppgifter (höger) -->
+                <div class="dashboard-cards-row">
+                <!-- Företagssök -->
+                <section class="dashboard-section">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header">
+                            <h2><i class="fas fa-search"></i> Företagssök</h2>
+                        </div>
+                        <p class="dashboard-card-desc">Sök upp ett företag via organisationsnummer för att hämta uppgifter från Bolagsverket och spara som lead.</p>
+                        <section class="search-section">
+                            <div class="search-card">
+                                <form id="search-form" class="search-form">
+                                    <div class="form-group">
+                                        <label for="org-number">Organisationsnummer</label>
+                                        <div class="search-input-row">
+                                            <input
+                                                type="text"
+                                                id="org-number"
+                                                name="org-number"
+                                                placeholder="t.ex. 556722-3705"
+                                                pattern="[0-9\-]{8,12}"
+                                                required
+                                            >
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-search"></i>
+                                                Hämta företagsdata
+                                            </button>
+                                            <button type="button" id="clear-search" class="btn btn-secondary">
+                                                <i class="fas fa-times"></i>
+                                                Rensa
+                                            </button>
+                                        </div>
+                                        <small>Format: 10 siffror, bindestreck tillåtna</small>
+                                    </div>
+                                </form>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <!-- Mina uppgifter -->
+                <section id="dashboard-my-tasks" class="dashboard-section">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header">
+                            <h2><i class="fas fa-tasks"></i> Mina uppgifter</h2>
+                            <button type="button" id="refresh-my-tasks" class="btn btn-ghost btn-sm" title="Uppdatera">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                        <div id="my-tasks-list" class="dashboard-list">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                </div>
+
+                <!-- Rad 2: Kunder utan riskbedömning (vänster) + Kunder som saknar uppdragsavtal (höger) -->
+                <div class="dashboard-cards-row">
                 <!-- Kunder utan riskbedömning -->
                 <section id="dashboard-riskbedomning" class="dashboard-section">
                     <div class="dashboard-card">
@@ -41,44 +102,44 @@
                     </div>
                 </section>
 
-                <!-- Företagssök -->
-                <section class="dashboard-section">
+                <!-- Kunder som saknar uppdragsavtal -->
+                <section id="dashboard-uppdragsavtal" class="dashboard-section">
                     <div class="dashboard-card">
                         <div class="dashboard-card-header">
-                            <h2><i class="fas fa-search"></i> Företagssök</h2>
+                            <h2><i class="fas fa-file-contract"></i> Kunder som saknar uppdragsavtal</h2>
+                            <button type="button" id="refresh-uppdragsavtal" class="btn btn-ghost btn-sm" title="Uppdatera">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
                         </div>
-                        <p class="dashboard-card-desc">Sök upp ett företag via organisationsnummer för att hämta uppgifter från Bolagsverket och spara som lead.</p>
-                <!-- Search Section -->
-                <section class="search-section">
-                    <div class="search-card">
-                        <form id="search-form" class="search-form">
-                            <div class="form-group">
-                                <label for="org-number">Organisationsnummer</label>
-                                <div class="search-input-row">
-                                    <input
-                                        type="text"
-                                        id="org-number"
-                                        name="org-number"
-                                        placeholder="t.ex. 556722-3705"
-                                        pattern="[0-9\-]{8,12}"
-                                        required
-                                    >
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-search"></i>
-                                        Hämta företagsdata
-                                    </button>
-                                    <button type="button" id="clear-search" class="btn btn-secondary">
-                                        <i class="fas fa-times"></i>
-                                        Rensa
-                                    </button>
-                                </div>
-                                <small>Format: 10 siffror, bindestreck tillåtna</small>
+                        <div id="uppdragsavtal-list" class="dashboard-list">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 </section>
+                </div>
+
+                <!-- Rad 3: Avvikelser -->
+                <div class="dashboard-cards-row">
+                <section id="dashboard-avvikelser" class="dashboard-section dashboard-section-full">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header">
+                            <h2><i class="fas fa-exclamation-circle"></i> Avvikelser</h2>
+                            <button type="button" id="refresh-avvikelser" class="btn btn-ghost btn-sm" title="Uppdatera">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                        <div id="avvikelser-list" class="dashboard-list">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
                     </div>
                 </section>
+                </div>
 
                 <!-- Error Message -->
                 <section id="error-message" class="error-section" style="display: none;">
