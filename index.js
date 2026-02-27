@@ -2310,13 +2310,15 @@ app.get('/api/download/:filename', (req, res) => {
   }
 });
 
-// Hjälp: spara attachment till Airtable via base64 (när localhost-URL inte fungerar för Airtable)
-async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileBuffer, filename, contentType) {
+// Hjälp: spara attachment till Airtable via Content API (fungerar utan publik URL)
+async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileBuffer, filename, contentType, tableId) {
   const fieldNames = ['Dokumentation', 'Attachments', 'PEP rapporter', 'PEP rapport'];
   const base64 = fileBuffer.toString('base64');
   for (const fieldName of fieldNames) {
     try {
-      const url = `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
+      const url = tableId
+        ? `https://content.airtable.com/v0/${baseId}/${tableId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`
+        : `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
       const res = await axios.post(url, {
         contentType: contentType || 'application/pdf',
         file: base64,
@@ -2326,17 +2328,19 @@ async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileB
           'Authorization': `Bearer ${airtableToken}`,
           'Content-Type': 'application/json'
         },
-        timeout: 20000,
+        timeout: 30000,
         maxContentLength: 10 * 1024 * 1024,
         maxBodyLength: 10 * 1024 * 1024
       });
       if (res.data && (res.data.url || res.data.id)) {
-        console.log('✅ PEP-rapport uppladdad till Airtable via Content API, fält:', fieldName);
+        console.log('✅ Fil uppladdad till Airtable via Content API, fält:', fieldName);
         return true;
       }
     } catch (err) {
-      if (err.response?.status === 404 || err.response?.status === 422) continue;
-      console.warn('Upload till fält', fieldName, 'misslyckades:', err.message);
+      const status = err.response?.status;
+      const msg = err.response?.data?.error?.message || err.message;
+      if (status === 404 || status === 422) continue;
+      console.warn('Upload till fält', fieldName, 'misslyckades:', status, msg);
     }
   }
   return false;
@@ -6520,17 +6524,14 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
         let savedToDocs = false;
         if (token && kundId) {
             try {
-                const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
-                const host = req.get('x-forwarded-host') || req.get('host');
-                const reqBaseUrl = host ? `${protocol}://${host}` : null;
                 const pdfBuffer = Buffer.from(pdfBase64, 'base64');
-                const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', reqBaseUrl);
-                const isLocalhost = !fileUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(fileUrl || '');
-
-                if (isLocalhost) {
-                    // Airtable kan inte hämta från localhost – använd Content API med base64
-                    savedToDocs = await uploadAttachmentToAirtable(token, baseId, kundId, pdfBuffer, filnamn, 'application/pdf');
-                } else if (fileUrl) {
+                savedToDocs = await uploadAttachmentToAirtable(token, baseId, kundId, pdfBuffer, filnamn, 'application/pdf', KUNDDATA_TABLE);
+                if (!savedToDocs) {
+                    const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+                    const host = req.get('x-forwarded-host') || req.get('host');
+                    const reqBaseUrl = host ? `${protocol}://${host}` : null;
+                    const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', reqBaseUrl);
+                if (fileUrl) {
                     const custRes = await axios.get(
                         `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
                         { headers: { Authorization: `Bearer ${token}` } }
@@ -6555,6 +6556,7 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
                             if (!savedToDocs) console.warn('PATCH till', fieldName, ':', patchErr.message);
                         }
                     }
+                }
                 }
             } catch (saveErr) {
                 console.warn('Kunde inte spara PEP-rapport till Airtable:', saveErr.message);
@@ -6585,8 +6587,18 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Fel vid PEP-screening:', error.response?.data || error.message);
-        res.status(500).json({ error: error.response?.data?.error_message || error.message });
+        const status = error.response?.status;
+        const data = error.response?.data;
+        console.error('❌ Fel vid PEP-screening:', status, data || error.message);
+
+        if (status === 429) {
+            return res.status(429).json({
+                error: 'Dilisense API har nått sin gräns för antal anrop. Försök igen om några minuter.'
+            });
+        }
+        res.status(status && status >= 400 && status < 500 ? status : 500).json({
+            error: data?.error_message || data?.error || error.message || 'Okänt fel vid PEP-screening'
+        });
     }
 });
 
@@ -6676,9 +6688,9 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       email: signerare.epost,
       company: kundnamn,
       sign_method: 'bankid',
+      external_id: `kund-${(signerare.personnr || 'x')}-${(signerare.epost || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}`,
       debug: false
     };
-    if (signerare.personnr) kundPartyPayload.external_id = signerare.personnr;
     if (signerare.telefon) kundPartyPayload.phone_number = signerare.telefon;
     console.log('📤 Skapar kund som undertecknare i Inleed:', kundPartyPayload.name, kundPartyPayload.email);
     const kundPartyRes = await axios.post('https://docsign.se/api/parties', kundPartyPayload, {
@@ -6827,11 +6839,10 @@ app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req,
     const docFields = ['Dokumentation', 'Attachments', 'PEP rapporter', 'PEP rapport', 'Riskbedömning dokument', 'Riskbedomning dokument'];
     let saved = false;
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || (req.get('host') ? `${req.protocol}://${req.get('host')}` : null);
-    const isLocalhost = !baseUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl);
-    if (isLocalhost) {
-      saved = await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, kundId, pdfBuffer, filnamn, 'application/pdf');
-    } else {
+    // Försök alltid Airtable Content API först (fungerar både lokalt och på Render)
+    saved = await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, kundId, pdfBuffer, filnamn, 'application/pdf', KUNDDATA_TABLE);
+    if (!saved) {
+      const baseUrl = process.env.PUBLIC_BASE_URL || (req.get('host') ? `${req.protocol}://${req.get('host')}` : null);
       const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', baseUrl);
       if (fileUrl) {
         for (const fieldName of docFields) {

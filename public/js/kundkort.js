@@ -4460,7 +4460,12 @@ class CustomerCardManager {
 
             const data = await response.json();
 
-            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+            if (!response.ok) {
+                const msg = response.status === 429
+                    ? 'För många sökningar – vänta några minuter och försök igen.'
+                    : (data.error || `HTTP ${response.status}`);
+                throw new Error(msg);
+            }
 
             // Visa resultat i modal
             this._showPepResultModal(p.namn, data);
