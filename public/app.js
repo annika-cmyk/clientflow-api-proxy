@@ -109,6 +109,16 @@ class ClientFlowApp {
             orgNumberInput.addEventListener('input', (e) => this.validateOrgNumber(e.target));
             orgNumberInput.addEventListener('blur', (e) => this.validateOrgNumber(e.target));
         }
+
+        // Infällbara dashboard-kort
+        document.querySelectorAll('.dashboard-card-collapsible .dashboard-card-header[data-toggle="collapse"]').forEach(header => {
+            header.addEventListener('click', () => {
+                const card = header.closest('.dashboard-card-collapsible');
+                if (!card) return;
+                const isCollapsed = card.classList.toggle('collapsed');
+                header.setAttribute('aria-expanded', !isCollapsed);
+            });
+        });
     }
 
     async applyRoleBasedUI() {
@@ -296,6 +306,7 @@ class ClientFlowApp {
 
         const token = localStorage.getItem('authToken');
         if (!token) {
+            this.updateDashboardCount('riskbedomning', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-lock"></i>
@@ -330,6 +341,7 @@ class ClientFlowApp {
                 bolagsform: r.fields?.Bolagsform || ''
             })).sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
 
+            this.updateDashboardCount('riskbedomning', utanRiskbedomning.length);
             if (utanRiskbedomning.length === 0) {
                 container.innerHTML = `
                     <div class="kundlista-empty">
@@ -358,6 +370,7 @@ class ClientFlowApp {
 
         } catch (error) {
             console.error('Fel vid laddning av kunder utan riskbedömning:', error);
+            this.updateDashboardCount('riskbedomning', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
@@ -366,12 +379,20 @@ class ClientFlowApp {
         }
     }
 
+    updateDashboardCount(section, count) {
+        const id = `dashboard-count-${section}`;
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = count === null ? '' : count === 0 ? ' (0)' : ` (${count})`;
+    }
+
     async loadUppdragsavtalList() {
         const container = document.getElementById('uppdragsavtal-list');
         if (!container) return;
 
         const token = localStorage.getItem('authToken');
         if (!token) {
+            this.updateDashboardCount('uppdragsavtal', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-lock"></i>
@@ -389,6 +410,7 @@ class ClientFlowApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const utanUppdragsavtal = data.records || [];
+            this.updateDashboardCount('uppdragsavtal', utanUppdragsavtal.length);
 
             if (utanUppdragsavtal.length === 0) {
                 container.innerHTML = `
@@ -417,6 +439,7 @@ class ClientFlowApp {
                 </div>`;
         } catch (error) {
             console.error('Fel vid laddning av kunder utan uppdragsavtal:', error);
+            this.updateDashboardCount('uppdragsavtal', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
@@ -431,6 +454,7 @@ class ClientFlowApp {
 
         const token = localStorage.getItem('authToken');
         if (!token) {
+            this.updateDashboardCount('avvikelser', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-lock"></i>
@@ -466,6 +490,7 @@ class ClientFlowApp {
             }
 
             const statusColors = { 'Öppen': '#ef4444', 'Under utredning': '#f59e0b', 'Rapporterad till FM': '#8b5cf6', 'Rapporterad till Finanspolisen (FM)': '#8b5cf6', 'Avslutad': '#10b981' };
+            this.updateDashboardCount('avvikelser', avvikelser.length);
 
             if (avvikelser.length === 0) {
                 container.innerHTML = `
@@ -499,6 +524,7 @@ class ClientFlowApp {
             container.innerHTML = `<div class="kundlista-table">${rows}</div>`;
         } catch (error) {
             console.error('Fel vid laddning av avvikelser:', error);
+            this.updateDashboardCount('avvikelser', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
@@ -513,6 +539,7 @@ class ClientFlowApp {
 
         const token = localStorage.getItem('authToken');
         if (!token) {
+            this.updateDashboardCount('my-tasks', null);
             container.innerHTML = `<div class="kundlista-empty"><p>Logga in för att se dina uppgifter.</p></div>`;
             return;
         }
@@ -524,6 +551,7 @@ class ClientFlowApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const tasks = data.tasks || [];
+            this.updateDashboardCount('my-tasks', tasks.length);
 
             if (tasks.length === 0) {
                 container.innerHTML = `
@@ -534,6 +562,11 @@ class ClientFlowApp {
                 return;
             }
 
+            const taskText = (txt) => {
+                const s = (txt || '').trim();
+                if (!s || s.length < 4 || /^[a-z]{2,5}$/i.test(s)) return 'Uppgift';
+                return s.length > 60 ? s.slice(0, 57) + '...' : s;
+            };
             container.innerHTML = `
                 <div class="my-tasks-list">
                     ${tasks.map(t => `
@@ -543,8 +576,8 @@ class ClientFlowApp {
                             </label>
                             <a href="${t.customerId && t.noteId ? `kundkort.html?id=${t.customerId}&note=${t.noteId}#anteckningar` : t.customerId ? `kundkort.html?id=${t.customerId}#anteckningar` : '#'}" class="my-task-link" ${!t.customerId ? 'style="pointer-events:none"' : ''}>
                                 ${(t.status || '').toLowerCase() === 'akut' ? '<span class="my-task-akut" title="Akut"><i class="fas fa-exclamation-circle"></i></span>' : ''}
-                                <span class="my-task-text">${this.escapeHtml(t.text)}</span>
-                                <span class="my-task-meta">${this.escapeHtml(t.customerName)}${t.datum ? ` ${this.escapeHtml(t.datum)}` : ''}</span>
+                                <span class="my-task-text">${this.escapeHtml(taskText(t.text))}</span>
+                                <span class="my-task-meta">${this.escapeHtml(t.customerName || '')}${t.datum ? ` · ${this.escapeHtml(t.datum)}` : ''}</span>
                                 <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
                             </a>
                         </div>
@@ -561,6 +594,7 @@ class ClientFlowApp {
             });
         } catch (error) {
             console.error('Fel vid laddning av mina uppgifter:', error);
+            this.updateDashboardCount('my-tasks', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>

@@ -6547,6 +6547,13 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
 
     const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const nl2br = (s) => (s == null ? '' : String(s)).replace(/\n/g, '<br>');
+    const richToHtml = (s) => {
+      if (s == null || s === '') return '';
+      let t = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      t = t.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+      return t.replace(/\n/g, '<br>');
+    };
 
     const ACCENT = '#2c4a8f';
     const htmlParts = [];
@@ -6570,68 +6577,27 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     htmlParts.push(`<div class="doc-page"><h2>1. Byrårutiner</h2>`);
     for (const [label, airtableKey] of rutinerFields) {
       const val = getByraField(airtableKey) || '';
-      htmlParts.push(`<h3>${escape(label)}</h3><div class="doc-text">${nl2br(val || '—')}</div>`);
+      htmlParts.push(`<h3>${escape(label)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
     }
     const policyRev = getByraField('Policydokumentet reviderat och godkänt') || '';
     htmlParts.push(`<p><strong>Policydokumentet reviderat och godkänt:</strong> ${escape(policyRev) || '—'}</p></div>`);
 
-    const allmanKeys = ['1. Syfte och Omfattning', '2. Beskrivning av Byråns verksamhet', '3. Metod för Riskbedömning ', '4. Identifierade Risker och Sårbarheter', '5. Värdering av sammantagen risk', '6. Riskreducerande Åtgärder och Rutiner', '7. Utvärdering och Uppdatering', '8. Kommunikation.'];
+    const allmanKeys = ['1. Syfte och Omfattning', '2. Beskrivning av Byråns verksamhet', '3. Metod för Riskbedömning ', '4. Identifierade Risker och Sårbarheter', '5. Riskreducerande Åtgärder och Rutiner', '6. Utvärdering och Uppdatering', '7. Kommunikation.', '8. Värdering av sammantagen risk'];
     htmlParts.push(`<div class="doc-page"><h2>2. Allmän riskbedömning byrå</h2>`);
     for (const k of allmanKeys) {
       const val = getByraField(k) || '';
-      htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${nl2br(val || '—')}</div>`);
+      htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
     }
     const uppdateradDatum = getByraField('Uppdaterad datum') || '';
     htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
 
-    htmlParts.push(`<div class="doc-page"><h2>Bilaga 1. Riskbedömning av byråns tjänster</h2>`);
-    if (tjanster.length === 0) htmlParts.push(`<p>Inga tjänster registrerade.</p>`);
-    else {
-      htmlParts.push(`<table class="doc-table"><thead><tr><th>Tjänst</th><th>Riskbedömning</th><th>Åtgärd</th></tr></thead><tbody>`);
-      for (const t of tjanster) {
-        htmlParts.push(`<tr><td>${escape(t.namn)}</td><td>${nl2br(t.riskbedomning || '')}</td><td>${nl2br(t.atgard || '')}</td></tr>`);
-      }
-      htmlParts.push(`</tbody></table>`);
-    }
-    htmlParts.push(`</div>`);
-
-    htmlParts.push(`<div class="doc-page"><h2>Bilaga 2. Övriga riskfaktorer</h2>`);
-    const riskForByra = riskRecords;
-    if (riskForByra.length === 0) htmlParts.push(`<p>Inga övriga riskfaktorer registrerade.</p>`);
-    else {
-      htmlParts.push(`<table class="doc-table"><thead><tr><th>Typ</th><th>Riskfaktor</th><th>Beskrivning</th></tr></thead><tbody>`);
-      for (const r of riskForByra.slice(0, 100)) {
-        const f = r.fields || {};
-        htmlParts.push(`<tr><td>${escape(f['Typ av riskfaktor'])}</td><td>${escape(f['Riskfaktor'])}</td><td>${nl2br(f['Beskrivning'] || '')}</td></tr>`);
-      }
-      htmlParts.push(`</tbody></table>`);
-    }
-    htmlParts.push(`</div>`);
-
-    htmlParts.push(`<div class="doc-page"><h2>Bilaga 3. Statistik</h2>`);
-    htmlParts.push(`<p><strong>Antal kunder:</strong> ${stat.antalKunder || 0}</p>`);
-    const rn = stat.riskniva || {};
-    htmlParts.push(`<p><strong>Risknivåer:</strong> Låg: ${rn.Låg || 0}, Medel: ${rn.Medel || 0}, Hög: ${rn.Hög || 0}</p>`);
-    if ((stat.tjänster || []).length > 0) {
-      htmlParts.push(`<h3>Tjänster (antal kunder)</h3><ul>`);
-      for (const t of stat.tjänster) htmlParts.push(`<li>${escape(t.namn)}: ${t.antal}</li>`);
-      htmlParts.push(`</ul>`);
-    }
-    if ((stat.riskfaktorerPerTyp || []).length > 0) {
-      htmlParts.push(`<h3>Riskfaktorer per typ</h3>`);
-      for (const rpt of stat.riskfaktorerPerTyp) {
-        htmlParts.push(`<p><strong>${escape(rpt.typ)}</strong> (${rpt.antalKunder} kunder)</p><ul>`);
-        for (const rf of (rpt.riskfaktorer || []).slice(0, 10)) htmlParts.push(`<li>${escape(rf.namn)}: ${rf.antal}</li>`);
-        htmlParts.push(`</ul>`);
-      }
-    }
-    htmlParts.push(`</div>`);
-
     const fullHtml = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
-      @page { margin: 14mm; }
+      @page { size: A4; margin: 14mm; }
+      @page landscape { size: A4 landscape; margin: 14mm; }
       body { font-family: Arial, sans-serif; font-size: 8pt; line-height: 1.4; color: #1a1a2e; margin: 0; padding: 12px; }
       .doc-page { page-break-after: always; }
       .doc-page:last-child { page-break-after: auto; }
+      .doc-page-landscape { page: landscape; }
       .doc-main-title { color: ${ACCENT}; font-size: 12pt; margin-bottom: 6px; }
       .doc-meta { color: #666; font-size: 7pt; margin-bottom: 16px; }
       h2 { color: ${ACCENT}; font-size: 10pt; border-bottom: 1px solid ${ACCENT}; padding-bottom: 3px; margin-top: 10px; }
@@ -6640,6 +6606,8 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       .doc-table th, .doc-table td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
       .doc-table th { background: #f4f6fb; font-weight: 700; }
       .doc-text { margin: 6px 0; }
+      .doc-text strong, .doc-text b, .doc-table strong, .doc-table b { font-weight: 700; }
+      .doc-text em, .doc-text i, .doc-table em, .doc-table i { font-style: italic; }
       ul, p { margin: 4px 0; }
     </style></head><body>${htmlParts.join('')}</body></html>`;
 
@@ -6650,7 +6618,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const browser = await pup.launch(launchOpts);
     const page = await browser.newPage();
     await page.setContent(fullHtml, { waitUntil: 'networkidle0', timeout: 30000 });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
+    const pdfBuffer = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
     await browser.close();
 
     const ar = new Date().getFullYear();
@@ -7329,6 +7297,397 @@ Svara EXAKT i detta JSON-format (inget annat):
   } catch (error) {
     console.error('❌ AI-riskbedömning fel:', error.message);
     res.status(500).json({ error: 'Kunde inte generera AI-analys: ' + error.message });
+  }
+});
+
+// POST /api/ai-vardering-risk-byra
+// Genererar AI-förslag för stycket "5. Värdering av sammantagen risk" utifrån statistik, identifierade risker och tjänster
+app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
+  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användaren hittades inte.' });
+    const byraId = (userData.byraId || '').toString().trim();
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
+
+    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
+      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+      axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
+      axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
+    ]);
+
+    const statistik = statRes.data || {};
+    const tjanster = (tjansterRes.data && tjansterRes.data.tjanster) || [];
+    const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
+
+    const identifieradeRisker = rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
+    const befintligVardering = rutinerFields['8. Värdering av sammantagen risk'] || '';
+    const syfteOmfattning = rutinerFields['1. Syfte och Omfattning'] || rutinerFields['Syfte och Omfattning'] || '';
+    const beskrivning = rutinerFields['2. Beskrivning av Byråns verksamhet'] || rutinerFields['Beskrivning av Byråns verksamhet'] || '';
+
+    const statistikText = [
+      'STATISTIK FÖR RISKBEDÖMNING:',
+      `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      statistik.tjänster && statistik.tjänster.length
+        ? '- Tjänster: ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
+        : '',
+      statistik.högriskbransch && statistik.högriskbransch.length
+        ? '- Högriskbranscher: ' + statistik.högriskbransch.map(b => `${b.namn} (${b.antal})`).join(', ')
+        : ''
+    ].filter(Boolean).join('\n');
+
+    const tjansterText = tjanster.length
+      ? 'BYRÅNS TJÄNSTER OCH RISKFAKTORER:\n' + tjanster.map(t =>
+          `- ${t.namn}: Riskbedömning: ${(t.riskbedomning || '').slice(0, 150)}${t.atgard ? ` | Åtgärd: ${(t.atgard || '').slice(0, 80)}` : ''}`
+        ).join('\n')
+      : 'Inga tjänster med riskanalyser.';
+
+    const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "8. Värdering av sammantagen risk" i en allmän riskbedömning (PVML, Penningtvättslagen).
+Baserat på statistik, identifierade risker och sårbarheter samt tjänsteanalyser ska du sammanfatta byråns sammantagna risknivå och motivera den. Följ Länsstyrelsens vägledning och råd (t.ex. "Ett riskbaserat förhållningssätt").
+Skriv på svenska. Var professionell och konkret. Ge en tydlig slutsats om den sammantagna risken (t.ex. normal, förhöjd, betydande) och motivera utifrån underlagen.`;
+
+    const userPrompt = `Skriv stycket "8. Värdering av sammantagen risk" för byråns allmänna riskbedömning.
+
+${statistikText}
+
+${tjansterText}
+
+IDENTIFIERADE RISKER OCH SÅRBARHETER (punkt 4):
+${identifieradeRisker || 'Ingen text angiven ännu.'}
+
+BEFINTLIG KONTEXT:
+- Syfte och omfattning: ${(syfteOmfattning || '').slice(0, 400)}
+- Beskrivning av verksamheten: ${(beskrivning || '').slice(0, 400)}
+${befintligVardering ? `\nBefintlig värdering (förfina/uppdatera): ${befintligVardering.slice(0, 600)}` : ''}
+
+Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.5,
+      max_tokens: 1500
+    });
+
+    const text = (completion.choices[0]?.message?.content || '').trim();
+    if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
+
+    res.json({ text });
+  } catch (error) {
+    console.error('❌ AI värdering risk byrå:', error.message);
+    const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
+    res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
+  }
+});
+
+// POST /api/ai-identifierade-risker-byra
+// Genererar AI-förslag för stycket "4. Identifierade Risker och Sårbarheter" med statistik, byråns tjänster och riktlinjer
+app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
+  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användaren hittades inte.' });
+    const byraId = (userData.byraId || '').toString().trim();
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
+
+    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
+      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+      axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
+      axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
+    ]);
+
+    const statistik = statRes.data || {};
+    const tjansterFromByra = (tjansterRes.data && tjansterRes.data.tjanster) || [];
+    const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
+
+    const syfteOmfattning = rutinerFields['1. Syfte och Omfattning'] || rutinerFields['Syfte och Omfattning'] || '';
+    const beskrivning = rutinerFields['2. Beskrivning av Byråns verksamhet'] || rutinerFields['Beskrivning av Byråns verksamhet'] || '';
+    const metod = rutinerFields['3. Metod för Riskbedömning '] || rutinerFields['Metod för Riskbedömning'] || '';
+    const befintligText = rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
+
+    // Slå ihop ALLA tjänster: byra-tjanster (med riskanalys) + statistik.tjänster (från kunder). OTROLIGT VIKTIGT att alla aktuella tjänster med i analysen.
+    const tjanstByName = new Map();
+    for (const t of tjansterFromByra) {
+      const n = (t.namn || '').trim();
+      if (n) tjanstByName.set(n, { namn: n, beskrivning: t.beskrivning || '', riskbedomning: t.riskbedomning || '', atgard: t.atgard || '', typ: t.typ || '', antal: null });
+    }
+    const statistikTjanster = statistik.tjänster || [];
+    for (const t of statistikTjanster) {
+      const n = (t.namn || '').trim();
+      if (!n) continue;
+      if (!tjanstByName.has(n)) {
+        tjanstByName.set(n, { namn: n, beskrivning: '', riskbedomning: '', atgard: '', typ: '', antal: t.antal });
+      } else {
+        const existing = tjanstByName.get(n);
+        if (existing.antal == null) existing.antal = t.antal;
+      }
+    }
+    const valdaTjansterRaw = rutinerFields['Valda tjänster'] || rutinerFields['Valda tjanster'] || '';
+    const valdaTjanster = typeof valdaTjansterRaw === 'string'
+      ? valdaTjansterRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw.map(s => String(s).trim()).filter(Boolean) : []);
+    for (const n of valdaTjanster) {
+      if (n && !tjanstByName.has(n)) {
+        tjanstByName.set(n, { namn: n, beskrivning: '', riskbedomning: '', atgard: '', typ: '', antal: null });
+      }
+    }
+    const tjanster = Array.from(tjanstByName.values());
+
+    const statistikText = [
+      'STATISTIK FÖR RISKBEDÖMNING (byråns kunder):',
+      `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      statistik.tjänster && statistik.tjänster.length
+        ? '- Tjänster (antal kunder): ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
+        : '',
+      statistik.högriskbransch && statistik.högriskbransch.length
+        ? '- Högriskbranscher: ' + statistik.högriskbransch.map(b => `${b.namn} (${b.antal})`).join(', ')
+        : '',
+      statistik.riskfaktorerPerTyp && statistik.riskfaktorerPerTyp.length
+        ? '- Riskfaktorer per typ: ' + statistik.riskfaktorerPerTyp.map(r =>
+            `${r.typ}: ${(r.riskfaktorer || []).map(rf => `${rf.namn} (${rf.antal})`).join(', ')}`
+          ).join('; ')
+        : ''
+    ].filter(Boolean).join('\n');
+
+    const allaRiskfaktorerText = statistik.riskfaktorerPerTyp && statistik.riskfaktorerPerTyp.length
+      ? '\n\nALLA RISKFAKTORER SOM MÅSTE INKLUDERAS I ANALYSEN (Kunder/övergripande):\n' + statistik.riskfaktorerPerTyp.map(r =>
+          `${r.typ}: ${(r.riskfaktorer || []).map(rf => `${rf.namn} (${rf.antal} kunder)`).join(', ')}`
+        ).join('\n')
+      : '';
+
+    const allaTjansterLista = tjanster.length
+      ? '\n\nALLA TJÄNSTER SOM MÅSTE HA EGEN SEKTION (du MÅSTE skriva en sektion för varje, utelämna INGEN):\n' + tjanster.map(t => `- ${t.namn}${t.antal != null ? ` (${t.antal} kunder)` : ''}`).join('\n')
+      : '';
+
+    const tjansterText = tjanster.length
+      ? 'BYRÅNS TJÄNSTER OCH RISKFAKTORER (grunden – använd dessa analyser där tillgängliga; för tjänster utan analys, skriv utifrån tjänstens namn):\n' + tjanster.map(t =>
+          `\n--- Tjänst: ${t.namn}${t.typ ? ` [${t.typ}]` : ''}${t.antal != null ? ` (${t.antal} kunder)` : ''} ---\nBeskrivning av riskfaktor: ${(t.beskrivning || '').trim() || '—'}\nRiskbedömning: ${(t.riskbedomning || '').trim() || '—'}\nÅtgärd: ${(t.atgard || '').trim() || '—'}`
+        ).join('\n')
+      : 'Inga tjänster hittades.';
+
+    const formatExample = `FORMAT – Enligt penningtvättslagen och Länsstyrelsens vägledning MÅSTE en godkänd allmän riskbedömning analysera hot och sårbarheter utifrån fyra obligatoriska huvudområden (plus ett femte valfritt). Du ska skriva ALLA:
+
+1) PRODUKTER OCH TJÄNSTER – Skriv för varje tjänst en sektion med rubriken "Tjänst: [namn]"
+2) KUNDER – Obligatoriskt. Analysera varför just era kundtyper medför en viss risk (t.ex. småföretag, hantverkare, konsulter). Länsstyrelsen delar ut sanktionsavgifter till byråer som endast analyserar tjänster och glömmer kunder.
+3) DISTRIBUTIONSKANALER – Obligatoriskt. Hur levererar ni tjänster? Fysiska möten vs digitalt på distans. Kunder ni aldrig träffar innebär högre risk.
+4) GEOGRAFISKA RISKFAKTORER – Obligatoriskt. Var är kunderna verksamma, varifrån kommer pengarna? Lokala kunder vs internationella transaktioner.
+5) VERKSAMHETSSPECIFIKA OMSTÄNDIGHETER – Valfritt men rekommenderat. Byråns struktur (enstaka byrå, antal anställda, omsättning). Sårbarheter som avsaknad av intern kontroll, styrkor som full insyn.
+
+Varje sektion ska ha EXAKT samma struktur (korta labels):
+
+[Rubrik: t.ex. Tjänst: Löpande bokföring, eller Kunder, eller Distributionskanaler, eller Geografiska riskfaktorer, eller Verksamhetsspecifika omständigheter]
+
+[Beskrivning – första stycket UTAN label.]
+
+Hot: [text]
+
+Sårbarhet: [text]
+
+Risknivå och åtgärder: [text]
+
+Skriv INTE "Beskrivning av tjänsten:" eller långa förklaringar i parentes. Använd endast "Hot:", "Sårbarhet:", "Risknivå och åtgärder:". Avsluta med en KORT övergripande slutsats som knyter ihop alla områden.
+
+Exempel för "Löpande bokföring" (Tjänster):
+
+Tjänst: Löpande bokföring
+
+Byrån sköter den löpande bokföringen åt majoriteten av våra kunder, vilka i regel är småföretagare och hantverkare med 0–3 anställda. Tjänsten innebär att vi registrerar affärshändelser utifrån de underlag kunden lämnar in till oss digitalt eller fysiskt.
+
+Hot: Löpande bokföring kan utnyttjas av kriminella för att integrera svarta pengar i det legala systemet. Ett typiskt hot är att kunden lämnar in osanna eller förfalskade fakturor för tjänster som aldrig utförts, i syfte att motivera överföringar mellan bolag. Ett annat hot är inbetalningar på företagskontot som saknar underlag eller vars avsändare är oklar, vilket kan vara ett försök att tvätta kontanter.
+
+Sårbarhet: Vår främsta sårbarhet är att vi i stor utsträckning är beroende av att kunden lämnar in korrekta underlag. En annan sårbarhet är om underlag lämnas in sent eller klumpvis, vilket skapar tidspress och minskar möjligheten att hinna göra en rimlighetsbedömning av enskilda transaktioner.
+
+Risknivå och åtgärder: Vi bedömer den sammantagna risken för tjänsten "Löpande bokföring" som Normal. Även om tjänsten i sig har en betydande inneboende risk, sänks risken av att vi har en nära och långvarig relation med våra kunder och förstår deras normala affärsmönster. För att hantera risken tillämpar vi skriftliga rutiner...`;
+
+    const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "4. Identifierade Risker och Sårbarheter" i en allmän riskbedömning (PVML, Penningtvättslagen).
+
+OTROLIGT VIKTIGT – Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor som listas i underlagen. Utelämna INGEN. Länsstyrelsen delar ut sanktionsavgifter till byråer som glömmer tjänster eller riskfaktorer. Skriv en egen sektion för varje tjänst.
+
+En godkänd riskbedömning MÅSTE innehålla: 1) Produkter och tjänster – en sektion per tjänst, alla måste vara med, 2) Kunder – inklusive alla riskfaktorer, 3) Distributionskanaler, 4) Geografiska riskfaktorer. Valfritt: 5) Verksamhetsspecifika omständigheter.
+
+Varje område ska ha samma struktur: beskrivning (utan label), Hot:, Sårbarhet:, Risknivå och åtgärder:. Avsluta med en kort övergripande slutsats. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell och konkret.`;
+
+    const userPrompt = `Skriv stycket "4. Identifierade Risker och Sårbarheter" för byråns allmänna riskbedömning.
+
+OTROLIGT VIKTIGT: Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor nedan. Utelämna INGEN. Länsstyrelsen kräver att alla tjänster och riskfaktorer som är aktuella för byrån analyseras.
+
+1) Tjänster – en sektion per tjänst (Tjänst: [namn]). VARJE tjänst i listan nedan måste ha en egen sektion.
+2) Kunder – analysera varför era kundtyper medför risk (småföretag, hantverkare etc.). Inkludera alla riskfaktorer från listan nedan. Hot, sårbarhet, risknivå.
+3) Distributionskanaler – hur levererar ni tjänster? Fysiskt vs digitalt på distans. Kunder ni aldrig träffar = högre risk.
+4) Geografiska riskfaktorer – var är kunderna verksamma? Lokala vs internationella transaktioner.
+5) Verksamhetsspecifika omständigheter – byråns storlek, struktur. Enmansbyrå = sårbarhet (ingen kollega att bolla med) men också styrka (full insyn).
+
+${formatExample}
+
+---
+${allaTjansterLista}
+${allaRiskfaktorerText}
+
+UNDERLAG – Statistik och byråns tjänster:
+${statistikText}
+
+${tjansterText}
+
+BEFINTLIG KONTEXT:
+- Syfte och omfattning: ${(syfteOmfattning || '').slice(0, 500)}
+- Beskrivning av verksamheten: ${(beskrivning || '').slice(0, 500)}
+- Metod för riskbedömning: ${(metod || '').slice(0, 500)}
+${befintligText ? `\nBefintlig text (förfina/uppdatera om relevant): ${befintligText.slice(0, 1200)}` : ''}
+
+Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en sektion för VARJE tjänst i listan ovan – utelämna INGEN. Inkludera alla riskfaktorer i Kunder-analysen. Skriv också Kunder, Distributionskanaler, Geografiska riskfaktorer, och gärna Verksamhetsspecifika omständigheter. Avsluta med en kort övergripande slutsats.`;
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.6,
+      max_tokens: 16000
+    });
+
+    let text = (completion.choices[0]?.message?.content || '').trim();
+    if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
+
+    // Post-processing: ersätt gamla labels med önskat format (g = alla förekomster)
+    text = text
+      .replace(/\*\*Beskrivning av tjänsten:\*\*\s*/gi, '')
+      .replace(/Beskrivning av tjänsten:\s*/gi, '')
+      .replace(/\*\*Hot \(Hur kan tjänsten utnyttjas för penningtvätt\?\):\*\*\s*/gi, 'Hot: ')
+      .replace(/Hot \(Hur kan tjänsten utnyttjas för penningtvätt\?\):\s*/gi, 'Hot: ')
+      .replace(/\*\*Sårbarhet \(Vad gör vår byrå sårbar\?\):\*\*\s*/gi, 'Sårbarhet: ')
+      .replace(/Sårbarhet \(Vad gör vår byrå sårbar\?\):\s*/gi, 'Sårbarhet: ')
+      .replace(/\*\*Bedömd risknivå och åtgärder:\*\*\s*/gi, 'Risknivå och åtgärder: ')
+      .replace(/Bedömd risknivå och åtgärder:\s*/gi, 'Risknivå och åtgärder: ');
+
+    // Fetstil för rubriker (markdown **) – visning använder markdownToHtml som renderar ** som <strong>
+    text = text
+      .replace(/^Tjänst: (.+)$/gm, '**Tjänst: $1**')
+      .replace(/^Kunder:?$/gm, '**Kunder**')
+      .replace(/^Distributionskanaler:?$/gm, '**Distributionskanaler**')
+      .replace(/^Geografiska riskfaktorer:?$/gm, '**Geografiska riskfaktorer**')
+      .replace(/^Verksamhetsspecifika omständigheter:?$/gm, '**Verksamhetsspecifika omständigheter**')
+      .replace(/^Hot: /gm, '**Hot:** ')
+      .replace(/^Sårbarhet: /gm, '**Sårbarhet:** ')
+      .replace(/^Risknivå och åtgärder: /gm, '**Risknivå och åtgärder:** ');
+
+    // Ta bort tomrader inom samma sektion, men lägg en tomrad mellan varje sektion
+    text = text.replace(/\n\n+/g, '\n');
+    text = text.replace(/\n\*\*Tjänst: /g, '\n\n**Tjänst: ');
+    text = text.replace(/\n\*\*Kunder\*\*/g, '\n\n**Kunder**');
+    text = text.replace(/\n\*\*Distributionskanaler\*\*/g, '\n\n**Distributionskanaler**');
+    text = text.replace(/\n\*\*Geografiska riskfaktorer\*\*/g, '\n\n**Geografiska riskfaktorer**');
+    text = text.replace(/\n\*\*Verksamhetsspecifika omständigheter\*\*/g, '\n\n**Verksamhetsspecifika omständigheter**');
+
+    res.json({ text });
+  } catch (error) {
+    console.error('❌ AI identifierade risker byrå:', error.message);
+    const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
+    res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
+  }
+});
+
+// POST /api/ai-beskrivning-byra
+// Genererar AI-förslag för "2. Beskrivning av Byråns verksamhet" utifrån tjänster, statistik och syfte
+app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
+  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användaren hittades inte.' });
+    const byraId = (userData.byraId || '').toString().trim();
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
+
+    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
+      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+      axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
+      axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
+    ]);
+
+    const statistik = statRes.data || {};
+    const tjanster = (tjansterRes.data && tjansterRes.data.tjanster) || [];
+    const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
+
+    const syfteOmfattning = rutinerFields['1. Syfte och Omfattning'] || rutinerFields['Syfte och Omfattning'] || '';
+    const befintligBeskrivning = rutinerFields['2. Beskrivning av Byråns verksamhet'] || rutinerFields['Beskrivning av Byråns verksamhet'] || '';
+    const antalAnstallda = rutinerFields['Antal anställda'] ?? '';
+    const omsattning = rutinerFields['Omsättning'] ?? '';
+    const antalKundforetag = rutinerFields['Antal kundföretag'] ?? '';
+
+    const statistikText = [
+      'STATISTIK:',
+      `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      statistik.tjänster && statistik.tjänster.length
+        ? '- Tjänster (antal kunder per tjänst): ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
+        : '',
+      statistik.högriskbransch && statistik.högriskbransch.length
+        ? '- Högriskbranscher: ' + statistik.högriskbransch.map(b => `${b.namn} (${b.antal})`).join(', ')
+        : ''
+    ].filter(Boolean).join('\n');
+
+    const tjansterLista = tjanster.length
+      ? tjanster.map(t => t.namn).join(', ')
+      : 'Inga tjänster registrerade';
+
+    const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "2. Beskrivning av Byråns verksamhet" i en allmän riskbedömning (PVML, Penningtvättslagen).
+
+Beskriv byråns verksamhet utifrån underlagen: vilka tjänster ni erbjuder, vilken typ av kunder ni har, byråns storlek (antal anställda, omsättning, antal kundföretag) och hur verksamheten bedrivs. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell, konkret och kortfattad. Text ska kunna användas direkt i riskbedömningen.`;
+
+    const userPrompt = `Skriv stycket "2. Beskrivning av Byråns verksamhet" för byråns allmänna riskbedömning.
+
+UNDERLAG:
+${statistikText}
+
+Tjänster byrån erbjuder: ${tjansterLista}
+
+Byråns nyckeltal: Antal anställda ${antalAnstallda || '–'}, Omsättning ${omsattning ? omsattning + ' SEK' : '–'}, Antal kundföretag ${antalKundforetag || '–'}
+
+Syfte och omfattning (kontext): ${(syfteOmfattning || '').slice(0, 600)}
+${befintligBeskrivning ? `\nBefintlig beskrivning (förfina/uppdatera om relevant): ${befintligBeskrivning.slice(0, 1000)}` : ''}
+
+Ge endast den färdiga texten, utan rubrik eller inledning.`;
+
+    const openai = new OpenAI({ apiKey: openaiKey });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.6,
+      max_tokens: 2000
+    });
+
+    const text = (completion.choices[0]?.message?.content || '').trim();
+    if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
+
+    res.json({ text });
+  } catch (error) {
+    console.error('❌ AI beskrivning byrå:', error.message);
+    const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
+    res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
   }
 });
 

@@ -2078,7 +2078,8 @@ class CustomerCardManager {
 
     async getAiRiskbedomning() {
         const btn = document.getElementById('ai-rb-btn');
-        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyserar...'; btn.disabled = true; }
+        if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...'; btn.disabled = true; }
+        if (typeof window.showAiThinking === 'function') window.showAiThinking();
 
         try {
             const token = localStorage.getItem('authToken');
@@ -2105,6 +2106,7 @@ class CustomerCardManager {
             console.error('❌ AI-riskbedömning fel:', err);
             this.showNotification('AI-analys misslyckades: ' + err.message, 'error');
         } finally {
+            if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
             if (btn) { btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag'; btn.disabled = false; }
         }
     }
@@ -4518,6 +4520,7 @@ class CustomerCardManager {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             btn.style.pointerEvents = 'none';
         }
+        if (typeof window.showAiThinking === 'function') window.showAiThinking();
 
         try {
             const token = localStorage.getItem('authToken');
@@ -4575,6 +4578,7 @@ class CustomerCardManager {
             console.error('❌ PEP-screening fel:', error);
             this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
         } finally {
+            if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
             if (btn) { btn.innerHTML = origHtml; btn.style.pointerEvents = ''; }
         }
     }

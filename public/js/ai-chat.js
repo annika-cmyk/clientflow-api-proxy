@@ -77,7 +77,9 @@
     if (on) {
       sendBtn.disabled = true;
       sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      if (typeof window.showAiThinking === 'function') window.showAiThinking();
     } else {
+      if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
       sendBtn.disabled = false;
       sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
     }
@@ -140,6 +142,9 @@
     if (!panel) return;
     panel.classList.remove('ai-chat-panel--closed');
     panel.classList.add('ai-chat-panel--open');
+    try {
+      sessionStorage.setItem('aiChatOpen', '1');
+    } catch (_) {}
     if (inputEl) {
       inputEl.focus();
     }
@@ -150,10 +155,16 @@
       panel.classList.remove('ai-chat-panel--open');
       panel.classList.add('ai-chat-panel--closed');
     }
+    try {
+      sessionStorage.setItem('aiChatOpen', '0');
+    } catch (_) {}
   }
 
   window.openAiChat = openPanel;
   window.closeAiChat = closePanel;
 
   createPanel();
+  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('aiChatOpen') === '1') {
+    openPanel();
+  }
 })();

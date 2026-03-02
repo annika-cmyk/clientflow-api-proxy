@@ -12,11 +12,10 @@
     { id: 'fld-antal-kundforetag', airtable: 'Antal kundföretag', type: 'number' },
     { id: 'fld-metod-riskbedomning', airtable: '3. Metod för Riskbedömning ' },
     { id: 'fld-identifierade-risker', airtable: '4. Identifierade Risker och Sårbarheter' },
-    { id: 'fld-vardering-risk', airtable: '5. Värdering av sammantagen risk' },
-    { id: 'fld-riskreducerande', airtable: '6. Riskreducerande Åtgärder och Rutiner' },
-    { id: 'fld-utvardering', airtable: '7. Utvärdering och Uppdatering' },
-    { id: 'fld-kommunikation-risk', airtable: '8. Kommunikation.' },
-    { id: 'fld-uppdaterad-datum', airtable: 'Uppdaterad datum', type: 'date' }
+    { id: 'fld-riskreducerande', airtable: '5. Riskreducerande Åtgärder och Rutiner' },
+    { id: 'fld-utvardering', airtable: '6. Utvärdering och Uppdatering' },
+    { id: 'fld-kommunikation-risk', airtable: '7. Kommunikation.' },
+    { id: 'fld-vardering-risk', airtable: '8. Värdering av sammantagen risk' }
   ];
 
   const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
@@ -241,21 +240,6 @@
         saveFields(fields, card);
       });
     });
-    var revideradBtn = getEl('btn-markera-reviderad-risk');
-    if (revideradBtn && canEdit) {
-      revideradBtn.addEventListener('click', function () {
-        var today = new Date();
-        var y = today.getFullYear();
-        var m = String(today.getMonth() + 1).padStart(2, '0');
-        var d = String(today.getDate()).padStart(2, '0');
-        var dateStr = y + '-' + m + '-' + d;
-        var dateEl = getEl('fld-uppdaterad-datum');
-        if (dateEl) dateEl.value = dateStr;
-        var card = document.querySelector('.byra-card[data-field-id="fld-uppdaterad-datum"]');
-        var fields = { 'Uppdaterad datum': dateStr };
-        saveFields(fields, card, function () {});
-      });
-    }
     var numCard = document.querySelector('.byra-card--numeric-group');
     if (numCard) {
       var saveBtn = numCard.querySelector('#save-numeric-group');
@@ -346,38 +330,105 @@
     }
   }
 
-  function initLansstyrelsenPdfButton() {
-    var btn = getEl('btn-lansstyrelsen-pdf');
-    if (!btn) return;
+  function initAiVarderingRisk() {
+    var btn = getEl('btn-ai-vardering-risk');
+    var card = document.querySelector('.byra-card[data-field-id="fld-vardering-risk"]');
+    var ta = getEl('fld-vardering-risk');
+    if (!btn || !card || !ta) return;
     btn.addEventListener('click', async function () {
-      var origText = btn.innerHTML;
+      var origHtml = btn.innerHTML;
       btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+      if (typeof window.showAiThinking === 'function') window.showAiThinking();
+      showEdit(card);
+      ta.focus();
       try {
-        var res = await fetch(getBaseUrl() + '/api/byra/lansstyrelsen-pdf', {
+        var res = await fetch(getBaseUrl() + '/api/ai-vardering-risk-byra', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken() }
+          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
         });
-        if (!res.ok) {
-          var err = await res.json().catch(function () { return {}; });
-          alert(err.error || err.message || 'Kunde inte generera PDF');
-          return;
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok && data.text) {
+          ta.value = data.text;
+          updateCardView(card);
+        } else {
+          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
         }
-        var blob = await res.blob();
-        var cd = res.headers.get('Content-Disposition') || '';
-        var m = cd.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\n]+)/);
-        var filename = m ? decodeURIComponent(m[1].trim()) : 'Lansstyrelsen-' + new Date().getFullYear() + '.pdf';
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(a.href);
       } catch (err) {
-        console.error('Länsstyrelsen PDF:', err);
-        alert('Kunde inte generera PDF: ' + (err.message || 'Okänt fel'));
+        console.error('AI värdering risk:', err);
+        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
       } finally {
         btn.disabled = false;
-        btn.innerHTML = origText;
+        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
+      }
+    });
+  }
+
+  function initAiBeskrivning() {
+    var btn = getEl('btn-ai-beskrivning');
+    var card = document.querySelector('.byra-card[data-field-id="fld-beskrivning"]');
+    var ta = getEl('fld-beskrivning');
+    if (!btn || !card || !ta) return;
+    btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+      if (typeof window.showAiThinking === 'function') window.showAiThinking();
+      showEdit(card);
+      ta.focus();
+      try {
+        var res = await fetch(getBaseUrl() + '/api/ai-beskrivning-byra', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok && data.text) {
+          ta.value = data.text;
+          updateCardView(card);
+        } else {
+          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
+        }
+      } catch (err) {
+        console.error('AI beskrivning:', err);
+        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
+      } finally {
+        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
+      }
+    });
+  }
+
+  function initAiIdentifieradeRisker() {
+    var btn = getEl('btn-ai-identifierade-risker');
+    var card = document.querySelector('.byra-card[data-field-id="fld-identifierade-risker"]');
+    var ta = getEl('fld-identifierade-risker');
+    if (!btn || !card || !ta) return;
+    btn.addEventListener('click', async function () {
+      var origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+      if (typeof window.showAiThinking === 'function') window.showAiThinking();
+      showEdit(card);
+      ta.focus();
+      try {
+        var res = await fetch(getBaseUrl() + '/api/ai-identifierade-risker-byra', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (res.ok && data.text) {
+          ta.value = data.text;
+          updateCardView(card);
+        } else {
+          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
+        }
+      } catch (err) {
+        console.error('AI identifierade risker:', err);
+        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
+      } finally {
+        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
       }
     });
   }
@@ -385,7 +436,9 @@
   function init() {
     load();
     initFormatToolbars();
-    initLansstyrelsenPdfButton();
+    initAiBeskrivning();
+    initAiIdentifieradeRisker();
+    initAiVarderingRisk();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

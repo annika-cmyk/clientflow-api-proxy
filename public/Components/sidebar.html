@@ -9,7 +9,7 @@
     
     <nav class="sidebar-nav">
         <div class="nav-section">
-            <h3><i class="fas fa-shield-alt"></i> Verktyg för riskbedömning</h3>
+            <h3><i class="fas fa-shield-alt"></i> Riskbedömning</h3>
             <ul>
                 <li data-page="riskbedomning-byra">
                     <a href="riskbedomning-byra.html">
@@ -23,19 +23,7 @@
                         <span>Övriga riskfaktorer</span>
                     </a>
                 </li>
-                <li data-page="allman-riskbedomning">
-                    <a href="allman-riskbedomning.html">
-                        <i class="fas fa-clipboard-check"></i>
-                        <span>Allmän riskbedömning</span>
-                    </a>
-                </li>
-            </ul>
-        </div>
-        
-        <div class="nav-section">
-            <h3><i class="fas fa-file-alt"></i> Dokument</h3>
-            <ul>
-                <li data-page="statistik-riskbedomning" class="sidebar-nav-item-muted">
+                <li data-page="statistik-riskbedomning">
                     <a href="statistik-riskbedomning.html">
                         <i class="fas fa-chart-bar"></i>
                         <span>Statistik för riskbedömning</span>
@@ -43,7 +31,7 @@
                 </li>
                 <li data-page="allman-riskbedomning-byra">
                     <a href="allman-riskbedomning-byra.html">
-                        <i class="fas fa-clipboard-list"></i>
+                        <i class="fas fa-clipboard-check"></i>
                         <span>Allmän riskbedömning byrå</span>
                     </a>
                 </li>
@@ -53,10 +41,28 @@
                         <span>Byrårutiner</span>
                     </a>
                 </li>
-                <li data-page="byra-anvandare" class="sidebar-nav-item-muted">
+                <li id="nav-exportera-lansstyrelsen-pdf" class="nav-action-item">
+                    <a href="#" onclick="event.preventDefault(); window.exportLansstyrelsenPdf && window.exportLansstyrelsenPdf();">
+                        <i class="fas fa-file-pdf"></i>
+                        <span>Exportera rutiner och riskbedömning</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="nav-section">
+            <h3><i class="fas fa-building"></i> Byrå</h3>
+            <ul>
+                <li data-page="byra-anvandare">
                     <a href="byra-anvandare.html">
                         <i class="fas fa-users"></i>
                         <span>Uppgifter byrå & användare</span>
+                    </a>
+                </li>
+                <li data-page="dokumentation">
+                    <a href="dokumentation.html">
+                        <i class="fas fa-folder-open"></i>
+                        <span>Dokumentation</span>
                     </a>
                 </li>
             </ul>
@@ -65,26 +71,25 @@
         <div class="nav-section">
             <h3><i class="fas fa-cogs"></i> Hantering</h3>
             <ul>
-                <li data-page="index" class="nav-item-lead">
+                <li data-page="index">
                     <a href="index.html">
                         <i class="fas fa-th-large"></i>
                         <span>Dashboard</span>
                     </a>
                 </li>
-
-                <li data-page="kundlista" class="nav-item-kundlista">
+                <li data-page="kundlista">
                     <a href="kundlista.html">
                         <i class="fas fa-users"></i>
                         <span>Kundlista</span>
                     </a>
                 </li>
-                <li data-page="avvikelser" class="sidebar-nav-item-muted">
+                <li data-page="avvikelser">
                     <a href="avvikelser.html">
                         <i class="fas fa-exclamation-circle"></i>
                         <span>Avvikelser</span>
                     </a>
                 </li>
-                <li data-page="registrera-utbildning" class="sidebar-nav-item-muted">
+                <li data-page="registrera-utbildning">
                     <a href="registrera-utbildning.html">
                         <i class="fas fa-graduation-cap"></i>
                         <span>Registrera utbildning</span>

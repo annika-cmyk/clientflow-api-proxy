@@ -216,6 +216,85 @@ window.addEventListener('popstate', function() {
     }
 });
 
+// AI "tänker"-indikator – visas på alla AI-hjälp-ställen
+window.showAiThinking = function () {
+    var el = document.getElementById('ai-thinking-overlay');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'ai-thinking-overlay';
+        el.className = 'ai-thinking-overlay';
+        el.innerHTML = '<i class="fas fa-robot"></i> <i class="fas fa-spinner fa-spin"></i> AI tänker...';
+        document.body.appendChild(el);
+    }
+    el.style.display = 'flex';
+};
+
+window.hideAiThinking = function () {
+    var el = document.getElementById('ai-thinking-overlay');
+    if (el) el.style.display = 'none';
+};
+
+// Exportera Länsstyrelsen-PDF (anropas från menyn) – laddar ner och sparar kopia till Dokumentation
+window.exportLansstyrelsenPdf = async function () {
+    const STORAGE_KEY = 'dokumentationLansstyrelsenPdfs';
+    const MAX_SAVED = 10;
+    const token = localStorage.getItem('authToken');
+    const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
+    const navItem = document.getElementById('nav-exportera-lansstyrelsen-pdf');
+    const link = navItem ? navItem.querySelector('a') : null;
+    if (!token) {
+        alert('Du måste logga in för att exportera.');
+        return;
+    }
+    const origHtml = link ? link.innerHTML : '';
+    if (link) {
+        link.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
+        link.style.pointerEvents = 'none';
+    }
+    try {
+        const res = await fetch(baseUrl + '/api/byra/lansstyrelsen-pdf', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || err.message || 'Kunde inte generera PDF');
+        }
+        const blob = await res.blob();
+        const cd = res.headers.get('Content-Disposition') || '';
+        const m = cd.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\n]+)/);
+        const apiFilename = m ? decodeURIComponent(m[1].trim()) : 'Lansstyrelsen-' + new Date().getFullYear() + '.pdf';
+        const displayFilename = 'Byråns allmänna riskbedömning samt rutiner ' + new Date().toLocaleDateString('sv-SE') + '.pdf';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = apiFilename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const reader = new FileReader();
+        reader.onload = function () {
+            const base64 = reader.result.split(',')[1];
+            if (base64) {
+                try {
+                    let list = [];
+                    try { list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) {}
+                    list.unshift({ date: new Date().toLocaleDateString('sv-SE'), filename: displayFilename, base64: base64 });
+                    list = list.slice(0, MAX_SAVED);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+                } catch (_) {}
+            }
+        };
+        reader.readAsDataURL(blob);
+    } catch (err) {
+        console.error('Länsstyrelsen PDF:', err);
+        alert('Kunde inte generera PDF: ' + (err.message || 'Okänt fel'));
+    } finally {
+        if (link) {
+            link.innerHTML = origHtml;
+            link.style.pointerEvents = '';
+        }
+    }
+};
+
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ComponentLoader;
