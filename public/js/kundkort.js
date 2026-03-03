@@ -510,15 +510,29 @@ class CustomerCardManager {
             }
         } catch(e) { kontaktPersoner = []; }
 
-        // Om fysisk person och ingen Ägare EF finns — skapa en automatiskt
-        const arFysiskPerson = bolagsform === 'Fysiska personer' || bolagsform === 'Enskild firma';
+        // Om enskild firma: skapa automatiskt kontaktperson med företagets namn som Ägare EF och Verklig huvudman
+        const arEnskildFirma = bolagsform === 'Enskild firma';
         const harAgareEF = kontaktPersoner.some(p => (p.roller || []).includes('Ägare EF') || p.roll === 'Ägare EF');
-        if (arFysiskPerson && !harAgareEF) {
+        if (arEnskildFirma && !harAgareEF && namn) {
             const agare = {
-                namn: namn,
+                namn: namn.trim(),
+                roller: ['Ägare EF', 'Verklig huvudman'],
+                epost: fields['e-post'] || fields['Email'] || fields['E-post'] || '',
+                personnr: orgnr || ''
+            };
+            kontaktPersoner = [agare, ...kontaktPersoner];
+            this._kontaktPersoner = kontaktPersoner;
+            this._saveKontaktPersoner({ 'Verklig huvudman': namn.trim() }); // Spara kontaktperson + Verklig huvudman
+        }
+
+        // Om fysisk person (ej EF) och ingen Ägare EF finns — skapa en automatiskt
+        const arFysiskPerson = bolagsform === 'Fysiska personer';
+        if (arFysiskPerson && !harAgareEF && namn) {
+            const agare = {
+                namn: namn.trim(),
                 roller: ['Ägare EF'],
                 epost: fields['e-post'] || fields['Email'] || fields['E-post'] || '',
-                personnr: orgnr
+                personnr: orgnr || ''
             };
             kontaktPersoner = [agare, ...kontaktPersoner];
         }
@@ -536,7 +550,8 @@ class CustomerCardManager {
         const redovisningsmetod = fields['Redovisningsmetod'] || '';
         const redovisningsperiod = fields['Redovisningsperiod'] || '';
         const rakenskapsår = fields['Räkenskapsår'] || '';
-        const bokforingsprogram = fields['Bokforingsprogram'] || fields['Bokföringsprogram'] || '';
+        const bokforingsprogramRaw = fields['Bokforingsprogram'] || fields['Bokföringsprogram'] || '';
+        const bokforingsprogram = bokforingsprogramRaw === 'Spirius' ? 'Spiris' : bokforingsprogramRaw;
         const bank = fields['Bank'] || '';
 
         const mis = '<span class="missing-data">Ej angiven</span>';
@@ -696,7 +711,7 @@ class CustomerCardManager {
                                     <option value="Bokio" ${bokforingsprogram === 'Bokio' ? 'selected' : ''}>Bokio</option>
                                     <option value="SpeedLedger" ${bokforingsprogram === 'SpeedLedger' ? 'selected' : ''}>SpeedLedger</option>
                                     <option value="Kassabok" ${bokforingsprogram === 'Kassabok' ? 'selected' : ''}>Kassabok</option>
-                                    <option value="Spirius" ${bokforingsprogram === 'Spirius' ? 'selected' : ''}>Spirius</option>
+                                    <option value="Spiris" ${bokforingsprogram === 'Spiris' ? 'selected' : ''}>Spiris</option>
                                     <option value="PE Accounting" ${bokforingsprogram === 'PE Accounting' ? 'selected' : ''}>PE Accounting</option>
                                     <option value="Hogia" ${bokforingsprogram === 'Hogia' ? 'selected' : ''}>Hogia</option>
                                     <option value="Björn Lundén" ${bokforingsprogram === 'Björn Lundén' ? 'selected' : ''}>Björn Lundén</option>
@@ -1099,36 +1114,7 @@ class CustomerCardManager {
     }
 
     _updateUppdragAntasLock() {
-        const f = this.customerData?.fields || {};
-        const kycFält = [
-            'KYC genomgången - Tjänster',
-            'KYC genomgången - Geografiska riskfaktorer',
-            'KYC genomgången - Riskfaktorer kund',
-            'KYC genomgången - Distributionskanaler',
-            'KYC genomgången - Verksamhetsspecifika riskfaktorer',
-            'KYC genomgången - Riskhöjande faktorer övrigt',
-            'KYC genomgången - Risksänkande faktorer',
-            'KYC genomgången - Kommentar riskfaktorer',
-        ];
-        const allaKlara = kycFält.every(k => f[k] === true);
-        const cb = document.getElementById('uppdrag-kan-antas-cb');
-        const label = cb?.closest('.uppdrag-antas-label');
-        const hint = document.querySelector('.uppdrag-antas-hint');
-        if (cb) {
-            cb.disabled = !allaKlara;
-        }
-        if (label) {
-            if (allaKlara) {
-                label.classList.remove('uppdrag-antas-disabled');
-                label.title = '';
-            } else {
-                label.classList.add('uppdrag-antas-disabled');
-                label.title = 'Alla KYC-kort måste vara klarmarkerade först';
-            }
-        }
-        if (hint) {
-            hint.style.display = allaKlara ? 'none' : '';
-        }
+        // Inget krav på klarmarkering längre – checkboxen är alltid tillgänglig
     }
 
     async saveUppdragKanAntas(checked) {
@@ -1269,24 +1255,28 @@ class CustomerCardManager {
         document.getElementById('rolle-person-modal')?.remove();
     }
 
-    async _saveKontaktPersoner() {
+    async _saveKontaktPersoner(extraFields = {}) {
         const custId = this.customerId || this.currentCustomerId;
         if (!custId) return;
         const token = localStorage.getItem('clientflow_token') || localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const fields = { Kontaktpersoner: JSON.stringify(this._kontaktPersoner), ...extraFields };
         try {
             const resp = await fetch(`${baseUrl}/api/kunddata/${custId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ fields: { Kontaktpersoner: JSON.stringify(this._kontaktPersoner) } })
+                body: JSON.stringify({ fields })
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
                 console.error('Fel vid sparande av kontaktpersoner:', err);
                 this.showNotification('Kunde inte spara kontaktpersoner', 'error');
             } else {
-                if (this.customerData) this.customerData.fields['Kontaktpersoner'] = JSON.stringify(this._kontaktPersoner);
-                this.showNotification('Kontaktpersoner sparade', 'success');
+                if (this.customerData) {
+                    this.customerData.fields['Kontaktpersoner'] = JSON.stringify(this._kontaktPersoner);
+                    for (const [k, v] of Object.entries(extraFields)) this.customerData.fields[k] = v;
+                }
+                if (!extraFields['Verklig huvudman']) this.showNotification('Kontaktpersoner sparade', 'success');
             }
         } catch(e) {
             console.error(e);
@@ -1652,18 +1642,6 @@ class CustomerCardManager {
                 ${body}
             </div>` : '';
 
-        // Kolla om alla KYC-statusfält är klarmarkerade
-        const kycFält = [
-            'KYC genomgången - Tjänster',
-            'KYC genomgången - Geografiska riskfaktorer',
-            'KYC genomgången - Riskfaktorer kund',
-            'KYC genomgången - Distributionskanaler',
-            'KYC genomgången - Verksamhetsspecifika riskfaktorer',
-            'KYC genomgången - Riskhöjande faktorer övrigt',
-            'KYC genomgången - Risksänkande faktorer',
-            'KYC genomgången - Kommentar riskfaktorer',
-        ];
-        const allaKlara = kycFält.every(k => f[k] === true);
         const uppdragCheck = f['Uppdraget kan antas'];
         const avtalsDatum = f['Avtalet gäller ifrån'] ? fmtDate(f['Avtalet gäller ifrån']) : null;
 
@@ -1793,17 +1771,15 @@ class CustomerCardManager {
 
                         <div class="uppdrag-antas-section">
                             <div class="uppdrag-antas-row">
-                                <label class="uppdrag-antas-label ${allaKlara ? '' : 'uppdrag-antas-disabled'}"
-                                    title="${allaKlara ? '' : 'Alla KYC-kort måste vara klarmarkerade först'}">
+                                <label class="uppdrag-antas-label">
                                     <input type="checkbox" id="uppdrag-kan-antas-cb"
-                                        ${allaKlara ? '' : 'disabled'}
+                                        ${uppdragCheck ? 'checked' : ''}
                                         onchange="customerCardManager.saveUppdragKanAntas(this.checked)">
                                     <span class="uppdrag-antas-check-box"></span>
                                     <span class="uppdrag-antas-text">Uppdraget kan antas</span>
                                 </label>
                                 ${uppdragCheck && avtalsDatum ? `<span class="uppdrag-antas-datum"><i class="fas fa-calendar-check"></i> ${avtalsDatum}</span>` : ''}
                             </div>
-                            ${!allaKlara ? `<p class="uppdrag-antas-hint"><i class="fas fa-lock"></i> Klarmarkera alla kort ovan för att låsa upp</p>` : ''}
                         </div>
                     </div>
                 </div>

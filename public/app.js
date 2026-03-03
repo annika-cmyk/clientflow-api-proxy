@@ -632,31 +632,35 @@ class ClientFlowApp {
     async handleSearchSubmit(e) {
         e.preventDefault();
         
-        const orgNumber = document.getElementById('org-number').value.trim();
-        if (!orgNumber) {
-            this.showMessage('Ange ett organisationsnummer', 'error');
+        const orgNumberInput = document.getElementById('org-number').value.trim();
+        if (!orgNumberInput) {
+            this.showMessage('Ange ett organisationsnummer eller personnummer', 'error');
             return;
         }
-
+        
+        // Normalisera: ta bort alla tecken som inte är siffror (t.ex. bindestreck, mellanslag)
+        const cleanOrgNumber = orgNumberInput.replace(/[^\d]/g, '');
+        if (!cleanOrgNumber || cleanOrgNumber.length < 10 || cleanOrgNumber.length > 12) {
+            this.showMessage('Ogiltigt format. Ange 10–12 siffror (t.ex. 840221-2384, 19840221-2384 eller 8402212384).', 'error');
+            return;
+        }
+        
         // Show loading state
         const submitBtn = e.target.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar data...';
         submitBtn.disabled = true;
-
+        
         try {
-            // Clean organization number (remove dashes)
-            const cleanOrgNumber = orgNumber.replace(/-/g, '');
-            
-            // Fetch company data from Bolagsverket
+            // Fetch company data from Bolagsverket (skicka endast siffror)
             const companyData = await this.fetchCompanyData(cleanOrgNumber);
             
             if (companyData) {
                 this.displayCompanyInfo(companyData);
-                this.addToRecentSearches(orgNumber, companyData);
+                this.addToRecentSearches(orgNumberInput, companyData);
                 this.showMessage('Företagsdata hämtad framgångsrikt!', 'success');
             } else {
-                this.showMessage('Kunde inte hitta företag med det organisationsnumret', 'error');
+                this.showMessage('Kunde inte hitta företag med det numret', 'error');
             }
         } catch (error) {
             console.error('Error fetching company data:', error);

@@ -815,7 +815,8 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
       });
     }
 
-    let cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
+    // Ta bara siffror (stödjer format som 600816-8201, 19600816-8201 osv.)
+    let cleanOrgNumber = (organisationsnummer || '').toString().replace(/[^\d]/g, '');
     
     // Använd produktionsmiljö för riktiga organisationsnummer
     const currentEnvironment = process.env.BOLAGSVERKET_ENVIRONMENT || 'prod';
@@ -845,26 +846,57 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer';
 
-    // Använd rätt JSON-format för Bolagsverket API enligt Swagger-dokumentationen
-    const requestBody = {
-      identitetsbeteckning: cleanOrgNumber
+    // Funktion för att bygga 12-siffrigt personnummer (YY → 19YY/20YY)
+    const toTwelveDigitPersonnummer = (tenDigits) => {
+      const only = (tenDigits || '').toString().replace(/[^\d]/g, '');
+      if (only.length !== 10) return only;
+      const yy = parseInt(only.substring(0, 2), 10);
+      const currentYear = new Date().getFullYear() % 100;
+      const century = yy > currentYear ? '19' : '20';
+      return century + only;
     };
 
-    console.log(`🔍 Skickar till Bolagsverket:`, {
-      url: orgUrl,
-      body: requestBody,
-      orgNumber: cleanOrgNumber,
-      environment: environment
-    });
+    // Första försök: använd cleanOrgNumber som är 10–12 siffror
+    let requestIdentitetsbeteckning = cleanOrgNumber;
+    let response;
+    try {
+      const requestBody = { identitetsbeteckning: requestIdentitetsbeteckning };
 
-    const response = await axios.post(orgUrl, requestBody, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': '*/*'
-      },
-      timeout: 15000
-    });
+      console.log(`🔍 Skickar till Bolagsverket:`, {
+        url: orgUrl,
+        body: requestBody,
+        orgNumber: requestIdentitetsbeteckning,
+        environment: environment
+      });
+
+      response = await axios.post(orgUrl, requestBody, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': '*/*'
+        },
+        timeout: 15000
+      });
+    } catch (err) {
+      // Vid 10 siffror och 400 från Bolagsverket: försök med 12-siffrigt personnummer (enskild firma)
+      if (err.response?.status === 400 && cleanOrgNumber.length === 10) {
+        const twelve = toTwelveDigitPersonnummer(cleanOrgNumber);
+        console.log(`⚠️ Bolagsverket accepterade inte 10 siffror. Försöker igen med 12-siffrigt: ${twelve}.`);
+        requestIdentitetsbeteckning = twelve;
+        cleanOrgNumber = twelve;
+        const requestBody = { identitetsbeteckning: requestIdentitetsbeteckning };
+        response = await axios.post(orgUrl, requestBody, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': '*/*'
+          },
+          timeout: 15000
+        });
+      } else {
+        throw err;
+      }
+    }
 
     console.log(`✅ Success från Bolagsverket:`, {
       status: response.status,
@@ -1298,7 +1330,8 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       });
     }
 
-    let cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
+    // Ta bara siffror (samma normalisering som vid sökning)
+    let cleanOrgNumber = (organisationsnummer || '').toString().replace(/[^\d]/g, '');
     
     // Använd produktionsmiljö för riktiga organisationsnummer
     const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'prod';
@@ -1306,16 +1339,11 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       console.log(`⚠️ Använder känt fungerande testnummer istället för ${cleanOrgNumber}`);
       cleanOrgNumber = '193403223328';
     }
-    
+
     const token = await getBolagsverketToken();
     const orgUrl = environment === 'test'
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer';
-
-    // Hämta data från Bolagsverket
-    const requestBody = {
-      identitetsbeteckning: cleanOrgNumber
-    };
 
     const headers = {
       'Authorization': `Bearer ${token}`,
@@ -1323,51 +1351,63 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       'Accept': '*/*'
     };
 
-    console.log('🔍 Calling Bolagsverket API:', {
-      url: orgUrl,
-      requestBody: requestBody,
-      headers: headers,
-      orgNumber: cleanOrgNumber
-    });
+    const toTwelveDigitPersonnummer = (tenDigits) => {
+      const only = (tenDigits || '').toString().replace(/[^\d]/g, '');
+      if (only.length !== 10) return only;
+      const yy = parseInt(only.substring(0, 2), 10);
+      const currentYear = new Date().getFullYear() % 100;
+      const century = yy > currentYear ? '19' : '20';
+      return century + only;
+    };
 
     let bolagsverketResponse;
-    
+    let identitetsbeteckning = cleanOrgNumber;
+
     try {
-      bolagsverketResponse = await axios.post(orgUrl, requestBody, {
+      console.log('🔍 Calling Bolagsverket API (save-to-airtable):', { identitetsbeteckning });
+
+      bolagsverketResponse = await axios.post(orgUrl, { identitetsbeteckning }, {
         headers,
         timeout: 15000
-      });
-
-      console.log('✅ Bolagsverket API response received:', {
-        status: bolagsverketResponse.status,
-        hasData: !!bolagsverketResponse.data,
-        hasOrganisationer: !!bolagsverketResponse.data?.organisationer,
-        organisationerCount: bolagsverketResponse.data?.organisationer?.length || 0
       });
 
       if (!bolagsverketResponse.data?.organisationer?.[0]) {
         throw new Error('Ingen organisationsdata hittad från Bolagsverket');
       }
     } catch (bolagsverketError) {
-      console.error('❌ Bolagsverket API error:', {
-        message: bolagsverketError.message,
-        status: bolagsverketError.response?.status,
-        data: bolagsverketError.response?.data,
-        stack: bolagsverketError.stack
-      });
-      
-      // Om det är ett Bolagsverket-fel, returnera ett tydligt felmeddelande
-      if (bolagsverketError.response?.status === 400) {
-        return res.status(400).json({
-          error: 'Bolagsverket API fel',
-          message: 'Organisationsnummer kunde inte valideras av Bolagsverket',
-          details: bolagsverketError.response.data,
-          organisationsnummer: cleanOrgNumber
+      // Vid 10 siffror och 400: försök med 12-siffrigt (enskild firma)
+      if (bolagsverketError.response?.status === 400 && cleanOrgNumber.length === 10) {
+        identitetsbeteckning = toTwelveDigitPersonnummer(cleanOrgNumber);
+        cleanOrgNumber = identitetsbeteckning;
+        console.log(`⚠️ Save-to-airtable: Bolagsverket accepterade inte 10 siffror. Försöker med 12: ${identitetsbeteckning}`);
+        bolagsverketResponse = await axios.post(orgUrl, { identitetsbeteckning }, {
+          headers,
+          timeout: 15000
         });
+        if (!bolagsverketResponse.data?.organisationer?.[0]) {
+          throw new Error('Ingen organisationsdata hittad från Bolagsverket');
+        }
+      } else {
+        console.error('❌ Bolagsverket API error (save-to-airtable):', {
+          message: bolagsverketError.message,
+          status: bolagsverketError.response?.status,
+          data: bolagsverketError.response?.data
+        });
+        if (bolagsverketError.response?.status === 400) {
+          return res.status(400).json({
+            error: 'Bolagsverket API fel',
+            message: 'Organisationsnummer kunde inte valideras av Bolagsverket',
+            details: bolagsverketError.response?.data,
+            organisationsnummer: cleanOrgNumber
+          });
+        }
+        throw new Error(`Bolagsverket API fel: ${bolagsverketError.message}`);
       }
-      
-      throw new Error(`Bolagsverket API fel: ${bolagsverketError.message}`);
     }
+
+    console.log('✅ Bolagsverket API response received (save-to-airtable):', {
+      hasOrganisationer: !!bolagsverketResponse.data?.organisationer?.length
+    });
 
     const orgData = bolagsverketResponse.data.organisationer[0];
 
@@ -1815,10 +1855,20 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       });
     }
 
-    // Kontrollera om kunden redan finns (samma Orgnr + Byrå ID)
+    // Kontrollera om kunden redan finns (samma Orgnr + Byrå ID) – visa varning, skapa inte dubblett
     const byraIdClean = (byraId || '').toString().replace(/,/g, '').trim();
-    const checkFormula = `AND({Orgnr}="${String(cleanOrgNumber).replace(/"/g, '\\"')}",{Byrå ID}="${String(byraIdClean).replace(/"/g, '\\"')}")`;
-    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id`;
+    const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const orgnrVariants = [cleanOrgNumber];
+    if (cleanOrgNumber.length === 10) {
+      const yy = parseInt(cleanOrgNumber.substring(0, 2), 10);
+      const currentYear = new Date().getFullYear() % 100;
+      orgnrVariants.push((yy > currentYear ? '19' : '20') + cleanOrgNumber);
+    } else if (cleanOrgNumber.length === 12) {
+      orgnrVariants.push(cleanOrgNumber.substring(2));
+    }
+    const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
+    const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraIdClean)}")`;
+    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn`;
     let recordId;
     try {
       const checkRes = await axios.get(checkUrl, {
@@ -1826,13 +1876,15 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       });
       const existing = checkRes.data.records?.[0];
       if (existing) {
-        console.log('⚠️ Kund finns redan, uppdaterar befintlig post med årsredovisningar:', existing.id);
-        await axios.patch(
-          `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}/${existing.id}`,
-          { fields: airtableData.fields },
-          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-        );
-        recordId = existing.id;
+        console.log('⚠️ Kund finns redan – returnerar 409 (ingen dubblett skapas):', existing.id);
+        return res.status(409).json({
+          error: 'duplicate',
+          duplicate: true,
+          message: 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.',
+          airtableRecordId: existing.id,
+          existingId: existing.id,
+          existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || ''
+        });
       }
     } catch (checkErr) {
       console.log('ℹ️ Dubblettkontroll misslyckades, skapar ny post:', checkErr.message);
@@ -1872,12 +1924,10 @@ app.post('/api/bolagsverket/save-to-airtable', async (req, res) => {
       organisationsnummer: req.body.organisationsnummer || '',
       anvandareId: anvandareId || 'Ej angivet',
       byraId: byraId || 'Ej angivet',
-      recordId: airtableResponse.data.records[0].id,
-      duration: duration
+      recordId,
+      duration
     });
-    
     console.log(`📊 Airtable fields sent:`, airtableData.fields);
-    console.log(`📊 Airtable response fields:`, airtableResponse.data.records[0].fields);
 
     res.json(responseData);
 
