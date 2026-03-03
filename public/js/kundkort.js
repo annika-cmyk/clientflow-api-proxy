@@ -944,7 +944,8 @@ class CustomerCardManager {
             if (metod) fields['Redovisningsmetod'] = metod;
             if (period) fields['Redovisningsperiod'] = period;
             if (rakenskapsår) fields['Räkenskapsår'] = rakenskapsår;
-            if (bokforing) fields['Bokforingsprogram'] = bokforing;
+            // Skicka "Spirius" till Airtable (befintligt val) så att inte nytt alternativ skapas – visning är "Spiris"
+            if (bokforing) fields['Bokforingsprogram'] = bokforing === 'Spiris' ? 'Spirius' : bokforing;
             if (bank) fields['Bank'] = bank;
 
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {

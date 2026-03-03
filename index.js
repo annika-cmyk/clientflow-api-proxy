@@ -3202,6 +3202,46 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       })
     );
 
+    // Dubblettcheck vid uppdatering av Orgnr: samma orgnr + samma byrå får inte finnas på annan post
+    if (cleanedFields['Orgnr'] != null) {
+      let byraId = (cleanedFields['Byrå ID'] || '').toString().trim();
+      if (!byraId) {
+        const existingRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}?fields[]=Byrå ID`,
+          { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
+        );
+        byraId = (existingRes.data.fields?.['Byrå ID'] || '').toString().trim();
+      }
+      const orgnrRaw = (cleanedFields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
+      if (orgnrRaw && byraId) {
+        const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const orgnrVariants = [orgnrRaw];
+        if (orgnrRaw.length === 10) {
+          const yy = parseInt(orgnrRaw.substring(0, 2), 10);
+          const currentYear = new Date().getFullYear() % 100;
+          orgnrVariants.push((yy > currentYear ? '19' : '20') + orgnrRaw);
+        } else if (orgnrRaw.length === 12) {
+          orgnrVariants.push(orgnrRaw.substring(2));
+        }
+        const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
+        const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraId)}",RECORD_ID()!="${id}")`;
+        const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
+        const checkRes = await axios.get(checkUrl, {
+          headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+        });
+        if (checkRes.data.records?.length > 0) {
+          const existing = checkRes.data.records[0];
+          console.log(`⚠️ PATCH dubblett: orgnr finns redan för byrå ${byraId} på annan post (id: ${existing.id})`);
+          return res.status(409).json({
+            error: 'duplicate',
+            message: 'Ett annat företag hos er byrå har redan detta organisationsnummer. Samma orgnr får bara förekomma en gång per byrå.',
+            existingId: existing.id,
+            existingNamn: existing.fields?.Namn || ''
+          });
+        }
+      }
+    }
+
     console.log(`📝 Uppdaterar kund ${id} i KUNDDATA:`, JSON.stringify(cleanedFields));
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
@@ -3596,21 +3636,31 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Fält saknas i request body' });
     }
 
-    // Dubblettcheck: samma Orgnr + samma Byrå ID för denna byrå
-    const orgnr  = fields['Orgnr']   || '';
-    const byraId = fields['Byrå ID'] || '';
-    if (orgnr && byraId) {
-      const checkFormula = `AND({Orgnr}="${orgnr}",{Byrå ID}="${byraId}")`;
+    // Dubblettcheck: samma Orgnr (eller 10/12-siffrig variant) + samma Byrå ID – max en kund per orgnr per byrå
+    const orgnrRaw = (fields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
+    const byraId = (fields['Byrå ID'] || '').toString().trim();
+    if (orgnrRaw && byraId) {
+      const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const orgnrVariants = [orgnrRaw];
+      if (orgnrRaw.length === 10) {
+        const yy = parseInt(orgnrRaw.substring(0, 2), 10);
+        const currentYear = new Date().getFullYear() % 100;
+        orgnrVariants.push((yy > currentYear ? '19' : '20') + orgnrRaw);
+      } else if (orgnrRaw.length === 12) {
+        orgnrVariants.push(orgnrRaw.substring(2));
+      }
+      const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
+      const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraId)}")`;
       const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
       const checkRes = await axios.get(checkUrl, {
         headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
       });
       if (checkRes.data.records?.length > 0) {
         const existing = checkRes.data.records[0];
-        console.log(`⚠️ Dublett: ${orgnr} finns redan för byrå ${byraId} (id: ${existing.id})`);
+        console.log(`⚠️ Dublett: orgnr finns redan för byrå ${byraId} (id: ${existing.id})`);
         return res.status(409).json({
           error: 'duplicate',
-          message: `Företaget är redan upplagt som kund hos er byrå.`,
+          message: 'Företaget är redan upplagt som kund hos er byrå. Samma organisationsnummer kan bara förekomma en gång per byrå.',
           existingId: existing.id,
           existingNamn: existing.fields?.Namn || ''
         });
