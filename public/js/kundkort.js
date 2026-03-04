@@ -312,10 +312,7 @@ class CustomerCardManager {
 
             const response = await fetch(apiUrl, {
                 method: 'GET',
-                headers: {
-                    ...getAuthOptsKundkort(),
-                    'Content-Type': 'application/json'
-                }
+                ...getAuthOptsKundkort()
             });
 
             if (response.ok) {
@@ -2597,10 +2594,7 @@ class CustomerCardManager {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
-                headers: {
-                    ...getAuthOptsKundkort(),
-                    'Content-Type': 'application/json'
-                },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({
                     fields: { 'Kundens utvalda tjänster': checkedIds }
                 })
@@ -3139,10 +3133,7 @@ class CustomerCardManager {
 
             const response = await fetch(url, {
                 method,
-                headers: {
-                    ...getAuthOptsKundkort(),
-                    'Content-Type': 'application/json'
-                },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
 
@@ -3612,10 +3603,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${window.apiConfig.baseUrl}/api/avvikelser?customerId=${this.customerId}`, {
                 method: 'GET',
-                headers: {
-                    ...getAuthOptsKundkort(),
-                    'Content-Type': 'application/json'
-                }
+                ...getAuthOptsKundkort()
             });
 
             if (response.ok) {
@@ -3825,10 +3813,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${baseUrl}/api/avvikelser`, {
                 method: 'POST',
-                headers: {
-                    ...getAuthOptsKundkort(),
-                    'Content-Type': 'application/json'
-                },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify(avvikelseData)
             });
 
