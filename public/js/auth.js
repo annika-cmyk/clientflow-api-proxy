@@ -43,23 +43,17 @@ class AuthManager {
         try {
             const response = await fetch(`${this.baseUrl}/api/auth/login`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             });
 
-            console.log('🔐 Login response status:', response.status);
-            console.log('🔐 Login response headers:', Object.fromEntries(response.headers.entries()));
-
             const data = await response.json();
-            console.log('🔐 Login response data:', data);
 
             if (response.ok && data.success) {
-                // Store user data and token
-                localStorage.setItem('authToken', data.token);
-                localStorage.setItem('userData', JSON.stringify(data.user));
+                // Token sätts i httpOnly-cookie av servern – inget sparas i localStorage
                 this.currentUser = data.user;
+                if (typeof window !== 'undefined') window.__clientFlowUser = data.user;
 
                 console.log('🔐 Login successful, user data stored');
                 this.showSuccess('Inloggning lyckades! Omdirigerar...');
@@ -98,67 +92,49 @@ class AuthManager {
 
     async handleLogout(event) {
         event.preventDefault();
-        
         try {
-            const token = localStorage.getItem('authToken');
-            if (token) {
-                await fetch(`${this.baseUrl}/api/auth/logout`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    }
-                });
-            }
+            await fetch(`${this.baseUrl}/api/auth/logout`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            // Clear local storage and redirect
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('userData');
             this.currentUser = null;
+            if (typeof window !== 'undefined') window.__clientFlowUser = null;
             window.location.href = 'login.html';
         }
     }
 
     async checkAuthStatus() {
-        const token = localStorage.getItem('authToken');
-        const userData = localStorage.getItem('userData');
-
-        if (!token || !userData) {
-            // Not logged in, redirect to login if not already there
-            if (window.location.pathname !== '/login.html' && !window.location.pathname.includes('login.html')) {
-                window.location.href = 'login.html';
-            }
-            return;
-        }
+        const isLoginPage = window.location.pathname === '/login.html' || window.location.pathname.endsWith('login.html');
+        if (isLoginPage) return;
 
         try {
-            // Verify token with server
-            const response = await fetch(`${this.baseUrl}/api/auth/verify`, {
+            const response = await fetch(`${this.baseUrl}/api/auth/me`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                }
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (response.ok) {
-                this.currentUser = JSON.parse(userData);
+                const data = await response.json();
+                this.currentUser = data.user || data;
+                if (typeof window !== 'undefined') {
+                    window.__clientFlowUser = this.currentUser;
+                    window.dispatchEvent(new CustomEvent('clientflow:authReady', { detail: { user: this.currentUser } }));
+                }
                 this.updateUI();
             } else {
-                // Token invalid, clear storage and redirect to login
-                localStorage.removeItem('authToken');
-                localStorage.removeItem('userData');
                 this.currentUser = null;
+                window.__clientFlowUser = null;
                 window.location.href = 'login.html';
             }
         } catch (error) {
             console.error('Auth check error:', error);
-            // On error, assume not authenticated
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('userData');
             this.currentUser = null;
+            window.__clientFlowUser = null;
             window.location.href = 'login.html';
         }
     }
@@ -206,20 +182,23 @@ class AuthManager {
         if (successElement) successElement.style.display = 'none';
     }
 
-    // Static method to check if user is authenticated
     static isAuthenticated() {
-        return !!localStorage.getItem('authToken');
+        const auth = window.authManager;
+        return !!(auth && auth.currentUser);
     }
 
-    // Static method to get current user
     static getCurrentUser() {
-        const userData = localStorage.getItem('userData');
-        return userData ? JSON.parse(userData) : null;
+        const auth = window.authManager;
+        if (auth && auth.currentUser) return auth.currentUser;
+        return (typeof window !== 'undefined' && window.__clientFlowUser) || null;
     }
 
-    // Static method to get auth token
-    static getAuthToken() {
-        return localStorage.getItem('authToken');
+    /** Använd för alla API-anrop – auth sker via cookie (credentials: 'include'). Returnerar inte token. */
+    static getAuthFetchOptions(customHeaders = {}) {
+        return {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...customHeaders }
+        };
     }
 }
 
@@ -235,19 +214,10 @@ function showForgotPassword() {
 window.AuthManager = AuthManager;
 window.authManager = authManager;
 
-// Logout function for sidebar button
 window.testLogout = function() {
-    console.log('🔍 Logout button clicked!');
-    
-    // Call authManager logout if it exists
     if (window.authManager) {
-        console.log('🔍 AuthManager found, calling handleLogout...');
         window.authManager.handleLogout(new Event('click'));
     } else {
-        console.log('❌ AuthManager not found');
-        // Fallback: clear storage and redirect
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
         window.location.href = 'login.html';
     }
 };

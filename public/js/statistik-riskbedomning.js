@@ -4,16 +4,13 @@
 (function () {
   const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
-  function getToken() {
-    return localStorage.getItem('authToken');
+  function getAuthOpts() {
+    return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
   }
 
   async function fetchStatistik() {
-    const token = getToken();
-    if (!token) return null;
-    const res = await fetch(baseUrl + '/api/statistik-riskbedomning', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return null;
+    const res = await fetch(baseUrl + '/api/statistik-riskbedomning', getAuthOpts());
     if (!res.ok) throw new Error('Kunde inte hämta statistik');
     return res.json();
   }
@@ -143,8 +140,7 @@
   }
 
   async function fetchKunderForRow(typ, paramId, paramNamn, titel) {
-    const token = getToken();
-    if (!token) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       showKunderModal(titel, null, false, 'Du måste vara inloggad.');
       return;
     }
@@ -153,9 +149,7 @@
     if (paramNamn !== undefined && paramNamn !== '') params.set('namn', paramNamn);
     showKunderModal(titel, null, true, null);
     try {
-      const res = await fetch(baseUrl + '/api/statistik-riskbedomning/kunder?' + params.toString(), {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
+      const res = await fetch(baseUrl + '/api/statistik-riskbedomning/kunder?' + params.toString(), getAuthOpts());
       const data = await res.json();
       document.getElementById('statistik-kunder-modal-loading').style.display = 'none';
       if (!res.ok) {

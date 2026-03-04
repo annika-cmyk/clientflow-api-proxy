@@ -19,33 +19,21 @@ class ClientFlowApp {
         // Apply role-based UI restrictions
         this.applyRoleBasedUI();
         
-        // Dashboard: load kunder utan riskbedömning (only on index/dashboard)
         if (document.getElementById('riskbedomning-list')) {
             this.loadRiskbedomningList();
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'authToken') this.loadRiskbedomningList();
-            });
+            window.addEventListener('clientflow:authReady', () => this.loadRiskbedomningList());
         }
-        // Dashboard: load mina uppgifter
         if (document.getElementById('my-tasks-list')) {
             this.loadMyTasks();
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'authToken') this.loadMyTasks();
-            });
+            window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
         }
-        // Dashboard: load kunder som saknar uppdragsavtal
         if (document.getElementById('uppdragsavtal-list')) {
             this.loadUppdragsavtalList();
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'authToken') this.loadUppdragsavtalList();
-            });
+            window.addEventListener('clientflow:authReady', () => this.loadUppdragsavtalList());
         }
-        // Dashboard: load avvikelser
         if (document.getElementById('avvikelser-list')) {
             this.loadAvvikelserList();
-            window.addEventListener('storage', (e) => {
-                if (e.key === 'authToken') this.loadAvvikelserList();
-            });
+            window.addEventListener('clientflow:authReady', () => this.loadAvvikelserList());
         }
     }
 
@@ -119,42 +107,187 @@ class ClientFlowApp {
                 header.setAttribute('aria-expanded', !isCollapsed);
             });
         });
+
+        // Kom igång – checkboxar och minimering
+        if (document.querySelector('.kom-igang-flow')) {
+            this.initKomIgang();
+        }
+    }
+
+    static KOM_IGANG_STEP_IDS = {
+        1: ['kom-igang-1-0'],
+        2: ['kom-igang-2-0'],
+        3: ['kom-igang-3-0', 'kom-igang-3-1'],
+        4: ['kom-igang-4-0', 'kom-igang-4-1', 'kom-igang-4-2', 'kom-igang-4-3'],
+        5: ['kom-igang-5-0']
+    };
+
+    async initKomIgang() {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        let state = {};
+        try {
+            const res = await fetch(`${this.baseUrl}/api/settings/kom-igang`, { method: 'GET', ...opts });
+            if (res.ok) {
+                const data = await res.json();
+                state = data.state || {};
+            }
+        } catch (e) { /* använd tom state */ }
+        Object.keys(ClientFlowApp.KOM_IGANG_STEP_IDS).forEach(stepNum => {
+            ClientFlowApp.KOM_IGANG_STEP_IDS[stepNum].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && state[id]) el.checked = true;
+            });
+        });
+        document.querySelectorAll('.kom-igang-step').forEach(stepEl => {
+            this.updateKomIgangMinimerad(stepEl);
+        });
+        this.reorderKomIgangFlow();
+        document.querySelectorAll('.kom-igang-step').forEach(stepEl => {
+            const step = stepEl.getAttribute('data-step');
+            const ids = ClientFlowApp.KOM_IGANG_STEP_IDS[step];
+            if (ids) {
+                ids.forEach(id => {
+                    const cb = document.getElementById(id);
+                    if (cb) {
+                        cb.addEventListener('change', (e) => {
+                            e.stopPropagation();
+                            this.saveKomIgangState();
+                            this.updateKomIgangMinimerad(stepEl);
+                            this.reorderKomIgangFlow();
+                        });
+                    }
+                });
+            }
+            stepEl.addEventListener('click', (e) => {
+                if (!stepEl.classList.contains('kom-igang-step--minimerad')) return;
+                if (e.target.closest('a')) return;
+                e.preventDefault();
+                stepEl.classList.remove('kom-igang-step--minimerad');
+            });
+        });
+        this.setupKomIgangScroll();
+    }
+
+    setupKomIgangScroll() {
+        const flow = document.getElementById('kom-igang-flow') || document.querySelector('.kom-igang-flow');
+        const wrap = flow && flow.closest('.kom-igang-scroll-wrap');
+        const leftBtn = wrap && wrap.querySelector('.kom-igang-arrow-left');
+        const rightBtn = wrap && wrap.querySelector('.kom-igang-arrow-right');
+        if (!flow || !wrap) return;
+
+        function updateArrows() {
+            const canLeft = flow.scrollLeft > 4;
+            const canRight = flow.scrollLeft < flow.scrollWidth - flow.clientWidth - 4;
+            if (leftBtn) leftBtn.classList.toggle('hidden', !canLeft);
+            if (rightBtn) rightBtn.classList.toggle('hidden', !canRight);
+        }
+
+        flow.addEventListener('scroll', updateArrows);
+        if (leftBtn) {
+            leftBtn.addEventListener('click', () => {
+                flow.scrollBy({ left: -Math.min(flow.clientWidth * 0.85, flow.scrollLeft + 20), behavior: 'smooth' });
+            });
+        }
+        if (rightBtn) {
+            rightBtn.addEventListener('click', () => {
+                const maxScroll = flow.scrollWidth - flow.clientWidth;
+                flow.scrollBy({ left: Math.min(flow.clientWidth * 0.85, maxScroll - flow.scrollLeft + 20), behavior: 'smooth' });
+            });
+        }
+
+        let startX = 0;
+        let startScrollLeft = 0;
+        let isDragging = false;
+
+        const onMove = (e) => {
+            if (isDragging) {
+                flow.scrollLeft = startScrollLeft + (startX - e.clientX);
+                e.preventDefault();
+                return;
+            }
+            if (Math.abs(e.clientX - startX) > 8) {
+                isDragging = true;
+                flow.classList.add('is-dragging');
+            }
+        };
+        const onUp = () => {
+            if (isDragging) flow.classList.remove('is-dragging');
+            isDragging = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            updateArrows();
+        };
+
+        flow.addEventListener('mousedown', (e) => {
+            if (e.target.closest('a') || e.target.closest('input') || e.target.closest('button')) return;
+            startX = e.clientX;
+            startScrollLeft = flow.scrollLeft;
+            isDragging = false;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+        updateArrows();
+    }
+
+    async saveKomIgangState() {
+        const state = {};
+        [1, 2, 3, 4].forEach(stepNum => {
+            (ClientFlowApp.KOM_IGANG_STEP_IDS[stepNum] || []).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) state[id] = el.checked;
+            });
+        });
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        try {
+            await fetch(`${this.baseUrl}/api/settings/kom-igang`, {
+                method: 'PUT',
+                ...opts,
+                body: JSON.stringify({ state })
+            });
+        } catch (e) { console.error('Kunde inte spara Kom igång-state:', e); }
+    }
+
+    updateKomIgangMinimerad(stepEl) {
+        const step = stepEl.getAttribute('data-step');
+        const ids = ClientFlowApp.KOM_IGANG_STEP_IDS[step];
+        if (!ids || ids.length === 0) return;
+        const allChecked = ids.every(id => {
+            const el = document.getElementById(id);
+            return el && el.checked;
+        });
+        if (allChecked) {
+            stepEl.classList.add('kom-igang-step--minimerad');
+        } else {
+            stepEl.classList.remove('kom-igang-step--minimerad');
+        }
+    }
+
+    reorderKomIgangFlow() {
+        const flow = document.querySelector('.kom-igang-flow');
+        if (!flow) return;
+        const steps = Array.from(flow.querySelectorAll('.kom-igang-step'));
+        const incomplete = steps.filter(s => !s.classList.contains('kom-igang-step--minimerad'));
+        const complete = steps.filter(s => s.classList.contains('kom-igang-step--minimerad'));
+        const ordered = [...incomplete, ...complete];
+        ordered.forEach(el => flow.appendChild(el));
     }
 
     async applyRoleBasedUI() {
         try {
-            // Check if user is logged in
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.log('No auth token found - hiding system status for non-logged in users');
-                this.hideSystemStatus();
-                return;
-            }
-
-            // Get user data from localStorage or fetch from server
-            let userData = localStorage.getItem('userData');
-            if (userData) {
-                userData = JSON.parse(userData);
-            } else {
-                // Fetch user data from server
-                const response = await fetch(`${this.baseUrl}/api/auth/me`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    userData = data.user;
-                    // Store in localStorage for future use
-                    localStorage.setItem('userData', JSON.stringify(userData));
-                } else {
-                    console.log('Could not fetch user data - hiding system status');
+            let userData = (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || (window.__clientFlowUser) || null;
+            if (!userData) {
+                const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+                const response = await fetch(`${this.baseUrl}/api/auth/me`, { method: 'GET', ...opts });
+                if (!response.ok) {
                     this.hideSystemStatus();
                     return;
                 }
+                const data = await response.json();
+                userData = data.user || data;
+            }
+            if (!userData) {
+                this.hideSystemStatus();
+                return;
             }
 
             console.log('User role:', userData.role);
@@ -304,8 +437,8 @@ class ClientFlowApp {
         const container = document.getElementById('riskbedomning-list');
         if (!container) return;
 
-        const token = localStorage.getItem('authToken');
-        if (!token) {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
             this.updateDashboardCount('riskbedomning', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
@@ -320,7 +453,7 @@ class ClientFlowApp {
         try {
             const response = await fetch(`${this.baseUrl}/api/kunddata`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                ...opts,
                 body: JSON.stringify({})
             });
 
@@ -390,8 +523,8 @@ class ClientFlowApp {
         const container = document.getElementById('uppdragsavtal-list');
         if (!container) return;
 
-        const token = localStorage.getItem('authToken');
-        if (!token) {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
             this.updateDashboardCount('uppdragsavtal', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
@@ -404,9 +537,7 @@ class ClientFlowApp {
         container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/kunddata/without-uppdragsavtal`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await fetch(`${this.baseUrl}/api/kunddata/without-uppdragsavtal`, opts);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const utanUppdragsavtal = data.records || [];
@@ -452,8 +583,8 @@ class ClientFlowApp {
         const container = document.getElementById('avvikelser-list');
         if (!container) return;
 
-        const token = localStorage.getItem('authToken');
-        if (!token) {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
             this.updateDashboardCount('avvikelser', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
@@ -467,12 +598,8 @@ class ClientFlowApp {
 
         try {
             const [avvikelserRes, kunddataRes] = await Promise.all([
-                fetch(`${this.baseUrl}/api/avvikelser?byraOnly=1`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${this.baseUrl}/api/kunddata`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({})
-                })
+                fetch(`${this.baseUrl}/api/avvikelser?byraOnly=1`, opts),
+                fetch(`${this.baseUrl}/api/kunddata`, { method: 'POST', ...opts, body: JSON.stringify({}) })
             ]);
 
             if (!avvikelserRes.ok) throw new Error(`Avvikelser HTTP ${avvikelserRes.status}`);
@@ -537,17 +664,15 @@ class ClientFlowApp {
         const container = document.getElementById('my-tasks-list');
         if (!container) return;
 
-        const token = localStorage.getItem('authToken');
-        if (!token) {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
             this.updateDashboardCount('my-tasks', null);
             container.innerHTML = `<div class="kundlista-empty"><p>Logga in för att se dina uppgifter.</p></div>`;
             return;
         }
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/my-tasks`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await fetch(`${this.baseUrl}/api/my-tasks`, opts);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const tasks = data.tasks || [];
@@ -604,12 +729,12 @@ class ClientFlowApp {
     }
 
     async updateTaskStatus(noteId, index) {
-        const token = localStorage.getItem('authToken');
-        if (!token) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return;
         try {
             const response = await fetch(`${this.baseUrl}/api/notes/${noteId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...opts,
                 body: JSON.stringify({ fields: { [`Status${index}`]: 'Klart' } })
             });
             if (!response.ok) {
@@ -1178,11 +1303,11 @@ class ClientFlowApp {
         saveBtn.disabled = true;
 
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
                 this.showMessage('Du måste vara inloggad för att spara', 'error');
                 return;
             }
+            const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
 
             // Bygg SNI-koder som text
             const sniText = companyData.sniKoder && companyData.sniKoder.length > 0
@@ -1213,10 +1338,7 @@ class ClientFlowApp {
 
             const response = await fetch(`${this.baseUrl}/api/bolagsverket/save-to-airtable`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                ...opts,
                 body: JSON.stringify({
                     organisationsnummer: companyData.organisationsnummer,
                     orgnr: companyData.organisationsnummer,
@@ -1247,7 +1369,7 @@ class ClientFlowApp {
             }
         } catch (error) {
             console.error('❌ Fel vid sparande:', error);
-            this.showMessage(`Kunde inte spara lead: ${error.message}`, 'error');
+            this.showMessage(`Kunde inte spara företag: ${error.message}`, 'error');
             saveBtn.innerHTML = originalText;
             saveBtn.disabled = false;
         }
@@ -1282,7 +1404,7 @@ class ClientFlowApp {
             padding:1rem 1.25rem;margin-top:1rem;animation:fadeIn .25s ease;`;
 
         // Sätt in varningen direkt under sökresultatskortet
-        const companySection = document.getElementById('company-info-section');
+        const companySection = document.getElementById('company-info') || document.getElementById('company-info-section');
         if (companySection) {
             companySection.parentNode.insertBefore(el, companySection.nextSibling);
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1359,24 +1481,15 @@ class ClientFlowApp {
     }
 
     addToRecentSearches(orgNumber, companyData) {
-        const recentSearches = JSON.parse(localStorage.getItem('recentSearches') || '[]');
-        
-        // Add new search to the beginning
+        if (!this._recentSearches) this._recentSearches = [];
         const newSearch = {
             orgNumber,
             companyName: companyData.namn || 'Okänt företag',
             timestamp: new Date().toISOString()
         };
-        
-        // Remove duplicates and keep only last 5 searches
-        const filteredSearches = recentSearches.filter(search => search.orgNumber !== orgNumber);
-        filteredSearches.unshift(newSearch);
-        
-        if (filteredSearches.length > 5) {
-            filteredSearches.splice(5);
-        }
-        
-        localStorage.setItem('recentSearches', JSON.stringify(filteredSearches));
+        this._recentSearches = this._recentSearches.filter(s => s.orgNumber !== orgNumber);
+        this._recentSearches.unshift(newSearch);
+        if (this._recentSearches.length > 5) this._recentSearches.splice(5);
     }
 
 

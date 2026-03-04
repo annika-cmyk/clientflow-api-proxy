@@ -6,17 +6,16 @@
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
 
-  function getToken() { return localStorage.getItem('authToken'); }
+  function getAuthOpts() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
 
   let kunder = [];
 
   async function loadKunder() {
-    const token = getToken();
-    if (!token) return [];
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return [];
     try {
       const res = await fetch(`${baseUrl}/api/kunddata`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        ...getAuthOpts(),
         body: JSON.stringify({})
       });
       const data = await res.json();
@@ -34,12 +33,9 @@
   }
 
   async function loadAvvikelser() {
-    const token = getToken();
-    if (!token) return { avvikelser: [] };
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return { avvikelser: [] };
     try {
-      const res = await fetch(`${baseUrl}/api/avvikelser?byraOnly=1`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await fetch(`${baseUrl}/api/avvikelser?byraOnly=1`, getAuthOpts());
       const data = await res.json();
       return data.success ? data : { avvikelser: [] };
     } catch (e) {
@@ -269,13 +265,12 @@
       foretagsnamn: kund.namn
     };
 
-    const token = getToken();
-    if (!token) { alert('Du måste vara inloggad för att spara avvikelser.'); return; }
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) { alert('Du måste vara inloggad för att spara avvikelser.'); return; }
 
     try {
       const res = await fetch(`${baseUrl}/api/avvikelser`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...getAuthOpts(),
         body: JSON.stringify(avvikelseData)
       });
       if (res.ok) {
@@ -298,7 +293,7 @@
     const noAuth = document.getElementById('no-auth');
     const content = document.getElementById('content');
 
-    if (!getToken()) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       if (loading) loading.style.display = 'none';
       if (noAuth) noAuth.style.display = 'block';
       return;

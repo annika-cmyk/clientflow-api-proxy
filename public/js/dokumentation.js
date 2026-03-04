@@ -4,12 +4,31 @@
 (function () {
   if (!document.getElementById('riskbedomning-view')) return;
 
-  const STORAGE_KEY = 'dokumentationLansstyrelsenPdfs';
   const MAX_SAVED_PDFS = 10;
 
   function getEl(id) { return document.getElementById(id); }
-  function getToken() { return localStorage.getItem('authToken'); }
+  function getAuthOpts() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
   function getBaseUrl() { return (window.apiConfig && window.apiConfig.baseUrl) || ''; }
+
+  async function getSavedPdfsFromApi() {
+    try {
+      const res = await fetch(getBaseUrl() + '/api/settings/dokumentation-pdfs', getAuthOpts());
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.list) ? data.list : [];
+    } catch { return []; }
+  }
+
+  async function savePdfListToApi(list) {
+    try {
+      const res = await fetch(getBaseUrl() + '/api/settings/dokumentation-pdfs', {
+        method: 'PUT',
+        ...getAuthOpts(),
+        body: JSON.stringify({ list })
+      });
+      return res.ok;
+    } catch { return false; }
+  }
 
   function escapeHtml(s) {
     if (s == null || typeof s !== 'string') return '';
@@ -91,12 +110,11 @@
   }
 
   async function load() {
-    const token = getToken();
     const loading = getEl('loading');
     const content = getEl('content');
     const noData = getEl('no-data');
 
-    if (!token) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       loading.style.display = 'none';
       noData.style.display = 'block';
       renderPdfList();
@@ -104,7 +122,7 @@
     }
 
     try {
-      const res = await fetch(getBaseUrl() + '/api/byra-rutiner', { headers: { 'Authorization': 'Bearer ' + token } });
+      const res = await fetch(getBaseUrl() + '/api/byra-rutiner', getAuthOpts());
       if (!res.ok) throw new Error('Kunde inte hämta data');
       const data = await res.json();
       const fields = data.fields || data.record?.fields || (data.records && data.records[0] ? data.records[0].fields : null);
@@ -145,22 +163,18 @@
     renderPdfList();
   }
 
-  function getSavedPdfs() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
+  async function getSavedPdfs() {
+    return getSavedPdfsFromApi();
   }
 
-  function savePdfToList(entry) {
-    let list = getSavedPdfs();
+  async function savePdfToList(entry) {
+    const list = await getSavedPdfsFromApi();
     list.unshift(entry);
-    list = list.slice(0, MAX_SAVED_PDFS);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    const trimmed = list.slice(0, MAX_SAVED_PDFS);
+    if (await savePdfListToApi(trimmed)) renderPdfListWith(trimmed);
   }
 
-  function renderPdfList() {
-    const list = getSavedPdfs();
+  function renderPdfListWith(list) {
     const container = getEl('lansstyrelsen-pdf-list');
     if (!container) return;
     if (list.length === 0) {
@@ -170,16 +184,25 @@
     container.innerHTML = '<ul class="document-list">' + list.map((item, i) => `
       <li class="document-list-item">
         <i class="fas fa-file-pdf"></i>
-        <span>${item.filename} — ${item.date}</span>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="window.dokumentationDownloadPdf(${i})">
+        <span>${escapeHtml(item.filename || '')} — ${escapeHtml(item.date || '')}</span>
+        <button type="button" class="btn btn-secondary btn-sm" data-pdf-index="${i}">
           <i class="fas fa-download"></i> Ladda ner
         </button>
       </li>
     `).join('') + '</ul>';
+    container.querySelectorAll('[data-pdf-index]').forEach(btn => {
+      const i = parseInt(btn.getAttribute('data-pdf-index'), 10);
+      btn.addEventListener('click', () => window.dokumentationDownloadPdf(i, list));
+    });
   }
 
-  window.dokumentationDownloadPdf = function (index) {
-    const list = getSavedPdfs();
+  async function renderPdfList() {
+    const list = await getSavedPdfsFromApi();
+    renderPdfListWith(list);
+  }
+
+  window.dokumentationDownloadPdf = async function (index, listArg) {
+    const list = listArg || await getSavedPdfsFromApi();
     const item = list[index];
     if (!item || !item.base64) return;
     const byteNumbers = atob(item.base64).split('').map(c => c.charCodeAt(0));
@@ -193,7 +216,6 @@
   };
 
   window.getDokumentationSavePdf = function () { return savePdfToList; };
-  window.getDokumentationStorageKey = function () { return STORAGE_KEY; };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
   else load();

@@ -27,7 +27,7 @@ class KYCManager {
             return;
         }
 
-        // Load company data from URL parameters or localStorage
+        // Load company data from URL parameters
         this.loadCompanyData();
         
         // Bind events
@@ -43,21 +43,10 @@ class KYCManager {
     }
 
     checkAuthentication() {
-        const token = localStorage.getItem('authToken');
-        const userData = localStorage.getItem('userData');
-        
-        if (!token || !userData) {
-            return false;
-        }
-        
-        try {
-            const user = JSON.parse(userData);
-            console.log('👤 Authenticated user:', user.name, 'Role:', user.role);
-            return true;
-        } catch (error) {
-            console.error('❌ Error parsing user data:', error);
-            return false;
-        }
+        const user = (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) || (window.__clientFlowUser);
+        if (!user) return false;
+        console.log('👤 Authenticated user:', user.name, 'Role:', user.role);
+        return true;
     }
 
     loadCompanyData() {
@@ -78,24 +67,7 @@ class KYCManager {
             }
         }
         
-        // Fallback to localStorage
-        if (!this.companyData) {
-            console.log('🔍 No URL data, checking localStorage...');
-            const storedData = localStorage.getItem('kycCompanyData');
-            console.log('🔍 Stored data in localStorage:', storedData);
-            
-            if (storedData) {
-                try {
-                    this.companyData = JSON.parse(storedData);
-                    console.log('📊 Company data loaded from localStorage:', this.companyData);
-                    console.log('🔍 Company name from localStorage:', this.companyData?.namn);
-                } catch (error) {
-                    console.error('❌ Error parsing company data from localStorage:', error);
-                }
-            } else {
-                console.warn('⚠️ No data found in localStorage');
-            }
-        }
+        // Företagsdata kommer endast från URL-parametrar (ingen localStorage).
         
         // If still no data, show error
         if (!this.companyData) {
@@ -517,20 +489,16 @@ class KYCManager {
         console.log('🔄 Syncing roles to Airtable...');
         
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.error('❌ No auth token found');
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+                console.error('❌ Not logged in');
                 return;
             }
-
-            // Get company ID from company data
             const companyId = this.companyData?.organisationsnummer;
             if (!companyId) {
                 console.error('❌ No company ID found');
                 return;
             }
-
-            // Prepare roles data for Airtable
             const rolesData = this.kycData.roles.map(role => ({
                 fields: {
                     'Företag': companyId,
@@ -539,19 +507,12 @@ class KYCManager {
                     'Personnummer': role.personnr
                 }
             }));
-
             console.log('📊 Roles data to sync:', rolesData);
-
-            // Send to Airtable
-            const response = await fetch('/api/airtable/befattningshavare', {
+            const baseUrl = window.apiConfig?.baseUrl || '';
+            const response = await fetch((baseUrl || '') + '/api/airtable/befattningshavare', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    records: rolesData
-                })
+                ...opts,
+                body: JSON.stringify({ records: rolesData })
             });
 
             if (response.ok) {
@@ -571,23 +532,18 @@ class KYCManager {
         console.log('📥 Loading roles from Airtable...');
         
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.error('❌ No auth token found');
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+                console.error('❌ Not logged in');
                 return;
             }
-
             const companyId = this.companyData?.organisationsnummer;
             if (!companyId) {
                 console.error('❌ No company ID found');
                 return;
             }
-
-            const response = await fetch(`/api/airtable/befattningshavare?company=${companyId}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const baseUrl = window.apiConfig?.baseUrl || '';
+            const response = await fetch((baseUrl || '') + '/api/airtable/befattningshavare?company=' + encodeURIComponent(companyId), opts);
 
             if (response.ok) {
                 const data = await response.json();
@@ -642,7 +598,7 @@ class KYCManager {
     }
 
     setupAutoSave() {
-        // Auto-save form data to localStorage as user types
+        // Auto-save form data in memory as user types
         const formElements = document.querySelectorAll('input, textarea, select');
         
         formElements.forEach(element => {
@@ -689,15 +645,14 @@ class KYCManager {
                 notes: document.getElementById('risk-notes')?.value || ''
             }
         };
-        
-        localStorage.setItem('kycFormData', JSON.stringify(formData));
+        this._kycFormData = formData;
     }
 
     loadFormData() {
-        const savedData = localStorage.getItem('kycFormData');
+        const savedData = this._kycFormData;
         if (savedData) {
             try {
-                const formData = JSON.parse(savedData);
+                const formData = savedData;
                 
                 // Load roles data
                 if (formData.roles) {
@@ -742,7 +697,7 @@ class KYCManager {
                     if (notesElement) notesElement.value = formData.riskAssessment.notes || '';
                 }
                 
-                console.log('✅ Form data loaded from localStorage');
+                console.log('✅ Form data loaded');
             } catch (error) {
                 console.error('❌ Error loading form data:', error);
             }
@@ -1014,17 +969,13 @@ class KYCManager {
                     notes: document.getElementById('risk-notes')?.value || ''
                 },
                 timestamp: new Date().toISOString(),
-                userId: JSON.parse(localStorage.getItem('userData'))?.id,
-                bureauId: JSON.parse(localStorage.getItem('userData'))?.bureauId
+                userId: (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())?.id,
+                bureauId: (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())?.byraId
             };
-            
-            // Save to localStorage for now (can be extended to save to server)
-            localStorage.setItem('kycData_' + this.companyData.organisationsnummer, JSON.stringify(kycData));
-            
-            // Clear form data from localStorage since it's now saved
-            localStorage.removeItem('kycFormData');
-            
-            this.showMessage('KYC-data sparad framgångsrikt!', 'success');
+            if (!this._kycSavedByOrg) this._kycSavedByOrg = {};
+            this._kycSavedByOrg[this.companyData.organisationsnummer] = kycData;
+            this._kycFormData = null;
+            this.showMessage('KYC-data sparad (session). Spara till servern via befattningshavare-synk om det behövs.', 'success');
             
             console.log('✅ KYC data saved successfully');
             

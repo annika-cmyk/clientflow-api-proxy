@@ -122,20 +122,13 @@ class ComponentLoader {
         }
 
         try {
-            // Check if user is logged in
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            const response = await fetch(`${this.baseUrl}/api/auth/me`, opts);
+            if (!response.ok) {
                 userNameElement.textContent = 'Ej inloggad';
                 userRoleElement.textContent = '';
                 return;
             }
-
-            // Get user info from server
-            const response = await fetch(`${this.baseUrl}/api/auth/me`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
 
             if (response.ok) {
                 const userData = await response.json();
@@ -236,13 +229,12 @@ window.hideAiThinking = function () {
 
 // Exportera Länsstyrelsen-PDF (anropas från menyn) – laddar ner och sparar kopia till Dokumentation
 window.exportLansstyrelsenPdf = async function () {
-    const STORAGE_KEY = 'dokumentationLansstyrelsenPdfs';
     const MAX_SAVED = 10;
-    const token = localStorage.getItem('authToken');
+    const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
     const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
     const navItem = document.getElementById('nav-exportera-lansstyrelsen-pdf');
     const link = navItem ? navItem.querySelector('a') : null;
-    if (!token) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
         alert('Du måste logga in för att exportera.');
         return;
     }
@@ -254,7 +246,7 @@ window.exportLansstyrelsenPdf = async function () {
     try {
         const res = await fetch(baseUrl + '/api/byra/lansstyrelsen-pdf', {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token }
+            ...opts
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -271,17 +263,18 @@ window.exportLansstyrelsenPdf = async function () {
         a.click();
         URL.revokeObjectURL(a.href);
         const reader = new FileReader();
-        reader.onload = function () {
+        reader.onload = async function () {
             const base64 = reader.result.split(',')[1];
-            if (base64) {
-                try {
-                    let list = [];
-                    try { list = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch (_) {}
-                    list.unshift({ date: new Date().toLocaleDateString('sv-SE'), filename: displayFilename, base64: base64 });
-                    list = list.slice(0, MAX_SAVED);
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-                } catch (_) {}
-            }
+            if (!base64) return;
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            try {
+                const getRes = await fetch(baseUrl + '/api/settings/dokumentation-pdfs', opts);
+                let list = [];
+                if (getRes.ok) { const data = await getRes.json(); list = Array.isArray(data.list) ? data.list : []; }
+                list.unshift({ date: new Date().toLocaleDateString('sv-SE'), filename: displayFilename, base64: base64 });
+                list = list.slice(0, MAX_SAVED);
+                await fetch(baseUrl + '/api/settings/dokumentation-pdfs', { method: 'PUT', ...opts, body: JSON.stringify({ list }) });
+            } catch (_) {}
         };
         reader.readAsDataURL(blob);
     } catch (err) {

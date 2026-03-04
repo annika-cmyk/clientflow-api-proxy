@@ -7,8 +7,8 @@ class CustomerManager {
     }
 
     init() {
-        const authToken = localStorage.getItem('authToken');
-        if (authToken) {
+        const isLoggedIn = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
+        if (isLoggedIn) {
             this.loadCustomers();
         } else {
             document.getElementById('customer-list').innerHTML = `
@@ -27,22 +27,17 @@ class CustomerManager {
             this.render();
         });
 
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'authToken') this.loadCustomers();
-        });
+        window.addEventListener('clientflow:authReady', () => this.loadCustomers());
     }
 
     async loadCustomers() {
-        const authToken = localStorage.getItem('authToken');
-        if (!authToken) return;
+        const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return;
 
         try {
             const response = await fetch(`${this.baseUrl}/api/kunddata`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
+                ...opts,
                 body: JSON.stringify({})
             });
 

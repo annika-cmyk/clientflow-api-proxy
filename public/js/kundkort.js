@@ -2,6 +2,9 @@
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
+function getAuthOptsKundkort() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
+function isLoggedInKundkort() { return !!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()); }
+
 class CustomerCardManager {
     constructor() {
         console.log('🔍 CONSTRUCTOR - Creating CustomerCardManager');
@@ -105,19 +108,11 @@ class CustomerCardManager {
 
     async loadUserData() {
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.warn('No auth token found - user not logged in');
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, { method: 'GET', ...getAuthOptsKundkort() });
+            if (!response.ok) {
+                console.warn('User not logged in');
                 return;
             }
-
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
 
             if (response.ok) {
                 const data = await response.json();
@@ -306,10 +301,8 @@ class CustomerCardManager {
         console.log('🔍 Full API URL:', apiUrl);
 
         try {
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.error('❌ No auth token found');
+            if (!isLoggedInKundkort()) {
+                console.error('❌ Not logged in');
                 this.showError('Du måste logga in för att se kundinformation');
                 setTimeout(() => {
                     window.location.href = 'index.html';
@@ -320,7 +313,7 @@ class CustomerCardManager {
             const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    ...getAuthOptsKundkort(),
                     'Content-Type': 'application/json'
                 }
             });
@@ -798,9 +791,8 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                throw new Error('Inte inloggad — authToken saknas');
+            if (!isLoggedInKundkort()) {
+                throw new Error('Inte inloggad');
             }
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
@@ -810,7 +802,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
 
@@ -882,11 +874,10 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields: { 'Beskrivning av kunden': beskrivning } })
             });
             if (!response.ok) {
@@ -938,7 +929,6 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const fields = {};
             if (metod) fields['Redovisningsmetod'] = metod;
@@ -950,7 +940,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!response.ok) {
@@ -1092,11 +1082,10 @@ class CustomerCardManager {
 
     async _saveKycStatus(fältnamn, värde, ikonEl) {
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields: { [fältnamn]: värde } })
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1125,11 +1114,10 @@ class CustomerCardManager {
             : { 'Uppdraget kan antas': false };
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1259,13 +1247,12 @@ class CustomerCardManager {
     async _saveKontaktPersoner(extraFields = {}) {
         const custId = this.customerId || this.currentCustomerId;
         if (!custId) return;
-        const token = localStorage.getItem('clientflow_token') || localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const fields = { Kontaktpersoner: JSON.stringify(this._kontaktPersoner), ...extraFields };
         try {
             const resp = await fetch(`${baseUrl}/api/kunddata/${custId}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!resp.ok) {
@@ -1303,11 +1290,10 @@ class CustomerCardManager {
         // Hämta dynamiska alternativ för riskfaktorfälten om ej cachade
         if (!this._riskhojAlternativ || !this._risksankAlternativ) {
             try {
-                const token = localStorage.getItem('authToken');
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
                 const [resHoj, resSank] = await Promise.all([
-                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Riskhöjande faktorer övrigt')}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Riskhöjande faktorer övrigt')}`, { ...getAuthOptsKundkort() }),
+                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { ...getAuthOptsKundkort() })
                 ]);
                 const dataHoj = resHoj.ok ? await resHoj.json() : {};
                 const dataSank = resSank.ok ? await resSank.json() : {};
@@ -1341,14 +1327,13 @@ class CustomerCardManager {
     }
 
     async loadKundRisker() {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
         try {
             const byraId = this.userData?.byraId || this.userByraIds?.[0] || '';
             const [byraRes, kundRes] = await Promise.all([
-                fetch(`${baseUrl}/api/risker-kunden?byraId=${byraId}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${baseUrl}/api/kunddata/${this.customerId}/risker`, { headers: { 'Authorization': `Bearer ${token}` } })
+                fetch(`${baseUrl}/api/risker-kunden?byraId=${byraId}`, { ...getAuthOptsKundkort() }),
+                fetch(`${baseUrl}/api/kunddata/${this.customerId}/risker`, { ...getAuthOptsKundkort() })
             ]);
 
             const byraData = byraRes.ok ? await byraRes.json() : { records: [] };
@@ -1559,7 +1544,6 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
             const fieldsToSave = { 'risker kopplat till tjänster': totalChecked };
@@ -1574,7 +1558,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields: fieldsToSave })
             });
 
@@ -1993,11 +1977,10 @@ class CustomerCardManager {
         Object.keys(fields).forEach(k => { if (fields[k] === null) delete fields[k]; });
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2059,11 +2042,10 @@ class CustomerCardManager {
         if (typeof window.showAiThinking === 'function') window.showAiThinking();
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/ai-riskbedomning/${this.customerId}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                ...getAuthOptsKundkort()
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
@@ -2107,7 +2089,6 @@ class CustomerCardManager {
     }
 
     async toggleByranHar(alt) {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
         // Hämta nuvarande värden från DOM
@@ -2129,7 +2110,7 @@ class CustomerCardManager {
         try {
             await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields: { 'Byrån har': aktiva } })
             });
             if (this.customerData?.fields) this.customerData.fields['Byrån har'] = aktiva;
@@ -2183,11 +2164,10 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields: { [fältnamn]: värde } })
             });
 
@@ -2411,7 +2391,6 @@ class CustomerCardManager {
             return;
         }
 
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const byraId = this.userByraIds?.[0] || this.userData?.byraId || '';
         const byraHighRisk = this.customerData.fields['Lookup Byråns högrisktjänster'] || [];
@@ -2420,7 +2399,7 @@ class CustomerCardManager {
         if (!this._byransTjanster && byraId) {
             try {
                 const res = await fetch(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    ...getAuthOptsKundkort()
                 });
                 const data = res.ok ? await res.json() : {};
                 // data.tjanster är nu [{id, namn}] — se /api/byra-tjanster
@@ -2434,7 +2413,7 @@ class CustomerCardManager {
         // Hämta kundens aktiva tjänster (länkade record ID:n → namn)
         try {
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/tjanster`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                ...getAuthOptsKundkort()
             });
             const data = res.ok ? await res.json() : {};
             // Spara aktiva som array av record ID:n
@@ -2615,12 +2594,11 @@ class CustomerCardManager {
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    ...getAuthOptsKundkort(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -2688,17 +2666,16 @@ class CustomerCardManager {
         const container = document.getElementById('uppdragsavtal-content');
         if (!container) return;
 
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
         try {
             // Hämta avtal och byråinfo parallellt
             const [avtalRes, byraRes] = await Promise.all([
                 fetch(`${baseUrl}/api/uppdragsavtal?customerId=${this.customerId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    ...getAuthOptsKundkort()
                 }),
                 fetch(`${baseUrl}/api/byra-info`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    ...getAuthOptsKundkort()
                 })
             ]);
 
@@ -3107,7 +3084,6 @@ class CustomerCardManager {
     }
 
     async saveUppdragsavtal(avtalId) {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
         const val = (id) => document.getElementById(id)?.value || '';
@@ -3164,7 +3140,7 @@ class CustomerCardManager {
             const response = await fetch(url, {
                 method,
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    ...getAuthOptsKundkort(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ fields })
@@ -3188,14 +3164,13 @@ class CustomerCardManager {
     }
 
     async hamtaSigneratUppdragsavtal(avtalId) {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const btn = document.querySelector('[onclick*="hamtaSigneratUppdragsavtal"]');
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar...'; }
         try {
             const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/hamta-signerat`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+                ...getAuthOptsKundkort()
             });
             const data = await resp.json();
             if (resp.ok && data.savedToDocs) {
@@ -3218,11 +3193,10 @@ class CustomerCardManager {
         if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar...'; btn.disabled = true; }
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/pdf`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                ...getAuthOptsKundkort()
             });
 
             if (!response.ok) {
@@ -3329,11 +3303,10 @@ class CustomerCardManager {
         this._showInleedStatus('Genererar PDF och skickar till Inleed...', 'info');
 
         try {
-            const token = localStorage.getItem('clientflow_token') || localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/skicka-for-signering`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ signerare })
             });
             const data = await resp.json();
@@ -3369,25 +3342,15 @@ class CustomerCardManager {
         const content = document.getElementById('notes-content');
         
         try {
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            console.log('🔍 Loading notes - Token exists:', !!token);
-            console.log('🔍 Loading notes - Customer ID:', this.customerId);
-            console.log('🔍 Loading notes - API URL:', `${window.apiConfig.baseUrl}/api/notes?customerId=${this.customerId}`);
-            
-            if (!token) {
-                console.error('❌ No auth token found');
+            if (!isLoggedInKundkort()) {
+                console.error('❌ Not logged in');
                 this.displayEmptyNotes();
                 return;
             }
 
-            // Load notes data
             const response = await fetch(`${window.apiConfig.baseUrl}/api/notes?customerId=${this.customerId}`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+                ...getAuthOptsKundkort()
             });
             
             console.log('🔍 Notes response status:', response.status);
@@ -3642,8 +3605,7 @@ class CustomerCardManager {
         const content = document.getElementById('avvikelser-content');
 
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            if (!isLoggedInKundkort()) {
                 this.displayEmptyAvvikelser();
                 return;
             }
@@ -3651,7 +3613,7 @@ class CustomerCardManager {
             const response = await fetch(`${window.apiConfig.baseUrl}/api/avvikelser?customerId=${this.customerId}`, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    ...getAuthOptsKundkort(),
                     'Content-Type': 'application/json'
                 }
             });
@@ -3856,8 +3818,7 @@ class CustomerCardManager {
             };
 
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            if (!isLoggedInKundkort()) {
                 alert('Du måste vara inloggad för att spara avvikelser');
                 return;
             }
@@ -3865,7 +3826,7 @@ class CustomerCardManager {
             const response = await fetch(`${baseUrl}/api/avvikelser`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${token}`,
+                    ...getAuthOptsKundkort(),
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(avvikelseData)
@@ -3894,21 +3855,15 @@ class CustomerCardManager {
         const content = document.getElementById('documents-content');
         
         try {
-            // Get auth token from localStorage
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            if (!isLoggedInKundkort()) {
                 console.warn('No auth token found');
                 this.displayEmptyDocuments();
                 return;
             }
 
-            // Load documents data
             const response = await fetch(`${window.apiConfig.baseUrl}/api/documents?customerId=${this.customerId}`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+                ...getAuthOptsKundkort()
             });
             if (response.ok) {
                 const data = await response.json();
@@ -3982,12 +3937,11 @@ class CustomerCardManager {
         const msg = `Är du säker på att du vill ta bort "${docName}"?\n\nÅtgärden går inte att ångra.`;
         if (!confirm(msg)) return;
 
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         try {
             const res = await fetch(`${baseUrl}/api/documents`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ customerId: this.customerId, sourceField, sourceIndex })
             });
             if (!res.ok) {
@@ -4234,19 +4188,14 @@ class CustomerCardManager {
             
             console.log('📤 Sending note data:', noteData);
             
-            // Get auth token
-            const token = localStorage.getItem('authToken');
-            if (!token) {
+            if (!isLoggedInKundkort()) {
                 alert('Du måste vara inloggad för att spara anteckningar');
                 return;
             }
             
             const response = await fetch(`${window.apiConfig.baseUrl}/api/notes`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify(noteData)
             });
             
@@ -4402,7 +4351,6 @@ class CustomerCardManager {
     }
 
     async updateNote(noteId, form) {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const formData = new FormData(form);
 
@@ -4425,7 +4373,7 @@ class CustomerCardManager {
         try {
             const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!response.ok) {
@@ -4442,13 +4390,12 @@ class CustomerCardManager {
     }
 
     async updateTaskStatus(noteId, index, status) {
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         try {
             const fields = { [`Status${index}`]: status || '' };
             const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ fields })
             });
             if (!response.ok) {
@@ -4465,12 +4412,11 @@ class CustomerCardManager {
 
     async deleteNote(noteId) {
         if (!confirm('Är du säker på att du vill ta bort denna anteckning?')) return;
-        const token = localStorage.getItem('authToken');
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         try {
             const response = await fetch(`${baseUrl}/api/notes/${noteId}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                ...getAuthOptsKundkort()
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
@@ -4500,7 +4446,6 @@ class CustomerCardManager {
         if (typeof window.showAiThinking === 'function') window.showAiThinking();
 
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
             // Konvertera personnr (YYYYMMDD-XXXX) till dob (DD/MM/YYYY) om möjligt
@@ -4517,7 +4462,7 @@ class CustomerCardManager {
 
             const response = await fetch(`${baseUrl}/api/pep-screening/${this.customerId}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                ...getAuthOptsKundkort(),
                 body: JSON.stringify({ namn: p.namn, personnr: p.personnr, dob })
             });
 
@@ -4647,11 +4592,10 @@ class CustomerCardManager {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
         try {
-            const token = localStorage.getItem('authToken');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/riskbedomning-pdf`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                ...getAuthOptsKundkort()
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));

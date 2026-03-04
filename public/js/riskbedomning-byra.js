@@ -42,20 +42,12 @@ class RiskAssessmentManager {
 
     async loadUserData() {
         try {
-            // Check if user is logged in by looking for auth token
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.warn('No auth token found - user not logged in');
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, { method: 'GET', ...opts });
+            if (!response.ok) {
+                console.warn('User not logged in');
                 return;
             }
-
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/auth/me`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
 
             if (response.ok) {
                 const data = await response.json();

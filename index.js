@@ -62,20 +62,28 @@ console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('');
 
+const cookieParser = require('cookie-parser');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Trust proxy för Render
 app.set('trust proxy', 1);
 
-// Middleware
-// CORS-konfiguration - tillåt alla origins
+app.use(cookieParser());
+
+// Middleware – CORS (vid cookies måste origin sättas explicit, aldrig '*')
 app.use((req, res, next) => {
-    // Sätt CORS headers för alla requests
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    const allowOrigin = origin || (req.get('host') ? `${req.protocol || 'https'}://${req.get('host')}` : null);
+    if (allowOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Credentials', allowOrigin ? 'true' : 'false');
     
     // Hantera preflight requests
     if (req.method === 'OPTIONS') {
@@ -215,10 +223,9 @@ async function getAirtableUser(email) {
 // JWT Secret (in production, use a strong secret from environment variables)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Middleware to verify JWT token
+// Middleware to verify JWT token (från cookie eller Authorization header)
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = req.cookies?.authToken || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
 
   if (!token) {
     return res.status(401).json({ message: 'Access token required' });
@@ -311,10 +318,20 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log(`🔐 Login successful: ${user.email} (${user.role}) from ${user.byra}`);
 
+    // Sätt token i httpOnly cookie – inget ska sparas i localStorage
+    // Vid cross-origin (t.ex. frontend på en Render-URL, API på annan) krävs SameSite=None; Secure
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+
     res.json({
       success: true,
       message: 'Inloggning lyckades',
-      token,
       user: userData
     });
 
@@ -337,9 +354,9 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   });
 });
 
-// Logout endpoint
-app.post('/api/auth/logout', authenticateToken, (req, res) => {
-  console.log(`🔐 User logged out: ${req.user.email}`);
+// Logout endpoint – rensa auth-cookie (kräver inte inloggning så att knappen alltid fungerar)
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('authToken', { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' });
   res.json({
     success: true,
     message: 'Utloggning lyckades'
@@ -3739,6 +3756,151 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ GET /api/byra-rutiner:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ success: false, error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// GET /api/settings/dokumentation-pdfs – Hämta sparad PDF-lista från Byråer (databas)
+const DOKUMENTATION_PDF_FIELD = 'Dokumentation PDF-lista';
+app.get('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+    const num = parseInt(byraId);
+    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+    const airtableRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+    if (!airtableRes.data.records?.length) return res.json({ list: [] });
+    const raw = airtableRes.data.records[0].fields[DOKUMENTATION_PDF_FIELD];
+    let list = [];
+    if (raw && typeof raw === 'string') { try { list = JSON.parse(raw); } catch (_) {} }
+    if (!Array.isArray(list)) list = [];
+    res.json({ list });
+  } catch (error) {
+    console.error('❌ GET /api/settings/dokumentation-pdfs:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/settings/dokumentation-pdfs – Spara PDF-lista till Byråer (databas)
+app.put('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+    const { list } = req.body;
+    if (!Array.isArray(list)) return res.status(400).json({ error: 'Body måste innehålla { list: array }' });
+    const num = parseInt(byraId);
+    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+    const listUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+    const listRes = await axios.get(listUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+    if (!listRes.data.records?.length) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
+    const recordId = listRes.data.records[0].id;
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
+    await axios.patch(patchUrl, {
+      fields: { [DOKUMENTATION_PDF_FIELD]: JSON.stringify(list) }
+    }, { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ PUT /api/settings/dokumentation-pdfs:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message || 'Okänt fel' });
+  }
+});
+
+// GET /api/settings/kom-igang – Hämta Kom igång-checkboxar från Byråer (databas)
+const KOM_IGANG_FIELD = 'Kom igång state';
+app.get('/api/settings/kom-igang', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+
+    const num = parseInt(byraId);
+    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+    const airtableRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+
+    if (!airtableRes.data.records?.length) {
+      return res.json({ state: {} });
+    }
+
+    const raw = airtableRes.data.records[0].fields[KOM_IGANG_FIELD];
+    let state = {};
+    if (raw && typeof raw === 'string') {
+      try {
+        state = JSON.parse(raw);
+      } catch (_) {}
+    }
+    res.json({ state });
+  } catch (error) {
+    console.error('❌ GET /api/settings/kom-igang:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/settings/kom-igang – Spara Kom igång-checkboxar till Byråer (databas)
+app.put('/api/settings/kom-igang', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable token saknas' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+
+    const { state } = req.body;
+    if (!state || typeof state !== 'object') {
+      return res.status(400).json({ error: 'Body måste innehålla { state: object }' });
+    }
+
+    const num = parseInt(byraId);
+    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+    const listUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+    const listRes = await axios.get(listUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+
+    if (!listRes.data.records?.length) {
+      return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
+    }
+
+    const recordId = listRes.data.records[0].id;
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
+    await axios.patch(patchUrl, {
+      fields: { [KOM_IGANG_FIELD]: JSON.stringify(state) }
+    }, { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ PUT /api/settings/kom-igang:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     const message = error.response?.data?.error?.message || error.message || 'Okänt fel';
     res.status(status).json({ error: message });

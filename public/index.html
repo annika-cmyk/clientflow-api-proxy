@@ -23,6 +23,94 @@
                     </div>
                 </header>
 
+                <!-- Kom igång – rekommenderat flöde -->
+                <section class="kom-igang-section dashboard-section-full">
+                    <div class="kom-igang-header">
+                        <h2><i class="fas fa-route"></i> Kom igång</h2>
+                        <p class="kom-igang-desc">Så jobbar du i ClientFlow – följ stegen nedan för att sätta upp byrån och kunderna. Dra i korten eller använd pilarna för att scrolla.</p>
+                    </div>
+                    <div class="kom-igang-scroll-wrap">
+                        <button type="button" class="kom-igang-arrow-btn kom-igang-arrow-left" aria-label="Föregående kort" title="Föregående">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <div class="kom-igang-flow" id="kom-igang-flow">
+                        <div class="kom-igang-step" data-step="1">
+                            <span class="kom-igang-num">1</span>
+                            <div class="kom-igang-step-content">
+                                <h3>Byråns tjänster</h3>
+                                <p>Gå igenom byråns tjänster. Lägg till och ta bort tjänster och anpassa risker och åtgärder efter er byrå och ert arbetssätt.</p>
+                                <a href="riskbedomning-byra.html" class="kom-igang-link">Gå till Byråns tjänster <i class="fas fa-chevron-right"></i></a>
+                                <ul class="kom-igang-checklist">
+                                    <li><label><input type="checkbox" id="kom-igang-1-0"> Alla byråns tjänster genomgångna och klara</label></li>
+                                </ul>
+                            </div>
+                            <span class="kom-igang-klart-badge">Klart</span>
+                            <span class="kom-igang-expand-hint"><i class="fas fa-chevron-down"></i> Klicka för att visa</span>
+                        </div>
+                        <div class="kom-igang-step" data-step="2">
+                            <span class="kom-igang-num">2</span>
+                            <div class="kom-igang-step-content">
+                                <h3>Övriga riskfaktorer</h3>
+                                <p>Gå igenom övriga riskfaktorer på byrån. Anpassa även detta till er egen byrå.</p>
+                                <a href="ovriga-riskfaktorer.html" class="kom-igang-link">Gå till Övriga riskfaktorer <i class="fas fa-chevron-right"></i></a>
+                                <ul class="kom-igang-checklist">
+                                    <li><label><input type="checkbox" id="kom-igang-2-0"> Övriga riskfaktorer genomgångna</label></li>
+                                </ul>
+                            </div>
+                            <span class="kom-igang-klart-badge">Klart</span>
+                            <span class="kom-igang-expand-hint"><i class="fas fa-chevron-down"></i> Klicka för att visa</span>
+                        </div>
+                        <div class="kom-igang-step" data-step="3">
+                            <span class="kom-igang-num">3</span>
+                            <div class="kom-igang-step-content">
+                                <h3>Lägg upp kunder</h3>
+                                <p>Börja lägga upp kunder från dashboarden. På kundkortet (under Kundlista) går ni igenom och fyller i uppgifter för varje kund och gör kundens riskbedömning. När ni lagt upp era kunder ser ni statistik över tjänster, riskfaktorer och mer.</p>
+                                <a href="kundlista.html" class="kom-igang-link">Gå till Kundlista <i class="fas fa-chevron-right"></i></a>
+                                <a href="statistik-riskbedomning.html" class="kom-igang-link">Gå till Statistik <i class="fas fa-chevron-right"></i></a>
+                                <ul class="kom-igang-checklist">
+                                    <li><label><input type="checkbox" id="kom-igang-3-0"> Alla byråns kunder är upplagda</label></li>
+                                    <li><label><input type="checkbox" id="kom-igang-3-1"> Kollat igenom vår statistik</label></li>
+                                </ul>
+                            </div>
+                            <span class="kom-igang-klart-badge">Klart</span>
+                            <span class="kom-igang-expand-hint"><i class="fas fa-chevron-down"></i> Klicka för att visa</span>
+                        </div>
+                        <div class="kom-igang-step" data-step="4">
+                            <span class="kom-igang-num">4</span>
+                            <div class="kom-igang-step-content">
+                                <h3>Allmän riskbedömning & byrårutiner</h3>
+                                <p>Här finns utkast och AI-hjälp för att skapa dessa dokument utifrån det ni tidigare angett. Slutligen – exportera rutiner och riskbedömning.</p>
+                                <a href="allman-riskbedomning-byra.html" class="kom-igang-link">Gå till Allmän riskbedömning <i class="fas fa-chevron-right"></i></a>
+                                <ul class="kom-igang-checklist">
+                                    <li><label><input type="checkbox" id="kom-igang-4-0"> Allmän riskbedömning gjord</label></li>
+                                    <li><label><input type="checkbox" id="kom-igang-4-1"> Byrårutiner klara</label></li>
+                                    <li><label><input type="checkbox" id="kom-igang-4-2"> Byrån registrerad i Bolagsverkets register mot penningtvätt</label> <a href="https://www.bolagsverket.se/organisation/foretagen/registreringar" target="_blank" rel="noopener" class="kom-igang-ext-link">Länk till Bolagsverket <i class="fas fa-external-link-alt"></i></a></li>
+                                    <li><label><input type="checkbox" id="kom-igang-4-3"> Byrån registrerar i goAML</label> <a href="https://fipogoaml.polisen.se" target="_blank" rel="noopener" class="kom-igang-ext-link">Länk till goAML <i class="fas fa-external-link-alt"></i></a></li>
+                                </ul>
+                            </div>
+                            <span class="kom-igang-klart-badge">Klart</span>
+                            <span class="kom-igang-expand-hint"><i class="fas fa-chevron-down"></i> Klicka för att visa</span>
+                        </div>
+                        <div class="kom-igang-step" data-step="5">
+                            <span class="kom-igang-num">5</span>
+                            <div class="kom-igang-step-content">
+                                <h3>Exportera rutiner och riskbedömning</h3>
+                                <p>Exportera byråns rutiner och riskbedömning till PDF för Länsstyrelsen eller eget bruk.</p>
+                                <a href="#" class="kom-igang-link" id="kom-igang-export-btn" onclick="event.preventDefault(); window.exportLansstyrelsenPdf && window.exportLansstyrelsenPdf();"><i class="fas fa-file-pdf"></i> Exportera rutiner och riskbedömning <i class="fas fa-chevron-right"></i></a>
+                                <ul class="kom-igang-checklist">
+                                    <li><label><input type="checkbox" id="kom-igang-5-0"> Rutiner och riskbedömning exporterade</label></li>
+                                </ul>
+                            </div>
+                            <span class="kom-igang-klart-badge">Klart</span>
+                            <span class="kom-igang-expand-hint"><i class="fas fa-chevron-down"></i> Klicka för att visa</span>
+                        </div>
+                        </div>
+                        <button type="button" class="kom-igang-arrow-btn kom-igang-arrow-right" aria-label="Nästa kort" title="Nästa">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </section>
+
                 <div class="dashboard-grid">
                 <!-- Vänster kolumn: Företagssök -->
                 <aside class="dashboard-left">
@@ -215,7 +303,7 @@
                             <div class="company-actions">
                                 <button id="save-to-airtable" class="btn btn-primary">
                                     <i class="fas fa-arrow-right"></i>
-                                    Spara som lead
+                                    Spara företag
                                 </button>
                             </div>
                         </div>

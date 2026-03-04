@@ -10,8 +10,8 @@
   let inputEl = null;
   let history = [];
 
-  function getToken() {
-    return localStorage.getItem('authToken');
+  function getAuthOpts() {
+    return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
   }
 
   function createPanel() {
@@ -95,8 +95,7 @@
     if (!inputEl || !messagesEl) return;
     const text = inputEl.value.trim();
     if (!text) return;
-    const token = getToken();
-    if (!token) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       appendMessage('assistant', 'Du måste logga in för att chatta. Logga in och försök igen.');
       return;
     }
@@ -110,7 +109,7 @@
       const url = (baseUrl.replace(/\/$/, '')) + '/api/ai-chat';
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        ...getAuthOpts(),
         body: JSON.stringify({ message: text, history: history.slice(0, -1) })
       });
       const raw = await res.text();

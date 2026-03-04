@@ -21,7 +21,7 @@
   const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
 
   function getEl(id) { return document.getElementById(id); }
-  function getToken() { return localStorage.getItem('authToken'); }
+  function getAuthOpts() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
   function getBaseUrl() { return (window.apiConfig && window.apiConfig.baseUrl) || ''; }
 
   function getFieldValue(fields, airtableKey) {
@@ -155,7 +155,7 @@
     try {
       var res = await fetch(getBaseUrl() + '/api/byra-rutiner/' + encodeURIComponent(recordId), {
         method: 'PATCH',
-        headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' },
+        ...getAuthOpts(),
         body: JSON.stringify({ fields })
       });
       var data = await res.json().catch(function () { return {}; });
@@ -289,20 +289,20 @@
 
   async function load() {
     var loading = getEl('loading'), noData = getEl('no-data'), content = getEl('content');
-    if (!getToken()) {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       if (loading) loading.innerHTML = '<p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa byråns riskbedömning.</p>';
       return;
     }
     var canEdit = true;
     try {
-      var meRes = await fetch(getBaseUrl() + '/api/auth/me', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+      var meRes = await fetch(getBaseUrl() + '/api/auth/me', getAuthOpts());
       if (meRes.ok) {
         var meData = await meRes.json();
         canEdit = (meData.user && ['ClientFlowAdmin', 'Ledare'].includes(meData.user.role));
       }
     } catch (_) {}
     try {
-      var res = await fetch(getBaseUrl() + '/api/byra-rutiner', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+      var res = await fetch(getBaseUrl() + '/api/byra-rutiner', getAuthOpts());
       var data = await res.json();
       if (loading) loading.style.display = 'none';
       if (!res.ok) {
@@ -378,7 +378,7 @@
       try {
         var res = await fetch(getBaseUrl() + '/api/ai-beskrivning-byra', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+          ...getAuthOpts()
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
@@ -413,7 +413,7 @@
       try {
         var res = await fetch(getBaseUrl() + '/api/ai-identifierade-risker-byra', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+          ...getAuthOpts()
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {

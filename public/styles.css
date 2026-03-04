@@ -1565,6 +1565,284 @@ p, small { line-height: 1.6; }
 .dashboard-section-full {
     grid-column: 1 / -1;
 }
+
+/* Kom igång – flödesvisualisering */
+.kom-igang-section {
+    margin-bottom: 1.5rem;
+}
+.kom-igang-header {
+    margin-bottom: 1.25rem;
+}
+.kom-igang-header h2 {
+    margin: 0 0 0.35rem 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--title-text, #1e293b);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.kom-igang-header h2 i {
+    color: var(--accent, #667eea);
+}
+.kom-igang-desc {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+/* Wrapper med pilar – horisontell scroll */
+.kom-igang-scroll-wrap {
+    position: relative;
+    margin: 0 -0.5rem;
+}
+.kom-igang-flow {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    padding: 0.5rem 0.5rem 1rem;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+}
+.kom-igang-flow.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+.kom-igang-flow.is-dragging a,
+.kom-igang-flow.is-dragging input {
+    pointer-events: none;
+}
+.kom-igang-flow:not(.is-dragging) {
+    cursor: grab;
+}
+.kom-igang-flow::-webkit-scrollbar {
+    height: 8px;
+}
+.kom-igang-flow::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+.kom-igang-flow::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+/* Pilar – visas när det finns mer innehåll åt sidan */
+.kom-igang-arrow-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: var(--accent, #667eea);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.kom-igang-arrow-btn:hover {
+    background: var(--accent, #667eea);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+.kom-igang-arrow-btn.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.kom-igang-arrow-left {
+    left: 0.5rem;
+}
+.kom-igang-arrow-right {
+    right: 0.5rem;
+}
+/* Kort – samma bredd och höjd på en rad */
+.kom-igang-step {
+    flex: 0 0 300px;
+    min-width: 300px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    user-select: none;
+}
+.kom-igang-step:hover {
+    background: #f8fafc;
+    border-color: var(--accent, #667eea);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.12);
+}
+.kom-igang-num {
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent, #667eea);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    border-radius: 50%;
+}
+.kom-igang-step-content {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+}
+.kom-igang-step-content h3 {
+    margin: 0 0 0.35rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--title-text, #1e293b);
+}
+.kom-igang-step-content p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #64748b;
+    line-height: 1.55;
+}
+.kom-igang-arrow {
+    flex-shrink: 0;
+    color: #cbd5e1;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+.kom-igang-step:hover .kom-igang-arrow {
+    color: var(--accent, #667eea);
+}
+
+/* Checklist och länkar i stegen */
+.kom-igang-checklist {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+.kom-igang-checklist li {
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+}
+.kom-igang-checklist label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: #475569;
+    cursor: pointer;
+    font-weight: 400;
+}
+.kom-igang-checklist input[type="checkbox"] {
+    width: 1.1em;
+    height: 1.1em;
+    accent-color: var(--accent, #667eea);
+    flex-shrink: 0;
+}
+.kom-igang-checklist label:has(input:checked) {
+    color: #64748b;
+    text-decoration: line-through;
+}
+.kom-igang-ext-link {
+    font-size: 0.8rem;
+    color: var(--accent, #667eea);
+    text-decoration: none;
+    margin-left: 0.25rem;
+}
+.kom-igang-ext-link:hover {
+    text-decoration: underline;
+}
+.kom-igang-ext-link i {
+    font-size: 0.7em;
+    opacity: 0.9;
+}
+.kom-igang-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent, #667eea);
+    text-decoration: none;
+}
+.kom-igang-link:hover {
+    text-decoration: underline;
+}
+.kom-igang-klart-badge {
+    display: none;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #059669;
+    background: #d1fae5;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+}
+
+/* Minimerad step – samma kortstorlek, ihopfälld innehåll */
+.kom-igang-step--minimerad {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    align-items: center;
+    justify-content: flex-start;
+    border-style: dashed;
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    min-height: 320px;
+}
+.kom-igang-step--minimerad:hover {
+    background: #f1f5f9;
+}
+.kom-igang-step--minimerad .kom-igang-step-content p,
+.kom-igang-step--minimerad .kom-igang-checklist,
+.kom-igang-step--minimerad .kom-igang-link {
+    display: none !important;
+}
+.kom-igang-step--minimerad .kom-igang-step-content {
+    flex: 1;
+    min-width: 0;
+}
+.kom-igang-step--minimerad .kom-igang-step-content h3 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+.kom-igang-step--minimerad .kom-igang-klart-badge {
+    display: inline-flex;
+    margin-top: auto;
+}
+.kom-igang-step--minimerad .kom-igang-num {
+    background: #10b981;
+}
+.kom-igang-step--minimerad .kom-igang-expand-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-left: 0.5rem;
+}
+.kom-igang-step:not(.kom-igang-step--minimerad) .kom-igang-expand-hint {
+    display: none;
+}
+
 .dashboard-right .dashboard-section {
     margin-bottom: 0;
 }
@@ -3704,6 +3982,48 @@ p, small { line-height: 1.6; }
 .risk-header-content {
     position: relative;
     z-index: 1;
+}
+
+/* Introtext under rubrik – samma bredd som övrigt innehåll, tydlig spacing */
+.risk-header-body {
+    line-height: 1.65;
+    margin-top: 1rem;
+}
+.risk-header-body p {
+    margin: 0 0 1rem 0;
+    font-size: 0.95rem;
+    color: var(--text);
+    opacity: 0.95;
+}
+.risk-header-body h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.5rem 0;
+    color: var(--title-text);
+}
+.risk-header-body ul {
+    margin: 0 0 1rem 0;
+    padding-left: 1.35rem;
+}
+.risk-header-body li {
+    margin-bottom: 0.35rem;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+.risk-header-body p.risk-header-note,
+.risk-header-body p:last-of-type {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    background: #f8fafc;
+    border-left: 3px solid var(--accent, #667eea);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9rem;
+    color: #475569;
+}
+.risk-header-body p.risk-header-note strong,
+.risk-header-body p:last-of-type strong {
+    font-weight: 600;
+    color: #334155;
 }
 
 .kundkort-company-name {
@@ -8419,6 +8739,13 @@ textarea.kunduppgifter-input {
 /* =====================================================
    Kundlista ? ny enkel listlayout
    ===================================================== */
+.kundlista-foretagssok-section {
+    margin-bottom: 1.25rem;
+}
+.kundlista-foretagssok-section .dashboard-card-search {
+    max-width: 100%;
+}
+
 .kundlista-toolbar {
     display: flex;
     align-items: center;
