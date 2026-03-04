@@ -2946,7 +2946,7 @@ class CustomerCardManager {
 
                     <!-- BILAGA 2: ALLMÄNNA VILLKOR -->
                     <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-file-alt"></i> Bilaga 2 – Allmänna villkor</div>
+                        <div class="uppdrag-section-title"><i class="fas fa-file-alt"></i> Bilaga 1 – Allmänna villkor</div>
                         <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
                             <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
                             Visa fullständiga allmänna villkor
@@ -3006,7 +3006,7 @@ class CustomerCardManager {
 
                     <!-- BILAGA 3: PERSONUPPGIFTSBITRÄDESAVTAL -->
                     <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-shield-alt"></i> Bilaga 3 – Personuppgiftsbiträdesavtal (GDPR)</div>
+                        <div class="uppdrag-section-title"><i class="fas fa-shield-alt"></i> Bilaga 2 – Personuppgiftsbiträdesavtal (GDPR)</div>
                         <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
                             <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
                             Visa fullständigt personuppgiftsbiträdesavtal

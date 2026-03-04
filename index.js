@@ -6250,10 +6250,11 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '\u2014';
 
     // Normalisera fältnamn: Airtable sparar med ASCII-namn från frontend
+    // Ansvarig hos byrån = den som genererar PDF:en (inloggad användare), inte bara värdet från avtalet
     const nf = {};
     nf['Kundnamn']           = f['Kundnamn'] || f['Namn'] || '\u2014';
     nf['Orgnr']              = f['Orgnr'] || '';
-    nf['Uppdragsansvarig']   = f['Uppdragsansvarig'] || '\u2014';
+    nf['Uppdragsansvarig']   = (pdfUser?.name && pdfUser.name.trim()) ? pdfUser.name.trim() : (f['Uppdragsansvarig'] || '\u2014');
     nf['Avtalsdatum']        = f['Avtalsdatum'] || null;
     nf['Avtalet g\u00e4ller ifr\u00e5n'] = f['Avtalet g\u00e4ller ifr\u00e5n'] || f['Avtalet galler fran'] || null;
     nf['Upps\u00e4gningstid']     = f['Upps\u00e4gningstid'] ?? f['Uppsagningstid'] ?? null;
@@ -6461,7 +6462,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 <!-- ═══════════ SIDA 2: BILAGA 2 ═══════════ -->
 <div class="page-break"></div>
 <div class="section">
-  <div class="section-title">Bilaga 2 \u2013 Allm\u00e4nna villkor</div>
+  <div class="section-title">Bilaga 1 \u2013 Allm\u00e4nna villkor</div>
   <div class="bilaga-wrap"><div class="villkor-text">
       <p>Dessa allm\u00e4nna villkor g\u00e4ller f\u00f6r uppdrag avseende redovisnings-, r\u00e5dgivnings- och andra granskningstj\u00e4nster som inte utg\u00f6r lagstadgad revision eller lagstadgade till\u00e4ggsuppdrag (\u201dUppdraget\u201d) som Byr\u00e5n \u00e5tar sig att utf\u00f6ra f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
       <p>Dessa allm\u00e4nna villkor utg\u00f6r tillsammans med uppdragsavtalet (\u201dUppdragsavtalet\u201d), eller annan skriftlig \u00f6verenskommelse, hela avtalet mellan Byr\u00e5n och Uppdragsgivaren. Vid eventuella motstridigheter ska Uppdragsavtalet ha f\u00f6retr\u00e4de.</p>
@@ -6513,13 +6514,13 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       <h4>Prioritetsordning</h4>
       <ol><li>Uppdragsavtal</li><li>Bilagor till uppdragsavtal</li><li>Dessa allm\u00e4nna villkor</li></ol>
     </div></div>
-  ${nf['Kunden godkänner allmänna villkor'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att allm\u00e4nna villkoren (Bilaga 2) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
+  ${nf['Kunden godkänner allmänna villkor'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att allm\u00e4nna villkoren (Bilaga 1) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
 </div>
 
 <!-- ═══════════ SIDA 3: BILAGA 3 ═══════════ -->
 <div class="page-break"></div>
 <div class="section">
-  <div class="section-title">Bilaga 3 \u2013 Personuppgiftsbir\u00e4desavtal</div>
+  <div class="section-title">Bilaga 2 \u2013 Personuppgiftsbir\u00e4desavtal</div>
   <div class="bilaga-wrap"><div class="villkor-text">
       <h4>1 Bakgrund</h4>
       <p>Parterna har i samband med detta Avtal ing\u00e5tt Tj\u00e4nsteavtal avseende redovisningstj\u00e4nster (\u201dTj\u00e4nsteavtalet\u201d). Inom \u00e5tagandena som f\u00f6ljer av Tj\u00e4nsteavtalet kan Byr\u00e5n komma att behandla personuppgifter samt annan information f\u00f6r Uppdragsgivarens r\u00e4kning. Med anledning h\u00e4rav ing\u00e5r Parterna detta Avtal f\u00f6r att reglera f\u00f6ruts\u00e4ttningarna f\u00f6r behandling av \u2013 och tillg\u00e5ng till \u2013 Personuppgifter tillh\u00f6riga Uppdragsgivaren. Avtalet g\u00e4ller s\u00e5 l\u00e4nge Byr\u00e5n behandlar Personuppgifter f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
@@ -6553,7 +6554,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       <h4>17 Till\u00e4mplig lag och tvister</h4>
       <p>Svensk lag ska till\u00e4mpas p\u00e5 Avtalet. Tvister som uppst\u00e5r i anledning av Avtalet ska slutligt avg\u00f6ras genom skiljedomsf\u00f6rfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljedomsf\u00f6rfarandets s\u00e4te ska vara Stockholm och spr\u00e5ket ska vara svenska. Skiljedom omfattas av sekretess. Part har r\u00e4tt att vid svensk domstol anh\u00e4ngig\u00f6ra tvist om tvistem\u00e5lets storlek understiger 100\u00a0000 kr.</p>
     </div></div>
-  ${nf['Kunden godkänner personuppgiftsbiträdesavtal'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att personuppgiftsbir\u00e4desavtalet (Bilaga 3) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
+  ${nf['Kunden godkänner personuppgiftsbiträdesavtal'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att personuppgiftsbir\u00e4desavtalet (Bilaga 2) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
 </div>
 
 <!-- ═══════════ UNDERSKRIFTER ═══════════ -->
