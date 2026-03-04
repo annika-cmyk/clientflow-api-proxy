@@ -4460,15 +4460,10 @@ class CustomerCardManager {
                 throw new Error(msg);
             }
 
-            // Visa resultat i modal
+            // Visa resultat i modal (PDF sparas endast i Airtable / Dokumentation, laddas inte ner automatiskt)
             this._showPepResultModal(p.namn, data);
 
-            // Ladda ner PDF automatiskt
-            if (data.pdf_base64) {
-                this._downloadBase64Pdf(data.pdf_base64, data.filnamn);
-            }
-
-            // Uppdatera dokumentation-fliken om rapporten sparades
+            // Uppdatera dokumentation-fliken om rapporten sparades i Airtable
             if (data.savedToDocs) {
                 this.loadDocuments();
                 this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
