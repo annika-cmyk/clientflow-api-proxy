@@ -9,8 +9,8 @@
   }
 
   async function fetchStatistik() {
-    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return null;
     const res = await fetch(baseUrl + '/api/statistik-riskbedomning', getAuthOpts());
+    if (res.status === 401) return null;
     if (!res.ok) throw new Error('Kunde inte hämta statistik');
     return res.json();
   }
@@ -140,10 +140,6 @@
   }
 
   async function fetchKunderForRow(typ, paramId, paramNamn, titel) {
-    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
-      showKunderModal(titel, null, false, 'Du måste vara inloggad.');
-      return;
-    }
     const params = new URLSearchParams({ typ });
     if (paramId) params.set('id', paramId);
     if (paramNamn !== undefined && paramNamn !== '') params.set('namn', paramNamn);
