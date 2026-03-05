@@ -63,6 +63,49 @@ class ComponentLoader {
 
         // Initialize user info if auth is available
         this.updateUserInfo(element);
+
+        // Fäll in/ut-menyn: återställ sparad state och koppla toggle-knapp
+        const sidebar = element.querySelector('.sidebar');
+        const toggleBtn = element.querySelector('#sidebar-toggle');
+        if (sidebar && toggleBtn) {
+            try {
+                const saved = sessionStorage.getItem('clientflow-sidebar-collapsed');
+                if (saved === '1') document.body.classList.add('sidebar-collapsed');
+            } catch (e) { /* ignore */ }
+            toggleBtn.addEventListener('click', () => {
+                document.body.classList.toggle('sidebar-collapsed');
+                try {
+                    sessionStorage.setItem('clientflow-sidebar-collapsed', document.body.classList.contains('sidebar-collapsed') ? '1' : '0');
+                } catch (e) { /* ignore */ }
+            });
+        }
+
+        // Fäll in/ut menyposter under rubriker
+        const storageKey = 'clientflow-nav-sections-collapsed';
+        element.querySelectorAll('.nav-section').forEach(section => {
+            const header = section.querySelector('.nav-section-header');
+            const sectionId = section.getAttribute('data-section');
+            if (!header || !sectionId) return;
+            try {
+                const saved = sessionStorage.getItem(storageKey);
+                const collapsed = saved ? JSON.parse(saved) : {};
+                if (collapsed[sectionId]) {
+                    section.classList.add('nav-section-collapsed');
+                    header.setAttribute('aria-expanded', 'false');
+                }
+            } catch (e) { /* ignore */ }
+            header.addEventListener('click', () => {
+                section.classList.toggle('nav-section-collapsed');
+                const isCollapsed = section.classList.contains('nav-section-collapsed');
+                header.setAttribute('aria-expanded', !isCollapsed);
+                try {
+                    const saved = sessionStorage.getItem(storageKey);
+                    const collapsed = saved ? JSON.parse(saved) : {};
+                    collapsed[sectionId] = isCollapsed;
+                    sessionStorage.setItem(storageKey, JSON.stringify(collapsed));
+                } catch (e) { /* ignore */ }
+            });
+        });
     }
 
     // Update active page without reloading the entire sidebar
@@ -78,6 +121,14 @@ class ComponentLoader {
             
             // Add active class to current page
             activeLink.classList.add('active');
+
+            // Öppna den sektion som innehåller aktuell sida
+            const section = activeLink.closest('.nav-section');
+            if (section) {
+                section.classList.remove('nav-section-collapsed');
+                const header = section.querySelector('.nav-section-header');
+                if (header) header.setAttribute('aria-expanded', 'true');
+            }
         }
     }
 

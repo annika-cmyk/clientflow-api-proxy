@@ -1,92 +1,108 @@
 <!-- Sidebar Navigation Component -->
-<aside class="sidebar">
+<aside class="sidebar" id="app-sidebar">
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" title="Fäll in/ut menyn" aria-label="Fäll in/ut menyn">
+        <i class="fas fa-chevron-left sidebar-toggle-icon-open"></i>
+        <i class="fas fa-chevron-right sidebar-toggle-icon-closed"></i>
+    </button>
     <div class="sidebar-header">
-        <div class="sidebar-logo-container">
-            <img src="Components/rekt logga vit text.webp" alt="ClientFlow" class="sidebar-logo">
+        <div class="sidebar-logo-container sidebar-collapse-hide">
+            <img src="Components/Clientflow loga svart text kvadratisk.webp" alt="ClientFlow" class="sidebar-logo">
         </div>
-        <p>Kundhantering & Riskbedömning</p>
+        <p class="sidebar-collapse-hide">Kundhantering & Riskbedömning</p>
     </div>
     
     <nav class="sidebar-nav">
-        <div class="nav-section">
-            <h3><i class="fas fa-cogs"></i> Hantering</h3>
+        <div class="nav-section" data-section="hantering">
+            <button type="button" class="nav-section-header" aria-expanded="true" title="Klicka för att fälla in/ut">
+                <i class="fas fa-cogs"></i>
+                <span class="sidebar-collapse-hide">Hantering</span>
+                <i class="fas fa-chevron-down nav-section-chevron"></i>
+            </button>
             <ul>
                 <li data-page="index">
-                    <a href="index.html">
+                    <a href="index.html" title="Dashboard">
                         <i class="fas fa-th-large"></i>
-                        <span>Dashboard</span>
+                        <span class="sidebar-collapse-hide">Dashboard</span>
                     </a>
                 </li>
                 <li data-page="kundlista">
-                    <a href="kundlista.html">
+                    <a href="kundlista.html" title="Kundlista">
                         <i class="fas fa-users"></i>
-                        <span>Kundlista</span>
+                        <span class="sidebar-collapse-hide">Kundlista</span>
                     </a>
                 </li>
                 <li data-page="avvikelser">
-                    <a href="avvikelser.html">
+                    <a href="avvikelser.html" title="Avvikelser">
                         <i class="fas fa-exclamation-circle"></i>
-                        <span>Avvikelser</span>
+                        <span class="sidebar-collapse-hide">Avvikelser</span>
                     </a>
                 </li>
                 <li data-page="registrera-utbildning">
-                    <a href="registrera-utbildning.html">
+                    <a href="registrera-utbildning.html" title="Registrera utbildning">
                         <i class="fas fa-graduation-cap"></i>
-                        <span>Registrera utbildning</span>
+                        <span class="sidebar-collapse-hide">Registrera utbildning</span>
                     </a>
                 </li>
             </ul>
         </div>
 
-        <div class="nav-section">
-            <h3><i class="fas fa-shield-alt"></i> Riskbedömning</h3>
+        <div class="nav-section" data-section="riskbedomning">
+            <button type="button" class="nav-section-header" aria-expanded="true" title="Klicka för att fälla in/ut">
+                <i class="fas fa-shield-alt"></i>
+                <span class="sidebar-collapse-hide">Riskbedömning</span>
+                <i class="fas fa-chevron-down nav-section-chevron"></i>
+            </button>
             <ul>
                 <li data-page="riskbedomning-byra">
-                    <a href="riskbedomning-byra.html">
+                    <a href="riskbedomning-byra.html" title="Byråns tjänster">
                         <i class="fas fa-building"></i>
-                        <span>Byråns tjänster</span>
+                        <span class="sidebar-collapse-hide">Byråns tjänster</span>
                     </a>
                 </li>
                 <li data-page="ovriga-riskfaktorer">
-                    <a href="ovriga-riskfaktorer.html">
+                    <a href="ovriga-riskfaktorer.html" title="Övriga riskfaktorer">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <span>Övriga riskfaktorer</span>
+                        <span class="sidebar-collapse-hide">Övriga riskfaktorer</span>
                     </a>
                 </li>
                 <li data-page="statistik-riskbedomning">
-                    <a href="statistik-riskbedomning.html">
+                    <a href="statistik-riskbedomning.html" title="Statistik för riskbedömning">
                         <i class="fas fa-chart-bar"></i>
-                        <span>Statistik för riskbedömning</span>
+                        <span class="sidebar-collapse-hide">Statistik för riskbedömning</span>
                     </a>
                 </li>
                 <li data-page="allman-riskbedomning-byra">
-                    <a href="allman-riskbedomning-byra.html">
+                    <a href="allman-riskbedomning-byra.html" title="Allmän riskbedömning byrå">
                         <i class="fas fa-clipboard-check"></i>
-                        <span>Allmän riskbedömning byrå</span>
+                        <span class="sidebar-collapse-hide">Allmän riskbedömning byrå</span>
                     </a>
                 </li>
                 <li data-page="byrarutiner">
-                    <a href="byrarutiner.html">
+                    <a href="byrarutiner.html" title="Byrårutiner">
                         <i class="fas fa-tasks"></i>
-                        <span>Byrårutiner</span>
+                        <span class="sidebar-collapse-hide">Byrårutiner</span>
                     </a>
                 </li>
             </ul>
         </div>
         
-        <div class="nav-section">
-            <h3><i class="fas fa-building"></i> Byrå</h3>
+        <div class="nav-section" data-section="byra">
+            <button type="button" class="nav-section-header" aria-expanded="true" title="Klicka för att fälla in/ut">
+                <i class="fas fa-building"></i>
+                <span class="sidebar-collapse-hide">Byrå</span>
+                <i class="fas fa-chevron-down nav-section-chevron"></i>
+            </button>
             <ul>
                 <li data-page="byra-anvandare">
-                    <a href="byra-anvandare.html">
+                    <a href="byra-anvandare.html" title="Uppgifter byrå & användare">
                         <i class="fas fa-users"></i>
-                        <span>Uppgifter byrå & användare</span>
+                        <span class="sidebar-collapse-hide">Uppgifter byrå & användare</span>
                     </a>
                 </li>
                 <li data-page="dokumentation">
-                    <a href="dokumentation.html">
+                    <a href="dokumentation.html" title="Dokumentation">
                         <i class="fas fa-folder-open"></i>
-                        <span>Dokumentation</span>
+                        <span class="sidebar-collapse-hide">Dokumentation</span>
                     </a>
                 </li>
             </ul>
@@ -97,7 +113,7 @@
     <div class="sidebar-ai-chat">
         <button type="button" class="sidebar-ai-chat-btn" onclick="typeof window.openAiChat === 'function' && window.openAiChat()" title="Chatta med Annika AI – en mänskligare version av Annika">
             <i class="fas fa-comments"></i>
-            <span>Chatta med Annika AI</span>
+            <span class="sidebar-collapse-hide">Chatta med Annika AI</span>
         </button>
     </div>
     
@@ -108,14 +124,14 @@
                 <img id="company-logo" src="" alt="Företagslogo" style="display: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
                 <i id="default-avatar" class="fas fa-user-circle"></i>
             </div>
-            <div class="user-details">
+            <div class="user-details sidebar-collapse-hide">
                 <span class="user-name">Laddar...</span>
                 <span class="user-role">Laddar...</span>
             </div>
         </div>
-        <button class="logout-btn" onclick="testLogout()" style="display: flex !important;">
+        <button class="logout-btn" onclick="testLogout()" style="display: flex !important;" title="Logga ut">
             <i class="fas fa-sign-out-alt"></i>
-            Logga ut
+            <span class="sidebar-collapse-hide">Logga ut</span>
         </button>
     </div>
 </aside>

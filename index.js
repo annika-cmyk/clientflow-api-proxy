@@ -220,8 +220,12 @@ async function getAirtableUser(email) {
   }
 }
 
-// JWT Secret (in production, use a strong secret from environment variables)
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// JWT Secret – i produktion MÅSTE den sättas i miljövariabler
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'your-secret-key-change-in-production');
+if (process.env.NODE_ENV === 'production' && !JWT_SECRET) {
+  console.error('❌ JWT_SECRET saknas. Sätt JWT_SECRET i miljövariabler i produktion.');
+  process.exit(1);
+}
 
 // Middleware to verify JWT token (från cookie eller Authorization header)
 const authenticateToken = (req, res, next) => {
@@ -3193,7 +3197,7 @@ app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
   }
 });
 
-// PATCH /api/kunddata/:id - Uppdatera specifika fält på en kund i KUNDDATA
+// PATCH /api/kunddata/:id - Uppdatera specifika fält på en kund i KUNDDATA (med behörighetskontroll)
 app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -3210,6 +3214,31 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (!fields) {
       return res.status(400).json({ error: 'Fält saknas i request body' });
     }
+
+    // Behörighetskontroll: samma logik som GET /api/kunddata/:id
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    let customerRecord;
+    try {
+      const getRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+      });
+      customerRecord = getRes.data;
+    } catch (e) {
+      if (e.response?.status === 404) return res.status(404).json({ error: 'Kund hittades inte' });
+      throw e;
+    }
+    let hasAccess = false;
+    if (userData.role === 'ClientFlowAdmin') hasAccess = true;
+    else if (userData.role === 'Ledare') {
+      const customerByraId = customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
+      if (userData.byraId && customerByraId && String(userData.byraId) === String(customerByraId)) hasAccess = true;
+    } else if (userData.role === 'Anställd') {
+      const customerUsers = customerRecord.fields['Användare'] || [];
+      const uid = userData.id ? String(userData.id) : '';
+      if (uid && (Array.isArray(customerUsers) ? customerUsers.includes(uid) : String(customerUsers) === uid)) hasAccess = true;
+    }
+    if (!hasAccess) return res.status(403).json({ error: 'Du har inte behörighet att uppdatera denna kund' });
 
     // Ta bort tomma/undefined-värden — men behåll arrays (även tomma) för länkfält
     const cleanedFields = Object.fromEntries(
