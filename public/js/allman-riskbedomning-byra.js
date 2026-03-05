@@ -289,10 +289,6 @@
 
   async function load() {
     var loading = getEl('loading'), noData = getEl('no-data'), content = getEl('content');
-    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
-      if (loading) loading.innerHTML = '<p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa byråns riskbedömning.</p>';
-      return;
-    }
     var canEdit = true;
     try {
       var meRes = await fetch(getBaseUrl() + '/api/auth/me', getAuthOpts());
