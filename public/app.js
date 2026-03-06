@@ -175,9 +175,48 @@ class ClientFlowApp {
         const rightBtn = wrap && wrap.querySelector('.kom-igang-arrow-right');
         if (!flow || !wrap) return;
 
+        function getPx(value) {
+            const n = parseFloat(value || '0');
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getGapPx() {
+            const style = getComputedStyle(flow);
+            // Flex gap: prefer the shorthand if present, fall back to columnGap.
+            return getPx(style.gap) || getPx(style.columnGap);
+        }
+
+        function getPageMetrics() {
+            const step = flow.querySelector('.kom-igang-step');
+            if (!step) return null;
+
+            const style = getComputedStyle(flow);
+            const gap = getGapPx();
+            const padL = getPx(style.paddingLeft);
+            const padR = getPx(style.paddingRight);
+            const cardW = step.getBoundingClientRect().width;
+
+            const availableInside = Math.max(0, wrap.clientWidth - padL - padR);
+            const perView = Math.max(1, Math.floor((availableInside + gap) / (cardW + gap)));
+            const flowWidth = perView * cardW + (perView - 1) * gap + padL + padR;
+            const pageScroll = perView * (cardW + gap);
+
+            return { gap, padL, padR, cardW, perView, flowWidth, pageScroll };
+        }
+
+        function applyWholeCardViewport() {
+            const m = getPageMetrics();
+            if (!m) return;
+            // Make the viewport width match an integer number of whole cards.
+            wrap.style.setProperty('--kom-igang-flow-width', `${Math.floor(Math.min(m.flowWidth, wrap.clientWidth))}px`);
+        }
+
         function updateArrows() {
-            const canLeft = flow.scrollLeft > 4;
-            const canRight = flow.scrollLeft < flow.scrollWidth - flow.clientWidth - 4;
+            // Use a small epsilon to avoid 1-2px rounding making arrows show incorrectly.
+            const epsilon = 6;
+            const maxScroll = Math.max(0, flow.scrollWidth - flow.clientWidth);
+            const canLeft = flow.scrollLeft > epsilon;
+            const canRight = flow.scrollLeft < (maxScroll - epsilon);
             if (leftBtn) leftBtn.classList.toggle('hidden', !canLeft);
             if (rightBtn) rightBtn.classList.toggle('hidden', !canRight);
         }
@@ -185,13 +224,16 @@ class ClientFlowApp {
         flow.addEventListener('scroll', updateArrows);
         if (leftBtn) {
             leftBtn.addEventListener('click', () => {
-                flow.scrollBy({ left: -Math.min(flow.clientWidth * 0.85, flow.scrollLeft + 20), behavior: 'smooth' });
+                const m = getPageMetrics();
+                const page = m ? m.pageScroll : flow.clientWidth * 0.85;
+                flow.scrollBy({ left: -page, behavior: 'smooth' });
             });
         }
         if (rightBtn) {
             rightBtn.addEventListener('click', () => {
-                const maxScroll = flow.scrollWidth - flow.clientWidth;
-                flow.scrollBy({ left: Math.min(flow.clientWidth * 0.85, maxScroll - flow.scrollLeft + 20), behavior: 'smooth' });
+                const m = getPageMetrics();
+                const page = m ? m.pageScroll : flow.clientWidth * 0.85;
+                flow.scrollBy({ left: page, behavior: 'smooth' });
             });
         }
 
@@ -226,7 +268,26 @@ class ClientFlowApp {
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);
         });
-        updateArrows();
+        const initLayout = () => {
+            applyWholeCardViewport();
+            updateArrows();
+        };
+        requestAnimationFrame(initLayout);
+        setTimeout(initLayout, 0);
+
+        // Recompute on layout changes (sidebar toggle, resizing, etc.)
+        try {
+            const ro = new ResizeObserver(() => {
+                applyWholeCardViewport();
+                updateArrows();
+            });
+            ro.observe(wrap);
+        } catch (_) {
+            window.addEventListener('resize', () => {
+                applyWholeCardViewport();
+                updateArrows();
+            }, { passive: true });
+        }
     }
 
     async saveKomIgangState() {

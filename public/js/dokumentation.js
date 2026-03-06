@@ -178,7 +178,7 @@
     const container = getEl('lansstyrelsen-pdf-list');
     if (!container) return;
     if (list.length === 0) {
-      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga dokument sparade ännu. Använd <strong>Exportera rutiner och riskbedömning</strong> i menyn under Riskbedömning för att generera och spara.</p>';
+      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga dokument sparade ännu. Följ stegen på dashboarden (Kom igång) för att generera och spara rutiner och riskbedömning.</p>';
       return;
     }
     container.innerHTML = '<ul class="document-list">' + list.map((item, i) => `
@@ -217,6 +217,17 @@
 
   window.getDokumentationSavePdf = function () { return savePdfToList; };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
-  else load();
+  /** Kör load() när auth är klar – annars kan getCurrentUser() vara null eftersom checkAuthStatus() är asynkron. */
+  let loadStarted = false;
+  function runLoadWhenReady() {
+    if (loadStarted) return;
+    loadStarted = true;
+    load();
+  }
+  function whenReady() {
+    window.addEventListener('clientflow:authReady', runLoadWhenReady, { once: true });
+    setTimeout(runLoadWhenReady, 1500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', whenReady);
+  else whenReady();
 })();

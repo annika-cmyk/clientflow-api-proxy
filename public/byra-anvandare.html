@@ -27,64 +27,52 @@
                 <div class="tab-navigation">
                     <button class="tab-button active" data-tab="byra">Byråinformation</button>
                     <button class="tab-button" data-tab="anvandare">Användare</button>
+                    <button class="tab-button" data-tab="utbildningar">Utbildningar</button>
                     <button class="tab-button" data-tab="behorigheter">Behörigheter</button>
                     <button class="tab-button" data-tab="loggar">Aktivitetsloggar</button>
                 </div>
 
                 <!-- Byråinformation tab -->
                 <div class="tab-content active" id="byra">
-                    <div class="info-section">
-                        <h3>Verksamhetsinformation</h3>
+                    <div class="info-section byra-profil">
+                        <h3>Byråprofil</h3>
+                        <div class="byra-logga-wrap">
+                            <div class="byra-logga-preview" id="byra-logga-preview">
+                                <span class="logga-placeholder"><i class="fas fa-building"></i> Logga</span>
+                            </div>
+                            <div class="byra-logga-url">
+                                <label>Logga (URL)</label>
+                                <input type="url" id="byra-logga" class="form-input" placeholder="https://...">
+                            </div>
+                        </div>
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>Bransch</label>
-                                <select class="form-select">
-                                    <option>Redovisning & Revisionsbyrå</option>
-                                    <option>Juridisk byrå</option>
-                                    <option>IT-konsult</option>
-                                    <option>Övrigt</option>
+                                <label>Bransch / typ av byrå</label>
+                                <select id="byra-bransch" class="form-select">
+                                    <option value="">Välj bransch</option>
+                                    <option value="Redovisning & Revisionsbyrå">Redovisning & Revisionsbyrå</option>
+                                    <option value="Juridisk byrå">Juridisk byrå</option>
+                                    <option value="IT-konsult">IT-konsult</option>
+                                    <option value="Övrigt">Övrigt</option>
                                 </select>
                             </div>
                             <div class="form-group">
                                 <label>Antal anställda</label>
-                                <input type="number" value="15" class="form-input">
+                                <input type="number" id="byra-antal-anstallda" class="form-input" min="0" placeholder="0">
                             </div>
                             <div class="form-group">
-                                <label>Antal kunder</label>
-                                <input type="number" value="247" class="form-input" readonly>
+                                <label>Omsättning (SEK)</label>
+                                <input type="text" id="byra-omsattning" class="form-input" placeholder="0">
                             </div>
                             <div class="form-group">
-                                <label>Registreringsdatum</label>
-                                <input type="date" value="2010-03-15" class="form-input">
+                                <label>Antal kundföretag</label>
+                                <input type="number" id="byra-antal-kundforetag" class="form-input" min="0" placeholder="0">
                             </div>
                         </div>
-                    </div>
-
-                    <div class="info-section">
-                        <h3>Kontaktpersoner</h3>
-                        <div class="contact-list">
-                            <div class="contact-item">
-                                <div class="contact-info">
-                                    <h4>VD - Maria Rydén</h4>
-                                    <p>maria@rydenred.se | 070-123 45 67</p>
-                                </div>
-                                <div class="contact-actions">
-                                    <button class="btn-secondary">Redigera</button>
-                                    <button class="btn-danger">Ta bort</button>
-                                </div>
-                            </div>
-                            <div class="contact-item">
-                                <div class="contact-info">
-                                    <h4>Ekonomi - Annika Rydén</h4>
-                                    <p>annika@rydenred.se | 070-987 65 43</p>
-                                </div>
-                                <div class="contact-actions">
-                                    <button class="btn-secondary">Redigera</button>
-                                    <button class="btn-danger">Ta bort</button>
-                                </div>
-                            </div>
+                        <div class="form-actions">
+                            <button type="button" id="byra-spara" class="btn-primary">Spara byråinformation</button>
+                            <span class="byra-spara-status" id="byra-spara-status"></span>
                         </div>
-                        <button class="btn-primary">Lägg till kontaktperson</button>
                     </div>
                 </div>
 
@@ -92,7 +80,7 @@
                 <div class="tab-content" id="anvandare">
                     <div class="users-header">
                         <h3>Användarkonton</h3>
-                        <button class="btn-primary">Skapa nytt konto</button>
+                        <button type="button" class="btn-primary" id="anvandare-skapa-btn">Skapa nytt konto</button>
                     </div>
                     
                     <!-- User Filters -->
@@ -129,6 +117,51 @@
                     
                     <div class="users-list">
                         <!-- Users will be loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Utbildningar tab -->
+                <div class="tab-content" id="utbildningar">
+                    <div class="info-section">
+                        <h3>Registrera utbildning</h3>
+                        <form id="utbildning-form" class="form-grid">
+                            <div class="form-group">
+                                <label>Namn *</label>
+                                <input type="text" id="utbildning-namn" class="form-input" required placeholder="T.ex. GDPR-grundkurs">
+                            </div>
+                            <div class="form-group">
+                                <label>Datum</label>
+                                <input type="date" id="utbildning-datum" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Typ</label>
+                                <select id="utbildning-typ" class="form-select">
+                                    <option value="">Välj typ</option>
+                                    <option value="Kurs">Kurs</option>
+                                    <option value="Workshop">Workshop</option>
+                                    <option value="Webbinarium">Webbinarium</option>
+                                    <option value="Klassrumsutbildning">Klassrumsutbildning</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Plats</label>
+                                <input type="text" id="utbildning-plats" class="form-input" placeholder="T.ex. Stockholm">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Beskrivning</label>
+                                <textarea id="utbildning-beskrivning" class="form-textarea" rows="3" placeholder="Kort beskrivning av utbildningen"></textarea>
+                            </div>
+                            <div class="form-actions full-width">
+                                <button type="submit" class="btn-primary">Registrera utbildning</button>
+                                <span id="utbildning-form-status"></span>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="info-section">
+                        <h3>Registrerade utbildningar</h3>
+                        <div id="utbildningar-list" class="utbildningar-list">
+                            <!-- Fylls via JS -->
+                        </div>
                     </div>
                 </div>
 
@@ -259,6 +292,43 @@
             <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
         </div>
     </footer>
+
+    <!-- Modal: Lägg till / Redigera användare -->
+    <div id="anvandare-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="anvandare-modal-title">Lägg till användare</h3>
+                <button type="button" class="modal-close" id="anvandare-modal-close">&times;</button>
+            </div>
+            <form id="anvandare-form">
+                <input type="hidden" id="anvandare-id" value="">
+                <div class="form-group">
+                    <label>E-post *</label>
+                    <input type="email" id="anvandare-email" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label>Namn</label>
+                    <input type="text" id="anvandare-namn" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Roll</label>
+                    <select id="anvandare-roll" class="form-select">
+                        <option value="Användare">Användare</option>
+                        <option value="Ledare">Ledare</option>
+                        <option value="ClientFlowAdmin">Administratör</option>
+                    </select>
+                </div>
+                <div class="form-group" id="anvandare-password-wrap">
+                    <label>Lösenord</label>
+                    <input type="password" id="anvandare-password" class="form-input" placeholder="Lämna tomt för att behålla">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="anvandare-modal-avbryt">Avbryt</button>
+                    <button type="submit" class="btn-primary">Spara</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Load navigation module first -->
     <script src="js/config.js"></script>

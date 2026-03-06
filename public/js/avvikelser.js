@@ -293,9 +293,13 @@
     const noAuth = document.getElementById('no-auth');
     const content = document.getElementById('content');
 
+    // Om auth ännu inte är klar, visa no-auth tillfälligt men försök igen när AuthManager är redo
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       if (loading) loading.style.display = 'none';
       if (noAuth) noAuth.style.display = 'block';
+      window.addEventListener('clientflow:authReady', () => {
+        init();
+      }, { once: true });
       return;
     }
 

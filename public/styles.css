@@ -56,10 +56,10 @@ p, small { line-height: 1.6; }
 
 /* Kundlista & Kundkort: justera maxbredd inom main-content */
 body.kundlista-page .main-content > .container {
-    max-width: 1400px;
+    max-width: 1600px;
 }
 body.kundkort-page .main-content > .container {
-    max-width: 1400px;
+    max-width: 1600px;
 }
 
 /* Sidebar Styles – vit bakgrund (GRO-inspirerad) */
@@ -542,30 +542,31 @@ body.sidebar-collapsed .logout-btn {
     width: calc(100% - 280px);
 }
 
-/* På stora skärmar (≥1200px): innehållet startar ca 150px från sidomenyn */
+/* På stora skärmar (≥1200px): innehållet startar ca 75px från sidomenyn */
 @media (min-width: 1200px) {
   .main-content {
-    margin-left: 430px;           /* 280px meny + 150px luft */
-    width: calc(100% - 430px);
+    margin-left: 355px;           /* 280px meny + 75px luft */
+    width: calc(100% - 355px);
   }
   /* När menyn är ihopfälld låter vi innehållet stå kvar */
   body.sidebar-collapsed .main-content {
-    margin-left: 430px;
-    width: calc(100% - 430px);
+    margin-left: 355px;
+    width: calc(100% - 355px);
   }
 
-  /* På stora skärmar: vänster-aligna innehållet (inte centrerat) */
-  .main-content .container {
-    margin-left: 0;
+  /* Centrera på hela skärmen men behåll min 75px till menyn.
+     Om skärmen är för smal för full bredd, krymper vi maxbredden så centreringen kan hållas. */
+  .main-content > .container {
+    max-width: min(1600px, calc(100vw - 710px)); /* 2 * (280 + 75) */
+    margin-left: auto;
     margin-right: auto;
+    transform: translateX(-177.5px); /* -(280 + 75) / 2 */
   }
 }
 
 .content-header {
     margin-bottom: 2.5rem;
-    padding: 0.5rem 0;
-  
-    padding: 2rem;
+    padding: 2rem 0;
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow);
 }
@@ -576,9 +577,35 @@ body.sidebar-collapsed .logout-btn {
     font-family: var(--title-font);
     font-size: 2.5rem;
     font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
 }
 
 .content-header p {
+    margin: 0;
+    color: var(--text);
+    font-size: 1.1rem;
+    line-height: 1.6;
+    opacity: 0.8;
+}
+
+/* Page headers (samma rubrik-format som KUNDLISTA/KUNDKORT) */
+.page-header {
+    margin-bottom: 2.5rem;
+    padding: 2rem 0;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow);
+}
+.page-header h1 {
+    margin: 0 0 0.5rem 0;
+    color: var(--title-text);
+    font-family: var(--title-font);
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+.page-header p {
     margin: 0;
     color: var(--text);
     font-size: 1.1rem;
@@ -1684,15 +1711,7 @@ body.sidebar-collapsed .logout-btn {
     color: #64748b;
 }
 
-/* Dashboard */
-.dashboard-header {
-    margin-bottom: 1.75rem;
-}
-.dashboard-header .risk-header-content h1 {
-    font-size: 1.75rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-}
+/* Dashboard – samma rubrikstil som övriga sidor (KUNDLISTA m.fl.) */
 .dashboard-subtitle {
     font-size: 0.95rem;
     color: #64748b;
@@ -1773,6 +1792,10 @@ body.sidebar-collapsed .logout-btn {
     overflow-y: hidden;
     scroll-behavior: smooth;
     padding: 0.5rem 0.5rem 1rem;
+    max-width: var(--kom-igang-flow-width, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
     -webkit-overflow-scrolling: touch;
@@ -1831,6 +1854,7 @@ body.sidebar-collapsed .logout-btn {
     flex: 0 0 300px;
     min-width: 300px;
     min-height: 320px;
+    scroll-snap-align: start;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -3817,6 +3841,32 @@ body.sidebar-collapsed .logout-btn {
 .form-group.full-width {
     grid-column: 1 / -1;
 }
+
+.byra-logga-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+}
+.byra-logga-preview {
+    width: 120px;
+    height: 60px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f9f9f9;
+}
+.byra-logga-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.byra-logga-preview .logga-placeholder { color: #999; font-size: 0.85rem; }
+.byra-logga-url { flex: 1; min-width: 0; }
+.utbildningar-list .utbildning-item {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #eee;
+}
+.utbildningar-list .utbildning-item:last-child { border-bottom: none; }
+.form-grid .form-actions.full-width { grid-column: 1 / -1; }
 
 /* Byr?rutiner: korten under varandra (vertikal layout) */
 .byrarutiner-section .form-grid {
