@@ -172,6 +172,22 @@ body.sidebar-collapsed .logout-btn {
     justify-content: center;
 }
 
+/* Låg skärm (t.ex. laptop): mindre sidebar-innehåll så att det inte behöver scrolla */
+@media (max-height: 800px) {
+  .sidebar-header { padding: 1rem 1rem 0.75rem; }
+  .sidebar-logo { max-width: 90px; margin-bottom: 0.25rem; }
+  .sidebar-header p { font-size: 0.8rem; }
+  .sidebar-nav { padding: 0.5rem 0 0.75rem; }
+  .nav-section { margin-bottom: 0.75rem; }
+  .nav-section li a { padding: 0.4rem 1rem; font-size: 0.9rem; }
+  .user-info-section { padding: 0.75rem 1rem; margin-top: 0.5rem; }
+  .user-avatar i { font-size: 28px; }
+  .user-avatar img { width: 28px; height: 28px; }
+  .sidebar .user-name { font-size: 0.85rem; }
+  .sidebar .user-role { font-size: 0.75rem; }
+  .sidebar-ai-chat-btn { padding: 0.5rem 0.75rem; font-size: 0.8rem; margin-top: 0.5rem; }
+}
+
 .main-content {
     transition: margin-left 0.25s ease, width 0.25s ease;
 }
@@ -542,25 +558,29 @@ body.sidebar-collapsed .logout-btn {
     width: calc(100% - 280px);
 }
 
-/* På stora skärmar (≥1200px): innehållet startar ca 75px från sidomenyn */
-@media (min-width: 1200px) {
+/* På medelstora skärmar (1200–1399px): behåll vanlig bredd utan smal centrerad strip */
+@media (min-width: 1200px) and (max-width: 1399px) {
+  .main-content > .container {
+    max-width: 100%;
+    transform: none;
+  }
+}
+
+/* På stora skärmar (≥1400px): innehållet startar ca 75px från sidomenyn, centrerad container */
+@media (min-width: 1400px) {
   .main-content {
     margin-left: 355px;           /* 280px meny + 75px luft */
     width: calc(100% - 355px);
   }
-  /* När menyn är ihopfälld låter vi innehållet stå kvar */
   body.sidebar-collapsed .main-content {
     margin-left: 355px;
     width: calc(100% - 355px);
   }
-
-  /* Centrera på hela skärmen men behåll min 75px till menyn.
-     Om skärmen är för smal för full bredd, krymper vi maxbredden så centreringen kan hållas. */
   .main-content > .container {
-    max-width: min(1600px, calc(100vw - 710px)); /* 2 * (280 + 75) */
+    max-width: min(1600px, calc(100vw - 710px));
     margin-left: auto;
     margin-right: auto;
-    transform: translateX(-177.5px); /* -(280 + 75) / 2 */
+    transform: translateX(-177.5px);
   }
 }
 
@@ -1425,9 +1445,14 @@ body.sidebar-collapsed .logout-btn {
   .card.small { grid-column: span 6; }
   .status-grid { grid-template-columns: 1fr; }
   
-  /* Sidebar adjustments */
+  /* Sidebar smalare på medel/liten skärm */
   .sidebar { width: 260px; }
-  .main-content { margin-left: 260px; }
+  .main-content { margin-left: 260px; padding: 1rem; }
+  
+  /* Dashboard-header kompakt */
+  .content-header.dashboard-header { padding: 1rem 0; margin-bottom: 1.25rem; }
+  .content-header.dashboard-header h1 { font-size: 1.35rem; }
+  .content-header.dashboard-header .dashboard-subtitle { font-size: 0.85rem; }
   
   /* Container adjustments for smaller screens */
   .container,
@@ -1448,6 +1473,13 @@ body.sidebar-collapsed .logout-btn {
     margin-left: 0;
     margin-right: 0;
   }
+}
+@media (max-width: 900px) {
+  .sidebar { width: 220px; }
+  .main-content { margin-left: 220px; padding: 0.75rem; }
+  body.sidebar-collapsed .main-content { margin-left: 72px; }
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-left { position: static; }
 }
 @media (max-width: 768px) {
   .sidebar { 
@@ -1961,6 +1993,53 @@ body.sidebar-collapsed .logout-btn {
     font-size: 0.7em;
     opacity: 0.9;
 }
+/* Kom igång – på mindre skärm: stapla kort vertikalt, mindre storlek */
+@media (max-width: 900px) {
+  .kom-igang-section { margin-bottom: 1rem; }
+  .kom-igang-header { margin-bottom: 0.75rem; }
+  .kom-igang-header h2 { font-size: 1.05rem; }
+  .kom-igang-desc { font-size: 0.8rem; }
+  .kom-igang-scroll-wrap { margin: 0; }
+  .kom-igang-arrow-btn { display: none; }
+  .kom-igang-flow {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    scroll-snap-type: none;
+    padding: 0 0 0.5rem;
+    gap: 0.75rem;
+  }
+  .kom-igang-step {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
+    min-height: 0;
+    padding: 0.85rem 1rem;
+    scroll-snap-align: none;
+  }
+  .kom-igang-num { width: 1.6rem; height: 1.6rem; font-size: 0.8rem; }
+  .kom-igang-step-content h3 { font-size: 0.9rem; }
+  .kom-igang-step-content p { font-size: 0.8rem; }
+  .kom-igang-checklist label { font-size: 0.8rem; }
+  .kom-igang-link { font-size: 0.82rem; margin-top: 0.5rem; }
+}
+@media (max-width: 768px) {
+  .kom-igang-header h2 { font-size: 1rem; }
+  .kom-igang-desc { font-size: 0.75rem; }
+  .kom-igang-step { padding: 0.7rem 0.85rem; }
+  .kom-igang-step-content h3 { font-size: 0.85rem; }
+  .kom-igang-step-content p { font-size: 0.75rem; }
+  .kom-igang-checklist label { font-size: 0.75rem; }
+  .content-header.dashboard-header { padding: 0.75rem 0; margin-bottom: 1rem; }
+  .content-header.dashboard-header h1 { font-size: 1.2rem; }
+  .content-header.dashboard-header .dashboard-subtitle { font-size: 0.8rem; }
+  .dashboard-card-header { padding: 0.5rem 0.75rem; }
+  .dashboard-card-header h2 { font-size: 0.8rem; }
+  .dashboard-card-body { padding: 0.5rem 0.75rem; }
+  .dashboard-card-desc { font-size: 0.75rem; }
+}
+
 .kom-igang-link {
     display: inline-flex;
     align-items: center;
@@ -9084,6 +9163,28 @@ textarea.kunduppgifter-input {
 }
 .kundlista-loading i,
 .kundlista-empty i { font-size: 1.8rem; }
+
+/* Kundlista – mindre skärm: mindre padding och mer kompakt lista */
+@media (max-width: 1024px) {
+  .kundlista-page .main-content { padding: 1rem; }
+  .kundlista-page .main-content .container { padding: 0 1rem; }
+  .kundlista-foretagssok-section .dashboard-card-body { padding: 1rem; }
+  .kundlista-toolbar { margin-bottom: 0.75rem; gap: 0.5rem; }
+  .kundlista-row { padding: 0.6rem 1rem; gap: 0.75rem; }
+  .kundlista-row-namn { font-size: 0.9rem; }
+  .kundlista-row-icon { width: 28px; height: 28px; font-size: 0.75rem; }
+  .kundlista-orgnr, .kundlista-bolagsform { font-size: 0.75rem; }
+  .kundlista-count { font-size: 0.8rem; }
+}
+@media (max-width: 768px) {
+  .kundlista-page .main-content { padding: 0.75rem; }
+  .kundlista-page .main-content .container { padding: 0 0.75rem; }
+  .kundlista-page .content-header { padding: 1rem 0; margin-bottom: 1rem; }
+  .kundlista-page .content-header h1 { font-size: clamp(1.25rem, 4vw, 1.5rem); }
+  .kundlista-row { padding: 0.5rem 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
+  .kundlista-row-name { flex-wrap: wrap; }
+  .kundlista-row-meta { width: 100%; justify-content: flex-start; }
+}
 
 /* =====================================
    AI Chat (Chatta med AI)

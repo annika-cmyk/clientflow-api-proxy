@@ -486,7 +486,7 @@ class KYCManager {
     }
 
     async syncRolesToDatasource() {
-        console.log('🔄 Syncing roles to Grist...');
+        console.log('🔄 Syncing roles to Airtable...');
         
         try {
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
@@ -516,15 +516,15 @@ class KYCManager {
             });
 
             if (response.ok) {
-                console.log('✅ Roles synced to Grist successfully');
-                this.showMessage('Befattningshavare synkroniserade med Grist!', 'success');
+                console.log('✅ Roles synced to Airtable successfully');
+                this.showMessage('Befattningshavare synkroniserade med Airtable!', 'success');
             } else {
-                console.error('❌ Failed to sync roles to Grist:', response.statusText);
-                this.showMessage('Kunde inte synkronisera med Grist', 'warning');
+                console.error('❌ Failed to sync roles to Airtable:', response.statusText);
+                this.showMessage('Kunde inte synkronisera med Airtable', 'warning');
             }
         } catch (error) {
-            console.error('❌ Error syncing roles to Grist:', error);
-                this.showMessage('Fel vid synkronisering med Grist', 'error');
+            console.error('❌ Error syncing roles to Airtable:', error);
+                this.showMessage('Fel vid synkronisering med Airtable', 'error');
         }
     }
 
@@ -547,7 +547,7 @@ class KYCManager {
 
             if (response.ok) {
                 const data = await response.json();
-                console.log('📊 Roles loaded from Grist:', data);
+                console.log('📊 Roles loaded from Airtable:', data);
                 
                 if (data.records && data.records.length > 0) {
                     this.kycData.roles = data.records.map(record => ({
@@ -557,13 +557,13 @@ class KYCManager {
                     }));
                     
                     this.renderRolesTable();
-                    this.showMessage('Befattningshavare laddade från Grist!', 'success');
+                    this.showMessage('Befattningshavare laddade från Airtable!', 'success');
                 }
             } else {
-                console.error('❌ Failed to load roles from Grist:', response.statusText);
+                console.error('❌ Failed to load roles from Airtable:', response.statusText);
             }
         } catch (error) {
-            console.error('❌ Error loading roles from Grist:', error);
+            console.error('❌ Error loading roles from Airtable:', error);
         }
     }
 

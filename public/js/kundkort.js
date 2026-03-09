@@ -4467,10 +4467,10 @@ class CustomerCardManager {
                 throw new Error(msg);
             }
 
-            // Visa resultat i modal (PDF sparas i Grist / Dokumentation, laddas inte ner automatiskt)
+            // Visa resultat i modal (PDF sparas i Airtable / Dokumentation, laddas inte ner automatiskt)
             this._showPepResultModal(p.namn, data);
 
-            // Uppdatera dokumentation-fliken om rapporten sparades i Grist
+            // Uppdatera dokumentation-fliken om rapporten sparades i Airtable
             if (data.savedToDocs) {
                 this.loadDocuments();
                 this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');

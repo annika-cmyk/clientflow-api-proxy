@@ -1,4 +1,4 @@
-// ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Grist
+// ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Airtable
 class ClientFlowApp {
     constructor() {
         this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
@@ -445,7 +445,7 @@ class ClientFlowApp {
             this.updateStatus('server-status', 'Disconnected', 'error');
         }
 
-        // Check datakälla (Grist)
+        // Check datakälla (Airtable)
         this.updateStatus('datasource-status', 'Kontrollerar...', 'checking');
         try {
             const response = await fetch(`${this.baseUrl}/api/test-datasource-connection`, {
@@ -1425,6 +1425,10 @@ class ClientFlowApp {
                 saveBtn.innerHTML = originalText;
                 saveBtn.disabled = false;
                 this.showDuplicateWarning(companyData.namn, data.existingId || data.airtableRecordId || data.recordId);
+            } else if (response.status === 400 && (data.loginRequired || data.error === 'byra_required')) {
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+                this.showMessage(data.message || 'Logga in så att vi vet vilken byrå kunden tillhör.', 'error');
             } else {
                 const msg = data.message || data.error || `HTTP ${response.status}`;
                 const detail = data.details ? (typeof data.details === 'string' ? data.details : JSON.stringify(data.details)) : '';

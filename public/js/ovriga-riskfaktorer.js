@@ -225,7 +225,7 @@ class RiskFactorsManager {
                 </div>
             `;
 
-            // Load from Grist via our API
+            // Load from Airtable via our API
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
                 method: 'GET',
                 headers: {

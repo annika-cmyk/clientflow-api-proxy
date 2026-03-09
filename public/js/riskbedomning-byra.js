@@ -226,7 +226,7 @@ class RiskAssessmentManager {
                 </div>
             `;
 
-            // Load from Grist via our API
+            // Load from Airtable via our API
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
                 method: 'GET',
                 headers: {

@@ -1,4 +1,4 @@
-// Byrå Användare Management System – hämtar/sparar mot API (Grist)
+// Byrå Användare Management System – hämtar/sparar mot API (Airtable)
 function getBaseUrl() {
   return (window.apiConfig && window.apiConfig.baseUrl) ? window.apiConfig.baseUrl : (window.apiConfig && window.apiConfig.getBaseUrl ? window.apiConfig.getBaseUrl() : '') || '';
 }
@@ -268,7 +268,7 @@ class ByraAnvandareManager {
       this.renderUtbildningar();
     } catch (err) {
       console.error('loadUtbildningar:', err);
-      if (list) list.innerHTML = '<p>Kunde inte ladda utbildningar. Kontrollera att Grist-tabellen "Utbildningar" finns.</p>';
+      if (list) list.innerHTML = '<p>Kunde inte ladda utbildningar. Kontrollera att Airtable-tabellen "Utbildningar" finns.</p>';
     }
   }
 
