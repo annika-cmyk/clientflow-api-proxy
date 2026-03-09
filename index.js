@@ -1916,7 +1916,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
       });
     }
 
-    // Kontrollera om kunden redan finns (samma Orgnr + Byrå ID) – visa varning, skapa inte dubblett
+    // Spärr: kund får bara finnas en gång per byrå (samma Orgnr + Byrå ID). Kontrollera alltid innan skapande.
     const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const orgnrVariants = [cleanOrgNumber];
     if (cleanOrgNumber.length === 10) {
@@ -1926,29 +1926,54 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     } else if (cleanOrgNumber.length === 12) {
       orgnrVariants.push(cleanOrgNumber.substring(2));
     }
+    const byraIdNorm = (v) => (v == null || v === '') ? '' : String(v).trim();
+    const byraIdMatch = (recordByraId) => byraIdNorm(recordByraId) === byraIdNorm(byraIdClean);
+
+    let existing = null;
+    // 1) Försök med kombinerad formel (Orgnr + Byrå ID)
     const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
-    const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraIdClean)}")`;
-    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn`;
-    let recordId;
+    const byraIdFormula = /^\d+$/.test(byraIdClean) ? `{Byrå ID}=${byraIdClean}` : `{Byrå ID}="${esc(byraIdClean)}"`;
+    const checkFormula = `AND(OR(${orgnrConditions}),${byraIdFormula})`;
+    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn&fields[]=Byrå ID`;
     try {
       const checkRes = await axios.get(checkUrl, {
         headers: { Authorization: `Bearer ${airtableAccessToken}` }
       });
-      const existing = checkRes.data.records?.[0];
-      if (existing) {
-        console.log('⚠️ Kund finns redan – returnerar 409 (ingen dubblett skapas):', existing.id);
-        return res.status(409).json({
-          error: 'duplicate',
-          duplicate: true,
-          message: 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.',
-          airtableRecordId: existing.id,
-          existingId: existing.id,
-          existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || ''
-        });
-      }
+      existing = checkRes.data.records?.[0] || null;
     } catch (checkErr) {
-      console.log('ℹ️ Dubblettkontroll misslyckades, skapar ny post:', checkErr.message);
+      // 2) Vid 422/400 (formel ogiltig) – fallback: sök bara på Orgnr, kolla Byrå ID i koden
+      const status = checkErr.response?.status;
+      console.log('ℹ️ Dubblettkontroll (formel):', checkErr.message, status ? `status=${status}` : '');
+      if (status === 422 || status === 400) {
+        const orgnrOnlyFormula = orgnrVariants.length === 1
+          ? `{Orgnr}="${esc(cleanOrgNumber)}"`
+          : `OR(${orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',')})`;
+        const fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(orgnrOnlyFormula)}&maxRecords=50&fields[]=id&fields[]=Namn&fields[]=Byrå ID`;
+        try {
+          const fallbackRes = await axios.get(fallbackUrl, {
+            headers: { Authorization: `Bearer ${airtableAccessToken}` }
+          });
+          const records = fallbackRes.data.records || [];
+          existing = records.find(r => byraIdMatch(r.fields?.['Byrå ID'] || r.fields?.['Byra_ID'])) || null;
+        } catch (fallbackErr) {
+          console.log('ℹ️ Dubblettkontroll fallback misslyckades:', fallbackErr.message);
+        }
+      }
     }
+
+    if (existing) {
+      console.log('⚠️ Kund finns redan – spärr, returnerar 409 (ingen dubblett skapas):', existing.id);
+      return res.status(409).json({
+        error: 'duplicate',
+        duplicate: true,
+        message: 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.',
+        airtableRecordId: existing.id,
+        existingId: existing.id,
+        existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || ''
+      });
+    }
+
+    let recordId;
 
     if (!recordId) {
       const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
