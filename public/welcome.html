@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClientFlow • Välkommen</title>
+  <meta name="description" content="ClientFlow - Välkommen till PTL processen" />
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+  <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar-container">
+            <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>ClientFlow</h2>
+                <p>Kundhantering & Riskbedömning</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <h3>Verktyg för riskbedömning</h3>
+                    <ul>
+                        <li data-page="riskbedomning-byra">
+                            <a href="riskbedomning-byra.html">Riskbedömning av byrå</a>
+                        </li>
+                        <li data-page="ovriga-riskfaktorer">
+                            <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                        </li>
+                        <li data-page="allman-riskbedomning">
+                            <a href="allman-riskbedomning.html">Allmän riskbedömning</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <h3>Dokument</h3>
+                    <ul>
+                        <li data-page="statistik-riskbedomning">
+                            <a href="statistik-riskbedomning.html">Statistik för riskbedömning</a>
+                        </li>
+                        <li data-page="byra-anvandare">
+                            <a href="byra-anvandare.html">Uppgifter byrå & användare</a>
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="nav-section">
+                    <ul>
+                        <li data-page="index" class="nav-item-lead">
+                            <a href="index.html">Företagssök</a>
+                        </li>
+                        <li data-page="kundkort" class="nav-item-klienter">
+                            <a href="kundkort.html">Alla Klienter</a>
+                        </li>
+                        <li data-page="avvikelser">
+                            <a href="avvikelser.html">Avvikelser</a>
+                        </li>
+                        <li data-page="registrera-utbildning">
+                            <a href="registrera-utbildning.html">Registrera utbildning</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+        </div>
+    <!-- Sidebar Container - Navigation will be loaded here -->
+    
+        </section>
+      </div>
+    </main>
+
+    <!-- Footer Component Placeholder -->
+    <div data-component="footer"></div>
+  </div>
+
+  <!-- Scripts -->    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+  <!-- Load navigation module first -->
+      <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+  <!-- Then load the main app -->
+  <script src="app.js"></script>
+</body>
+</html>

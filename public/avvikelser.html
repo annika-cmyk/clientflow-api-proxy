@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Avvikelser</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>Avvikelser</h1>
+                        <p class="risk-header-sub">Registrera och uppfölj avvikelser enligt PTL</p>
+                        <div class="byrarutiner-actions" style="margin-top:0.5rem;">
+                            <button type="button" class="btn btn-primary" id="btn-rapportera-avvikelse">
+                                <i class="fas fa-plus"></i> Rapportera en avvikelse här
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <div id="loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar avvikelser...</p>
+                </div>
+
+                <div id="no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa och rapportera avvikelser.</p>
+                </div>
+
+                <div id="content" style="display:none;">
+                    <section class="info-section" style="margin-top:1rem;">
+                        <h3 style="margin-bottom:1rem;"><i class="fas fa-exclamation-circle"></i> Registrerade avvikelser</h3>
+                        <div id="avvikelser-lista" class="avvikelser-lista">
+                            <!-- Fylls via JS -->
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/avvikelser.js"></script>
+</body>
+</html>

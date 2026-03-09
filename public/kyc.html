@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow - KYC (Know Your Customer)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar will be loaded dynamically -->
+        <div class="sidebar-container">
+            <!-- Sidebar content will be loaded here -->
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>KYC - Know Your Customer</h1>
+                <p>Komplett riskbedömning och kundanalys för företaget</p>
+            </header>
+
+            <!-- Company Information Card -->
+            <section class="kyc-section">
+                <div class="kyc-card">
+                    <div class="kyc-header">
+                        <h2 id="company-name">Företagsinformation</h2>
+                        <div class="kyc-actions">
+                            <button id="save-kyc-data" class="btn btn-success">
+                                <i class="fas fa-save"></i>
+                                Spara KYC-data
+                            </button>
+                            <button id="export-kyc" class="btn btn-ghost">
+                                <i class="fas fa-download"></i>
+                                Exportera
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Tab Navigation -->
+                    <div class="kyc-tabs">
+                        <button class="tab-button active" data-tab="company-info">
+                            <i class="fas fa-building"></i>
+                            Företagsinfo
+                        </button>
+                        <button class="tab-button" data-tab="roles">
+                            <i class="fas fa-users"></i>
+                            Roller
+                        </button>
+                    </div>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content">
+                        <!-- Company Information Tab -->
+                        <div id="company-info" class="tab-pane active">
+                            <div class="tab-pane-content">
+                                <h3>Företagsinformation från Bolagsverket</h3>
+                                <div id="company-details">
+                                    <!-- Company information will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Roles Tab -->
+                        <div id="roles" class="tab-pane">
+                            <div class="tab-pane-content">
+                                <div class="roles-header">
+                                    <h3>Befattningshavare</h3>
+                                    <div class="roles-actions">
+                                        <button id="load-roles-btn" class="btn btn-secondary">
+                                            <i class="fas fa-download"></i>
+                                            Ladda från datakälla
+                                        </button>
+                                        <button id="add-role-btn" class="btn btn-primary">
+                                            <i class="fas fa-plus"></i>
+                                            Lägg till befattningshavare
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Roles Table -->
+                                <div class="roles-table-container">
+                                    <table id="roles-table" class="roles-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Namn</th>
+                                                <th>Roll</th>
+                                                <th>Personnummer</th>
+                                                <th>Åtgärder</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="roles-tbody">
+                                            <!-- Roles will be populated here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <div class="additional-notes">
+                                    <label for="roles-notes">Anteckningar om befattningshavare</label>
+                                    <textarea id="roles-notes" rows="4" placeholder="Lägg till anteckningar om befattningshavare..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Role Modal -->
+    <div id="role-modal" class="role-modal">
+        <div class="role-modal-content">
+            <div class="role-modal-header">
+                <h3 id="role-modal-title">Lägg till befattningshavare</h3>
+                <button class="role-modal-close" onclick="closeRoleModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="role-form" class="role-form">
+                <div class="form-group">
+                    <label for="role-name">Namn *</label>
+                    <input type="text" id="role-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="role-type">Roll *</label>
+                    <select id="role-type" name="role" required>
+                        <option value="">Välj roll</option>
+                        <option value="Ledamot">Ledamot</option>
+                        <option value="Verklig huvudman">Verklig huvudman</option>
+                        <option value="Suppleant">Suppleant</option>
+                        <option value="Revisor">Revisor</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="role-personnr">Personnummer</label>
+                    <input type="text" id="role-personnr" name="personnr" placeholder="YYYYMMDD-XXXX">
+                </div>
+                <div class="role-form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeRoleModal()">
+                        Avbryt
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i>
+                        Spara
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <!-- Load config first, then other modules -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <!-- Load KYC specific script -->
+    <script src="js/kyc.js?v=1.2"></script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Byrå & Användare</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar will be loaded dynamically -->
+        <div class="sidebar-container">
+            <!-- Sidebar content will be loaded here -->
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Page Header -->
+                <div class="page-header">
+                    <h1><i class="fas fa-building"></i> Byrå & Användare</h1>
+                    <p>Hantera byråinformation, användarkonton och behörigheter</p>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    <button class="tab-button active" data-tab="byra">Byråinformation</button>
+                    <button class="tab-button" data-tab="anvandare">Användare</button>
+                    <button class="tab-button" data-tab="utbildningar">Utbildningar</button>
+                    <button class="tab-button" data-tab="behorigheter">Behörigheter</button>
+                    <button class="tab-button" data-tab="loggar">Aktivitetsloggar</button>
+                </div>
+
+                <!-- Byråinformation tab -->
+                <div class="tab-content active" id="byra">
+                    <div class="info-section byra-profil">
+                        <h3>Byråprofil</h3>
+                        <div class="byra-logga-wrap">
+                            <div class="byra-logga-preview" id="byra-logga-preview">
+                                <span class="logga-placeholder"><i class="fas fa-building"></i> Logga</span>
+                            </div>
+                            <div class="byra-logga-url">
+                                <label>Logga (URL)</label>
+                                <input type="url" id="byra-logga" class="form-input" placeholder="https://...">
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Bransch / typ av byrå</label>
+                                <select id="byra-bransch" class="form-select">
+                                    <option value="">Välj bransch</option>
+                                    <option value="Redovisning & Revisionsbyrå">Redovisning & Revisionsbyrå</option>
+                                    <option value="Juridisk byrå">Juridisk byrå</option>
+                                    <option value="IT-konsult">IT-konsult</option>
+                                    <option value="Övrigt">Övrigt</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Antal anställda</label>
+                                <input type="number" id="byra-antal-anstallda" class="form-input" min="0" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Omsättning (SEK)</label>
+                                <input type="text" id="byra-omsattning" class="form-input" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Antal kundföretag</label>
+                                <input type="number" id="byra-antal-kundforetag" class="form-input" min="0" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" id="byra-spara" class="btn-primary">Spara byråinformation</button>
+                            <span class="byra-spara-status" id="byra-spara-status"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Användare tab -->
+                <div class="tab-content" id="anvandare">
+                    <div class="users-header">
+                        <h3>Användarkonton</h3>
+                        <button type="button" class="btn-primary" id="anvandare-skapa-btn">Skapa nytt konto</button>
+                    </div>
+                    
+                    <!-- User Filters -->
+                    <div class="filter-section">
+                        <div class="filter-card">
+                            <div class="filter-header">
+                                <h4><i class="fas fa-filter"></i> Filtrera användare</h4>
+                            </div>
+                            <div class="filter-controls">
+                                <div class="filter-group">
+                                    <label for="user-filter">Användare:</label>
+                                    <select id="user-filter" class="form-select">
+                                        <option value="">Alla användare</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label for="role-filter">Roll:</label>
+                                    <select id="role-filter" class="form-select">
+                                        <option value="">Alla roller</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label for="status-filter">Status:</label>
+                                    <select id="status-filter" class="form-select">
+                                        <option value="">Alla statusar</option>
+                                    </select>
+                                </div>
+                                <button id="clear-user-filters" class="btn-secondary">
+                                    <i class="fas fa-times"></i> Rensa filter
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="users-list">
+                        <!-- Users will be loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Utbildningar tab -->
+                <div class="tab-content" id="utbildningar">
+                    <div class="info-section">
+                        <h3>Registrera utbildning</h3>
+                        <form id="utbildning-form" class="form-grid">
+                            <div class="form-group">
+                                <label>Namn *</label>
+                                <input type="text" id="utbildning-namn" class="form-input" required placeholder="T.ex. GDPR-grundkurs">
+                            </div>
+                            <div class="form-group">
+                                <label>Datum</label>
+                                <input type="date" id="utbildning-datum" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Typ</label>
+                                <select id="utbildning-typ" class="form-select">
+                                    <option value="">Välj typ</option>
+                                    <option value="Kurs">Kurs</option>
+                                    <option value="Workshop">Workshop</option>
+                                    <option value="Webbinarium">Webbinarium</option>
+                                    <option value="Klassrumsutbildning">Klassrumsutbildning</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Plats</label>
+                                <input type="text" id="utbildning-plats" class="form-input" placeholder="T.ex. Stockholm">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>Beskrivning</label>
+                                <textarea id="utbildning-beskrivning" class="form-textarea" rows="3" placeholder="Kort beskrivning av utbildningen"></textarea>
+                            </div>
+                            <div class="form-actions full-width">
+                                <button type="submit" class="btn-primary">Registrera utbildning</button>
+                                <span id="utbildning-form-status"></span>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="info-section">
+                        <h3>Registrerade utbildningar</h3>
+                        <div id="utbildningar-list" class="utbildningar-list">
+                            <!-- Fylls via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Behörigheter tab -->
+                <div class="tab-content" id="behorigheter">
+                    <div class="permissions-header">
+                        <h3>Behörighetshantering</h3>
+                        <p>Hantera vilka funktioner olika användarroller har tillgång till</p>
+                    </div>
+
+                    <div class="roles-section">
+                        <h4>Användarroller</h4>
+                        <div class="roles-grid">
+                            <div class="role-card">
+                                <h5>Administratör</h5>
+                                <ul class="permissions-list">
+                                    <li>Full tillgång till alla funktioner</li>
+                                    <li>Hantera användare och behörigheter</li>
+                                    <li>Systemkonfiguration</li>
+                                    <li>Exportera all data</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+
+                            <div class="role-card">
+                                <h5>Chef</h5>
+                                <ul class="permissions-list">
+                                    <li>Läsa alla kunder och rapporter</li>
+                                    <li>Skapa och redigera kunder</li>
+                                    <li>Hantera riskbedömningar</li>
+                                    <li>Exportera rapporter</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+
+                            <div class="role-card">
+                                <h5>Användare</h5>
+                                <ul class="permissions-list">
+                                    <li>Läsa tilldelade kunder</li>
+                                    <li>Uppdatera kundinformation</li>
+                                    <li>Skapa riskbedömningar</li>
+                                    <li>Begränsad export</li>
+                                </ul>
+                                <button class="btn-secondary">Redigera roll</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="custom-permissions">
+                        <h4>Anpassade behörigheter</h4>
+                        <div class="permission-matrix">
+                            <table class="permissions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Funktion</th>
+                                        <th>Administratör</th>
+                                        <th>Chef</th>
+                                        <th>Användare</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Läsa kunder</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Skapa kunder</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-times text-danger"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Riskbedömningar</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Exportera data</td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-check text-success"></i></td>
+                                        <td><i class="fas fa-times text-danger"></i></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Aktivitetsloggar tab -->
+                <div class="tab-content" id="loggar">
+                    <div class="logs-header">
+                        <h3>Aktivitetsloggar</h3>
+                        <div class="logs-filters">
+                            <select id="log-user-filter" class="form-select">
+                                <option value="">Alla användare</option>
+                            </select>
+                            <select id="log-activity-filter" class="form-select">
+                                <option value="">Alla aktiviteter</option>
+                            </select>
+                            <input type="date" id="log-date-from" class="form-input" placeholder="Från datum">
+                            <input type="date" id="log-date-to" class="form-input" placeholder="Till datum">
+                            <button id="clear-log-filters" class="btn-secondary">
+                                <i class="fas fa-times"></i> Rensa filter
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="logs-list">
+                        <!-- Logs will be loaded dynamically -->
+                    </div>
+
+                    <div class="logs-pagination">
+                        <button class="btn-secondary">Föregående</button>
+                        <span class="page-info">Sida 1 av 5</span>
+                        <button class="btn-secondary">Nästa</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <!-- Modal: Lägg till / Redigera användare -->
+    <div id="anvandare-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="anvandare-modal-title">Lägg till användare</h3>
+                <button type="button" class="modal-close" id="anvandare-modal-close">&times;</button>
+            </div>
+            <form id="anvandare-form">
+                <input type="hidden" id="anvandare-id" value="">
+                <div class="form-group">
+                    <label>E-post *</label>
+                    <input type="email" id="anvandare-email" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label>Namn</label>
+                    <input type="text" id="anvandare-namn" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Roll</label>
+                    <select id="anvandare-roll" class="form-select">
+                        <option value="Användare">Användare</option>
+                        <option value="Ledare">Ledare</option>
+                        <option value="ClientFlowAdmin">Administratör</option>
+                    </select>
+                </div>
+                <div class="form-group" id="anvandare-password-wrap">
+                    <label>Lösenord</label>
+                    <input type="password" id="anvandare-password" class="form-input" placeholder="Lämna tomt för att behålla">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="anvandare-modal-avbryt">Avbryt</button>
+                    <button type="submit" class="btn-primary">Spara</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Load navigation module first -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <!-- Load byrå användare specific script -->
+    <script src="js/byra-anvandare.js"></script>
+    <!-- Then load the main app -->
+    <script src="app.js"></script>
+</body>
+</html>

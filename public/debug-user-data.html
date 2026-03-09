@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Användardata</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .debug-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .debug-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .debug-content {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+        }
+        .success {
+            color: #388e3c;
+            background: #e8f5e8;
+        }
+        .warning {
+            color: #f57c00;
+            background: #fff3e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1>🔍 Debug - Användardata</h1>
+        
+        <div class="debug-section">
+            <div class="debug-title">📱 LocalStorage Data</div>
+            <div id="localStorage-data" class="debug-content">Laddar...</div>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">🔐 Auth Token</div>
+            <div id="auth-token" class="debug-content">Laddar...</div>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">👤 Användardata från Server</div>
+            <div id="server-user-data" class="debug-content">Laddar...</div>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">🔧 API Config</div>
+            <div id="api-config" class="debug-content">Laddar...</div>
+        </div>
+        
+        <div class="debug-section">
+            <div class="debug-title">📊 Extracted IDs</div>
+            <div id="extracted-ids" class="debug-content">Laddar...</div>
+        </div>
+        
+        <button onclick="refreshData()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            🔄 Uppdatera Data
+        </button>
+        
+        <a href="index.html" style="display: inline-block; margin-left: 10px; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px;">
+            ← Tillbaka till Index
+        </a>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        async function refreshData() {
+            await loadAllData();
+        }
+        
+        async function loadAllData() {
+            // Load localStorage data
+            const token = localStorage.getItem('authToken');
+            const userData = localStorage.getItem('userData');
+            
+            document.getElementById('auth-token').textContent = token ? 
+                `Token finns: ${token.substring(0, 20)}...` : 
+                'Ingen token hittad';
+            
+            document.getElementById('localStorage-data').textContent = userData ? 
+                JSON.stringify(JSON.parse(userData), null, 2) : 
+                'Ingen användardata hittad';
+            
+            // Load API config
+            document.getElementById('api-config').textContent = JSON.stringify({
+                baseUrl: window.apiConfig?.baseUrl,
+                apiUrl: window.apiConfig?.apiUrl
+            }, null, 2);
+            
+            // Try to fetch user data from server
+            if (token) {
+                try {
+                    const response = await fetch(`${window.apiConfig?.baseUrl}/api/auth/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        document.getElementById('server-user-data').textContent = 
+                            JSON.stringify(data, null, 2);
+                        
+                        // Extract and show IDs
+                        const user = data.user;
+                        const extractedIds = {
+                            directAccess: {
+                                id: user.id,
+                                byraId: user.byraId,
+                                role: user.role
+                            },
+                            fieldsAccess: {
+                                id: user.fields?.id,
+                                byraId: user.fields?.byraId,
+                                role: user.fields?.role
+                            },
+                            allAvailableFields: user.fields ? Object.keys(user.fields) : 'No fields'
+                        };
+                        
+                        document.getElementById('extracted-ids').textContent = 
+                            JSON.stringify(extractedIds, null, 2);
+                    } else {
+                        document.getElementById('server-user-data').textContent = 
+                            `Fel från server: ${response.status} - ${response.statusText}`;
+                    }
+                } catch (error) {
+                    document.getElementById('server-user-data').textContent = 
+                        `Fel vid anrop: ${error.message}`;
+                }
+            } else {
+                document.getElementById('server-user-data').textContent = 
+                    'Ingen token - kan inte hämta från server';
+            }
+        }
+        
+        // Load data when page loads
+        document.addEventListener('DOMContentLoaded', loadAllData);
+    </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Inloggning - ClientFlow</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ccc;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            width: 200px;
+        }
+        #log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Inloggning - ClientFlow</h1>
+    
+    <div class="test-section">
+        <h2>1. API-konfiguration</h2>
+        <button onclick="testConfig()">Testa API-konfiguration</button>
+        <div id="config-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. API-anslutning</h2>
+        <button onclick="testAPI()">Testa API-anslutning</button>
+        <div id="api-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. Användartest</h2>
+        <button onclick="testUsers()">Testa användaranslutning</button>
+        <div id="users-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. Inloggningstest</h2>
+        <input type="email" id="test-email" placeholder="E-post" value="hej@rydenredovisning.se">
+        <input type="password" id="test-password" placeholder="Lösenord" value="test123">
+        <button onclick="testLogin()">Testa inloggning</button>
+        <div id="login-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>5. CORS-test</h2>
+        <button onclick="testCORS()">Testa CORS</button>
+        <div id="cors-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            logDiv.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function testConfig() {
+            log('Testar API-konfiguration...');
+            const resultDiv = document.getElementById('config-result');
+            
+            try {
+                if (window.apiConfig) {
+                    const baseUrl = window.apiConfig.baseUrl;
+                    const apiUrl = window.apiConfig.apiUrl;
+                    
+                    log(`✅ API-konfiguration fungerar`, 'success');
+                    log(`Base URL: ${baseUrl}`, 'info');
+                    log(`API URL: ${apiUrl}`, 'info');
+                    
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ API-konfiguration fungerar</div>
+                        <div>Base URL: ${baseUrl}</div>
+                        <div>API URL: ${apiUrl}</div>
+                    `;
+                } else {
+                    throw new Error('API-konfiguration inte tillgänglig');
+                }
+            } catch (error) {
+                log(`❌ API-konfigurationsfel: ${error.message}`, 'error');
+                resultDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        async function testAPI() {
+            log('Testar API-anslutning...');
+            const resultDiv = document.getElementById('api-result');
+            
+            try {
+                const baseUrl = window.apiConfig.baseUrl;
+                const response = await fetch(`${baseUrl}/health`);
+                const data = await response.json();
+                
+                log(`✅ API-anslutning fungerar: ${data.status}`, 'success');
+                resultDiv.innerHTML = `<div class="success">✅ API-anslutning fungerar: ${data.status}</div>`;
+            } catch (error) {
+                log(`❌ API-anslutningsfel: ${error.message}`, 'error');
+                resultDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        async function testUsers() {
+            log('Testar användaranslutning...');
+            const resultDiv = document.getElementById('users-result');
+            
+            try {
+                const baseUrl = window.apiConfig.baseUrl;
+                const response = await fetch(`${baseUrl}/api/auth/test-users`);
+                const data = await response.json();
+                
+                log(`✅ Användaranslutning fungerar: ${data.userCount} användare`, 'success');
+                resultDiv.innerHTML = `
+                    <div class="success">✅ Användaranslutning fungerar: ${data.userCount} användare</div>
+                    <div>Användare: ${data.users.map(u => u.email).join(', ')}</div>
+                `;
+            } catch (error) {
+                log(`❌ Användaranslutningsfel: ${error.message}`, 'error');
+                resultDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        async function testLogin() {
+            log('Testar inloggning...');
+            const resultDiv = document.getElementById('login-result');
+            
+            const email = document.getElementById('test-email').value;
+            const password = document.getElementById('test-password').value;
+            
+            if (!email || !password) {
+                log('❌ E-post och lösenord krävs', 'error');
+                resultDiv.innerHTML = `<div class="error">❌ E-post och lösenord krävs</div>`;
+                return;
+            }
+            
+            try {
+                const baseUrl = window.apiConfig.baseUrl;
+                log(`Försöker logga in med: ${email}`);
+                
+                const response = await fetch(`${baseUrl}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    log(`✅ Inloggning lyckades för: ${data.user.name}`, 'success');
+                    resultDiv.innerHTML = `
+                        <div class="success">✅ Inloggning lyckades</div>
+                        <div>Användare: ${data.user.name} (${data.user.role})</div>
+                        <div>Byrå: ${data.user.byra}</div>
+                    `;
+                } else {
+                    log(`❌ Inloggning misslyckades: ${data.message}`, 'error');
+                    resultDiv.innerHTML = `<div class="error">❌ ${data.message}</div>`;
+                }
+            } catch (error) {
+                log(`❌ Inloggningsfel: ${error.message}`, 'error');
+                resultDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        async function testCORS() {
+            log('Testar CORS...');
+            const resultDiv = document.getElementById('cors-result');
+            
+            try {
+                const baseUrl = window.apiConfig.baseUrl;
+                const response = await fetch(`${baseUrl}/health`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (response.ok) {
+                    log(`✅ CORS fungerar`, 'success');
+                    resultDiv.innerHTML = `<div class="success">✅ CORS fungerar</div>`;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                log(`❌ CORS-fel: ${error.message}`, 'error');
+                resultDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        // Kör alla tester automatiskt när sidan laddas
+        window.addEventListener('load', () => {
+            log('Sida laddad, kör automatiska tester...');
+            setTimeout(() => testConfig(), 500);
+            setTimeout(() => testAPI(), 1000);
+            setTimeout(() => testUsers(), 1500);
+        });
+    </script>
+</body>
+</html>
