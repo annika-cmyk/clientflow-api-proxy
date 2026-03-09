@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"name": "ClientFlow",
+			"path": "../ClientFlow"
+		}
+	],
+	"settings": {
+		"python.testing.debugPort": 3001
+	}
+}

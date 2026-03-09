@@ -3790,6 +3790,324 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
   }
 });
 
+// Hjälp: hämta Byråer-record för inloggad användares byraId
+async function getByraerRecordForUser(req) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const BYRAER_TABLE = 'Byråer';
+  if (!airtableAccessToken) return { error: 'Airtable token saknas', status: 500 };
+  const userData = await getAirtableUser(req.user.email);
+  if (!userData) return { error: 'Användare hittades inte', status: 404 };
+  const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+  if (!byraId) return { error: 'Ingen byrå kopplad till användaren', status: 400 };
+  const num = parseInt(byraId);
+  const filterFormula = isNaN(num)
+    ? `{Byrå ID}="${byraId}"`
+    : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+  const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+  const airtableRes = await axios.get(url, {
+    headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+  });
+  if (!airtableRes.data.records || airtableRes.data.records.length === 0) {
+    return { error: 'Ingen Byråer-post hittades för er byrå', status: 404 };
+  }
+  return { record: airtableRes.data.records[0], byraId, userData };
+}
+
+// GET /api/byra/info – Hämta byråinfo (samma data som Allmän riskbedömning använder)
+app.get('/api/byra/info', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const record = result.record;
+    const fields = record.fields || {};
+    res.json({
+      success: true,
+      id: record.id,
+      byraId: result.byraId,
+      fields: {
+        antalAnstallda: fields['Antal anställda'] ?? '',
+        omsattning: fields['Omsättning'] ?? '',
+        antalKundforetag: fields['Antal kundföretag'] ?? '',
+        logga: fields['Logga'] ?? '',
+        bransch: fields['Bransch'] ?? fields['Typ av byrå'] ?? ''
+      },
+      raw: fields
+    });
+  } catch (error) {
+    console.error('❌ GET /api/byra/info:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// PUT /api/byra/info – Uppdatera byråinfo (Antal anställda, Omsättning, Antal kundföretag, Logga, Bransch)
+app.put('/api/byra/info', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const recordId = result.record.id;
+    const body = req.body || {};
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera byråinfo' });
+    }
+    const fields = {};
+    if (body.antalAnstallda !== undefined) fields['Antal anställda'] = body.antalAnstallda;
+    if (body.omsattning !== undefined) fields['Omsättning'] = body.omsattning;
+    if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
+    if (body.logga !== undefined) fields['Logga'] = body.logga;
+    if (body.bransch !== undefined) fields['Bransch'] = body.bransch;
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: 'Inga fält att uppdatera' });
+    }
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TABLE = 'Byråer';
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
+    await axios.patch(patchUrl, { fields }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    res.json({ success: true, id: recordId });
+  } catch (error) {
+    console.error('❌ PUT /api/byra/info:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// GET /api/byra/anvandare – Lista användare som tillhör inloggad byrå (Application Users)
+app.get('/api/byra/anvandare', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const byraId = result.byraId;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const byraIdEsc = String(byraId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const filterFormula = `{Byrå ID i text 2}="${byraIdEsc}"`;
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+    const airtableRes = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    });
+    const users = (airtableRes.data.records || []).map(r => {
+      const f = r.fields || {};
+      return {
+        id: r.id,
+        email: f['Email'] || '',
+        name: f['Full Name'] || f['Namn'] || '',
+        role: f['Role'] || '',
+        byra: f['Byrå'] || f['fldcZZOiC9y5BKFWf'] || '',
+        byraId: f['Byrå ID i text 2'] || ''
+      };
+    });
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error('❌ GET /api/byra/anvandare:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/byra/anvandare – Skapa ny användare i Application Users (samma byrå)
+app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får skapa användare' });
+    }
+    const body = req.body || {};
+    const email = (body.email || '').toString().trim();
+    const name = (body.name || body.fullName || '').toString().trim();
+    const role = (body.role || 'Användare').toString().trim();
+    const password = (body.password || '').toString();
+    if (!email) return res.status(400).json({ error: 'E-post krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const byraRecordId = result.record.id;
+    const byraId = result.byraId;
+    const fields = {
+      'Email': email,
+      'Full Name': name || email,
+      'Role': role || 'Användare',
+      'Byrå ID i text 2': byraId
+    };
+    if (password) fields['password'] = password;
+    const linkField = 'Byråer';
+    try {
+      const existing = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(`{Email}="${email.replace(/"/g, '\\"')}"`)}&maxRecords=1`,
+        { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
+      );
+      if (existing.data.records && existing.data.records.length > 0) {
+        return res.status(409).json({ error: 'En användare med denna e-post finns redan' });
+      }
+    } catch (_) {}
+    fields[linkField] = [byraRecordId];
+    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}`;
+    const createRes = await axios.post(createUrl, { fields }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    const record = createRes.data;
+    res.status(201).json({
+      success: true,
+      id: record.id,
+      user: {
+        id: record.id,
+        email: fields['Email'],
+        name: fields['Full Name'],
+        role: fields['Role'],
+        byraId
+      }
+    });
+  } catch (error) {
+    console.error('❌ POST /api/byra/anvandare:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// PUT /api/byra/anvandare/:id – Uppdatera användare (samma byrå)
+app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera användare' });
+    }
+    const { id } = req.params;
+    const body = req.body || {};
+    const byraId = result.byraId;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${id}`;
+    const getRes = await axios.get(getUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+    const existing = getRes.data;
+    const userByraId = (existing.fields || {})['Byrå ID i text 2'];
+    if (String(userByraId).trim() !== String(byraId).trim()) {
+      return res.status(403).json({ error: 'Du kan bara redigera användare i din egen byrå' });
+    }
+    const fields = {};
+    if (body.email !== undefined) fields['Email'] = String(body.email).trim();
+    if (body.name !== undefined) fields['Full Name'] = String(body.name).trim();
+    if (body.fullName !== undefined) fields['Full Name'] = String(body.fullName).trim();
+    if (body.role !== undefined) fields['Role'] = String(body.role).trim();
+    if (body.password !== undefined && body.password !== '') fields['password'] = String(body.password);
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: 'Inga fält att uppdatera' });
+    }
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${id}`;
+    const patchRes = await axios.patch(patchUrl, { fields }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    res.json({ success: true, id: patchRes.data.id, record: patchRes.data });
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return res.status(404).json({ error: 'Användaren hittades inte' });
+    }
+    console.error('❌ PUT /api/byra/anvandare:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// Utbildningar – Airtable-tabell "Utbildningar" (samma som Registrera utbildning)
+const UTBILDNINGAR_TABLE = 'Utbildningar';
+
+// GET /api/byra/utbildningar – Lista utbildningar för inloggad byrå
+app.get('/api/byra/utbildningar', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const byraId = result.byraId;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const byraIdEsc = String(byraId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const filterFormula = `{Byrå ID}="${byraIdEsc}"`;
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNINGAR_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+    const all = [];
+    do {
+      const airtableRes = await axios.get(url, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+      });
+      const records = airtableRes.data.records || [];
+      all.push(...records);
+      url = airtableRes.data.offset
+        ? `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNINGAR_TABLE)}?offset=${airtableRes.data.offset}&filterByFormula=${encodeURIComponent(filterFormula)}`
+        : null;
+    } while (url);
+    const list = all.map(r => {
+      const f = r.fields || {};
+      return {
+        id: r.id,
+        namn: f['Namn'] || f['Utbildningsnamn'] || '',
+        datum: f['Datum'] || '',
+        beskrivning: f['Beskrivning'] || '',
+        typ: f['Typ'] || f['Utbildningstyp'] || '',
+        kategori: f['Kategori'] || '',
+        plats: f['Plats'] || '',
+        deltagare: f['Deltagare'] || []
+      };
+    });
+    res.json({ success: true, utbildningar: list });
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return res.json({ success: true, utbildningar: [] });
+    }
+    console.error('❌ GET /api/byra/utbildningar:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/byra/utbildningar – Skapa utbildning (kopplad till byrå)
+app.post('/api/byra/utbildningar', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const body = req.body || {};
+    const byraRecordId = result.record.id;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const fields = {
+      'Namn': (body.namn || body.name || '').toString().trim() || 'Namnlös utbildning',
+      'Byrå': [byraRecordId],
+      'Byrå ID': result.byraId
+    };
+    if (body.datum !== undefined) fields['Datum'] = body.datum;
+    if (body.beskrivning !== undefined) fields['Beskrivning'] = String(body.beskrivning || '');
+    if (body.typ !== undefined) fields['Typ'] = String(body.typ || '');
+    if (body.kategori !== undefined) fields['Kategori'] = String(body.kategori || '');
+    if (body.plats !== undefined) fields['Plats'] = String(body.plats || '');
+    if (body.deltagare && Array.isArray(body.deltagare) && body.deltagare.length > 0) {
+      fields['Deltagare'] = body.deltagare;
+    }
+    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNINGAR_TABLE)}`;
+    const createRes = await axios.post(createUrl, { fields }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    const record = createRes.data;
+    res.status(201).json({
+      success: true,
+      id: record.id,
+      utbildning: {
+        id: record.id,
+        namn: fields['Namn'],
+        datum: fields['Datum'],
+        beskrivning: fields['Beskrivning'],
+        typ: fields['Typ']
+      }
+    });
+  } catch (error) {
+    console.error('❌ POST /api/byra/utbildningar:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
 // GET /api/settings/dokumentation-pdfs – Hämta sparad PDF-lista från Byråer (databas)
 const DOKUMENTATION_PDF_FIELD = 'Dokumentation PDF-lista';
 app.get('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
