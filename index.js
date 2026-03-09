@@ -496,9 +496,11 @@ app.get('/api/download/:recordId/:fieldName', async (req, res) => {
     
     console.log(`📥 Begäran om nedladdning: ${fieldName} för record ${recordId}`);
     
-    // Hämta data från Airtable
+    // Hämta data från Airtable (KUNDDATA – årsredovisningsfiler)
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     const airtableResponse = await axios.get(
-      `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}/${recordId}`,
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${recordId}`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_ACCESS_TOKEN}`,
@@ -616,7 +618,7 @@ app.get('/api/airtable/test', async (req, res) => {
   
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
 
     if (!airtableAccessToken || !airtableBaseId) {
@@ -1855,6 +1857,15 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
         });
 
     const byraIdClean = (byraId || '').toString().replace(/,/g, '').trim();
+    if (!byraIdClean) {
+      console.log('🔒 Dubblettkontroll: Byrå ID saknas – kräver inloggning för att spara (undviker dubbletter).');
+      return res.status(400).json({
+        error: 'byra_required',
+        message: 'Logga in så att vi vet vilken byrå kunden tillhör. Då kan vi även hindra dubbletter.',
+        loginRequired: true
+      });
+    }
+    console.log('🔒 Dubblettkontroll (save-to-airtable): Orgnr=', cleanOrgNumber, 'Byrå ID=', byraIdClean);
 
     // Spara till Airtable (samma base och tabell som övriga KUNDDATA-anrop)
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -1923,41 +1934,163 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
       const yy = parseInt(cleanOrgNumber.substring(0, 2), 10);
       const currentYear = new Date().getFullYear() % 100;
       orgnrVariants.push((yy > currentYear ? '19' : '20') + cleanOrgNumber);
+      orgnrVariants.push(cleanOrgNumber.replace(/^(\d{6})(\d{4})$/, '$1-$2')); // svenskt format 556722-3705
     } else if (cleanOrgNumber.length === 12) {
       orgnrVariants.push(cleanOrgNumber.substring(2));
+      orgnrVariants.push(cleanOrgNumber.substring(2).replace(/^(\d{6})(\d{4})$/, '$1-$2'));
     }
     const byraIdNorm = (v) => (v == null || v === '') ? '' : String(v).trim();
-    const byraIdMatch = (recordByraId) => byraIdNorm(recordByraId) === byraIdNorm(byraIdClean);
-
-    let existing = null;
-    // 1) Försök med kombinerad formel (Orgnr + Byrå ID)
-    const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
-    const byraIdFormula = /^\d+$/.test(byraIdClean) ? `{Byrå ID}=${byraIdClean}` : `{Byrå ID}="${esc(byraIdClean)}"`;
-    const checkFormula = `AND(OR(${orgnrConditions}),${byraIdFormula})`;
-    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn&fields[]=Byrå ID`;
+    const getRecordByraId = (r) => {
+      const raw = r.fields?.['Byrå ID'] ?? r.fields?.['Byra_ID'] ?? r.fields?.['ByraID'] ?? r.fields?.['Byra ID'] ?? r.fields?.['Byrå'] ?? r.fields?.Byrå;
+      if (raw == null) return '';
+      if (Array.isArray(raw)) return raw[0] != null ? String(raw[0]).trim() : '';
+      return String(raw).trim();
+    };
+    const BYRAER_TBL = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+    let byraRecIdForMatch = null;
     try {
-      const checkRes = await axios.get(checkUrl, {
-        headers: { Authorization: `Bearer ${airtableAccessToken}` }
-      });
-      existing = checkRes.data.records?.[0] || null;
-    } catch (checkErr) {
-      // 2) Vid 422/400 (formel ogiltig) – fallback: sök bara på Orgnr, kolla Byrå ID i koden
-      const status = checkErr.response?.status;
-      console.log('ℹ️ Dubblettkontroll (formel):', checkErr.message, status ? `status=${status}` : '');
-      if (status === 422 || status === 400) {
-        const orgnrOnlyFormula = orgnrVariants.length === 1
-          ? `{Orgnr}="${esc(cleanOrgNumber)}"`
-          : `OR(${orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',')})`;
-        const fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(orgnrOnlyFormula)}&maxRecords=50&fields[]=id&fields[]=Namn&fields[]=Byrå ID`;
-        try {
-          const fallbackRes = await axios.get(fallbackUrl, {
-            headers: { Authorization: `Bearer ${airtableAccessToken}` }
-          });
-          const records = fallbackRes.data.records || [];
-          existing = records.find(r => byraIdMatch(r.fields?.['Byrå ID'] || r.fields?.['Byra_ID'])) || null;
-        } catch (fallbackErr) {
-          console.log('ℹ️ Dubblettkontroll fallback misslyckades:', fallbackErr.message);
+      const num = parseInt(byraIdClean, 10);
+      const byraFormula = isNaN(num) ? `{Byrå ID}="${esc(byraIdClean)}"` : `OR({Byrå ID}="${byraIdClean}",{Byrå ID}=${byraIdClean})`;
+      const byraUrl = `https://api.airtable.com/v0/${airtableBaseId}/${BYRAER_TBL}?filterByFormula=${encodeURIComponent(byraFormula)}&maxRecords=1&fields[]=id`;
+      const byraRes = await axios.get(byraUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      if (byraRes.data.records?.[0]?.id) byraRecIdForMatch = byraRes.data.records[0].id;
+    } catch (e) {
+      console.log('ℹ️ Kunde inte hämta Byråer-record för match:', e.message);
+    }
+    const byraIdMatch = (recordByraId) => {
+      const n = byraIdNorm(recordByraId);
+      const c = byraIdNorm(byraIdClean);
+      if (n === c) return true;
+      if (byraRecIdForMatch && n && n.startsWith('rec') && n === byraRecIdForMatch) return true;
+      return false;
+    };
+    const orgnrFromRecord = (r) => {
+      const raw = r.fields?.['Orgnr'] ?? r.fields?.['orgnr'] ?? r.fields?.['Organisationsnummer'] ?? '';
+      return String(raw).replace(/\D/g, '');
+    };
+    const recordMatchesOrgnr = (r) => {
+      const rec = orgnrFromRecord(r);
+      if (!rec) return false;
+      const a = String(rec).trim();
+      const b = String(cleanOrgNumber).trim();
+      return a === b || a === b.substring(0, 10) || a === b.substring(2) || b === a.substring(0, 10) || b === a.substring(2);
+    };
+
+    const fetchKunddataByOrgnr = async (fieldName) => {
+      const formula = orgnrVariants.length === 1
+        ? `{${fieldName}}="${esc(cleanOrgNumber)}"`
+        : `OR(${orgnrVariants.map(o => `{${fieldName}}="${esc(o)}"`).join(',')})`;
+      const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=100&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr`;
+      const res = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      return res.data.records || [];
+    };
+
+    // Dubblettkontroll: hämta kunder för denna byrå (enkel formel), kolla i koden om samma orgnr redan finns. Använd bara fält som finns (Orgnr, inte Organisationsnummer) för att undvika 422.
+    let existing = null;
+    const fetchRecordsForByra = async (formula) => {
+      const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=500&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr`;
+      const res = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      return res.data.records || [];
+    };
+    for (const formula of [
+      /^\d+$/.test(byraIdClean) ? `{Byrå ID}=${byraIdClean}` : null,
+      `{Byrå ID}="${esc(byraIdClean)}"`,
+      byraRecIdForMatch ? `{Byrå ID}="${esc(byraRecIdForMatch)}"` : null
+    ].filter(Boolean)) {
+      try {
+        const records = await fetchRecordsForByra(formula);
+        existing = records.find(r => recordMatchesOrgnr(r) && byraIdMatch(getRecordByraId(r))) || null;
+        if (existing) {
+          console.log('🔒 Dubblettkontroll: befintlig kund med samma Orgnr + Byrå ID hittad:', existing.id);
+          break;
         }
+        if (records.length > 0) break; // vi har fått poster för byrån, ingen orgnr-träff
+      } catch (e) {
+        if (e.response?.status !== 422) console.log('ℹ️ Dubblettkontroll:', e.message);
+      }
+    }
+
+    // Om alla formel-anrop 422:ade eller gav 0 poster – blädra igenom tabellen utan filter (max 3000) och kolla orgnr+byrå i kod. Utan fields[] för att undvika 422 på ogiltiga fältnamn.
+    if (!existing) {
+      const tryPaginatedList = async (queryFields) => {
+        let offset = null;
+        let totalChecked = 0;
+        const maxToCheck = 3000;
+        const pageSize = 100;
+        while (totalChecked < maxToCheck) {
+          let listUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?pageSize=${pageSize}`;
+          if (queryFields) queryFields.forEach(f => { listUrl += `&fields[]=${encodeURIComponent(f)}`; });
+          if (offset) listUrl += `&offset=${offset}`;
+          const listRes = await axios.get(listUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+          const page = listRes.data.records || [];
+          totalChecked += page.length;
+          const found = page.find(r => recordMatchesOrgnr(r) && byraIdMatch(getRecordByraId(r))) || null;
+          if (found) return found;
+          offset = listRes.data.offset || null;
+          if (!offset || page.length === 0) return null;
+        }
+        return null;
+      };
+      try {
+        existing = await tryPaginatedList(['Namn', 'Byrå ID', 'Orgnr']);
+        if (!existing) existing = await tryPaginatedList(null); // utan fields[] = alla fält
+        if (existing) console.log('🔒 Dubblettkontroll (paginerad sökning): befintlig kund hittad:', existing.id);
+      } catch (e) {
+        const errBody = e.response?.data;
+        console.log('ℹ️ Dubblettkontroll paginerad sökning:', e.message, errBody ? JSON.stringify(errBody) : '');
+      }
+    }
+
+    const runFallbackCheck = async () => {
+      let records = [];
+      // Försök först med Orgnr-fältet
+      try {
+        records = await fetchKunddataByOrgnr('Orgnr');
+      } catch (e) {
+        const status = e.response?.status;
+        console.log('ℹ️ Dubblettkontroll: Orgnr-formel fel:', status || 'okänt', e.message);
+      }
+
+      // Om inga träffar: försök med Organisationsnummer-fältet
+      if (records.length === 0) {
+        try {
+          records = await fetchKunddataByOrgnr('Organisationsnummer');
+          if (records.length > 0) {
+            console.log('🔒 Dubblettkontroll: hittade poster via fält Organisationsnummer');
+          }
+        } catch (e) {
+          const status = e.response?.status;
+          console.log('ℹ️ Dubblettkontroll: Organisationsnummer-formel fel:', status || 'okänt', e.message);
+        }
+      }
+
+      // Sista fallback: hämta utan filter och filtrera i koden
+      if (records.length === 0) {
+        try {
+          const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?maxRecords=200&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr`;
+          const res = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+          records = res.data.records || [];
+          console.log('🔒 Dubblettkontroll: sista fallback utan filter, poster:', records.length);
+        } catch (e) {
+          console.log('ℹ️ Dubblettkontroll: sista fallback misslyckades:', e.message);
+        }
+      }
+
+      if (records.length > 0) {
+        const sample = records.slice(0, 3).map(r => ({ id: r.id, Orgnr: orgnrFromRecord(r), ByraId: getRecordByraId(r), raw: r.fields?.['Byrå ID'] }));
+        console.log('🔒 Fallback-sökning: poster med samma Orgnr:', records.length, 'exempel:', JSON.stringify(sample));
+      }
+      const found = records.find(r => recordMatchesOrgnr(r) && byraIdMatch(getRecordByraId(r))) || null;
+      console.log('🔒 Fallback-sökning: match på byrå:', !!found, found ? `befintlig id=${found.id}` : '');
+      return found;
+    };
+
+    if (!existing) {
+      try {
+        existing = await runFallbackCheck();
+        if (existing) console.log('ℹ️ Dubblettkontroll: hittade befintlig kund (fallback), returnerar 409.');
+      } catch (fallbackErr) {
+        console.log('ℹ️ Dubblettkontroll fallback misslyckades:', fallbackErr.message);
       }
     }
 
@@ -1972,6 +2105,8 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
         existingNamn: existing.fields?.Namn || airtableData.fields?.Namn || ''
       });
     }
+
+    console.log('🔒 Dubblettkontroll: ingen befintlig kund med orgnr=' + cleanOrgNumber + ' och byrå=' + byraIdClean + ' – sparar ny post.');
 
     let recordId;
 
@@ -2107,10 +2242,10 @@ app.post('/api/simple/save-to-airtable', async (req, res) => {
     
     // Kontrollera om Airtable är konfigurerat
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
     
-    if (!airtableAccessToken || !airtableBaseId) {
+    if (!airtableAccessToken) {
       return res.json({
         success: true,
         message: 'Data skulle sparas till Airtable (Airtable inte konfigurerat)',
@@ -2168,13 +2303,13 @@ async function handleTestDatasourceConnection(req, res) {
   try {
     console.log('🧪 Testing Airtable connection...');
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
 
-    if (!airtableAccessToken || !airtableBaseId) {
+    if (!airtableAccessToken) {
       return res.json({
         success: false,
-        message: 'Airtable inte konfigurerat',
+        message: 'Airtable inte konfigurerat (AIRTABLE_ACCESS_TOKEN saknas)',
         dataSource: 'airtable',
         config: {
           hasToken: !!airtableAccessToken,
@@ -2244,12 +2379,12 @@ app.get('/api/debug/user-data', async (req, res) => {
     
     // Hämta användardata från Airtable
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     
-    if (!airtableAccessToken || !airtableBaseId) {
+    if (!airtableAccessToken) {
       return res.status(500).json({
         error: 'Airtable inte konfigurerat',
-        message: 'AIRTABLE_ACCESS_TOKEN eller AIRTABLE_BASE_ID saknas'
+        message: 'AIRTABLE_ACCESS_TOKEN saknas'
       });
     }
     
@@ -2926,6 +3061,64 @@ app.get('/api/datasource/config', handleDatasourceConfig);
 
 // GET /api/airtable/config – behålls för bakåtkompatibilitet, anropar samma som datasource
 app.get('/api/airtable/config', handleDatasourceConfig);
+
+// Befattningshavare – KYC-sidan sparar/laddar mot Airtable-tabell (en kund per byrå)
+const BEFATTNINGSHAVARE_TABLE = process.env.AIRTABLE_TABLE_BEFATTNINGSHAVARE || 'Befattningshavare';
+
+app.get('/api/airtable/befattningshavare', authenticateToken, async (req, res) => {
+  try {
+    const company = req.query.company;
+    if (!company) {
+      return res.status(400).json({ error: 'Query company (organisationsnummer) krävs' });
+    }
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable inte konfigurerad' });
+    }
+    const formula = encodeURIComponent(`{Företag}="${String(company).replace(/"/g, '\\"')}"`);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BEFATTNINGSHAVARE_TABLE)}?filterByFormula=${formula}`;
+    const response = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    const records = (response.data.records || []).map(r => ({ id: r.id, fields: r.fields }));
+    return res.json({ records });
+  } catch (err) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ error: 'Tabellen Befattningshavare hittades inte i Airtable', message: err.message });
+    }
+    console.error('GET befattningshavare:', err.message);
+    return res.status(err.response?.status || 500).json({ error: err.message || 'Kunde inte hämta befattningshavare' });
+  }
+});
+
+app.post('/api/airtable/befattningshavare', authenticateToken, async (req, res) => {
+  try {
+    const body = req.body?.records;
+    if (!Array.isArray(body) || body.length === 0) {
+      return res.status(400).json({ error: 'Body måste innehålla records (array med fields)' });
+    }
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable inte konfigurerad' });
+    }
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BEFATTNINGSHAVARE_TABLE)}`;
+    const response = await axios.post(url, { records: body }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    const records = response.data.records || [];
+    return res.json({ success: true, records });
+  } catch (err) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ error: 'Tabellen Befattningshavare hittades inte i Airtable', message: err.message });
+    }
+    console.error('POST befattningshavare:', err.message);
+    return res.status(err.response?.status || 500).json({ error: err.message || 'Kunde inte spara befattningshavare' });
+  }
+});
 
 // GET /api/auth/test-users - Testa användaranslutning till Airtable
 app.get('/api/auth/test-users', async (req, res) => {
@@ -3752,6 +3945,7 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
 
     const orgnrRaw = (fields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
     const byraId = (fields['Byrå ID'] != null ? fields['Byrå ID'] : fields['ByraID'] || fields['Byra_ID'] || '').toString().trim();
+    const byraIdClean = byraId.replace(/,/g, '').trim();
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -3760,29 +3954,58 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Airtable token saknas' });
     }
 
-    if (orgnrRaw && byraId) {
+    if (orgnrRaw) {
       const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const orgnrVariants = [orgnrRaw];
       if (orgnrRaw.length === 10) {
         const yy = parseInt(orgnrRaw.substring(0, 2), 10);
         const currentYear = new Date().getFullYear() % 100;
         orgnrVariants.push((yy > currentYear ? '19' : '20') + orgnrRaw);
+        orgnrVariants.push(orgnrRaw.replace(/^(\d{6})(\d{4})$/, '$1-$2'));
       } else if (orgnrRaw.length === 12) {
         orgnrVariants.push(orgnrRaw.substring(2));
+        orgnrVariants.push(orgnrRaw.substring(2).replace(/^(\d{6})(\d{4})$/, '$1-$2'));
       }
-      const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
-      const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraId)}")`;
-      const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
-      const checkRes = await axios.get(checkUrl, {
-        headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
-      });
-      if (checkRes.data.records?.length > 0) {
-        const existing = checkRes.data.records[0];
+      const byraIdNorm = (v) => (v == null || v === '') ? '' : String(v).trim();
+      const byraIdMatch = (recordByraId) => byraIdNorm(recordByraId) === byraIdNorm(byraIdClean);
+      const orgnrFromRecord = (r) => (r.fields?.['Orgnr'] || r.fields?.['orgnr'] || '').toString().replace(/\D/g, '');
+      const recordMatchesOrgnr = (r) => {
+        const rec = orgnrFromRecord(r);
+        if (!rec) return false;
+        return rec === orgnrRaw || rec === orgnrRaw.substring(0, 10) || rec === orgnrRaw.substring(2);
+      };
+      const runFallback = async () => {
+        const orgnrOnlyFormula = orgnrVariants.length === 1
+          ? `{Orgnr}="${esc(orgnrRaw)}"`
+          : `OR(${orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',')})`;
+        const fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(orgnrOnlyFormula)}&maxRecords=100&fields[]=id&fields[]=Namn&fields[]=Byrå ID&fields[]=Orgnr`;
+        const fallbackRes = await axios.get(fallbackUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+        const records = fallbackRes.data.records || [];
+        return records.find(r => recordMatchesOrgnr(r) && byraIdMatch(r.fields?.['Byrå ID'] || r.fields?.['Byra_ID'])) || null;
+      };
+
+      let existingRecord = null;
+      if (byraIdClean === '') {
+        existingRecord = await runFallback();
+      } else {
+        const byraIdFormula = /^\d+$/.test(byraIdClean) ? `{Byrå ID}=${byraIdClean}` : `{Byrå ID}="${esc(byraIdClean)}"`;
+        const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
+        const checkFormula = `AND(OR(${orgnrConditions}),${byraIdFormula})`;
+        const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=Namn`;
+        try {
+          const checkRes = await axios.get(checkUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+          existingRecord = checkRes.data.records?.[0] || null;
+        } catch (e) {
+          if (e.response?.status === 422 || e.response?.status === 400) existingRecord = await runFallback();
+        }
+        if (!existingRecord) existingRecord = await runFallback();
+      }
+      if (existingRecord) {
         return res.status(409).json({
           error: 'duplicate',
           message: 'Företaget är redan upplagt som kund hos er byrå. Samma organisationsnummer kan bara förekomma en gång per byrå.',
-          existingId: existing.id,
-          existingNamn: existing.fields?.Namn || ''
+          existingId: existingRecord.id,
+          existingNamn: existingRecord.fields?.Namn || ''
         });
       }
     }
