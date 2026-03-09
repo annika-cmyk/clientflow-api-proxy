@@ -280,7 +280,7 @@
         const err = await res.json().catch(() => ({}));
         const msg = err.message || res.statusText;
         const detail = err.airtableError?.error?.message || err.airtableError?.message || '';
-        alert(`Kunde inte spara avvikelse: ${msg}${detail ? '\n\nAirtable: ' + detail : ''}`);
+        alert(`Kunde inte spara avvikelse: ${msg}${detail ? '\n\nDatakälla: ' + detail : ''}`);
       }
     } catch (err) {
       console.error('Fel vid sparande:', err);

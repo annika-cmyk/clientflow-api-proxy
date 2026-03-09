@@ -1,4 +1,4 @@
-// ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Airtable
+// ClientFlow - Fristående lösning som hämtar från Bolagsverket och sparar till Grist
 class ClientFlowApp {
     constructor() {
         this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
@@ -50,7 +50,7 @@ class ClientFlowApp {
     bindEvents() {
         const searchForm = document.getElementById('search-form');
         const clearSearchBtn = document.getElementById('clear-search');
-        const saveToAirtableBtn = document.getElementById('save-to-airtable');
+        const saveToDatasourceBtn = document.getElementById('save-to-datasource');
         const exportDataBtn = document.getElementById('export-data');
         const checkStatusBtn = document.getElementById('check-status');
         const orgNumberInput = document.getElementById('org-number');
@@ -63,8 +63,8 @@ class ClientFlowApp {
             clearSearchBtn.addEventListener('click', () => this.clearSearch());
         }
 
-        if (saveToAirtableBtn) {
-            saveToAirtableBtn.addEventListener('click', () => this.goToKYC());
+        if (saveToDatasourceBtn) {
+            saveToDatasourceBtn.addEventListener('click', () => this.goToKYC());
         }
 
         if (exportDataBtn) {
@@ -445,26 +445,26 @@ class ClientFlowApp {
             this.updateStatus('server-status', 'Disconnected', 'error');
         }
 
-        // Check Airtable status
-        this.updateStatus('airtable-status', 'Kontrollerar...', 'checking');
+        // Check datakälla (Grist)
+        this.updateStatus('datasource-status', 'Kontrollerar...', 'checking');
         try {
-            const response = await fetch(`${this.baseUrl}/api/test-airtable-connection`, {
+            const response = await fetch(`${this.baseUrl}/api/test-datasource-connection`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    this.updateStatus('airtable-status', 'Connected', 'connected');
-                } else {
-                    this.updateStatus('airtable-status', 'Error', 'error');
-                }
+            const data = await response.json().catch(() => ({}));
+            const sourceLabel = (data.dataSource === 'grist') ? 'Grist' : (data.dataSource === 'airtable' ? 'Airtable' : 'Datakälla');
+            const labelEl = document.getElementById('datasource-label');
+            if (labelEl) labelEl.textContent = sourceLabel;
+            if (response.ok && data.success) {
+                this.updateStatus('datasource-status', 'Connected', 'connected');
             } else {
-                this.updateStatus('airtable-status', 'Disconnected', 'error');
+                this.updateStatus('datasource-status', data.message || 'Error', 'error');
             }
         } catch (error) {
-            this.updateStatus('airtable-status', 'Disconnected', 'error');
+            const labelEl = document.getElementById('datasource-label');
+            if (labelEl) labelEl.textContent = 'Datakälla';
+            this.updateStatus('datasource-status', 'Disconnected', 'error');
         }
 
         // Check Bolagsverket status
@@ -1358,7 +1358,7 @@ class ClientFlowApp {
             return;
         }
 
-        const saveBtn = document.getElementById('save-to-airtable');
+        const saveBtn = document.getElementById('save-to-datasource');
         const originalText = saveBtn.innerHTML;
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
         saveBtn.disabled = true;
@@ -1391,7 +1391,7 @@ class ClientFlowApp {
             const byraId = this.bureauId || '';
             const anvandareId = this.userId || null;
 
-            console.log('📤 Sparar till Airtable via Bolagsverket (inkl. årsredovisningar):', {
+            console.log('📤 Sparar till datakälla via Bolagsverket (inkl. årsredovisningar):', {
                 organisationsnummer: companyData.organisationsnummer,
                 byraId,
                 anvandareId
@@ -1412,7 +1412,7 @@ class ClientFlowApp {
             const data = await response.json().catch(() => ({}));
 
             if (response.ok && data.success) {
-                const recordId = data.airtableRecordId || data.id;
+                const recordId = data.airtableRecordId || data.recordId || data.id;
                 console.log('✅ Kund sparad med årsredovisningar:', data);
                 saveBtn.innerHTML = '<i class="fas fa-check"></i> Sparat!';
                 saveBtn.style.background = '#10b981';
@@ -1424,9 +1424,11 @@ class ClientFlowApp {
                 // Duplicat – företaget finns redan hos denna byrå
                 saveBtn.innerHTML = originalText;
                 saveBtn.disabled = false;
-                this.showDuplicateWarning(companyData.namn, data.existingId || data.airtableRecordId);
+                this.showDuplicateWarning(companyData.namn, data.existingId || data.airtableRecordId || data.recordId);
             } else {
-                throw new Error(data.error || data.message || `HTTP ${response.status}`);
+                const msg = data.message || data.error || `HTTP ${response.status}`;
+                const detail = data.details ? (typeof data.details === 'string' ? data.details : JSON.stringify(data.details)) : '';
+                throw new Error(detail ? `${msg} — ${detail}` : msg);
             }
         } catch (error) {
             console.error('❌ Fel vid sparande:', error);

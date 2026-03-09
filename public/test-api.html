@@ -31,9 +31,9 @@
     </div>
     
     <div class="test-section">
-        <h2>3. Airtable API</h2>
-        <button onclick="testAirtable()">Testa Airtable</button>
-        <div id="airtable-result"></div>
+        <h2>3. Datakälla (Grist) API</h2>
+        <button onclick="testDatasource()">Testa datakälla</button>
+        <div id="datasource-result"></div>
     </div>
     
     <div class="test-section">
@@ -82,8 +82,8 @@
             }
         }
         
-        async function testAirtable() {
-            const resultDiv = document.getElementById('airtable-result');
+        async function testDatasource() {
+            const resultDiv = document.getElementById('datasource-result');
             resultDiv.innerHTML = '<span class="info">Testar...</span>';
             
             try {
@@ -101,12 +101,12 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    resultDiv.innerHTML = `<span class="success">✅ Airtable API OK</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    resultDiv.innerHTML = `<span class="success">✅ Datakälla OK</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
                 } else {
-                    resultDiv.innerHTML = `<span class="error">❌ Airtable Error: ${response.status}</span>`;
+                    resultDiv.innerHTML = `<span class="error">❌ Datakälla Error: ${response.status}</span>`;
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<span class="error">❌ Airtable Error: ${error.message}</span>`;
+                resultDiv.innerHTML = `<span class="error">❌ Datakälla Error: ${error.message}</span>`;
             }
         }
         
@@ -134,8 +134,8 @@
                     throw new Error(`Bolagsverket Error: ${bolagsverketResponse.status}`);
                 }
                 
-                // 2. Spara till Airtable
-                const airtableResponse = await fetch(`${API_BASE}/api/bolagsverket/save-to-airtable`, {
+                // 2. Spara till datakälla
+                const saveResponse = await fetch(`${API_BASE}/api/bolagsverket/save-to-airtable`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -146,14 +146,14 @@
                     })
                 });
                 
-                const airtableData = await airtableResponse.json();
+                const saveData = await saveResponse.json();
                 
                 resultDiv.innerHTML = `
                     <span class="success">✅ Komplett flöde OK!</span>
                     <h3>Bolagsverket Data:</h3>
                     <pre>${JSON.stringify(bolagsverketData, null, 2)}</pre>
-                    <h3>Airtable Resultat:</h3>
-                    <pre>${JSON.stringify(airtableData, null, 2)}</pre>
+                    <h3>Datakälla Resultat:</h3>
+                    <pre>${JSON.stringify(saveData, null, 2)}</pre>
                 `;
                 
             } catch (error) {

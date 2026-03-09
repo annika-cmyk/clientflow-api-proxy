@@ -1,9 +1,9 @@
 // Risk Assessment Management System
 class RiskAssessmentManager {
     constructor() {
-        this.airtableBaseId = 'appPF8F7VvO5XYB50';
-        this.airtableTableName = 'Risker kopplad till tjänster';
-        this.airtableApiKey = null; // Will be set from environment
+        this.gristBaseId = null;
+        this.gristTableName = 'Risker kopplad till tjänster';
+        this.datasourceConfig = null;
         this.risks = [];
         this.filteredRisks = [];
         this.userData = null;
@@ -13,7 +13,7 @@ class RiskAssessmentManager {
     }
 
     async init() {
-        await this.loadAirtableConfig();
+        await this.loadDatasourceConfig();
         await this.loadUserData();
         this.setupEventListeners();
         this.setupRoleBasedUI();
@@ -23,20 +23,20 @@ class RiskAssessmentManager {
         this.applyFilters();
     }
 
-    async loadAirtableConfig() {
+    async loadDatasourceConfig() {
         try {
-            // Try to get config from environment or use default
-                            const response = await fetch(`${window.apiConfig.baseUrl}/api/airtable/config`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/datasource/config`);
             if (response.ok) {
                 const config = await response.json();
-                this.airtableApiKey = config.apiKey;
+                this.datasourceConfig = config;
+                this.gristBaseId = config.baseId || config.docId || null;
+                this.airtableApiKey = config.apiKey || (config.configured ? '***' : null);
             } else {
-                console.warn('Could not load Airtable config, using fallback');
-                // Fallback to environment variable or default
-                this.airtableApiKey = null;
+                console.warn('Could not load datasource config, using fallback');
+                this.datasourceConfig = null;
             }
         } catch (error) {
-            console.error('Error loading Airtable config:', error);
+            console.error('Error loading datasource config:', error);
         }
     }
 
@@ -63,7 +63,7 @@ class RiskAssessmentManager {
                     this.userByraIds = [this.userData.byraId.toString()];
                     console.log('Found byrå ID from byraId field:', this.userByraIds);
                 }
-                // Method 2: Check byraIds array (fallback - contains Airtable record IDs)
+                // Method 2: Check byraIds array (fallback - contains record IDs)
                 else if (this.userData.byraIds && Array.isArray(this.userData.byraIds)) {
                     this.userByraIds = this.userData.byraIds.map(id => id.toString());
                     console.log('Found byrå IDs from byraIds array:', this.userByraIds);
@@ -226,7 +226,7 @@ class RiskAssessmentManager {
                 </div>
             `;
 
-            // Load from Airtable via our API
+            // Load from Grist via our API
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
                 method: 'GET',
                 headers: {

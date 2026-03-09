@@ -77,7 +77,7 @@
 </head>
 <body>
     <div class="debug-container">
-        <h1>🔍 Debug - Enkel Sparning till Airtable</h1>
+        <h1>🔍 Debug - Enkel Sparning till datakälla (Grist)</h1>
         
         <div class="debug-section">
             <div class="debug-title">📝 Testdata för Sparning</div>
@@ -111,8 +111,8 @@
             <button type="button" onclick="testSimpleEndpoint()" class="btn btn-secondary">🧪 Testa Enkel Endpoint</button>
             <button type="button" onclick="testSimplifiedEndpoint()" class="btn btn-success">🔧 Testa Förenklad Endpoint</button>
             <button type="button" onclick="testBolagsverketEndpoint()" class="btn btn-secondary">🏢 Testa Bolagsverket Endpoint</button>
-            <button type="button" onclick="testAirtableConnection()" class="btn btn-secondary">🔌 Testa Airtable-anslutning</button>
-            <button type="button" onclick="testAirtableSave()" class="btn btn-secondary">💾 Testa Airtable-sparning</button>
+            <button type="button" onclick="testDatasourceConnection()" class="btn btn-secondary">🔌 Testa datakälla-anslutning</button>
+            <button type="button" onclick="testDatasourceSave()" class="btn btn-secondary">💾 Testa sparning</button>
         </div>
         
         <div class="debug-section">
@@ -260,11 +260,11 @@
             }
         }
         
-        async function testAirtableConnection() {
-            document.getElementById('result').textContent = 'Testar Airtable-anslutning...';
+        async function testDatasourceConnection() {
+            document.getElementById('result').textContent = 'Testar datakälla-anslutning...';
             
             try {
-                const response = await fetch(`${window.apiConfig?.baseUrl}/api/test-airtable-connection`, {
+                const response = await fetch(`${window.apiConfig?.baseUrl}/api/test-datasource-connection`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -284,8 +284,8 @@
             }
         }
         
-        async function testAirtableSave() {
-            document.getElementById('result').textContent = 'Testar Airtable-sparning...';
+        async function testDatasourceSave() {
+            document.getElementById('result').textContent = 'Testar sparning...';
             
             try {
                 const response = await fetch(`${window.apiConfig?.baseUrl}/api/test-airtable-save`, {

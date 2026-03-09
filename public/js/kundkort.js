@@ -20,7 +20,7 @@ class CustomerCardManager {
     }
 
     async init() {
-        await this.loadAirtableConfig();
+        await this.loadDatasourceConfig();
         await this.loadUserData();
         this.setupEventListeners();
         this.setupTabNavigation();
@@ -91,18 +91,20 @@ class CustomerCardManager {
         console.log('✅ Tab visibility forced for', tabPanes.length, 'panes');
     }
 
-    async loadAirtableConfig() {
+    async loadDatasourceConfig() {
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/airtable/config`);
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/datasource/config`);
             if (response.ok) {
                 const config = await response.json();
-                this.airtableApiKey = config.apiKey;
+                this.datasourceConfig = config;
+                this.airtableApiKey = config.apiKey || (config.configured ? '***' : null);
             } else {
-                console.warn('Could not load Airtable config, using fallback');
+                console.warn('Could not load datasource config, using fallback');
+                this.datasourceConfig = null;
                 this.airtableApiKey = null;
             }
         } catch (error) {
-            console.error('Error loading Airtable config:', error);
+            console.error('Error loading datasource config:', error);
         }
     }
 
@@ -355,7 +357,12 @@ class CustomerCardManager {
             } else {
                 const errorData = await response.json().catch(() => ({}));
                 if (response.status === 404) {
-                    this.showError('Kunden hittades inte');
+                    const isOldAirtableId = this.customerId && /^rec[A-Za-z0-9]+$/.test(String(this.customerId));
+                    if (isOldAirtableId) {
+                        this.showError('Kunden hittades inte. Denna länk använder ett gammalt ID – öppna kunden från Kundlista istället.', { link: { href: 'kundlista.html', text: 'Öppna Kundlista' } });
+                    } else {
+                        this.showError('Kunden hittades inte');
+                    }
                 } else if (response.status === 403) {
                     this.showError('Du har inte behörighet att se denna kund');
                 } else {
@@ -3824,7 +3831,7 @@ class CustomerCardManager {
                 const errorData = await response.json().catch(() => ({}));
                 const msg = errorData.message || response.statusText;
                 const detail = errorData.airtableError?.error?.message || errorData.airtableError?.message || '';
-                alert(`Kunde inte spara avvikelse: ${msg}${detail ? '\n\nAirtable: ' + detail : ''}`);
+                alert(`Kunde inte spara avvikelse: ${msg}${detail ? '\n\nDatakälla: ' + detail : ''}`);
             }
         } catch (error) {
             console.error('❌ Error saving avvikelse:', error);
@@ -4194,12 +4201,12 @@ class CustomerCardManager {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('❌ Error response:', errorData);
                 
-                // Visa mer detaljerad information om Airtable-felet
+                // Visa mer detaljerad information om datakälla-felet
                 let errorMessage = errorData.message || errorData.error || response.statusText;
                 if (errorData.airtableError) {
-                    console.error('❌ Airtable Error Details:', errorData.airtableError);
+                    console.error('❌ Datakälla Error Details:', errorData.airtableError);
                     if (errorData.airtableError.error) {
-                        errorMessage += `\n\nAirtable: ${errorData.airtableError.error.message || JSON.stringify(errorData.airtableError.error)}`;
+                        errorMessage += `\n\nDatakälla: ${errorData.airtableError.error.message || JSON.stringify(errorData.airtableError.error)}`;
                     }
                 }
                 
@@ -4460,10 +4467,10 @@ class CustomerCardManager {
                 throw new Error(msg);
             }
 
-            // Visa resultat i modal (PDF sparas endast i Airtable / Dokumentation, laddas inte ner automatiskt)
+            // Visa resultat i modal (PDF sparas i Grist / Dokumentation, laddas inte ner automatiskt)
             this._showPepResultModal(p.namn, data);
 
-            // Uppdatera dokumentation-fliken om rapporten sparades i Airtable
+            // Uppdatera dokumentation-fliken om rapporten sparades i Grist
             if (data.savedToDocs) {
                 this.loadDocuments();
                 this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
@@ -4607,7 +4614,7 @@ class CustomerCardManager {
         alert('Funktionalitet för att ladda upp dokument kommer snart!');
     }
 
-    showError(message) {
+    showError(message, options) {
         // Create and show error message
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
@@ -4615,11 +4622,19 @@ class CustomerCardManager {
             <i class="fas fa-exclamation-triangle"></i>
             <span>${message}</span>
         `;
-        
+        if (options && options.link) {
+            const link = document.createElement('a');
+            link.href = options.link.href;
+            link.textContent = options.link.text;
+            link.className = 'error-message-link';
+            link.style.marginLeft = '0.5rem';
+            link.style.fontWeight = '600';
+            errorDiv.appendChild(document.createTextNode(' '));
+            errorDiv.appendChild(link);
+        }
         // Insert at the top of the main content
         const mainContent = document.querySelector('.main-content');
         mainContent.insertBefore(errorDiv, mainContent.firstChild);
-        
         // Auto-remove after 5 seconds
         setTimeout(() => {
             if (errorDiv.parentElement) {
