@@ -1503,8 +1503,10 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
 
       console.log(`✅ Dokumentlista hämtad: ${dokumentInfo.antalDokument} dokument hittade`);
       
-      // Ladda ner alla årsredovisningar
-      if (dokumentInfo.dokument.length > 0) {
+      // Nedladdning av årsredovisningar skippas här så att Airtable-sparandet sker direkt.
+      // (Nedladdning + PDF-konvertering kan ta flera minuter och gjorde att anropet hängde som "pending".)
+      const skipDocumentDownloadInRequest = true;
+      if (!skipDocumentDownloadInRequest && dokumentInfo.dokument.length > 0) {
         console.log(`📥 Laddar ner ${dokumentInfo.dokument.length} årsredovisningar...`);
         
         for (let i = 0; i < Math.min(dokumentInfo.dokument.length, 3); i++) {
@@ -1854,13 +1856,13 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
 
     const byraIdClean = (byraId || '').toString().replace(/,/g, '').trim();
 
-    // Spara till Airtable
+    // Spara till Airtable (samma base och tabell som övriga KUNDDATA-anrop)
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
-    const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
 
-    if (!airtableAccessToken || !airtableBaseId) {
-      console.log('⚠️ Airtable inte konfigurerat - returnerar data utan att spara');
+    if (!airtableAccessToken) {
+      console.log('⚠️ Airtable inte konfigurerat (AIRTABLE_ACCESS_TOKEN saknas) - returnerar data utan att spara');
       const duration = Date.now() - startTime;
       return res.json({
         success: true,
@@ -1878,7 +1880,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
         },
         airtableRecordId: null,
         airtableConfigured: false,
-        airtableError: 'AIRTABLE_ACCESS_TOKEN eller AIRTABLE_BASE_ID saknas i miljövariabler',
+        airtableError: 'AIRTABLE_ACCESS_TOKEN saknas i miljövariabler',
         timestamp: new Date().toISOString(),
         duration: duration,
         source: 'Bolagsverket'
@@ -1926,7 +1928,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     }
     const orgnrConditions = orgnrVariants.map(o => `{Orgnr}="${esc(o)}"`).join(',');
     const checkFormula = `AND(OR(${orgnrConditions}),{Byrå ID}="${esc(byraIdClean)}")`;
-    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn`;
+    const checkUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?filterByFormula=${encodeURIComponent(checkFormula)}&maxRecords=1&fields[]=id&fields[]=Namn`;
     let recordId;
     try {
       const checkRes = await axios.get(checkUrl, {
@@ -1949,17 +1951,39 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     }
 
     if (!recordId) {
-      const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableName}`;
-      const airtableResponse = await axios.post(createUrl, {
-        records: [{ fields: airtableData.fields }]
-      }, {
-        headers: {
-          'Authorization': `Bearer ${airtableAccessToken}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      });
-      recordId = airtableResponse.data.records[0].id;
+      const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+      try {
+        console.log('📤 Sparar till Airtable KUNDDATA:', createUrl);
+        const airtableResponse = await axios.post(createUrl, {
+          records: [{ fields: airtableData.fields }]
+        }, {
+          headers: {
+            'Authorization': `Bearer ${airtableAccessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        });
+        recordId = airtableResponse.data.records?.[0]?.id;
+        if (!recordId) {
+          console.error('❌ Airtable svarade utan record-id:', airtableResponse.data);
+          return res.status(502).json({
+            success: false,
+            message: 'Airtable returnerade inget record-id efter sparande',
+            airtableResponse: airtableResponse.data
+          });
+        }
+      } catch (airtableErr) {
+        const status = airtableErr.response?.status;
+        const body = airtableErr.response?.data;
+        const msg = body?.error?.message || body?.message || airtableErr.message;
+        console.error('❌ Airtable sparande misslyckades:', status, msg, body ? JSON.stringify(body) : '');
+        return res.status(status && status >= 400 ? status : 502).json({
+          success: false,
+          message: 'Kunde inte spara till Airtable',
+          error: msg,
+          airtableError: body?.error
+        });
+      }
     }
 
     const duration = Date.now() - startTime;
