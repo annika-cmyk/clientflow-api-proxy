@@ -46,8 +46,6 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const grist = require('./lib/grist');
-
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
 console.log('  PORT:', process.env.PORT);
@@ -59,7 +57,6 @@ console.log('  BOLAGSVERKET_BASE_URL:', process.env.BOLAGSVERKET_BASE_URL);
 console.log('  AIRTABLE_ACCESS_TOKEN:', process.env.AIRTABLE_ACCESS_TOKEN ? 'SET' : 'NOT SET');
 console.log('  AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID ? 'SET' : 'NOT SET');
 console.log('  AIRTABLE_TABLE_NAME:', process.env.AIRTABLE_TABLE_NAME ? 'SET' : 'NOT SET');
-console.log('  GRIST (används vid inloggning om satt):', grist.isGristConfigured() ? 'JA' : 'NEJ');
 console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
 console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 'NOT SET');
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
@@ -145,18 +142,8 @@ app.get('/test', (req, res) => {
 // Airtable Users table integration
 const USERS_TABLE = 'Application Users';
 
-// Get user from Grist or Airtable (Grist används om GRIST_API_KEY + GRIST_DOC_ID är satta)
+// Get user from Airtable
 async function getUser(email) {
-  if (grist.isGristConfigured()) {
-    try {
-      const user = await grist.getGristUser(email);
-      if (user) console.log(`🔍 User from Grist: ${user.name} (${user.role})`);
-      return user;
-    } catch (e) {
-      console.error('❌ Grist getUser error:', e.message);
-      // Fallback till Airtable om konfigurerat
-    }
-  }
   return getAirtableUser(email);
 }
 
@@ -294,15 +281,15 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log(`🔐 Attempting login for email: ${email}`);
 
-    // Get user from Grist eller Airtable
+    // Get user from Airtable
     let user;
     try {
       user = await getUser(email);
     } catch (getUserErr) {
-      console.error('🔐 getUser error (Grist/Airtable):', getUserErr.message);
+      console.error('🔐 getUser error (Airtable):', getUserErr.message);
       return res.status(500).json({
         success: false,
-        message: 'Kunde inte hämta användardata. Kontrollera att datakällan (Grist) svarar.'
+        message: 'Kunde inte hämta användardata. Kontrollera att Airtable svarar.'
       });
     }
     if (!user) {
@@ -479,7 +466,7 @@ Var varm och professionell men också lite käck och rolig – t.ex. "Hallå bro
 // Get current user endpoint
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    // Hämta komplett användardata från Grist eller Airtable
+    // Hämta komplett användardata från Airtable
     const userData = await getUser(req.user.email);
     
     if (!userData) {
@@ -1866,78 +1853,8 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
         });
 
     const byraIdClean = (byraId || '').toString().replace(/,/g, '').trim();
-    const byraIdForGrist = byraIdClean ? (Number(byraIdClean) || byraIdClean) : '';
 
-    // Spara till Grist om konfigurerat
-    if (grist.isGristConfigured()) {
-      try {
-        const { docId, tableKunddata } = grist.getGristConfig();
-        // Endast kolumner som ska finnas i KUNDDATA (Grist: kolumnen heter Byra_ID)
-        const gristFieldsToSend = {
-          Orgnr: cleanOrgNumber,
-          Namn: airtableData.fields['Namn'] || ''
-        };
-        if (byraIdForGrist !== '' && byraIdForGrist != null) gristFieldsToSend.Byra_ID = byraIdForGrist;
-        if (anvandareId) gristFieldsToSend.Anvandare = Math.max(1, parseInt(anvandareId, 10) || 1);
-
-        const existingList = await grist.getRecords(docId, tableKunddata, {
-          filter: {
-            Orgnr: [cleanOrgNumber],
-            Byra_ID: [byraIdForGrist, byraIdClean].filter((v) => v !== '' && v != null)
-          },
-          limit: 1
-        });
-        if (existingList && existingList.length > 0) {
-          const existing = existingList[0];
-          console.log('⚠️ Kund finns redan i Grist – returnerar 409:', existing.id);
-          return res.status(409).json({
-            error: 'duplicate',
-            duplicate: true,
-            message: 'Kunden är redan upplagd hos er byrå. Gå till befintligt kundkort istället.',
-            recordId: String(existing.id),
-            airtableRecordId: String(existing.id),
-            existingId: String(existing.id),
-            existingNamn: (existing.fields && existing.fields.Namn) || gristFields.Namn || ''
-          });
-        }
-
-        const created = await grist.addRecords(docId, tableKunddata, [{ fields: gristFieldsToSend }]);
-        const newId = created && created[0] ? String(created[0].id) : null;
-        const duration = Date.now() - startTime;
-        console.log('✅ Data sparad till Grist:', { recordId: newId, organisationsnummer: cleanOrgNumber, byraId: byraIdClean, duration });
-        return res.json({
-          success: true,
-          message: 'Data sparad till Grist',
-          airtableRecordId: newId,
-          recordId: newId,
-          id: newId,
-          organisationsnummer: req.body.organisationsnummer || '',
-          anvandareId: anvandareId || null,
-          byraId: byraId || null,
-          dokumentInfo: dokumentInfo,
-          timestamp: new Date().toISOString(),
-          duration,
-          environment,
-          source: 'Grist'
-        });
-      } catch (gristErr) {
-        const status = gristErr.response?.status;
-        const body = gristErr.response?.data;
-        const errMsg = body?.error?.message ?? body?.message ?? (typeof body?.error === 'string' ? body.error : null) ?? body?.details ?? gristErr.message;
-        const messageStr = typeof errMsg === 'string' ? errMsg : (errMsg?.message || JSON.stringify(errMsg));
-        console.error('❌ Grist save error:', messageStr, status ? `status=${status}` : '', body ? JSON.stringify(body) : '');
-        const duration = Date.now() - startTime;
-        return res.status(status && status >= 400 ? status : 500).json({
-          success: false,
-          error: 'Fel vid sparande till Grist',
-          message: messageStr,
-          details: body,
-          duration
-        });
-      }
-    }
-
-    // Spara till Airtable (fallback)
+    // Spara till Airtable
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID;
     const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
@@ -2197,37 +2114,10 @@ app.post('/api/simple/save-to-airtable', async (req, res) => {
   }
 });
 
-// Test endpoint för datakälla (Grist eller Airtable) – används av dashboard
+// Test endpoint för datakälla (Airtable) – används av dashboard
 async function handleTestDatasourceConnection(req, res) {
   try {
-    // Om Grist är konfigurerad: testa Grist-anslutning
-    if (grist.isGristConfigured()) {
-      console.log('🧪 Testing Grist connection...');
-      try {
-        const { docId, tableKunddata } = grist.getGristConfig();
-        await grist.getRecords(docId, tableKunddata, { limit: 1 });
-        return res.json({
-          success: true,
-          message: 'Grist-anslutning fungerar',
-          dataSource: 'grist',
-          config: { docId, tableName: tableKunddata }
-        });
-      } catch (gristError) {
-        console.error('Grist connection test failed:', gristError.message);
-        return res.json({
-          success: false,
-          message: 'Grist-anslutning misslyckades',
-          dataSource: 'grist',
-          error: {
-            status: gristError.response?.status,
-            message: gristError.message
-          }
-        });
-      }
-    }
-
-    // Annars: testa Airtable-anslutning (fallback)
-    console.log('🧪 Testing Airtable connection (fallback)...');
+    console.log('🧪 Testing Airtable connection...');
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID;
     const airtableTableName = process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA';
@@ -2961,28 +2851,18 @@ app.delete('/api/risk-assessments/:id', async (req, res) => {
   }
 });
 
-// GET /api/data-source (och /data-source) – Vilken datakälla används (Grist eller Airtable)?
+// GET /api/data-source (och /data-source) – Vilken datakälla används (Airtable)
 function handleDataSource(req, res) {
-  const useGrist = grist.isGristConfigured();
   res.json({
-    dataSource: useGrist ? 'grist' : 'airtable',
-    configured: useGrist || !!(process.env.AIRTABLE_ACCESS_TOKEN && process.env.AIRTABLE_BASE_ID)
+    dataSource: 'airtable',
+    configured: !!(process.env.AIRTABLE_ACCESS_TOKEN && process.env.AIRTABLE_BASE_ID)
   });
 }
 app.get('/api/data-source', handleDataSource);
 app.get('/data-source', handleDataSource);
 
-// GET /api/datasource/config – aktiv datakälla (Grist) och konfiguration
+// GET /api/datasource/config – Airtable-konfiguration
 function handleDatasourceConfig(req, res) {
-  if (grist.isGristConfigured()) {
-    const { docId, tableKunddata } = grist.getGristConfig();
-    return res.json({
-      dataSource: 'grist',
-      configured: true,
-      docId,
-      tableName: tableKunddata
-    });
-  }
   const token = process.env.AIRTABLE_ACCESS_TOKEN;
   const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   res.json({
@@ -3136,14 +3016,14 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     
-    if (!grist.isGristConfigured() && !airtableAccessToken) {
+    if (!airtableAccessToken) {
       return res.status(500).json({
-        error: 'Varken Grist eller Airtable konfigurerad',
-        message: 'Sätt GRIST_API_KEY och GRIST_DOC_ID, eller AIRTABLE_ACCESS_TOKEN'
+        error: 'Airtable inte konfigurerad',
+        message: 'Sätt AIRTABLE_ACCESS_TOKEN och AIRTABLE_BASE_ID'
       });
     }
 
-    // Hämta komplett användardata för att få roll och byrå-ID (Grist eller Airtable)
+    // Hämta komplett användardata för att få roll och byrå-ID
     const userData = await getUser(req.user.email);
     if (!userData) {
       return res.status(404).json({
@@ -3156,51 +3036,26 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
     console.log(`🏢 Byrå ID: ${userData.byraId}`);
 
     let customerRecord;
-    if (grist.isGristConfigured()) {
-      try {
-        const gristRec = await grist.getGristKunddataRecord(customerId);
-        if (!gristRec) {
-          return res.status(404).json({
-            success: false,
-            message: 'Kund hittades inte',
-            error: 'Kunden med det angivna ID:t finns inte i systemet'
-          });
-        }
-        customerRecord = { id: gristRec.id, fields: gristRec.fields, createdTime: undefined };
-      } catch (e) {
-        console.error('Grist get kund:', e.message);
-        if (e.response && e.response.status === 404) {
-          return res.status(404).json({
-            success: false,
-            message: 'Kund hittades inte',
-            error: 'Kunden med det angivna ID:t finns inte i systemet'
-          });
-        }
-        throw e;
-      }
-    } else {
-      // Hämta kunden från Airtable
-      const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`;
-      console.log(`🌐 Airtable URL: ${url}`);
-      try {
-        const response = await axios.get(url, {
-          headers: {
-            'Authorization': `Bearer ${airtableAccessToken}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 15000
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`;
+    console.log(`🌐 Airtable URL: ${url}`);
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+      customerRecord = response.data;
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        return res.status(404).json({
+          success: false,
+          message: 'Kund hittades inte',
+          error: 'Kunden med det angivna ID:t finns inte i systemet'
         });
-        customerRecord = response.data;
-      } catch (error) {
-        if (error.response && error.response.status === 404) {
-          return res.status(404).json({
-            success: false,
-            message: 'Kund hittades inte',
-            error: 'Kunden med det angivna ID:t finns inte i systemet'
-          });
-        }
-        throw error;
       }
+      throw error;
     }
 
     // Kontrollera behörighet baserat på roll
@@ -3214,7 +3069,7 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
         break;
         
       case 'Ledare':
-        // Se poster med samma Byrå ID (Grist: Byra_ID, Airtable: Byrå ID)
+        // Se poster med samma Byrå ID
         const customerByraId = customerRecord.fields['Byra_ID'] || customerRecord.fields['ByraID'] || customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
         if (userData.byraId && customerByraId && userData.byraId.toString() === customerByraId.toString()) {
           hasAccess = true;
@@ -3225,7 +3080,7 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
         break;
         
         case 'Anställd':
-        // Se poster där användarens ID finns i Användare-fältet (Grist: Anvandare är Numeric, Airtable: Användare kan vara lista)
+        // Se poster där användarens ID finns i Användare-fältet
         const customerUsers = customerRecord.fields['Anvandare'] != null ? customerRecord.fields['Anvandare'] : customerRecord.fields['Användare'];
         const userIdString = userData.id ? userData.id.toString() : '';
         const userList = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
@@ -3378,7 +3233,7 @@ app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
   }
 });
 
-// PATCH /api/kunddata/:id - Uppdatera specifika fält på en kund i KUNDDATA (Grist eller Airtable, med behörighetskontroll)
+// PATCH /api/kunddata/:id - Uppdatera specifika fält på en kund i KUNDDATA (Airtable, med behörighetskontroll)
 app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -3394,61 +3249,6 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         return v !== undefined && v !== null && v !== '';
       })
     );
-
-    if (grist.isGristConfigured()) {
-      const userData = await getUser(req.user.email);
-      if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
-
-      const customerRecord = await grist.getGristKunddataRecord(id);
-      if (!customerRecord) return res.status(404).json({ error: 'Kund hittades inte' });
-
-      const custFields = customerRecord.fields || {};
-      let hasAccess = false;
-      if (userData.role === 'ClientFlowAdmin') hasAccess = true;
-      else if (userData.role === 'Ledare') {
-        const customerByraId = custFields['Byra_ID'] || custFields['ByraID'] || custFields['Byrå ID'];
-        if (userData.byraId && customerByraId && String(userData.byraId) === String(customerByraId)) hasAccess = true;
-      } else if (userData.role === 'Anställd') {
-        const customerUsers = custFields['Anvandare'] != null ? custFields['Anvandare'] : custFields['Användare'];
-        const uid = userData.id ? String(userData.id) : '';
-        const list = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
-        if (uid && list.some((u) => String(u) === uid)) hasAccess = true;
-      }
-      if (!hasAccess) return res.status(403).json({ error: 'Du har inte behörighet att uppdatera denna kund' });
-
-      const gristFields = grist.mapToGristKunddataFields(cleanedFields);
-      if (Object.keys(gristFields).length === 0) {
-        return res.json({ success: true, id: String(id), record: customerRecord });
-      }
-
-      const { docId, tableKunddata } = grist.getGristConfig();
-      const numericId = parseInt(String(id), 10);
-      if (Number.isNaN(numericId)) return res.status(400).json({ error: 'Ogiltigt kund-id' });
-
-      if (gristFields['Orgnr'] != null) {
-        const byraId = (gristFields['Byra_ID'] != null ? gristFields['Byra_ID'] : custFields['Byra_ID'] || custFields['ByraID'] || '').toString().trim();
-        const orgnrRaw = (gristFields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
-        if (orgnrRaw && byraId) {
-          const existingList = await grist.getRecords(docId, tableKunddata, {
-            filter: { Orgnr: [orgnrRaw], Byra_ID: [byraId] },
-            limit: 5
-          });
-          const other = (existingList || []).find((r) => r.id !== numericId);
-          if (other) {
-            return res.status(409).json({
-              error: 'duplicate',
-              message: 'Ett annat företag hos er byrå har redan detta organisationsnummer. Samma orgnr får bara förekomma en gång per byrå.',
-              existingId: String(other.id),
-              existingNamn: (other.fields && other.fields.Namn) || ''
-            });
-          }
-        }
-      }
-
-      await grist.patchRecords(docId, tableKunddata, [{ id: numericId, fields: gristFields }]);
-      console.log('✅ Kund uppdaterad i Grist:', id);
-      return res.json({ success: true, id: String(id), record: { id: String(id), fields: { ...custFields, ...gristFields } } });
-    }
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -3893,7 +3693,7 @@ app.delete('/api/documents', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/kunddata/create - Skapa ny kund i KUNDDATA (Grist eller Airtable)
+// POST /api/kunddata/create - Skapa ny kund i KUNDDATA (Airtable)
 app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
   try {
     const { fields } = req.body;
@@ -3903,36 +3703,6 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
 
     const orgnrRaw = (fields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
     const byraId = (fields['Byrå ID'] != null ? fields['Byrå ID'] : fields['ByraID'] || fields['Byra_ID'] || '').toString().trim();
-
-    if (grist.isGristConfigured()) {
-      const userData = await getUser(req.user.email);
-      if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
-
-      const { docId, tableKunddata } = grist.getGristConfig();
-      const gristFields = grist.mapToGristKunddataFields(fields);
-
-      if (orgnrRaw && byraId) {
-        const existingList = await grist.getRecords(docId, tableKunddata, {
-          filter: { Orgnr: [orgnrRaw], Byra_ID: [byraId] },
-          limit: 1
-        });
-        if (existingList && existingList.length > 0) {
-          const existing = existingList[0];
-          console.log(`⚠️ Dublett i Grist: orgnr finns redan för byrå ${byraId} (id: ${existing.id})`);
-          return res.status(409).json({
-            error: 'duplicate',
-            message: 'Företaget är redan upplagt som kund hos er byrå. Samma organisationsnummer kan bara förekomma en gång per byrå.',
-            existingId: String(existing.id),
-            existingNamn: (existing.fields && existing.fields.Namn) || ''
-          });
-        }
-      }
-
-      const created = await grist.addRecords(docId, tableKunddata, [{ fields: gristFields }]);
-      const newId = created && created[0] ? String(created[0].id) : null;
-      console.log('✅ Kund skapad i Grist KUNDDATA:', newId);
-      return res.json({ success: true, id: newId, record: { id: newId, fields: gristFields } });
-    }
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -4726,14 +4496,14 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     
-    if (!grist.isGristConfigured() && !airtableAccessToken) {
+    if (!airtableAccessToken) {
       return res.status(500).json({
-        error: 'Varken Grist eller Airtable konfigurerad',
-        message: 'Sätt GRIST_API_KEY och GRIST_DOC_ID, eller AIRTABLE_ACCESS_TOKEN'
+        error: 'Airtable inte konfigurerad',
+        message: 'Sätt AIRTABLE_ACCESS_TOKEN och AIRTABLE_BASE_ID'
       });
     }
 
-    // Hämta komplett användardata för att få roll och byrå-ID (Grist eller Airtable)
+    // Hämta komplett användardata för att få roll och byrå-ID
     const userData = await getUser(req.user.email);
     if (!userData) {
       return res.status(404).json({
@@ -4748,55 +4518,8 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
     let records = [];
     let filterFormula = '';
 
-    if (grist.isGristConfigured()) {
-      const filterOpts = {};
-      switch (userData.role) {
-        case 'ClientFlowAdmin':
-          break;
-        case 'Ledare':
-          if (!userData.byraId) {
-            return res.json({
-              success: true,
-              message: 'Ledare utan Byrå ID - inga poster att visa',
-              records: [],
-              userRole: userData.role,
-              userByraId: userData.byraId,
-              timestamp: new Date().toISOString(),
-              duration: Date.now() - startTime
-            });
-          }
-          filterOpts.byraId = userData.byraId;
-          break;
-        case 'Anställd':
-          if (!userData.byraId) {
-            return res.json({
-              success: true,
-              message: 'Anställd utan Byrå ID - inga poster att visa',
-              records: [],
-              userRole: userData.role,
-              userByraId: userData.byraId,
-              timestamp: new Date().toISOString(),
-              duration: Date.now() - startTime
-            });
-          }
-          filterOpts.byraId = userData.byraId;
-          break;
-        default:
-          return res.json({
-            success: true,
-            message: `Okänd användarroll: ${userData.role}`,
-            records: [],
-            userRole: userData.role,
-            timestamp: new Date().toISOString(),
-            duration: Date.now() - startTime
-          });
-      }
-      const gristList = await grist.getGristKunddataList(filterOpts);
-      records = gristList.map(r => ({ id: r.id, createdTime: undefined, fields: r.fields }));
-      console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Grist)`);
-    } else {
-      // Rollbaserad filtrering för Airtable
-      switch (userData.role) {
+    // Rollbaserad filtrering för Airtable
+    switch (userData.role) {
         case 'ClientFlowAdmin':
           console.log('🔓 ClientFlowAdmin: Visar alla poster');
           break;
@@ -4842,19 +4565,17 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
             timestamp: new Date().toISOString(),
             duration: Date.now() - startTime
           });
-      }
-
-      let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-      if (filterFormula) url += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
-      const response = await axios.get(url, {
-        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-      records = response.data.records || [];
-      console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
     }
 
-    // Formatera svaret (samma format för Grist och Airtable)
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    if (filterFormula) url += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
+    const response = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
+    records = response.data.records || [];
+    console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
+
     const formattedRecords = records.map(record => ({
       id: record.id,
       createdTime: record.createdTime,
@@ -4862,9 +4583,7 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
     }));
 
     const duration = Date.now() - startTime;
-    const filterApplied = grist.isGristConfigured()
-      ? (userData.role === 'ClientFlowAdmin' ? 'Ingen filtrering (ClientFlowAdmin)' : `Grist filter (${userData.role})`)
-      : (filterFormula || 'Ingen filtrering (ClientFlowAdmin)');
+    const filterApplied = filterFormula || 'Ingen filtrering (ClientFlowAdmin)';
 
     res.json({
       success: true,
@@ -5233,14 +4952,13 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     
-    if (!grist.isGristConfigured() && !airtableAccessToken) {
+    if (!airtableAccessToken) {
       return res.status(500).json({
-        error: 'Varken Grist eller Airtable konfigurerad',
-        message: 'Sätt GRIST_API_KEY och GRIST_DOC_ID, eller AIRTABLE_ACCESS_TOKEN'
+        error: 'Airtable inte konfigurerad',
+        message: 'Sätt AIRTABLE_ACCESS_TOKEN och AIRTABLE_BASE_ID'
       });
     }
 
-    // Hämta användardata från rätt källa (Grist eller Airtable)
     const userData = await getUser(req.user.email);
     if (!userData) {
       return res.status(404).json({
@@ -5256,56 +4974,7 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
     let records = [];
     let filterFormula = '';
 
-    // Grist: samma logik som GET /api/kunddata (filtrera på Byra_ID)
-    if (grist.isGristConfigured()) {
-      const filterOpts = {};
-      switch (userData.role) {
-        case 'ClientFlowAdmin':
-          break;
-        case 'Ledare':
-        case 'Anställd':
-          if (!userData.byraId) {
-            return res.json({
-              success: true,
-              data: [],
-              message: userData.role === 'Ledare' ? 'Ledare utan Byrå ID - inga poster att visa' : 'Anställd utan Byrå ID - inga poster att visa',
-              userRole: userData.role,
-              userByraId: userData.byraId,
-              timestamp: new Date().toISOString(),
-              duration: Date.now() - startTime
-            });
-          }
-          filterOpts.byraId = userData.byraId;
-          break;
-        default:
-          return res.json({
-            success: true,
-            data: [],
-            message: `Okänd användarroll: ${userData.role}`,
-            userRole: userData.role,
-            timestamp: new Date().toISOString(),
-            duration: Date.now() - startTime
-          });
-      }
-      const gristList = await grist.getGristKunddataList(filterOpts);
-      records = gristList.map(r => ({ id: r.id, createdTime: undefined, fields: r.fields }));
-      console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Grist)`);
-      const duration = Date.now() - startTime;
-      return res.json({
-        success: true,
-        data: records,
-        message: `KUNDDATA hämtad för ${userData.role}`,
-        recordCount: records.length,
-        userRole: userData.role,
-        userByraId: userData.byraId,
-        userId: userData.id,
-        filterApplied: filterOpts.byraId != null ? `Byra_ID=${filterOpts.byraId}` : 'Ingen filtrering (ClientFlowAdmin)',
-        timestamp: new Date().toISOString(),
-        duration
-      });
-    }
-
-    // Airtable: rollbaserad filtrering med formel
+    // Rollbaserad filtrering med Airtable-formel
     switch (userData.role) {
       case 'ClientFlowAdmin':
         console.log('🔓 ClientFlowAdmin: Visar alla poster');
@@ -8603,7 +8272,7 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
   }
 });
 
-// Data-source (Grist/Airtable) – explicit före 404 så den alltid finns
+// Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);
 
 // API-rutter som inte matchar → alltid JSON (inga HTML-svar)
