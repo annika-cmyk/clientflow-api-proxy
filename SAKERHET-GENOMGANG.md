@@ -32,6 +32,26 @@
 - **Nu:** Vissa routes loggar t.ex. e-post eller ID:n.
 - **Rekommendation:** Undvik att logga lösenord, tokens eller personnummer. Minska mängden känslig data i loggar i produktion.
 
+### 6. Dataisolering per byrå (rekommendation från IT)
+- **Nu:** Alla byråer delar samma databas (Airtable); åtkomst styrs med behörighetslogik i appen (roller, byrå-ID).
+- **Risk:** Buggar eller fel i behörighetslogiken kan leda till att en byrå ser en annans data. En komprometterad admin-token ger åtkomst till all data.
+- **Rekommendation:** Överväg att varje byrå har egen databas/egen Airtable-base (eller tydlig databas-per-tenant). Ger starkare isolering och enklare att motivera säkerhet gentemot kunder och revisorer.
+
+### 7. Tvåfaktorsautentisering (2FA)
+- **Nu:** Inloggning sker endast med användarnamn och lösenord.
+- **Risk:** Stulna eller gissade lösenord ger full åtkomst. Särskilt känsligt för roller med bred behörighet.
+- **Rekommendation:** Inför 2FA (t.ex. TOTP med app som Google Authenticator eller Authy) för inloggning. Kräver att ni lagrar 2FA-secret per användare (t.ex. i Airtable) och använder t.ex. `speakeasy`/`otplib` för att verifiera koden vid login.
+
+---
+
+## Övriga rekommendationer från extern genomgång
+
+- **Säkra cookies och sessioner**: Säkerställ att autentiseringscookies har `HttpOnly`, `Secure` och lämplig `SameSite`, samt rimlig livslängd och inaktivitetstimeout. Tydlig logout ska rensa session/cookie.
+- **Roller och minsta privilegium**: Gå igenom roller (ClientFlowAdmin, Ledare, Anställd) och kontrollera att varje roll bara har de rättigheter som verkligen behövs. Begränsa “superadmin”-behörighet till så få konton som möjligt.
+- **Loggning och spårbarhet**: Komplettera tekniska loggar med enklare “audit logg” för viktiga händelser (t.ex. skapande/ändring av kund, ändring av behörigheter), så att det går att se vem som gjort vad vid en incident.
+- **Backup och återställning**: Säkerställ backup-rutiner för Airtable-datan (eller framtida databas) och att återställning är testad. Dokumentera hur lång tid det får ta att återställa vid incident.
+- **Miljöseparation och hemligheter**: Ha tydlig separation mellan test/stage/produktion och håll alla hemligheter (API-nycklar, JWT-secret, SMTP-lösen osv.) i miljövariabler eller hemlighetshanterare, inte i kod eller Git.
+
 ---
 
 ## Checklista produktion
@@ -40,3 +60,4 @@
 - [ ] Inga hemligheter i frontend eller i Git.
 - [ ] HTTPS överallt (Render hanterar det).
 - [ ] Överväg hashing av lösenord i Airtable och rate limiting på login.
+- [ ] Överväg dataisolering per byrå (egen databas/base) och tvåfaktorsautentisering (2FA).

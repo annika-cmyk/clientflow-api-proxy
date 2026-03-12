@@ -49,9 +49,10 @@
     var inUl = false, inOl = false;
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
-      if (/^-\s/.test(line)) {
+      // Punktlista: stöd både "-" och "•" i början av raden
+      if (/^(-|\u2022)\s/.test(line)) {
         if (!inUl) { if (inOl) { out.push('</ol>'); inOl = false; } out.push('<ul>'); inUl = true; }
-        out.push('<li>' + line.replace(/^-\s/, '') + '</li>');
+        out.push('<li>' + line.replace(/^(-|\u2022)\s/, '') + '</li>');
       } else if (/^\d+\.\s/.test(line)) {
         if (!inOl) { if (inUl) { out.push('</ul>'); inUl = false; } out.push('<ol>'); inOl = true; }
         out.push('<li>' + line.replace(/^\d+\.\s/, '') + '</li>');

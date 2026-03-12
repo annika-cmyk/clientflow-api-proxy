@@ -22,48 +22,10 @@
                     </div>
                 </header>
 
-                <!-- Företagssök (samma som på dashboarden) -->
-                <section class="kundlista-foretagssok-section">
-                    <div class="dashboard-card dashboard-card-search">
-                        <div class="dashboard-card-header">
-                            <h2><i class="fas fa-search"></i> Företagssök</h2>
-                        </div>
-                        <div class="dashboard-card-body">
-                            <p class="dashboard-card-desc">Hämta företagsdata från Bolagsverket via organisationsnummer och spara som kund.</p>
-                            <form id="search-form" class="dashboard-search-form">
-                                <div class="dashboard-search-row">
-                                    <input type="text" id="org-number" name="org-number" placeholder="t.ex. 556722-3705" pattern="[0-9\-]{8,12}" required>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="fas fa-search"></i> Hämta
-                                    </button>
-                                    <button type="button" id="clear-search" class="btn btn-secondary">
-                                        <i class="fas fa-times"></i> Rensa
-                                    </button>
-                                </div>
-                                <small>Format: 10 siffror, bindestreck tillåtna</small>
-                            </form>
-                        </div>
-                    </div>
-                </section>
-
-                <section id="company-info" class="company-info-section" style="display: none;">
-                    <div class="company-card">
-                        <div class="company-header">
-                            <h2 id="company-name-header"></h2>
-                            <div class="company-actions">
-                                <button id="save-to-datasource" class="btn btn-primary">
-                                    <i class="fas fa-arrow-right"></i> Spara företag
-                                </button>
-                            </div>
-                        </div>
-                        <div id="company-details" class="company-details"></div>
-                    </div>
-                </section>
-
                 <div class="kundlista-toolbar">
                     <div class="kundlista-search">
                         <i class="fas fa-search"></i>
-                        <input type="text" id="search-filter" placeholder="Sök på namn eller organisationsnummer...">
+                        <input type="text" id="search-filter" placeholder="Sök på företagsnamn, organisationsnummer eller befattningshavare">
                     </div>
                     <span class="kundlista-count"><span id="total-count">0</span> kunder</span>
                 </div>

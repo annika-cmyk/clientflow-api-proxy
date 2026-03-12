@@ -896,21 +896,16 @@ class ClientFlowApp {
                 this.hideLoadingError();
                 
                 let errorMessage = 'Ett fel uppstod vid hämtning av företagsdata.';
-                let technicalDetails = null;
-                
                 if (response.status === 404) {
                     errorMessage = `Inget företag hittades med organisationsnummer ${orgNumber}. Kontrollera att numret är korrekt.`;
                 } else if (response.status === 400) {
                     errorMessage = 'Ogiltigt organisationsnummer. Kontrollera formatet.';
-                    technicalDetails = errorData;
                 } else if (response.status >= 500) {
                     errorMessage = 'Serverfel. Försök igen senare.';
-                    technicalDetails = errorData;
-                } else {
-                    technicalDetails = errorData;
+                } else if (errorData && typeof errorData.message === 'string' && errorData.message.trim()) {
+                    errorMessage = errorData.message;
                 }
-                
-                this.showError(errorMessage, technicalDetails);
+                this.showError(errorMessage);
                 throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
             }
             
@@ -939,24 +934,18 @@ class ClientFlowApp {
             } else {
                 console.log('❌ Invalid response format from Bolagsverket');
                 this.hideLoadingError();
-                this.showError('Ogiltigt svar från Bolagsverket', result);
+                this.showError('Ogiltigt svar från Bolagsverket.');
                 throw new Error('Invalid response format from Bolagsverket');
             }
         } catch (error) {
             console.error('❌ Error fetching from Bolagsverket:', error);
-            
-            // Hide loading if not already hidden
             this.hideLoadingError();
-            
-            // Show error if not already shown
-            if (!document.getElementById('error-message').style.display || 
-                document.getElementById('error-message').style.display === 'none') {
-                this.showError('Ett fel uppstod vid hämtning av företagsdata.', {
-                    message: error.message,
-                    stack: error.stack
-                });
+            const errSection = document.getElementById('error-message');
+            const alreadyVisible = errSection && errSection.style.display === 'block';
+            if (!alreadyVisible) {
+                const userMessage = (error && error.message) ? error.message : 'Ett fel uppstod vid hämtning av företagsdata.';
+                this.showError(userMessage);
             }
-            
             throw new Error(`Kunde inte hämta data från Bolagsverket: ${error.message}`);
         }
     }
@@ -1584,36 +1573,23 @@ class ClientFlowApp {
     }
 
     // Error handling methods
-    showError(message, technicalDetails = null) {
+    showError(message) {
         console.error('❌ Showing error to user:', message);
-        
-        // Hide company info and show error
         this.hideCompanyInfo();
         this.hideError();
-        
         const errorSection = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
-        const errorTechnical = document.getElementById('error-technical');
         const errorDetails = document.getElementById('error-details');
-        
-        // Set error message
-        errorText.textContent = message;
-        
-        // Set technical details if provided
-        if (technicalDetails) {
-            errorTechnical.textContent = typeof technicalDetails === 'string' 
-                ? technicalDetails 
-                : JSON.stringify(technicalDetails, null, 2);
-            errorDetails.style.display = 'block';
-        } else {
-            errorDetails.style.display = 'none';
+        const showBtn = document.getElementById('show-error-details');
+        const hideBtn = document.getElementById('hide-error-details');
+        if (errorText) errorText.textContent = message;
+        if (errorDetails) errorDetails.style.display = 'none';
+        if (showBtn) showBtn.style.display = 'none';
+        if (hideBtn) hideBtn.style.display = 'none';
+        if (errorSection) {
+            errorSection.style.display = 'block';
+            errorSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-        
-        // Show error section
-        errorSection.style.display = 'block';
-        
-        // Scroll to error
-        errorSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     
     hideError() {

@@ -42,6 +42,7 @@ function loadPuppeteer() {
   }
 }
 const FormData = require('form-data');
+const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -99,7 +100,7 @@ app.use((req, res, next) => {
     
     next();
 });
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
  
  // Serve static frontend
  app.use(express.static(path.join(__dirname, 'public')));
@@ -682,6 +683,119 @@ app.get('/api/airtable/test', async (req, res) => {
       tableName: process.env.AIRTABLE_TABLE_NAME || 'KUNDDATA',
       timestamp: new Date().toISOString(),
       duration: duration
+    });
+  }
+});
+
+// GET: kontrollera om fältet "Dokumentation Kategorier" finns (Metadata API, read-only)
+app.get('/api/setup/airtable-dokumentation-kategorier', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+  const FIELD_NAME = 'Dokumentation Kategorier';
+
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+
+  try {
+    const metaUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`;
+    const metaRes = await axios.get(metaUrl, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 10000
+    });
+    const tables = metaRes.data?.tables || [];
+    const kundTable = tables.find(t => t.id === KUNDDATA_TABLE_ID);
+    if (!kundTable) {
+      return res.json({ exists: false, error: 'KUNDDATA-tabellen hittades inte' });
+    }
+    const exists = (kundTable.fields || []).some(f => (f.name || '') === FIELD_NAME);
+    return res.json({ exists, fieldName: FIELD_NAME, tableId: KUNDDATA_TABLE_ID });
+  } catch (err) {
+    const status = err.response?.status;
+    return res.status(status && status >= 400 ? status : 500).json({
+      exists: false,
+      error: err.response?.data?.error?.message || err.message
+    });
+  }
+});
+
+// POST: skapa Airtable-fältet "Dokumentation Kategorier" i KUNDDATA (Metadata API)
+// Kräver att AIRTABLE_ACCESS_TOKEN är en Personal Access Token med schema-rättigheter.
+app.post('/api/setup/airtable-dokumentation-kategorier', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+  const FIELD_NAME = 'Dokumentation Kategorier';
+
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+
+  try {
+    const metaUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`;
+    const metaRes = await axios.get(metaUrl, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 10000
+    });
+    const tables = metaRes.data?.tables || [];
+    const kundTable = tables.find(t => t.id === KUNDDATA_TABLE_ID);
+    if (!kundTable) {
+      return res.status(404).json({
+        success: false,
+        error: `Tabell ${KUNDDATA_TABLE_ID} (KUNDDATA) hittades inte i basen.`
+      });
+    }
+
+    const hasField = (kundTable.fields || []).some(f => (f.name || '') === FIELD_NAME);
+    if (hasField) {
+      return res.json({
+        success: true,
+        message: `Fältet "${FIELD_NAME}" finns redan i tabellen.`,
+        alreadyExists: true
+      });
+    }
+
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${KUNDDATA_TABLE_ID}/fields`;
+    await axios.post(createUrl, {
+      name: FIELD_NAME,
+      type: 'multilineText'
+    }, {
+      headers: {
+        Authorization: `Bearer ${airtableAccessToken}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    return res.json({
+      success: true,
+      message: `Fältet "${FIELD_NAME}" skapades i KUNDDATA-tabellen.`,
+      alreadyExists: false
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = data.error?.message || data.message || err.message;
+    console.error('Setup Dokumentation Kategorier:', status, msg, data);
+
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    if (status === 422) {
+      return res.status(422).json({
+        success: false,
+        error: 'Airtable accepterade inte förfrågan (t.ex. ogiltigt fältnamn eller typ).',
+        details: msg
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      error: msg || 'Kunde inte skapa fält i Airtable.'
     });
   }
 });
@@ -1815,7 +1929,9 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
-            'Användare': anvandareId ? Math.max(1, parseInt(anvandareId) || 1) : null,
+            // Sätt Användare till inloggad användares Airtable-recordID (text),
+            // så att filter/search på userData.id fungerar för rollen "Anställd".
+            'Användare': anvandareId ? String(anvandareId) : '',
             'Byrå ID': byraId ? byraId.replace(/,/g, '') : '',
             'Senaste årsredovisning': dokumentInfo?.dokument?.sort((a, b) => 
               new Date(b.rapporteringsperiodTom) - new Date(a.rapporteringsperiodTom)
@@ -2609,6 +2725,73 @@ app.get('/api/download/:filename', (req, res) => {
   }
 });
 
+// Enkel cache för fält-id per tabell (för Content API uploadAttachment)
+const AIRTABLE_FIELD_ID_CACHE = {};
+
+// Hjälp: spara attachment till ett specifikt fält (för kategoriserad dokumentation)
+async function uploadAttachmentToAirtableField(airtableToken, baseId, recordId, fileBuffer, filename, contentType, tableId, fieldName) {
+  const base64 = fileBuffer.toString('base64');
+  let url;
+  let fieldId = null;
+
+  try {
+    if (tableId) {
+      const cacheKey = `${tableId}:${fieldName}`;
+      fieldId = AIRTABLE_FIELD_ID_CACHE[cacheKey] || null;
+      if (!fieldId) {
+        // Meta API: listar alla tabeller i basen (finns inget endpoint för en enskild tabell)
+        const metaRes = await axios.get(
+          `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+          { headers: { Authorization: `Bearer ${airtableToken}` }, timeout: 10000 }
+        );
+        const raw = metaRes.data;
+        const tables = Array.isArray(raw?.tables) ? raw.tables : (Array.isArray(raw) ? raw : []);
+        const table = tables.find(t => (t.id || '') === tableId);
+        const fields = (table && table.fields) || [];
+        const match = fields.find(f => (f.name || '').trim() === fieldName);
+        if (match && match.id) {
+          fieldId = match.id;
+          AIRTABLE_FIELD_ID_CACHE[cacheKey] = fieldId;
+        } else {
+          console.warn('uploadAttachmentToAirtableField: fält "' + fieldName + '" hittades inte i tabell ' + tableId + ', tillgängliga: ' + fields.map(f => f.name).join(', '));
+        }
+      }
+    }
+  } catch (metaErr) {
+    const msg = metaErr.response?.data?.error?.message || metaErr.message;
+    console.error('uploadAttachmentToAirtableField meta lookup failed for field', fieldName, 'table', tableId, '-', msg);
+  }
+
+  if (fieldId) {
+    // Rekommenderad Content API-path: baseId/recordId/fieldId/uploadAttachment
+    url = `https://content.airtable.com/v0/${baseId}/${recordId}/${fieldId}/uploadAttachment`;
+  } else {
+    // Fallback med fältnamn (utan tableId, enligt Content API-dokumentation)
+    url = `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
+  }
+  try {
+    const res = await axios.post(url, {
+      contentType: contentType || 'application/pdf',
+      file: base64,
+      filename
+    }, {
+      headers: { 'Authorization': `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 30000,
+      maxContentLength: 10 * 1024 * 1024,
+      maxBodyLength: 10 * 1024 * 1024
+    });
+    const ok = !!(res.data && (res.data.url || res.data.id));
+    if (!ok) {
+      console.error('uploadAttachmentToAirtableField unexpected response for field', fieldName, 'record', recordId, 'url', url, 'res.data keys:', Object.keys(res.data || {}));
+    }
+    return ok;
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.error('uploadAttachmentToAirtableField failed for field', fieldName, 'record', recordId, 'url', url, '-', msg);
+    return false;
+  }
+}
+
 // Hjälp: spara attachment till Airtable via Content API (fungerar utan publik URL)
 async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileBuffer, filename, contentType, tableId) {
   const fieldNames = ['Dokumentation', 'Attachments', 'PEP rapporter', 'PEP rapport'];
@@ -3206,8 +3389,14 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
         }
         break;
       case 'Anställd':
-        if (userData.id) filterFormula = `SEARCH("${userData.id}", {Användare})`;
-        else return res.json({ records: [] });
+        if (!userData.id || !userData.byraId) return res.json({ records: [] });
+        const _n1 = parseInt(userData.byraId);
+        const _byra1 = isNaN(_n1)
+          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+          : `{Byrå ID}=${_n1}`;
+        const _uid1 = String(userData.id).replace(/"/g, '\\"');
+        const _u1 = `SEARCH("${_uid1}", {Användare}&"")`;
+        filterFormula = `AND(${_byra1},${_u1})`;
         break;
       default:
         return res.json({ records: [] });
@@ -3323,7 +3512,7 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
         
         case 'Anställd':
         // Se poster där användarens ID finns i Användare-fältet
-        const customerUsers = customerRecord.fields['Anvandare'] != null ? customerRecord.fields['Anvandare'] : customerRecord.fields['Användare'];
+        const customerUsers = customerRecord.fields['Användare'];
         const userIdString = userData.id ? userData.id.toString() : '';
         const userList = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
         if (userIdString && userList.some((u) => String(u) === userIdString)) {
@@ -3515,7 +3704,7 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       const customerByraId = customerRecord.fields['Byra_ID'] || customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
       if (userData.byraId && customerByraId && String(userData.byraId) === String(customerByraId)) hasAccess = true;
     } else if (userData.role === 'Anställd') {
-      const customerUsers = customerRecord.fields['Anvandare'] != null ? customerRecord.fields['Anvandare'] : customerRecord.fields['Användare'];
+      const customerUsers = customerRecord.fields['Användare'];
       const uid = userData.id ? String(userData.id) : '';
       const list = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
       if (uid && list.some((u) => String(u) === uid)) hasAccess = true;
@@ -3784,7 +3973,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
 app.get('/api/documents', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
-    const { customerId } = req.query;
+    const customerId = req.query.customerId || req.query.customerid;
     if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -3806,6 +3995,14 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     }
 
     const attachments = Array.isArray(f['Attachments']) ? f['Attachments'] : [];
+    const dokumentationAttachments = Array.isArray(f['Dokumentation']) ? f['Dokumentation'] : [];
+    let dokumentationKategorier = [];
+    try {
+      const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+      if (raw) dokumentationKategorier = JSON.parse(raw);
+      if (!Array.isArray(dokumentationKategorier)) dokumentationKategorier = [];
+    } catch (_) { dokumentationKategorier = []; }
+
     const riskField = Array.isArray(f['Riskbedömning dokument']) ? 'Riskbedömning dokument' : 'Riskbedomning dokument';
     const pepField = Array.isArray(f['PEP rapporter']) ? 'PEP rapporter' : 'PEP rapport';
     const riskDocs = Array.isArray(f[riskField]) ? f[riskField] : [];
@@ -3856,18 +4053,43 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const fn = (a.filename || '').toLowerCase();
       if (fn.startsWith('riskbedomning-') || fn.includes('riskbedomning')) allItems.push({ ...a, _typ: 'riskbedomning', _sourceField: 'Attachments', _sourceIndex: i });
       else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening')) allItems.push({ ...a, _typ: 'pep', _sourceField: 'Attachments', _sourceIndex: i });
+      else allItems.push({ ...a, _typ: 'ovrigt', _sourceField: 'Attachments', _sourceIndex: i, _category: 'ovrigt' });
     });
+
+    dokumentationAttachments.forEach((a, i) => {
+      if (!a || !(a.url || a.filename)) return;
+      const meta = dokumentationKategorier[i] || {};
+      const cat = (meta.category || '').trim() || (meta.kategori || '').trim();
+      const customCat = (meta.customCategory || meta.customKategori || '').trim();
+      const category = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'].includes(cat) ? cat : 'ovrigt';
+      allItems.push({ ...a, _typ: 'dokumentation', _sourceField: 'Dokumentation', _sourceIndex: i, _category: category, _customCategory: customCat });
+    });
+
+    const categoryLabels = {
+      riskbedomning: 'Dokumentation riskbedömning',
+      arsredovisning: 'Årsredovisningar',
+      uppdragsavtal: 'Uppdragsavtal',
+      bolagsverket_skatteverket: 'Bolagsverket och Skatteverket',
+      ovrigt: 'Övrigt'
+    };
 
     const documents = allItems.map((a, i) => {
       const isPep = a._typ === 'pep';
       const isArs = a._typ === 'arsredovisning';
+      const isDok = a._typ === 'dokumentation';
+      const category = a._category || (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt');
+      const customCategory = a._customCategory || '';
       const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
-      const namn = isArs ? (a.filename || a._label) : (a.filename || (isPep ? `PEP-screening ${i + 1}` : `Riskbedömning ${i + 1}`));
-      const beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : 'Dokumenterad riskbedömning');
+      let namn = a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : `Riskbedömning ${i + 1}`));
+      let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : isDok ? (customCategory || categoryLabels[category] || 'Dokument') : 'Dokumenterad riskbedömning');
+      if (isDok && customCategory) beskrivning = customCategory;
       return {
         id: `${a._typ}-${i}`,
         sourceField: a._sourceField,
         sourceIndex: a._sourceIndex,
+        category,
+        customCategory: customCategory || undefined,
+        categoryLabel: customCategory || categoryLabels[category] || category,
         fields: {
           Namn: namn,
           Filtyp: 'PDF',
@@ -3880,6 +4102,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       };
     });
 
+    res.set('Cache-Control', 'no-store');
     res.json({ documents });
   } catch (error) {
     console.error('\u274c GET documents:', error.message);
@@ -3928,10 +4151,1156 @@ app.delete('/api/documents', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
+    if (sourceField === 'Dokumentation') {
+      try {
+        let kategorier = [];
+        const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+        if (raw) kategorier = JSON.parse(raw);
+        if (!Array.isArray(kategorier)) kategorier = [];
+        if (idx >= 0 && idx < kategorier.length) {
+          kategorier.splice(idx, 1);
+          await axios.patch(
+            `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+            { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (e) {
+        console.warn('Kunde inte uppdatera Dokumentation Kategorier (fältet kan saknas):', e.message);
+      }
+    }
+
     res.json({ success: true, message: 'Dokument borttaget' });
   } catch (error) {
     console.error('\u274c DELETE document:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+const DOCUMENT_CATEGORIES = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'];
+
+// POST /api/documents/upload – Ladda upp dokument med kategori (body: customerId, file [base64], filename, category, customCategory?)
+app.post('/api/documents/upload', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const { customerId, file: fileBase64, filename, category, customCategory } = req.body;
+    if (!customerId || !filename) return res.status(400).json({ error: 'customerId och filename krävs' });
+    const cat = (category || 'ovrigt').trim();
+    if (!DOCUMENT_CATEGORIES.includes(cat)) return res.status(400).json({ error: 'Ogiltig kategori' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    if (!fileBase64 || typeof fileBase64 !== 'string') return res.status(400).json({ error: 'Fil (base64) saknas' });
+    let buffer;
+    try {
+      buffer = Buffer.from(fileBase64, 'base64');
+    } catch (e) {
+      return res.status(400).json({ error: 'Ogiltig fil (base64)' });
+    }
+    if (buffer.length > 20 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 20 MB' });
+
+    const contentType = (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+    const uploadedToDokumentation = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE, 'Dokumentation');
+    const uploaded = uploadedToDokumentation || await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE);
+    if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp fil till Airtable' });
+
+    if (uploadedToDokumentation) {
+      try {
+        let kategorier = [];
+        const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+        if (raw) kategorier = JSON.parse(raw);
+        if (!Array.isArray(kategorier)) kategorier = [];
+        kategorier.push({ filename, category: cat, customCategory: (customCategory || '').trim() });
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+          { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (e) {
+        console.warn('Kunde inte spara kategori (lägg till fältet "Dokumentation Kategorier" i Airtable om kategorier ska sparas):', e.message);
+      }
+    }
+
+    res.json({ success: true, message: 'Dokument uppladdat', category: cat });
+  } catch (error) {
+    console.error('\u274c POST documents/upload:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------- Samarbete (begära underlag från kund) ----------
+// Kräver Airtable-tabell "Samarbete" med fält: Kund ID, Mottagare namn, Mottagare e-post, Typ, Titel, Token, Status, Svar text, Svar bifogad fil, Besvarad
+const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+
+// POST /api/setup/airtable-samarbete – Skapa tabellen "Samarbete" i Airtable (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-samarbete', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 10000
+    });
+    const tables = (metaRes.data?.tables || []);
+    const existing = tables.find(t => (t.name || '').toLowerCase() === 'samarbete');
+    if (existing) {
+      return res.json({ success: true, message: 'Tabellen "Samarbete" finns redan.', tableId: existing.id, alreadyExists: true });
+    }
+    const createRes = await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`,
+      {
+        name: 'Samarbete',
+        description: 'Förfrågningar om underlag från kunder (fliken Samarbete i ClientFlow)',
+        fields: [
+          { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA' },
+          { name: 'Mottagare namn', type: 'singleLineText' },
+          { name: 'Mottagare e-post', type: 'email' },
+          { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Filer' }, { name: 'Kommentar' }] } },
+          { name: 'Titel', type: 'multilineText', description: 'Vad som begärs från kunden' },
+          { name: 'Token', type: 'singleLineText', description: 'Unik token för kundlänk' },
+          { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }] } },
+          { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
+          { name: 'Svar bifogad fil', type: 'multipleAttachments', description: 'Fil som kunden laddade upp' },
+          { name: 'Besvarad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
+        ]
+      },
+      {
+        headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        timeout: 15000
+      }
+    );
+    const newTable = createRes.data;
+    const tableId = newTable?.id || (newTable?.tables && newTable.tables[0] && newTable.tables[0].id);
+    return res.json({
+      success: true,
+      message: 'Tabellen "Samarbete" skapades i Airtable.',
+      tableId: tableId || '',
+      alreadyExists: false
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Samarbete:', status, msg, data);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({
+      success: false,
+      error: msg || 'Kunde inte skapa tabellen'
+    });
+  }
+});
+
+// Lista fält som Samarbete-tabellen behöver (namn + typ + options)
+const SAMARBETE_REQUIRED_FIELDS = [
+  { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA' },
+  { name: 'Mottagare namn', type: 'singleLineText' },
+  { name: 'Mottagare e-post', type: 'email' },
+  { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Filer' }, { name: 'Kommentar' }] } },
+  { name: 'Titel', type: 'multilineText', description: 'Vad som begärs från kunden' },
+  { name: 'Token', type: 'singleLineText', description: 'Unik token för kundlänk' },
+  { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }, { name: 'Arkiverad' }] } },
+  { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
+  { name: 'Svar bifogad fil', type: 'multipleAttachments', description: 'Fil som kunden laddade upp' },
+  { name: 'Besvarad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
+  { name: 'Stängd', type: 'checkbox', description: 'När ikryssad visas inte formuläret för kunden – förfrågan är avslutad' }
+];
+
+// POST /api/setup/airtable-samarbete-fields – Lägg till saknade fält i befintlig tabell "Samarbete" (auth)
+app.post('/api/setup/airtable-samarbete-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 10000
+    });
+    const tables = (metaRes.data?.tables || []);
+    const samarbeteTable = tables.find(t => (t.name || '').toLowerCase() === 'samarbete');
+    if (!samarbeteTable) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tabellen "Samarbete" hittades inte i basen. Skapa den först i Airtable.'
+      });
+    }
+    const existingNames = (samarbeteTable.fields || []).map(f => (f.name || '').trim());
+    const toCreate = SAMARBETE_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${samarbeteTable.id}/fields`;
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (err) {
+        const msg = err.response?.data?.error?.message || err.message;
+        console.warn('Kunde inte skapa fält', field.name, msg);
+      }
+    }
+    const skipped = SAMARBETE_REQUIRED_FIELDS.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} fält lades till i Samarbete. ${skipped} fanns redan.`
+        : `Alla ${SAMARBETE_REQUIRED_FIELDS.length} fält finns redan i tabellen Samarbete.`,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Samarbete fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen' });
+  }
+});
+
+async function getSamarbeteTableId(airtableToken, baseId) {
+  const id = process.env.AIRTABLE_TABLE_SAMARBETE_ID;
+  if (id && id.trim()) return id.trim();
+  try {
+    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` }
+    });
+    const t = (res.data.tables || []).find(x => (x.name || '').toLowerCase() === 'samarbete');
+    return t ? t.id : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Skapa fältet "Arkiverad" i tabell Samarbete om det saknas (för arkiv-funktionen). */
+async function ensureSamarbeteArkiveradField(airtableToken, baseId, tableId) {
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const table = (metaRes.data?.tables || []).find(t => (t.id || '') === tableId);
+    const existingNames = (table?.fields || []).map(f => (f.name || '').trim());
+    if (existingNames.includes('Arkiverad')) return true;
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`;
+    await axios.post(createUrl, {
+      name: 'Arkiverad',
+      type: 'checkbox',
+      description: 'Arkiverade förfrågningar visas i kortet Arkiverade'
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return true;
+  } catch (e) {
+    console.warn('ensureSamarbeteArkiveradField:', e.response?.data?.error?.message || e.message);
+    return false;
+  }
+}
+
+/**
+ * Skickar inbjudan till kund att lämna underlag via ClientFlow.
+ * Mejlet skickas från MAIL_FROM; Reply-To sätts till avsändarens e-post så att svar når rätt person.
+ * Kräver SMTP i .env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (t.ex. "ClientFlow <underlag@clientflow.se>").
+ */
+async function sendSamarbeteInviteEmail(options) {
+  const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage } = options;
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass) {
+    console.warn('sendSamarbeteInviteEmail: SMTP inte konfigurerad (SMTP_HOST/USER/PASS).');
+    return { sent: false };
+  }
+  const from = process.env.MAIL_FROM || 'ClientFlow Underlag <noreply@clientflow.se>';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const titleLines = String(title || '').split(/\n/).map(s => s.trim()).filter(Boolean);
+  const titleLinesHtml = titleLines.length ? titleLines.map(line => escapeHtml(line)).join('<br />') : '';
+  const customerMessageHtml = (customerMessage && String(customerMessage).trim())
+    ? `<p style="margin:0 0 24px 0; font-size:1rem; line-height:1.5; color:#334155; font-style:italic;">${escapeHtml(String(customerMessage).trim()).replace(/\n/g, '<br />')}</p>`
+    : '';
+  const safeToName = escapeHtml(String(toName || 'Kund'));
+  const safeSenderName = escapeHtml(String(senderName || 'Vi'));
+  const safeSenderByra = escapeHtml(String(senderByra || '').trim());
+  const senderLine = safeSenderByra
+    ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag eller besvara frågor via ClientFlow.`
+    : `${safeSenderName} har bett dig lämna underlag eller besvara frågor via ClientFlow.`;
+  const rawName = String(senderName || 'Vi').trim();
+  const rawByra = String(senderByra || '').trim();
+  const subjectLine = rawByra ? `${rawName}, ${rawByra}` : rawName;
+  const logoImgInline = senderLogoUrl && senderLogoUrl.startsWith('http')
+    ? `<img src="${escapeHtml(senderLogoUrl)}" alt="" style="max-height:73px; max-width:260px; object-fit:contain; display:inline-block;" />`
+    : '';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lämna underlag – ClientFlow</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0; padding:0; font-family: 'Inter', system-ui, -apple-system, Segoe UI, sans-serif; background:#f0f4ff; color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f0f4ff;">
+    <tr>
+      <td style="padding:32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden;">
+          <tr>
+            <td style="background:#fff; padding:24px 28px; text-align:center; border-bottom:1px solid #e5e7eb;">
+              ${logoImgInline || '<span style="font-size:0.85rem; color:#94a3b8;">—</span>'}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px;">
+              <p style="margin:0 0 16px 0; font-size:1rem; line-height:1.5; color:#334155;">Hej ${safeToName},</p>
+              <p style="margin:0 0 20px 0; font-size:1rem; line-height:1.5; color:#475569;">${senderLine}</p>
+              ${customerMessageHtml}
+              ${titleLinesHtml ? `<p style="margin:0 0 24px 0; font-size:0.9rem; color:#64748b; background:#f8fafc; padding:12px 16px; border-radius:8px; line-height:1.6;">${titleLinesHtml}</p>` : ''}
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
+                <tr>
+                  <td style="border-radius:8px; background:#6366f1;">
+                    <a href="${respondUrl}" style="display:inline-block; padding:14px 28px; font-size:1rem; font-weight:600; color:#fff; text-decoration:none;">Öppna länk och lämna underlag</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 0 0; font-size:0.85rem; color:#94a3b8;">Om knappen inte fungerar, kopiera och klistra in denna länk i webbläsaren:</p>
+              <p style="margin:8px 0 0 0; font-size:0.8rem; word-break:break-all; color:#64748b;">${respondUrl}</p>
+              <p style="margin:28px 0 0 0; font-size:0.8rem; color:#94a3b8;">Svara gärna på detta mejl om du har frågor – då når ditt svar direkt ${safeSenderName}${safeSenderByra ? ' på ' + safeSenderByra : ''}.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 28px 16px; background:#f8fafc; border-top:1px solid #e2e8f0; text-align:center;">
+              <div style="font-family:'Inter', sans-serif; color:#6366f1; font-size:1rem; font-weight:600; letter-spacing:-0.02em; margin-bottom:10px;">Client<span style="font-weight:700;">Flow</span></div>
+              <p style="margin:0; font-size:0.75rem; color:#94a3b8;">Detta mejl skickades från ClientFlow som är ett systemstöd för redovisnings- och revisionsbyråer.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  try {
+    const transporterOpts = {
+      host,
+      port,
+      secure,
+      auth: user && pass ? { user, pass } : undefined
+    };
+    if (port === 587 && !secure) {
+      transporterOpts.requireTLS = true;
+    }
+    const transporter = nodemailer.createTransport(transporterOpts);
+    const textSenderLine = safeSenderByra
+      ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag via ClientFlow.`
+      : `${safeSenderName} har bett dig lämna underlag via ClientFlow.`;
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      replyTo: senderEmail || undefined,
+      subject: `Lämna underlag – från ${subjectLine}`,
+      text: `Hej ${safeToName},\n\n${textSenderLine}\n\nÖppna denna länk för att lämna underlag eller besvara frågor:\n${respondUrl}\n\nMed vänliga hälsningar,\nClientFlow`,
+      html
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error('sendSamarbeteInviteEmail:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+// POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
+app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
+  try {
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage } = req.body;
+    if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
+    const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(503).json({ error: 'Tabellen "Samarbete" finns inte i Airtable. Skapa den och lägg till fält enligt dokumentationen.' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const baseUrl = process.env.PUBLIC_BASE_URL || req.protocol + '://' + (req.get('host') || 'localhost:3001');
+    const respondUrl = `${baseUrl}/samarbete-svar.html?token=${token}`;
+
+    const createRes = await axios.post(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}`,
+      {
+        fields: {
+          'Kund ID': customerId,
+          'Mottagare namn': (recipientName || '').toString().trim() || 'Kund',
+          'Mottagare e-post': (recipientEmail || '').toString().trim() || '',
+          'Typ': typ,
+          'Titel': String(title).trim(),
+          'Token': token,
+          'Status': 'Väntar'
+        }
+      },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    const record = createRes.data;
+    let emailSent = false;
+    let emailError = null;
+    const toEmail = (recipientEmail || '').toString().trim();
+    if (toEmail && toEmail.includes('@')) {
+      const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';
+      const senderByra = (userData.byra || '').toString().trim() || null;
+      const logoRaw = userData.logo;
+      const senderLogoUrl = Array.isArray(logoRaw) && logoRaw.length > 0 && logoRaw[0].url
+        ? logoRaw[0].url
+        : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+      const result = await sendSamarbeteInviteEmail({
+        toEmail,
+        toName: (recipientName || '').toString().trim() || 'Kund',
+        senderName,
+        senderEmail: (req.user && req.user.email) ? String(req.user.email).trim() : undefined,
+        senderByra: senderByra || undefined,
+        senderLogoUrl: senderLogoUrl || undefined,
+        respondUrl,
+        title: String(title).trim(),
+        customerMessage: (customerMessage != null && String(customerMessage).trim()) ? String(customerMessage).trim() : undefined
+      });
+      emailSent = result.sent;
+      emailError = result.error || null;
+    }
+    res.json({
+      success: true,
+      request: { id: record.id, title: String(title).trim(), type: typ, token, status: 'Väntar' },
+      link: respondUrl,
+      message: emailSent ? `Förfrågan skapad och ett mejl har skickats till ${toEmail}.` : 'Förfrågan skapad. Dela länken med kunden.',
+      emailSent,
+      emailError: emailError || undefined
+    });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('POST /api/samarbete/requests:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// GET /api/samarbete/requests?customerId= – Lista förfrågningar för kund (auth)
+app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
+  try {
+    const customerId = (req.query.customerId || '').toString().trim();
+    if (!customerId) return res.status(400).json({ error: 'customerId krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.json({ requests: [] });
+
+    const matchesCustomer = (fields) => {
+      const kundId = fields['Kund ID'];
+      if (kundId === customerId) return true;
+      if (Array.isArray(kundId) && kundId.includes(customerId)) return true;
+      if (typeof kundId === 'string' && kundId.trim() === customerId) return true;
+      const kund = fields['Kund'];
+      if (Array.isArray(kund) && kund.includes(customerId)) return true;
+      for (const v of Object.values(fields || {})) {
+        if (v === customerId) return true;
+        if (Array.isArray(v) && v.includes(customerId)) return true;
+      }
+      return false;
+    };
+
+    const normalizeAttachments = (raw) => {
+      if (!raw) return [];
+      const arr = Array.isArray(raw) ? raw : [raw];
+      return arr.filter(Boolean).map((a) => ({
+        id: a.id,
+        url: a.url || null,
+        filename: a.filename || a.name || 'Bifogad fil'
+      })).filter((a) => a.url || a.id);
+    };
+
+    const getAttachmentField = (fields) => {
+      const v = fields['Svar bifogad fil'];
+      if (v !== undefined && v !== null) return v;
+      const key = Object.keys(fields || {}).find((k) => (k || '').toLowerCase().includes('bifogad'));
+      return key ? fields[key] : undefined;
+    };
+
+    const mapRecord = (r) => {
+      const fields = r.fields || {};
+      const rawAtt = getAttachmentField(fields);
+      return {
+        id: r.id,
+        token: fields['Token'],
+        customerId: fields['Kund ID'] || (fields['Kund'] && fields['Kund'][0]),
+        recipientName: fields['Mottagare namn'],
+        recipientEmail: fields['Mottagare e-post'],
+        type: fields['Typ'],
+        title: fields['Titel'],
+        status: fields['Status'] || 'Väntar',
+        createdAt: r.createdTime,
+        responseText: fields['Svar text'],
+        responseAttachment: normalizeAttachments(rawAtt),
+        answeredAt: fields['Besvarad'],
+        closed: !!fields['Stängd'],
+        archived: (fields['Status'] || '') === 'Arkiverad'
+      };
+    };
+
+    let records = [];
+    const escaped = String(customerId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const formula = encodeURIComponent(`{Kund ID} = "${escaped}"`);
+    const fetchAllAndFilter = async () => {
+      const fallbackRes = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?pageSize=100`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const allRecords = fallbackRes.data.records || [];
+      return allRecords.filter(r => matchesCustomer(r.fields || {}));
+    };
+
+    try {
+      const listRes = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?filterByFormula=${formula}&pageSize=100`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      records = listRes.data.records || [];
+      if (records.length === 0) {
+        records = await fetchAllAndFilter();
+      }
+    } catch (formulaErr) {
+      if (formulaErr.response && formulaErr.response.status === 422) {
+        try {
+          records = await fetchAllAndFilter();
+        } catch (fallbackErr) {
+          console.warn('GET /api/samarbete/requests fallback:', fallbackErr.message);
+        }
+      } else {
+        throw formulaErr;
+      }
+    }
+
+    records.sort((a, b) => (new Date(b.createdTime || 0)).getTime() - (new Date(a.createdTime || 0)).getTime());
+    const requests = records.map(mapRecord);
+    res.json({ requests });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('GET /api/samarbete/requests:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// GET /api/samarbete/request/:token – Hämta förfrågan för kundsvar (publik, ingen auth)
+app.get('/api/samarbete/request/:token', async (req, res) => {
+  try {
+    const token = (req.params.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const formula = encodeURIComponent(`{Token} = "${token.replace(/"/g, '\\"')}"`);
+    const listRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?filterByFormula=${formula}&maxRecords=1`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = (listRes.data.records || [])[0];
+    if (!record) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const fields = record.fields || {};
+    if (fields['Stängd']) return res.status(410).json({ error: 'Denna förfrågan är avslutad. Du kan inte längre lämna eller se underlag här.' });
+
+    const responseText = fields['Svar text'] || '';
+    let rawAtt = fields['Svar bifogad fil'];
+    if (rawAtt === undefined) {
+      const k = Object.keys(fields || {}).find((x) => (x || '').toLowerCase().includes('bifogad'));
+      rawAtt = k ? fields[k] : undefined;
+    }
+    const normalizeAttachmentsForRequest = (raw) => {
+      if (!raw) return [];
+      const arr = Array.isArray(raw) ? raw : [raw];
+      return arr.filter(Boolean).map((a) => ({ id: a.id, url: a.url || null, filename: a.filename || a.name || 'Bifogad fil' })).filter((a) => a.url || a.id);
+    };
+    const existingAttachments = normalizeAttachmentsForRequest(rawAtt);
+    let existingAnswers = null;
+    if (responseText.trim().startsWith('[')) {
+      try { existingAnswers = JSON.parse(responseText); } catch (_) {}
+    }
+
+    let byraLogoUrl = null;
+    const customerId = fields['Kund ID'] != null
+      ? (Array.isArray(fields['Kund ID']) ? fields['Kund ID'][0] : fields['Kund ID'])
+      : null;
+    const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+    const BYRAER_TABLE_ID = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+    if (customerId && typeof customerId === 'string' && customerId.trim()) {
+      try {
+        const kundRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId.trim()}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        const kundFields = kundRes.data.fields || {};
+        let byraId = kundFields['Byrå ID'] ?? kundFields['Byra ID'] ?? kundFields['ByraID'];
+        if (Array.isArray(byraId)) byraId = byraId[0];
+        if (byraId != null && String(byraId).trim()) {
+          const byraIdStr = String(byraId).trim();
+          const byraNum = parseInt(byraIdStr, 10);
+          const byraFormula = isNaN(byraNum)
+            ? `{Byrå ID}="${byraIdStr.replace(/"/g, '\\"')}"`
+            : `OR({Byrå ID}="${byraIdStr}",{Byrå ID}=${byraNum})`;
+          const byraRes = await axios.get(
+            `https://api.airtable.com/v0/${airtableBaseId}/${BYRAER_TABLE_ID}?filterByFormula=${encodeURIComponent(byraFormula)}&maxRecords=1`,
+            { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+          );
+          const byraRecord = (byraRes.data.records || [])[0];
+          const logga = (byraRecord && (byraRecord.fields || {})['Logga']);
+          const loggaArr = Array.isArray(logga) ? logga : (logga ? [logga] : []);
+          const firstAtt = loggaArr[0];
+          if (firstAtt && firstAtt.url) byraLogoUrl = firstAtt.url;
+        }
+      } catch (e) {
+        if (e.response && e.response.status !== 404) console.warn('GET /api/samarbete/request/:token byra logo:', e.message);
+      }
+    }
+
+    res.json({
+      token,
+      title: fields['Titel'] || 'Underlag',
+      type: fields['Typ'] || 'Filer',
+      recipientName: fields['Mottagare namn'],
+      existingAnswers: Array.isArray(existingAnswers) ? existingAnswers : null,
+      existingAttachments,
+      byraLogoUrl: byraLogoUrl || undefined
+    });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('GET /api/samarbete/request/:token:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// POST /api/samarbete/respond – Kund lämnar svar (publik)
+// Body: antingen { token, comment?, file?, filename? } eller { token, answers: [ ... ] } eller { token, answerIndex, text?, file?, filename? } för ett enskilt "Klart"-svar
+app.post('/api/samarbete/respond', async (req, res) => {
+  try {
+    const { token, comment, file: fileBase64, filename, answers: answersArr } = req.body || {};
+    const tokenStr = (token || '').trim();
+    if (!tokenStr) return res.status(400).json({ error: 'Token saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const formula = encodeURIComponent(`{Token} = "${tokenStr.replace(/"/g, '\\"')}"`);
+    const listRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?filterByFormula=${formula}&maxRecords=1`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = (listRes.data.records || [])[0];
+    if (!record) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    if ((record.fields || {})['Stängd']) {
+      return res.status(410).json({ error: 'Denna förfrågan är avslutad. Du kan inte längre lämna underlag.' });
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const fields = record.fields || {};
+    let svarText = '';
+
+    // Hjälpfunktion: räkna ut om alla punkter är besvarade
+    const computeStatus = (answersArray) => {
+      const title = (fields['Titel'] || '').toString().trim();
+      let items = [];
+      let fileReq = [];
+      if (title) {
+        const rawLines = title
+          .split('\n')
+          .map(s => s.replace(/^\d+\.\s*/, '').trim())
+          .filter(Boolean);
+        rawLines.forEach((line) => {
+          let req = /\[fil obligatorisk\]\s*$/i.test(line);
+          if (req) line = line.replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+          items.push(line);
+          fileReq.push(req);
+        });
+      }
+      const total = items.length || answersArray.length || 0;
+      if (!total) return { status: 'Väntar', besvaradAt: null };
+      for (let i = 0; i < total; i++) {
+        const a = answersArray[i] || {};
+        const hasText = a.text && String(a.text).trim().length > 0;
+        const hasFile = !!a.filename;
+        if (!hasText && !hasFile) {
+          return { status: 'Väntar', besvaradAt: null };
+        }
+        if (fileReq[i] && !hasFile) {
+          return { status: 'Väntar', besvaradAt: null };
+        }
+      }
+      return { status: 'Besvarad', besvaradAt: now };
+    };
+
+    const answerIndex = req.body.answerIndex;
+    if (typeof answerIndex === 'number' && answerIndex >= 0) {
+      let existingAnswers = [];
+      const raw = (fields['Svar text'] || '').trim();
+      if (raw.startsWith('[')) {
+        try { existingAnswers = JSON.parse(raw); } catch (_) {}
+      }
+      while (existingAnswers.length <= answerIndex) existingAnswers.push({ text: '', filename: null });
+      const ex = existingAnswers[answerIndex];
+      const partText = (req.body.text != null) ? String(req.body.text).trim().slice(0, 50000) : (ex && ex.text) || '';
+      // Stöd för flera filer: files: [{ filename, file }]
+      const filesPayload = Array.isArray(req.body.files) ? req.body.files : [];
+      const primaryFilename = (filesPayload[0] && filesPayload[0].filename && String(filesPayload[0].filename).trim())
+        ? String(filesPayload[0].filename).slice(0, 255)
+        : (req.body.filename && String(req.body.filename).trim())
+          ? String(req.body.filename).slice(0, 255)
+          : (ex && ex.filename) || null;
+      existingAnswers[answerIndex] = { text: partText, filename: primaryFilename };
+
+      const filesToUpload = filesPayload.length
+        ? filesPayload
+        : (req.body.file && req.body.filename
+            ? [{ file: req.body.file, filename: req.body.filename }]
+            : []);
+
+      for (const f of filesToUpload) {
+        if (!f || typeof f.file !== 'string' || !f.filename) continue;
+        let buffer;
+        try { buffer = Buffer.from(f.file, 'base64'); } catch (e) {
+          return res.status(400).json({ error: 'Ogiltig fil' });
+        }
+        if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
+        const fname = String(f.filename);
+        const contentType = fname.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
+        const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, record.id, buffer, fname, contentType, tableId, 'Svar bifogad fil');
+        if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable.' });
+      }
+      svarText = JSON.stringify(existingAnswers);
+      const statusInfo = computeStatus(existingAnswers);
+      const updateFields = {
+        'Status': statusInfo.status,
+        'Svar text': svarText,
+        'Besvarad': statusInfo.besvaradAt
+      };
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${record.id}`,
+        { fields: updateFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      return res.json({ success: true, message: 'Sparat.' });
+    }
+
+    const hasMultiple = Array.isArray(answersArr) && answersArr.length > 0;
+
+    if (hasMultiple) {
+      let existingAnswers = [];
+      const raw = (fields['Svar text'] || '').trim();
+      if (raw.startsWith('[')) {
+        try { existingAnswers = JSON.parse(raw); } catch (_) {}
+      }
+      const maxLen = Math.max(existingAnswers.length, answersArr.length);
+      const merged = [];
+      for (let i = 0; i < maxLen; i++) {
+        const ex = existingAnswers[i];
+        const a = answersArr[i];
+        const text = (a && (a.text != null)) ? String(a.text).trim().slice(0, 50000) : (ex && (ex.text != null) ? String(ex.text).trim().slice(0, 50000) : '');
+        const filename = (a && a.filename) ? String(a.filename).slice(0, 255) : (ex && ex.filename) ? String(ex.filename).slice(0, 255) : null;
+        merged.push({ text, filename });
+      }
+      for (let i = 0; i < answersArr.length; i++) {
+        const a = answersArr[i];
+        if (a && a.file && typeof a.file === 'string' && a.filename) {
+          let buffer;
+          try { buffer = Buffer.from(a.file, 'base64'); } catch (e) { continue; }
+          if (buffer.length <= 15 * 1024 * 1024) {
+            const contentType = (String(a.filename).toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+            const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, record.id, buffer, a.filename, contentType, tableId, 'Svar bifogad fil');
+            if (!uploaded) {
+              return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable. Kontrollera att fältet \"Svar bifogad fil\" finns och är av typen bilaga (attachments).' });
+            }
+          }
+        }
+      }
+      svarText = JSON.stringify(merged);
+      const statusInfo = computeStatus(merged);
+      const updateFields = {
+        'Status': statusInfo.status,
+        'Svar text': svarText,
+        'Besvarad': statusInfo.besvaradAt
+      };
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${record.id}`,
+        { fields: updateFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      return res.json({ success: true, message: 'Tack! Ditt svar har sparats.' });
+    } else {
+      svarText = (comment || '').toString().trim().slice(0, 100000);
+      if (fileBase64 && typeof fileBase64 === 'string' && filename) {
+        let buffer;
+        try { buffer = Buffer.from(fileBase64, 'base64'); } catch (e) {
+          return res.status(400).json({ error: 'Ogiltig fil' });
+        }
+        if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
+        const contentType = (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+        const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, record.id, buffer, filename, contentType, tableId, 'Svar bifogad fil');
+        if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp filen' });
+      }
+    }
+
+    // För gamla varianten utan per-punkt-svar: behåll befintligt beteende
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${record.id}`,
+      { fields: { 'Status': 'Besvarad', 'Svar text': svarText, 'Besvarad': now } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, message: 'Tack! Ditt svar har sparats.' });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('POST /api/samarbete/respond:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId/respond – Konsult lägger till svar manuellt (auth)
+app.put('/api/samarbete/requests/:requestId/respond', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const { comment, file: fileBase64, filename } = req.body || {};
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = recRes.data;
+    const fields = record.fields || {};
+    const customerId = fields['Kund ID'];
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const updateFields = {
+      'Status': 'Besvarad',
+      'Svar text': (comment || '').toString().trim().slice(0, 100000),
+      'Besvarad': now
+    };
+
+    if (fileBase64 && typeof fileBase64 === 'string' && filename) {
+      let buffer;
+      try { buffer = Buffer.from(fileBase64, 'base64'); } catch (e) {
+        return res.status(400).json({ error: 'Ogiltig fil' });
+      }
+      if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
+      const contentType = (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+      const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, requestId, buffer, filename, contentType, tableId, 'Svar bifogad fil');
+      if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp filen' });
+    }
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: updateFields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, message: 'Svar sparades.' });
+  } catch (error) {
+    const status = error.response?.status;
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId/respond:', msg);
+    res.status(status || 500).json({ error: msg || 'Kunde inte spara svar' });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId/close – Stäng förfrågan (auth), kunden kan då inte längre se/ändra
+app.put('/api/samarbete/requests/:requestId/close', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const customerId = (recRes.data.fields || {})['Kund ID'] || (recRes.data.fields || {})['Kund']?.[0];
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: { 'Stängd': true } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, message: 'Förfrågan är nu stängd. Länken visar inte längre formuläret för kunden.' });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId/close:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId/archive – Arkivera förfrågan (auth)
+app.put('/api/samarbete/requests/:requestId/archive', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const customerId = (recRes.data.fields || {})['Kund ID'] || (recRes.data.fields || {})['Kund']?.[0];
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: { 'Status': 'Arkiverad' }, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, message: 'Förfrågan är arkiverad.' });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId/archive:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId/unarchive – Återställ från arkiv (auth)
+app.put('/api/samarbete/requests/:requestId/unarchive', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const customerId = (recRes.data.fields || {})['Kund ID'] || (recRes.data.fields || {})['Kund']?.[0];
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+    const fields = recRes.data.fields || {};
+    const hadAnswer = !!(fields['Besvarad'] || (fields['Svar text'] && String(fields['Svar text']).trim()));
+    const newStatus = hadAnswer ? 'Besvarad' : 'Väntar';
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: { 'Status': newStatus } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, message: 'Förfrågan är återställd från arkivet.' });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId/unarchive:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// POST /api/samarbete/requests/:requestId/resend-email – skicka förfrågan igen via mejl (auth)
+app.post('/api/samarbete/requests/:requestId/resend-email', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const fields = recRes.data.fields || {};
+    const customerId = fields['Kund ID'] || fields['Kund']?.[0];
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const custByraId = (f['Byrå ID'] || f.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const toEmail = (fields['Mottagare e-post'] || '').toString().trim();
+    if (!toEmail || !toEmail.includes('@')) {
+      return res.status(400).json({ error: 'Ingen giltig e-postadress finns sparad för mottagaren.' });
+    }
+
+    const recipientName = (fields['Mottagare namn'] || '').toString().trim() || 'Kund';
+    const title = (fields['Titel'] || '').toString().trim();
+    const token = (fields['Token'] || '').toString().trim();
+    if (!token) {
+      return res.status(400).json({ error: 'Ingen token är sparad för denna förfrågan – kan inte skicka om mejlet.' });
+    }
+
+    const baseUrl = process.env.PUBLIC_BASE_URL || req.protocol + '://' + (req.get('host') || 'localhost:3001');
+    const respondUrl = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
+
+    const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';
+    const senderByra = (userData.byra || '').toString().trim() || null;
+    const logoRaw = userData.logo;
+    const senderLogoUrl = Array.isArray(logoRaw) && logoRaw.length > 0 && logoRaw[0].url
+      ? logoRaw[0].url
+      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+
+    const result = await sendSamarbeteInviteEmail({
+      toEmail,
+      toName: recipientName,
+      senderName,
+      senderEmail: (req.user && req.user.email) ? String(req.user.email).trim() : undefined,
+      senderByra: senderByra || undefined,
+      senderLogoUrl: senderLogoUrl || undefined,
+      respondUrl,
+      title,
+      customerMessage: undefined
+    });
+
+    if (!result.sent) {
+      return res.status(500).json({ error: result.error || 'Kunde inte skicka mejlet.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Mejlet har skickats igen till ${toEmail}.`
+    });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('POST /api/samarbete/requests/:requestId/resend-email:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
   }
 });
 
@@ -4813,20 +6182,27 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
           }
           break;
         case 'Anställd':
-          if (userData.id) {
-            filterFormula = `SEARCH("${userData.id}", {Användare})`;
-            console.log(`👷 Anställd: Filtrerar på användar-ID: ${userData.id}`);
-          } else {
+          // Anställd: filtrera på både Byrå ID och Användare (recordID)
+          if (!userData.id || !userData.byraId) {
             return res.json({
               success: true,
-              message: 'Anställd utan användar-ID - inga poster att visa',
+              message: userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa',
               records: [],
               userRole: userData.role,
+              userByraId: userData.byraId,
               userId: userData.id,
               timestamp: new Date().toISOString(),
               duration: Date.now() - startTime
             });
           }
+          const _byraIdNumA = parseInt(userData.byraId);
+          const byraPart = isNaN(_byraIdNumA)
+            ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+            : `{Byrå ID}=${_byraIdNumA}`;
+          const escId = String(userData.id).replace(/"/g, '\\"');
+          const userPart = `SEARCH("${escId}", {Användare}&"")`;
+          filterFormula = `AND(${byraPart},${userPart})`;
+          console.log(`👷 Anställd: Filtrerar på Byrå ID ${userData.byraId} OCH användar-ID (Användare): ${userData.id}`);
           break;
         default:
           return res.json({
@@ -4920,8 +6296,14 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
         }
         break;
       case 'Anställd':
-        if (userData.id) filterFormula = `SEARCH("${userData.id}", {Användare})`;
-        else return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
+        if (!userData.id || !userData.byraId) return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
+        const _n2 = parseInt(userData.byraId);
+        const _byra2 = isNaN(_n2)
+          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+          : `{Byrå ID}=${_n2}`;
+        const _uid2 = String(userData.id).replace(/"/g, '\\"');
+        const _u2 = `SEARCH("${_uid2}", {Användare}&"")`;
+        filterFormula = `AND(${_byra2},${_u2})`;
         break;
       default:
         return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
@@ -5108,8 +6490,14 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
         }
         break;
       case 'Anställd':
-        if (userData.id) filterFormula = `SEARCH("${userData.id}", {Användare})`;
-        else return res.json({ kunder: [] });
+        if (!userData.id || !userData.byraId) return res.json({ kunder: [] });
+        const _n3 = parseInt(userData.byraId);
+        const _byra3 = isNaN(_n3)
+          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+          : `{Byrå ID}=${_n3}`;
+        const _uid3 = String(userData.id).replace(/"/g, '\\"');
+        const _u3 = `SEARCH("${_uid3}", {Användare}&"")`;
+        filterFormula = `AND(${_byra3},${_u3})`;
         break;
       default:
         return res.json({ kunder: [] });
@@ -5269,20 +6657,26 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
         }
         break;
       case 'Anställd':
-        if (userData.id) {
-          filterFormula = `SEARCH("${userData.id}", {Användare})`;
-          console.log(`👷 Anställd: Filtrerar på användar-ID: ${userData.id}`);
-        } else {
+        if (!userData.id || !userData.byraId) {
           return res.json({
             success: true,
             data: [],
-            message: 'Anställd utan användar-ID - inga poster att visa',
+            message: userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa',
             userRole: userData.role,
+            userByraId: userData.byraId,
             userId: userData.id,
             timestamp: new Date().toISOString(),
             duration: Date.now() - startTime
           });
         }
+        const _byraNumPost = parseInt(userData.byraId);
+        const byraPartPost = isNaN(_byraNumPost)
+          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+          : `{Byrå ID}=${_byraNumPost}`;
+        const escIdPost = String(userData.id).replace(/"/g, '\\"');
+        const userPartPost = `SEARCH("${escIdPost}", {Användare}&"")`;
+        filterFormula = `AND(${byraPartPost},${userPartPost})`;
+        console.log(`👷 Anställd: Filtrerar på Byrå ID ${userData.byraId} OCH användar-ID (Användare): ${userData.id}`);
         break;
       default:
         return res.json({
@@ -5528,9 +6922,9 @@ app.get('/api/kunddata/test', async (req, res) => {
           break;
           
         case 'Anställd':
-          if (testRole.userId) {
-            filterFormula = `SEARCH("${testRole.userId}", {Användare})`;
-            console.log(`👷 Anställd: Filtrerar på användar-ID: ${testRole.userId}`);
+          if (testRole.userId && testRole.byraId) {
+            filterFormula = `AND({Byrå ID}="${testRole.byraId}",SEARCH("${testRole.userId}", {Användare}&""))`;
+            console.log(`👷 Anställd: Filtrerar på Byrå ID ${testRole.byraId} OCH användar-ID: ${testRole.userId}`);
           }
           break;
       }

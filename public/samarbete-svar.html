@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow – Lämna underlag</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
+            padding: 2rem 1rem;
+            color: #1e293b;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        h1 { font-size: 1.35rem; margin: 0 0 0.5rem 0; color: #334155; }
+        .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        .form-control {
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+        textarea.form-control { min-height: 80px; resize: vertical; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            transition: background 0.2s, opacity 0.2s;
+        }
+        .btn-primary { background: #6366f1; color: #fff; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-ghost { background: #f1f5f9; color: #475569; }
+        .btn-ghost:hover { background: #e2e8f0; }
+        .error-msg { color: #dc2626; font-size: 0.9rem; margin-top: 0.5rem; }
+        .success-msg { color: #16a34a; font-size: 1rem; padding: 1rem; background: #f0fdf4; border-radius: 8px; margin-top: 1rem; }
+        .loading { text-align: center; padding: 2rem; color: #64748b; }
+        .hidden { display: none !important; }
+
+        .question-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            transition: opacity 0.25s, background 0.25s, border-color 0.25s;
+        }
+        .question-card.item-done {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+        .question-card .question-text {
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 0.75rem;
+            padding-left: 0.25rem;
+        }
+        .question-response-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+        .question-response-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-start;
+        }
+        .question-response-row textarea { flex: 1; min-width: 0; }
+        .upload-btn-wrap {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .upload-btn-wrap input[type=file] { display: none; }
+        .upload-btn-wrap .btn-upload {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            background: #e0e7ff;
+            color: #4338ca;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .upload-btn-wrap .btn-upload:hover { background: #c7d2fe; }
+        .question-submit-btn { margin-top: 0.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+        .question-submit-btn .btn { padding: 0.5rem 1rem; font-size: 0.9rem; }
+        .question-done-hint { display: none; color: #16a34a; font-size: 0.85rem; }
+        .item-done .question-done-hint { display: inline-flex; align-items: center; gap: 0.25rem; }
+        .item-done .question-response-wrap { display: none; }
+        .item-done .question-submit-btn .question-send-btn { display: none; }
+        .item-done .question-submit-btn { justify-content: flex-start; }
+        .file-hint { font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem; }
+        .file-required-tag { font-size: 0.75rem; color: #dc2626; font-weight: 600; margin-left: 0.25rem; }
+        .file-clear-btn {
+            background: none;
+            border: none;
+            padding: 0;
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+            color: #64748b;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .file-clear-btn:hover { color: #334155; }
+
+        .clientflow-header {
+            background: #fff;
+            text-align: center;
+            padding: 2rem 1.5rem 1.5rem;
+            border-radius: 12px 12px 0 0;
+            margin-bottom: 0;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        .clientflow-header .clientflow-logo {
+            max-width: 160px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .byra-logo-wrap {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        .byra-logo-wrap img { max-height: 73px; max-width: 260px; object-fit: contain; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="clientflow-header" class="clientflow-header card">
+            <img src="/images/Clientflow%20logga.png" alt="ClientFlow" class="clientflow-logo">
+        </div>
+        <div id="loading" class="card loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Laddar förfrågan...</p>
+        </div>
+        <div id="error" class="card hidden">
+            <h1><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> Kunde inte ladda</h1>
+            <p id="error-text" class="subtitle"></p>
+        </div>
+        <div id="form-card" class="card hidden">
+            <h1>Lämna underlag</h1>
+            <p class="subtitle">Svara på varje punkt nedan – antingen med text eller genom att ladda upp en fil. Du kan skicka in delar nu och lägga till mer senare. Klicka på <strong>Skicka in svar</strong> för varje fråga när du är redo.</p>
+            <div id="questions-wrap"></div>
+            <div id="byra-logo-wrap" class="byra-logo-wrap hidden"></div>
+            <p class="error-msg" id="form-error"></p>
+        </div>
+        <div id="closed-card" class="card hidden">
+            <h1><i class="fas fa-lock" style="color:#64748b;"></i> Förfrågan är avslutad</h1>
+            <p class="subtitle">Denna förfrågan har stängts. Du kan inte längre lämna eller se underlag här.</p>
+        </div>
+    </div>
+    <script src="js/config.js"></script>
+    <script>
+        (function() {
+            const getBaseUrl = () => (window.apiConfig && window.apiConfig.baseUrl) ? window.apiConfig.baseUrl : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3001' : (window.location.origin || ''));
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error');
+            const errorText = document.getElementById('error-text');
+            const formCard = document.getElementById('form-card');
+            const clientflowHeader = document.getElementById('clientflow-header');
+            const closedCard = document.getElementById('closed-card');
+            const questionsWrap = document.getElementById('questions-wrap');
+            const byraLogoWrap = document.getElementById('byra-logo-wrap');
+            const formError = document.getElementById('form-error');
+
+            let items = [];
+            let fileRequired = [];
+            const answerTexts = [];
+            const answerFiles = []; // per fråga: array av File-objekt
+
+            function show(el) { el.classList.remove('hidden'); }
+            function hide(el) { el.classList.add('hidden'); }
+
+            function escapeHtml(s) {
+                if (s == null) return '';
+                const t = String(s);
+                return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            if (!token) {
+                hide(loadingEl);
+                show(errorEl);
+                errorText.textContent = 'Ogiltig länk. Token saknas.';
+                throw new Error('No token');
+            }
+
+            const baseUrl = getBaseUrl();
+            function renderForm(data) {
+                const title = (data.title || 'Underlag').trim();
+                const rawLines = title.split('\n').map(function(s) { return s.replace(/^\d+\.\s*/, '').trim(); }).filter(Boolean);
+                if (rawLines.length === 0) rawLines.push(title || 'Underlag');
+                items = [];
+                fileRequired = [];
+                rawLines.forEach(function(line) {
+                    var req = line.indexOf(' [fil obligatorisk]') !== -1;
+                    if (req) line = line.replace(/\s*\[fil obligatorisk\]\s*$/, '').trim();
+                    items.push(line);
+                    fileRequired.push(req);
+                });
+                answerTexts.length = items.length;
+                answerFiles.length = items.length;
+                var existing = data.existingAnswers || [];
+                var attachments = data.existingAttachments || [];
+                var attIdx = 0;
+                for (var i = 0; i < items.length; i++) {
+                    answerTexts[i] = (existing[i] && existing[i].text) ? existing[i].text : '';
+                    answerFiles[i] = [];
+                }
+                var html = '';
+                for (var i = 0; i < items.length; i++) {
+                    var q = escapeHtml(items[i]);
+                    var req = fileRequired[i];
+                    html += '<div class="question-card" data-index="' + i + '">';
+                    html += '<div class="question-text">' + (i + 1) + '. ' + q + (req ? ' <span class="file-required-tag">Fil obligatorisk</span>' : '') + '</div>';
+                    html += '<div class="question-response-wrap">';
+                    html += '<div class="question-response-row">';
+                    html += '<textarea class="form-control" data-index="' + i + '" placeholder="din kommentar" rows="2">' + escapeHtml(answerTexts[i]) + '</textarea>';
+                    html += '<div class="upload-btn-wrap">';
+                    html += '<input type="file" id="file-' + i + '" data-index="' + i + '" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple>';
+                    html += '<label for="file-' + i + '" class="btn-upload"><i class="fas fa-upload"></i> Fil' + (req ? ' *' : '') + '</label>';
+                    html += '</div>';
+                    html += '</div>';
+                    var fn = (existing[i] && existing[i].filename) ? existing[i].filename : '';
+                    var hasFile = !!fn;
+                    html += '<p class="file-hint" id="file-name-' + i + '">' + (fn ? 'Lagt upp: ' + escapeHtml(fn) : '') + '</p>';
+                    html += '<button type="button" class="file-clear-btn' + (hasFile ? '' : ' hidden') + '" data-index="' + i + '" id="file-clear-' + i + '">Ta bort fil(er)</button>';
+                    html += '<div class="question-submit-btn"><button type="button" class="btn btn-primary question-send-btn" data-index="' + i + '"><i class="fas fa-paper-plane"></i> Skicka in svar</button><span class="question-done-hint"><i class="fas fa-check-circle"></i> Besvarat</span></div>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                questionsWrap.innerHTML = html;
+                if (data.byraLogoUrl && data.byraLogoUrl.indexOf('http') === 0) {
+                    byraLogoWrap.innerHTML = '<img src="' + escapeHtml(data.byraLogoUrl) + '" alt="" />';
+                    show(byraLogoWrap);
+                } else {
+                    byraLogoWrap.innerHTML = '';
+                    hide(byraLogoWrap);
+                }
+                questionsWrap.querySelectorAll('textarea[data-index]').forEach(function(ta) {
+                    var i = parseInt(ta.getAttribute('data-index'), 10);
+                    ta.addEventListener('input', function() { answerTexts[i] = ta.value; });
+                });
+                questionsWrap.querySelectorAll('input[type=file]').forEach(function(inp) {
+                    var i = parseInt(inp.getAttribute('data-index'), 10);
+                    inp.addEventListener('change', function() {
+                        var list = Array.prototype.slice.call(inp.files || []);
+                        answerFiles[i] = list;
+                        var label = '';
+                        if (list.length === 1) {
+                            label = 'Vald fil: ' + list[0].name;
+                        } else if (list.length > 1) {
+                            label = 'Valda filer (' + list.length + '): ' + list.map(function(f) { return f.name; }).join(', ');
+                        }
+                        document.getElementById('file-name-' + i).textContent = label;
+                        var clearBtn = document.getElementById('file-clear-' + i);
+                        if (clearBtn) clearBtn.classList.toggle('hidden', list.length === 0);
+                    });
+                });
+                questionsWrap.querySelectorAll('.file-clear-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var i = parseInt(btn.getAttribute('data-index'), 10);
+                        var inp = document.getElementById('file-' + i);
+                        if (inp) inp.value = '';
+                        answerFiles[i] = [];
+                        document.getElementById('file-name-' + i).textContent = '';
+                        btn.classList.add('hidden');
+                    });
+                });
+                questionsWrap.querySelectorAll('.question-send-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var i = parseInt(btn.getAttribute('data-index'), 10);
+                        var card = btn.closest('.question-card');
+                        if (!card) return;
+                        formError.textContent = '';
+                        var filesForQuestion = answerFiles[i] || [];
+                        if (!answerTexts[i] && filesForQuestion.length === 0) {
+                            formError.textContent = 'Skriv en kommentar eller ladda upp en fil innan du skickar in svar.';
+                            return;
+                        }
+                        if (fileRequired[i] && filesForQuestion.length === 0) {
+                            formError.textContent = 'Fråga ' + (i + 1) + ' kräver att du laddar upp en fil.';
+                            return;
+                        }
+                        btn.disabled = true;
+                        var origHtml = btn.innerHTML;
+                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...';
+                        var payload = { token: token, answerIndex: i, text: (answerTexts[i] || '').trim(), files: [] };
+
+                        var filesForUpload = (answerFiles[i] || []).slice();
+
+                        var readFileAsBase64 = function(file) {
+                            return new Promise(function(resolve, reject) {
+                                var r = new FileReader();
+                                r.onload = function() {
+                                    var base64 = r.result.replace(/^data:[^;]+;base64,/, '');
+                                    resolve({ filename: file.name, file: base64 });
+                                };
+                                r.onerror = function() { reject(new Error('Kunde inte läsa fil')); };
+                                r.readAsDataURL(file);
+                            });
+                        };
+
+                        Promise.all(filesForUpload.map(readFileAsBase64))
+                            .then(function(results) {
+                                payload.files = results;
+                                return fetch(baseUrl + '/api/samarbete/respond', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload)
+                                });
+                            })
+                            .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || 'Kunde inte spara'); return d; }); })
+                            .then(function() {
+                                card.classList.add('item-done');
+                            })
+                            .catch(function(err) {
+                                formError.textContent = err.message || 'Kunde inte spara. Försök igen.';
+                            })
+                            .then(function() { btn.disabled = false; btn.innerHTML = origHtml; });
+                    });
+                });
+                var hasExisting = existing.length > 0 && (existing[0].text || existing[0].filename);
+                if (hasExisting) {
+                    questionsWrap.querySelectorAll('.question-card').forEach(function(card, idx) {
+                        if ((existing[idx] && (existing[idx].text || existing[idx].filename))) card.classList.add('item-done');
+                    });
+                }
+            }
+
+            fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token))
+                .then(function(r) {
+                    if (r.status === 410) return r.json().then(function(d) { return { _closed: true, error: d.error }; });
+                    if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Förfrågan hittades inte'); });
+                    return r.json();
+                })
+                .then(function(data) {
+                    hide(loadingEl);
+                    if (data._closed) {
+                        show(closedCard);
+                        return;
+                    }
+                    show(formCard);
+                    renderForm(data);
+                })
+                .catch(function(err) {
+                    hide(loadingEl);
+                    show(errorEl);
+                    errorText.textContent = err.message || 'Kunde inte ladda förfrågan. Länken kan vara ogiltig eller stängd.';
+                });
+        })();
+    </script>
+</body>
+</html>

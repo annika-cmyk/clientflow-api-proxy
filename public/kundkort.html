@@ -56,6 +56,10 @@
                                 <i class="fas fa-file-alt"></i>
                                 Dokumentation
                             </button>
+                            <button type="button" class="tab-button" data-tab="samarbete">
+                                <i class="fas fa-handshake"></i>
+                                Samarbete
+                            </button>
                         </div>
 
                         <!-- Tab Content -->
@@ -119,6 +123,16 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Samarbete Tab -->
+                            <div id="samarbete" class="tab-pane">
+                                <div id="samarbete-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar samarbetsförfrågningar...</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -140,6 +154,7 @@
     <script src="js/components.js?v=2.1"></script>
     <script src="js/ai-chat.js?v=2.1"></script>
     <script src="app.js?v=2.1"></script>
-    <script src="js/kundkort.js?v=6.6"></script>
+    <!-- Bumpad version för att säkerställa att senaste kundkort.js laddas -->
+    <script src="js/kundkort.js?v=6.7"></script>
 </body>
 </html>
