@@ -139,6 +139,23 @@ app.get('/test', (req, res) => {
   });
 });
 
+// SMTP-status (för felsökning – visar inte värden, bara om variablerna är satta)
+app.get('/api/smtp-status', (req, res) => {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  res.json({
+    configured: !!(host && user && pass),
+    SMTP_HOST: !!host,
+    SMTP_USER: !!user,
+    SMTP_PASS: !!pass,
+    hint: !pass && (process.env.SMTP_PASS != null || process.env.SMTP_PASSWORD != null)
+      ? 'SMTP_PASS/SMTP_PASSWORD finns men är tom – kontrollera värdet i Render och spara om, sedan Manuell Deploy'
+      : undefined
+  });
+});
+
 // Authentication endpoints
 // Airtable Users table integration
 const USERS_TABLE = 'Application Users';
@@ -4444,10 +4461,10 @@ async function sendSamarbeteInviteEmail(options) {
   const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage } = options;
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
-  const passRaw = process.env.SMTP_PASS;
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
   const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
   if (!host || !user || !pass) {
-    const msg = 'SMTP är inte konfigurerad på servern. Lägg till SMTP_HOST, SMTP_USER och SMTP_PASS i miljövariablerna (t.ex. på Render under Environment).';
+    const msg = 'SMTP är inte konfigurerad på servern. Lägg till SMTP_HOST, SMTP_USER och SMTP_PASS i miljövariablerna (t.ex. på Render under Environment). Efter ändring: spara och kör Manuell Deploy. Kontrollera: GET /api/smtp-status';
     console.warn('sendSamarbeteInviteEmail:', msg);
     return { sent: false, error: msg };
   }
