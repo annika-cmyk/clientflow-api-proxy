@@ -4447,8 +4447,9 @@ async function sendSamarbeteInviteEmail(options) {
   const passRaw = process.env.SMTP_PASS;
   const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
   if (!host || !user || !pass) {
-    console.warn('sendSamarbeteInviteEmail: SMTP inte konfigurerad (SMTP_HOST/USER/PASS).');
-    return { sent: false };
+    const msg = 'SMTP är inte konfigurerad på servern. Lägg till SMTP_HOST, SMTP_USER och SMTP_PASS i miljövariablerna (t.ex. på Render under Environment).';
+    console.warn('sendSamarbeteInviteEmail:', msg);
+    return { sent: false, error: msg };
   }
   const from = process.env.MAIL_FROM || 'ClientFlow Underlag <noreply@clientflow.se>';
   const port = parseInt(process.env.SMTP_PORT || '587', 10);

@@ -46,6 +46,15 @@ AUTO_DELETE_LOGS=true
 
 # Proxy Configuration
 PROXY_URL=http://localhost:3001/api/lookup
+
+# Mejl (förfrågningar "Begär underlag" – kunden får mejl med länk)
+# Sätt dessa om du vill att mejl ska skickas från live-versionen (t.ex. Inleed eller SendGrid).
+SMTP_HOST=mail.inleed.com
+SMTP_PORT=587
+SMTP_USER=hej@clientflow.se
+SMTP_PASS=ditt_smtp_lösenord
+MAIL_FROM=ClientFlow Underlag <hej@clientflow.se>
+# Vid SSL (port 465): SMTP_PORT=465 och SMTP_SECURE=true
 ```
 
 ### Steg 3: Uppdatera Airtable Token
