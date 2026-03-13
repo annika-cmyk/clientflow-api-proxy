@@ -1829,6 +1829,22 @@ body.sidebar-collapsed .logout-btn {
     grid-column: 1 / -1;
 }
 
+/* Dashboard – AML \"Testa dig själv\"-kort: extra luft kring knappen och nedåt mot nästa sektion */
+#dashboard-aml-utbildning .dashboard-card-body {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}
+#dashboard-aml-utbildning .dashboard-card-body .dashboard-card-desc {
+    margin-bottom: 2rem;
+}
+#dashboard-aml-utbildning .dashboard-card-body .btn-primary {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+#dashboard-aml-utbildning {
+    margin-bottom: 2.25rem;
+}
+
 /* Kom igång – flödesvisualisering */
 .kom-igang-section {
     margin-bottom: 1.5rem;
@@ -1861,55 +1877,32 @@ body.sidebar-collapsed .logout-btn {
     margin: 0;
 }
 .kom-igang-flow {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    gap: 1rem;
-    overflow-x: auto;
-    overflow-y: visible;
-    scroll-behavior: smooth;
-    padding: 0 0 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.25rem;
+    overflow: visible;
+    padding: 0;
     max-width: 100%;
     margin-left: 0;
     margin-right: 0;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    -webkit-overflow-scrolling: touch;
-    align-items: flex-start;
 }
 .kom-igang-flow.is-dragging {
-    cursor: grabbing;
-    user-select: none;
+    cursor: default;
+    user-select: auto;
 }
 .kom-igang-flow.is-dragging a,
 .kom-igang-flow.is-dragging input {
-    pointer-events: none;
+    pointer-events: auto;
 }
 .kom-igang-flow:not(.is-dragging) {
-    cursor: grab;
+    cursor: default;
 }
 .kom-igang-flow::-webkit-scrollbar {
     display: none;
 }
 /* Pilar – visas när det finns mer innehåll åt sidan */
 .kom-igang-arrow-btn {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 5;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: #fff;
-    color: var(--accent);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: var(--card-shadow);
-    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    display: none;
 }
 .kom-igang-arrow-btn:hover {
     background: var(--accent);
@@ -1929,11 +1922,9 @@ body.sidebar-collapsed .logout-btn {
 }
 /* Kort – samma bredd, höjd efter innehåll så att texten inte kapas */
 .kom-igang-step {
-    flex: 0 0 300px;
-    min-width: 300px;
-    min-height: 280px;
+    min-width: 0;
+    min-height: 240px;
     height: auto;
-    scroll-snap-align: start;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
