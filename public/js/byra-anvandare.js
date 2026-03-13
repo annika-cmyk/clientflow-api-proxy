@@ -27,6 +27,7 @@ class ByraAnvandareManager {
     this.loadUsers();
     this.loadLogs();
     this.loadUtbildningar();
+    this.loadAmlGenomforda();
     this.initializeTabs();
   }
 
@@ -118,12 +119,19 @@ class ByraAnvandareManager {
       if (omsattning) omsattning.value = f.omsattning ?? '';
       const antalKundforetag = document.getElementById('byra-antal-kundforetag');
       if (antalKundforetag) antalKundforetag.value = f.antalKundforetag ?? '';
+      const loggaUrl = (function () {
+        const v = f.logga;
+        if (!v) return '';
+        if (typeof v === 'string') return v;
+        if (v && typeof v === 'object' && v.url) return String(v.url);
+        return String(v);
+      })();
       const logga = document.getElementById('byra-logga');
-      if (logga) logga.value = f.logga ?? '';
+      if (logga) logga.value = loggaUrl;
       const preview = document.getElementById('byra-logga-preview');
       if (preview) {
-        if (f.logga) {
-          preview.innerHTML = '<img src="' + String(f.logga).replace(/"/g, '&quot;') + '" alt="Logga" style="max-width:120px;max-height:60px;object-fit:contain;">';
+        if (loggaUrl) {
+          preview.innerHTML = '<img src="' + loggaUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;') + '" alt="Logga" style="max-width:120px;max-height:60px;object-fit:contain;">';
         } else {
           preview.innerHTML = '<span class="logga-placeholder"><i class="fas fa-building"></i> Logga</span>';
         }
@@ -314,6 +322,29 @@ class ByraAnvandareManager {
     } catch (err) {
       console.error('saveUtbildning:', err);
       if (statusEl) statusEl.textContent = 'Fel: ' + (err.message || '');
+    }
+  }
+
+  async loadAmlGenomforda() {
+    const list = document.getElementById('aml-genomforda-list');
+    if (!list) return;
+    try {
+      const res = await fetch(getBaseUrl() + '/api/utbildning/genomforda', getAuthOpts());
+      if (!res.ok) throw new Error(res.statusText || 'Kunde inte hämta');
+      const data = await res.json();
+      const items = data.genomforda || [];
+      if (!items.length) {
+        list.innerHTML = '<p>Ingen har genomfört AML Grundkurs än.</p>';
+        return;
+      }
+      list.innerHTML = items.map(g => {
+        const datum = g.genomförd ? new Date(g.genomförd).toLocaleDateString('sv-SE') : '—';
+        const namn = (g.användarNamn || g.användarId || '—');
+        return '<div class="utbildning-item"><strong>' + escapeHtml(namn) + '</strong> — ' + escapeHtml(g.kurs || 'AML Grundkurs') + ' — ' + datum + '</div>';
+      }).join('');
+    } catch (err) {
+      console.error('loadAmlGenomforda:', err);
+      list.innerHTML = '<p>Kunde inte ladda listan. Kontrollera att tabellen "Utbildningsslutförande" finns i Airtable.</p>';
     }
   }
 

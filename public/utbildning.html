@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • AML Grundkurs</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .utbildning-intro { margin:0 0 1.5rem 0; color:#475569; line-height:1.6; }
+        .utbildning-question { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.25rem; margin-bottom:1rem; }
+        .utbildning-question h3 { margin:0 0 0.75rem 0; font-size:1.1rem; color:#334155; }
+        .utbildning-question-text { margin:0 0 1.5rem 0; color:#475569; line-height:1.5; }
+        .utbildning-options { display:flex; flex-direction:column; gap:0.5rem; margin-top:1.25rem; }
+        .utbildning-option { display:flex; align-items:flex-start; gap:0.75rem; padding:0.75rem 1rem; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; transition:border-color .2s, background .2s; }
+        .utbildning-option:hover { border-color:#c7d2fe; background:#f5f3ff; }
+        .utbildning-option.selected { border-color:#6366f1; background:#eef2ff; }
+        .utbildning-option.correct { border-color:#16a34a; background:#f0fdf4; }
+        .utbildning-option.wrong { border-color:#dc2626; background:#fef2f2; }
+        .utbildning-option input { margin-top:0.2rem; }
+        .utbildning-feedback { margin-top:1rem; padding:1rem; border-radius:8px; font-size:0.95rem; display:none; }
+        .utbildning-feedback.correct { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+        .utbildning-feedback.wrong { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+        .utbildning-feedback .varfor { margin-top:0.5rem; font-style:italic; }
+        .utbildning-nav { margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+        .utbildning-nav .btn { min-width:10rem; }
+        .utbildning-done { text-align:center; padding:2rem; background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%); border-radius:12px; margin-top:1.5rem; }
+        .utbildning-done h2 { margin:0 0 0.5rem 0; color:#4338ca; }
+        .utbildning-done p { margin:0 0 1rem 0; color:#475569; }
+        .utbildning-done .btn { margin-top:0.5rem; }
+        #utbildning-complete-section { display:none; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header">
+                    <h1><i class="fas fa-graduation-cap"></i> AML för redovisningskonsulter</h1>
+                    <p class="dashboard-subtitle">6 absoluta måsten att ha koll på – testa dina kunskaper!</p>
+                    <p class="utbildning-intro">Som redovisningskonsult har vi en unik inblick i våra kunders ekonomi. Detta är ett stort förtroende, men det innebär också att vi är en viktig spelare i samhällets försvar mot ekonomisk brottslighet, penningtvätt och finansiering av terrorism. Det här är din chans att vara en brottsbekämpande superhjälte!</p>
+                </header>
+
+                <div id="utbildning-questions-wrap"></div>
+
+                <section id="utbildning-complete-section" class="utbildning-done">
+                    <h2><i class="fas fa-check-circle"></i> Bra jobbat!</h2>
+                    <p>När du känner dig bekväm med dessa sex punkter vet du vad kärnan i vårt AML-arbete handlar om: Våga ställa frågor, var vaksam på underlag som saknar affärsmässig logik, och lyft alltid misstankar internt!</p>
+                    <p>Läs nu igenom byråns "Allmänna riskbedömning" och våra interna "Rutiner", där står det exakt hur vi i praktiken gör våra bedömningar.</p>
+                    <button type="button" class="btn btn-primary utbildning-btn-complete" id="utbildning-btn-complete">
+                        <i class="fas fa-check"></i> Slutför utbildningen (registrera som genomförd)
+                    </button>
+                    <p id="utbildning-complete-status" style="margin-top:1rem; font-size:0.9rem; display:none;"></p>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script>
+    (function() {
+        const getBaseUrl = () => (window.apiConfig && window.apiConfig.baseUrl) ? window.apiConfig.baseUrl : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3001' : (window.location.origin || ''));
+        const getAuthOpts = (method, body) => {
+            const opts = { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            if (method) opts.method = method;
+            if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+            const token = window.AuthManager && AuthManager.getToken && AuthManager.getToken();
+            if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+            return opts;
+        };
+
+        const QUIZ = [
+            { id: 1, q: 'Varför är just vår byrå intressant för kriminella?\n\nMånga tror att penningtvätt bara handlar om att smuggla in kontanter på en bank. Men varför är redovisningskonsulter en måltavla?', options: [
+                { key: 'A', text: 'Eftersom vi hanterar mycket kontanter på byrån.' },
+                { key: 'B', text: 'Eftersom vi, genom att bokföra och göra bokslut, omedvetet kan ge kriminellas transaktioner en "kvalitetsstämpel" och få svarta pengar att se vita och lagliga ut.' },
+                { key: 'C', text: 'Eftersom kriminella vill betala så lite skatt som möjligt.' }
+            ], correct: 'B', varfor: 'Kriminella behöver få in sina brottsvinster i det legala systemet. En redovisningskonsult som godtar och bokför falska underlag och osanna fakturor hjälper (ofta omedvetet) till att legitimera de illegala transaktionerna. Din yrkestitel används som en fasad för deras brott.' },
+            { id: 2, q: 'Kundkännedom (KYC) – När och varför?\n\nDu ska precis börja jobba med en helt ny kund som vill ha hjälp med löpande bokföring. När måste du ha uppnått \"tillräcklig kundkännedom\"?', options: [
+                { key: 'A', text: 'Jag kan börja boka deras kvitton direkt för att vara serviceinriktad, och sedan ta in ID-handlingar innan bokslutet ska göras.' },
+                { key: 'B', text: 'Jag får inte etablera en affärsförbindelse eller börja jobba innan jag har identifierat kunden och förstått syftet med uppdraget.' },
+                { key: 'C', text: 'Kundkännedom görs bara en gång när kunden är ny, sedan är det klart.' }
+            ], correct: 'B', varfor: 'Enligt lag får vi aldrig ingå en affärsrelation innan vi har gjort en kontroll och uppnått kundkännedom. Det räcker dessutom inte att göra det en gång; kundkännedomen ska följas upp löpande (minst årligen) och direkt om kunden ändrar sitt beteende.' },
+            { id: 3, q: 'Vem är den \"Verkliga huvudmannen\"?\n\nEtt krav i kundkännedomen är att vi ska veta vem den \"verkliga huvudmannen\" är i bolaget. Vem är det i ett vanligt aktiebolag?', options: [
+                { key: 'A', text: 'Alltid den person som är registrerad som VD.' },
+                { key: 'B', text: 'Den eller de fysiska personer som ytterst äger eller kontrollerar mer än 25 % av bolaget.' },
+                { key: 'C', text: 'Företagets största kund.' }
+            ], correct: 'B', varfor: 'Den verkliga huvudmannen är alltid en fysisk person som i slutändan drar nytta av eller kontrollerar bolaget. Ett viktigt steg för dig är att kontrollera Bolagsverkets register, men du måste också ställa kontrollfrågor (t.ex. om det finns dolda aktieägaravtal) för att säkerställa att ingen annan styr i bakgrunden (så kallade bulvaner).' },
+            { id: 4, q: 'Varningssignaler i din vardag 🚩\n\nDu sitter och gör löpande bokföring för ett byggbolag. Du märker plötsligt att kunden har betalat flera extremt dyra leverantörsfakturor till ett utländskt bolag. På fakturorna står det bara \"Konsultarvode\", inga detaljer. Vad gör du?', options: [
+                { key: 'A', text: 'Jag bokför dem på ett lämpligt kostnadskonto, det är kundens ansvar att underlagen stämmer.' },
+                { key: 'B', text: 'Jag stoppar, lägger dem på ett observationskonto och ställer direkt tuffa frågor till kunden om vad konsultationen gällde och ber om avtal som bevisar att tjänsten utförts. Jag registrerar också en avvikelse i ClientFlow.' },
+                { key: 'C', text: 'Jag ringer polisen direkt.' }
+            ], correct: 'B', varfor: 'Som konsult måste du ha professionell skepticism. Ospecificerade fakturor, särskilt till utlandet eller på stora belopp, är en klassisk varningssignal för penningtvätt. Om du bokför dem utan att ifrågasätta riskerar du att göra dig skyldig till medhjälp till brott. Du ska alltid fråga kunden först. Får du ingen bra förklaring, lyft det internt till byråns AML-ansvariga och registrera en avvikelse i ClientFlow.' },
+            { id: 5, q: 'Misstanke och Tipping-off (Meddelandeförbudet)\n\nKunden kunde inte svara på varför de betalat de ospecificerade fakturorna, och du och byråns AML-ansvariga är nu överens om att ni måste rapportera misstänkt penningtvätt till Finanspolisen. Vad är det absolut viktigaste att tänka på nu i din kontakt med kunden?', options: [
+                { key: 'A', text: 'Jag ringer kunden och säger att vi tyvärr har anmält dem till Finanspolisen och därför säger upp avtalet.' },
+                { key: 'B', text: 'Jag får under inga omständigheter berätta för kunden att vi misstänker penningtvätt eller att en rapport till Finanspolisen har skickats.' },
+                { key: 'C', text: 'Jag mailar kunden och ber dem rätta till felet så att vi slipper anmäla.' }
+            ], correct: 'B', varfor: 'Lagen innehåller ett extremt strikt meddelandeförbud (s.k. tipping-off). Om du avslöjar för kunden att vi granskar dem för penningtvätt eller har anmält dem till polisen begår du ett lagbrott. Syftet är att kriminella inte ska hinna förstöra bevis eller flytta pengar innan polisen agerar.' },
+            { id: 6, q: 'Det personliga ansvaret\n\nDu har extremt mycket att göra och kunden tjatar om att bokslutet måste bli klart. Du väljer att blunda för några misstänkta luftfakturor och stora kontantuttag för att \"få det ur världen\". Kan du bli straffad för detta?', options: [
+                { key: 'A', text: 'Nej, jag är bara en extern konsult, ansvaret ligger alltid på bolagets VD och styrelse.' },
+                { key: 'B', text: 'Ja, jag kan dömas för brottet "näringspenningtvätt" eftersom jag borde ha insett att pengarna kom från brottslig verksamhet, och för medhjälp till bokföringsbrott.' }
+            ], correct: 'B', varfor: 'Du har ett självständigt straffrättsligt ansvar. För att dömas för näringspenningtvätt krävs inte ens att du med säkerhet visste att pengarna var svarta, det räcker att du agerat med "klandervärt risktagande" och borde ha insett att något inte stämde. Att blunda på grund av tidspress är aldrig en giltig ursäkt!' }
+        ];
+
+        let currentQuestion = 0;
+        let answers = {};
+        const wrap = document.getElementById('utbildning-questions-wrap');
+        const completeSection = document.getElementById('utbildning-complete-section');
+        const btnComplete = document.getElementById('utbildning-btn-complete');
+        const completeStatus = document.getElementById('utbildning-complete-status');
+
+        function escapeHtml(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function renderQuestion(idx) {
+            const item = QUIZ[idx];
+            if (!item) return '';
+            const raw = String(item.q || '');
+            const parts = raw.split(/\n\s*\n/);
+            const title = parts[0] || '';
+            const body = parts[1] || '';
+            const titleEsc = escapeHtml(title);
+            const bodyEsc = escapeHtml(body);
+            const opts = item.options.map(o => {
+                const optEsc = escapeHtml(o.text);
+                return `<label class="utbildning-option" data-key="${escapeHtml(o.key)}">
+                    <input type="radio" name="q${item.id}" value="${escapeHtml(o.key)}">
+                    <span>${optEsc}</span>
+                </label>`;
+            }).join('');
+            const feedbackId = 'feedback-' + item.id;
+            return `<div class="utbildning-question" data-question-idx="${idx}" id="question-${item.id}">
+                <h3>Fråga ${item.id}: ${titleEsc}</h3>
+                ${bodyEsc ? `<p class="utbildning-question-text">${bodyEsc}</p>` : ''}
+                <div class="utbildning-options">${opts}</div>
+                <div class="utbildning-feedback" id="${feedbackId}"><span class="msg"></span><div class="varfor"></div></div>
+                <div class="utbildning-nav">
+                    <button type="button" class="btn btn-ghost utbildning-prev" ${idx === 0 ? 'disabled' : ''}><i class="fas fa-arrow-left"></i> Föregående</button>
+                    <button type="button" class="btn btn-primary utbildning-next">Nästa <i class="fas fa-arrow-right"></i></button>
+                </div>
+            </div>`;
+        }
+
+        function renderAll() {
+            wrap.innerHTML = QUIZ.map((_, idx) => renderQuestion(idx)).join('');
+            wrap.querySelectorAll('.utbildning-option').forEach(el => {
+                el.addEventListener('click', function() {
+                    const box = this.closest('.utbildning-question');
+                    box.querySelectorAll('.utbildning-option').forEach(o => o.classList.remove('selected'));
+                    this.classList.add('selected');
+                    this.querySelector('input').checked = true;
+                });
+            });
+            wrap.querySelectorAll('.utbildning-next').forEach((btn, i) => {
+                btn.addEventListener('click', () => {
+                    const box = wrap.querySelector(`[data-question-idx="${i}"]`);
+                    if (box && box.classList.contains('feedback-shown')) {
+                        const nextIdx = i + 1;
+                        if (nextIdx < QUIZ.length) goToQuestion(nextIdx);
+                        else {
+                            completeSection.style.display = 'block';
+                            completeSection.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    } else {
+                        submitAndNext(i);
+                    }
+                });
+            });
+            wrap.querySelectorAll('.utbildning-prev').forEach((btn, i) => {
+                btn.addEventListener('click', () => { if (i > 0) goToQuestion(i - 1); });
+            });
+        }
+
+        function submitAndNext(idx) {
+            const box = wrap.querySelector(`[data-question-idx="${idx}"]`);
+            const selected = box.querySelector('input:checked');
+            if (!selected) { alert('Välj ett alternativ.'); return; }
+            const key = selected.value;
+            const item = QUIZ[idx];
+            answers[item.id] = key;
+            const isCorrect = key === item.correct;
+            box.querySelectorAll('.utbildning-option').forEach(opt => {
+                opt.classList.remove('selected');
+                const optKey = opt.getAttribute('data-key');
+                if (optKey === item.correct) opt.classList.add('correct');
+                else if (optKey === key && !isCorrect) opt.classList.add('wrong');
+            });
+            const feedback = box.querySelector('.utbildning-feedback');
+            feedback.classList.remove('correct', 'wrong');
+            feedback.classList.add(isCorrect ? 'correct' : 'wrong');
+            const correctOption = item.options.find(o => o.key === item.correct);
+            const correctText = correctOption ? correctOption.text : '';
+            feedback.querySelector('.msg').textContent = isCorrect ? 'Rätt!' : (correctText ? 'Fel. Rätt svar: ' + correctText : 'Fel.');
+            feedback.querySelector('.varfor').textContent = 'Varför? ' + item.varfor;
+            feedback.style.display = 'block';
+            box.classList.add('feedback-shown');
+        }
+
+        function goToQuestion(idx) {
+            wrap.querySelectorAll('.utbildning-question').forEach((el, i) => { el.style.display = i === idx ? 'block' : 'none'; });
+        }
+
+        btnComplete.addEventListener('click', async () => {
+            btnComplete.disabled = true;
+            completeStatus.style.display = 'block';
+            completeStatus.textContent = 'Registrerar...';
+            try {
+                const res = await fetch(getBaseUrl() + '/api/utbildning/aml-complete', getAuthOpts('POST', {}));
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success) {
+                    completeStatus.textContent = 'Utbildningen är registrerad. Du kan nu stänga sidan eller gå till Dashboard.';
+                    completeStatus.style.color = '#16a34a';
+                    setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+                } else {
+                    completeStatus.textContent = data.error || 'Kunde inte registrera. Försök igen.';
+                    completeStatus.style.color = '#dc2626';
+                    btnComplete.disabled = false;
+                }
+            } catch (e) {
+                completeStatus.textContent = 'Nätverksfel. Försök igen.';
+                completeStatus.style.color = '#dc2626';
+                btnComplete.disabled = false;
+            }
+        });
+
+        renderAll();
+        goToQuestion(0);
+    })();
+    </script>
+</body>
+</html>

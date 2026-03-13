@@ -7,6 +7,7 @@ const { PDFDocument } = require('pdf-lib');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const OpenAI = require('openai');
+const rateLimit = require('express-rate-limit');
 let puppeteer = null;
 let chromium = null;
 let _puppeteerLoadAttempted = false;
@@ -277,27 +278,44 @@ const optionalAuthenticateToken = (req, res, next) => {
   });
 };
 
-// Login endpoint
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    console.log('🔐 Login attempt received:', {
-      body: req.body,
-      headers: req.headers,
-      origin: req.headers.origin,
-      hostname: req.hostname
-    });
+// Redantera känsliga fält vid loggning – använd aldrig full req.body i loggar
+const SENSITIVE_KEYS = ['password', 'token', 'authToken', 'secret', 'authorization', 'cookie', 'lösenord'];
+function redactForLog(obj, keysToRedact = SENSITIVE_KEYS) {
+  if (obj == null || typeof obj !== 'object') return obj;
+  const out = Array.isArray(obj) ? [...obj] : { ...obj };
+  for (const key of Object.keys(out)) {
+    const lower = String(key).toLowerCase();
+    if (keysToRedact.some(k => lower.includes(k.toLowerCase()))) out[key] = '[REDACTED]';
+    else if (typeof out[key] === 'object' && out[key] !== null && !Buffer.isBuffer(out[key])) out[key] = redactForLog(out[key], keysToRedact);
+  }
+  return out;
+}
 
+// Rate limiting för inloggning – skyddar mot brute force
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minuter
+  max: 10, // max 10 försök per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'För många inloggningsförsök. Försök igen om 15 minuter.'
+  }
+});
+
+// Login endpoint
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  try {
     const { email, password } = req.body;
+    // Logga aldrig lösenord eller full body – endast e-post för felsökning
+    console.log('🔐 Login attempt for email:', email ? String(email).slice(0, 3) + '…' : '(missing)');
 
     if (!email || !password) {
-      console.log('🔐 Login failed: Missing email or password');
       return res.status(400).json({ 
         success: false, 
         message: 'E-post och lösenord krävs' 
       });
     }
-
-    console.log(`🔐 Attempting login for email: ${email}`);
 
     // Get user from Airtable
     let user;
@@ -571,39 +589,31 @@ app.post('/test-post', (req, res) => {
   });
 });
 
-// Debug endpoint för Softr
-app.post('/debug-softr', (req, res) => {
-  console.log('🔍 DEBUG: Vad Softr skickar:', {
-    body: req.body,
-    headers: req.headers,
-    method: req.method,
-    url: req.url,
-    availableFields: Object.keys(req.body || {})
-  });
-  
+// Debug endpoint för Softr – endast i utveckling och kräver inloggning (ingen exponering av data utan auth)
+const isProduction = process.env.NODE_ENV === 'production';
+function debugSoftrHandler(method) {
+  return (req, res, next) => {
+    if (isProduction) {
+      return res.status(404).json({ message: 'Not Found' });
+    }
+    return authenticateToken(req, res, next);
+  };
+}
+app.post('/debug-softr', debugSoftrHandler('POST'), (req, res) => {
+  console.log('🔍 DEBUG (auth): Softr POST – fält:', Object.keys(req.body || {}));
   res.json({
     success: true,
-    message: 'Debug data mottaget',
-    receivedBody: req.body,
+    message: 'Debug data mottaget (känsliga fält redantera i logg)',
     availableFields: Object.keys(req.body || {}),
     timestamp: new Date().toISOString()
   });
 });
 
-// GET version av debug endpoint för Softr
-app.get('/debug-softr', (req, res) => {
-  console.log('🔍 DEBUG GET: Vad Softr skickar:', {
-    query: req.query,
-    headers: req.headers,
-    method: req.method,
-    url: req.url,
-    availableFields: Object.keys(req.query || {})
-  });
-  
+app.get('/debug-softr', debugSoftrHandler('GET'), (req, res) => {
+  console.log('🔍 DEBUG (auth): Softr GET – fält:', Object.keys(req.query || {}));
   res.json({
     success: true,
-    message: 'Debug GET data mottaget',
-    receivedQuery: req.query,
+    message: 'Debug GET mottaget',
     availableFields: Object.keys(req.query || {}),
     timestamp: new Date().toISOString()
   });
@@ -2349,8 +2359,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
 // Enkel save-to-airtable endpoint som inte anropar Bolagsverket
 app.post('/api/simple/save-to-airtable', async (req, res) => {
   try {
-    console.log('💾 Simple save-to-airtable called with:', req.body);
-    
+    console.log('💾 Simple save-to-airtable called, keys:', Object.keys(req.body || {}));
     const { organisationsnummer, namn, anvandareId, byraId } = req.body;
     
     if (!organisationsnummer) {
@@ -2589,8 +2598,7 @@ app.post('/api/debug/save-to-airtable', async (req, res) => {
 // Test endpoint för att verifiera att save-to-airtable fungerar
 app.post('/api/test/save-to-airtable', async (req, res) => {
   try {
-    console.log('🧪 Test endpoint called with:', req.body);
-    
+    console.log('🧪 Test save-to-airtable called, keys:', Object.keys(req.body || {}));
     // Simulera en enkel Airtable-save
     const testData = {
       fields: {
@@ -2607,7 +2615,7 @@ app.post('/api/test/save-to-airtable', async (req, res) => {
       success: true,
       message: 'Test data would be saved to Airtable',
       testData: testData,
-      receivedData: req.body
+      receivedKeys: Object.keys(req.body || {})
     });
     
   } catch (error) {
@@ -5789,6 +5797,127 @@ app.post('/api/byra/utbildningar', authenticateToken, async (req, res) => {
   }
 });
 
+// AML Grundkurs – genomförda registreras i tabell "Utbildningsslutförande" (Användare, Byrå ID, Kurs, Genomförd)
+const UTBILDNING_SLUTFORANDE_TABLE = 'Utbildningsslutförande';
+const AML_KURS_NAMN = 'AML Grundkurs';
+
+// GET /api/utbildning/aml-status – Har inloggad användare slutfört AML Grundkurs?
+app.get('/api/utbildning/aml-status', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData || !userData.id) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = (userData.byraId != null) ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.json({ completed: false });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const byraEsc = byraId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const kursEsc = String(AML_KURS_NAMN).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const formula = `AND({Byrå ID}="${byraEsc}", {Kurs}="${kursEsc}")`;
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNING_SLUTFORANDE_TABLE)}?filterByFormula=${encodeURIComponent(formula)}`;
+    let completed = false;
+    do {
+      const atRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+      const records = atRes.data.records || [];
+      const hasUser = records.some(r => {
+        const ids = r.fields && r.fields['Användare'];
+        const arr = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+        return arr.includes(userData.id);
+      });
+      if (hasUser) { completed = true; break; }
+      url = atRes.data.offset ? `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNING_SLUTFORANDE_TABLE)}?offset=${atRes.data.offset}&filterByFormula=${encodeURIComponent(formula)}` : null;
+    } while (url);
+    res.json({ completed });
+  } catch (err) {
+    if (err.response && err.response.status === 404) return res.json({ completed: false });
+    console.error('GET /api/utbildning/aml-status:', err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+// POST /api/utbildning/aml-complete – Registrera att användaren slutfört AML Grundkurs
+app.post('/api/utbildning/aml-complete', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData || !userData.id) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = (userData.byraId != null) ? String(userData.byraId).trim() : '';
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const fields = {
+      'Användare': [userData.id],
+      'Byrå ID': byraId,
+      'Kurs': AML_KURS_NAMN,
+      'Genomförd': new Date().toISOString().slice(0, 10)
+    };
+    const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNING_SLUTFORANDE_TABLE)}`;
+    await axios.post(createUrl, { fields }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    res.json({ success: true, completed: true });
+  } catch (err) {
+    console.error('POST /api/utbildning/aml-complete:', err.response?.data || err.message);
+    res.status(err.response?.status || 500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
+// GET /api/utbildning/genomforda – Lista genomförda AML (Ledare: alla på byrån, Anställd: bara sig själv)
+app.get('/api/utbildning/genomforda', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData || !userData.byraId) return res.status(400).json({ error: 'Användare eller byrå saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const byraId = String(userData.byraId).trim();
+    const role = (userData.role || '').toLowerCase();
+    const isAnstalld = role === 'anställd' || role === 'anstald';
+    const byraEsc = byraId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const kursEsc = String(AML_KURS_NAMN).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const formula = `AND({Byrå ID}="${byraEsc}", {Kurs}="${kursEsc}")`;
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNING_SLUTFORANDE_TABLE)}?filterByFormula=${encodeURIComponent(formula)}`;
+    const all = [];
+    do {
+      const atRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+      const records = atRes.data.records || [];
+      all.push(...records);
+      url = atRes.data.offset ? `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNING_SLUTFORANDE_TABLE)}?offset=${atRes.data.offset}&filterByFormula=${encodeURIComponent(formula)}` : null;
+    } while (url);
+    let filtered = all;
+    if (isAnstalld) {
+      filtered = all.filter(r => {
+        const ids = r.fields && r.fields['Användare'];
+        const arr = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+        return arr.includes(userData.id);
+      });
+    }
+    const list = [];
+    for (const r of filtered) {
+      const f = r.fields || {};
+      const userId = Array.isArray(f['Användare']) ? f['Användare'][0] : f['Användare'];
+      let namn = '';
+      if (userId && airtableAccessToken && airtableBaseId) {
+        try {
+          const uRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${userId}`, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
+          const uf = (uRes.data && uRes.data.fields) || {};
+          namn = uf['Full Name'] || uf['Email'] || userId;
+        } catch (_) { namn = userId; }
+      } else { namn = userId || ''; }
+      list.push({
+        id: r.id,
+        användarId: userId,
+        användarNamn: namn,
+        byråId: f['Byrå ID'],
+        kurs: f['Kurs'],
+        genomförd: f['Genomförd']
+      });
+    }
+    res.json({ success: true, genomforda: list });
+  } catch (err) {
+    if (err.response && err.response.status === 404) return res.json({ success: true, genomforda: [] });
+    console.error('GET /api/utbildning/genomforda:', err.message);
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
 // GET /api/settings/dokumentation-pdfs – Hämta sparad PDF-lista från Byråer (databas)
 const DOKUMENTATION_PDF_FIELD = 'Dokumentation PDF-lista';
 app.get('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
@@ -7533,16 +7662,11 @@ app.get('/api/notes', authenticateToken, async (req, res) => {
 app.post('/api/notes', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
-  console.log('📥 POST /api/notes - Request received');
-  console.log('📥 Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('📥 Body:', JSON.stringify(req.body, null, 2));
-  
+  console.log('📥 POST /api/notes - Request received, field keys:', req.body ? Object.keys(req.body) : []);
   let cleanedFields = {};
   
   try {
     const noteData = req.body;
-    
-    console.log('🔍 Skapar ny anteckning:', noteData);
     
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';

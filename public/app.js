@@ -35,6 +35,24 @@ class ClientFlowApp {
             this.loadAvvikelserList();
             window.addEventListener('clientflow:authReady', () => this.loadAvvikelserList());
         }
+        if (document.getElementById('dashboard-aml-utbildning')) {
+            this.loadAmlUtbildningStatus();
+            window.addEventListener('clientflow:authReady', () => this.loadAmlUtbildningStatus());
+        }
+    }
+
+    async loadAmlUtbildningStatus() {
+        const section = document.getElementById('dashboard-aml-utbildning');
+        if (!section) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        try {
+            const res = await fetch(`${this.baseUrl}/api/utbildning/aml-status`, { method: 'GET', ...opts });
+            if (!res.ok) { section.style.display = 'block'; return; }
+            const data = await res.json();
+            section.style.display = data.completed ? 'none' : 'block';
+        } catch (e) {
+            section.style.display = 'block';
+        }
     }
 
     initNavigation() {

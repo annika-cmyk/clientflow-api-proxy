@@ -4,6 +4,35 @@
 
 1. **JWT_SECRET i produktion** – Servern startar inte i produktion om `JWT_SECRET` saknas i miljövariabler. Sätt den på Render (Environment).
 2. **PATCH /api/kunddata/:id** – Det finns nu behörighetskontroll: endast ClientFlowAdmin, Ledare för egen byrå eller Anställd kopplad till kunden får uppdatera posten.
+3. **Känslig data i loggar (punkt 4)** – Login loggar inte längre `req.body` eller lösenord (endast del av e-post för felsökning). `/api/notes`, simple/test save-to-airtable och andra ställen loggar inte full request body; hjälpfunktionen `redactForLog()` finns för framtida användning.
+4. **Debug-endpoints utan auth (punkt 5)** – `/debug-softr` (GET och POST) är i produktion avstängda (404). I utveckling krävs inloggning (`authenticateToken`); svar returnerar inte längre rå body/query, endast fältnamn.
+
+---
+
+## Kritiska problem (prioriterad lista)
+
+| # | Problem | Risk |
+|---|--------|------|
+| 1 | Lösenord sparas i klartext i Airtable – bcrypt är importerat men används inte | Kritisk |
+| 2 | Hårdkodade API-nycklar i config.js (t.ex. DocSign) och i dokumentation | Kritisk |
+| 3 | ~~Ingen rate limiting på `/api/auth/login` – öppet för brute force~~ | Åtgärdat |
+| 4 | ~~Känslig data i loggar – request body loggas (inkl. lösenord vid inloggning)~~ | Åtgärdat |
+| 5 | ~~Debug-endpoints utan auth – `/debug-softr` loggar all inkommande data~~ | Åtgärdat |
+
+---
+
+## Saker att förbättra
+
+- **index.js ~10 000 rader** – Monolitisk fil som bör delas upp i router-moduler.
+- **Inkonsekvent XSS-skydd** – `innerHTML` används i frontend utan konsekvent sanitisering.
+- **Ingen CSRF-skydd** – Cookies utan CSRF-tokens.
+- **Ingen test-suite** – Inga automatiserade tester överhuvudtaget.
+
+---
+
+## Sammanfattning
+
+**65/100** – Funktionellt och välstrukturerad affärslogik, men kritiska säkerhetsluckor måste åtgärdas innan riktig kunddata hanteras.
 
 ---
 
@@ -14,10 +43,9 @@
 - **Risk:** Vid läckage av Airtable-data exponeras alla lösenord.
 - **Rekommendation:** Lagra lösenord som bcrypt-hash i Airtable och använd `bcrypt.compare(incomingPassword, user.password)` vid login. Kräver att ni hash:ar befintliga lösenord (t.ex. vid nästa lösenordsändring eller via ett engångsskript).
 
-### 2. Rate limiting
-- **Nu:** Ingen rate limiting på login eller API.
-- **Risk:** Brute force på inloggning, eller överbelastning av API.
-- **Rekommendation:** Lägg till t.ex. `express-rate-limit` för `/api/auth/login` (t.ex. max 5–10 försök per IP per 15 min) och eventuellt en mjukare gräns för övriga API-anrop.
+### 2. Rate limiting (åtgärdat för login)
+- **Åtgärdat:** `/api/auth/login` använder nu `express-rate-limit` (max 10 försök per IP per 15 minuter) med tydligt felmeddelande.
+- **Rekommendation:** Överväg mjukare rate limiting även för övriga API-endpoints vid behov.
 
 ### 3. CSRF (Cross-Site Request Forgery)
 - **Nu:** Cookie-baserad auth utan CSRF-token.
@@ -37,7 +65,7 @@
 - **Risk:** Buggar eller fel i behörighetslogiken kan leda till att en byrå ser en annans data. En komprometterad admin-token ger åtkomst till all data.
 - **Rekommendation:** Överväg att varje byrå har egen databas/egen Airtable-base (eller tydlig databas-per-tenant). Ger starkare isolering och enklare att motivera säkerhet gentemot kunder och revisorer.
 
-### 7. Tvåfaktorsautentisering (2FA)
+### 8. Tvåfaktorsautentisering (2FA)
 - **Nu:** Inloggning sker endast med användarnamn och lösenord.
 - **Risk:** Stulna eller gissade lösenord ger full åtkomst. Särskilt känsligt för roller med bred behörighet.
 - **Rekommendation:** Inför 2FA (t.ex. TOTP med app som Google Authenticator eller Authy) för inloggning. Kräver att ni lagrar 2FA-secret per användare (t.ex. i Airtable) och använder t.ex. `speakeasy`/`otplib` för att verifiera koden vid login.
