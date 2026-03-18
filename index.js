@@ -2802,8 +2802,9 @@ async function uploadAttachmentToAirtableField(airtableToken, baseId, recordId, 
     }, {
       headers: { 'Authorization': `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
       timeout: 30000,
-      maxContentLength: 10 * 1024 * 1024,
-      maxBodyLength: 10 * 1024 * 1024
+      // Tillåt större payload här; Airtable avgör maxstorlek.
+      maxContentLength: 60 * 1024 * 1024,
+      maxBodyLength: 60 * 1024 * 1024
     });
     const ok = !!(res.data && (res.data.url || res.data.id));
     if (!ok) {
@@ -2836,8 +2837,8 @@ async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileB
           'Content-Type': 'application/json'
         },
         timeout: 30000,
-        maxContentLength: 10 * 1024 * 1024,
-        maxBodyLength: 10 * 1024 * 1024
+        maxContentLength: 60 * 1024 * 1024,
+        maxBodyLength: 60 * 1024 * 1024
       });
       if (res.data && (res.data.url || res.data.id)) {
         console.log('✅ Fil uppladdad till Airtable via Content API, fält:', fieldName);
@@ -4238,12 +4239,16 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
     } catch (e) {
       return res.status(400).json({ error: 'Ogiltig fil (base64)' });
     }
-    if (buffer.length > 20 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 20 MB' });
+    // Airtable Content API tenderar att ha en relativt låg filgräns; håll detta konservativt
+    // så vi kan ge ett tydligt fel istället för "Bad Gateway".
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Filen är för stor. Maxstorlek för uppladdning är 10 MB.' });
+    }
 
     const contentType = (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
     const uploadedToDokumentation = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE, 'Dokumentation');
     const uploaded = uploadedToDokumentation || await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE);
-    if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp fil till Airtable' });
+    if (!uploaded) return res.status(500).json({ error: 'Kunde inte ladda upp fil till Airtable. Prova igen eller testa en mindre fil.' });
 
     if (uploadedToDokumentation) {
       try {
