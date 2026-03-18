@@ -564,21 +564,21 @@ body.sidebar-collapsed .logout-btn {
   }
 }
 
-/* På stora skärmar (≥1400px): innehållet startar ca 75px från sidomenyn, centrerad container */
+/* På stora skärmar (≥1400px): undvik att innehåll "glider" under sidomenyn */
 @media (min-width: 1400px) {
   .main-content {
-    margin-left: 355px;           /* 280px meny + 75px luft */
-    width: calc(100% - 355px);
+    margin-left: 280px;
+    width: calc(100% - 280px);
   }
   body.sidebar-collapsed .main-content {
-    margin-left: 355px;
-    width: calc(100% - 355px);
+    margin-left: 72px;
+    width: calc(100% - 72px);
   }
   .main-content > .container {
-    max-width: min(1600px, calc(100vw - 710px));
+    max-width: 1600px;
     margin-left: auto;
     margin-right: auto;
-    transform: translateX(-177.5px);
+    transform: none;
   }
 }
 
