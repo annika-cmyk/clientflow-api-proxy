@@ -4246,31 +4246,61 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
     }
 
     const contentType = (filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-    const uploadedToDokumentation = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE, 'Dokumentation');
-    const uploaded = uploadedToDokumentation || await uploadAttachmentToAirtable(airtableAccessToken, airtableBaseId, customerId, buffer, filename, contentType, KUNDDATA_TABLE);
-    if (!uploaded) return res.status(500).json({ error: 'Kunde inte ladda upp fil till Airtable. Prova igen eller testa en mindre fil.' });
+    // I många baser heter bilagefältet "Attachments" (inte "Dokumentation").
+    // Vi laddar upp till Attachments och sparar kategorier i "Dokumentation Kategorier" om fältet finns.
+    const uploadedToAttachments = await uploadAttachmentToAirtableField(
+      airtableAccessToken,
+      airtableBaseId,
+      customerId,
+      buffer,
+      filename,
+      contentType,
+      KUNDDATA_TABLE,
+      'Attachments'
+    );
+    const uploaded = uploadedToAttachments || await uploadAttachmentToAirtable(
+      airtableAccessToken,
+      airtableBaseId,
+      customerId,
+      buffer,
+      filename,
+      contentType,
+      KUNDDATA_TABLE
+    );
+    if (!uploaded) {
+      return res.status(500).json({
+        error: 'Kunde inte ladda upp fil till Airtable. Kontrollera att Airtable-token har rätt behörigheter (data.records:write) och prova igen.'
+      });
+    }
 
-    if (uploadedToDokumentation) {
-      try {
-        let kategorier = [];
-        const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
-        if (raw) kategorier = JSON.parse(raw);
-        if (!Array.isArray(kategorier)) kategorier = [];
-        kategorier.push({ filename, category: cat, customCategory: (customCategory || '').trim() });
-        await axios.patch(
-          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
-          { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
-          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-        );
-      } catch (e) {
-        console.warn('Kunde inte spara kategori (lägg till fältet "Dokumentation Kategorier" i Airtable om kategorier ska sparas):', e.message);
-      }
+    // Spara kategori-info separat (om fältet finns). Detta styr hur dokumenten grupperas i UI.
+    try {
+      let kategorier = [];
+      const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+      if (raw) kategorier = JSON.parse(raw);
+      if (!Array.isArray(kategorier)) kategorier = [];
+      kategorier.push({ filename, category: cat, customCategory: (customCategory || '').trim() });
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+        { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (e) {
+      console.warn('Kunde inte spara kategori (lägg till fältet "Dokumentation Kategorier" i Airtable om kategorier ska sparas):', e.message);
     }
 
     res.json({ success: true, message: 'Dokument uppladdat', category: cat });
   } catch (error) {
     console.error('\u274c POST documents/upload:', error.message);
-    res.status(500).json({ error: error.message });
+    const status = error.response?.status;
+    const detail = error.response?.data?.error?.message || error.response?.data?.message || error.response?.data || null;
+    if (status === 401 || status === 403) {
+      return res.status(500).json({
+        error: 'Airtable nekade uppladdningen. Kontrollera att AIRTABLE_ACCESS_TOKEN har scope data.records:write (och att den har åtkomst till basen).',
+        details: detail
+      });
+    }
+    res.status(500).json({ error: error.message, details: detail });
   }
 });
 
