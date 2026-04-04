@@ -2369,6 +2369,56 @@ class CustomerCardManager {
         return 'medium';
     }
 
+    _normalizeTjanstNamn(namn) {
+        return (namn || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+    }
+
+    /** Högre siffra = högre risk (används vid sammanslagning av dubbletter i Airtable). */
+    _tjanstRiskRank(riskbedomning) {
+        const r = (riskbedomning || '').trim();
+        const order = { 'Hög': 4, 'Förhöjd': 3, 'Medel': 2, 'Låg': 1, 'Normal': 1 };
+        return order[r] ?? 0;
+    }
+
+    /**
+     * Flera rader i "Risker kopplad till tjänster" kan ha samma visningsnamn (olika risk/stavning).
+     * Visar en rad per logisk tjänst; _mergedRecordIds = alla Airtable-id som hör ihop.
+     */
+    _dedupeByraTjanster(tjanster) {
+        if (!Array.isArray(tjanster) || !tjanster.length) return [];
+        const buckets = new Map();
+        for (const t of tjanster) {
+            const key = this._normalizeTjanstNamn(t.namn);
+            if (!key) continue;
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push(t);
+        }
+        const merged = [];
+        for (const arr of buckets.values()) {
+            arr.sort((a, b) => {
+                const dr = this._tjanstRiskRank(b.riskbedomning) - this._tjanstRiskRank(a.riskbedomning);
+                if (dr !== 0) return dr;
+                return String(a.id).localeCompare(String(b.id));
+            });
+            const primary = { ...arr[0] };
+            primary._mergedRecordIds = arr.map((x) => x.id);
+            merged.push(primary);
+        }
+        merged.sort((a, b) => {
+            const ta = (a.typ || 'Övrigt').localeCompare(b.typ || 'Övrigt', 'sv');
+            if (ta !== 0) return ta;
+            return (a.namn || '').localeCompare(b.namn || '', 'sv');
+        });
+        return merged;
+    }
+
+    _tjanstIdMatchSet(t) {
+        return t._mergedRecordIds && t._mergedRecordIds.length ? t._mergedRecordIds : [t.id];
+    }
+
     // Alla tillgängliga tjänster från Airtable-fältets choices
     getAllTjanster() {
         return [
@@ -2409,8 +2459,8 @@ class CustomerCardManager {
                     ...getAuthOptsKundkort()
                 });
                 const data = res.ok ? await res.json() : {};
-                // data.tjanster är nu [{id, namn}] — se /api/byra-tjanster
-                this._byransTjanster = data.tjanster?.length ? data.tjanster : [];
+                const raw = data.tjanster?.length ? data.tjanster : [];
+                this._byransTjanster = this._dedupeByraTjanster(raw);
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta tjänster:', e.message);
                 this._byransTjanster = [];
@@ -2449,6 +2499,7 @@ class CustomerCardManager {
         const p = targetId;
         const alla = this._byransTjanster || [];
         const aktSet = aktivaIds instanceof Set ? aktivaIds : new Set();
+        const isTjanstAktiv = (t) => this._tjanstIdMatchSet(t).some((id) => aktSet.has(id));
 
         if (alla.length === 0) {
             content.innerHTML = '<p class="lead-empty">Inga tjänster registrerade för din byrå.</p>';
@@ -2469,7 +2520,7 @@ class CustomerCardManager {
             grupper[typ].push(t);
         });
 
-        const aktiva = alla.filter(t => aktSet.has(t.id));
+        const aktiva = alla.filter((t) => isTjanstAktiv(t));
 
         // Visningsläge — klickbara grå kort, info fälls ut
         const viewContent = aktiva.length === 0
@@ -2503,7 +2554,7 @@ class CustomerCardManager {
             <div class="risker-checkgrupp">
                 ${tjanster.map(t => `
                     <label class="risker-check-item">
-                        <input type="checkbox" name="tjanst-${p}" value="${t.id}" ${aktSet.has(t.id) ? 'checked' : ''}
+                        <input type="checkbox" name="tjanst-${p}" value="${t.id}" ${isTjanstAktiv(t) ? 'checked' : ''}
                             onchange="customerCardManager.updateTjansterCount('${p}')">
                         <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
                         <span class="risker-check-label">
@@ -2592,9 +2643,9 @@ class CustomerCardManager {
             return;
         }
 
-        // Incheckade värden är nu record ID:n
+        // Incheckade värden = kanoniska record-ID (en per logisk tjänst efter deduplicering)
         const checkedIds = [...document.querySelectorAll(`#tjanster-edit-${p} input[name="tjanst-${p}"]:checked`)]
-            .map(cb => cb.value);
+            .map((cb) => cb.value);
 
         const saveBtn = document.querySelector(`#tjanster-edit-${p} .btn-primary`);
         const originalText = saveBtn?.innerHTML;

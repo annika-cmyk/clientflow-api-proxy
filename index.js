@@ -278,6 +278,12 @@ const optionalAuthenticateToken = (req, res, next) => {
   });
 };
 
+/** Server-interna axios-anrop till egna /api-rutter måste skicka samma JWT som klienten (cookie eller Authorization). */
+function getAuthHeaderForInternalRequests(req) {
+  const token = req.cookies?.authToken || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // Redantera känsliga fält vid loggning – använd aldrig full req.body i loggar
 const SENSITIVE_KEYS = ['password', 'token', 'authToken', 'secret', 'authorization', 'cookie', 'lösenord'];
 function redactForLog(obj, keysToRedact = SENSITIVE_KEYS) {
@@ -9729,7 +9735,7 @@ Svara EXAKT i detta JSON-format (inget annat):
 app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
-  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+  const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
 
@@ -9819,7 +9825,7 @@ Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
-  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+  const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
 
@@ -10033,7 +10039,7 @@ Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en
 app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
-  const authHeader = req.headers.authorization ? { Authorization: req.headers.authorization } : {};
+  const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
 

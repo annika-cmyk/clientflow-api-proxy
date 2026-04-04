@@ -342,7 +342,7 @@
       try {
         var res = await fetch(getBaseUrl() + '/api/ai-vardering-risk-byra', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' }
+          ...getAuthOpts()
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
@@ -355,6 +355,7 @@
         console.error('AI värdering risk:', err);
         alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
       } finally {
+        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
       }
