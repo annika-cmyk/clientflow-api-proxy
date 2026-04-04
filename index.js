@@ -6573,7 +6573,10 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
     // Gruppera per tjänstenamn så samma namn (olika record-ID) inte visas dubbelt
     const tjanstByName = {};
     for (const [id, antal] of Object.entries(tjänstAntal)) {
-      const namn = (tjanstIdToName[id] || id).trim() || id;
+      let namn = (tjanstIdToName[id] || '').trim();
+      // Visa aldrig rått Airtable record-ID som namn (hämtning kan ha misslyckats)
+      if (!namn && /^rec[A-Za-z0-9]{10,}$/.test(String(id))) continue;
+      if (!namn) namn = String(id);
       tjanstByName[namn] = (tjanstByName[namn] || 0) + antal;
     }
     const tjänsterMedNamn = Object.entries(tjanstByName).map(([namn, antal]) => ({
@@ -9824,6 +9827,9 @@ Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 // Genererar AI-förslag för stycket "4. Identifierade Risker och Sårbarheter" med statistik, byråns tjänster och riktlinjer
 app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
+  // Samma mönster som /api/ai-riskbedomning/:kundId — Assistants + file_search mot vector store (myndighetsdokument).
+  const assistantId = process.env.OPENAI_ASSISTANT_ID_BYRA_S4 || process.env.OPENAI_ASSISTANT_ID || 'asst_OOsa6mD2D2aQHAFqsh0ch5Rs';
+  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 || process.env.OPENAI_VECTOR_STORE_ID || 'vs_6849e4132d7c8191a60176f4403d6da4';
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
   const authHeader = getAuthHeaderForInternalRequests(req);
 
@@ -9850,15 +9856,45 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
     const metod = rutinerFields['3. Metod för Riskbedömning '] || rutinerFields['Metod för Riskbedömning'] || '';
     const befintligText = rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
 
+    // Airtable-ID:n (rec…) får aldrig visas som tjänstnamn — mappa till Task Name från byråns tjänster.
+    const tjanstIdToNamn = new Map();
+    for (const t of tjansterFromByra) {
+      if (t.id && t.namn) tjanstIdToNamn.set(t.id, String(t.namn).trim());
+    }
+    const isAirtableRecordId = (s) => typeof s === 'string' && /^rec[A-Za-z0-9]{10,}$/.test(s.trim());
+    const resolveTjanstNamn = (raw) => {
+      if (raw == null) return '';
+      let s = String(raw).trim();
+      if (!s) return '';
+      if (isAirtableRecordId(s)) return tjanstIdToNamn.get(s) || '';
+      return s;
+    };
+    const mergeTjanstRad = (prev, nu) => {
+      if (!prev) return nu;
+      const pick = (a, b) => ((b || '').trim() ? b : a);
+      return {
+        namn: prev.namn,
+        beskrivning: pick(prev.beskrivning, nu.beskrivning),
+        riskbedomning: pick(prev.riskbedomning, nu.riskbedomning),
+        atgard: pick(prev.atgard, nu.atgard),
+        typ: pick(prev.typ, nu.typ),
+        antal: prev.antal != null ? prev.antal : nu.antal
+      };
+    };
+
     // Slå ihop ALLA tjänster: byra-tjanster (med riskanalys) + statistik.tjänster (från kunder). OTROLIGT VIKTIGT att alla aktuella tjänster med i analysen.
     const tjanstByName = new Map();
     for (const t of tjansterFromByra) {
-      const n = (t.namn || '').trim();
-      if (n) tjanstByName.set(n, { namn: n, beskrivning: t.beskrivning || '', riskbedomning: t.riskbedomning || '', atgard: t.atgard || '', typ: t.typ || '', antal: null });
+      let n = (t.namn || '').trim();
+      if (!n && t.id) n = tjanstIdToNamn.get(t.id) || '';
+      n = resolveTjanstNamn(n);
+      if (!n) continue;
+      const rad = { namn: n, beskrivning: t.beskrivning || '', riskbedomning: t.riskbedomning || '', atgard: t.atgard || '', typ: t.typ || '', antal: null };
+      tjanstByName.set(n, mergeTjanstRad(tjanstByName.get(n), rad));
     }
     const statistikTjanster = statistik.tjänster || [];
     for (const t of statistikTjanster) {
-      const n = (t.namn || '').trim();
+      const n = resolveTjanstNamn((t.namn || '').trim());
       if (!n) continue;
       if (!tjanstByName.has(n)) {
         tjanstByName.set(n, { namn: n, beskrivning: '', riskbedomning: '', atgard: '', typ: '', antal: t.antal });
@@ -9871,12 +9907,17 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
     const valdaTjanster = typeof valdaTjansterRaw === 'string'
       ? valdaTjansterRaw.split(',').map(s => s.trim()).filter(Boolean)
       : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw.map(s => String(s).trim()).filter(Boolean) : []);
-    for (const n of valdaTjanster) {
-      if (n && !tjanstByName.has(n)) {
+    for (const raw of valdaTjanster) {
+      const n = resolveTjanstNamn(raw);
+      if (!n) continue;
+      if (!tjanstByName.has(n)) {
         tjanstByName.set(n, { namn: n, beskrivning: '', riskbedomning: '', atgard: '', typ: '', antal: null });
       }
     }
-    const tjanster = Array.from(tjanstByName.values());
+    const tjanster = Array.from(tjanstByName.values()).filter((row) => {
+      const n = (row.namn || '').trim();
+      return n && !isAirtableRecordId(n);
+    });
 
     const statistikText = [
       'STATISTIK FÖR RISKBEDÖMNING (byråns kunder):',
@@ -9947,13 +9988,19 @@ Risknivå och åtgärder: Vi bedömer den sammantagna risken för tjänsten "Lö
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "4. Identifierade Risker och Sårbarheter" i en allmän riskbedömning (PVML, Penningtvättslagen).
 
+KUNSKAPSBAS (vector store / file_search): Du har tillgång till uppladdade officiella och rekommenderade dokument. Använd file_search FLITIGT innan du färdigställer texten. Väg in vägledning och krav från svenska och relevanta källor som kan finnas i arkivet, t.ex. Länsstyrelsen, Finansinspektionen, regeringens propositioner och förordningar, BRÅ, Polisen, internationella standarder där de är tillämpliga, och annan dokumentation om penningtvätt, riskbedömning och redovisningsbyråers skyldigheter. Din analys får INTE enbart återge byråns egna korta tjänstanalyser — den ska vara förenlig med ett riskbaserat förhållningssätt och vedertagen praxis enligt vad som framgår av kunskapsbasen. Om underlaget i arkivet stödjer mer detaljerade hot, sårbarheter eller åtgärder än byrån skrivit, ska du utveckla detta.
+
 OTROLIGT VIKTIGT – Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor som listas i underlagen. Utelämna INGEN. Länsstyrelsen delar ut sanktionsavgifter till byråer som glömmer tjänster eller riskfaktorer. Skriv en egen sektion för varje tjänst.
 
 En godkänd riskbedömning MÅSTE innehålla: 1) Produkter och tjänster – en sektion per tjänst, alla måste vara med, 2) Kunder – inklusive alla riskfaktorer, 3) Distributionskanaler, 4) Geografiska riskfaktorer. Valfritt: 5) Verksamhetsspecifika omständigheter.
 
-Varje område ska ha samma struktur: beskrivning (utan label), Hot:, Sårbarhet:, Risknivå och åtgärder:. Avsluta med en kort övergripande slutsats. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell och konkret.`;
+Varje område ska ha samma struktur: beskrivning (utan label), Hot:, Sårbarhet:, Risknivå och åtgärder:. Avsluta med en kort övergripande slutsats. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell, noggrann och konkret.
+
+Skriv aldrig tekniska databas-ID som börjar med "rec" som tjänstnamn — använd endast riktiga tjänstenamn (t.ex. Löpande bokföring).`;
 
     const userPrompt = `Skriv stycket "4. Identifierade Risker och Sårbarheter" för byråns allmänna riskbedömning.
+
+INNAN DU SKRIVER FÄRDIGT: Genomför en eller flera sökningar (file_search) i vector store efter relevant vägledning för varje huvudområde (tjänster, kunder, kanaler, geografi, verksamhet) och för tjänster med särskild exponering (t.ex. betalningsuppdrag, löner, moms). Kombinera det du hittar där med byråns statistik och egna texter nedan — byråns ifyllda analyser är underlag, inte den enda sanningen.
 
 OTROLIGT VIKTIGT: Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor nedan. Utelämna INGEN. Länsstyrelsen kräver att alla tjänster och riskfaktorer som är aktuella för byrån analyseras.
 
@@ -9983,17 +10030,74 @@ ${befintligText ? `\nBefintlig text (förfina/uppdatera om relevant): ${befintli
 Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en sektion för VARJE tjänst i listan ovan – utelämna INGEN. Inkludera alla riskfaktorer i Kunder-analysen. Skriv också Kunder, Distributionskanaler, Geografiska riskfaktorer, och gärna Verksamhetsspecifika omständigheter. Avsluta med en kort övergripande slutsats.`;
 
     const openai = new OpenAI({ apiKey: openaiKey });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.6,
-      max_tokens: 16000
-    });
+    const apiBase = 'https://api.openai.com/v1';
+    const axiosAuth = { Authorization: `Bearer ${openaiKey}` };
+    const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
 
-    let text = (completion.choices[0]?.message?.content || '').trim();
+    let text = '';
+    try {
+      if (!assistantId) throw new Error('OPENAI_ASSISTANT_ID saknas');
+
+      const threadRes = await axios.post(
+        `${apiBase}/threads`,
+        { messages: [{ role: 'user', content: fullPrompt }] },
+        { headers: { ...axiosAuth, 'Content-Type': 'application/json' }, timeout: 120000 }
+      );
+      const threadId = threadRes.data?.id;
+      if (!threadId) throw new Error('Inget thread-id från OpenAI');
+
+      const runBody = {
+        assistant_id: assistantId,
+        ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
+      };
+      const runRes = await axios.post(
+        `${apiBase}/threads/${threadId}/runs`,
+        runBody,
+        { headers: { ...axiosAuth, 'Content-Type': 'application/json' }, timeout: 120000 }
+      );
+      const runId = runRes.data?.id;
+      if (!runId) throw new Error('Inget run-id från OpenAI');
+
+      let runStatus = runRes.data;
+      const startMs = Date.now();
+      const maxWaitMs = 180000;
+      while (['queued', 'in_progress', 'cancelling'].includes(runStatus.status)) {
+        if (Date.now() - startMs > maxWaitMs) throw new Error('Timeout – AI med kunskapsbas (file_search) svarade inte i tid');
+        await new Promise(r => setTimeout(r, 1500));
+        const statusRes = await axios.get(
+          `${apiBase}/threads/${threadId}/runs/${runId}`,
+          { headers: axiosAuth, timeout: 60000 }
+        );
+        runStatus = statusRes.data;
+      }
+
+      if (runStatus.status !== 'completed') {
+        throw new Error(runStatus.last_error?.message || `Körning misslyckades: ${runStatus.status}`);
+      }
+
+      const msgRes = await axios.get(
+        `${apiBase}/threads/${threadId}/messages?limit=15`,
+        { headers: axiosAuth, timeout: 60000 }
+      );
+      const oaMessages = msgRes.data?.data || [];
+      const assistantMsg = oaMessages.find(m => m.role === 'assistant' && m.run_id === runId) || oaMessages.find(m => m.role === 'assistant');
+      const parts = assistantMsg?.content || [];
+      text = parts.map(c => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
+      if (!text) throw new Error('Tomt svar från assistent');
+    } catch (asstErr) {
+      console.warn('⚠️ Sektion 4: Assistants API / file_search misslyckades, använder Chat Completions:', asstErr.message);
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.6,
+        max_tokens: 16000
+      });
+      text = (completion.choices[0]?.message?.content || '').trim();
+    }
+
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
     // Post-processing: ersätt gamla labels med önskat format (g = alla förekomster)
