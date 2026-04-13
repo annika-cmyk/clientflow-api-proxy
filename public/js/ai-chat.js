@@ -3,7 +3,14 @@
  * Öppnas via "Chatta med Annika" i sidofältet (window.openAiChat()).
  */
 (function () {
-  const baseUrl = (typeof window !== 'undefined' && window.apiConfig?.baseUrl) || (typeof window !== 'undefined' && window.location.origin) || 'http://localhost:3001';
+  /** Samma logik som config.js: aldrig gissa bara location.origin (fel port med Live Server etc.). */
+  function getChatApiBaseUrl() {
+    if (typeof window === 'undefined') return 'http://localhost:3001';
+    if (window.apiConfig && window.apiConfig.baseUrl) return window.apiConfig.baseUrl.replace(/\/$/, '');
+    const h = window.location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:3001';
+    return (window.location.origin || 'http://localhost:3001').replace(/\/$/, '');
+  }
   const annikaAvatarUrl = 'images/annika-avatar.webp';
   let panel = null;
   let messagesEl = null;
@@ -106,7 +113,8 @@
     setLoading(true);
 
     try {
-      const url = (baseUrl.replace(/\/$/, '')) + '/api/ai-chat';
+      const apiBase = getChatApiBaseUrl();
+      const url = apiBase + '/api/ai-chat';
       const res = await fetch(url, {
         method: 'POST',
         ...getAuthOpts(),
@@ -118,10 +126,10 @@
         data = raw ? JSON.parse(raw) : {};
       } catch (_) {
         const preview = raw.length > 120 ? raw.slice(0, 120) + '…' : raw;
-        data = { error: 'Servern svarade inte med JSON (status ' + res.status + '). Kontrollera att API kör på ' + (baseUrl || 'servern') + '. Svar: ' + (preview || '(tomt)') };
+        data = { error: 'Servern svarade inte med JSON (status ' + res.status + '). Kontrollera att API kör på ' + (apiBase || 'servern') + '. Svar: ' + (preview || '(tomt)') };
       }
       if (!res.ok) {
-        const msg = (data && data.error) ? data.error : ('Status ' + res.status);
+        const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ('HTTP ' + res.status);
         throw new Error(msg);
       }
       const reply = (data && data.reply) ? data.reply : 'Inget svar.';

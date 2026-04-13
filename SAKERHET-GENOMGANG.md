@@ -82,6 +82,46 @@
 
 ---
 
+## Svar till Tobias (utkast)
+
+Hej Tobias,  
+
+Tack för en tydlig och ärlig genomgång. Vi håller med om huvudbilden: ClientFlow fungerar bra som prototyp för att validera funktioner, men behöver stärkas för full produktion i större skala.  
+
+Vi tar särskilt till oss följande punkter:
+- lösenordshantering och generell säkerhet,
+- tenant-isolering och åtkomstmodell per byrå,
+- tydligare arkitektur i backend (uppdelning av monolitisk fil),
+- bättre långsiktig underhållbarhet i frontend.
+
+Vår plan är att köra vidare appen som prototyp för användarvalidering, samtidigt som vi genomför ett säkerhets- och arkitekturlift i prioriterade steg. Därefter tar vi beslut om stegvis migrering eller ombyggnation.  
+
+Vi återkommer gärna om scope-estimat när vi har delat åtkomst till en avgränsad miljö och Airtable-struktur.  
+
+---
+
+## Att-göra (prioriterad)
+
+### Akut (0-2 veckor)
+- [ ] Inför bcrypt-hashning för lösenord + migreringsplan för befintliga konton.
+- [ ] Ta bort alla hemligheter från frontend/Git och rotera exponerade nycklar.
+- [ ] Säkerställ att Airtable-token kör minsta möjliga scopes och begränsad base-access.
+- [ ] Inför enkel säkerhetslogg/audit för kritiska händelser (inloggning, rolländring, kundändring).
+
+### Kort sikt (2-6 veckor)
+- [ ] Inför 2FA (TOTP) för Admin/Ledare.
+- [ ] Lägg till CSRF-skydd på state-changing endpoints (POST/PATCH/DELETE).
+- [ ] Systematisera XSS-skydd: inga oskyddade `innerHTML`-injektioner av extern data.
+- [ ] Skapa grundläggande test-suite för auth, behörighet och tenant-access.
+
+### Medellång sikt (6-12 veckor)
+- [ ] Dela upp `index.js` i moduler (routes/services/repositories) och dokumentera arkitektur.
+- [ ] Inför tydlig tenant-context i alla backendflöden (centralt middleware-mönster).
+- [ ] Besluta målarkitektur: stegvis migrering vs nybyggnation (backend + databas + frontend).
+- [ ] Ta fram teknisk migreringsplan för SQL och datamodell per byrå.
+
+---
+
 ## Checklista produktion
 
 - [ ] `JWT_SECRET` satt i miljövariabler (lång, slumpad sträng).

@@ -6,7 +6,6 @@ const AdmZip = require('adm-zip');
 const { PDFDocument } = require('pdf-lib');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const OpenAI = require('openai');
 const rateLimit = require('express-rate-limit');
 let puppeteer = null;
 let chromium = null;
@@ -61,6 +60,7 @@ console.log('  AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID ? 'SET' : 'NOT S
 console.log('  AIRTABLE_TABLE_NAME:', process.env.AIRTABLE_TABLE_NAME ? 'SET' : 'NOT SET');
 console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
 console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 'NOT SET');
+console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('');
 
@@ -251,6 +251,23 @@ if (process.env.NODE_ENV === 'production' && !JWT_SECRET) {
   process.exit(1);
 }
 
+/**
+ * Auth-cookie: i produktion används Secure + SameSite=None (krävs för HTTPS / cross-site).
+ * Om du kör NODE_ENV=production lokalt mot http://localhost måste Secure vara av — annars skickar
+ * webbläsaren inte cookie (401 på t.ex. /api/ai-chat). Sätt då ALLOW_HTTP_AUTH_COOKIE=true i .env.
+ * Använd aldrig ALLOW_HTTP_AUTH_COOKIE på publik HTTPS-produktion.
+ */
+function getAuthCookieFlags() {
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowHttp = process.env.ALLOW_HTTP_AUTH_COOKIE === 'true';
+  const secure = isProd && !allowHttp;
+  return { secure, sameSite: (secure ? 'none' : 'lax') };
+}
+
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_HTTP_AUTH_COOKIE === 'true') {
+  console.log('ℹ️ ALLOW_HTTP_AUTH_COOKIE: inloggningscookie utan Secure (enbart för lokal http).');
+}
+
 // Middleware to verify JWT token (från cookie eller Authorization header)
 const authenticateToken = (req, res, next) => {
   const token = req.cookies?.authToken || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
@@ -282,6 +299,114 @@ const optionalAuthenticateToken = (req, res, next) => {
 function getAuthHeaderForInternalRequests(req) {
   const token = req.cookies?.authToken || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * All AI i ClientFlow ska gå via er OpenAI-assistent (samma som i Assistants/ChatGPT-byggaren).
+ * Sätt OPENAI_ASSISTANT_ID=asst_... och valfritt OPENAI_VECTOR_STORE_ID=vs_... (file_search för rutter som skickar vectorStoreId).
+ * Annika-chatt (/api/ai-chat) använder vector endast om OPENAI_CHAT_VECTOR_STORE_ID är satt (undviker 400 om assistent + global vector inte matchar).
+ */
+function formatOpenAIAssistantError(err, step) {
+  const status = err.response && err.response.status;
+  const data = err.response && err.response.data;
+  if (data) {
+    const d = data;
+    const msg = d.error?.message || d.message || (typeof d === 'string' ? d : JSON.stringify(d));
+    return new Error(`${step}: ${msg} (HTTP ${status})`);
+  }
+  if (status) {
+    return new Error(`${step}: HTTP ${status} (ingen detalj från OpenAI)`);
+  }
+  return err;
+}
+
+async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
+  const assistantId = opts.assistantId || process.env.OPENAI_ASSISTANT_ID;
+  const vectorStoreId = opts.vectorStoreId !== undefined ? opts.vectorStoreId : (process.env.OPENAI_VECTOR_STORE_ID || null);
+  const maxWaitMs = opts.maxWaitMs ?? 180000;
+  const pollMs = opts.pollMs ?? 1500;
+
+  if (!openaiKey) throw new Error('OPENAI_API_KEY saknas');
+  if (!assistantId) {
+    throw new Error('OPENAI_ASSISTANT_ID saknas. Lägg till ditt assistent-ID (asst_...) i miljövariabler.');
+  }
+
+  const apiBase = 'https://api.openai.com/v1';
+  const axiosAssistantHeaders = {
+    Authorization: `Bearer ${openaiKey}`,
+    'Content-Type': 'application/json',
+    'OpenAI-Beta': 'assistants=v2'
+  };
+
+  let threadId;
+  try {
+    const threadRes = await axios.post(
+      `${apiBase}/threads`,
+      { messages: [{ role: 'user', content: userContent }] },
+      { headers: axiosAssistantHeaders, timeout: 120000 }
+    );
+    threadId = threadRes.data?.id;
+  } catch (e) {
+    throw formatOpenAIAssistantError(e, 'OpenAI threads');
+  }
+  if (!threadId) throw new Error('Inget thread-id från OpenAI');
+
+  const runBody = {
+    assistant_id: assistantId,
+    ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
+  };
+  let runId;
+  let runStatus;
+  try {
+    const runRes = await axios.post(
+      `${apiBase}/threads/${threadId}/runs`,
+      runBody,
+      { headers: axiosAssistantHeaders, timeout: 120000 }
+    );
+    runId = runRes.data?.id;
+    runStatus = runRes.data;
+  } catch (e) {
+    throw formatOpenAIAssistantError(e, 'OpenAI runs');
+  }
+  if (!runId) throw new Error('Inget run-id från OpenAI');
+
+  const startMs = Date.now();
+  while (['queued', 'in_progress', 'cancelling', 'requires_action'].includes(runStatus.status)) {
+    if (Date.now() - startMs > maxWaitMs) {
+      throw new Error('Timeout – OpenAI-assistenten svarade inte i tid');
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+    let statusRes;
+    try {
+      statusRes = await axios.get(
+        `${apiBase}/threads/${threadId}/runs/${runId}`,
+        { headers: axiosAssistantHeaders, timeout: 60000 }
+      );
+    } catch (e) {
+      throw formatOpenAIAssistantError(e, 'OpenAI run status');
+    }
+    runStatus = statusRes.data;
+  }
+
+  if (runStatus.status !== 'completed') {
+    const errMsg = runStatus.last_error?.message || runStatus.incomplete_details?.reason || `Status: ${runStatus.status}`;
+    throw new Error(errMsg);
+  }
+
+  let msgRes;
+  try {
+    msgRes = await axios.get(
+      `${apiBase}/threads/${threadId}/messages?limit=25`,
+      { headers: axiosAssistantHeaders, timeout: 60000 }
+    );
+  } catch (e) {
+    throw formatOpenAIAssistantError(e, 'OpenAI messages');
+  }
+  const oaMessages = msgRes.data?.data || [];
+  const assistantMsg = oaMessages.find((m) => m.role === 'assistant' && m.run_id === runId)
+    || oaMessages.find((m) => m.role === 'assistant');
+  const parts = assistantMsg?.content || [];
+  return parts.map((c) => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
 }
 
 // Redantera känsliga fält vid loggning – använd aldrig full req.body i loggar
@@ -389,12 +514,11 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     console.log(`🔐 Login successful: ${user.email} (${user.role}) from ${user.byra}`);
 
     // Sätt token i httpOnly cookie – inget ska sparas i localStorage
-    // Vid cross-origin (t.ex. frontend på en Render-URL, API på annan) krävs SameSite=None; Secure
-    const isProduction = process.env.NODE_ENV === 'production';
+    const { secure: cookieSecure, sameSite: cookieSameSite } = getAuthCookieFlags();
     res.cookie('authToken', token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       maxAge: 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -426,7 +550,8 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
 
 // Logout endpoint – rensa auth-cookie (kräver inte inloggning så att knappen alltid fungerar)
 app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie('authToken', { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' });
+  const { secure: cSec, sameSite: cSame } = getAuthCookieFlags();
+  res.clearCookie('authToken', { path: '/', httpOnly: true, secure: cSec, sameSite: cSame });
   res.json({
     success: true,
     message: 'Utloggning lyckades'
@@ -453,6 +578,9 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   console.log('💬 POST /api/ai-chat anropad');
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) {
+    return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas. Konfigurera din OpenAI-assistent i miljövariabler.' });
+  }
 
   const { message, history = [] } = req.body;
   if (!message || typeof message !== 'string' || !message.trim()) {
@@ -472,7 +600,6 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   }
 
   try {
-    const openai = new OpenAI({ apiKey: openaiKey });
     const systemContent = `Du är Annika – en vänlig, kunnig och klämkäck person som hjälper användare av ClientFlow (kundhantering och riskbedömning på svenska redovisningsbyråer). Du svarar alltid i första person som Annika, på svenska.
 
 Om mig: Jag bor i Ljungby och har tre barn – Rakel som är 2, Lilly 15 och Tove 18. Fredrik Grengby är min kompis och driver också egen redovisningsbyrå. Du kan nämna det när det passar i samtalet.
@@ -485,22 +612,20 @@ Du hjälper till med:
 - Rekommendationer och bästa praxis för motiveringar och risksänkande åtgärder
 Var varm och professionell men också lite käck och rolig – t.ex. "Hallå brottsbekämpare" eller "Inte alla hjältar bär cape, en del bär terminalglasögon och miniräknare". Håll svaren tydliga och koncisa, med en lätt humor när det passar. Om du inte vet något, säg det ärligt.`;
 
-    const messages = [
-      { role: 'system', content: systemContent },
-      ...history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message.trim() }
-    ];
+    let transcript = systemContent + '\n\n--- KONVERSATION ---\n';
+    for (const m of history.slice(-20)) {
+      const label = m.role === 'assistant' ? 'Annika' : 'Användare';
+      transcript += `${label}: ${m.content}\n\n`;
+    }
+    transcript += `Användare: ${message.trim()}`;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      temperature: 0.5
+    const reply = await runOpenAIAssistantRun(openaiKey, transcript, {
+      maxWaitMs: 120000,
+      vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null
     });
-
-    const reply = completion.choices[0]?.message?.content?.trim() || 'Kunde inte generera svar.';
-    res.json({ reply });
+    res.json({ reply: reply || 'Kunde inte generera svar.' });
   } catch (error) {
-    console.error('❌ AI-chat fel:', error.message);
+    console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
     res.status(500).json({ error: 'Chatten svarade inte: ' + error.message });
   }
 });
@@ -846,6 +971,16 @@ app.get('/api/bolagsverket/test', (req, res) => {
 let bolagsverketToken = null;
 let tokenExpiry = null;
 
+function getBolagsverketEnvironment() {
+  const raw = (process.env.BOLAGSVERKET_ENVIRONMENT || '').toString().trim().toLowerCase();
+  // Default: production in deployed environments (safer than accidentally hitting test).
+  if (!raw) return 'production';
+  if (['test', 'sandbox', 'accept', 'accept2'].includes(raw)) return 'test';
+  if (['prod', 'production', 'live'].includes(raw)) return 'production';
+  // If someone set an unexpected value, prefer production to avoid sandbox limitations.
+  return 'production';
+}
+
 async function getBolagsverketToken() {
   // Kontrollera om vi har en giltig token
   if (bolagsverketToken && tokenExpiry && new Date() < tokenExpiry) {
@@ -853,8 +988,8 @@ async function getBolagsverketToken() {
   }
 
   try {
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
-    const tokenUrl = environment === 'test' 
+    const environment = getBolagsverketEnvironment();
+    const tokenUrl = environment === 'test'
       ? 'https://portal-accept2.api.bolagsverket.se/oauth2/token'
       : 'https://portal.api.bolagsverket.se/oauth2/token';
      
@@ -922,7 +1057,7 @@ app.get('/api/bolagsverket/isalive', async (req, res) => {
     }
 
     const token = await getBolagsverketToken();
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const environment = getBolagsverketEnvironment();
     const isaliveUrl = environment === 'test'
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/isalive'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/isalive';
@@ -1013,7 +1148,7 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     let cleanOrgNumber = (organisationsnummer || '').toString().replace(/[^\d]/g, '');
     
     // Använd produktionsmiljö för riktiga organisationsnummer
-    const currentEnvironment = process.env.BOLAGSVERKET_ENVIRONMENT || 'prod';
+    const currentEnvironment = getBolagsverketEnvironment();
     if (currentEnvironment === 'test' && (cleanOrgNumber === '199105294475' || cleanOrgNumber === '5567223705')) {
       console.log(`⚠️ Använder känt fungerande testnummer istället för ${cleanOrgNumber}`);
       cleanOrgNumber = '193403223328';
@@ -1035,7 +1170,7 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     }
 
     const token = await getBolagsverketToken();
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const environment = getBolagsverketEnvironment();
     const orgUrl = environment === 'test'
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/organisationer';
@@ -1228,7 +1363,7 @@ app.post('/api/bolagsverket/dokumentlista', async (req, res) => {
 
     const cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
     const token = await getBolagsverketToken();
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const environment = getBolagsverketEnvironment();
     const dokumentlistaUrl = environment === 'test'
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
@@ -1326,7 +1461,7 @@ app.post('/api/clientflow/dokumentlista', async (req, res) => {
 
     const cleanOrgNumber = organisationsnummer.replace(/[-\s]/g, '');
     const token = await getBolagsverketToken();
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const environment = getBolagsverketEnvironment();
     const dokumentlistaUrl = environment === 'test'
       ? 'https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista'
       : 'https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokumentlista';
@@ -1416,7 +1551,7 @@ app.get('/api/bolagsverket/dokument/:dokumentId', async (req, res) => {
     }
 
     const token = await getBolagsverketToken();
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'test';
+    const environment = getBolagsverketEnvironment();
     const dokumentUrl = environment === 'test'
       ? `https://gw-accept2.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`
       : `https://gw.api.bolagsverket.se/vardefulla-datamangder/v1/dokument/${dokumentId}`;
@@ -1540,7 +1675,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     let cleanOrgNumber = (organisationsnummer || '').toString().replace(/[^\d]/g, '');
     
     // Använd produktionsmiljö för riktiga organisationsnummer
-    const environment = process.env.BOLAGSVERKET_ENVIRONMENT || 'prod';
+    const environment = getBolagsverketEnvironment();
     if (environment === 'test' && (cleanOrgNumber === '199105294475' || cleanOrgNumber === '5567223705')) {
       console.log(`⚠️ Använder känt fungerande testnummer istället för ${cleanOrgNumber}`);
       cleanOrgNumber = '193403223328';
@@ -9493,11 +9628,9 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
   const openaiKey = process.env.OPENAI_API_KEY;
   const baseId = process.env.AIRTABLE_BASE_ID;
   const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
-  const assistantId = process.env.OPENAI_ASSISTANT_ID || 'asst_OOsa6mD2D2aQHAFqsh0ch5Rs';
-  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_ID || 'vs_6849e4132d7c8191a60176f4403d6da4';
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!assistantId) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const kundRes = await axios.get(
@@ -9635,10 +9768,6 @@ Svara EXAKT i detta JSON-format (inget annat):
   "atgarder": "Punkter med bindestreck (-) vid Hog eller specifik risk, annars exakt tom sträng."
 }`;
 
-    const openai = new OpenAI({ apiKey: openaiKey });
-    const apiBase = 'https://api.openai.com/v1';
-    const authHeader = { Authorization: `Bearer ${openaiKey}` };
-
     const extractFirstJsonObject = (text) => {
       if (!text) return null;
       const start = text.indexOf('{');
@@ -9655,69 +9784,9 @@ Svara EXAKT i detta JSON-format (inget annat):
       return null;
     };
 
-    let result = null;
-
-    try {
-      // Assistants API via REST (tydliga URL:er, undviker SDK undefined-bug)
-      const threadRes = await axios.post(
-        `${apiBase}/threads`,
-        { messages: [{ role: 'user', content: prompt }] },
-        { headers: { ...authHeader, 'Content-Type': 'application/json' } }
-      );
-      const threadId = threadRes.data?.id;
-      if (!threadId) throw new Error('Inget thread-id i svar');
-
-      const runBody = {
-        assistant_id: assistantId,
-        ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
-      };
-      const runRes = await axios.post(
-        `${apiBase}/threads/${threadId}/runs`,
-        runBody,
-        { headers: { ...authHeader, 'Content-Type': 'application/json' } }
-      );
-      const runId = runRes.data?.id;
-      if (!runId) throw new Error('Inget run-id i svar');
-
-      let runStatus = runRes.data;
-      const startMs = Date.now();
-      while (['queued', 'in_progress', 'cancelling'].includes(runStatus.status)) {
-        if (Date.now() - startMs > 60000) throw new Error('Timeout – assistenten svarade inte i tid');
-        await new Promise(r => setTimeout(r, 1000));
-        const statusRes = await axios.get(
-          `${apiBase}/threads/${threadId}/runs/${runId}`,
-          { headers: authHeader }
-        );
-        runStatus = statusRes.data;
-      }
-
-      if (runStatus.status !== 'completed') {
-        throw new Error(runStatus.last_error?.message || `Run status: ${runStatus.status}`);
-      }
-
-      const msgRes = await axios.get(
-        `${apiBase}/threads/${threadId}/messages?limit=10`,
-        { headers: authHeader }
-      );
-      const messages = msgRes.data?.data || [];
-      const assistantMsg = messages.find(m => m.role === 'assistant' && m.run_id === runId) || messages.find(m => m.role === 'assistant');
-      const parts = assistantMsg?.content || [];
-      const assistantText = parts.map(c => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
-
-      const jsonText = extractFirstJsonObject(assistantText) || assistantText;
-      result = JSON.parse(jsonText);
-    } catch (assistantErr) {
-      console.warn('⚠️ Assistants API misslyckades, använder Chat Completions:', assistantErr.message);
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.4,
-        response_format: { type: 'json_object' }
-      });
-      const rawContent = completion.choices[0]?.message?.content || '';
-      const jsonText = extractFirstJsonObject(rawContent) || rawContent;
-      result = JSON.parse(jsonText);
-    }
+    const assistantText = await runOpenAIAssistantRun(openaiKey, prompt, { maxWaitMs: 120000 });
+    const jsonText = extractFirstJsonObject(assistantText) || assistantText;
+    const result = JSON.parse(jsonText);
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 
@@ -9741,6 +9810,7 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
@@ -9801,18 +9871,9 @@ ${befintligVardering ? `\nBefintlig värdering (förfina/uppdatera): ${befintlig
 
 Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 
-    const openai = new OpenAI({ apiKey: openaiKey });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.5,
-      max_tokens: 1500
+    const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
+      maxWaitMs: 120000
     });
-
-    const text = (completion.choices[0]?.message?.content || '').trim();
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
     res.json({ text });
@@ -9827,13 +9888,11 @@ Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 // Genererar AI-förslag för stycket "4. Identifierade Risker och Sårbarheter" med statistik, byråns tjänster och riktlinjer
 app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
-  // Samma mönster som /api/ai-riskbedomning/:kundId — Assistants + file_search mot vector store (myndighetsdokument).
-  const assistantId = process.env.OPENAI_ASSISTANT_ID_BYRA_S4 || process.env.OPENAI_ASSISTANT_ID || 'asst_OOsa6mD2D2aQHAFqsh0ch5Rs';
-  const vectorStoreId = process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 || process.env.OPENAI_VECTOR_STORE_ID || 'vs_6849e4132d7c8191a60176f4403d6da4';
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
@@ -10029,74 +10088,12 @@ ${befintligText ? `\nBefintlig text (förfina/uppdatera om relevant): ${befintli
 
 Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en sektion för VARJE tjänst i listan ovan – utelämna INGEN. Inkludera alla riskfaktorer i Kunder-analysen. Skriv också Kunder, Distributionskanaler, Geografiska riskfaktorer, och gärna Verksamhetsspecifika omständigheter. Avsluta med en kort övergripande slutsats.`;
 
-    const openai = new OpenAI({ apiKey: openaiKey });
-    const apiBase = 'https://api.openai.com/v1';
-    const axiosAuth = { Authorization: `Bearer ${openaiKey}` };
     const fullPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
-
-    let text = '';
-    try {
-      if (!assistantId) throw new Error('OPENAI_ASSISTANT_ID saknas');
-
-      const threadRes = await axios.post(
-        `${apiBase}/threads`,
-        { messages: [{ role: 'user', content: fullPrompt }] },
-        { headers: { ...axiosAuth, 'Content-Type': 'application/json' }, timeout: 120000 }
-      );
-      const threadId = threadRes.data?.id;
-      if (!threadId) throw new Error('Inget thread-id från OpenAI');
-
-      const runBody = {
-        assistant_id: assistantId,
-        ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
-      };
-      const runRes = await axios.post(
-        `${apiBase}/threads/${threadId}/runs`,
-        runBody,
-        { headers: { ...axiosAuth, 'Content-Type': 'application/json' }, timeout: 120000 }
-      );
-      const runId = runRes.data?.id;
-      if (!runId) throw new Error('Inget run-id från OpenAI');
-
-      let runStatus = runRes.data;
-      const startMs = Date.now();
-      const maxWaitMs = 180000;
-      while (['queued', 'in_progress', 'cancelling'].includes(runStatus.status)) {
-        if (Date.now() - startMs > maxWaitMs) throw new Error('Timeout – AI med kunskapsbas (file_search) svarade inte i tid');
-        await new Promise(r => setTimeout(r, 1500));
-        const statusRes = await axios.get(
-          `${apiBase}/threads/${threadId}/runs/${runId}`,
-          { headers: axiosAuth, timeout: 60000 }
-        );
-        runStatus = statusRes.data;
-      }
-
-      if (runStatus.status !== 'completed') {
-        throw new Error(runStatus.last_error?.message || `Körning misslyckades: ${runStatus.status}`);
-      }
-
-      const msgRes = await axios.get(
-        `${apiBase}/threads/${threadId}/messages?limit=15`,
-        { headers: axiosAuth, timeout: 60000 }
-      );
-      const oaMessages = msgRes.data?.data || [];
-      const assistantMsg = oaMessages.find(m => m.role === 'assistant' && m.run_id === runId) || oaMessages.find(m => m.role === 'assistant');
-      const parts = assistantMsg?.content || [];
-      text = parts.map(c => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
-      if (!text) throw new Error('Tomt svar från assistent');
-    } catch (asstErr) {
-      console.warn('⚠️ Sektion 4: Assistants API / file_search misslyckades, använder Chat Completions:', asstErr.message);
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.6,
-        max_tokens: 16000
-      });
-      text = (completion.choices[0]?.message?.content || '').trim();
-    }
+    const vectorS4 = process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 || process.env.OPENAI_VECTOR_STORE_ID || null;
+    let text = await runOpenAIAssistantRun(openaiKey, fullPrompt, {
+      maxWaitMs: 180000,
+      vectorStoreId: vectorS4
+    });
 
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
@@ -10146,6 +10143,7 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
@@ -10203,18 +10201,9 @@ ${befintligBeskrivning ? `\nBefintlig beskrivning (förfina/uppdatera om relevan
 
 Ge endast den färdiga texten, utan rubrik eller inledning.`;
 
-    const openai = new OpenAI({ apiKey: openaiKey });
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.6,
-      max_tokens: 2000
+    const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
+      maxWaitMs: 120000
     });
-
-    const text = (completion.choices[0]?.message?.content || '').trim();
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
     res.json({ text });
