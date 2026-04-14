@@ -333,11 +333,72 @@ function maskId(id, keepStart = 8) {
   return s.slice(0, keepStart) + '…';
 }
 
+// ============================================================
+// AI Debug (server-side) — logga vad som skickas till OpenAI
+// Aktiveras endast om AI_DEBUG_LOG_PROMPTS=true
+// ============================================================
+const AI_DEBUG_ENABLED = String(process.env.AI_DEBUG_LOG_PROMPTS || '').toLowerCase() === 'true';
+const AI_DEBUG_MAX = Math.max(1, Math.min(parseInt(process.env.AI_DEBUG_MAX || '25', 10) || 25, 200));
+const _aiDebugBuffer = [];
+let _aiDebugSeq = 0;
+
+function redactAiDebugText(s) {
+  const t = (s || '').toString();
+  if (!t) return '';
+  return t
+    // Svenska personnummer (YYYYMMDD-XXXX / YYYYMMDDXXXX)
+    .replace(/\b(\d{4})(\d{2})(\d{2})-?(\d{4})\b/g, '$1$2$3-****')
+    // E-post
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '***@***')
+    // Airtable record ids (recXXXXXXXXXXXX)
+    .replace(/\brec[a-zA-Z0-9]{12,}\b/g, 'rec************')
+    // OpenAI ids
+    .replace(/\basst_[a-zA-Z0-9]{10,}\b/g, 'asst_************')
+    .replace(/\bvs_[a-zA-Z0-9]{10,}\b/g, 'vs_************');
+}
+
+function pushAiDebugEvent(evt) {
+  if (!AI_DEBUG_ENABLED) return null;
+  const id = (++_aiDebugSeq).toString();
+  const safe = {
+    id,
+    ts: new Date().toISOString(),
+    route: evt.route || '',
+    user: evt.user || '',
+    assistantIdMasked: evt.assistantIdMasked || null,
+    vectorStoreIdMasked: evt.vectorStoreIdMasked || null,
+    threadIdMasked: evt.threadIdMasked || null,
+    runIdMasked: evt.runIdMasked || null,
+    status: evt.status || 'start',
+    promptLen: evt.prompt ? String(evt.prompt).length : 0,
+    promptRedacted: evt.prompt ? redactAiDebugText(evt.prompt).slice(0, 12000) : ''
+  };
+  _aiDebugBuffer.unshift(safe);
+  if (_aiDebugBuffer.length > AI_DEBUG_MAX) _aiDebugBuffer.length = AI_DEBUG_MAX;
+  return id;
+}
+
+function updateAiDebugEvent(id, patch) {
+  if (!AI_DEBUG_ENABLED || !id) return;
+  const idx = _aiDebugBuffer.findIndex(x => x.id === String(id));
+  if (idx === -1) return;
+  _aiDebugBuffer[idx] = { ..._aiDebugBuffer[idx], ...patch };
+}
+
 async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const assistantId = opts.assistantId || process.env.OPENAI_ASSISTANT_ID;
   const vectorStoreId = opts.vectorStoreId !== undefined ? opts.vectorStoreId : (process.env.OPENAI_VECTOR_STORE_ID || null);
   const maxWaitMs = opts.maxWaitMs ?? 180000;
   const pollMs = opts.pollMs ?? 1500;
+  const debugMeta = opts.debugMeta || null;
+  const debugId = pushAiDebugEvent({
+    route: debugMeta?.route || '',
+    user: debugMeta?.user || '',
+    assistantIdMasked: assistantId ? maskId(assistantId, 12) : null,
+    vectorStoreIdMasked: vectorStoreId ? maskId(vectorStoreId, 12) : null,
+    status: 'start',
+    prompt: userContent
+  });
 
   if (!openaiKey) throw new Error('OPENAI_API_KEY saknas');
   if (!assistantId) {
@@ -359,7 +420,9 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
       { headers: axiosAssistantHeaders, timeout: 120000 }
     );
     threadId = threadRes.data?.id;
+    updateAiDebugEvent(debugId, { threadIdMasked: threadId ? maskId(threadId, 12) : null, status: 'thread_created' });
   } catch (e) {
+    updateAiDebugEvent(debugId, { status: 'error_thread' });
     throw formatOpenAIAssistantError(e, 'OpenAI threads');
   }
   if (!threadId) throw new Error('Inget thread-id från OpenAI');
@@ -378,7 +441,9 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     );
     runId = runRes.data?.id;
     runStatus = runRes.data;
+    updateAiDebugEvent(debugId, { runIdMasked: runId ? maskId(runId, 12) : null, status: 'run_created' });
   } catch (e) {
+    updateAiDebugEvent(debugId, { status: 'error_run_create' });
     throw formatOpenAIAssistantError(e, 'OpenAI runs');
   }
   if (!runId) throw new Error('Inget run-id från OpenAI');
@@ -396,15 +461,18 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
         { headers: axiosAssistantHeaders, timeout: 60000 }
       );
     } catch (e) {
+      updateAiDebugEvent(debugId, { status: 'error_run_status' });
       throw formatOpenAIAssistantError(e, 'OpenAI run status');
     }
     runStatus = statusRes.data;
   }
 
   if (runStatus.status !== 'completed') {
+    updateAiDebugEvent(debugId, { status: `run_${runStatus.status || 'failed'}` });
     const errMsg = runStatus.last_error?.message || runStatus.incomplete_details?.reason || `Status: ${runStatus.status}`;
     throw new Error(errMsg);
   }
+  updateAiDebugEvent(debugId, { status: 'completed' });
 
   let msgRes;
   try {
@@ -413,6 +481,7 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
       { headers: axiosAssistantHeaders, timeout: 60000 }
     );
   } catch (e) {
+    updateAiDebugEvent(debugId, { status: 'error_messages' });
     throw formatOpenAIAssistantError(e, 'OpenAI messages');
   }
   const oaMessages = msgRes.data?.data || [];
@@ -588,8 +657,43 @@ app.get('/api/ai/status', authenticateToken, (req, res) => {
       hasApiKey: !!process.env.OPENAI_API_KEY,
       assistantId: process.env.OPENAI_ASSISTANT_ID ? maskId(process.env.OPENAI_ASSISTANT_ID, 12) : null,
       vectorStoreId: process.env.OPENAI_VECTOR_STORE_ID ? maskId(process.env.OPENAI_VECTOR_STORE_ID, 12) : null
+    },
+    debug: {
+      enabled: AI_DEBUG_ENABLED,
+      max: AI_DEBUG_MAX,
+      count: AI_DEBUG_ENABLED ? _aiDebugBuffer.length : 0
     }
   });
+});
+
+// GET /api/ai/debug/requests — lista senaste AI-prompter (redacted)
+app.get('/api/ai/debug/requests', authenticateToken, async (req, res) => {
+  try {
+    const user = await getAirtableUser(req.user.email);
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!user || !allowedRoles.includes(user.role)) return res.status(403).json({ error: 'Saknar behörighet' });
+    if (!AI_DEBUG_ENABLED) return res.status(400).json({ error: 'AI debug är avstängt. Sätt AI_DEBUG_LOG_PROMPTS=true och deploya om.' });
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit || '10', 10) || 10, AI_DEBUG_MAX));
+    res.json({ ok: true, items: _aiDebugBuffer.slice(0, limit) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Kunde inte lista AI debug' });
+  }
+});
+
+// GET /api/ai/debug/requests/:id — visa en specifik prompt (redacted)
+app.get('/api/ai/debug/requests/:id', authenticateToken, async (req, res) => {
+  try {
+    const user = await getAirtableUser(req.user.email);
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!user || !allowedRoles.includes(user.role)) return res.status(403).json({ error: 'Saknar behörighet' });
+    if (!AI_DEBUG_ENABLED) return res.status(400).json({ error: 'AI debug är avstängt. Sätt AI_DEBUG_LOG_PROMPTS=true och deploya om.' });
+    const id = String(req.params.id || '').trim();
+    const item = _aiDebugBuffer.find(x => x.id === id);
+    if (!item) return res.status(404).json({ error: 'Hittade inte debug-id' });
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Kunde inte läsa AI debug' });
+  }
 });
 
 // ============================================================
@@ -723,7 +827,8 @@ Var varm och professionell men också lite käck och rolig – t.ex. "Hallå bro
 
     const reply = await runOpenAIAssistantRun(openaiKey, transcript, {
       maxWaitMs: 120000,
-      vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null
+      vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null,
+      debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
     });
     res.json({ reply: reply || 'Kunde inte generera svar.' });
   } catch (error) {
@@ -5877,8 +5982,8 @@ app.post('/api/setup/airtable-byra-priser-fields', authenticateToken, async (req
     if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
 
     const required = [
-      { name: 'Tjänstepriser (JSON)', type: 'multilineText', description: 'JSON med pris per tjänst (nyckel = tjänstnamn). Ex: {\"Löpande bokföring\": {\"pris\": 1990, \"enhet\": \"månad\"}}' },
-      { name: 'Fritexttjänster (JSON)', type: 'multilineText', description: 'JSON-array med extra tjänster och priser. Ex: [{\"namn\":\"Rådgivning ad hoc\",\"pris\":1200,\"enhet\":\"timme\"}]' }
+      { name: 'Tjänstepriser (JSON)', type: 'multilineText', description: 'JSON med pris per tjänst (nyckel = tjänstnamn). Ex: {\"Löpande bokföring\": {\"pris\": 1200, \"enhet\": \"h\"}}' },
+      { name: 'Fritexttjänster (JSON)', type: 'multilineText', description: 'JSON-array med extra tjänster och priser. Ex: [{\"namn\":\"Rådgivning ad hoc\",\"pris\":1200,\"enhet\":\"h\"}]' }
     ];
 
     const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
@@ -10512,7 +10617,10 @@ Svara EXAKT i detta JSON-format (inget annat):
       return null;
     };
 
-    const assistantText = await runOpenAIAssistantRun(openaiKey, prompt, { maxWaitMs: 120000 });
+    const assistantText = await runOpenAIAssistantRun(openaiKey, prompt, {
+      maxWaitMs: 120000,
+      debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
+    });
     const jsonText = extractFirstJsonObject(assistantText) || assistantText;
     const result = JSON.parse(jsonText);
 
@@ -10600,7 +10708,8 @@ ${befintligVardering ? `\nBefintlig värdering (förfina/uppdatera): ${befintlig
 Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 
     const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
-      maxWaitMs: 120000
+      maxWaitMs: 120000,
+      debugMeta: { route: '/api/ai-vardering-risk-byra', user: req.user?.email || '' }
     });
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
@@ -10820,7 +10929,8 @@ Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en
     const vectorS4 = process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 || process.env.OPENAI_VECTOR_STORE_ID || null;
     let text = await runOpenAIAssistantRun(openaiKey, fullPrompt, {
       maxWaitMs: 180000,
-      vectorStoreId: vectorS4
+      vectorStoreId: vectorS4,
+      debugMeta: { route: '/api/ai-identifierade-risker-byra', user: req.user?.email || '' }
     });
 
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
@@ -10930,7 +11040,8 @@ ${befintligBeskrivning ? `\nBefintlig beskrivning (förfina/uppdatera om relevan
 Ge endast den färdiga texten, utan rubrik eller inledning.`;
 
     const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
-      maxWaitMs: 120000
+      maxWaitMs: 120000,
+      debugMeta: { route: '/api/ai-beskrivning-byra', user: req.user?.email || '' }
     });
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 

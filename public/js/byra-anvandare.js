@@ -174,13 +174,26 @@ class ByraAnvandareManager {
       if (v && typeof v === 'object') continue;
       // om någon råkat spara number/string direkt
       const n = Number(v);
-      prislista.tjanster[k] = { pris: Number.isFinite(n) ? n : null, enhet: 'månad' };
+      prislista.tjanster[k] = { pris: Number.isFinite(n) ? n : null, enhet: 'h' };
     }
     prislista.fritext = (prislista.fritext || []).map(x => ({
       namn: (x?.namn || '').toString(),
       pris: x?.pris != null && x.pris !== '' ? Number(x.pris) : null,
-      enhet: (x?.enhet || 'st').toString()
+      enhet: (x?.enhet || 'h').toString()
     })).filter(x => x.namn.trim() !== '');
+    // Normalisera legacy-enheter
+    for (const v of Object.values(prislista.tjanster || {})) {
+      if (!v || typeof v !== 'object') continue;
+      const e = (v.enhet || '').toString().trim().toLowerCase();
+      if (!e || e === 'timme' || e === 'hour' || e === 'hr') v.enhet = 'h';
+      else if (e === 'styck' || e === 'st.' || e === 'pcs' || e === 'piece') v.enhet = 'st';
+    }
+    prislista.fritext = prislista.fritext.map(it => {
+      const e = (it.enhet || '').toString().trim().toLowerCase();
+      if (!e || e === 'timme' || e === 'hour' || e === 'hr') return { ...it, enhet: 'h' };
+      if (e === 'styck' || e === 'st.' || e === 'pcs' || e === 'piece') return { ...it, enhet: 'st' };
+      return it;
+    });
     return prislista;
   }
 
@@ -216,10 +229,10 @@ class ByraAnvandareManager {
     const rows = [];
     const priceFor = (namn) => {
       const v = this.prislista?.tjanster?.[namn];
-      if (!v || typeof v !== 'object') return { pris: '', enhet: 'månad' };
+      if (!v || typeof v !== 'object') return { pris: '', enhet: 'h' };
       return {
         pris: v.pris != null && v.pris !== '' ? String(v.pris) : '',
-        enhet: v.enhet || 'månad'
+        enhet: v.enhet || 'h'
       };
     };
 
@@ -234,7 +247,7 @@ class ByraAnvandareManager {
             <div><input class="form-input" type="number" inputmode="decimal" placeholder="0" data-field="pris" value="${escapeHtml(pv.pris)}"></div>
             <div>
               <select class="form-select" data-field="enhet">
-                ${this._sel(['månad','kvartal','år','timme','st'], pv.enhet)}
+                ${this._sel(['h','st'], pv.enhet)}
               </select>
             </div>
             <div></div>
@@ -253,7 +266,7 @@ class ByraAnvandareManager {
           <div><input class="form-input" type="number" inputmode="decimal" placeholder="0" data-field="pris" value="${item.pris != null && item.pris !== '' ? escapeHtml(String(item.pris)) : ''}"></div>
           <div>
             <select class="form-select" data-field="enhet">
-              ${this._sel(['st','timme','månad','kvartal','år'], item.enhet || 'st')}
+              ${this._sel(['h','st'], item.enhet || 'h')}
             </select>
           </div>
           <div style="display:flex;justify-content:flex-end;">
@@ -285,7 +298,7 @@ class ByraAnvandareManager {
 
   addFritextRow() {
     this.prislista.fritext = this.prislista.fritext || [];
-    this.prislista.fritext.push({ namn: '', pris: null, enhet: 'st' });
+    this.prislista.fritext.push({ namn: '', pris: null, enhet: 'h' });
     this.renderPrislista();
   }
 
