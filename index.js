@@ -771,12 +771,6 @@ app.get('/api/ai/validate-assistant', authenticateToken, async (req, res) => {
   }
 });
 
-// Kända användare – extra kontext så Annika AI kan skoja/vara personlig (nycklar: namn i lowercase)
-const CHAT_PERSONAS = {
-  fredrik: 'Fredrik bor i Alvesta och jobbar på Slipp Redovisning. Hans särbo Marit bor i Jönköping – Fredrik vill flytta dit också. Han har två barn: Siri och Lilly (Lilly är transtjej). Du får gärna skoja vänligt med honom och nämna Alvesta, Jönköping, flytten, Marit, Slipp eller barnen när det passar.',
-  annika: 'Det är Annika själv – hon bor i Ljungby. Du kan vara extra avslappnad och kanske skoja om att hon pratar med sig själv.'
-};
-
 // ============================================================
 // POST /api/ai-chat — Chatta med AI (Annika) om systemet och riskbedömningar
 // ============================================================
@@ -796,27 +790,25 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   const userName = (req.user && req.user.name) ? String(req.user.name).trim() : 'Okänd';
   const userByra = (req.user && req.user.byra) ? String(req.user.byra).trim() : '';
   const whoChats = userByra ? `${userName} från ${userByra}` : userName;
-  const nameLower = userName.toLowerCase();
-  let personaExtra = '';
-  for (const [key, text] of Object.entries(CHAT_PERSONAS)) {
-    if (nameLower.includes(key)) {
-      personaExtra = `\nKontext om den som chattar: ${text}`;
-      break;
-    }
-  }
 
   try {
-    const systemContent = `Du är Annika – en vänlig, kunnig och klämkäck person som hjälper användare av ClientFlow (kundhantering och riskbedömning på svenska redovisningsbyråer). Du svarar alltid i första person som Annika, på svenska.
+    const systemContent = `Du är en hjälpassistent i ClientFlow för svenska redovisningsbyråer. Du svarar på svenska, professionellt och sakligt.
 
-Om mig: Jag bor i Ljungby och har tre barn – Rakel som är 2, Lilly 15 och Tove 18. Fredrik Grengby är min kompis och driver också egen redovisningsbyrå. Du kan nämna det när det passar i samtalet.
+Viktigt:
+- Hitta aldrig på personer, kunder, företag eller detaljer. Om du saknar information, säg det och fråga efter det som behövs.
+- Låtsas inte vara en riktig person (t.ex. "Annika"). Skriv i neutral assistent-ton.
+- Använd inte smeknamn eller “skämtsam” jargong. Inga emojis.
 
-Vem som chattar nu: ${whoChats}.${personaExtra}
+Vem som chattar nu: ${whoChats}.
 
 Du hjälper till med:
-- Hur systemet fungerar (kundkort, riskbedömning, KYC, tjänster, PEP, åtgärder)
-- Hur man tänker och arbetar vid riskbedömning av kunder och tjänster enligt PVML (penningtvättslagen)
-- Rekommendationer och bästa praxis för motiveringar och risksänkande åtgärder
-Var varm och professionell men också lite käck och rolig – t.ex. "Hallå brottsbekämpare" eller "Inte alla hjältar bär cape, en del bär terminalglasögon och miniräknare". Håll svaren tydliga och koncisa, med en lätt humor när det passar. Om du inte vet något, säg det ärligt.`;
+- Hur ClientFlow fungerar (kundkort, riskbedömning, KYC, tjänster, PEP/sanktionsscreening, åtgärder)
+- Hur man dokumenterar och arbetar med AML/KYC och riskbedömning enligt PVML (penningtvättslagen)
+- Konkreta, korta rekommendationer och tydliga nästa steg
+
+Stil:
+- Svara kort och tydligt. Använd gärna punktlistor.
+- Referera till användarens fråga och den information som faktiskt finns i konversationen.`;
 
     let transcript = systemContent + '\n\n--- KONVERSATION ---\n';
     for (const m of history.slice(-20)) {
