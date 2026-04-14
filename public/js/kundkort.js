@@ -630,6 +630,12 @@ class CustomerCardManager {
             if (editBtn) editBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Om kortet är kollapsat: fäll ut innan vi går in i edit-läge,
+                // annars ser det ut som att "pennan" inte gör något.
+                try {
+                    root.classList.remove('is-collapsed');
+                    root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } catch (_) {}
                 setEditing(root.dataset.uppdragEditing !== '1');
             });
             if (cancelBtn) cancelBtn.addEventListener('click', (e) => {
