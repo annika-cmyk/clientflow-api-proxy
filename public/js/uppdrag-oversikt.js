@@ -23,9 +23,11 @@
     month: document.getElementById('uppdragboard-month'),
     prev: document.getElementById('uppdragboard-prev'),
     next: document.getElementById('uppdragboard-next'),
-    tabs: Array.from(document.querySelectorAll('.uppdragboard-tab')),
+    typeTabs: Array.from(document.querySelectorAll('.uppdragboard-tab[data-typ]')),
     colRun: document.getElementById('uppdragboard-col-run'),
-    createBtn: document.getElementById('uppdragboard-create')
+    createBtn: document.getElementById('uppdragboard-create'),
+    viewDeadline: document.getElementById('uppdrag-view-deadline'),
+    viewOpen: document.getElementById('uppdrag-view-open')
   };
 
   const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
@@ -35,6 +37,7 @@
   let q = '';
   let activeType = 'Löneuppdrag';
   let monthCursor = new Date(); // current month
+  let viewMode = 'deadline'; // 'deadline' | 'open'
   let handlerFilter = '';
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const monthMax = new Date(monthStart.getFullYear(), monthStart.getMonth() + 11, 1);
@@ -158,6 +161,26 @@
       }
     }
     return inst;
+  }
+
+  function buildOpenInstances(records) {
+    const inst = [];
+    for (const r of records || []) {
+      const f = r.fields || {};
+      const typ = String(f['Typ'] || '');
+      const deadline0 = toDateStr(f['Nästa deadline'] || '');
+      if (!deadline0) continue;
+      inst.push({ record: r, typ, deadline: deadline0, month: deadline0.slice(0, 7), key: `${r.id}:${deadline0}` });
+    }
+    return inst;
+  }
+
+  function setViewMode(next) {
+    viewMode = next === 'open' ? 'open' : 'deadline';
+    if (els.viewDeadline) els.viewDeadline.classList.toggle('is-active', viewMode === 'deadline');
+    if (els.viewOpen) els.viewOpen.classList.toggle('is-active', viewMode === 'open');
+
+    render();
   }
 
   async function fileToBase64(file) {
@@ -296,17 +319,26 @@
   }
 
   function render() {
-    const runLabel = activeType === 'Löneuppdrag'
-      ? 'Lönekörning'
-      : (activeType === 'Momsredovisning' ? 'Moms' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration'));
+    const runLabel = (viewMode === 'open')
+      ? 'Deadline'
+      : (activeType === 'Löneuppdrag'
+        ? 'Lönekörning'
+        : (activeType === 'Momsredovisning' ? 'Moms' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration')));
     if (els.colRun) els.colRun.textContent = runLabel;
 
-    const instances = buildInstances(allRecords);
-    const filtered = instances
-      .filter(x => String(x?.typ || '') === activeType)
-      .filter(x => recordMatchesSearch(x.record))
-      .filter(x => x.month === monthKey(monthCursor))
-      .sort((a, b) => sortByClient(a.record, b.record));
+    const instances = (viewMode === 'open') ? buildOpenInstances(allRecords) : buildInstances(allRecords);
+    const filtered = (viewMode === 'open')
+      ? instances
+          .filter(x => String(x?.typ || '') === activeType)
+          .filter(x => recordMatchesSearch(x.record))
+          .filter(x => x.month === monthKey(monthCursor))
+          .filter(x => !isDoneForPeriod(x.record?.fields || {}, x.deadline))
+          .sort((a, b) => String(a.deadline || '').localeCompare(String(b.deadline || '')))
+      : instances
+          .filter(x => String(x?.typ || '') === activeType)
+          .filter(x => recordMatchesSearch(x.record))
+          .filter(x => x.month === monthKey(monthCursor))
+          .sort((a, b) => sortByClient(a.record, b.record));
 
     const rowsHtml = filtered.map(x => {
       const r = x.record;
@@ -317,7 +349,9 @@
       const link = kundId ? `kundkort.html?id=${encodeURIComponent(kundId)}` : '';
 
       const done = isDoneForPeriod(f, x.deadline) ? 1 : 0;
-      const runCell = `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
+      const runCell = (viewMode === 'open')
+        ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
+        : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
 
       const rutin = (f['Rutin'] || '').toString().trim();
       const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
@@ -492,16 +526,16 @@
 
   function setScope(next) {
     scope = next;
-    if (els.mineBtn) els.mineBtn.classList.toggle('btn-primary', scope === 'mine');
-    if (els.mineBtn) els.mineBtn.classList.toggle('btn-secondary', scope !== 'mine');
-    if (els.byraBtn) els.byraBtn.classList.toggle('btn-primary', scope !== 'mine');
-    if (els.byraBtn) els.byraBtn.classList.toggle('btn-secondary', scope === 'mine');
+    if (els.mineBtn) els.mineBtn.classList.toggle('is-active', scope === 'mine');
+    if (els.byraBtn) els.byraBtn.classList.toggle('is-active', scope !== 'mine');
     load();
   }
 
   if (els.mineBtn) els.mineBtn.addEventListener('click', () => setScope('mine'));
   if (els.byraBtn) els.byraBtn.addEventListener('click', () => setScope('byra'));
   if (els.search) els.search.addEventListener('input', () => { q = els.search.value || ''; render(); });
+  if (els.viewDeadline) els.viewDeadline.addEventListener('click', () => setViewMode('deadline'));
+  if (els.viewOpen) els.viewOpen.addEventListener('click', () => setViewMode('open'));
 
   if (els.prev) els.prev.addEventListener('click', () => {
     const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
@@ -515,12 +549,12 @@
     render();
   });
 
-  if (els.tabs && els.tabs.length) {
-    els.tabs.forEach(btn => btn.addEventListener('click', () => {
+  if (els.typeTabs && els.typeTabs.length) {
+    els.typeTabs.forEach(btn => btn.addEventListener('click', () => {
       const t = btn.getAttribute('data-typ') || 'Löneuppdrag';
       if (!TYPES.includes(t)) return;
       activeType = t;
-      els.tabs.forEach(b => b.classList.toggle('is-active', b === btn));
+      els.typeTabs.forEach(b => b.classList.toggle('is-active', b === btn));
       render();
     }));
   }
@@ -534,6 +568,11 @@
 
   window.addEventListener('clientflow:authReady', () => load());
   monthCursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
-  setScope('byra');
+  setViewMode('deadline');
+  activeType = 'Momsredovisning';
+  if (els.typeTabs && els.typeTabs.length) {
+    els.typeTabs.forEach(b => b.classList.toggle('is-active', (b.getAttribute('data-typ') || '') === activeType));
+  }
+  setScope('mine');
 })();
 

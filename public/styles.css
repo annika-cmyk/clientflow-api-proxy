@@ -7693,6 +7693,14 @@ textarea.kunduppgifter-input {
     margin-top: 0;
 }
 
+.uppdragboard-sep {
+    align-self: center;
+    color: #cbd5e1;
+    font-weight: 800;
+    padding: 0 0.15rem;
+    user-select: none;
+}
+
 .uppdragboard-tab {
     border: 1px solid var(--border);
     background: var(--card-bg);
