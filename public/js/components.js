@@ -260,16 +260,18 @@ window.addEventListener('popstate', function() {
     }
 });
 
-// AI "tänker"-indikator – visas på alla AI-hjälp-ställen
-window.showAiThinking = function () {
+// AI "tänker"-indikator – används som generell loading-overlay
+window.showAiThinking = function (message) {
     var el = document.getElementById('ai-thinking-overlay');
     if (!el) {
         el = document.createElement('div');
         el.id = 'ai-thinking-overlay';
         el.className = 'ai-thinking-overlay';
-        el.innerHTML = '<i class="fas fa-robot"></i> <i class="fas fa-spinner fa-spin"></i> AI tänker...';
+        el.innerHTML = '<i class="fas fa-robot"></i> <i class="fas fa-spinner fa-spin"></i> <span class="ai-thinking-text">AI tänker...</span>';
         document.body.appendChild(el);
     }
+    var textEl = el.querySelector('.ai-thinking-text');
+    if (textEl) textEl.textContent = (message || 'AI tänker...').toString();
     el.style.display = 'flex';
 };
 

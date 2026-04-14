@@ -170,7 +170,32 @@
       const typ = String(f['Typ'] || '');
       const deadline0 = toDateStr(f['Nästa deadline'] || '');
       if (!deadline0) continue;
-      inst.push({ record: r, typ, deadline: deadline0, month: deadline0.slice(0, 7), key: `${r.id}:${deadline0}` });
+      const step = monthsStepFromFreq(f['Frekvens']);
+
+      // Beräkna "öppen från" (periodstart) till deadline. Uppdraget ska visas i varje månad inom spannet.
+      // Ex: Månad = öppen från förra månaden fram till deadline-månaden.
+      const deadlineMonth = deadline0.slice(0, 7);
+      let startIso = deadline0;
+      if (step > 0) startIso = addMonthsIso(deadline0, -step);
+
+      const startMonth = toDateStr(startIso) ? startIso.slice(0, 7) : deadlineMonth;
+      let cursor = new Date(Number(startMonth.slice(0, 4)), Number(startMonth.slice(5, 7)) - 1, 1);
+      const end = new Date(Number(deadlineMonth.slice(0, 4)), Number(deadlineMonth.slice(5, 7)) - 1, 1);
+
+      // Engång: visa från innevarande månad fram till deadline (så man ser den "öppen" innan deadline)
+      if (step === 0) {
+        cursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+      }
+
+      for (let guard = 0; guard < 36; guard++) {
+        if (cursor > monthMax) break;
+        if (cursor > end) break;
+        if (cursor >= monthStart) {
+          const mk = monthKey(cursor);
+          inst.push({ record: r, typ, deadline: deadline0, month: mk, key: `${r.id}:${deadline0}:${mk}` });
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      }
     }
     return inst;
   }
@@ -358,7 +383,7 @@
       const riskValda = safeJson((f['Riskåtgärder valda'] || '').toString().trim(), []);
       const riskList = Array.isArray(riskValda) && riskValda.length
         ? `<div class="uppdrag-view-list">${riskValda.slice(0, 20).map(a => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${esc(a)}</div>`).join('')}</div>`
-        : `<div class="uppdrag-muted">Inga riskåtgärder valda.</div>`;
+        : '';
       const hist = safeJson((f['Historik'] || '').toString().trim(), []);
       const histHtml = Array.isArray(hist) && hist.length
         ? hist.slice(0, 6).map(h => {
@@ -393,14 +418,11 @@
                   <div class="uppdrag-view-label">Rutin / instruktion</div>
                   <div class="uppdrag-view-text">${rutin ? esc(rutin) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
                 </div>
+                ${riskList ? `
                 <div class="uppdrag-view-field">
                   <div class="uppdrag-view-label">Åtgärd enligt kundens riskbedömning</div>
                   ${riskList}
-                </div>
-              </div>
-              <div class="uppdragboard-details-history">
-                <div class="uppdrag-view-label">Tidigare anteckningar (klarmarkerade körningar)</div>
-                <div class="uppdrag-prev-notes-list">${histHtml}</div>
+                </div>` : ''}
               </div>
               <div class="uppdragboard-details-history" style="margin-top:1rem;">
                 <div class="uppdrag-view-label">Anteckning för denna körning (sparas utan klarmarkering)</div>

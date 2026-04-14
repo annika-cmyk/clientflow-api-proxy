@@ -10001,23 +10001,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
   </div>
 </div>
 
-<!-- ═══════════ UNDERSKRIFTER ═══════════ -->
-<div class="section" style="margin-top:32px;">
-  <div class="section-title">Underskrifter</div>
-  <p style="font-size:8.5pt;color:#555;margin-bottom:24px;">Undertecknade parter bekr\u00e4ftar att de tagit del av och godk\u00e4nner detta uppdragsavtal med tillh\u00f6rande bilagor.</p>
-  <div class="sign-grid">
-    <div class="sign-box">
-      <div class="sign-label">Uppdragstagare &mdash; Redovisningsbyr\u00e5n Ryd\u00e9n &amp; Co AB</div>
-      <div class="sign-name">${nf['Signerat av byr\u00e5'] || '&nbsp;'}</div>
-      <div class="sign-datum">Datum: ${nf['Signeringsdatum'] ? fmtDate(nf['Signeringsdatum']) : '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
-    </div>
-    <div class="sign-box">
-      <div class="sign-label">Uppdragsgivare &mdash; ${nf['Kundnamn']}</div>
-      <div class="sign-name">${nf['Signerat av kund'] || '&nbsp;'}</div>
-      <div class="sign-datum">Datum: ${nf['Signeringsdatum'] ? fmtDate(nf['Signeringsdatum']) : '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'}</div>
-    </div>
-  </div>
-</div>
+<!-- Underskrifter visas ej i PDF (signeras via BankID) -->
 
 </body>
 </html>`;

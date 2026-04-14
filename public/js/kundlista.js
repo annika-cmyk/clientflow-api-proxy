@@ -3,6 +3,7 @@ class CustomerManager {
         this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'http://localhost:3001';
         this.customers = [];
         this.filteredCustomers = [];
+        this.lastQuery = '';
         this.init();
     }
 
@@ -19,7 +20,9 @@ class CustomerManager {
         }
 
         document.getElementById('search-filter').addEventListener('input', (e) => {
-            const q = e.target.value.toLowerCase();
+            const rawQ = (e.target.value || '').toString();
+            this.lastQuery = rawQ;
+            const q = rawQ.toLowerCase();
             this.filteredCustomers = this.customers.filter(c => {
                 const name = (c.namn || '').toLowerCase();
                 const org = (c.organisationsnummer || '').toLowerCase();
@@ -101,10 +104,12 @@ class CustomerManager {
                 <div class="kundlista-empty">
                     <i class="fas fa-search"></i>
                     <p>Inga kunder matchade sökningen.</p>
-                    <button class="btn btn-primary btn-sm" type="button" onclick="customerManager && customerManager.openBolagsverketModal && customerManager.openBolagsverketModal()">
+                    <button class="btn btn-primary btn-sm" id="kundlista-bolagsverket-btn" type="button">
                         Sök hos Bolagsverket
                     </button>
                 </div>`;
+            const btn = document.getElementById('kundlista-bolagsverket-btn');
+            if (btn) btn.addEventListener('click', () => this.openBolagsverketModal(this.lastQuery));
             return;
         }
 
@@ -130,7 +135,7 @@ class CustomerManager {
         window.location.href = `kundkort.html?id=${encodeURIComponent(id)}`;
     }
 
-    openBolagsverketModal() {
+    openBolagsverketModal(prefillOrgnr = '') {
         // Ta bort ev. befintlig modal
         const existing = document.getElementById('bolagsverket-modal');
         if (existing) {
@@ -230,7 +235,13 @@ class CustomerManager {
         // Fokusera fältet för org-nummer
         const orgInput = document.getElementById('org-number');
         if (orgInput) {
+            const raw = (prefillOrgnr || '').toString().trim();
+            const normalized = raw.replace(/\s+/g, '');
+            if (normalized) {
+                orgInput.value = normalized;
+            }
             orgInput.focus();
+            try { orgInput.setSelectionRange(orgInput.value.length, orgInput.value.length); } catch (_) {}
         }
     }
 }
