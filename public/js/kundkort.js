@@ -707,7 +707,8 @@ class CustomerCardManager {
 
             // Deklaration: dynamiska rader (typ + fritext) i edit-läge
             if (typ === 'Deklaration') {
-                const declTypes = ['NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
+                // NE = näringsbilaga. NEA fanns tidigare som legacy-värde, behåll för kompatibilitet.
+                const declTypes = ['NE', 'NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
                 const rowsWrap = root.querySelector('[data-dek-rows]');
                 const addBtn = root.querySelector('[data-action="dek-add"]');
                 const hiddenDecl = root.querySelector('[data-field="Deklaration rader"]');
@@ -715,14 +716,14 @@ class CustomerCardManager {
                 const syncHidden = () => {
                     if (!rowsWrap || !hiddenDecl) return;
                     const rows = Array.from(rowsWrap.querySelectorAll('.uppdrag-dek-row')).map(r => ({
-                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NE',
                         text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
                     })).filter(x => x.typ || x.text);
                     hiddenDecl.value = JSON.stringify(rows);
                 };
 
                 const makeRow = (row) => {
-                    const t = (row?.typ || 'NEA').toString();
+                    const t = (row?.typ || 'NE').toString();
                     const txt = (row?.text || '').toString();
                     const wrapper = document.createElement('div');
                     wrapper.innerHTML = `
@@ -749,7 +750,7 @@ class CustomerCardManager {
                     try { rows = hiddenDecl.value ? JSON.parse(hiddenDecl.value) : []; } catch (_) { rows = []; }
                     if (!Array.isArray(rows)) rows = [];
                     rowsWrap.innerHTML = '';
-                    if (rows.length === 0) rows = [{ typ: 'NEA', text: '' }];
+                    if (rows.length === 0) rows = [{ typ: 'NE', text: '' }];
                     rows.forEach(r => rowsWrap.appendChild(makeRow(r)));
                     syncHidden();
                 };
@@ -759,7 +760,7 @@ class CustomerCardManager {
                     addBtn.addEventListener('click', (e) => {
                         e.preventDefault();
                         hydrate();
-                        rowsWrap?.appendChild(makeRow({ typ: 'NEA', text: '' }));
+                        rowsWrap?.appendChild(makeRow({ typ: 'NE', text: '' }));
                         syncHidden();
                     });
                 }
@@ -1051,9 +1052,10 @@ class CustomerCardManager {
             freqEl.innerHTML = choices.map(c => `<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
         };
 
-        const declTypes = ['NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
+        // NE = näringsbilaga. NEA fanns tidigare som legacy-värde, behåll för kompatibilitet.
+        const declTypes = ['NE', 'NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
         const renderDekRow = (row) => {
-            const t = row?.typ || 'NEA';
+            const t = row?.typ || 'NE';
             const txt = row?.text || '';
             return `
                 <div class="uppdrag-dek-row">
@@ -1068,7 +1070,7 @@ class CustomerCardManager {
         const addDekRow = (row) => {
             if (!dekRowsEl) return;
             const wrap = document.createElement('div');
-            wrap.innerHTML = renderDekRow(row || { typ: 'NEA', text: '' });
+            wrap.innerHTML = renderDekRow(row || { typ: 'NE', text: '' });
             const node = wrap.firstElementChild;
             dekRowsEl.appendChild(node);
             node.querySelector('.uppdrag-dek-remove')?.addEventListener('click', () => node.remove());
@@ -1079,13 +1081,13 @@ class CustomerCardManager {
             setFreqOptions(t);
             declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
-                addDekRow({ typ: 'NEA', text: '' });
+                addDekRow({ typ: 'NE', text: '' });
             }
         };
         typEl.addEventListener('change', syncExtra);
         syncExtra();
 
-        if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NEA', text: '' }));
+        if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NE', text: '' }));
 
         document.getElementById('uppdrag-new-save').addEventListener('click', async () => {
             try {
@@ -1120,7 +1122,7 @@ class CustomerCardManager {
 
                 if (typ === 'Deklaration') {
                     const rows = Array.from(document.querySelectorAll('#uppdrag-dek-rows .uppdrag-dek-row')).map(r => ({
-                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NE',
                         text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
                     })).filter(x => x.typ || x.text);
                     fields['Deklaration rader'] = JSON.stringify(rows);
@@ -1383,7 +1385,7 @@ class CustomerCardManager {
                 // Deklarationsrader (typ + fritext) sparas som JSON
                 const rowsWrap = root.querySelector('[data-dek-rows]');
                 const rows = rowsWrap ? Array.from(rowsWrap.querySelectorAll('.uppdrag-dek-row')).map(r => ({
-                    typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                    typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NE',
                     text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
                 })).filter(x => x.typ || x.text) : [];
                 fields['Deklaration rader'] = JSON.stringify(rows);

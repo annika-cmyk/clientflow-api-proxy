@@ -8662,7 +8662,7 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Aktiv' }, { name: 'Pausad' }, { name: 'Avslutad' }] } },
   { name: 'Historik', type: 'multilineText', description: 'JSON-array med körningar (datum/anteckning)' },
   { name: 'Deklaration rader', type: 'multilineText', description: 'JSON-array med deklarationstyper + fritext (kan förekomma flera gånger)' },
-  { name: 'Deklarationstyp', type: 'singleSelect', options: { choices: [{ name: 'Inkomstdeklaration' }, { name: 'K10' }] } },
+  { name: 'Deklarationstyp', type: 'singleSelect', options: { choices: [{ name: 'Inkomstdeklaration' }, { name: 'K10' }, { name: 'NE' }] } },
   { name: 'Ägare', type: 'multilineText', description: 'Ägare (en per rad) för K10/ägar-deklaration' },
   { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
 ];
