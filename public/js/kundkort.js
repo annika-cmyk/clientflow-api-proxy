@@ -425,6 +425,9 @@ class CustomerCardManager {
             case 'uppdragsavtal':
                 this.loadUppdragsavtal();
                 break;
+            case 'uppdrag':
+                this.loadUppdrag();
+                break;
             case 'ovrigkyc':
                 this.loadOvrigKYC();
                 break;
@@ -441,6 +444,1021 @@ class CustomerCardManager {
                 this.loadSamarbete();
                 break;
         }
+    }
+
+    loadUppdrag() {
+        const container = document.getElementById('uppdrag-content');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Laddar uppdrag...</p>
+            </div>
+        `;
+
+        this.loadUppdragDataAndRender().catch((e) => {
+            console.error('❌ loadUppdrag:', e);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Kunde inte ladda uppdrag.</p>
+                </div>
+            `;
+        });
+    }
+
+    _getRiskAtgarderList() {
+        const f = this.customerData?.fields || {};
+        const raw = (f['Atgarder riskbedomning'] || f['Åtgärder'] || f['Åtgärd'] || '').toString();
+        const lines = raw
+            .split(/\r?\n/)
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(s => s.replace(/^\s*[-•]\s*/, '').trim())
+            .filter(Boolean);
+        // Deduplicate while keeping order
+        const seen = new Set();
+        const out = [];
+        for (const l of lines) {
+            const k = l.toLowerCase();
+            if (seen.has(k)) continue;
+            seen.add(k);
+            out.push(l);
+        }
+        return out;
+    }
+
+    async loadUppdragDataAndRender() {
+        const container = document.getElementById('uppdrag-content');
+        if (!container) return;
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const opts = getAuthOptsKundkort();
+        const customerId = this.customerId || this.currentCustomerId;
+        if (!customerId) throw new Error('Saknar customerId');
+
+        const [uppdragRes, usersRes] = await Promise.all([
+            fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }),
+            fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }).catch(() => null)
+        ]);
+        if (!uppdragRes.ok) {
+            const err = await uppdragRes.json().catch(() => ({}));
+            const msg = err.error || err.message || `HTTP ${uppdragRes.status}`;
+            // Special case: Airtable table not installed / missing fields
+            if (/Uppdrag-tabellen i Airtable saknar fält/i.test(String(msg))) {
+                container.innerHTML = `
+                    <div class="uppdrag-tab">
+                        <div class="collapsible-card uppdrag-setup-card">
+                            <div class="collapsible-header" style="cursor:default;">
+                                <div class="collapsible-title"><i class="fas fa-database"></i><span>Installera Uppdrag-tabell i Airtable</span></div>
+                            </div>
+                            <div class="collapsible-body">
+                                <div class="uppdrag-setup-desc">
+                                    Uppdrag-funktionen kräver en Airtable-tabell. Jag kan skapa/uppdatera den automatiskt eftersom servern har Airtable-behörighet.
+                                </div>
+                                <div class="uppdrag-setup-hint" style="margin-bottom:0.75rem;">${this._esc(String(err.details || msg || ''))}</div>
+                                <div class="uppdrag-actions">
+                                    <button type="button" class="btn btn-primary" id="uppdrag-install-btn">
+                                        <i class="fas fa-magic"></i> Installera nu
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                const btn = document.getElementById('uppdrag-install-btn');
+                if (btn) {
+                    btn.addEventListener('click', async () => {
+                        try {
+                            btn.disabled = true;
+                            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Installerar...';
+                            const r1 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag`, { method: 'POST', ...opts });
+                            const d1 = await r1.json().catch(() => ({}));
+                            if (!r1.ok) throw new Error(d1.error || `HTTP ${r1.status}`);
+                            const r2 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-fields`, { method: 'POST', ...opts });
+                            const d2 = await r2.json().catch(() => ({}));
+                            if (!r2.ok) throw new Error(d2.error || `HTTP ${r2.status}`);
+                            this.showNotification('Uppdrag-tabell installerad ✅', 'success');
+                            this.loadUppdrag();
+                        } catch (e) {
+                            this.showNotification('Kunde inte installera: ' + (e.message || 'fel'), 'error');
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-magic"></i> Installera nu';
+                        }
+                    });
+                }
+                return;
+            }
+            throw new Error(msg);
+        }
+
+        const uppdragData = await uppdragRes.json().catch(() => ({ records: [] }));
+        const usersData = (usersRes && usersRes.ok) ? await usersRes.json() : { users: [] };
+
+        const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
+        const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
+
+        const ALL_TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+        const byType = (typ) => records.find(r => (r.fields?.['Typ'] || '') === typ) || null;
+        const riskAtgarder = this._getRiskAtgarderList();
+
+        const existingTypes = ALL_TYPES.filter(t => !!byType(t));
+        const missingTypes = ALL_TYPES.filter(t => !byType(t));
+
+        const addDisabled = missingTypes.length ? '' : 'disabled';
+
+        container.innerHTML = `
+            <div class="uppdrag-tab">
+                <div class="uppdrag-topbar">
+                    <button type="button" class="btn btn-primary" id="uppdrag-add-btn-top" ${addDisabled}>
+                        <i class="fas fa-plus"></i> Lägg upp uppdrag
+                    </button>
+                </div>
+
+                ${existingTypes.length ? existingTypes.map(t => {
+                    if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
+                    if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
+                    if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
+                    if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
+                    return '';
+                }).join('') : `
+                    <div class="uppdrag-empty" style="padding:0.25rem 0;">
+                        <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
+                    </div>
+                `}
+            </div>
+        `;
+
+        // Setup actions
+        const addBtn = document.getElementById('uppdrag-add-btn-top');
+        const onAdd = () => this._showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder });
+        if (addBtn) addBtn.addEventListener('click', onAdd);
+
+        // Bind events (save / complete) for each card
+        existingTypes.forEach((typ) => {
+            const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
+            if (!root) return;
+            const saveBtn = root.querySelector('[data-action="save"]');
+            const doneBtn = root.querySelector('[data-action="done"]');
+            const doneHeaderBtn = root.querySelector('[data-action="done-header"]');
+            if (saveBtn) saveBtn.addEventListener('click', () => this._saveUppdragFromCard(root, typ));
+            if (doneBtn) doneBtn.addEventListener('click', () => this._showCompleteUppdragModal(root, typ));
+            if (doneHeaderBtn) doneHeaderBtn.addEventListener('click', () => this._showCompleteUppdragModal(root, typ));
+
+            // Live-sync header meta when user edits
+            ['Frekvens', 'Nästa deadline', 'Ansvarig'].forEach((field) => {
+                const el = root.querySelector(`[data-field="${CSS.escape(field)}"]`);
+                if (el) el.addEventListener('change', () => this._syncUppdragHeaderMeta(root));
+                if (el && el.tagName === 'INPUT') el.addEventListener('input', () => this._syncUppdragHeaderMeta(root));
+            });
+
+            // Edit mode toggle
+            const editBtn = root.querySelector('[data-action="toggle-edit"]');
+            const cancelBtn = root.querySelector('[data-action="cancel-edit"]');
+            const setEditing = (on) => {
+                root.dataset.uppdragEditing = on ? '1' : '0';
+                const view = root.querySelector('[data-uppdrag-mode="view"]');
+                const edit = root.querySelector('[data-uppdrag-mode="edit"]');
+                if (view) view.style.display = on ? 'none' : 'block';
+                if (edit) edit.style.display = on ? 'block' : 'none';
+                // Disable edit inputs when not editing (prevents accidental changes)
+                root.querySelectorAll('[data-uppdrag-mode="edit"] [data-field]').forEach(inp => {
+                    inp.disabled = !on;
+                });
+                if (on) this._syncUppdragHeaderMeta(root);
+            };
+            if (editBtn) editBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditing(root.dataset.uppdragEditing !== '1');
+            });
+            if (cancelBtn) cancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                setEditing(false);
+                // Re-render to discard edits
+                this.loadUppdrag();
+            });
+
+            // default: view mode
+            setEditing(false);
+
+            // PTL underlag upload (edit mode)
+            const uploadBtn = root.querySelector('[data-action="upload-ptl"]');
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    try {
+                        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                        const customerId = this.customerId || this.currentCustomerId;
+                        const input = root.querySelector('[data-ptl-file]');
+                        const files = input ? Array.from(input.files || []) : [];
+                        if (!files.length) {
+                            this.showNotification('Välj minst en fil att ladda upp', 'info');
+                            return;
+                        }
+                        uploadBtn.disabled = true;
+                        const orig = uploadBtn.innerHTML;
+                        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Laddar upp...';
+
+                        const uploaded = [];
+                        for (const file of files) {
+                            const base64 = await this.fileToBase64(file);
+                            const filename = `PTL-${typ}-${(new Date().toISOString().slice(0, 10))}-${file.name}`;
+                            const res = await fetch(`${baseUrl}/api/documents/upload`, {
+                                method: 'POST',
+                                ...getAuthOptsKundkort(),
+                                body: JSON.stringify({
+                                    customerId,
+                                    file: base64,
+                                    filename,
+                                    category: 'riskbedomning',
+                                    customCategory: 'ptl-underlag'
+                                })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                            uploaded.push({ filename, uploadedAt: new Date().toISOString() });
+                        }
+
+                        // store in hidden PTL Underlag field
+                        const ptlField = root.querySelector('[data-field="PTL Underlag"]');
+                        let existing = [];
+                        try { existing = ptlField?.value ? JSON.parse(ptlField.value) : []; } catch (_) { existing = []; }
+                        if (!Array.isArray(existing)) existing = [];
+                        ptlField.value = JSON.stringify(uploaded.concat(existing)).slice(0, 200000);
+                        const hidden = root.querySelector('[data-uppdrag-ptl-underlag]');
+                        if (hidden) hidden.value = ptlField.value;
+
+                        this._renderPtlFiles(root);
+                        this.showNotification('Underlag uppladdat', 'success');
+                        uploadBtn.innerHTML = orig;
+                        uploadBtn.disabled = false;
+                        if (input) input.value = '';
+                    } catch (err) {
+                        console.error('❌ PTL upload:', err);
+                        this.showNotification('Kunde inte ladda upp: ' + (err.message || 'fel'), 'error');
+                        uploadBtn.disabled = false;
+                        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Ladda upp underlag';
+                    }
+                });
+            }
+
+            this._renderPtlFiles(root);
+
+            // Deklaration: dynamiska rader (typ + fritext) i edit-läge
+            if (typ === 'Deklaration') {
+                const declTypes = ['NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
+                const rowsWrap = root.querySelector('[data-dek-rows]');
+                const addBtn = root.querySelector('[data-action="dek-add"]');
+                const hiddenDecl = root.querySelector('[data-field="Deklaration rader"]');
+
+                const syncHidden = () => {
+                    if (!rowsWrap || !hiddenDecl) return;
+                    const rows = Array.from(rowsWrap.querySelectorAll('.uppdrag-dek-row')).map(r => ({
+                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                        text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
+                    })).filter(x => x.typ || x.text);
+                    hiddenDecl.value = JSON.stringify(rows);
+                };
+
+                const makeRow = (row) => {
+                    const t = (row?.typ || 'NEA').toString();
+                    const txt = (row?.text || '').toString();
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = `
+                        <div class="uppdrag-dek-row">
+                            <select class="form-control uppdrag-dek-typ">
+                                ${declTypes.map(x => `<option value="${this._esc(x)}" ${x === t ? 'selected' : ''}>${this._esc(x)}</option>`).join('')}
+                            </select>
+                            <input type="text" class="kunduppgifter-input uppdrag-dek-text" placeholder="Fritext (t.ex. namn)" value="${this._esc(txt)}">
+                            <button type="button" class="btn btn-ghost btn-sm uppdrag-dek-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+                        </div>
+                    `.trim();
+                    const node = wrapper.firstElementChild;
+                    node.querySelector('.uppdrag-dek-remove')?.addEventListener('click', () => { node.remove(); syncHidden(); });
+                    node.querySelector('.uppdrag-dek-typ')?.addEventListener('change', syncHidden);
+                    node.querySelector('.uppdrag-dek-text')?.addEventListener('input', syncHidden);
+                    return node;
+                };
+
+                const hydrate = () => {
+                    if (!rowsWrap || !hiddenDecl) return;
+                    if (rowsWrap.dataset.hydrated === '1') return;
+                    rowsWrap.dataset.hydrated = '1';
+                    let rows = [];
+                    try { rows = hiddenDecl.value ? JSON.parse(hiddenDecl.value) : []; } catch (_) { rows = []; }
+                    if (!Array.isArray(rows)) rows = [];
+                    rowsWrap.innerHTML = '';
+                    if (rows.length === 0) rows = [{ typ: 'NEA', text: '' }];
+                    rows.forEach(r => rowsWrap.appendChild(makeRow(r)));
+                    syncHidden();
+                };
+
+                hydrate();
+                if (addBtn) {
+                    addBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        hydrate();
+                        rowsWrap?.appendChild(makeRow({ typ: 'NEA', text: '' }));
+                        syncHidden();
+                    });
+                }
+            }
+        });
+    }
+
+    _isUppdragDoneForPeriod(fields) {
+        const doneAt = (fields?.['Senast utförd'] || '').toString().trim();
+        const nextDeadline = (fields?.['Nästa deadline'] || '').toString().trim();
+        const freq = (fields?.['Frekvens'] || '').toString().toLowerCase();
+        if (!doneAt || !nextDeadline) return false;
+
+        const toDate = (iso) => {
+            const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+            return Number.isNaN(d.getTime()) ? null : d;
+        };
+        const doneD = toDate(doneAt);
+        const nextD = toDate(nextDeadline);
+        if (!doneD || !nextD) return false;
+
+        const start = new Date(nextD.getTime());
+        if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
+        else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
+        else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+        else start.setMonth(start.getMonth() - 1);
+
+        return doneD >= start && doneD < nextD;
+    }
+
+    _showCompleteUppdragModal(root, typ) {
+        const existing = document.getElementById('uppdrag-complete-modal');
+        if (existing) existing.remove();
+
+        // PTL anses "på" om det finns valda åtgärder (checkbox-togglen är borttagen)
+        const riskOn = (root.querySelectorAll('input[data-risk-item]:checked').length > 0)
+            || (() => { try { return (JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]') || []).length > 0; } catch (_) { return false; } })();
+
+        const modal = document.createElement('div');
+        modal.id = 'uppdrag-complete-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:720px; width:96vw; max-height:90vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${this._esc(typ)}</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body" style="overflow:auto;">
+                    ${riskOn ? `
+                        <div class="uppdrag-riskbox" style="margin-top:0;">
+                            <div class="uppdrag-setup-desc" style="margin:0;">
+                                PTL-åtgärd är aktiverad för detta uppdrag. För dokumentation behöver du skriva en anteckning och du kan även ladda upp underlag.
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="uppdrag-setup-desc" style="margin-top:0;">
+                            Vill du lämna en anteckning till denna körning? (valfritt)
+                        </div>
+                    `}
+
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label>${riskOn ? 'Anteckning *' : 'Anteckning'}</label>
+                        <textarea id="uppdrag-complete-note" class="kunduppgifter-input" rows="3" placeholder="Skriv anteckning..."></textarea>
+                    </div>
+
+                    ${riskOn ? `
+                        <div class="form-group" style="margin-top:0.75rem;">
+                            <label>Underlag (valfritt)</label>
+                            <input type="file" id="uppdrag-complete-files" class="kunduppgifter-input" multiple>
+                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()">Avbryt</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="uppdrag-complete-confirm"><i class="fas fa-check"></i> Klarmarkera</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('uppdrag-complete-confirm').addEventListener('click', async () => {
+            try {
+                const note = (document.getElementById('uppdrag-complete-note')?.value || '').trim();
+
+                if (riskOn && !note) {
+                    this.showNotification('Anteckning krävs när PTL-åtgärd är aktiverad.', 'error');
+                    return;
+                }
+
+                // PTL-krav: om åtgärder är aktiverade måste minst en vara vald
+                let riskValda = [];
+                try { riskValda = JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]'); } catch (_) { riskValda = []; }
+                if (root.querySelectorAll('input[data-risk-item]:checked').length) {
+                    riskValda = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
+                }
+                if (riskOn && (!riskValda || riskValda.length === 0)) {
+                    root.classList.remove('is-collapsed');
+                    root.querySelector('[data-action="toggle-edit"]')?.click();
+                    this.showNotification('Välj minst en PTL-åtgärd innan klarmarkering.', 'error');
+                    document.getElementById('uppdrag-complete-modal')?.remove();
+                    return;
+                }
+
+                // Upload files (if any)
+                if (riskOn) {
+                    const input = document.getElementById('uppdrag-complete-files');
+                    const files = input ? Array.from(input.files || []) : [];
+                    if (files.length) {
+                        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                        const customerId = this.customerId || this.currentCustomerId;
+                        const uploaded = [];
+                        for (const file of files) {
+                            const base64 = await this.fileToBase64(file);
+                            const filename = `PTL-${typ}-${(new Date().toISOString().slice(0, 10))}-${file.name}`;
+                            const res = await fetch(`${baseUrl}/api/documents/upload`, {
+                                method: 'POST',
+                                ...getAuthOptsKundkort(),
+                                body: JSON.stringify({
+                                    customerId,
+                                    file: base64,
+                                    filename,
+                                    category: 'riskbedomning',
+                                    customCategory: 'ptl-underlag'
+                                })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                            uploaded.push({ filename, uploadedAt: new Date().toISOString() });
+                        }
+                        // Persist PTL Underlag into uppdrag record
+                        await this._saveUppdragPtlUnderlagOnly(typ, uploaded);
+                    }
+                }
+
+                document.getElementById('uppdrag-complete-modal')?.remove();
+                await this._completeUppdragFromCard(root, typ, { noteOverride: note });
+            } catch (e) {
+                this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
+            }
+        });
+    }
+
+    async _saveUppdragPtlUnderlagOnly(typ, uploadedItems) {
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const customerId = this.customerId || this.currentCustomerId;
+        let existing = [];
+        try {
+            existing = JSON.parse(document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"] [data-uppdrag-ptl-underlag]`)?.value || '[]');
+        } catch (_) { existing = []; }
+        if (!Array.isArray(existing)) existing = [];
+        const merged = uploadedItems.concat(existing).slice(0, 200);
+        const res = await fetch(`${baseUrl}/api/uppdrag`, {
+            method: 'POST',
+            ...getAuthOptsKundkort(),
+            body: JSON.stringify({
+                customerId,
+                typ,
+                fields: { 'PTL Underlag': JSON.stringify(merged) }
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    _renderPtlFiles(root) {
+        const wrap = root?.querySelector('[data-ptl-files]');
+        if (!wrap) return;
+        const ptlField = root.querySelector('[data-field="PTL Underlag"]') || root.querySelector('[data-uppdrag-ptl-underlag]');
+        let arr = [];
+        try {
+            const raw = (ptlField?.value || '').toString().trim();
+            arr = raw ? JSON.parse(raw) : [];
+        } catch (_) { arr = []; }
+        if (!Array.isArray(arr) || arr.length === 0) {
+            wrap.innerHTML = `<div class="uppdrag-muted">Inga underlag uppladdade.</div>`;
+            return;
+        }
+        wrap.innerHTML = `<div class="uppdrag-view-list">${arr.slice(0, 10).map(x => {
+            const fn = this._esc(String(x?.filename || 'fil'));
+            const dt = this._esc(String(x?.uploadedAt || '').slice(0, 10));
+            return `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}${dt ? ` <span class="uppdrag-muted">(${dt})</span>` : ''}</div>`;
+        }).join('')}</div>`;
+    }
+
+    _showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder }) {
+        if (!missingTypes || missingTypes.length === 0) {
+            this.showNotification('Alla uppdrag är redan upplagda på kunden', 'info');
+            return;
+        }
+
+        const existing = document.getElementById('uppdrag-setup-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'uppdrag-setup-modal';
+        modal.className = 'modal-overlay';
+
+        const currentUserName = ((window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()?.name) || this.userData?.name || '').toString().trim();
+        const userOptions = [{ name: '' }].concat((byraUsers || []).map(u => ({ name: u.name || u.email || u.id || '' }))).filter(x => x.name !== undefined);
+        const userOptHtml = userOptions.map(u => {
+            const name = String(u.name || '');
+            const label = name || 'Välj handläggare';
+            const sel = name && currentUserName && name === currentUserName ? 'selected' : '';
+            return `<option value="${this._esc(name)}" ${sel}>${this._esc(label)}</option>`;
+        }).join('');
+
+        const riskChoicesHtml = (riskAtgarder || []).map(a => {
+            return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
+                <input type="checkbox" class="uppdrag-risk-cb" value="${this._esc(a)}">
+                <span>${this._esc(a)}</span>
+            </label>`;
+        }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
+
+        const typeOptionsHtml = missingTypes.map(t => `<option value="${this._esc(t)}">${this._esc(t)}</option>`).join('');
+
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:760px; width:96vw; max-height:90vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-briefcase"></i> Skapa uppdrag</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body" style="overflow:auto;">
+                    <div class="lead-fields uppdrag-lead-fields" style="margin-top:0;">
+                        <div class="lead-field">
+                            <label>Typ av uppdrag *</label>
+                            <select class="form-control" id="uppdrag-new-typ">${typeOptionsHtml}</select>
+                        </div>
+                        <div class="lead-field">
+                            <label>Handläggare *</label>
+                            <select class="form-control" id="uppdrag-new-ansvarig">${userOptHtml}</select>
+                        </div>
+                        <div class="lead-field">
+                            <label>Frekvens *</label>
+                            <select class="form-control" id="uppdrag-new-frekvens"></select>
+                        </div>
+                        <div class="lead-field">
+                            <label>Startdatum *</label>
+                            <input class="kunduppgifter-input" type="date" id="uppdrag-new-start">
+                        </div>
+                        <div class="lead-field">
+                            <label>Deadline *</label>
+                            <input class="kunduppgifter-input" type="date" id="uppdrag-new-deadline">
+                        </div>
+                        <div class="lead-field uppdrag-span-full">
+                            <label>Rutin / instruktion</label>
+                            <textarea class="kunduppgifter-input" rows="4" id="uppdrag-new-rutin" placeholder="Skriv rutin/instruktion..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="uppdrag-riskbox" style="margin-top:1rem;">
+                        <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                        <div class="uppdrag-riskbox-items" id="uppdrag-new-risk-items">
+                            ${riskChoicesHtml}
+                        </div>
+                    </div>
+
+                    <div id="uppdrag-new-deklaration-extra" style="margin-top:1rem; display:none;">
+                        <div class="uppdrag-deklaration-rows">
+                            <div class="uppdrag-deklaration-head">
+                                <div class="uppdrag-riskbox-title" style="margin:0;">Deklarationstyper</div>
+                                <button type="button" class="btn btn-secondary btn-sm" id="uppdrag-dek-add"><i class="fas fa-plus"></i> Lägg till rad</button>
+                            </div>
+                            <div id="uppdrag-dek-rows"></div>
+                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Du kan lägga samma deklarationstyp flera gånger och skriva fritext (t.ex. namn).</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()">Avbryt</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="uppdrag-new-save"><i class="fas fa-save"></i> Skapa</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const typEl = document.getElementById('uppdrag-new-typ');
+        const freqEl = document.getElementById('uppdrag-new-frekvens');
+        const riskItemsEl = document.getElementById('uppdrag-new-risk-items');
+        const declWrap = document.getElementById('uppdrag-new-deklaration-extra');
+        const dekRowsEl = document.getElementById('uppdrag-dek-rows');
+        const dekAddBtn = document.getElementById('uppdrag-dek-add');
+
+        const setFreqOptions = (typ) => {
+            const choices = (typ === 'Momsredovisning')
+                ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
+                : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
+            freqEl.innerHTML = choices.map(c => `<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
+        };
+
+        const declTypes = ['NEA', 'K4', 'K5', 'K7', 'K10', 'Inkomstdeklaration'];
+        const renderDekRow = (row) => {
+            const t = row?.typ || 'NEA';
+            const txt = row?.text || '';
+            return `
+                <div class="uppdrag-dek-row">
+                    <select class="form-control uppdrag-dek-typ">
+                        ${declTypes.map(x => `<option value="${this._esc(x)}" ${x === t ? 'selected' : ''}>${this._esc(x)}</option>`).join('')}
+                    </select>
+                    <input type="text" class="kunduppgifter-input uppdrag-dek-text" placeholder="Fritext (t.ex. namn)" value="${this._esc(txt)}">
+                    <button type="button" class="btn btn-ghost btn-sm uppdrag-dek-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+        };
+        const addDekRow = (row) => {
+            if (!dekRowsEl) return;
+            const wrap = document.createElement('div');
+            wrap.innerHTML = renderDekRow(row || { typ: 'NEA', text: '' });
+            const node = wrap.firstElementChild;
+            dekRowsEl.appendChild(node);
+            node.querySelector('.uppdrag-dek-remove')?.addEventListener('click', () => node.remove());
+        };
+
+        const syncExtra = () => {
+            const t = typEl.value;
+            setFreqOptions(t);
+            declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
+            if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
+                addDekRow({ typ: 'NEA', text: '' });
+            }
+        };
+        typEl.addEventListener('change', syncExtra);
+        syncExtra();
+
+        if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NEA', text: '' }));
+
+        document.getElementById('uppdrag-new-save').addEventListener('click', async () => {
+            try {
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const opts = getAuthOptsKundkort();
+                const customerId = this.customerId || this.currentCustomerId;
+                const typ = typEl.value;
+                const ansvarig = document.getElementById('uppdrag-new-ansvarig').value || '';
+                const frekvens = freqEl.value || '';
+                const startdatum = document.getElementById('uppdrag-new-start').value || '';
+                const deadline = document.getElementById('uppdrag-new-deadline').value || '';
+                const rutin = document.getElementById('uppdrag-new-rutin').value || '';
+
+                if (!typ) throw new Error('Välj typ');
+                if (!ansvarig) throw new Error('Välj handläggare');
+                if (!frekvens) throw new Error('Välj frekvens');
+                if (!startdatum) throw new Error('Välj startdatum');
+                if (!deadline) throw new Error('Välj deadline');
+
+                const riskSelected = Array.from(document.querySelectorAll('#uppdrag-new-risk-items .uppdrag-risk-cb:checked')).map(i => i.value);
+                const riskOn = riskSelected.length > 0;
+
+                const fields = {
+                    'Ansvarig': ansvarig,
+                    'Frekvens': frekvens,
+                    'Startdatum': startdatum,
+                    'Nästa deadline': deadline,
+                    'Rutin': rutin,
+                    'Riskåtgärder aktiverade': riskOn,
+                    'Riskåtgärder valda': JSON.stringify(riskSelected)
+                };
+
+                if (typ === 'Deklaration') {
+                    const rows = Array.from(document.querySelectorAll('#uppdrag-dek-rows .uppdrag-dek-row')).map(r => ({
+                        typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                        text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
+                    })).filter(x => x.typ || x.text);
+                    fields['Deklaration rader'] = JSON.stringify(rows);
+                }
+
+                const res = await fetch(`${baseUrl}/api/uppdrag`, {
+                    method: 'POST',
+                    ...opts,
+                    body: JSON.stringify({ customerId, typ, fields })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+                document.getElementById('uppdrag-setup-modal')?.remove();
+                this.showNotification('Uppdrag skapat', 'success');
+                this.loadUppdrag();
+            } catch (e) {
+                this.showNotification(e.message || 'Kunde inte skapa uppdrag', 'error');
+            }
+        });
+    }
+
+    _renderUppdragKort(typ, icon, record, byraUsers, riskAtgarder, extra = {}) {
+        const f = record?.fields || {};
+        const recId = record?.id || '';
+        const freq = f['Frekvens'] || (typ === 'Löneuppdrag' ? 'Varje månad' : '');
+        const deadline = f['Nästa deadline'] || '';
+        const startdatum = f['Startdatum'] || '';
+        const ansvarig = f['Ansvarig'] || '';
+        const rutin = f['Rutin'] || '';
+        const riskValdaRaw = (f['Riskåtgärder valda'] || '').toString().trim();
+        let riskValda = [];
+        try { riskValda = riskValdaRaw ? JSON.parse(riskValdaRaw) : []; } catch (_) { riskValda = riskValdaRaw ? riskValdaRaw.split(/\r?\n/).map(s => s.trim()).filter(Boolean) : []; }
+        if (!Array.isArray(riskValda)) riskValda = [];
+        const riskOn = (!!f['Riskåtgärder aktiverade']) || (riskValda.length > 0);
+
+        let history = [];
+        try { history = (f['Historik'] || '').toString().trim() ? JSON.parse(String(f['Historik']).trim()) : []; } catch (_) { history = []; }
+        if (!Array.isArray(history)) history = [];
+        const histHtml = history.slice(0, 5).map(h => {
+            const d = this._esc(String(h?.doneAt || ''));
+            const n = this._esc(String(h?.note || ''));
+            return `<div class="uppdrag-history-item">
+                <div class="uppdrag-history-title"><i class="fas fa-check-circle"></i> ${d || 'Klarmarkerad'}</div>
+                ${n ? `<div class="uppdrag-history-note">${n}</div>` : ''}
+            </div>`;
+        }).join('') || `<div class="empty-state" style="margin-top:0.25rem;"><i class="fas fa-info-circle"></i><p>Ingen historik ännu.</p></div>`;
+
+        const notesHtml = history
+            .filter(h => (h?.note || '').toString().trim())
+            .slice(0, 8)
+            .map(h => {
+                const d = this._esc(String(h?.doneAt || ''));
+                const n = this._esc(String(h?.note || ''));
+                return `<div class="uppdrag-prev-note">
+                    <div class="uppdrag-prev-note-date"><i class="fas fa-check-circle"></i> ${d || 'Klarmarkerad'}</div>
+                    <div class="uppdrag-prev-note-text">${n}</div>
+                </div>`;
+            }).join('') || `<div class="uppdrag-muted">Inga tidigare anteckningar.</div>`;
+
+        const userOptions = [{ id: '', name: 'Välj handläggare' }].concat(
+            (byraUsers || []).map(u => ({ id: u.id || u.email || u.name || '', name: u.name || u.email || u.id || '' }))
+        );
+        const userOptHtml = userOptions.map(u => `<option value="${this._esc(String(u.name))}" ${String(u.name) === String(ansvarig) ? 'selected' : ''}>${this._esc(String(u.name))}</option>`).join('');
+
+        const freqChoices = typ === 'Momsredovisning'
+            ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
+            : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
+        const freqHtml = freqChoices.map(c => `<option value="${this._esc(c)}" ${String(c) === String(freq) ? 'selected' : ''}>${this._esc(c)}</option>`).join('');
+
+        const riskChoicesHtml = (riskAtgarder || []).map(a => {
+            const checked = riskValda.some(x => String(x).toLowerCase() === String(a).toLowerCase());
+            return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
+                <input type="checkbox" data-risk-item value="${this._esc(a)}" ${checked ? 'checked' : ''}>
+                <span>${this._esc(a)}</span>
+            </label>`;
+        }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
+
+        const decRowsRaw = (f['Deklaration rader'] || '').toString().trim();
+        let decRows = [];
+        try { decRows = decRowsRaw ? JSON.parse(decRowsRaw) : []; } catch (_) { decRows = []; }
+        if (!Array.isArray(decRows)) decRows = [];
+
+        const decRowsView = decRows.length
+            ? `<div class="uppdrag-view-list">${decRows.map(r => {
+                const t = this._esc(String(r?.typ || ''));
+                const tx = this._esc(String(r?.text || ''));
+                return `<div class="uppdrag-view-list-item"><i class="fas fa-file-alt"></i>${t}${tx ? ` — ${tx}` : ''}</div>`;
+            }).join('')}</div>`
+            : `<div class="uppdrag-muted">Inga deklarationsrader valda.</div>`;
+        const decExtraHtml = extra.showDeklaration ? `
+            <div class="uppdrag-deklaration-rows">
+                <div class="uppdrag-deklaration-head">
+                    <div class="uppdrag-riskbox-title" style="margin:0;">Deklarationstyper</div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="dek-add"><i class="fas fa-plus"></i> Lägg till rad</button>
+                </div>
+                <div data-dek-rows></div>
+                <textarea class="kunduppgifter-input" rows="2" data-field="Deklaration rader" style="display:none;">${this._esc(decRowsRaw || '[]')}</textarea>
+                <div class="uppdrag-muted" style="margin-top:0.35rem;">Du kan lägga samma deklarationstyp flera gånger och skriva fritext (t.ex. namn).</div>
+            </div>
+        ` : '';
+
+        const headerDeadline = deadline ? this._esc(String(deadline)) : '–';
+        const headerFreq = freq ? this._esc(String(freq)) : '–';
+        const headerAnsvarig = ansvarig ? this._esc(String(ansvarig)) : '–';
+
+        const viewRiskSelectedHtml = (riskValda && riskValda.length)
+            ? `<div class="uppdrag-view-list">${riskValda.map(x => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${this._esc(String(x))}</div>`).join('')}</div>`
+            : `<div class="uppdrag-muted">Inga riskåtgärder valda.</div>`;
+
+        const viewRutinHtml = rutin
+            ? `<div class="uppdrag-view-text">${this._esc(String(rutin))}</div>`
+            : `<div class="uppdrag-muted">Ingen rutin sparad.</div>`;
+
+        const viewDeklarationHtml = extra.showDeklaration ? `
+            <div class="uppdrag-view-field uppdrag-span-full" style="margin-top:0.85rem;">
+                <div class="uppdrag-view-label">Deklarationstyper</div>
+                ${decRowsView}
+            </div>
+        ` : '';
+
+        const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
+        const ptlUnderlagRaw = (f['PTL Underlag'] || '').toString().trim();
+        const ptlUnderlagJson = this._esc(ptlUnderlagRaw || '[]');
+
+        const isDone = this._isUppdragDoneForPeriod(f);
+        const doneBtnClass = isDone ? 'uppdrag-done-btn is-done' : 'uppdrag-done-btn';
+
+        return `
+            <div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
+                <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
+                    <div class="uppdrag-header">
+                        <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(typ)}</span></div>
+                        <div class="uppdrag-header-meta">
+                            <span class="uppdrag-meta-chip"><i class="fas fa-redo"></i> <span data-uppdrag-meta="Frekvens">${headerFreq}</span></span>
+                            <span class="uppdrag-meta-chip"><i class="fas fa-calendar-alt"></i> <span data-uppdrag-meta="Nästa deadline">${headerDeadline}</span></span>
+                            <span class="uppdrag-meta-chip"><i class="fas fa-user"></i> <span data-uppdrag-meta="Ansvarig">${headerAnsvarig}</span></span>
+                        </div>
+                    </div>
+                    <button type="button" class="${doneBtnClass}" title="${isDone ? 'Klarmarkerad' : 'Klarmarkera'}" aria-label="Klarmarkera" data-action="done-header" onclick="event.stopPropagation()">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    <button type="button" class="uppdrag-edit-btn" title="Redigera" aria-label="Redigera" data-action="toggle-edit" onclick="event.stopPropagation()">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
+                </div>
+                <div class="collapsible-body">
+                    <input type="hidden" data-uppdrag-risk-on value="${riskOn ? '1' : '0'}">
+                    <input type="hidden" data-uppdrag-risk-valda value="${riskValdaJson}">
+                    <input type="hidden" data-uppdrag-ptl-underlag value="${ptlUnderlagJson}">
+
+                    <div class="uppdrag-view" data-uppdrag-mode="view">
+                        <div class="uppdrag-view-top">
+                            <div class="uppdrag-startdatum">
+                                <div class="uppdrag-startdatum-label">Startdatum</div>
+                                <div class="uppdrag-startdatum-value">${startdatum ? this._esc(String(startdatum)) : '–'}</div>
+                            </div>
+                            <div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Rutin / instruktion</div>
+                                ${viewRutinHtml}
+                            </div>
+                            <div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Åtgärd enligt kundens riskbedömning</div>
+                                ${riskOn ? viewRiskSelectedHtml : `<div class="uppdrag-muted">Ej aktiverat.</div>`}
+                            </div>
+                        </div>
+
+                        ${viewDeklarationHtml}
+
+                        <div class="uppdrag-block">
+                            <label class="uppdrag-label"><i class="fas fa-sticky-note"></i> Anteckning (för denna körning)</label>
+                            <textarea class="kunduppgifter-input" rows="2" data-field="_note" placeholder="T.ex. avvikelse, extra info..."></textarea>
+                        </div>
+
+                        <div class="uppdrag-actions uppdrag-actions--after-note">
+                            <button type="button" class="btn btn-secondary btn-sm" data-action="done"><i class="fas fa-check"></i> Klarmarkera</button>
+                        </div>
+
+                        <div class="uppdrag-prev-notes">
+                            <div class="uppdrag-prev-notes-head">Tidigare anteckningar (klarmarkerade körningar)</div>
+                            <div class="uppdrag-prev-notes-list">${notesHtml}</div>
+                        </div>
+                    </div>
+
+                    <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
+                        <div class="lead-fields uppdrag-lead-fields">
+                            <div class="lead-field">
+                                <label>Frekvens</label>
+                                <select class="form-control" data-field="Frekvens">${freqHtml}</select>
+                            </div>
+                            <div class="lead-field">
+                                <label>Startdatum</label>
+                                <input class="kunduppgifter-input" type="date" data-field="Startdatum" value="${this._esc(String(startdatum || ''))}">
+                            </div>
+                            <div class="lead-field">
+                                <label>Nästa deadline</label>
+                                <input class="kunduppgifter-input" type="date" data-field="Nästa deadline" value="${this._esc(String(deadline || ''))}">
+                            </div>
+                            <div class="lead-field">
+                                <label>Handläggare</label>
+                                <select class="form-control" data-field="Ansvarig">${userOptHtml}</select>
+                            </div>
+                        </div>
+
+                        ${decExtraHtml}
+
+                        <div class="uppdrag-block">
+                            <label class="uppdrag-label"><i class="fas ${icon}"></i> Rutin / instruktion</label>
+                            <textarea class="kunduppgifter-input" rows="4" data-field="Rutin" placeholder="Skriv rutin/instruktion...">${this._esc(String(rutin || ''))}</textarea>
+                        </div>
+
+                        <div class="uppdrag-riskbox">
+                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                            <div class="uppdrag-riskbox-items" data-risk-wrap>
+                                ${riskChoicesHtml}
+                            </div>
+                        </div>
+
+                        <div class="uppdrag-block">
+                            <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
+                            <input type="file" class="kunduppgifter-input" data-ptl-file multiple>
+                            <div class="uppdrag-actions" style="margin-top:0.5rem;">
+                                <button type="button" class="btn btn-secondary btn-sm" data-action="upload-ptl"><i class="fas fa-upload"></i> Ladda upp underlag</button>
+                            </div>
+                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${this._esc(ptlUnderlagRaw || '[]')}</textarea>
+                            <div class="uppdrag-ptl-files" data-ptl-files></div>
+                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
+                        </div>
+
+                        <div class="uppdrag-actions">
+                            <button type="button" class="btn btn-primary btn-sm" data-action="save"><i class="fas fa-save"></i> Spara</button>
+                            <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-edit"><i class="fas fa-times"></i> Avbryt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async _saveUppdragFromCard(root, typ) {
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const opts = getAuthOptsKundkort();
+            const customerId = this.customerId || this.currentCustomerId;
+            if (!customerId) throw new Error('Saknar customerId');
+
+            const getVal = (name) => root.querySelector(`[data-field="${CSS.escape(name)}"]`);
+            const fields = {};
+            fields['Frekvens'] = getVal('Frekvens')?.value || '';
+            fields['Startdatum'] = getVal('Startdatum')?.value || '';
+            fields['Nästa deadline'] = getVal('Nästa deadline')?.value || '';
+            fields['Ansvarig'] = getVal('Ansvarig')?.value || '';
+            fields['Rutin'] = getVal('Rutin')?.value || '';
+            const riskSelected = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
+            fields['Riskåtgärder valda'] = JSON.stringify(riskSelected);
+            fields['Riskåtgärder aktiverade'] = riskSelected.length > 0;
+            fields['PTL Underlag'] = getVal('PTL Underlag')?.value || '[]';
+            if (typ === 'Deklaration') {
+                // Deklarationsrader (typ + fritext) sparas som JSON
+                const rowsWrap = root.querySelector('[data-dek-rows]');
+                const rows = rowsWrap ? Array.from(rowsWrap.querySelectorAll('.uppdrag-dek-row')).map(r => ({
+                    typ: r.querySelector('.uppdrag-dek-typ')?.value || 'NEA',
+                    text: (r.querySelector('.uppdrag-dek-text')?.value || '').toString().trim()
+                })).filter(x => x.typ || x.text) : [];
+                fields['Deklaration rader'] = JSON.stringify(rows);
+            }
+
+            const res = await fetch(`${baseUrl}/api/uppdrag`, {
+                method: 'POST',
+                ...opts,
+                body: JSON.stringify({ customerId, typ, fields })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this.showNotification('Uppdrag sparat', 'success');
+            this._syncUppdragHeaderMeta(root);
+            // Re-render för att visa att kortet nu är "sparat i Airtable" + ev andra fält
+            this.loadUppdrag();
+        } catch (e) {
+            console.error('❌ _saveUppdragFromCard:', e);
+            this.showNotification('Kunde inte spara uppdrag: ' + (e.message || 'fel'), 'error');
+        }
+    }
+
+    async _completeUppdragFromCard(root, typ, options = {}) {
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const opts = getAuthOptsKundkort();
+            const customerId = this.customerId || this.currentCustomerId;
+            if (!customerId) throw new Error('Saknar customerId');
+
+            // PTL-krav: om åtgärder är aktiverade måste minst en vara vald
+        const riskOn = root.querySelector('[data-uppdrag-risk-on]')?.value === '1'
+            || !!root.querySelector('[data-field="Riskåtgärder aktiverade"]')?.checked;
+            let riskValda = [];
+            try { riskValda = JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]'); } catch (_) { riskValda = []; }
+            if (root.querySelectorAll('input[data-risk-item]:checked').length) {
+                riskValda = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
+            }
+        if (riskOn && (!riskValda || riskValda.length === 0)) {
+            // open edit mode for clarity
+            root.classList.remove('is-collapsed');
+            root.querySelector('[data-action="toggle-edit"]')?.click();
+            this.showNotification('Du måste välja minst en PTL-åtgärd innan du kan klarmarkera uppdraget.', 'error');
+            return;
+        }
+
+            const note = (options.noteOverride != null) ? String(options.noteOverride) : (root.querySelector('[data-field="_note"]')?.value || '');
+            const res = await fetch(`${baseUrl}/api/uppdrag/complete`, {
+                method: 'POST',
+                ...opts,
+                body: JSON.stringify({ customerId, typ, note })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this.showNotification(data.nextDeadline ? `Klart ✅ Nästa deadline: ${data.nextDeadline}` : 'Klart ✅', 'success');
+            // Reload the tab to show updated history/deadline
+            this.loadUppdrag();
+        } catch (e) {
+            console.error('❌ _completeUppdragFromCard:', e);
+            this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
+        }
+    }
+
+    _syncUppdragHeaderMeta(root) {
+        if (!root) return;
+        const getVal = (name) => root.querySelector(`[data-field="${CSS.escape(name)}"]`);
+        const freq = getVal('Frekvens')?.value || '–';
+        const deadline = getVal('Nästa deadline')?.value || '–';
+        const ansvarig = getVal('Ansvarig')?.value || '–';
+        const set = (k, v) => {
+            const el = root.querySelector(`[data-uppdrag-meta="${CSS.escape(k)}"]`);
+            if (el) el.textContent = String(v || '–');
+        };
+        set('Frekvens', freq || '–');
+        set('Nästa deadline', deadline || '–');
+        set('Ansvarig', ansvarig || '–');
     }
 
     loadCompanyInfo() {
@@ -474,19 +1492,34 @@ class CustomerCardManager {
         const sniRaw = fields['SNI kod'] || fields['SNI-koder'] || '';
         const befattning = fields.Befattningshavare || '';
 
-        // SNI-koder — sparade som "62010 Dataprogrammering\n62020 Konsultverksamhet"
+        // SNI-koder — kan komma som:
+        // - "62010 Dataprogrammering\n62020 Konsultverksamhet"
+        // - "70200 - Konsultverksamhet..., 01500 - Blandat jordbruk"
         let sniHTML = '<span class="lead-empty">Saknas</span>';
         if (sniRaw) {
-            const rows = sniRaw.split('\n').map(r => r.trim()).filter(Boolean);
-            if (rows.length > 0) {
-                sniHTML = rows.map(row => {
-                    const spaceIdx = row.indexOf(' ');
-                    if (spaceIdx > 0) {
-                        const kod = row.substring(0, spaceIdx);
-                        const label = row.substring(spaceIdx + 1);
-                        return `<span class="sni-code-badge">${kod}</span><span class="sni-code-label">${label}</span>`;
-                    }
-                    return `<span class="sni-code-badge">${row}</span>`;
+            const chunks = sniRaw
+                .split('\n')
+                .flatMap(r => r.split(','))
+                .map(r => r.trim())
+                .filter(Boolean);
+
+            const parsed = chunks.map((row) => {
+                // "12345 - text" eller "12345 text"
+                const m = row.match(/^(\d{4,6})\s*(?:-|\s)\s*(.+)$/);
+                if (m) return { kod: m[1], label: m[2] };
+                // fallback: bara kod
+                const m2 = row.match(/^(\d{4,6})$/);
+                if (m2) return { kod: m2[1], label: '' };
+                return { kod: row, label: '' };
+            });
+
+            if (parsed.length > 0) {
+                sniHTML = parsed.map(({ kod, label }) => {
+                    const k = this._esc(String(kod || ''));
+                    const l = this._esc(String(label || ''));
+                    return l
+                        ? `<span class="sni-code-badge">${k}</span><span class="sni-code-label">${l}</span>`
+                        : `<span class="sni-code-badge">${k}</span>`;
                 }).join('');
             }
         }
@@ -562,6 +1595,11 @@ class CustomerCardManager {
             <div class="collapsible-card" id="bolagsverket-card" >
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('bolagsverket-card')">
                     <div class="collapsible-title"><i class="fas fa-building"></i><span>Uppgifter från Bolagsverket</span></div>
+                    <div class="collapsible-actions" onclick="event.stopPropagation()">
+                        <button type="button" class="btn btn-ghost btn-sm" id="bolagsverket-refresh-btn" title="Sök om hos Bolagsverket">
+                            <i class="fas fa-rotate-right"></i> Uppdatera
+                        </button>
+                    </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
@@ -761,7 +1799,172 @@ class CustomerCardManager {
             </div>
         `;
 
+        // Uppdatera-knapp för Bolagsverket: sök om + visa förändringar
+        const refreshBtn = document.getElementById('bolagsverket-refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await this.refreshBolagsverketData();
+            });
+        }
+
         console.log('✅ Company info loaded with lead-card layout');
+    }
+
+    async refreshBolagsverketData() {
+        const btn = document.getElementById('bolagsverket-refresh-btn');
+        const origHtml = btn?.innerHTML;
+
+        try {
+            const customerId = this.customerId;
+            const fields = this.customerData?.fields || {};
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+
+            const orgnrRaw = (fields.Orgnr || fields['Organisationsnummer'] || fields['Org.nr'] || '').toString().trim();
+            const orgnr = orgnrRaw.replace(/[^\d]/g, '');
+            if (!orgnr) {
+                this.showNotification('Organisationsnummer saknas på kunden.', 'error');
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Hämtar...';
+            }
+
+            const res = await fetch(`${baseUrl}/api/bolagsverket/organisationer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ organisationsnummer: orgnr })
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || payload.message || `HTTP ${res.status}`);
+
+            const app = window.clientFlowApp;
+            if (!app || typeof app.transformBolagsverketData !== 'function') {
+                throw new Error('Kunde inte hitta transformBolagsverketData (app.js).');
+            }
+            app.lastSearchedOrgNumber = orgnr;
+            const transformed = app.transformBolagsverketData(payload.data);
+
+            const newFields = {};
+            const setIf = (key, val) => {
+                const v = (val == null) ? '' : String(val).trim();
+                if (v) newFields[key] = v;
+            };
+
+            setIf('regdatum', transformed.registreringsdatum);
+            setIf('registreringsland', transformed.registreringsland);
+            setIf('Bolagsform', transformed.form);
+            setIf('Address', transformed.adress?.fullAddress);
+            setIf('Verksamhetsbeskrivning', transformed.verksamhet);
+
+            if (Array.isArray(transformed.sniKoder) && transformed.sniKoder.length) {
+                const lines = transformed.sniKoder
+                    .filter(s => (s?.kod || '').toString().trim())
+                    .map(s => {
+                        const kod = String(s.kod || '').trim();
+                        const klar = String(s.klartext || '').trim();
+                        return klar ? `${kod} - ${klar}` : kod;
+                    })
+                    .join('\n');
+                if (lines) {
+                    const target = (fields['SNI kod'] != null) ? 'SNI kod'
+                        : ((fields['SNI-koder'] != null) ? 'SNI-koder' : 'SNI kod');
+                    newFields[target] = lines;
+                }
+            }
+
+            const norm = (v) => (v == null) ? '' : String(v).replace(/\r/g, '').trim();
+            const diffs = Object.keys(newFields)
+                .map((k) => ({ key: k, prev: norm(fields[k]), next: norm(newFields[k]) }))
+                .filter(d => d.prev !== d.next);
+
+            this._showBolagsverketDiffModal({ customerId, diffs, newFields });
+        } catch (e) {
+            console.error('❌ refreshBolagsverketData:', e);
+            this.showNotification('Kunde inte uppdatera från Bolagsverket: ' + (e.message || 'fel'), 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml || '<i class="fas fa-rotate-right"></i> Uppdatera';
+            }
+        }
+    }
+
+    _showBolagsverketDiffModal({ customerId, diffs, newFields }) {
+        const existing = document.getElementById('bolagsverket-diff-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'bolagsverket-diff-modal';
+        modal.className = 'modal-overlay';
+
+        const rowsHtml = diffs.length ? diffs.map((d) => `
+            <label class="uppdrag-riskbox-toggle" style="align-items:flex-start; font-weight:600;">
+                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}" checked>
+                <div style="display:grid; gap:0.15rem;">
+                    <div style="color:#0f172a;">${this._esc(d.key)}</div>
+                    <div class="uppdrag-muted">Nu: ${this._esc(d.prev || '—')}</div>
+                    <div class="uppdrag-muted">Ny: ${this._esc(d.next || '—')}</div>
+                </div>
+            </label>
+        `).join('') : `<div class="uppdrag-muted">Inga förändringar hittades.</div>`;
+
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:820px; width:96vw; max-height:90vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-rotate-right"></i> Förändringar från Bolagsverket</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('bolagsverket-diff-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body" style="overflow:auto;">
+                    ${rowsHtml}
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('bolagsverket-diff-modal')?.remove()">Stäng</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="bolagsverket-diff-apply" ${diffs.length ? '' : 'disabled'}>
+                        <i class="fas fa-save"></i> Uppdatera kund
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const applyBtn = document.getElementById('bolagsverket-diff-apply');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', async () => {
+                try {
+                    const selectedKeys = Array.from(modal.querySelectorAll('.bv-diff-cb:checked')).map(cb => cb.value);
+                    const fieldsToSave = {};
+                    selectedKeys.forEach(k => { fieldsToSave[k] = newFields[k]; });
+                    if (!Object.keys(fieldsToSave).length) return;
+
+                    const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                    const orig = applyBtn.innerHTML;
+                    applyBtn.disabled = true;
+                    applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+
+                    const resp = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                        method: 'PATCH',
+                        ...getAuthOptsKundkort(),
+                        body: JSON.stringify({ fields: fieldsToSave })
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+
+                    this.customerData.fields = { ...(this.customerData.fields || {}), ...fieldsToSave };
+                    document.getElementById('bolagsverket-diff-modal')?.remove();
+                    this.showNotification('Uppgifter uppdaterade från Bolagsverket', 'success');
+                    this.loadCompanyInfo();
+                } catch (e) {
+                    this.showNotification('Kunde inte uppdatera kund: ' + (e.message || 'fel'), 'error');
+                    applyBtn.disabled = false;
+                    applyBtn.innerHTML = '<i class="fas fa-save"></i> Uppdatera kund';
+                }
+            });
+        }
     }
 
     toggleKunduppgifterEdit() {
@@ -3496,6 +4699,7 @@ class CustomerCardManager {
 
         const date = fields['Datum'] || '-';
         const content = fields['Notes'] || '';
+        // Person/skapad av visas inte i UI (för att undvika "// Namn" längst ner)
         const person = fields['Person'] || '';
         const attachments = fields['Attachments'] || [];
         const todoList = this.createTodoList(fields, noteId);
@@ -3522,7 +4726,6 @@ class CustomerCardManager {
                 </div>
                 ${hasDetails ? `
                 <div class="note-details" id="note-details-${noteId}" style="display:none;">
-                    ${person ? `<p class="note-person"><i class="fas fa-user"></i> ${person}</p>` : ''}
                     ${content ? `<div class="note-content"><p>${content.replace(/\n/g, '<br>')}</p></div>` : ''}
                     ${todoList}
                     ${attachmentsHTML}

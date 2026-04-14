@@ -1016,7 +1016,18 @@ class ClientFlowApp {
             organisationsnummer: orgNumber,
             namn: primaryName,
             allaNamn: allNames,
-            form: primaryOrg?.organisationsform?.klartext || primaryOrg?.juridiskForm?.klartext || 'Saknas',
+            form: (() => {
+                // Bolagsverket kan variera fältstruktur mellan miljöer/versioner.
+                const of = primaryOrg?.organisationsform;
+                const jf = primaryOrg?.juridiskForm;
+                const pick = (v) => {
+                    if (!v) return '';
+                    if (typeof v === 'string') return v;
+                    return v.klartext || v.beskrivning || v.text || v.name || v.kod || '';
+                };
+                const out = pick(of) || pick(jf);
+                return out || 'Saknas';
+            })(),
             status: (() => {
                 // Om verksamOrganisation är 'JA', är företaget aktivt
                 if (primaryOrg?.verksamOrganisation?.kod === 'JA') {

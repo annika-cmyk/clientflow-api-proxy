@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Uppdrag (översikt)</title>
+    <link rel="stylesheet" href="styles.css?v=3.6">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <div class="uppdragboard-top">
+                            <div class="uppdragboard-title">
+                                <h1 id="uppdragboard-title">Löneuppdrag</h1>
+                                <div class="uppdragboard-period">
+                                    <button type="button" class="uppdragboard-navbtn" id="uppdragboard-prev" title="Föregående månad" aria-label="Föregående månad"><i class="fas fa-chevron-left"></i></button>
+                                    <div class="uppdragboard-month" id="uppdragboard-month">April 2026</div>
+                                    <button type="button" class="uppdragboard-navbtn" id="uppdragboard-next" title="Nästa månad" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
+                                </div>
+                            </div>
+                            <div class="uppdragboard-actions">
+                                <button type="button" class="btn btn-secondary" id="uppdrag-scope-mine"><i class="fas fa-user"></i> Mina</button>
+                                <button type="button" class="btn btn-primary" id="uppdrag-scope-byra"><i class="fas fa-building"></i> Byrån</button>
+                            </div>
+                        </div>
+
+                        <div class="uppdragboard-tabs" role="tablist" aria-label="Uppdragstyper">
+                            <button type="button" class="uppdragboard-tab is-active" data-typ="Löneuppdrag"><span>Löneuppdrag</span></button>
+                            <button type="button" class="uppdragboard-tab" data-typ="Momsredovisning"><span>Momsuppdrag</span></button>
+                            <button type="button" class="uppdragboard-tab" data-typ="Bokslut"><span>Bokslutsuppdrag</span></button>
+                            <button type="button" class="uppdragboard-tab" data-typ="Deklaration"><span>Deklarationsuppdrag</span></button>
+                        </div>
+
+                        <div class="uppdragboard-filters">
+                            <div class="uppdragboard-filter uppdragboard-filter--search">
+                                <input type="text" class="kunduppgifter-input" id="uppdrag-search" placeholder="Sök klient...">
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <div id="uppdrag-loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar uppdrag...</p>
+                </div>
+
+                <div id="uppdrag-no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa uppdrag.</p>
+                </div>
+
+                <div id="uppdrag-content" style="display:none;">
+                    <div class="uppdragboard-table-wrap">
+                        <table class="uppdragboard-table">
+                            <thead>
+                                <tr>
+                                    <th class="uppdragboard-th-client">Klient</th>
+                                    <th class="uppdragboard-th-run" id="uppdragboard-col-run">Körning</th>
+                                    <th class="uppdragboard-th-done">Klarmarkera</th>
+                                    <th class="uppdragboard-th-arrow"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="uppdragboard-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/uppdrag-oversikt.js?v=1.8"></script>
+</body>
+</html>

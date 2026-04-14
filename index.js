@@ -312,12 +312,25 @@ function formatOpenAIAssistantError(err, step) {
   if (data) {
     const d = data;
     const msg = d.error?.message || d.message || (typeof d === 'string' ? d : JSON.stringify(d));
+    // Friendly config hint for common misconfigurations
+    if (status === 404 && /assistant/i.test(msg) && /not found/i.test(msg)) {
+      return new Error(
+        `${step}: OpenAI hittade inte assistenten. Kontrollera att OPENAI_ASSISTANT_ID pekar på en existerande assistent i rätt OpenAI-projekt (och att API-nyckeln tillhör samma projekt). (HTTP ${status})`
+      );
+    }
     return new Error(`${step}: ${msg} (HTTP ${status})`);
   }
   if (status) {
     return new Error(`${step}: HTTP ${status} (ingen detalj från OpenAI)`);
   }
   return err;
+}
+
+function maskId(id, keepStart = 8) {
+  const s = (id || '').toString().trim();
+  if (!s) return '';
+  if (s.length <= keepStart) return s;
+  return s.slice(0, keepStart) + '…';
 }
 
 async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
@@ -563,6 +576,20 @@ app.post('/api/auth/logout', (req, res) => {
 // ============================================================
 app.get('/api/ai-chat/status', (req, res) => {
   res.json({ ok: true, message: 'Annika-chat är tillgänglig' });
+});
+
+// ============================================================
+// GET /api/ai/status — Visa AI-konfiguration (felsökning, ingen hemlig data)
+// ============================================================
+app.get('/api/ai/status', authenticateToken, (req, res) => {
+  res.json({
+    ok: true,
+    openai: {
+      hasApiKey: !!process.env.OPENAI_API_KEY,
+      assistantId: process.env.OPENAI_ASSISTANT_ID ? maskId(process.env.OPENAI_ASSISTANT_ID, 12) : null,
+      vectorStoreId: process.env.OPENAI_VECTOR_STORE_ID ? maskId(process.env.OPENAI_VECTOR_STORE_ID, 12) : null
+    }
+  });
 });
 
 // Kända användare – extra kontext så Annika AI kan skoja/vara personlig (nycklar: namn i lowercase)
@@ -8526,6 +8553,495 @@ app.patch('/api/uppdragsavtal/:id', authenticateToken, async (req, res) => {
       return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message, airtableError: error.response.data });
     }
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── UPPDRAG (Lön/Moms/Bokslut/Deklaration) ──────────────────────────────────
+const UPPDRAG_TABLE_NAME = 'Uppdrag';
+
+// Fält som Uppdrag-tabellen behöver (namn + typ + options)
+const UPPDRAG_REQUIRED_FIELDS = [
+  { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA (rec...)' },
+  { name: 'Byrå ID', type: 'singleLineText', description: 'Byrå-id för dataseparering' },
+  { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Löneuppdrag' }, { name: 'Momsredovisning' }, { name: 'Bokslut' }, { name: 'Deklaration' }] } },
+  { name: 'Namn', type: 'singleLineText', description: 'Valfritt namn på uppdraget' },
+  { name: 'Frekvens', type: 'singleSelect', options: { choices: [{ name: 'Varje månad' }, { name: 'Varje kvartal' }, { name: 'Årsvis' }, { name: 'Årsvis med deklaration' }, { name: 'Engång' }] } },
+  { name: 'Startdatum', type: 'date', description: 'Tidigast datum uppdraget ska börja synas i att-göra', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Nästa deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Ansvarig', type: 'singleLineText', description: 'Handläggare (namn eller user-id)' },
+  { name: 'Rutin', type: 'multilineText', description: 'Instruktion/rutin för uppdraget' },
+  { name: 'Anteckning', type: 'multilineText', description: 'Anteckning om uppdraget (generellt)' },
+  // Checkbox kräver options i Meta API
+  { name: 'Riskåtgärder aktiverade', type: 'checkbox', options: { icon: 'check', color: 'greenBright' } },
+  { name: 'Riskåtgärder valda', type: 'multilineText', description: 'Valda åtgärder (text/JSON)' },
+  { name: 'PTL Underlag', type: 'multilineText', description: 'JSON-lista med uppladdade underlag kopplade till åtgärder (för dokumentation)' },
+  { name: 'Senast utförd', type: 'date', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Aktiv' }, { name: 'Pausad' }, { name: 'Avslutad' }] } },
+  { name: 'Historik', type: 'multilineText', description: 'JSON-array med körningar (datum/anteckning)' },
+  { name: 'Deklaration rader', type: 'multilineText', description: 'JSON-array med deklarationstyper + fritext (kan förekomma flera gånger)' },
+  { name: 'Deklarationstyp', type: 'singleSelect', options: { choices: [{ name: 'Inkomstdeklaration' }, { name: 'K10' }] } },
+  { name: 'Ägare', type: 'multilineText', description: 'Ägare (en per rad) för K10/ägar-deklaration' },
+  { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
+];
+
+async function getUppdragTableMeta(airtableToken, baseId) {
+  const forcedId = process.env.AIRTABLE_TABLE_UPPDRAG_ID;
+  try {
+    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const tables = res.data?.tables || [];
+    const t = forcedId
+      ? tables.find(x => (x.id || '').trim() === forcedId.trim())
+      : tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_TABLE_NAME.toLowerCase());
+    return t || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// POST /api/setup/airtable-uppdrag – Skapa tabellen "Uppdrag" i Airtable (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-uppdrag', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const existing = await getUppdragTableMeta(airtableAccessToken, baseId);
+    if (existing) {
+      return res.json({ success: true, message: `Tabellen "${UPPDRAG_TABLE_NAME}" finns redan.`, tableId: existing.id, alreadyExists: true });
+    }
+    const createRes = await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+      {
+        name: UPPDRAG_TABLE_NAME,
+        description: 'Återkommande uppdrag per kund (lön/moms/bokslut/deklaration) med deadline och historik',
+        fields: UPPDRAG_REQUIRED_FIELDS
+      },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    const newTable = createRes.data;
+    const tableId = newTable?.id || (newTable?.tables && newTable.tables[0] && newTable.tables[0].id);
+    return res.json({ success: true, message: `Tabellen "${UPPDRAG_TABLE_NAME}" skapades i Airtable.`, tableId: tableId || '', alreadyExists: false });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Uppdrag:', status, msg, data);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte skapa tabellen' });
+  }
+});
+
+// POST /api/setup/airtable-uppdrag-fields – Lägg till saknade fält i befintlig tabell "Uppdrag" (auth)
+app.post('/api/setup/airtable-uppdrag-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const t = await getUppdragTableMeta(airtableAccessToken, baseId);
+    if (!t) return res.status(404).json({ success: false, error: `Tabellen "${UPPDRAG_TABLE_NAME}" hittades inte i basen. Skapa den först.` });
+    const existingNames = (t.fields || []).map(f => (f.name || '').trim());
+    const toCreate = UPPDRAG_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields`;
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Kunde inte skapa uppdrag-fält', field.name, msg);
+      }
+    }
+    const skipped = UPPDRAG_REQUIRED_FIELDS.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} fält lades till i ${UPPDRAG_TABLE_NAME}. ${skipped} fanns redan.`
+        : `Alla ${UPPDRAG_REQUIRED_FIELDS.length} fält finns redan i tabellen ${UPPDRAG_TABLE_NAME}.`,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Uppdrag fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen' });
+  }
+});
+
+function addMonthsIso(dateIso, months) {
+  const d = new Date(dateIso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.getDate();
+  d.setMonth(d.getMonth() + months);
+  // Justera om vi hamnar i nästa månad pga kortare månad
+  if (d.getDate() !== day) d.setDate(0);
+  return d.toISOString().slice(0, 10);
+}
+
+function addYearsIso(dateIso, years) {
+  const d = new Date(dateIso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
+}
+
+function calcNextDeadline(currentIso, freq) {
+  if (!currentIso) return null;
+  const f = (freq || '').toString().toLowerCase();
+  if (f.includes('kvartal')) return addMonthsIso(currentIso, 3);
+  if (f.includes('månad')) return addMonthsIso(currentIso, 1);
+  if (f.includes('årsvis')) return addYearsIso(currentIso, 1);
+  return null;
+}
+
+function buildUppdragFilterFormulas(customerId, typ) {
+  const cust = String(customerId || '').replace(/'/g, "\\'");
+  const t = typ != null ? String(typ).replace(/'/g, "\\'") : null;
+  const kundFields = ['Kund ID', 'KundID', 'kund id', 'kundid'];
+  const typFields = ['Typ', 'typ'];
+
+  // customer-only formulas
+  const custOnly = kundFields.map(kf => `{${kf}} = '${cust}'`);
+
+  if (!t) return custOnly;
+
+  const both = [];
+  for (const kf of kundFields) {
+    for (const tf of typFields) {
+      both.push(`AND({${kf}}='${cust}', {${tf}}='${t}')`);
+    }
+  }
+  return both.concat(custOnly.map(f => `AND(${f}, {Typ}='${t}')`));
+}
+
+async function airtableListWithFormulaFallback({ url, headers, baseParams, formulas }) {
+  let lastErr = null;
+  for (const formula of formulas) {
+    try {
+      const params = { ...(baseParams || {}), filterByFormula: formula };
+      const r = await axios.get(url, { headers, params });
+      return r;
+    } catch (e) {
+      lastErr = e;
+      const msg = e.response?.data?.error?.message || e.message || '';
+      // Only fall back on "Unknown field names" / formula problems
+      if (!/Unknown field names|formula/i.test(String(msg))) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+// GET /api/uppdrag?customerId=recXXX – lista uppdrag för kund
+app.get('/api/uppdrag', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const response = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { pageSize: 100 },
+      formulas: buildUppdragFilterFormulas(customerId)
+    });
+    const records = response.data.records || [];
+    res.json({ records });
+  } catch (error) {
+    console.error('❌ GET /api/uppdrag:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    if (/Unknown field names/i.test(String(msg))) {
+      return res.status(500).json({
+        error: 'Uppdrag-tabellen i Airtable saknar fält (t.ex. "Kund ID" och "Typ"). Skapa/uppdatera tabellen via /api/setup/airtable-uppdrag (kräver schema-token).',
+        details: msg
+      });
+    }
+    res.status(status).json({ error: msg });
+  }
+});
+
+// GET /api/uppdrag/byra?mine=0|1 – lista uppdrag för byrån (eller bara mina)
+app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.json({ records: [] });
+
+    const mine = String(req.query.mine || '0') === '1';
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+
+    const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const num = parseInt(byraIdClean, 10);
+    const byraFormula = isNaN(num)
+      ? `OR({Byrå ID}="${esc(byraIdClean)}")`
+      : `OR({Byrå ID}="${esc(byraIdClean)}",{Byrå ID}=${num})`;
+
+    let records = [];
+    let offset = null;
+    do {
+      const params = { pageSize: 100, filterByFormula: byraFormula };
+      if (offset) params.offset = offset;
+      const r = await axios.get(url, { headers, params });
+      records = records.concat(r.data.records || []);
+      offset = r.data.offset || null;
+    } while (offset);
+
+    // "Mina" = filtrera på Ansvarig = användarens namn (lagras som text i uppdrag idag)
+    if (mine) {
+      const myName = (userData?.name || '').toString().trim().toLowerCase();
+      records = records.filter(rec => {
+        const a = (rec.fields?.['Ansvarig'] || '').toString().trim().toLowerCase();
+        return myName && a === myName;
+      });
+    }
+
+    // Enrich: kundnamn via Kund ID -> KUNDDATA
+    const custIds = Array.from(new Set(records.map(r => (r.fields?.['Kund ID'] || '').toString().trim()).filter(Boolean)));
+    const nameById = {};
+    const fetchBatch = async (ids) => {
+      if (!ids.length) return;
+      const parts = ids.map(id => `RECORD_ID()="${esc(id)}"`).join(',');
+      const formula = `OR(${parts})`;
+      // KUNDDATA-tabellen används på flera ställen i koden med fast table-id.
+      // Tillåter override via env om man vill.
+      const KUNDDATA_TABLE_ID = process.env.AIRTABLE_TABLE_KUNDDATA_ID || process.env.AIRTABLE_KUNDDATA_TABLE_ID || 'tblOIuLQS2DqmOQWe';
+      const custUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(KUNDDATA_TABLE_ID)}`;
+      let custRes;
+      try {
+        custRes = await axios.get(custUrl, {
+          headers,
+          params: { filterByFormula: formula, maxRecords: 100, fields: ['Namn', 'Företagsnamn'] }
+        });
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        // Airtable kan returnera 422 om man ber om fields[] som inte finns.
+        if (/Unknown field name/i.test(String(msg))) {
+          custRes = await axios.get(custUrl, {
+            headers,
+            params: { filterByFormula: formula, maxRecords: 100, fields: ['Namn'] }
+          });
+        } else {
+          throw e;
+        }
+      }
+      (custRes.data.records || []).forEach(r => {
+        const f = r.fields || {};
+        nameById[r.id] = (f['Namn'] || f['Företagsnamn'] || f['Foretagsnamn'] || '').toString();
+      });
+    };
+    for (let i = 0; i < custIds.length; i += 50) {
+      // eslint-disable-next-line no-await-in-loop
+      await fetchBatch(custIds.slice(i, i + 50));
+    }
+    records.forEach(r => {
+      const cid = (r.fields?.['Kund ID'] || '').toString().trim();
+      if (cid && nameById[cid]) r.fields['Kundnamn'] = nameById[cid];
+    });
+
+    res.json({ records });
+  } catch (error) {
+    console.error('❌ GET /api/uppdrag/byra:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    res.status(status).json({ error: msg });
+  }
+});
+
+// POST /api/uppdrag – skapa/uppdatera ett uppdrag (upsert per kund+typ)
+// Body: { customerId, typ, fields }
+app.post('/api/uppdrag', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const { customerId, typ, fields: rawFields } = req.body || {};
+    if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+
+    const userData = await getUser(req.user.email);
+    const byraId = userData?.byraId ? String(userData.byraId).replace(/,/g, '') : '';
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const existingRes = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { maxRecords: 1 },
+      formulas: buildUppdragFilterFormulas(customerId, typ)
+    });
+    const existing = (existingRes.data.records || [])[0];
+
+    // Normalisera inkommande fält (frontend kan ha äldre/fel fältnamn)
+    const normalizedFields = { ...(rawFields || {}) };
+    // Backwards compatibility: "PTL uppdrag" -> "PTL Underlag"
+    const ptlLegacyKey = Object.keys(normalizedFields).find(k => String(k).toLowerCase().replace(/\s+/g, ' ').trim() === 'ptl uppdrag');
+    if (ptlLegacyKey && normalizedFields[ptlLegacyKey] != null && normalizedFields['PTL Underlag'] == null) {
+      normalizedFields['PTL Underlag'] = normalizedFields[ptlLegacyKey];
+    }
+    if (ptlLegacyKey) delete normalizedFields[ptlLegacyKey];
+
+    const fields = {
+      'Kund ID': customerId,
+      'Byrå ID': byraId,
+      'Typ': typ,
+      ...normalizedFields,
+      'Uppdaterad': new Date().toISOString()
+    };
+
+    const tryWriteWithFallback = async (writeFn) => {
+      try {
+        return await writeFn(fields);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        // Airtable kan ge 422 "Unknown field name" om tabellen saknar ett av våra fält.
+        // För att inte blockera sparning av övriga uppgifter så provar vi igen utan fältet.
+        const m = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+        if (!m) throw e;
+        const unknown = m[1];
+        if (!unknown || !(unknown in fields)) throw e;
+        const retryFields = { ...fields };
+        delete retryFields[unknown];
+        const r = await writeFn(retryFields);
+        // Lägg med varning till klienten så man kan installera/uppdatera schema.
+        r.__clientflow_warning = `Airtable saknar fältet "${unknown}". Sparade övriga ändringar, men detta fält ignorerades. Kör Installera/uppdatera Airtable för Uppdrag-tabellen.`;
+        return r;
+      }
+    };
+
+    if (existing) {
+      const write = async (payloadFields) => {
+        const updateRes = await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
+          { fields: payloadFields },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        return updateRes.data;
+      };
+      const record = await tryWriteWithFallback(write);
+      const warning = record && record.__clientflow_warning;
+      if (warning) delete record.__clientflow_warning;
+      return res.json({ record, updated: true, warning });
+    }
+
+    const write = async (payloadFields) => {
+      const createRes = await axios.post(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`,
+        // Skicka inte default för singleSelect-fält (Airtable kan annars försöka skapa nytt val och neka)
+        { fields: payloadFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      return createRes.data;
+    };
+    const record = await tryWriteWithFallback(write);
+    const warning = record && record.__clientflow_warning;
+    if (warning) delete record.__clientflow_warning;
+    return res.json({ record, created: true, warning });
+  } catch (error) {
+    console.error('❌ POST /api/uppdrag:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    if (/Unknown field names/i.test(String(msg))) {
+      return res.status(500).json({
+        error: 'Uppdrag-tabellen i Airtable saknar fält (t.ex. "Kund ID" och "Typ"). Skapa/uppdatera tabellen via /api/setup/airtable-uppdrag (kräver schema-token).',
+        details: msg
+      });
+    }
+    res.status(status).json({ error: msg, airtableError: error.response?.data });
+  }
+});
+
+// POST /api/uppdrag/complete – klarmarkera en körning för ett uppdrag och uppdatera nästa deadline
+// Body: { customerId, typ, note?, doneAt? }
+app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const { customerId, typ, note, doneAt } = req.body || {};
+    if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+    const doneIso = (doneAt && /^\d{4}-\d{2}-\d{2}$/.test(String(doneAt))) ? String(doneAt) : new Date().toISOString().slice(0, 10);
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const existingRes = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { maxRecords: 1 },
+      formulas: buildUppdragFilterFormulas(customerId, typ)
+    });
+    const existing = (existingRes.data.records || [])[0];
+    if (!existing) return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+
+    const f = existing.fields || {};
+    const freq = f['Frekvens'] || '';
+    const currentDeadline = f['Nästa deadline'] || doneIso;
+
+    let history = [];
+    try {
+      const raw = (f['Historik'] || '').toString().trim();
+      if (raw) history = JSON.parse(raw);
+      if (!Array.isArray(history)) history = [];
+    } catch (_) { history = []; }
+
+    history.unshift({
+      doneAt: doneIso,
+      note: (note || '').toString().trim(),
+      user: req.user?.email || ''
+    });
+    history = history.slice(0, 200);
+
+    const next = calcNextDeadline(currentDeadline, freq);
+
+    const fields = {
+      'Senast utförd': doneIso,
+      'Historik': JSON.stringify(history),
+      'Uppdaterad': new Date().toISOString()
+    };
+    if (next) fields['Nästa deadline'] = next;
+
+    const updateRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
+      { fields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    return res.json({ record: updateRes.data, nextDeadline: next || null });
+  } catch (error) {
+    console.error('❌ POST /api/uppdrag/complete:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    if (/Unknown field names/i.test(String(msg))) {
+      return res.status(500).json({
+        error: 'Uppdrag-tabellen i Airtable saknar fält (t.ex. "Kund ID" och "Typ"). Skapa/uppdatera tabellen via /api/setup/airtable-uppdrag (kräver schema-token).',
+        details: msg
+      });
+    }
+    res.status(status).json({ error: msg, airtableError: error.response?.data });
   }
 });
 
