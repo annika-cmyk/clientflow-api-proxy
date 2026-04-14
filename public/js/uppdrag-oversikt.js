@@ -425,13 +425,12 @@
                 </div>` : ''}
               </div>
               <div class="uppdragboard-details-history" style="margin-top:1rem;">
-                <div class="uppdrag-view-label">Anteckning för denna körning (sparas utan klarmarkering)</div>
                 <div class="form-group" style="margin-top:0.5rem; margin-bottom:0;">
                   <textarea
                     class="kunduppgifter-input"
                     rows="3"
                     data-note-for="${esc(x.key)}"
-                    placeholder="Skriv sådant du vill komma ihåg till nästa körning (moms/bokslut)..."
+                    placeholder="Anteckning"
                   >${esc(runningNote)}</textarea>
                   <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
                     <button type="button" class="btn btn-secondary btn-sm" data-action="save-note" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
