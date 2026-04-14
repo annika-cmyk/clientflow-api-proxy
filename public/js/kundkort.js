@@ -3987,6 +3987,7 @@ class CustomerCardManager {
         const byraOrgnr    = byraData.byraOrgnr    || this.userData?.orgnr || '';
         const konsulter    = byraData.konsulter     || [];
         const inloggadNamn = byraData.inloggadNamn  || this.userData?.name || '';
+        const avtalDefaults = byraData.avtalDefaults || {};
 
         // byransTjanster används bara för högrisk-kontroll — hämta namn ur {id, namn}-objekt
         const byransTjanster = this._byransTjanster?.length
@@ -4004,6 +4005,14 @@ class CustomerCardManager {
 
         // Förvalt ansvarig: sparat värde i avtalet, annars inloggad användares namn
         const ansvarig = f['Uppdragsansvarig'] || inloggadNamn;
+
+        const uppsagningstidVal = (f['Uppsägningstid'] !== '' && f['Uppsägningstid'] !== null && f['Uppsägningstid'] !== undefined)
+            ? f['Uppsägningstid']
+            : (avtalDefaults.defaultUppsagningstid ?? 3);
+        const fakturaperiodVal = (f['Fakturaperiod'] || avtalDefaults.defaultFakturaperiod || '');
+        const betalningsvillkorVal = (f['Betalningsvillkor'] !== '' && f['Betalningsvillkor'] !== null && f['Betalningsvillkor'] !== undefined)
+            ? f['Betalningsvillkor']
+            : (avtalDefaults.defaultBetalningsvillkor ?? 10);
 
         // Tjänster visas direkt från kundens valda tjänster (sätts på fliken Övrig KYC)
         const tjansterDisplay = aktiva.length
@@ -4086,7 +4095,7 @@ class CustomerCardManager {
                             </div>
                             <div class="uppdrag-field">
                                 <label>Uppsägningstid (månader)</label>
-                                <input type="number" id="ua-uppsagningstid" class="uppdrag-input" value="${f['Uppsägningstid'] ?? 3}" min="0" placeholder="3">
+                                <input type="number" id="ua-uppsagningstid" class="uppdrag-input" value="${uppsagningstidVal}" min="0" placeholder="3">
                             </div>
                         </div>
                         </div>
@@ -4170,12 +4179,12 @@ class CustomerCardManager {
                                 <label>Fakturaperiod</label>
                                 <select id="ua-fakturaperiod" class="uppdrag-input">
                                     <option value="">Välj...</option>
-                                    ${sel(['Månadsvis','Kvartalsvis','Halvårsvis','Årsvis','Löpande'], f['Fakturaperiod'])}
+                                    ${sel(['Månadsvis','Kvartalsvis','Halvårsvis','Årsvis','Löpande'], fakturaperiodVal)}
                                 </select>
                             </div>
                             <div class="uppdrag-field">
                                 <label>Betalningsvillkor (dagar)</label>
-                                <input type="number" id="ua-betvillkor" class="uppdrag-input" value="${f['Betalningsvillkor'] ?? 10}" placeholder="10">
+                                <input type="number" id="ua-betvillkor" class="uppdrag-input" value="${betalningsvillkorVal}" placeholder="10">
                             </div>
                         </div>
                         </div>

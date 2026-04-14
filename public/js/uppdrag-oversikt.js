@@ -320,6 +320,7 @@
       const runCell = `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
 
       const rutin = (f['Rutin'] || '').toString().trim();
+      const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
       const riskValda = safeJson((f['Riskåtgärder valda'] || '').toString().trim(), []);
       const riskList = Array.isArray(riskValda) && riskValda.length
         ? `<div class="uppdrag-view-list">${riskValda.slice(0, 20).map(a => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${esc(a)}</div>`).join('')}</div>`
@@ -367,6 +368,24 @@
                 <div class="uppdrag-view-label">Tidigare anteckningar (klarmarkerade körningar)</div>
                 <div class="uppdrag-prev-notes-list">${histHtml}</div>
               </div>
+              <div class="uppdragboard-details-history" style="margin-top:1rem;">
+                <div class="uppdrag-view-label">Anteckning för denna körning (sparas utan klarmarkering)</div>
+                <div class="form-group" style="margin-top:0.5rem; margin-bottom:0;">
+                  <textarea
+                    class="kunduppgifter-input"
+                    rows="3"
+                    data-note-for="${esc(x.key)}"
+                    placeholder="Skriv sådant du vill komma ihåg till nästa körning (moms/bokslut)..."
+                  >${esc(runningNote)}</textarea>
+                  <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="save-note" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
+                      <i class="fas fa-save"></i> Spara anteckning
+                    </button>
+                    <span class="uppdrag-muted" data-note-status-for="${esc(x.key)}" style="margin:0;"></span>
+                  </div>
+                  <div class="uppdrag-muted" style="margin-top:0.35rem;">Tips: anteckningen ligger kvar tills du ändrar den. Klarmarkering sparar separat historik.</div>
+                </div>
+              </div>
             </div>
           </td>
         </tr>
@@ -393,6 +412,45 @@
         const customerId = row.getAttribute('data-customer-id') || '';
         const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(activeType));
         showCompleteModal({ customerId, typ: activeType, fields: rec?.fields || {} });
+      });
+    });
+
+    // bind save-note buttons
+    tbodyEl.querySelectorAll('[data-action="save-note"]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = btn.getAttribute('data-key') || '';
+        const customerId = btn.getAttribute('data-customer-id') || '';
+        if (!customerId || !key) return;
+        const textarea = tbodyEl.querySelector(`textarea[data-note-for="${CSS.escape(key)}"]`);
+        const statusEl = tbodyEl.querySelector(`[data-note-status-for="${CSS.escape(key)}"]`);
+        const note = (textarea?.value || '').toString();
+        if (statusEl) statusEl.textContent = 'Sparar...';
+        try {
+          const res = await fetch(`${baseUrl}/api/uppdrag`, {
+            method: 'POST',
+            ...getAuthOpts(),
+            body: JSON.stringify({
+              customerId,
+              typ: activeType,
+              fields: {
+                'Anteckning för denna körning': note
+              }
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          if (statusEl) statusEl.textContent = 'Sparat.';
+          // Uppdatera lokalt cache för att slippa reload
+          const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(activeType));
+          if (rec && rec.fields) rec.fields['Anteckning för denna körning'] = note;
+          // Visa varning om Airtable saknar fältet
+          if (data.warning && statusEl) statusEl.textContent = String(data.warning);
+          setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+        } catch (err) {
+          if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
+        }
       });
     });
 

@@ -5905,6 +5905,9 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         antalKundforetag: fields['Antal kundföretag'] ?? '',
         logga: fields['Logga'] ?? '',
         bransch: fields['Bransch'] ?? fields['Typ av byrå'] ?? '',
+        defaultUppsagningstid: fields['Default uppsägningstid'] ?? fields['Default uppsagningstid'] ?? '',
+        defaultFakturaperiod: fields['Default faktureringsperiod'] ?? fields['Default faktureringsperiod'] ?? fields['Default fakturaperiod'] ?? '',
+        defaultBetalningsvillkor: fields['Default betalningsvillkor'] ?? fields['Default betalningsvillkor (dagar)'] ?? '',
         tjanstepriserJson: typeof prislistaJson === 'string' ? prislistaJson : JSON.stringify(prislistaJson),
         fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson)
       },
@@ -5934,6 +5937,9 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
     if (body.logga !== undefined) fields['Logga'] = body.logga;
     if (body.bransch !== undefined) fields['Bransch'] = body.bransch;
+    if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = body.defaultUppsagningstid;
+    if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = body.defaultFakturaperiod;
+    if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = body.defaultBetalningsvillkor;
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (Object.keys(fields).length === 0) {
@@ -5956,6 +5962,12 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
           details: msg
         });
       }
+      if (String(msg).toLowerCase().includes('unknown field name') && (body.defaultUppsagningstid !== undefined || body.defaultFakturaperiod !== undefined || body.defaultBetalningsvillkor !== undefined)) {
+        return res.status(400).json({
+          error: 'Avtals-defaults saknas i Airtable-tabellen "Byråer". Skapa fälten "Default uppsägningstid", "Default faktureringsperiod" och "Default betalningsvillkor" (kan även göras via /api/setup/airtable-byra-avtalsdefaults-fields om token har schema-scope).',
+          details: msg
+        });
+      }
       throw e;
     }
     res.json({ success: true, id: recordId });
@@ -5963,6 +5975,73 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     console.error('❌ PUT /api/byra/info:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/setup/airtable-byra-avtalsdefaults-fields – Lägg till default-fält för uppdragsavtal i tabellen "Byråer" (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-byra-avtalsdefaults-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 15000
+    });
+    const tables = metaRes.data?.tables || [];
+    const byraTable = tables.find(t => (t.name || '').trim().toLowerCase() === 'byråer' || (t.name || '').trim().toLowerCase() === 'byraer');
+    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
+
+    const required = [
+      { name: 'Default uppsägningstid', type: 'number', description: 'Default uppsägningstid i månader för nya uppdragsavtal' },
+      { name: 'Default faktureringsperiod', type: 'singleSelect', description: 'Default faktureringsperiod för nya uppdragsavtal', options: { choices: [{ name: 'Månadsvis' }, { name: 'Kvartalsvis' }, { name: 'Halvårsvis' }, { name: 'Årsvis' }, { name: 'Löpande' }] } },
+      { name: 'Default betalningsvillkor', type: 'number', description: 'Default betalningsvillkor i dagar för nya uppdragsavtal' }
+    ];
+
+    const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+    const toCreate = required.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Kunde inte skapa avtals-default-fält', field.name, msg);
+      }
+    }
+
+    const skipped = required.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} fält lades till i Byråer. ${skipped} fanns redan.`
+        : `Alla ${required.length} avtals-defaults finns redan i tabellen Byråer.`,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Byrå avtals-defaults fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen Byråer' });
   }
 });
 
@@ -9451,6 +9530,18 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
     // Hämta byråns orgnr från Application Users-posten
     const byraOrgnr = inloggedUser.orgnr || '';
 
+    // Hämta avtals-defaults från Byråer-tabellen (om fälten finns)
+    let avtalDefaults = {};
+    try {
+      const byraRec = await getByraerRecordForUser(req);
+      const bf = byraRec?.record?.fields || {};
+      avtalDefaults = {
+        defaultUppsagningstid: bf['Default uppsägningstid'] ?? bf['Default uppsagningstid'] ?? null,
+        defaultFakturaperiod: bf['Default faktureringsperiod'] ?? bf['Default faktureringsperiod'] ?? bf['Default fakturaperiod'] ?? '',
+        defaultBetalningsvillkor: bf['Default betalningsvillkor'] ?? null
+      };
+    } catch (_) {}
+
     res.json({
       byraNamn,
       byraOrgnr,
@@ -9458,7 +9549,8 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
       inloggadNamn: inloggedUser.name || '',
       konsulter,
       tjanster: byransTjanster,
-      highRiskTjanster: byransHighRisk
+      highRiskTjanster: byransHighRisk,
+      avtalDefaults
     });
   } catch (error) {
     console.error('❌ Error fetching byra-info:', error.message);
@@ -9549,27 +9641,42 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       };
     } catch (_) {}
 
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
     const fmtPris = (v) => {
       if (v == null || v === '') return '';
       const n = Number(v);
       if (!Number.isFinite(n)) return '';
       return `${n.toLocaleString('sv-SE')} kr`;
     };
-    const tjanstPrisRad = (namn) => {
-      const v = prislista?.tjanster?.[namn];
-      if (!v || typeof v !== 'object') return null;
-      const p = fmtPris(v.pris);
-      const enhet = (v.enhet || '').toString().trim();
-      if (!p) return null;
-      return `${p}${enhet ? ' / ' + enhet : ''}`;
+
+    const normalizeEnhet = (raw) => {
+      const e = (raw || '').toString().trim().toLowerCase();
+      if (!e) return '';
+      if (e === 'timme' || e === 'h' || e === 'hr' || e === 'hour') return 'h';
+      if (e === 'st' || e === 'st.' || e === 'styck' || e === 'pcs' || e === 'piece') return 'st';
+      return raw;
     };
-    const fritextRader = (prislista?.fritext || [])
-      .map(x => ({
-        namn: (x?.namn || '').toString().trim(),
-        prisText: fmtPris(x?.pris),
-        enhet: (x?.enhet || '').toString().trim()
-      }))
-      .filter(x => x.namn);
+
+    const prislistaTjansterRows = Object.entries(prislista?.tjanster || {})
+      .map(([namn, v]) => {
+        const obj = (v && typeof v === 'object') ? v : { pris: v, enhet: '' };
+        const prisText = fmtPris(obj.pris) || '—';
+        const enhet = normalizeEnhet(obj.enhet);
+        return { namn: (namn || '').toString().trim(), prisText, enhet };
+      })
+      .filter(x => x.namn)
+      .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+
+    const prislistaFritextRows = (prislista?.fritext || [])
+      .map(x => {
+        const namn = (x?.namn || '').toString().trim();
+        const prisText = fmtPris(x?.pris) || '—';
+        const enhet = normalizeEnhet(x?.enhet);
+        return { namn, prisText, enhet };
+      })
+      .filter(x => x.namn)
+      .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
 
     const ACCENT = '#2c4a8f';
     const htmlContent = `<!DOCTYPE html>
@@ -9660,6 +9767,13 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 
   /* ── Sidbrytning ── */
   .page-break { page-break-before: always; }
+
+  /* ── Prislista (Bilaga 3) ── */
+  .prislist-note { font-size: 8.5pt; color:#475569; line-height:1.55; margin: 6px 0 10px; }
+  table.prislista { width:100%; border-collapse: collapse; font-size: 9pt; }
+  table.prislista th, table.prislista td { border: 1px solid #dce3f0; padding: 6px 8px; vertical-align: top; }
+  table.prislista th { background:#fafbfe; color:#334155; font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; }
+  .muted { color:#64748b; font-style: italic; }
 </style>
 </head>
 <body>
@@ -9700,15 +9814,11 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 <div class="section">
   <div class="section-title">Arbetet omfattar f\u00f6ljande tj\u00e4nster</div>
   <div class="tjanster-grid">
-    ${tjanster.length ? tjanster.map(t => {
-      const pris = tjanstPrisRad(t);
-      return `<div class="tjanst-item">&#9746;&nbsp;${t}${pris ? ` <span style="color:#64748b;">(${pris})</span>` : ''}</div>`;
-    }).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
+    ${tjanster.length ? tjanster.map(t => `<div class="tjanst-item">&#9746;&nbsp;${t}</div>`).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
     ${nf['\u00d6vrigt uppdrag'] ? `<div class="tjanst-item" style="min-width:100%;margin-top:2px;">&#9746;&nbsp;\u00d6vrigt: ${nf['\u00d6vrigt uppdrag']}</div>` : ''}
-    ${fritextRader.length ? `
-      <div class="tjanst-item" style="min-width:100%;margin-top:6px;color:#475569;font-weight:700;">Övriga tjänster enligt prislista</div>
-      ${fritextRader.map(x => `<div class="tjanst-item">&#9746;&nbsp;${x.namn}${x.prisText ? ` <span style="color:#64748b;">(${x.prisText}${x.enhet ? ' / ' + x.enhet : ''})</span>` : ''}</div>`).join('')}
-    ` : ''}
+    <div class="tjanst-item" style="min-width:100%;margin-top:6px;color:#475569;font-style:italic;">
+      Pris per tjänst framgår av prislistan (Bilaga 3). Prislistan gäller vid avtalets ingång och revideras årligen om inte annat avtalas.
+    </div>
   </div>
 </div>
 
@@ -9855,6 +9965,40 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       <p>Svensk lag ska till\u00e4mpas p\u00e5 Avtalet. Tvister som uppst\u00e5r i anledning av Avtalet ska slutligt avg\u00f6ras genom skiljedomsf\u00f6rfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljedomsf\u00f6rfarandets s\u00e4te ska vara Stockholm och spr\u00e5ket ska vara svenska. Skiljedom omfattas av sekretess. Part har r\u00e4tt att vid svensk domstol anh\u00e4ngig\u00f6ra tvist om tvistem\u00e5lets storlek understiger 100\u00a0000 kr.</p>
     </div></div>
   ${nf['Kunden godkänner personuppgiftsbiträdesavtal'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att personuppgiftsbir\u00e4desavtalet (Bilaga 2) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
+</div>
+
+<!-- ═══════════ SIDA 4: BILAGA 3 ═══════════ -->
+<div class="page-break"></div>
+<div class="section">
+  <div class="section-title">Bilaga 3 \u2013 Prislista</div>
+  <div class="villkor-text">
+    <p class="prislist-note"><strong>Giltighet:</strong> Denna prislista gäller vid uppdragsavtalets ingång. Prislistan revideras årligen. Vid ändring informeras kunden och uppdaterad prislista gäller från angivet datum om inte annat avtalas skriftligen.</p>
+    <p class="prislist-note"><strong>Arvode:</strong> Arvode debiteras enligt gällande prislista om inte annat framgår av avtalets ersättningsmodell och eventuella särskilda villkor.</p>
+  </div>
+
+  <div style="margin-top:8px;">
+    <div style="font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:${ACCENT};margin:10px 0 6px;">Byråns tjänster</div>
+    ${prislistaTjansterRows.length ? `
+      <table class="prislista">
+        <thead><tr><th style="width:58%;">Tjänst</th><th style="width:22%;">Pris</th><th style="width:20%;">Enhet</th></tr></thead>
+        <tbody>
+          ${prislistaTjansterRows.map(r => `<tr><td>${esc(r.namn)}</td><td>${esc(r.prisText)}</td><td>${esc(r.enhet || '—')}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="muted">Ingen prislista är ifylld för byråns tjänster.</div>`}
+  </div>
+
+  <div style="margin-top:14px;">
+    <div style="font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:${ACCENT};margin:10px 0 6px;">Övriga tjänster</div>
+    ${prislistaFritextRows.length ? `
+      <table class="prislista">
+        <thead><tr><th style="width:58%;">Tjänst</th><th style="width:22%;">Pris</th><th style="width:20%;">Enhet</th></tr></thead>
+        <tbody>
+          ${prislistaFritextRows.map(r => `<tr><td>${esc(r.namn)}</td><td>${esc(r.prisText)}</td><td>${esc(r.enhet || '—')}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="muted">Inga övriga tjänster är ifyllda.</div>`}
+  </div>
 </div>
 
 <!-- ═══════════ UNDERSKRIFTER ═══════════ -->

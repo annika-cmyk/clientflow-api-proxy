@@ -128,6 +128,12 @@ class ByraAnvandareManager {
       if (omsattning) omsattning.value = f.omsattning ?? '';
       const antalKundforetag = document.getElementById('byra-antal-kundforetag');
       if (antalKundforetag) antalKundforetag.value = f.antalKundforetag ?? '';
+      const defUpps = document.getElementById('byra-default-uppsagningstid');
+      if (defUpps) defUpps.value = f.defaultUppsagningstid ?? '';
+      const defFaktura = document.getElementById('byra-default-fakturaperiod');
+      if (defFaktura) defFaktura.value = f.defaultFakturaperiod ?? '';
+      const defBet = document.getElementById('byra-default-betalningsvillkor');
+      if (defBet) defBet.value = f.defaultBetalningsvillkor ?? '';
       const loggaUrl = (function () {
         const v = f.logga;
         if (!v) return '';
@@ -363,7 +369,10 @@ class ByraAnvandareManager {
         omsattning: document.getElementById('byra-omsattning')?.value ?? '',
         antalKundforetag: document.getElementById('byra-antal-kundforetag')?.value ?? '',
         logga: document.getElementById('byra-logga')?.value ?? '',
-        bransch: document.getElementById('byra-bransch')?.value ?? ''
+        bransch: document.getElementById('byra-bransch')?.value ?? '',
+        defaultUppsagningstid: document.getElementById('byra-default-uppsagningstid')?.value ?? '',
+        defaultFakturaperiod: document.getElementById('byra-default-fakturaperiod')?.value ?? '',
+        defaultBetalningsvillkor: document.getElementById('byra-default-betalningsvillkor')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       if (!res.ok) {
