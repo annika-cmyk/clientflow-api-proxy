@@ -313,7 +313,7 @@ function formatOpenAIAssistantError(err, step) {
     const d = data;
     const msg = d.error?.message || d.message || (typeof d === 'string' ? d : JSON.stringify(d));
     // Friendly config hint for common misconfigurations
-    if (status === 404 && /assistant/i.test(msg) && /not found/i.test(msg)) {
+    if (status === 404 && /assistant/i.test(msg) && (/not found/i.test(msg) || /no assistant found/i.test(msg))) {
       return new Error(
         `${step}: OpenAI hittade inte assistenten. Kontrollera att OPENAI_ASSISTANT_ID pekar på en existerande assistent i rätt OpenAI-projekt (och att API-nyckeln tillhör samma projekt). (HTTP ${status})`
       );
@@ -5713,6 +5713,8 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
     const record = result.record;
     const fields = record.fields || {};
+    const prislistaJson = fields['Tjänstepriser (JSON)'] ?? fields['Tjanstepriser (JSON)'] ?? fields['Prislista (JSON)'] ?? '';
+    const fritextJson = fields['Fritexttjänster (JSON)'] ?? fields['Fritexttjanster (JSON)'] ?? '';
     res.json({
       success: true,
       id: record.id,
@@ -5722,7 +5724,9 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         omsattning: fields['Omsättning'] ?? '',
         antalKundforetag: fields['Antal kundföretag'] ?? '',
         logga: fields['Logga'] ?? '',
-        bransch: fields['Bransch'] ?? fields['Typ av byrå'] ?? ''
+        bransch: fields['Bransch'] ?? fields['Typ av byrå'] ?? '',
+        tjanstepriserJson: typeof prislistaJson === 'string' ? prislistaJson : JSON.stringify(prislistaJson),
+        fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson)
       },
       raw: fields
     });
@@ -5750,6 +5754,8 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
     if (body.logga !== undefined) fields['Logga'] = body.logga;
     if (body.bransch !== undefined) fields['Bransch'] = body.bransch;
+    if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
+    if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
     }
@@ -5757,14 +5763,91 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const BYRAER_TABLE = 'Byråer';
     const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
-    await axios.patch(patchUrl, { fields }, {
-      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
-    });
+    try {
+      await axios.patch(patchUrl, { fields }, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+      });
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || 'Kunde inte uppdatera byråinfo';
+      // Vanligt fel när fälten inte finns i tabellen Byråer
+      if (String(msg).toLowerCase().includes('unknown field name') && (body.tjanstepriserJson !== undefined || body.fritexttjansterJson !== undefined)) {
+        return res.status(400).json({
+          error: 'Prisfält saknas i Airtable-tabellen "Byråer". Skapa fälten "Tjänstepriser (JSON)" och "Fritexttjänster (JSON)" (kan även göras via /api/setup/airtable-byra-priser-fields om token har schema-scope).',
+          details: msg
+        });
+      }
+      throw e;
+    }
     res.json({ success: true, id: recordId });
   } catch (error) {
     console.error('❌ PUT /api/byra/info:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/setup/airtable-byra-priser-fields – Lägg till fält för prislista i tabellen "Byråer" (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-byra-priser-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 15000
+    });
+    const tables = metaRes.data?.tables || [];
+    const byraTable = tables.find(t => (t.name || '').trim().toLowerCase() === 'byråer' || (t.name || '').trim().toLowerCase() === 'byraer');
+    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
+
+    const required = [
+      { name: 'Tjänstepriser (JSON)', type: 'multilineText', description: 'JSON med pris per tjänst (nyckel = tjänstnamn). Ex: {\"Löpande bokföring\": {\"pris\": 1990, \"enhet\": \"månad\"}}' },
+      { name: 'Fritexttjänster (JSON)', type: 'multilineText', description: 'JSON-array med extra tjänster och priser. Ex: [{\"namn\":\"Rådgivning ad hoc\",\"pris\":1200,\"enhet\":\"timme\"}]' }
+    ];
+
+    const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+    const toCreate = required.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Kunde inte skapa pris-fält', field.name, msg);
+      }
+    }
+
+    const skipped = required.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} fält lades till i Byråer. ${skipped} fanns redan.`
+        : `Alla ${required.length} prisfält finns redan i tabellen Byråer.`,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Byrå-priser fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen Byråer' });
   }
 });
 
@@ -9261,6 +9344,53 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       ? valdaTjansterRaw.split(',').map(t => t.trim()).filter(Boolean)
       : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw : []);
 
+    // Hämta prislista från Byråer (om fälten finns)
+    let prislista = { tjanster: {}, fritext: [] };
+    try {
+      const byraRes = await getByraerRecordForUser(req);
+      const bf = byraRes?.record?.fields || {};
+      const pJson = bf['Tjänstepriser (JSON)'] ?? bf['Tjanstepriser (JSON)'] ?? bf['Prislista (JSON)'] ?? '';
+      const fJson = bf['Fritexttjänster (JSON)'] ?? bf['Fritexttjanster (JSON)'] ?? '';
+      const safeParseObj = (s) => {
+        try {
+          const o = JSON.parse(s || '{}');
+          return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+        } catch (_) { return {}; }
+      };
+      const safeParseArr = (s) => {
+        try {
+          const a = JSON.parse(s || '[]');
+          return Array.isArray(a) ? a : [];
+        } catch (_) { return []; }
+      };
+      prislista = {
+        tjanster: safeParseObj(pJson),
+        fritext: safeParseArr(fJson)
+      };
+    } catch (_) {}
+
+    const fmtPris = (v) => {
+      if (v == null || v === '') return '';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '';
+      return `${n.toLocaleString('sv-SE')} kr`;
+    };
+    const tjanstPrisRad = (namn) => {
+      const v = prislista?.tjanster?.[namn];
+      if (!v || typeof v !== 'object') return null;
+      const p = fmtPris(v.pris);
+      const enhet = (v.enhet || '').toString().trim();
+      if (!p) return null;
+      return `${p}${enhet ? ' / ' + enhet : ''}`;
+    };
+    const fritextRader = (prislista?.fritext || [])
+      .map(x => ({
+        namn: (x?.namn || '').toString().trim(),
+        prisText: fmtPris(x?.pris),
+        enhet: (x?.enhet || '').toString().trim()
+      }))
+      .filter(x => x.namn);
+
     const ACCENT = '#2c4a8f';
     const htmlContent = `<!DOCTYPE html>
 <html lang="sv">
@@ -9390,8 +9520,15 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 <div class="section">
   <div class="section-title">Arbetet omfattar f\u00f6ljande tj\u00e4nster</div>
   <div class="tjanster-grid">
-    ${tjanster.length ? tjanster.map(t => `<div class="tjanst-item">&#9746;&nbsp;${t}</div>`).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
+    ${tjanster.length ? tjanster.map(t => {
+      const pris = tjanstPrisRad(t);
+      return `<div class="tjanst-item">&#9746;&nbsp;${t}${pris ? ` <span style="color:#64748b;">(${pris})</span>` : ''}</div>`;
+    }).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
     ${nf['\u00d6vrigt uppdrag'] ? `<div class="tjanst-item" style="min-width:100%;margin-top:2px;">&#9746;&nbsp;\u00d6vrigt: ${nf['\u00d6vrigt uppdrag']}</div>` : ''}
+    ${fritextRader.length ? `
+      <div class="tjanst-item" style="min-width:100%;margin-top:6px;color:#475569;font-weight:700;">Övriga tjänster enligt prislista</div>
+      ${fritextRader.map(x => `<div class="tjanst-item">&#9746;&nbsp;${x.namn}${x.prisText ? ` <span style="color:#64748b;">(${x.prisText}${x.enhet ? ' / ' + x.enhet : ''})</span>` : ''}</div>`).join('')}
+    ` : ''}
   </div>
 </div>
 

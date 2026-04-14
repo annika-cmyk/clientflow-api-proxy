@@ -17,6 +17,9 @@ class ByraAnvandareManager {
     this.filteredUsers = [];
     this.filteredLogs = [];
     this.byraInfo = null;
+    this.byraId = '';
+    this.byraTjanster = [];
+    this.prislista = { tjanster: {}, fritext: [] };
     this.currentTab = 'byra';
     this.init();
   }
@@ -42,6 +45,11 @@ class ByraAnvandareManager {
 
     const byraSpara = document.getElementById('byra-spara');
     if (byraSpara) byraSpara.addEventListener('click', () => this.saveByraInfo());
+
+    const priserSpara = document.getElementById('byra-priser-spara');
+    if (priserSpara) priserSpara.addEventListener('click', () => this.savePrislista());
+    const laggTillFritext = document.getElementById('byra-priser-lagg-till-fritext');
+    if (laggTillFritext) laggTillFritext.addEventListener('click', () => this.addFritextRow());
 
     const userFilter = document.getElementById('user-filter');
     if (userFilter) userFilter.addEventListener('change', () => this.applyUserFilters());
@@ -104,6 +112,7 @@ class ByraAnvandareManager {
       const data = await res.json();
       if (!data.success || !data.fields) return;
       this.byraInfo = data;
+      this.byraId = (data.byraId || '').toString();
       const f = data.fields;
       const bransch = document.getElementById('byra-bransch');
       if (bransch) {
@@ -136,9 +145,199 @@ class ByraAnvandareManager {
           preview.innerHTML = '<span class="logga-placeholder"><i class="fas fa-building"></i> Logga</span>';
         }
       }
+
+      // Prislista (JSON)
+      this.prislista = this.parsePrislista(
+        f.tjanstepriserJson,
+        f.fritexttjansterJson
+      );
+      await this.loadByraTjanster();
+      this.renderPrislista();
     } catch (err) {
       console.error('loadByraInfo:', err);
       if (statusEl) statusEl.textContent = 'Kunde inte ladda byråinfo.';
+    }
+  }
+
+  parsePrislista(tjanstepriserJson, fritextJson) {
+    const prislista = { tjanster: {}, fritext: [] };
+    try {
+      const obj = tjanstepriserJson ? JSON.parse(tjanstepriserJson) : null;
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) prislista.tjanster = obj;
+    } catch (_) {}
+    try {
+      const arr = fritextJson ? JSON.parse(fritextJson) : null;
+      if (Array.isArray(arr)) prislista.fritext = arr;
+    } catch (_) {}
+    // Normalisera format
+    for (const [k, v] of Object.entries(prislista.tjanster || {})) {
+      if (v && typeof v === 'object') continue;
+      // om någon råkat spara number/string direkt
+      const n = Number(v);
+      prislista.tjanster[k] = { pris: Number.isFinite(n) ? n : null, enhet: 'månad' };
+    }
+    prislista.fritext = (prislista.fritext || []).map(x => ({
+      namn: (x?.namn || '').toString(),
+      pris: x?.pris != null && x.pris !== '' ? Number(x.pris) : null,
+      enhet: (x?.enhet || 'st').toString()
+    })).filter(x => x.namn.trim() !== '');
+    return prislista;
+  }
+
+  async loadByraTjanster() {
+    const statusEl = document.getElementById('byra-priser-status');
+    if (!this.byraId) return;
+    try {
+      if (statusEl) statusEl.textContent = '';
+      const res = await fetch(getBaseUrl() + '/api/byra-tjanster?byraId=' + encodeURIComponent(this.byraId), getAuthOpts());
+      const data = res.ok ? await res.json() : {};
+      this.byraTjanster = (data.tjanster || []).slice();
+      // Dedup: samma namn kan förekomma flera gånger i risk-tabellen
+      const seen = new Set();
+      this.byraTjanster = this.byraTjanster.filter(t => {
+        const n = (t?.namn || '').trim();
+        if (!n) return false;
+        const key = n.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
+    } catch (e) {
+      console.warn('loadByraTjanster:', e);
+      if (statusEl) statusEl.textContent = 'Kunde inte ladda byråns tjänster (prislista).';
+      this.byraTjanster = [];
+    }
+  }
+
+  renderPrislista() {
+    const wrap = document.getElementById('byra-priser-list');
+    if (!wrap) return;
+
+    const rows = [];
+    const priceFor = (namn) => {
+      const v = this.prislista?.tjanster?.[namn];
+      if (!v || typeof v !== 'object') return { pris: '', enhet: 'månad' };
+      return {
+        pris: v.pris != null && v.pris !== '' ? String(v.pris) : '',
+        enhet: v.enhet || 'månad'
+      };
+    };
+
+    // Byråns “systemtjänster”
+    if (this.byraTjanster.length) {
+      for (const t of this.byraTjanster) {
+        const namn = (t.namn || '').trim();
+        const pv = priceFor(namn);
+        rows.push(`
+          <div class="byra-prislista-row" data-kind="tjanst" data-namn="${escapeHtml(namn)}">
+            <div><input class="form-input" value="${escapeHtml(namn)}" readonly></div>
+            <div><input class="form-input" type="number" inputmode="decimal" placeholder="0" data-field="pris" value="${escapeHtml(pv.pris)}"></div>
+            <div>
+              <select class="form-select" data-field="enhet">
+                ${this._sel(['månad','kvartal','år','timme','st'], pv.enhet)}
+              </select>
+            </div>
+            <div></div>
+          </div>
+        `);
+      }
+    }
+
+    // Fritext-rader
+    const fritext = this.prislista?.fritext || [];
+    for (let i = 0; i < fritext.length; i++) {
+      const item = fritext[i];
+      rows.push(`
+        <div class="byra-prislista-row" data-kind="fritext" data-idx="${i}">
+          <div><input class="form-input" placeholder="Tjänst" data-field="namn" value="${escapeHtml(item.namn || '')}"></div>
+          <div><input class="form-input" type="number" inputmode="decimal" placeholder="0" data-field="pris" value="${item.pris != null && item.pris !== '' ? escapeHtml(String(item.pris)) : ''}"></div>
+          <div>
+            <select class="form-select" data-field="enhet">
+              ${this._sel(['st','timme','månad','kvartal','år'], item.enhet || 'st')}
+            </select>
+          </div>
+          <div style="display:flex;justify-content:flex-end;">
+            <button type="button" class="byra-prislista-remove" title="Ta bort" data-action="remove">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    wrap.innerHTML = rows.length ? rows.join('') : '<p style="margin:0;color:#64748b;">Inga tjänster hittades.</p>';
+
+    wrap.querySelectorAll('[data-action="remove"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const row = btn.closest('.byra-prislista-row');
+        const idx = row ? parseInt(row.getAttribute('data-idx'), 10) : NaN;
+        if (!Number.isFinite(idx)) return;
+        this.prislista.fritext.splice(idx, 1);
+        this.renderPrislista();
+      });
+    });
+  }
+
+  _sel(options, selected) {
+    return options.map(o => `<option value="${escapeHtml(o)}" ${o === selected ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
+  }
+
+  addFritextRow() {
+    this.prislista.fritext = this.prislista.fritext || [];
+    this.prislista.fritext.push({ namn: '', pris: null, enhet: 'st' });
+    this.renderPrislista();
+  }
+
+  collectPrislistaFromDom() {
+    const wrap = document.getElementById('byra-priser-list');
+    const prislista = { tjanster: {}, fritext: [] };
+    if (!wrap) return prislista;
+
+    wrap.querySelectorAll('.byra-prislista-row').forEach(row => {
+      const kind = row.getAttribute('data-kind');
+      if (kind === 'tjanst') {
+        const namn = row.getAttribute('data-namn') || '';
+        const prisRaw = row.querySelector('[data-field="pris"]')?.value ?? '';
+        const enhet = row.querySelector('[data-field="enhet"]')?.value ?? 'månad';
+        const pris = prisRaw !== '' ? Number(prisRaw) : null;
+        prislista.tjanster[namn] = { pris: Number.isFinite(pris) ? pris : null, enhet };
+      } else if (kind === 'fritext') {
+        const namn = row.querySelector('[data-field="namn"]')?.value ?? '';
+        const prisRaw = row.querySelector('[data-field="pris"]')?.value ?? '';
+        const enhet = row.querySelector('[data-field="enhet"]')?.value ?? 'st';
+        const pris = prisRaw !== '' ? Number(prisRaw) : null;
+        if (namn.trim()) {
+          prislista.fritext.push({ namn: namn.trim(), pris: Number.isFinite(pris) ? pris : null, enhet });
+        }
+      }
+    });
+
+    return prislista;
+  }
+
+  async savePrislista() {
+    const statusEl = document.getElementById('byra-priser-status');
+    const btn = document.getElementById('byra-priser-spara');
+    if (statusEl) statusEl.textContent = 'Sparar prislista...';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; }
+    try {
+      const prislista = this.collectPrislistaFromDom();
+      const body = {
+        tjanstepriserJson: JSON.stringify(prislista.tjanster || {}),
+        fritexttjansterJson: JSON.stringify(prislista.fritext || [])
+      };
+      const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText || `HTTP ${res.status}`);
+      this.prislista = prislista;
+      if (statusEl) statusEl.textContent = 'Prislista sparad.';
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+    } catch (e) {
+      console.error('savePrislista:', e);
+      if (statusEl) statusEl.textContent = 'Fel: ' + (e.message || 'Kunde inte spara prislista.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Spara prislista'; }
     }
   }
 

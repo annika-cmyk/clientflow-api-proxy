@@ -81,6 +81,43 @@
                                 </div>
                             </div>
                         </section>
+
+                        <section class="dashboard-section">
+                            <div class="dashboard-card">
+                                <div class="dashboard-card-header dashboard-card-header-actions">
+                                    <h2><i class="fas fa-tag"></i> Prislista</h2>
+                                    <button type="button" class="btn-secondary" id="byra-priser-lagg-till-fritext">
+                                        <i class="fas fa-plus"></i> Lägg till fritext-tjänst
+                                    </button>
+                                </div>
+                                <div class="dashboard-card-body">
+                                    <p class="dashboard-card-desc">
+                                        Sätt era standardpriser per tjänst. Dessa kan användas i uppdragsavtalet.
+                                        Tjänsterna hämtas från byråns valda tjänster (kopplade till riskbedömningen) och du kan även lägga till egna.
+                                    </p>
+
+                                    <div id="byra-priser-status" class="byra-spara-status" style="margin-bottom:0.75rem;"></div>
+
+                                    <div class="byra-prislista-grid">
+                                        <div class="byra-prislista-head">
+                                            <div>Tjänst</div>
+                                            <div>Pris</div>
+                                            <div>Enhet</div>
+                                            <div></div>
+                                        </div>
+                                        <div id="byra-priser-list">
+                                            <div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> Laddar prislista...</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-actions" style="margin-top:1rem;">
+                                        <button type="button" id="byra-priser-spara" class="btn-primary">
+                                            <i class="fas fa-save"></i> Spara prislista
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
                     </div>
 
                     <!-- Användare tab -->

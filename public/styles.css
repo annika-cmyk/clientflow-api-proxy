@@ -1420,6 +1420,53 @@ body.sidebar-collapsed .logout-btn {
     display: block;
 }
 
+/* Byråprislista */
+.byra-prislista-grid {
+    border: 1px solid #dde3ec;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+.byra-prislista-head,
+.byra-prislista-row {
+    display: grid;
+    grid-template-columns: 1.6fr 0.7fr 0.7fr 40px;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+}
+.byra-prislista-head {
+    background: #fafbfe;
+    border-bottom: 1px solid #dde3ec;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+}
+.byra-prislista-row {
+    border-bottom: 1px solid #eef2f7;
+}
+.byra-prislista-row:last-child {
+    border-bottom: none;
+}
+.byra-prislista-row .form-input,
+.byra-prislista-row .form-select {
+    width: 100%;
+}
+.byra-prislista-remove {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #dde3ec;
+    background: #fff;
+    color: #64748b;
+    cursor: pointer;
+}
+.byra-prislista-remove:hover {
+    color: #dc2626;
+    border-color: #fecaca;
+    background: #fff5f5;
+}
+
 .tabs {
   display: flex;
   gap: 0;
