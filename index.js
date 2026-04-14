@@ -592,6 +592,59 @@ app.get('/api/ai/status', authenticateToken, (req, res) => {
   });
 });
 
+// ============================================================
+// GET /api/ai/validate-assistant — Verifiera att assistent-id kan nås med API-nyckeln
+// (felsökning, returnerar ingen hemlig data)
+// ============================================================
+app.get('/api/ai/validate-assistant', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const assistantIdRaw = process.env.OPENAI_ASSISTANT_ID;
+  const assistantId = (assistantIdRaw || '').toString().trim();
+  if (!openaiKey) return res.status(500).json({ ok: false, error: 'OPENAI_API_KEY saknas.' });
+  if (!assistantId) return res.status(500).json({ ok: false, error: 'OPENAI_ASSISTANT_ID saknas.' });
+
+  const apiBase = 'https://api.openai.com/v1';
+  const headers = {
+    Authorization: `Bearer ${openaiKey}`,
+    'Content-Type': 'application/json',
+    'OpenAI-Beta': 'assistants=v2'
+  };
+
+  try {
+    const r = await axios.get(`${apiBase}/assistants/${encodeURIComponent(assistantId)}`, {
+      headers,
+      timeout: 20000
+    });
+    const a = r.data || {};
+    return res.json({
+      ok: true,
+      assistant: {
+        id: a.id ? maskId(a.id, 12) : maskId(assistantId, 12),
+        name: a.name || null,
+        model: a.model || null
+      },
+      config: {
+        assistantIdMasked: maskId(assistantId, 12),
+        assistantIdTrimmed: assistantIdRaw ? (assistantIdRaw !== assistantId) : false
+      }
+    });
+  } catch (e) {
+    const status = e.response?.status;
+    const msg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
+    return res.status(status || 500).json({
+      ok: false,
+      error: msg || 'Kunde inte verifiera assistenten',
+      hint: (status === 404)
+        ? '404 från OpenAI betyder nästan alltid att API-nyckeln inte tillhör samma OpenAI-projekt som assistenten (eller att ID:t innehåller whitespace/är felstavat). Kontrollera också att assistenten inte är borttagen.'
+        : undefined,
+      config: {
+        assistantIdMasked: maskId(assistantId, 12),
+        assistantIdTrimmed: assistantIdRaw ? (assistantIdRaw !== assistantId) : false
+      }
+    });
+  }
+});
+
 // Kända användare – extra kontext så Annika AI kan skoja/vara personlig (nycklar: namn i lowercase)
 const CHAT_PERSONAS = {
   fredrik: 'Fredrik bor i Alvesta och jobbar på Slipp Redovisning. Hans särbo Marit bor i Jönköping – Fredrik vill flytta dit också. Han har två barn: Siri och Lilly (Lilly är transtjej). Du får gärna skoja vänligt med honom och nämna Alvesta, Jönköping, flytten, Marit, Slipp eller barnen när det passar.',
