@@ -631,12 +631,34 @@ app.get('/api/ai/validate-assistant', authenticateToken, async (req, res) => {
   } catch (e) {
     const status = e.response?.status;
     const msg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
+    let visibleAssistants = null;
+    // Extra diagnos: lista vilka assistenter nyckeln ser
+    if (status === 404 || status === 401) {
+      try {
+        const listRes = await axios.get(`${apiBase}/assistants`, {
+          headers,
+          timeout: 20000,
+          params: { limit: 50 }
+        });
+        const items = Array.isArray(listRes.data?.data) ? listRes.data.data : [];
+        visibleAssistants = items.slice(0, 50).map(x => ({
+          id: x?.id ? maskId(String(x.id), 12) : null,
+          name: x?.name || null,
+          model: x?.model || null
+        }));
+      } catch (listErr) {
+        visibleAssistants = {
+          error: listErr.response?.data?.error?.message || listErr.message || 'Kunde inte lista assistenter'
+        };
+      }
+    }
     return res.status(status || 500).json({
       ok: false,
       error: msg || 'Kunde inte verifiera assistenten',
       hint: (status === 404)
         ? '404 från OpenAI betyder nästan alltid att API-nyckeln inte tillhör samma OpenAI-projekt som assistenten (eller att ID:t innehåller whitespace/är felstavat). Kontrollera också att assistenten inte är borttagen.'
         : undefined,
+      visibleAssistants,
       config: {
         assistantIdMasked: maskId(assistantId, 12),
         assistantIdTrimmed: assistantIdRaw ? (assistantIdRaw !== assistantId) : false
