@@ -1667,7 +1667,19 @@ class CustomerCardManager {
             <!-- KORT 3: Beskrivning av kunden -->
             <div class="collapsible-card is-collapsed" id="beskrivning-card">
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('beskrivning-card')">
-                    <div class="collapsible-title"><i class="fas fa-align-left"></i><span>Beskrivning av kunden</span></div>
+                    <div class="collapsible-title">
+                        <i class="fas fa-align-left"></i>
+                        <span>Beskrivning av kunden</span>
+                        <button
+                            type="button"
+                            class="help-qmark"
+                            id="beskrivning-help-btn"
+                            aria-label="Hjälp för Beskrivning av kunden"
+                            data-help-text="Beskriv kundens verksamhet, vilka som är deras typiska kunder och leverantörer, hur de tar betalt för sina tjänster. Beskriv varför de anlitar byrån och omfattningen. Har de verksamhet/kunder eller leverantörer utomlands? Vilka länder isåfall."
+                            title="Beskriv kundens verksamhet, vilka som är deras typiska kunder och leverantörer, hur de tar betalt för sina tjänster. Beskriv varför de anlitar byrån och omfattningen. Har de verksamhet/kunder eller leverantörer utomlands? Vilka länder isåfall."
+                            onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this);"
+                        >?</button>
+                    </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body" style="position:relative;">
@@ -2112,6 +2124,81 @@ class CustomerCardManager {
         } finally {
             if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
         }
+    }
+
+    showHelpPopover(btn) {
+        try {
+            const text = (btn?.getAttribute('data-help-text') || '').toString();
+            if (!text) return;
+
+            // Toggle: stäng om den redan är öppen på samma knapp
+            const existing = document.getElementById('help-popover');
+            const existingFor = existing?.getAttribute('data-for') || '';
+            const id = btn.id || '';
+            if (existing && existingFor && existingFor === id) {
+                existing.remove();
+                return;
+            }
+            if (existing) existing.remove();
+
+            const pop = document.createElement('div');
+            pop.id = 'help-popover';
+            pop.className = 'help-popover';
+            pop.setAttribute('role', 'dialog');
+            if (id) pop.setAttribute('data-for', id);
+            pop.textContent = text;
+            document.body.appendChild(pop);
+
+            const r = btn.getBoundingClientRect();
+            const margin = 8;
+            const maxW = Math.min(420, Math.max(240, window.innerWidth - 2 * margin));
+            pop.style.maxWidth = maxW + 'px';
+            const pr = pop.getBoundingClientRect();
+
+            let left = r.left;
+            left = Math.min(left, window.innerWidth - pr.width - margin);
+            left = Math.max(margin, left);
+            let top = r.bottom + 8;
+            if (top + pr.height > window.innerHeight - margin) {
+                top = r.top - pr.height - 8;
+            }
+            top = Math.max(margin, top);
+
+            pop.style.left = `${Math.round(left)}px`;
+            pop.style.top = `${Math.round(top)}px`;
+
+            const onDoc = (e) => {
+                const target = e.target;
+                if (target === btn) return;
+                if (pop.contains(target)) return;
+                pop.remove();
+                document.removeEventListener('mousedown', onDoc, true);
+                document.removeEventListener('keydown', onEsc, true);
+                window.removeEventListener('scroll', onScroll, true);
+                window.removeEventListener('resize', onScroll, true);
+            };
+            const onEsc = (e) => {
+                if (e.key === 'Escape') {
+                    pop.remove();
+                    document.removeEventListener('mousedown', onDoc, true);
+                    document.removeEventListener('keydown', onEsc, true);
+                    window.removeEventListener('scroll', onScroll, true);
+                    window.removeEventListener('resize', onScroll, true);
+                }
+            };
+            const onScroll = () => {
+                // stäng vid scroll/resize för att slippa "flyta runt"
+                if (document.getElementById('help-popover')) pop.remove();
+                document.removeEventListener('mousedown', onDoc, true);
+                document.removeEventListener('keydown', onEsc, true);
+                window.removeEventListener('scroll', onScroll, true);
+                window.removeEventListener('resize', onScroll, true);
+            };
+            document.addEventListener('mousedown', onDoc, true);
+            document.addEventListener('keydown', onEsc, true);
+            window.addEventListener('scroll', onScroll, true);
+            window.addEventListener('resize', onScroll, true);
+        } catch (_) {}
     }
 
     toggleRedovisningEdit() {
