@@ -3,7 +3,7 @@ const axios = require('axios');
 const Airtable = require('airtable');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
@@ -10191,17 +10191,151 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
             responseType: 'text'
         });
 
-        // Svaret är en base64-sträng
-        const pdfBase64 = reportRes.data;
-        if (!pdfBase64 || typeof pdfBase64 !== 'string') {
+        // Svaret är en base64-sträng (PDF)
+        const rawPdfBase64 = reportRes.data;
+        if (!rawPdfBase64 || typeof rawPdfBase64 !== 'string') {
             throw new Error('Inget PDF-svar från Dilisense');
         }
+        const normalizePdfBase64 = (b64) => {
+            const s = String(b64 || '').trim();
+            if (!s) return '';
+            const m = s.match(/^data:application\/pdf;base64,(.+)$/i);
+            return (m ? m[1] : s).replace(/\s+/g, '');
+        };
+        let pdfBase64 = normalizePdfBase64(rawPdfBase64);
+        if (!pdfBase64) throw new Error('Tom PDF från Dilisense');
 
         const token = process.env.AIRTABLE_ACCESS_TOKEN;
         const baseId = process.env.AIRTABLE_BASE_ID;
         const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
         const datumStr = new Date().toISOString().split('T')[0];
         const filnamn = `PEP-screening_${namn.replace(/\s+/g, '_')}_${datumStr}.pdf`;
+
+        // Hämta snabb JSON-sökning för att visa träffar i UI
+        const checkUrl = `https://api.dilisense.com/v1/checkIndividual?${params.toString()}`;
+        const checkRes = await axios.get(checkUrl, {
+            headers: { 'x-api-key': dilisenseKey }
+        });
+        const checkData = checkRes.data;
+
+        const totalHits = checkData.total_hits || 0;
+
+        // Bygg "ClientFlow PEP-sammanfattning" (sida 1) och slå ihop med Dilisense-PDF (sida 2+)
+        const buildPepSummaryPdf = async ({ namn, totalHits, foundRecords, timestampIso }) => {
+            const doc = await PDFDocument.create();
+            const font = await doc.embedFont(StandardFonts.Helvetica);
+            const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+            const pageSize = [595.28, 841.89]; // A4
+
+            const fmt = (s) => (s ? new Date(s).toLocaleString('sv-SE') : new Date().toLocaleString('sv-SE'));
+            const safe = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
+            const wrapLines = (text, maxChars) => {
+                const t = safe(text);
+                if (!t) return [];
+                const words = t.split(' ');
+                const lines = [];
+                let cur = '';
+                for (const w of words) {
+                    const next = cur ? (cur + ' ' + w) : w;
+                    if (next.length <= maxChars) cur = next;
+                    else {
+                        if (cur) lines.push(cur);
+                        cur = w;
+                    }
+                }
+                if (cur) lines.push(cur);
+                return lines;
+            };
+
+            let page = doc.addPage(pageSize);
+            let y = 800;
+            const x = 48;
+            const line = (txt, opts = {}) => {
+                page.drawText(String(txt || ''), { x, y, size: opts.size || 11, font: opts.bold ? fontBold : font, ...opts.draw });
+                y -= (opts.gap || 16);
+            };
+            const ensureSpace = (need = 40) => {
+                if (y > need) return;
+                page = doc.addPage(pageSize);
+                y = 800;
+            };
+
+            line('ClientFlow – PEP & sanktionsscreening (sammanfattning)', { size: 16, bold: true, gap: 22 });
+            line(`Namn: ${safe(namn)}`, { size: 12, bold: true, gap: 18 });
+            line(`Sökning utförd: ${fmt(timestampIso)}`, { size: 10, gap: 16 });
+            line(`Antal träffar: ${Number(totalHits) || 0}`, { size: 12, bold: true, gap: 18 });
+
+            const recs = Array.isArray(foundRecords) ? foundRecords : [];
+            if (!recs.length) {
+                line('Inga träffar hittades i snabbkontrollen.', { size: 11, gap: 18 });
+                line('Bilaga: Dilisense-rapport (PDF) följer på nästa sida.', { size: 10, gap: 14 });
+                return await doc.save();
+            }
+
+            line('Träffar (från snabbkontroll):', { size: 12, bold: true, gap: 18 });
+
+            const maxItems = 25;
+            const items = recs.slice(0, maxItems);
+            for (let i = 0; i < items.length; i++) {
+                const r = items[i] || {};
+                ensureSpace(90);
+                const name = safe(r.name);
+                const src = safe(r.source_type);
+                const pos = Array.isArray(r.positions) && r.positions.length ? safe(r.positions[0]) : '';
+                const desc = Array.isArray(r.description) && r.description.length ? safe(r.description[0]) : '';
+
+                line(`${i + 1}. ${name || '—'}${src ? ` (${src})` : ''}`, { size: 11, bold: true, gap: 14 });
+                if (pos) {
+                    for (const l of wrapLines(`Roll/position: ${pos}`, 92).slice(0, 3)) {
+                        ensureSpace(40);
+                        line(l, { size: 10, gap: 13 });
+                    }
+                }
+                if (desc) {
+                    for (const l of wrapLines(`Beskrivning: ${desc}`, 92).slice(0, 4)) {
+                        ensureSpace(40);
+                        line(l, { size: 10, gap: 13 });
+                    }
+                }
+                y -= 6;
+            }
+
+            if (recs.length > maxItems) {
+                ensureSpace(60);
+                line(`(Visar ${maxItems} av ${recs.length} träffar. Se bilagan för mer information.)`, { size: 10, gap: 14 });
+            } else {
+                ensureSpace(60);
+                line('Bilaga: Dilisense-rapport (PDF) följer på nästa sida.', { size: 10, gap: 14 });
+            }
+
+            return await doc.save();
+        };
+
+        try {
+            const summaryBytes = await buildPepSummaryPdf({
+                namn,
+                totalHits,
+                foundRecords: checkData.found_records || [],
+                timestampIso: new Date().toISOString()
+            });
+
+            const reportBytes = Buffer.from(pdfBase64, 'base64');
+            const reportDoc = await PDFDocument.load(reportBytes);
+            const summaryDoc = await PDFDocument.load(summaryBytes);
+
+            const merged = await PDFDocument.create();
+            const sumPages = await merged.copyPages(summaryDoc, summaryDoc.getPageIndices());
+            sumPages.forEach(p => merged.addPage(p));
+            const repPages = await merged.copyPages(reportDoc, reportDoc.getPageIndices());
+            repPages.forEach(p => merged.addPage(p));
+
+            const mergedBytes = await merged.save();
+            pdfBase64 = Buffer.from(mergedBytes).toString('base64');
+        } catch (mergeErr) {
+            console.warn('⚠️ Kunde inte bygga/merga ClientFlow-sammanfattning:', mergeErr.message);
+            // Fallback: behåll original Dilisense-PDF
+        }
 
         // Spara PDF till KUNDDATA (Attachments / PEP rapporter) om möjligt
         let savedToDocs = false;
@@ -10246,14 +10380,6 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
             }
         }
 
-        // Hämta snabb JSON-sökning för att visa träffar i UI
-        const checkUrl = `https://api.dilisense.com/v1/checkIndividual?${params.toString()}`;
-        const checkRes = await axios.get(checkUrl, {
-            headers: { 'x-api-key': dilisenseKey }
-        });
-        const checkData = checkRes.data;
-
-        const totalHits = checkData.total_hits || 0;
         console.log(`✅ PEP-screening klar: ${totalHits} träffar för ${namn}`);
 
         // PEP-status sätts av användaren på fliken Riskbedömning (Airtable), inte från rapporten.

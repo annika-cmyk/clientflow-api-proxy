@@ -2345,11 +2345,13 @@ class CustomerCardManager {
                 const roller = Array.isArray(p.roller) ? p.roller : (p.roll ? [p.roll] : []);
                 const rollText = roller.length ? roller.join(', ') : '';
                 const pepDatum = p.pepSoktDatum ? new Date(p.pepSoktDatum).toLocaleDateString('sv-SE') : '';
+                const pepMarked = !!p.pepMarkerad;
                 return `
                 <div class="roller-person-item" data-idx="${idx}">
                     <div class="roller-person-info">
                         <div class="roller-person-name-row">
                             <span class="roller-person-name"><i class="fas fa-user"></i> ${this._esc(p.namn || 'Namnlös')}</span>
+                            ${pepMarked ? `<span class="roller-person-pep-flag" title="Markerad som PEP/sanktionslista"><i class="fas fa-flag"></i> PEP/Sanktion</span>` : ''}
                             ${pepDatum ? `<span class="roller-person-pep-datum" title="Senaste PEP-sökning"><i class="fas fa-search-dollar"></i> ${pepDatum}</span>` : ''}
                         </div>
                         ${rollText ? `<div class="roller-person-meta"><span class="roller-person-roll">${this._esc(rollText)}</span></div>` : ''}
@@ -6551,7 +6553,7 @@ class CustomerCardManager {
             }
 
             // Visa resultat i modal (PDF sparas i Airtable / Dokumentation, laddas inte ner automatiskt)
-            this._showPepResultModal(p.namn, data);
+            this._showPepResultModal(p.namn, data, idx);
 
             // Uppdatera dokumentation-fliken om rapporten sparades i Airtable
             if (data.savedToDocs) {
@@ -6575,9 +6577,10 @@ class CustomerCardManager {
         }
     }
 
-    _showPepResultModal(namn, data) {
+    _showPepResultModal(namn, data, idx) {
         const hits = data.total_hits || 0;
         const records = data.found_records || [];
+        const pepMarked = !!(this._kontaktPersoner && this._kontaktPersoner[idx] && this._kontaktPersoner[idx].pepMarkerad);
 
         const statusColor = hits === 0 ? '#16a34a' : '#dc2626';
         const statusIcon  = hits === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
@@ -6620,6 +6623,10 @@ class CustomerCardManager {
                             <span style="font-weight:600;color:${statusColor};">${statusText}</span>
                         </div>
                         ${hits > 0 ? `<div style="margin-bottom:1rem;">${recordsHtml}</div>` : ''}
+                        <label style="display:flex;align-items:center;gap:0.6rem;margin:0.75rem 0 0.25rem 0; padding:0.6rem 0.75rem;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;cursor:pointer;">
+                            <input type="checkbox" id="pep-mark-checkbox" ${pepMarked ? 'checked' : ''} style="width:16px;height:16px;">
+                            <span style="font-size:0.9rem;color:#0f172a;font-weight:600;">Markera personen som PEP/på sanktionslista</span>
+                        </label>
                         <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:1rem;">
                             Sökning utförd: ${new Date().toLocaleString('sv-SE')}
                         </div>
@@ -6641,6 +6648,22 @@ class CustomerCardManager {
         const existing = document.getElementById('pep-result-modal');
         if (existing) existing.remove();
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Bind checkbox -> spara på personen i Kontaktpersoner
+        const cb = document.getElementById('pep-mark-checkbox');
+        if (cb) {
+            cb.addEventListener('change', async () => {
+                try {
+                    if (!this._kontaktPersoner || !this._kontaktPersoner[idx]) return;
+                    this._kontaktPersoner[idx].pepMarkerad = !!cb.checked;
+                    await this._saveKontaktPersoner();
+                    this._refreshRollerList();
+                    this.showNotification(cb.checked ? 'Markerad som PEP/sanktionslista.' : 'Markering borttagen.', 'success');
+                } catch (e) {
+                    this.showNotification('Kunde inte spara markering: ' + (e.message || 'fel'), 'error');
+                }
+            });
+        }
     }
 
     _downloadBase64Pdf(base64, filnamn) {

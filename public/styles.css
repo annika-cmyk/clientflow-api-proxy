@@ -10026,6 +10026,18 @@ textarea.kunduppgifter-input {
     padding: 0.15rem 0.5rem;
     border-radius: 6px;
 }
+.roller-person-pep-flag{
+    display:inline-flex;
+    align-items:center;
+    gap:0.35rem;
+    padding:0.15rem 0.5rem;
+    border-radius:999px;
+    font-size:0.72rem;
+    font-weight:800;
+    color:#92400e;
+    background:#fef3c7;
+    border:1px solid #fde68a;
+}
 .roller-person-pep-datum i {
     margin-right: 0.2rem;
 }
