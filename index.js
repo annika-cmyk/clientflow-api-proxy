@@ -11096,6 +11096,33 @@ Svara EXAKT i detta JSON-format (inget annat):
       return null;
     };
 
+    const stripCodeFences = (text) => {
+      if (!text) return '';
+      let t = String(text);
+      // Ta bort BOM/konstiga prefix som kan sabotera JSON.parse
+      t = t.replace(/^\uFEFF/, '').trim();
+      // Vanligt när modeller returnerar ```json ... ```
+      if (/^```/m.test(t)) {
+        t = t.replace(/```[a-zA-Z0-9_-]*\s*/g, '```');
+        t = t.replace(/^```/g, '').replace(/```$/g, '').trim();
+      }
+      return t.trim();
+    };
+
+    const parseAssistantJson = (rawText) => {
+      const cleaned = stripCodeFences(rawText);
+      const jsonCandidate = extractFirstJsonObject(cleaned) || extractFirstJsonObject(rawText) || cleaned || rawText || '';
+      try {
+        return JSON.parse(jsonCandidate);
+      } catch (e) {
+        const preview = String(jsonCandidate).slice(0, 180);
+        const msg = `Kunde inte tolka AI-svar som JSON. Förhandsvisning: ${preview}${String(jsonCandidate).length > 180 ? '…' : ''}`;
+        const err = new Error(msg);
+        err.cause = e;
+        throw err;
+      }
+    };
+
     const isLowQualityRiskText = (s) => {
       if (!s) return true;
       const t = String(s).trim();
@@ -11120,8 +11147,7 @@ Svara EXAKT i detta JSON-format (inget annat):
       maxWaitMs: 120000,
       debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
     });
-    const jsonText = extractFirstJsonObject(assistantText) || assistantText;
-    let result = JSON.parse(jsonText);
+    let result = parseAssistantJson(assistantText);
 
     // Om modellen svarar “konstigt”, gör en enkel omskrivningsrunda med tydliga krav.
     if (!result || isLowQualityRiskText(result.riskbedomning)) {
@@ -11139,8 +11165,7 @@ ${assistantText}`;
         maxWaitMs: 120000,
         debugMeta: { route: '/api/ai-riskbedomning:rewrite', user: req.user?.email || '' }
       });
-      const rewriteJsonText = extractFirstJsonObject(rewriteText) || rewriteText;
-      result = JSON.parse(rewriteJsonText);
+      result = parseAssistantJson(rewriteText);
     }
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
