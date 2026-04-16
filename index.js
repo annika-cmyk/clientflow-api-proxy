@@ -11121,7 +11121,6 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
   const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const kundRes = await axios.get(
@@ -11324,11 +11323,26 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
-    const assistantText = await runOpenAIAssistantRun(openaiKey, prompt, {
-      maxWaitMs: 120000,
-      debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
-    });
-    let result = parseAssistantJson(assistantText);
+    const apiBase = 'https://api.openai.com/v1';
+    const headers = {
+      Authorization: `Bearer ${openaiKey}`,
+      'Content-Type': 'application/json'
+    };
+    const model = (process.env.OPENAI_RISK_MODEL || '').toString().trim() || 'gpt-4o-mini';
+    const callAi = async (userPrompt, timeoutMs = 45000) => {
+      const r = await axios.post(`${apiBase}/chat/completions`, {
+        model,
+        messages: [
+          { role: 'system', content: 'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Svara endast med det format som efterfrågas.' },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.1
+      }, { headers, timeout: timeoutMs });
+      return r.data?.choices?.[0]?.message?.content || '';
+    };
+
+    const aiText = await callAi(prompt, 45000);
+    let result = parseAssistantJson(aiText);
 
     // Om modellen svarar “konstigt”, gör en enkel omskrivningsrunda med tydliga krav.
     if (!result || isLowQualityRiskText(result.riskbedomning)) {
@@ -11341,11 +11355,8 @@ UNDERLAG (kunddata + regler):
 ${prompt}
 
 NUVARANDE AI-SVAR (att förbättra):
-${assistantText}`;
-      const rewriteText = await runOpenAIAssistantRun(openaiKey, rewritePrompt, {
-        maxWaitMs: 120000,
-        debugMeta: { route: '/api/ai-riskbedomning:rewrite', user: req.user?.email || '' }
-      });
+${aiText}`;
+      const rewriteText = await callAi(rewritePrompt, 45000);
       result = parseAssistantJson(rewriteText);
     }
 

@@ -407,7 +407,7 @@
               ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
               : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
           }).join('')}</div>`
-        : `<div class="uppdrag-muted">Inga filer uppladdade för denna körning.</div>`;
+        : ``;
 
       return `
         <tr class="uppdragboard-row" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
@@ -426,10 +426,6 @@
           <td colspan="4">
             <div class="uppdragboard-details-inner">
               <div class="uppdragboard-details-top">
-                <div class="uppdrag-view-field">
-                  <div class="uppdrag-view-label">Deadline</div>
-                  <div class="uppdrag-view-value">${esc(String(x.deadline || '–'))}</div>
-                </div>
                 <div class="uppdrag-view-field">
                   <div class="uppdrag-view-label">Rutin / instruktion</div>
                   <div class="uppdrag-view-text">${rutin ? esc(rutin) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
@@ -454,7 +450,6 @@
                     </button>
                     <span class="uppdrag-muted" data-note-status-for="${esc(x.key)}" style="margin:0;"></span>
                   </div>
-                  <div class="uppdrag-muted" style="margin-top:0.35rem;">Tips: anteckningen ligger kvar tills du ändrar den. Klarmarkering sparar separat historik.</div>
                 </div>
                 <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
                   <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
@@ -466,7 +461,6 @@
                     <span class="uppdrag-muted" data-docs-status-for="${esc(x.key)}" style="margin:0;"></span>
                   </div>
                   <div data-docs-list-for="${esc(x.key)}" style="margin-top:0.5rem;">${runAttHtml}</div>
-                  <div class="uppdrag-muted" style="margin-top:0.35rem;">Filer sparas i kundens uppdrag och visas här för den valda deadlinen.</div>
                 </div>
               </div>
             </div>
@@ -487,6 +481,9 @@
         const open = details && details.style.display !== 'none';
         if (details) details.style.display = open ? 'none' : '';
         row.classList.toggle('is-open', !open);
+        // Markera att listan har ett aktivt kort (för dimning av övriga)
+        const anyOpen = !!tbodyEl.querySelector('.uppdragboard-row.is-open');
+        tbodyEl.classList.toggle('uppdragboard-has-open', anyOpen);
       });
       // done
       row.querySelector('[data-action="done"]')?.addEventListener('click', (e) => {
@@ -600,7 +597,7 @@
                       ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
                       : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
                   }).join('')}</div>`
-                : `<div class="uppdrag-muted">Inga filer uppladdade för denna körning.</div>`;
+                : ``;
             }
           }
 
