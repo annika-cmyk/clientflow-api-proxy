@@ -1,6 +1,6 @@
 /**
- * Annika Chat – fråga om systemet och riskbedömningar
- * Öppnas via "Chatta med Annika" i sidofältet (window.openAiChat()).
+ * ClientFlow AI – PTL-assistent
+ * Öppnas via "Chatta med PTL-AI" i sidofältet (window.openAiChat()).
  */
 (function () {
   /** Samma logik som config.js: aldrig gissa bara location.origin (fel port med Live Server etc.). */
@@ -59,21 +59,21 @@
     div.innerHTML = `
       <div class="ai-chat-panel__header">
         <div class="ai-chat-panel__header-annika">
-          <img src="${annikaAvatarUrl}" alt="Annika AI" class="ai-chat-avatar ai-chat-avatar--header" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-          <span class="ai-chat-avatar-fallback" style="display:none;">A</span>
+          <img src="${annikaAvatarUrl}" alt="ClientFlow AI" class="ai-chat-avatar ai-chat-avatar--header" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+          <span class="ai-chat-avatar-fallback" style="display:none;">CF</span>
           <div class="ai-chat-panel__header-titles">
-            <h3>Annika AI</h3>
-            <span class="ai-chat-panel__header-subtitle">en mänskligare version av Annika</span>
+            <h3>ClientFlow AI</h3>
+            <span class="ai-chat-panel__header-subtitle">Chatta med vår PTL-assistent</span>
           </div>
         </div>
         <button type="button" class="ai-chat-panel__close" aria-label="Stäng" onclick="window.closeAiChat()">
           <i class="fas fa-times"></i>
         </button>
       </div>
-      <p class="ai-chat-panel__intro">Ställ frågor till mig om ClientFlow, riskbedömningar, KYC eller hur du tänker kring kunder och tjänster.</p>
+      <p class="ai-chat-panel__intro">Ställ frågor om ClientFlow, riskbedömningar, KYC och AML (PTL).</p>
       <div class="ai-chat-panel__messages" id="ai-chat-messages"></div>
       <div class="ai-chat-panel__input-wrap">
-        <textarea id="ai-chat-input" class="ai-chat-panel__input" rows="2" placeholder="Skriv till Annika AI..." maxlength="2000"></textarea>
+        <textarea id="ai-chat-input" class="ai-chat-panel__input" rows="2" placeholder="Skriv till ClientFlow AI..." maxlength="2000"></textarea>
         <button type="button" class="ai-chat-panel__send" id="ai-chat-send" aria-label="Skicka">
           <i class="fas fa-paper-plane"></i>
         </button>
@@ -104,9 +104,9 @@
     div.className = 'ai-chat-msg ai-chat-msg--' + role;
     const isAnnika = role === 'assistant';
     const avatarHtml = isAnnika
-      ? '<img src="' + annikaAvatarUrl + '" alt="Annika AI" class="ai-chat-msg__avatar" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';"><span class="ai-chat-avatar-fallback ai-chat-msg__avatar-fallback" style="display:none;">A</span>'
+      ? '<img src="' + annikaAvatarUrl + '" alt="ClientFlow AI" class="ai-chat-msg__avatar" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';"><span class="ai-chat-avatar-fallback ai-chat-msg__avatar-fallback" style="display:none;">CF</span>'
       : '';
-    const label = isAnnika ? 'Annika AI' : 'Du';
+    const label = isAnnika ? 'ClientFlow AI' : 'Du';
     div.innerHTML = '<div class="ai-chat-msg__inner">' + avatarHtml + '<div class="ai-chat-msg__body"><span class="ai-chat-msg__label">' + label + '</span><div class="ai-chat-msg__text">' + escapeHtml(content) + '</div></div></div>';
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
