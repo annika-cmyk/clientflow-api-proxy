@@ -11247,9 +11247,26 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd", ska kundens sammanlagda risknivå vara "Hog" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Medel" på PEP-faktorn ska sammanlagd risk vara minst "Medel". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
 
 2. ÅTGÄRDER — detta är kritiskt:
-   - "Hog": Lista 3-5 konkreta åtgärder specifikt anpassade till just denna kunds riskbild (PEP, sanktioner, högriskbransch etc.).
-   - "Medel": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Generella formuleringar är FÖRBJUDNA.
-   - "Lag": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder. Övervakningsrutiner, uppdatering av dokumentation och liknande standardpåminnelser ska ALDRIG listas.
+   - FORMATKRAV (gäller när atgarder inte är tom sträng): Varje punkt MÅSTE vara praktiskt genomförbar och innehålla:
+     (a) VAD som ska göras, (b) HUR/VAR det görs (verktyg/källa), (c) VAD som ska dokumenteras i ClientFlow.
+     Exempel på format: "- Sanktion/PEP-kontroll: kör Dilisense (person/bolag) och spara PDF-rapporten i Dokumentation." (detta är bara exempel).
+   - PROPORTIONALITET / ARBETSINSATS: Åtgärderna ska vara rimliga för en redovisningsbyrå. Vi ska inte agera “polis” eller skapa onödigt merarbete.
+     Välj hellre 1-3 högsignal-kontroller med låg insats än många breda kontroller. Sikta på åtgärder som normalt tar totalt ca 10–30 minuter att genomföra och dokumentera.
+     Förbjudna formuleringar/krav: “övervakning i realtid”, “kontinuerlig övervakning”, “granska alla transaktioner”, eller andra åtgärder som kräver löpande manuellt arbete utan tydlig nytta.
+   - "Hog": Lista 3-5 åtgärder enligt formatkravet ovan, specifikt anpassade till just denna kunds riskbild. Generella formuleringar är FÖRBJUDNA.
+   - "Medel": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
+   - "Lag": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
+
+   SÄRSKILT vid "sanktionslistor/PEP": Om du föreslår kontroller ska du ange exakt vilka källor som kontrolleras (minst två av):
+   - EU:s konsoliderade sanktionslista
+   - FN (UN) Consolidated List
+   - OFAC (SDN)
+   - UK HMT Sanctions List
+   Om systemet använder Dilisense: skriv "Kör Dilisense screening" och ange om det är individ- eller företagsscreening + spara Dilisense-PDF:en.
+
+   SÄRSKILT vid "stickprov/seriositet": Ange konkret vad som granskas, t.ex. Bolagsverket-uppgifter, verklig huvudman, hemsida/affärsmodell, nyhets-/media-sökning, betalflöden (länder/belopp), och att underlaget (screenshot/länk/anteckning/PDF) sparas.
+
+   SÄRSKILT vid "förstärkt kundkännedom (EDD)": Beskriv vad det innebär i praktiken för detta case, t.ex. bekräfta verklig huvudman, inhämta/bedöm källa till medel, affärsrational, förväntade betalningar (länder/belopp/frekvens), och dokumentera beslut/underlag.
 
 3. RISKBEDÖMNINGSTEXT: 2-4 meningar. Motivera risknivån konkret utifrån kundens faktiska profil. Nämn vilka tjänster byrån utför.
 
