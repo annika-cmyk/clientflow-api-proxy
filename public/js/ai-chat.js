@@ -150,12 +150,10 @@
     try {
       const apiBase = getChatApiBaseUrl();
       const url = apiBase + '/api/ai-chat';
-      let threadId = '';
-      try { threadId = sessionStorage.getItem(STORAGE_THREAD_KEY) || ''; } catch (_) {}
       const res = await fetch(url, {
         method: 'POST',
         ...getAuthOpts(),
-        body: JSON.stringify({ message: text, threadId })
+        body: JSON.stringify({ message: text, history: history.slice(0, -1) })
       });
       const raw = await res.text();
       let data = {};
@@ -172,9 +170,6 @@
       const reply = (data && data.reply) ? data.reply : 'Inget svar.';
       appendMessage('assistant', reply);
       history.push({ role: 'assistant', content: reply });
-      if (data && data.threadId) {
-        try { sessionStorage.setItem(STORAGE_THREAD_KEY, String(data.threadId)); } catch (_) {}
-      }
       saveHistory();
     } catch (err) {
       const msg = err.message || 'Något gick fel';

@@ -6121,11 +6121,11 @@ class CustomerCardManager {
                             
                             <div class="form-group">
                                 <label><i class="fas fa-tasks"></i> Att göra-lista</label>
-                                <div id="todo-items" class="todo-items-container">
-                                    ${this.createTodoInputFields(3)}
+                                <div id="todo-items" class="todo-items-container" style="display:none;">
+                                    ${this.createTodoInputFields(0)}
                                 </div>
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.addTodoItem()">
-                                    <i class="fas fa-plus"></i> Lägg till fler uppgifter
+                                    <i class="fas fa-plus"></i> + Lägg till uppgift
                                 </button>
                             </div>
                             
@@ -6195,6 +6195,7 @@ class CustomerCardManager {
 
     addTodoItem() {
         const todoItems = document.getElementById('todo-items');
+        if (todoItems && todoItems.style.display === 'none') todoItems.style.display = '';
         const currentCount = todoItems.children.length;
         const newIndex = currentCount + 1;
         
@@ -6342,12 +6343,14 @@ class CustomerCardManager {
             `<option value="${t}" ${currentTyp === t ? 'selected' : ''}>${t}</option>`
         ).join('');
 
-        // Bygg todo-fält förifyllda
+        // Bygg todo-fält förifyllda (visa inte tomma kort förrän användaren väljer att lägga till)
         let todoHTML = '';
+        let hasAnyTodo = false;
         for (let i = 1; i <= 8; i++) {
             const todo = fields[`ToDo${i}`] || '';
             const status = fields[`Status${i}`] || '';
-            if (i <= 3 || todo) {
+            if (todo) {
+                hasAnyTodo = true;
                 todoHTML += `
                 <div class="todo-input-item" data-index="${i}">
                     <div class="todo-item-header">
@@ -6408,9 +6411,9 @@ class CustomerCardManager {
                             </div>
                             <div class="form-group">
                                 <label><i class="fas fa-tasks"></i> Att göra-lista</label>
-                                <div id="todo-items" class="todo-items-container">${todoHTML}</div>
+                                <div id="todo-items" class="todo-items-container" style="${hasAnyTodo ? '' : 'display:none;'}">${todoHTML}</div>
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.addTodoItem()">
-                                    <i class="fas fa-plus"></i> Lägg till fler uppgifter
+                                    <i class="fas fa-plus"></i> + Lägg till uppgift
                                 </button>
                             </div>
                             <input type="hidden" name="byraId" value="${byraId}">

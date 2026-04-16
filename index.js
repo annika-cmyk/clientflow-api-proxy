@@ -801,11 +801,8 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   console.log('💬 POST /api/ai-chat anropad');
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) {
-    return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas. Konfigurera din OpenAI-assistent i miljövariabler.' });
-  }
 
-  const { message, threadId } = req.body || {};
+  const { message, history = [] } = req.body || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'Meddelande krävs.' });
   }
@@ -855,53 +852,30 @@ Stil:
       return false;
     };
 
-    const safeMsg = sanitizeChatText(message, 2000);
-
-    const runOnce = async (maybeThreadId) => {
-      const out = { value: null };
-      const replyText = await runOpenAIAssistantRun(openaiKey, safeMsg, {
-        maxWaitMs: 45000,
-        pollMs: 900,
-        threadId: maybeThreadId || '',
-        threadIdOut: out,
-        instructions: systemContent,
-        vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null,
-        debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
-      });
-      return { replyText, threadId: out.value || (maybeThreadId || null) };
+    const apiBase = 'https://api.openai.com/v1';
+    const headers = {
+      Authorization: `Bearer ${openaiKey}`,
+      'Content-Type': 'application/json'
     };
+    const model = (process.env.OPENAI_CHAT_MODEL || '').toString().trim() || 'gpt-4o-mini';
 
-    let reply;
-    let usedThreadId = (threadId || '').toString().trim();
-    try {
-      const r1 = await runOnce(usedThreadId);
-      reply = r1.replyText;
-      usedThreadId = r1.threadId || usedThreadId;
-    } catch (e) {
-      // Om vi återanvände thread och får timeout/stök: prova en gång till med ny thread.
-      const msg = String(e && e.message || '');
-      if (usedThreadId && /timeout/i.test(msg)) {
-        usedThreadId = '';
-        const r2 = await runOnce('');
-        reply = r2.replyText;
-        usedThreadId = r2.threadId || null;
-      } else {
-        throw e;
-      }
-    }
+    const safeMsg = sanitizeChatText(message, 2000);
+    const hist = Array.isArray(history) ? history.slice(-10) : [];
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...hist
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map(m => ({ role: m.role, content: sanitizeChatText(m.content, 1200) })),
+      { role: 'user', content: safeMsg }
+    ];
 
-    // Om vi inte fick in threadId från klienten, försök plocka den från senaste debug-event.
-    // (Fallback: klienten kan fortsätta utan threadId; den här är bara för snabbare fortsättning.)
-    // Obs: debug-buffer är redacterad/maskad, så vi skickar endast threadId om vi återanvände eller skapade lokalt via opts.
-    // I praktiken skickas threadId från klienten i nästa request om den finns.
+    const ccRes = await axios.post(`${apiBase}/chat/completions`, {
+      model,
+      messages,
+      temperature: 0.2
+    }, { headers, timeout: 30000 });
 
-    // Vi vill returnera en threadId för återanvändning. Om klienten skickade en, behåll den.
-    // Om inte: runOpenAIAssistantRun återanvänder/skapade en, men returnerar inte threadId — därför använder vi usedThreadId om den fanns.
-    // När usedThreadId är tomt här betyder det att vi skapade ny thread; för att kunna skicka tillbaka den behöver runOpenAIAssistantRun exponera den.
-    // Lösning: enklast är att låta klienten skicka tillbaka threadId (om den hade en). Annars blir det en ny thread nästa gång, men med lägre timeout.
-
-    // För att faktiskt få ut threadId när vi skapar ny thread: kör en liten wrapper som returnerar den via opts._threadIdOut.
-    // (Se nedan: vi sätter opts._threadIdOut när vi skapar/reusar thread.)
+    const reply = ccRes.data?.choices?.[0]?.message?.content || '';
 
     const safeReply = sanitizeChatText(reply || '', 12000);
     if (!safeReply || looksGarbled(safeReply)) {
@@ -909,10 +883,11 @@ Stil:
         error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.'
       });
     }
-    res.json({ reply: safeReply, threadId: usedThreadId || null });
+    res.json({ reply: safeReply });
   } catch (error) {
     console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
-    res.status(500).json({ error: 'Chatten svarade inte: ' + error.message });
+    const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    res.status(500).json({ error: 'Chatten svarade inte: ' + msg });
   }
 });
 
@@ -3242,6 +3217,65 @@ async function uploadAttachmentToAirtableField(airtableToken, baseId, recordId, 
     const msg = err.response?.data?.error?.message || err.message;
     console.error('uploadAttachmentToAirtableField failed for field', fieldName, 'record', recordId, 'url', url, '-', msg);
     return false;
+  }
+}
+
+// Hjälp: som uploadAttachmentToAirtableField, men returnerar attachment-objektet (url/id/filename)
+async function uploadAttachmentToAirtableFieldReturnAttachment(airtableToken, baseId, recordId, fileBuffer, filename, contentType, tableId, fieldName) {
+  const base64 = fileBuffer.toString('base64');
+  let url;
+  let fieldId = null;
+
+  try {
+    if (tableId) {
+      const cacheKey = `${tableId}:${fieldName}`;
+      fieldId = AIRTABLE_FIELD_ID_CACHE[cacheKey] || null;
+      if (!fieldId) {
+        const metaRes = await axios.get(
+          `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+          { headers: { Authorization: `Bearer ${airtableToken}` }, timeout: 10000 }
+        );
+        const raw = metaRes.data;
+        const tables = Array.isArray(raw?.tables) ? raw.tables : (Array.isArray(raw) ? raw : []);
+        const table = tables.find(t => (t.id || '') === tableId);
+        const fields = (table && table.fields) || [];
+        const match = fields.find(f => (f.name || '').trim() === fieldName);
+        if (match && match.id) {
+          fieldId = match.id;
+          AIRTABLE_FIELD_ID_CACHE[cacheKey] = fieldId;
+        } else {
+          console.warn('uploadAttachmentToAirtableFieldReturnAttachment: fält "' + fieldName + '" hittades inte i tabell ' + tableId);
+        }
+      }
+    }
+  } catch (metaErr) {
+    const msg = metaErr.response?.data?.error?.message || metaErr.message;
+    console.error('uploadAttachmentToAirtableFieldReturnAttachment meta lookup failed for field', fieldName, 'table', tableId, '-', msg);
+  }
+
+  if (fieldId) url = `https://content.airtable.com/v0/${baseId}/${recordId}/${fieldId}/uploadAttachment`;
+  else url = `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`;
+
+  try {
+    const res = await axios.post(url, {
+      contentType: contentType || 'application/octet-stream',
+      file: base64,
+      filename
+    }, {
+      headers: { 'Authorization': `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 30000,
+      maxContentLength: 60 * 1024 * 1024,
+      maxBodyLength: 60 * 1024 * 1024
+    });
+    if (!res.data) return null;
+    // Content API kan returnera {id,url,filename,...} eller {attachment:{...}}
+    const att = res.data.attachment || res.data;
+    if (att && (att.url || att.id)) return att;
+    return null;
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.error('uploadAttachmentToAirtableFieldReturnAttachment failed for field', fieldName, 'record', recordId, '-', msg);
+    return null;
   }
 }
 
@@ -8992,6 +9026,7 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Ansvarig', type: 'singleLineText', description: 'Handläggare (namn eller user-id)' },
   { name: 'Rutin', type: 'multilineText', description: 'Instruktion/rutin för uppdraget' },
   { name: 'Anteckning', type: 'multilineText', description: 'Anteckning om uppdraget (generellt)' },
+  { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor för dokumentation (t.ex. per körning/deadline)' },
   // Checkbox kräver options i Meta API
   { name: 'Riskåtgärder aktiverade', type: 'checkbox', options: { icon: 'check', color: 'greenBright' } },
   { name: 'Riskåtgärder valda', type: 'multilineText', description: 'Valda åtgärder (text/JSON)' },
@@ -9463,6 +9498,94 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       });
     }
     res.status(status).json({ error: msg, airtableError: error.response?.data });
+  }
+});
+
+// ============================================================
+// POST /api/uppdrag/run-docs — Ladda upp dokumentation för en körning (bilaga)
+// Body: { customerId, typ, deadline, filename, contentType, base64 }
+// ============================================================
+app.post('/api/uppdrag/run-docs', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const tableId = process.env.AIRTABLE_TABLE_UPPDRAG_ID || null;
+    const { customerId, typ, deadline, filename, contentType, base64 } = req.body || {};
+
+    if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+    if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(String(deadline))) {
+      return res.status(400).json({ error: 'deadline krävs (YYYY-MM-DD)' });
+    }
+    if (!filename || typeof filename !== 'string') return res.status(400).json({ error: 'filename krävs' });
+    if (!base64 || typeof base64 !== 'string') return res.status(400).json({ error: 'base64 krävs' });
+
+    // Normalisera base64 (tillåt data:-URL)
+    const rawB64 = String(base64).includes(',') ? String(base64).split(',').pop() : String(base64);
+    const buf = Buffer.from(rawB64, 'base64');
+    if (!buf || !buf.length) return res.status(400).json({ error: 'Filen var tom' });
+    if (buf.length > 12 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Filen är för stor. Max 12 MB per fil.' });
+    }
+
+    const safeDeadline = String(deadline);
+    const cleanName = String(filename).replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 ._\-()]/g, '').trim().slice(0, 120) || 'bilaga';
+    const finalFilename = `${safeDeadline} - ${cleanName}`;
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const existingRes = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { maxRecords: 1 },
+      formulas: buildUppdragFilterFormulas(customerId, typ)
+    });
+    const existing = (existingRes.data.records || [])[0];
+    if (!existing) return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+
+    // Försök ladda upp till Dokumentation/Attachments i Uppdrag-tabellen
+    const candidates = ['Dokumentation', 'Attachments'];
+    let uploaded = null;
+    let usedField = null;
+    for (const fName of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const att = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken,
+        airtableBaseId,
+        existing.id,
+        buf,
+        finalFilename,
+        contentType || 'application/octet-stream',
+        tableId,
+        fName
+      );
+      if (att) {
+        uploaded = att;
+        usedField = fName;
+        break;
+      }
+    }
+    if (!uploaded) {
+      return res.status(500).json({
+        error: 'Kunde inte ladda upp filen till Airtable. Kontrollera att Uppdrag-tabellen har ett bilagefält (t.ex. "Dokumentation" eller "Attachments").'
+      });
+    }
+
+    // Returnera uppdaterad post så klienten kan visa listan direkt.
+    const refreshed = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
+    );
+
+    return res.json({
+      ok: true,
+      attachment: uploaded,
+      fieldName: usedField,
+      record: refreshed.data
+    });
+  } catch (error) {
+    console.error('❌ POST /api/uppdrag/run-docs:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    res.status(status).json({ error: msg });
   }
 });
 

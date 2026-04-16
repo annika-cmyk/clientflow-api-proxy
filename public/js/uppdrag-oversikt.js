@@ -393,6 +393,22 @@
           }).join('')
         : `<div class="uppdrag-muted">Inga tidigare anteckningar.</div>`;
 
+      const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);
+      const allAtt = attFieldName ? (f[attFieldName] || []) : [];
+      const deadlineKey = String(x.deadline || '').slice(0, 10);
+      const runAtt = Array.isArray(allAtt) && deadlineKey
+        ? allAtt.filter(a => String(a?.filename || '').includes(deadlineKey)).slice(0, 10)
+        : [];
+      const runAttHtml = runAtt.length
+        ? `<div class="uppdrag-view-list">${runAtt.map(a => {
+            const fn = esc(String(a?.filename || 'Bilaga'));
+            const url = esc(String(a?.url || ''));
+            return url
+              ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
+              : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
+          }).join('')}</div>`
+        : `<div class="uppdrag-muted">Inga filer uppladdade för denna körning.</div>`;
+
       return `
         <tr class="uppdragboard-row" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
           <td class="uppdragboard-client">
@@ -439,6 +455,18 @@
                     <span class="uppdrag-muted" data-note-status-for="${esc(x.key)}" style="margin:0;"></span>
                   </div>
                   <div class="uppdrag-muted" style="margin-top:0.35rem;">Tips: anteckningen ligger kvar tills du ändrar den. Klarmarkering sparar separat historik.</div>
+                </div>
+                <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
+                  <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
+                  <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <input type="file" class="kunduppgifter-input" style="padding:0.45rem;" data-docs-input-for="${esc(x.key)}" multiple />
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="upload-docs" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}" data-deadline="${esc(String(x.deadline || ''))}">
+                      <i class="fas fa-upload"></i> Ladda upp
+                    </button>
+                    <span class="uppdrag-muted" data-docs-status-for="${esc(x.key)}" style="margin:0;"></span>
+                  </div>
+                  <div data-docs-list-for="${esc(x.key)}" style="margin-top:0.5rem;">${runAttHtml}</div>
+                  <div class="uppdrag-muted" style="margin-top:0.35rem;">Filer sparas i kundens uppdrag och visas här för den valda deadlinen.</div>
                 </div>
               </div>
             </div>
@@ -505,6 +533,84 @@
           setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
         } catch (err) {
           if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
+        }
+      });
+    });
+
+    // bind upload-docs buttons
+    tbodyEl.querySelectorAll('[data-action="upload-docs"]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = btn.getAttribute('data-key') || '';
+        const customerId = btn.getAttribute('data-customer-id') || '';
+        const deadline = btn.getAttribute('data-deadline') || '';
+        if (!customerId || !key || !deadline) return;
+        const input = tbodyEl.querySelector(`input[type="file"][data-docs-input-for="${CSS.escape(key)}"]`);
+        const statusEl = tbodyEl.querySelector(`[data-docs-status-for="${CSS.escape(key)}"]`);
+        const listEl = tbodyEl.querySelector(`[data-docs-list-for="${CSS.escape(key)}"]`);
+        const files = input && input.files ? Array.from(input.files) : [];
+        if (!files.length) {
+          if (statusEl) statusEl.textContent = 'Välj minst en fil.';
+          return;
+        }
+        if (statusEl) statusEl.textContent = 'Laddar upp...';
+        btn.disabled = true;
+        try {
+          const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result || ''));
+            r.onerror = () => reject(new Error('Kunde inte läsa fil'));
+            r.readAsDataURL(file);
+          });
+
+          for (const file of files.slice(0, 5)) {
+            // eslint-disable-next-line no-await-in-loop
+            const dataUrl = await readAsDataUrl(file);
+            const res = await fetch(`${baseUrl}/api/uppdrag/run-docs`, {
+              method: 'POST',
+              ...getAuthOpts(),
+              body: JSON.stringify({
+                customerId,
+                typ: activeType,
+                deadline: String(deadline).slice(0, 10),
+                filename: file.name,
+                contentType: file.type || 'application/octet-stream',
+                base64: dataUrl
+              })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+            // Uppdatera lokalt cache + UI-lista
+            const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(activeType));
+            if (rec && data.record && data.record.fields) rec.fields = data.record.fields;
+
+            if (listEl && rec && rec.fields) {
+              const f = rec.fields || {};
+              const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : (data.fieldName || null));
+              const allAtt = attFieldName ? (f[attFieldName] || []) : [];
+              const dl = String(deadline || '').slice(0, 10);
+              const runAtt = Array.isArray(allAtt) && dl ? allAtt.filter(a => String(a?.filename || '').includes(dl)).slice(0, 10) : [];
+              listEl.innerHTML = runAtt.length
+                ? `<div class="uppdrag-view-list">${runAtt.map(a => {
+                    const fn = esc(String(a?.filename || 'Bilaga'));
+                    const url = esc(String(a?.url || ''));
+                    return url
+                      ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
+                      : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
+                  }).join('')}</div>`
+                : `<div class="uppdrag-muted">Inga filer uppladdade för denna körning.</div>`;
+            }
+          }
+
+          if (statusEl) statusEl.textContent = 'Uppladdat.';
+          if (input) input.value = '';
+          setTimeout(() => { if (statusEl && statusEl.textContent === 'Uppladdat.') statusEl.textContent = ''; }, 2500);
+        } catch (err) {
+          if (statusEl) statusEl.textContent = 'Kunde inte ladda upp: ' + (err.message || 'fel');
+        } finally {
+          btn.disabled = false;
         }
       });
     });
