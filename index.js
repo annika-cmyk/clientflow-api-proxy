@@ -390,6 +390,9 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const vectorStoreId = opts.vectorStoreId !== undefined ? opts.vectorStoreId : (process.env.OPENAI_VECTOR_STORE_ID || null);
   const maxWaitMs = opts.maxWaitMs ?? 180000;
   const pollMs = opts.pollMs ?? 1500;
+  const threadIdFromCaller = (opts.threadId || '').toString().trim();
+  const instructions = (opts.instructions || '').toString().trim();
+  const threadIdOut = opts.threadIdOut && typeof opts.threadIdOut === 'object' ? opts.threadIdOut : null;
   const debugMeta = opts.debugMeta || null;
   const debugId = pushAiDebugEvent({
     route: debugMeta?.route || '',
@@ -414,21 +417,41 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
 
   let threadId;
   try {
-    const threadRes = await axios.post(
-      `${apiBase}/threads`,
-      { messages: [{ role: 'user', content: userContent }] },
-      { headers: axiosAssistantHeaders, timeout: 120000 }
-    );
-    threadId = threadRes.data?.id;
-    updateAiDebugEvent(debugId, { threadIdMasked: threadId ? maskId(threadId, 12) : null, status: 'thread_created' });
+    if (threadIdFromCaller) {
+      threadId = threadIdFromCaller;
+      updateAiDebugEvent(debugId, { threadIdMasked: maskId(threadId, 12), status: 'thread_reused' });
+    } else {
+      const threadRes = await axios.post(
+        `${apiBase}/threads`,
+        {},
+        { headers: axiosAssistantHeaders, timeout: 120000 }
+      );
+      threadId = threadRes.data?.id;
+      updateAiDebugEvent(debugId, { threadIdMasked: threadId ? maskId(threadId, 12) : null, status: 'thread_created' });
+    }
   } catch (e) {
     updateAiDebugEvent(debugId, { status: 'error_thread' });
     throw formatOpenAIAssistantError(e, 'OpenAI threads');
   }
   if (!threadId) throw new Error('Inget thread-id från OpenAI');
+  if (threadIdOut) threadIdOut.value = threadId;
+
+  // Lägg till användarmeddelandet i tråden
+  try {
+    await axios.post(
+      `${apiBase}/threads/${threadId}/messages`,
+      { role: 'user', content: userContent },
+      { headers: axiosAssistantHeaders, timeout: 120000 }
+    );
+    updateAiDebugEvent(debugId, { status: 'message_added' });
+  } catch (e) {
+    updateAiDebugEvent(debugId, { status: 'error_add_message' });
+    throw formatOpenAIAssistantError(e, 'OpenAI thread message');
+  }
 
   const runBody = {
     assistant_id: assistantId,
+    ...(instructions ? { instructions } : {}),
     ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
   };
   let runId;
@@ -782,7 +805,7 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
     return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas. Konfigurera din OpenAI-assistent i miljövariabler.' });
   }
 
-  const { message, history = [] } = req.body;
+  const { message, threadId } = req.body || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'Meddelande krävs.' });
   }
@@ -832,26 +855,61 @@ Stil:
       return false;
     };
 
-    let transcript = systemContent + '\n\n--- KONVERSATION ---\n';
-    for (const m of (Array.isArray(history) ? history.slice(-20) : [])) {
-      const role = (m && m.role) ? String(m.role) : 'user';
-      const label = role === 'assistant' ? 'Assistent' : 'Användare';
-      transcript += `${label}: ${sanitizeChatText(m && m.content, 2000)}\n\n`;
-    }
-    transcript += `Användare: ${sanitizeChatText(message, 2000)}`;
+    const safeMsg = sanitizeChatText(message, 2000);
 
-    const reply = await runOpenAIAssistantRun(openaiKey, transcript, {
-      maxWaitMs: 120000,
-      vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null,
-      debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
-    });
+    const runOnce = async (maybeThreadId) => {
+      const out = { value: null };
+      const replyText = await runOpenAIAssistantRun(openaiKey, safeMsg, {
+        maxWaitMs: 45000,
+        pollMs: 900,
+        threadId: maybeThreadId || '',
+        threadIdOut: out,
+        instructions: systemContent,
+        vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null,
+        debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
+      });
+      return { replyText, threadId: out.value || (maybeThreadId || null) };
+    };
+
+    let reply;
+    let usedThreadId = (threadId || '').toString().trim();
+    try {
+      const r1 = await runOnce(usedThreadId);
+      reply = r1.replyText;
+      usedThreadId = r1.threadId || usedThreadId;
+    } catch (e) {
+      // Om vi återanvände thread och får timeout/stök: prova en gång till med ny thread.
+      const msg = String(e && e.message || '');
+      if (usedThreadId && /timeout/i.test(msg)) {
+        usedThreadId = '';
+        const r2 = await runOnce('');
+        reply = r2.replyText;
+        usedThreadId = r2.threadId || null;
+      } else {
+        throw e;
+      }
+    }
+
+    // Om vi inte fick in threadId från klienten, försök plocka den från senaste debug-event.
+    // (Fallback: klienten kan fortsätta utan threadId; den här är bara för snabbare fortsättning.)
+    // Obs: debug-buffer är redacterad/maskad, så vi skickar endast threadId om vi återanvände eller skapade lokalt via opts.
+    // I praktiken skickas threadId från klienten i nästa request om den finns.
+
+    // Vi vill returnera en threadId för återanvändning. Om klienten skickade en, behåll den.
+    // Om inte: runOpenAIAssistantRun återanvänder/skapade en, men returnerar inte threadId — därför använder vi usedThreadId om den fanns.
+    // När usedThreadId är tomt här betyder det att vi skapade ny thread; för att kunna skicka tillbaka den behöver runOpenAIAssistantRun exponera den.
+    // Lösning: enklast är att låta klienten skicka tillbaka threadId (om den hade en). Annars blir det en ny thread nästa gång, men med lägre timeout.
+
+    // För att faktiskt få ut threadId när vi skapar ny thread: kör en liten wrapper som returnerar den via opts._threadIdOut.
+    // (Se nedan: vi sätter opts._threadIdOut när vi skapar/reusar thread.)
+
     const safeReply = sanitizeChatText(reply || '', 12000);
     if (!safeReply || looksGarbled(safeReply)) {
       return res.status(502).json({
         error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.'
       });
     }
-    res.json({ reply: safeReply });
+    res.json({ reply: safeReply, threadId: usedThreadId || null });
   } catch (error) {
     console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
     res.status(500).json({ error: 'Chatten svarade inte: ' + error.message });
