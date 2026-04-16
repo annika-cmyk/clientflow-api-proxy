@@ -3045,7 +3045,7 @@ class CustomerCardManager {
                     [],
                     'text', '', 'KYC genomgången - Kommentar riskfaktorer', f['KYC genomgången - Kommentar riskfaktorer'])}
 
-                <!-- Byråns riskbedömning av kunden -->
+                <!-- Kundens riskbedömning -->
                 ${this.renderRiskbedomningAiCard(f)}
 
                 <!-- Byrån har – näst sist -->
@@ -3169,7 +3169,7 @@ class CustomerCardManager {
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                     <div class="collapsible-title">
                         <i class="fas fa-robot" style="color:#6366f1;margin-right:0.4rem;"></i>
-                        Byråns riskbedömning av kunden
+                        Kundens riskbedömning
                         ${riskniva ? nivaBadge(riskniva) : ''}
                     </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -3184,7 +3184,7 @@ class CustomerCardManager {
                             </div>
                         </div>
                         ${riskbedomning ? `
-                        <div class="risker-vald-section-label">Byråns riskbedömning</div>
+                        <div class="risker-vald-section-label">Kundens riskbedömning</div>
                         <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
                         ${atgarder ? `
                         <div class="risker-vald-section-label">Åtgärder</div>
@@ -3209,8 +3209,8 @@ class CustomerCardManager {
                             </div>
                         </div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
-                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Byråns riskbedömning</label>
-                            <textarea id="ai-rb-text-input" class="kunduppgifter-input" rows="5" placeholder="Skriv byråns samlade riskbedömning av kunden...">${riskbedomning}</textarea>
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Kundens riskbedömning</label>
+                            <textarea id="ai-rb-text-input" class="kunduppgifter-input" rows="5" placeholder="Skriv kundens riskbedömning...">${riskbedomning}</textarea>
                         </div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Åtgärder</label>
@@ -3329,7 +3329,7 @@ class CustomerCardManager {
                     <span class="risker-vald-section-label" style="margin-top:0;">Sammanlagd risknivå</span>
                     <div style="margin-top:0.4rem;">${nivaBadge(riskniva)}</div>
                 </div>
-                ${riskbedomning ? `<div class="risker-vald-section-label">Byråns riskbedömning</div>
+                ${riskbedomning ? `<div class="risker-vald-section-label">Kundens riskbedömning</div>
                 <div class="risker-vald-desc" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
                 ${atgarder ? `<div class="risker-vald-section-label">Åtgärder</div>
                 <div class="risker-vald-desc" style="white-space:pre-wrap;">${atgarder}</div>` : ''}

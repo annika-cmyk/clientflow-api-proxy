@@ -4282,7 +4282,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         ${risksankande.length ? `<p><strong>Risksänkande:</strong> ${risksankande.map(i => escape(i)).join(', ')}</p>` : ''}
       </div>` : ''}
 
-      <h2>Byråns riskbedömning av kunden</h2>
+      <h2>Kundens riskbedömning</h2>
       <div class="section">${riskbedomning ? nl2br(riskbedomning) : '—'}</div>
       <h2>Åtgärder</h2>
       <div class="section">${atgarder ? nl2br(atgarder) : '—'}</div>
@@ -11029,6 +11029,8 @@ BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Ta hänsy
 ` : ''}
 
 VIKTIGT: Syftet med affärsförbindelsen definieras av vilka tjänster byrån utför åt kunden. Dessa tjänster ska framgå tydligt i riskbedömningen.
+Skriv på enkel, korrekt svenska. Undvik “intern logik/UI-termer” som kryss/bockat/markerat/flik/formulär och hänvisa aldrig till hur informationen valts i systemet — beskriv istället fakta.
+Använd inte fraser som “Detta är utan PEP-status” eller “som kryss särskilt högrisk”. Skriv hellre t.ex. “Inga PEP-indikationer har noterats” och “Tjänsterna omfattar … vilket bedöms riskhöjande”.
 
 KUNDUPPGIFTER:
 - Företagsnamn: ${f['Name'] || f['Namn'] || '–'}
@@ -11094,12 +11096,52 @@ Svara EXAKT i detta JSON-format (inget annat):
       return null;
     };
 
+    const isLowQualityRiskText = (s) => {
+      if (!s) return true;
+      const t = String(s).trim();
+      if (t.length < 30) return true;
+      // Undvik att svaret läcker UI/implementation-termer.
+      if (/(kryss|bocka(t|de)?|markerad|checkbox|flik|formulär|klicka|modal|dropdown|fältet\s+")/i.test(t)) return true;
+      // Vanliga “knas-artefakter”
+      if (/�/.test(t)) return true;
+      if (/(Annika AI\s*){2,}/i.test(t)) return true;
+      // För många repetitioner tyder på trasig generation.
+      const words = t.toLowerCase().split(/\s+/).filter(Boolean);
+      if (words.length > 0) {
+        const freq = new Map();
+        for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+        const max = Math.max(...freq.values());
+        if (max >= 8) return true;
+      }
+      return false;
+    };
+
     const assistantText = await runOpenAIAssistantRun(openaiKey, prompt, {
       maxWaitMs: 120000,
       debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
     });
     const jsonText = extractFirstJsonObject(assistantText) || assistantText;
-    const result = JSON.parse(jsonText);
+    let result = JSON.parse(jsonText);
+
+    // Om modellen svarar “konstigt”, gör en enkel omskrivningsrunda med tydliga krav.
+    if (!result || isLowQualityRiskText(result.riskbedomning)) {
+      const rewritePrompt = `Du ska förbättra (skriva om) en kundriskbedömning enligt PVML på tydlig svenska.
+Skriv om texten så att den är lätt att förstå, utan UI-termer (kryss/bockat/markerat/flik/formulär).
+Håll dig till fakta i underlaget. Hitta inte på nya detaljer.
+Returnera EXAKT samma JSON-format som tidigare.
+
+UNDERLAG (kunddata + regler):
+${prompt}
+
+NUVARANDE AI-SVAR (att förbättra):
+${assistantText}`;
+      const rewriteText = await runOpenAIAssistantRun(openaiKey, rewritePrompt, {
+        maxWaitMs: 120000,
+        debugMeta: { route: '/api/ai-riskbedomning:rewrite', user: req.user?.email || '' }
+      });
+      const rewriteJsonText = extractFirstJsonObject(rewriteText) || rewriteText;
+      result = JSON.parse(rewriteJsonText);
+    }
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 

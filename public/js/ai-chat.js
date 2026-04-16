@@ -16,6 +16,35 @@
   let messagesEl = null;
   let inputEl = null;
   let history = [];
+  const STORAGE_OPEN_KEY = 'aiChatOpen';
+  const STORAGE_HISTORY_KEY = 'aiChatHistory';
+
+  function loadHistory() {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .slice(-60);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveHistory() {
+    try {
+      sessionStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history.slice(-60)));
+    } catch (_) {}
+  }
+
+  function renderHistory() {
+    if (!messagesEl) return;
+    messagesEl.innerHTML = '';
+    for (const m of history) {
+      appendMessage(m.role, m.content);
+    }
+  }
 
   function getAuthOpts() {
     return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
@@ -62,6 +91,10 @@
         sendMessage();
       }
     });
+
+    // Återställ konversation vid sidbyte/refresh
+    history = loadHistory();
+    renderHistory();
   }
 
   function appendMessage(role, content) {
@@ -110,6 +143,7 @@
     inputEl.value = '';
     appendMessage('user', text);
     history.push({ role: 'user', content: text });
+    saveHistory();
     setLoading(true);
 
     try {
@@ -135,6 +169,7 @@
       const reply = (data && data.reply) ? data.reply : 'Inget svar.';
       appendMessage('assistant', reply);
       history.push({ role: 'assistant', content: reply });
+      saveHistory();
     } catch (err) {
       const msg = err.message || 'Något gick fel';
       appendMessage('assistant', 'Kunde inte få svar: ' + msg);
@@ -150,7 +185,7 @@
     panel.classList.remove('ai-chat-panel--closed');
     panel.classList.add('ai-chat-panel--open');
     try {
-      sessionStorage.setItem('aiChatOpen', '1');
+      sessionStorage.setItem(STORAGE_OPEN_KEY, '1');
     } catch (_) {}
     if (inputEl) {
       inputEl.focus();
@@ -163,7 +198,7 @@
       panel.classList.add('ai-chat-panel--closed');
     }
     try {
-      sessionStorage.setItem('aiChatOpen', '0');
+      sessionStorage.setItem(STORAGE_OPEN_KEY, '0');
     } catch (_) {}
   }
 
@@ -171,7 +206,7 @@
   window.closeAiChat = closePanel;
 
   createPanel();
-  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('aiChatOpen') === '1') {
+  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(STORAGE_OPEN_KEY) === '1') {
     openPanel();
   }
 })();
