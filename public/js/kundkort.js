@@ -1496,7 +1496,9 @@ class CustomerCardManager {
         const regland = fields.registreringsland || '';
         const bolagsform = fields.Bolagsform || '';
         const adress = fields.Address || fields.Adress || '';
-        const verksamhet = fields.Verksamhetsbeskrivning || fields['Beskrivning av kunden'] || '';
+        // OBS: "Verksamhetsbeskrivning" i kortet "Uppgifter från Bolagsverket" ska komma från Bolagsverket-data,
+        // inte från den manuella texten i "Beskrivning av kunden".
+        const verksamhet = fields.Verksamhetsbeskrivning || '';
         const sniRaw = fields['SNI kod'] || fields['SNI-koder'] || '';
         const befattning = fields.Befattningshavare || '';
 
@@ -3633,6 +3635,11 @@ class CustomerCardManager {
                             <span class="rb-label">Rapport</span>
                             <a href="${f['Rapport PEP']}" target="_blank" class="rb-link"><i class="fas fa-external-link-alt"></i> Öppna rapport</a>
                         </div>` : ''}
+                    </div>
+                    <div style="margin-top:0.75rem;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
+                            <i class="fas fa-building"></i> Sanktionsscreening företag (Dilisense)
+                        </button>
                     </div>
                 </div>
 
@@ -6575,6 +6582,124 @@ class CustomerCardManager {
             if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
             if (btn) { btn.innerHTML = origHtml; btn.style.pointerEvents = ''; }
         }
+    }
+
+    async entityScreeningFromBolagsverket(e) {
+        try {
+            if (e && e.preventDefault) e.preventDefault();
+            if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+                this.showNotification('Du måste logga in.', 'error');
+                return;
+            }
+            const kundId = this.customerId;
+            if (!kundId) {
+                this.showNotification('Kund-ID saknas.', 'error');
+                return;
+            }
+            const f = this.customerData?.fields || {};
+            const namn = (f['Namn'] || f['Företagsnamn'] || '').toString().trim();
+            const orgnr = (f['Orgnr'] || f['Organisationsnummer'] || '').toString().trim();
+            if (!namn) {
+                this.showNotification('Företagsnamn saknas på kunden.', 'error');
+                return;
+            }
+
+            if (typeof window.showAiThinking === 'function') window.showAiThinking('Söker företag i sanktionslistor...');
+
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/entity-screening/${kundId}`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ namn, orgnr })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = response.status === 429
+                    ? 'För många sökningar – vänta några minuter och försök igen.'
+                    : (data.error || `HTTP ${response.status}`);
+                throw new Error(msg);
+            }
+
+            this._showEntityResultModal(namn, orgnr, data);
+            if (data.savedToDocs) {
+                this.loadDocuments();
+                this.showNotification('Entity-rapport sparad på fliken Dokumentation.', 'success');
+            }
+        } catch (err) {
+            console.error('❌ Entity-screening fel:', err);
+            this.showNotification(`Screening misslyckades: ${err.message}`, 'error');
+        } finally {
+            if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+        }
+    }
+
+    _showEntityResultModal(namn, orgnr, data) {
+        const hits = data.total_hits || 0;
+        const records = data.found_records || [];
+
+        const statusColor = hits === 0 ? '#16a34a' : '#dc2626';
+        const statusIcon  = hits === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
+        const statusText  = hits === 0 ? 'Inga träffar — företaget finns ej på sanktions-/PEP-listor i snabbkontrollen' : `${hits} träff(ar) hittades`;
+
+        const recordsHtml = records.slice(0, 5).map(r => `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;flex-wrap:wrap;">
+                    <span style="font-weight:600;">${this._esc(r.name || '')}</span>
+                    <span style="font-size:0.72rem;padding:0.15rem 0.5rem;border-radius:20px;font-weight:700;
+                        background:${r.source_type === 'SANCTION' ? '#fee2e2' : r.source_type === 'PEP' ? '#fef3c7' : '#f1f5f9'};
+                        color:${r.source_type === 'SANCTION' ? '#991b1b' : r.source_type === 'PEP' ? '#92400e' : '#475569'};">
+                        ${r.source_type || ''}
+                    </span>
+                </div>
+                ${r.jurisdiction?.length ? `<div style="font-size:0.78rem;color:#64748b;">${this._esc(r.jurisdiction[0])}</div>` : ''}
+                ${r.sanction_details?.length ? `<div style="font-size:0.78rem;color:#64748b;">${this._esc(r.sanction_details[0])}</div>` : ''}
+            </div>`).join('');
+
+        const modalHtml = `
+            <div id="entity-result-modal" style="
+                position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;
+                display:flex;align-items:center;justify-content:center;padding:1rem;">
+                <div style="background:#fff;border-radius:12px;max-width:640px;width:100%;
+                    max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="padding:1.5rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+                        <div>
+                            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Sanktionsscreening (företag)</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-top:0.2rem;">${this._esc(namn || '')}</div>
+                            ${orgnr ? `<div style="font-size:0.85rem;color:#64748b;margin-top:0.15rem;">${this._esc(orgnr)}</div>` : ''}
+                        </div>
+                        <button onclick="document.getElementById('entity-result-modal').remove()"
+                            style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.2rem;padding:0.25rem;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div style="padding:1.5rem;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;border-radius:8px;margin-bottom:1.25rem;
+                            background:${hits === 0 ? '#f0fdf4' : '#fef2f2'};border:1px solid ${hits === 0 ? '#bbf7d0' : '#fecaca'};">
+                            <i class="fas ${statusIcon}" style="color:${statusColor};font-size:1.3rem;"></i>
+                            <span style="font-weight:600;color:${statusColor};">${statusText}</span>
+                        </div>
+                        ${hits > 0 ? `<div style="margin-bottom:1rem;">${recordsHtml}</div>` : ''}
+                        <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:1rem;">
+                            Sökning utförd: ${new Date().toLocaleString('sv-SE')}
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                            ${data.pdf_base64 ? `
+                            <button onclick="customerCardManager._downloadBase64Pdf('${data.pdf_base64}', '${data.filnamn}')"
+                                style="background:#007fa3;color:#fff;border:none;border-radius:6px;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                                <i class="fas fa-download"></i> Ladda ner PDF-rapport
+                            </button>` : ''}
+                            <button onclick="document.getElementById('entity-result-modal').remove()"
+                                style="background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">
+                                Stäng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        const existing = document.getElementById('entity-result-modal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
 
     _showPepResultModal(namn, data, idx) {

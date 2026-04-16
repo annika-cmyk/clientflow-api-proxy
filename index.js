@@ -810,19 +810,48 @@ Stil:
 - Svara kort och tydligt. Använd gärna punktlistor.
 - Referera till användarens fråga och den information som faktiskt finns i konversationen.`;
 
+    const sanitizeChatText = (t, maxLen = 4000) => {
+      const s = (t == null) ? '' : String(t);
+      // Ta bort kontrolltecken (behåll radbrytningar)
+      const cleaned = s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
+      return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + '…' : cleaned;
+    };
+    const looksGarbled = (t) => {
+      const s = String(t || '');
+      if (!s) return true;
+      // Mycket "replacement char" eller ovanliga tecken => sannolikt trasigt
+      const badCharCount = (s.match(/\uFFFD/g) || []).length;
+      if (badCharCount >= 3) return true;
+      // Om andelen icke-vanliga tecken är hög (här: inte bokstav/siffra/space/punktuation/vanliga svenska)
+      const ok = s.match(/[A-Za-zÅÄÖåäö0-9\s.,;:!?()\-\u2013\u2014"'\/\n]/g);
+      const okCount = ok ? ok.length : 0;
+      const ratio = okCount / Math.max(1, s.length);
+      if (s.length > 200 && ratio < 0.75) return true;
+      // Extremt långa "ord" utan mellanslag
+      if (/[^\s]{80,}/.test(s)) return true;
+      return false;
+    };
+
     let transcript = systemContent + '\n\n--- KONVERSATION ---\n';
-    for (const m of history.slice(-20)) {
-      const label = m.role === 'assistant' ? 'Annika' : 'Användare';
-      transcript += `${label}: ${m.content}\n\n`;
+    for (const m of (Array.isArray(history) ? history.slice(-20) : [])) {
+      const role = (m && m.role) ? String(m.role) : 'user';
+      const label = role === 'assistant' ? 'Assistent' : 'Användare';
+      transcript += `${label}: ${sanitizeChatText(m && m.content, 2000)}\n\n`;
     }
-    transcript += `Användare: ${message.trim()}`;
+    transcript += `Användare: ${sanitizeChatText(message, 2000)}`;
 
     const reply = await runOpenAIAssistantRun(openaiKey, transcript, {
       maxWaitMs: 120000,
       vectorStoreId: process.env.OPENAI_CHAT_VECTOR_STORE_ID || null,
       debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
     });
-    res.json({ reply: reply || 'Kunde inte generera svar.' });
+    const safeReply = sanitizeChatText(reply || '', 12000);
+    if (!safeReply || looksGarbled(safeReply)) {
+      return res.status(502).json({
+        error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.'
+      });
+    }
+    res.json({ reply: safeReply });
   } catch (error) {
     console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
     res.status(500).json({ error: 'Chatten svarade inte: ' + error.message });
@@ -10407,6 +10436,208 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
         }
         res.status(status && status >= 400 && status < 500 ? status : 500).json({
             error: data?.error_message || data?.error || error.message || 'Okänt fel vid PEP-screening'
+        });
+    }
+});
+
+// POST /api/entity-screening/:kundId
+// Body: { namn, orgnr } — screena ett företag/enhet och spara PDF till dokumentationsfliken
+app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) => {
+    const { kundId } = req.params;
+    const { namn, orgnr } = req.body || {};
+
+    if (!namn) return res.status(400).json({ error: 'namn krävs' });
+
+    const dilisenseKey = process.env.DILISENSE_API_KEY;
+    if (!dilisenseKey || dilisenseKey === 'din_dilisense_api_nyckel') {
+        return res.status(500).json({ error: 'DILISENSE_API_KEY är inte konfigurerad i .env' });
+    }
+
+    try {
+        const normalizePdfBase64 = (b64) => {
+            const s = String(b64 || '').trim();
+            if (!s) return '';
+            const m = s.match(/^data:application\/pdf;base64,(.+)$/i);
+            return (m ? m[1] : s).replace(/\s+/g, '');
+        };
+        const safeName = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const org = String(orgnr || '').trim();
+        const orgDigits = org.replace(/\D/g, '');
+
+        // 1) PDF-rapport (base64) för enhet (kräver names)
+        const reportParams = new URLSearchParams({ names: namn });
+        // fuzzy_search stöds enligt docs (exempel). Vi använder 1 som default.
+        reportParams.append('fuzzy_search', '1');
+        const reportUrl = `https://api.dilisense.com/v1/generateEntityReport?${reportParams.toString()}`;
+        console.log(`🔍 Entity-screening (PDF) för: ${namn} → ${reportUrl}`);
+        const reportRes = await axios.get(reportUrl, {
+            headers: { 'x-api-key': dilisenseKey },
+            responseType: 'text'
+        });
+        const rawPdfBase64 = reportRes.data;
+        let pdfBase64 = normalizePdfBase64(rawPdfBase64);
+        if (!pdfBase64) throw new Error('Inget PDF-svar från Dilisense (entity)');
+
+        // 2) Snabb JSON-koll (för UI): använd orgnr om möjligt, annars namn
+        const checkParams = new URLSearchParams();
+        if (orgDigits) checkParams.append('search_all', orgDigits);
+        else checkParams.append('names', namn);
+        checkParams.append('fuzzy_search', '1');
+        const checkUrl = `https://api.dilisense.com/v1/checkEntity?${checkParams.toString()}`;
+        const checkRes = await axios.get(checkUrl, {
+            headers: { 'x-api-key': dilisenseKey }
+        });
+        const checkData = checkRes.data || {};
+        const totalHits = Number(checkData.total_hits || 0) || 0;
+
+        // 3) Bygg sammanfattning (sida 1) + merge med Dilisense-PDF (sida 2+)
+        const buildEntitySummaryPdf = async ({ namn, orgnr, totalHits, foundRecords, timestampIso }) => {
+            const doc = await PDFDocument.create();
+            const font = await doc.embedFont(StandardFonts.Helvetica);
+            const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+            const pageSize = [595.28, 841.89]; // A4
+
+            const fmt = (s) => (s ? new Date(s).toLocaleString('sv-SE') : new Date().toLocaleString('sv-SE'));
+            const safe = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
+            const wrapLines = (text, maxChars) => {
+                const t = safe(text);
+                if (!t) return [];
+                const words = t.split(' ');
+                const lines = [];
+                let cur = '';
+                for (const w of words) {
+                    const next = cur ? (cur + ' ' + w) : w;
+                    if (next.length <= maxChars) cur = next;
+                    else {
+                        if (cur) lines.push(cur);
+                        cur = w;
+                    }
+                }
+                if (cur) lines.push(cur);
+                return lines;
+            };
+
+            let page = doc.addPage(pageSize);
+            let y = 800;
+            const x = 48;
+            const line = (txt, opts = {}) => {
+                page.drawText(String(txt || ''), { x, y, size: opts.size || 11, font: opts.bold ? fontBold : font, ...opts.draw });
+                y -= (opts.gap || 16);
+            };
+            const ensureSpace = (need = 40) => {
+                if (y > need) return;
+                page = doc.addPage(pageSize);
+                y = 800;
+            };
+
+            line('ClientFlow – Sanktionsscreening företag/enhet (sammanfattning)', { size: 16, bold: true, gap: 22 });
+            line(`Företag: ${safe(namn)}`, { size: 12, bold: true, gap: 18 });
+            if (orgnr) line(`Orgnr: ${safe(orgnr)}`, { size: 10, gap: 16 });
+            line(`Sökning utförd: ${fmt(timestampIso)}`, { size: 10, gap: 16 });
+            line(`Antal träffar: ${Number(totalHits) || 0}`, { size: 12, bold: true, gap: 18 });
+
+            const recs = Array.isArray(foundRecords) ? foundRecords : [];
+            if (!recs.length) {
+                line('Inga träffar hittades i snabbkontrollen.', { size: 11, gap: 18 });
+                line('Bilaga: Dilisense-rapport (PDF) följer på nästa sida.', { size: 10, gap: 14 });
+                return await doc.save();
+            }
+
+            line('Träffar (från snabbkontroll):', { size: 12, bold: true, gap: 18 });
+            const maxItems = 25;
+            const items = recs.slice(0, maxItems);
+            for (let i = 0; i < items.length; i++) {
+                const r = items[i] || {};
+                ensureSpace(100);
+                const nm = safe(r.name);
+                const src = safe(r.source_type);
+                const juris = Array.isArray(r.jurisdiction) && r.jurisdiction.length ? safe(r.jurisdiction[0]) : '';
+                const addr = Array.isArray(r.address) && r.address.length ? safe(r.address.slice(0, 3).join(', ')) : '';
+                const sanc = Array.isArray(r.sanction_details) && r.sanction_details.length ? safe(r.sanction_details[0]) : '';
+
+                line(`${i + 1}. ${nm || '—'}${src ? ` (${src})` : ''}`, { size: 11, bold: true, gap: 14 });
+                if (juris) for (const l of wrapLines(`Jurisdiktion: ${juris}`, 92).slice(0, 2)) { ensureSpace(40); line(l, { size: 10, gap: 13 }); }
+                if (addr) for (const l of wrapLines(`Adress: ${addr}`, 92).slice(0, 2)) { ensureSpace(40); line(l, { size: 10, gap: 13 }); }
+                if (sanc) for (const l of wrapLines(`Sanktionsdetaljer: ${sanc}`, 92).slice(0, 4)) { ensureSpace(40); line(l, { size: 10, gap: 13 }); }
+                y -= 6;
+            }
+
+            if (recs.length > maxItems) {
+                ensureSpace(60);
+                line(`(Visar ${maxItems} av ${recs.length} träffar. Se bilagan för mer information.)`, { size: 10, gap: 14 });
+            } else {
+                ensureSpace(60);
+                line('Bilaga: Dilisense-rapport (PDF) följer på nästa sida.', { size: 10, gap: 14 });
+            }
+
+            return await doc.save();
+        };
+
+        try {
+            const summaryBytes = await buildEntitySummaryPdf({
+                namn,
+                orgnr: safeName(orgnr),
+                totalHits,
+                foundRecords: checkData.found_records || [],
+                timestampIso: new Date().toISOString()
+            });
+
+            const reportBytes = Buffer.from(pdfBase64, 'base64');
+            const reportDoc = await PDFDocument.load(reportBytes);
+            const summaryDoc = await PDFDocument.load(summaryBytes);
+
+            const merged = await PDFDocument.create();
+            const sumPages = await merged.copyPages(summaryDoc, summaryDoc.getPageIndices());
+            sumPages.forEach(p => merged.addPage(p));
+            const repPages = await merged.copyPages(reportDoc, reportDoc.getPageIndices());
+            repPages.forEach(p => merged.addPage(p));
+            const mergedBytes = await merged.save();
+            pdfBase64 = Buffer.from(mergedBytes).toString('base64');
+        } catch (mergeErr) {
+            console.warn('⚠️ Kunde inte bygga/merga Entity-sammanfattning:', mergeErr.message);
+        }
+
+        const token = process.env.AIRTABLE_ACCESS_TOKEN;
+        const baseId = process.env.AIRTABLE_BASE_ID;
+        const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+        const datumStr = new Date().toISOString().split('T')[0];
+        const filnamn = `Entity-screening_${String(namn).replace(/\s+/g, '_')}_${datumStr}.pdf`;
+
+        // Spara PDF till KUNDDATA (Dokumentation/Attachments) om möjligt
+        let savedToDocs = false;
+        if (token && kundId) {
+            try {
+                const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+                savedToDocs = await uploadAttachmentToAirtable(token, baseId, kundId, pdfBuffer, filnamn, 'application/pdf', KUNDDATA_TABLE);
+            } catch (saveErr) {
+                console.warn('Kunde inte spara entity-rapport till Airtable:', saveErr.message);
+            }
+        }
+
+        console.log(`✅ Entity-screening klar: ${totalHits} träffar för ${namn}`);
+
+        return res.json({
+            namn,
+            orgnr: orgnr || '',
+            total_hits: totalHits,
+            found_records: checkData.found_records || [],
+            pdf_base64: pdfBase64,
+            filnamn,
+            savedToDocs,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+        console.error('❌ Fel vid Entity-screening:', status, data || error.message);
+        if (status === 429) {
+            return res.status(429).json({
+                error: 'Dilisense API har nått sin gräns för antal anrop. Försök igen om några minuter.'
+            });
+        }
+        return res.status(status && status >= 400 && status < 500 ? status : 500).json({
+            error: data?.error_message || data?.error || error.message || 'Okänt fel vid entity-screening'
         });
     }
 });
