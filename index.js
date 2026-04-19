@@ -11178,26 +11178,48 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
 
     const arr = (v) => Array.isArray(v) ? v.join(', ') : (v || '–');
 
-    // Hämta kundens aktiva tjänster parallellt med länkade riskposter
+    // Hämta kundens valda tjänster (samma tabell som byråns tjänstanalys: "Risker kopplad till tjänster") + länkade riskposter
     let tjansterText = '–';
+    /** Byråns sparade analys per tjänst — endast poster som ligger i "Kundens utvalda tjänster" */
+    let byraValdaTjansterDetaljText = '  (Inga tjänster är valda för kunden — inget byråunderlag per tjänst att visa.)';
     let lankadeRiskerText = '';
 
+    const tjansterTableEnc = encodeURIComponent(RISK_ASSESSMENT_TABLE);
+
     await Promise.all([
-      // Tjänster
+      // Tjänster + byråns fält (analys, risknivå, åtgärder) endast för valda tjänst-ID:n
       (async () => {
         try {
           const tjansterIds = f['Kundens utvalda tjänster'] || [];
           if (Array.isArray(tjansterIds) && tjansterIds.length > 0) {
-            const tjNamn = await Promise.all(tjansterIds.map(async (id) => {
+            const expanded = await Promise.all(tjansterIds.map(async (id) => {
               try {
                 const r = await axios.get(
-                  `https://api.airtable.com/v0/${baseId}/Olika%20valbara%20uppdrag/${id}`,
+                  `https://api.airtable.com/v0/${baseId}/${tjansterTableEnc}/${id}`,
                   { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
                 );
-                return r.data.fields?.['Task Name'] || id;
-              } catch { return id; }
+                const tf = r.data.fields || {};
+                const namn = (tf['Task Name'] || '').trim() || id;
+                return { namn, tf };
+              } catch {
+                return null;
+              }
             }));
-            tjansterText = tjNamn.join(', ');
+            const ok = expanded.filter(Boolean);
+            if (ok.length > 0) {
+              tjansterText = ok.map((x) => x.namn).join(', ');
+              byraValdaTjansterDetaljText = ok.map(({ namn, tf }) => {
+                const typ = (tf['TJÄNSTTYP'] || '').trim();
+                const brf = (tf['Beskrivning av riskfaktor'] || '').trim();
+                const risk = (tf['Riskbedömning'] || '').trim();
+                const atg = (tf['Åtgjärd'] || '').trim();
+                let line = `  • ${namn}${typ ? ` (${typ})` : ''}`;
+                if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
+                if (risk) line += `\n    Byråns riskbedömning för tjänsten: ${risk}`;
+                if (atg) line += `\n    Byråns åtgärder kopplade till tjänsten: ${atg}`;
+                return line;
+              }).join('\n\n');
+            }
           }
         } catch (e) { /* ignorera */ }
       })(),
@@ -11286,6 +11308,10 @@ REGLER FÖR TJÄNSTER (KRITISKT):
 - Lista ALDRIG tjänster (t.ex. ROT/RUT, löpande bokföring, bokslut) bara för att de är vanliga i branschen eller sannolika — det är fel om de inte finns i listan eller i nämnda beskrivningar.
 - Om tjänstlistan säger att inga tjänster är kopplade och beskrivningarna inte nämner tjänster: skriv att uppdragets omfattning inte är tydligt specificerat i underlaget — gissa inte.
 - Fältet "Syfte med affärsförbindelsen" är fritext; det får inte ersätta tjänstlistan om de säger olika — prioritera tjänstlistan + beskrivningarna.
+
+BYRÅNS ANALYS AV VALDA TJÄNSTER (endast tjänster som finns i TJÄNSTLISTA ovan — samma poster som "Kundens utvalda tjänster"):
+Detta är byråns förhandsbedömning per tjänst (beskrivning av riskfaktor, riskbedömning, åtgärder) från ClientFlow. Väg in det när du bedömer denna kunds risk; generalisera inte från tjänster som inte är valda för kunden.
+${byraValdaTjansterDetaljText}
 
 KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
 - Organisationsform: ${f['Bolagsform'] || '–'}

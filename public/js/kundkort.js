@@ -1522,23 +1522,27 @@ class CustomerCardManager {
                 .filter(Boolean);
 
             const parsed = chunks.map((row) => {
-                // "12345 - text" eller "12345 text"
-                const m = row.match(/^(\d{4,6})\s*(?:-|\s)\s*(.+)$/);
-                if (m) return { kod: m[1], label: m[2] };
-                // fallback: bara kod
+                // "12345 - text", "12345 – text" eller "12345  text" (siffror först)
+                const m = row.match(/^(\d{4,6})\s*(?:[-–]\s*|\s{1,})(.+)$/);
+                if (m) return { kod: m[1], label: (m[2] || '').trim() };
                 const m2 = row.match(/^(\d{4,6})$/);
                 if (m2) return { kod: m2[1], label: '' };
-                return { kod: row, label: '' };
+                // Avklippt beskrivning efter komma-split m.m. — aldrig som "kod", bara löptext
+                return { kod: null, label: row };
             });
 
             if (parsed.length > 0) {
                 sniHTML = parsed.map(({ kod, label }) => {
-                    const k = this._esc(String(kod || ''));
-                    const l = this._esc(String(label || ''));
-                    return l
-                        ? `<span class="sni-code-badge">${k}</span><span class="sni-code-label">${l}</span>`
-                        : `<span class="sni-code-badge">${k}</span>`;
-                }).join('');
+                    const lRaw = String(label || '').trim();
+                    const l = lRaw ? this._esc(lRaw) : '';
+                    if (kod != null && /^\d{4,6}$/.test(String(kod).trim())) {
+                        const k = this._esc(String(kod).trim());
+                        return l
+                            ? `<span class="sni-code-badge">${k}</span><span class="sni-code-label">${l}</span>`
+                            : `<span class="sni-code-badge">${k}</span>`;
+                    }
+                    return l ? `<span class="sni-code-label">${l}</span>` : '';
+                }).filter(Boolean).join('');
             }
         }
 
@@ -1561,19 +1565,20 @@ class CustomerCardManager {
             }
         } catch(e) { kontaktPersoner = []; }
 
-        // Om enskild firma: skapa automatiskt kontaktperson med företagets namn som Ägare EF och Verklig huvudman
+        // Om enskild firma: standardrad i Roller — företagsnamn, roll Ägare EF, personnr = orgnr, e-post som i kontaktuppgifter (går att ändra)
         const arEnskildFirma = bolagsform === 'Enskild firma';
         const harAgareEF = kontaktPersoner.some(p => (p.roller || []).includes('Ägare EF') || p.roll === 'Ägare EF');
         if (arEnskildFirma && !harAgareEF && namn) {
+            const kundEpost = fields['e-post'] || fields['Email'] || fields['E-post'] || '';
             const agare = {
                 namn: namn.trim(),
-                roller: ['Ägare EF', 'Verklig huvudman'],
-                epost: fields['e-post'] || fields['Email'] || fields['E-post'] || '',
+                roller: ['Ägare EF'],
+                epost: kundEpost,
                 personnr: orgnr || ''
             };
             kontaktPersoner = [agare, ...kontaktPersoner];
             this._kontaktPersoner = kontaktPersoner;
-            this._saveKontaktPersoner({ 'Verklig huvudman': namn.trim() }); // Spara kontaktperson + Verklig huvudman
+            this._saveKontaktPersoner({ 'Verklig huvudman': namn.trim() });
         }
 
         // Om fysisk person (ej EF) och ingen Ägare EF finns — skapa en automatiskt
@@ -1604,6 +1609,15 @@ class CustomerCardManager {
         const bokforingsprogramRaw = fields['Bokforingsprogram'] || fields['Bokföringsprogram'] || '';
         const bokforingsprogram = bokforingsprogramRaw === 'Spirius' ? 'Spiris' : bokforingsprogramRaw;
         const bank = fields['Bank'] || '';
+
+        const curOms = (fields['Omsättning'] || '').toString().trim();
+        let omsOpts = '<option value="">Välj omsättningsintervall...</option>';
+        for (const v of KUND_OMSATTNING_VAL) {
+            omsOpts += `<option value="${this._esc(v)}" ${curOms === v ? 'selected' : ''}>${this._esc(v)}</option>`;
+        }
+        if (curOms && !KUND_OMSATTNING_VAL.includes(curOms)) {
+            omsOpts += `<option value="${this._esc(curOms)}" selected>${this._esc(curOms)} (befintligt värde)</option>`;
+        }
 
         const mis = '<span class="missing-data">Ej angiven</span>';
 
@@ -1742,6 +1756,10 @@ class CustomerCardManager {
                             <span class="kunduppgifter-label"><i class="fas fa-university"></i> Bank</span>
                             <span class="kunduppgifter-value" id="redov-bank-view">${bank || mis}</span>
                         </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-chart-line"></i> Omsättning</span>
+                            <span class="kunduppgifter-value" id="redov-omsattning-view">${curOms || mis}</span>
+                        </div>
                     </div>
                     <div id="redovisning-edit" style="display:none;">
                         <div class="collapsible-edit-grid">
@@ -1801,6 +1819,10 @@ class CustomerCardManager {
                                     <option value="Marginalen Bank" ${bank === 'Marginalen Bank' ? 'selected' : ''}>Marginalen Bank</option>
                                     <option value="Annan" ${bank === 'Annan' ? 'selected' : ''}>Annan</option>
                                 </select>
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label>Omsättning</label>
+                                <select id="redov-omsattning-input" class="kunduppgifter-input">${omsOpts}</select>
                             </div>
                         </div>
                         <div class="kunduppgifter-actions">
@@ -1933,7 +1955,7 @@ class CustomerCardManager {
 
         const rowsHtml = diffs.length ? diffs.map((d) => `
             <label class="uppdrag-riskbox-toggle" style="align-items:flex-start; font-weight:600;">
-                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}" checked>
+                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}">
                 <div style="display:grid; gap:0.15rem;">
                     <div style="color:#0f172a;">${this._esc(d.key)}</div>
                     <div class="uppdrag-muted">Nu: ${this._esc(d.prev || '—')}</div>
@@ -2060,6 +2082,11 @@ class CustomerCardManager {
             if (this.customerData?.fields) {
                 this.customerData.fields['e-post'] = email;
                 this.customerData.fields['Telefonnr'] = telefon;
+            }
+
+            if (this._syncEfAgareEpostWithKontakt(email)) {
+                await this._saveKontaktPersoner({}, { skipSuccessNotification: true });
+                this._refreshRollerList();
             }
 
             this.toggleKunduppgifterEdit();
@@ -2229,41 +2256,6 @@ class CustomerCardManager {
         }
     }
 
-    async saveOmsattning() {
-        const customerId = this.customerId;
-        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
-        const sel = document.getElementById('kyc-omsattning-select');
-        if (!sel) return;
-        const val = (sel.value || '').trim();
-        if (!val) {
-            this.showNotification('Välj ett omsättningsintervall.', 'error');
-            return;
-        }
-        const btn = sel.closest('.kyc-omsattning-edit')?.querySelector('button');
-        const orig = btn?.innerHTML;
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
-        try {
-            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
-                method: 'PATCH',
-                ...getAuthOptsKundkort(),
-                body: JSON.stringify({ fields: { 'Omsättning': val } })
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || `HTTP ${response.status}`);
-            }
-            if (this.customerData?.fields) this.customerData.fields['Omsättning'] = val;
-            this.renderOvrigKYCBase();
-            this.loadServices();
-            this.showNotification('Omsättning sparad.', 'success');
-        } catch (e) {
-            this.showNotification('Kunde inte spara omsättning: ' + (e.message || 'fel'), 'error');
-        } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = orig || '<i class="fas fa-save"></i> Spara'; }
-        }
-    }
-
     async saveRedovisning() {
         const customerId = this.customerId;
         if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
@@ -2273,6 +2265,7 @@ class CustomerCardManager {
         const rakenskapsår = document.getElementById('redov-rakenskapsår-input')?.value.trim() || '';
         const bokforing = document.getElementById('redov-bokforing-input')?.value || '';
         const bank = document.getElementById('redov-bank-input')?.value || '';
+        const omsattning = document.getElementById('redov-omsattning-input')?.value?.trim() || '';
 
         const saveBtn = document.querySelector('#redovisning-edit .btn-primary');
         const orig = saveBtn?.innerHTML;
@@ -2287,6 +2280,7 @@ class CustomerCardManager {
             // Skicka "Spirius" till Airtable (befintligt val) så att inte nytt alternativ skapas – visning är "Spiris"
             if (bokforing) fields['Bokforingsprogram'] = bokforing === 'Spiris' ? 'Spirius' : bokforing;
             if (bank) fields['Bank'] = bank;
+            if (omsattning) fields['Omsättning'] = omsattning;
 
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                 method: 'PATCH',
@@ -2303,11 +2297,13 @@ class CustomerCardManager {
             const rakEl = document.getElementById('redov-rakenskapsår-view');
             const bokEl = document.getElementById('redov-bokforing-view');
             const bankEl = document.getElementById('redov-bank-view');
+            const omsEl = document.getElementById('redov-omsattning-view');
             if (metodEl) metodEl.innerHTML = metod || mis;
             if (periodEl) periodEl.innerHTML = period || mis;
             if (rakEl) rakEl.innerHTML = rakenskapsår || mis;
             if (bokEl) bokEl.innerHTML = bokforing || mis;
             if (bankEl) bankEl.innerHTML = bank || mis;
+            if (omsEl) omsEl.innerHTML = omsattning || mis;
 
             if (this.customerData?.fields) {
                 this.customerData.fields['Redovisningsmetod'] = metod;
@@ -2315,6 +2311,11 @@ class CustomerCardManager {
                 this.customerData.fields['Räkenskapsår'] = rakenskapsår;
                 this.customerData.fields['Bokforingsprogram'] = bokforing;
                 this.customerData.fields['Bank'] = bank;
+                if (omsattning) this.customerData.fields['Omsättning'] = omsattning;
+            }
+            if (omsattning) {
+                this.renderOvrigKYCBase();
+                this.loadServices();
             }
             this.toggleRedovisningEdit();
             this.showNotification('Redovisningsuppgifter sparade!', 'success');
@@ -2505,6 +2506,38 @@ class CustomerCardManager {
         }
     }
 
+    _normalizeOrgNrForMatch(s) {
+        return (s || '').toString().replace(/[\s-]/g, '');
+    }
+
+    /**
+     * Enskild firma: uppdatera Ägare EF-radens e-post så den följer kontaktuppgifter (träff på namn = företagsnamn eller personnr = orgnr).
+     * @returns {boolean} om någon rad ändrades
+     */
+    _syncEfAgareEpostWithKontakt(email) {
+        const f = this.customerData?.fields;
+        if (!f || f.Bolagsform !== 'Enskild firma' || !this._kontaktPersoner?.length) return false;
+        const firmNamn = (f.Namn || f.namn || '').trim();
+        const org = this._normalizeOrgNrForMatch(f.Orgnr || f.orgnr);
+        const em = (email || '').trim();
+        let changed = false;
+        for (const p of this._kontaktPersoner) {
+            const rolls = p.roller || [];
+            if (!rolls.includes('Ägare EF')) continue;
+            const pnr = this._normalizeOrgNrForMatch(p.personnr);
+            const pn = (p.namn || '').trim();
+            const matchOrg = !!org && pnr === org;
+            const matchNamn = !!firmNamn && pn === firmNamn;
+            if (matchOrg || matchNamn) {
+                if ((p.epost || '').trim() !== em) {
+                    p.epost = em;
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
+
     _refreshRollerList() {
         const el = document.getElementById('roles-list');
         if (el) el.innerHTML = this._renderRollerView(this._kontaktPersoner || []);
@@ -2596,7 +2629,7 @@ class CustomerCardManager {
         document.getElementById('rolle-person-modal')?.remove();
     }
 
-    async _saveKontaktPersoner(extraFields = {}) {
+    async _saveKontaktPersoner(extraFields = {}, opts = {}) {
         const custId = this.customerId || this.currentCustomerId;
         if (!custId) return;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -2616,7 +2649,7 @@ class CustomerCardManager {
                     this.customerData.fields['Kontaktpersoner'] = JSON.stringify(this._kontaktPersoner);
                     for (const [k, v] of Object.entries(extraFields)) this.customerData.fields[k] = v;
                 }
-                if (!extraFields['Verklig huvudman']) this.showNotification('Kontaktpersoner sparade', 'success');
+                if (!opts.skipSuccessNotification && !extraFields['Verklig huvudman']) this.showNotification('Kontaktpersoner sparade', 'success');
             }
         } catch(e) {
             console.error(e);
@@ -2982,15 +3015,6 @@ class CustomerCardManager {
         const uppdragCheck = f['Uppdraget kan antas'];
         const avtalsDatum = f['Avtalet gäller ifrån'] ? fmtDate(f['Avtalet gäller ifrån']) : null;
 
-        const curOms = (f['Omsättning'] || '').toString().trim();
-        let omsOpts = '<option value="">Välj omsättningsintervall...</option>';
-        for (const v of KUND_OMSATTNING_VAL) {
-            omsOpts += `<option value="${this._esc(v)}" ${curOms === v ? 'selected' : ''}>${this._esc(v)}</option>`;
-        }
-        if (curOms && !KUND_OMSATTNING_VAL.includes(curOms)) {
-            omsOpts += `<option value="${this._esc(curOms)}" selected>${this._esc(curOms)} (befintligt värde)</option>`;
-        }
-
         container.innerHTML = `
             <div class="kyc-layout">
 
@@ -3016,13 +3040,6 @@ class CustomerCardManager {
                 </div>
 
                 ${section('Kunden & verksamheten', 'fa-building', `
-                    <div class="kyc-row kyc-row--omsattning">
-                        <span class="kyc-row-label"><i class="fas fa-chart-line"></i> Omsättning</span>
-                        <div class="kyc-omsattning-edit" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
-                            <select id="kyc-omsattning-select" class="kunduppgifter-input" style="min-width:min(100%,18rem);flex:1;">${omsOpts}</select>
-                            <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.saveOmsattning()"><i class="fas fa-save"></i> Spara</button>
-                        </div>
-                    </div>
                     ${row('Frekvens', fmtList(f['Frekvens']).join(', ') || null, 'fa-sync')}
                     ${row('Omfattning (h)', fmt(f['omfattning i h']), 'fa-hourglass-half')}
                     ${row('Verklig huvudman', fmt(f['Verklig huvudman']), 'fa-user-shield')}
