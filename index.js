@@ -304,7 +304,7 @@ function getAuthHeaderForInternalRequests(req) {
 /**
  * All AI i ClientFlow ska gå via er OpenAI-assistent (samma som i Assistants/ChatGPT-byggaren).
  * Sätt OPENAI_ASSISTANT_ID=asst_... och valfritt OPENAI_VECTOR_STORE_ID=vs_... (file_search för rutter som skickar vectorStoreId).
- * Annika-chatt (/api/ai-chat) använder vector endast om OPENAI_CHAT_VECTOR_STORE_ID är satt (undviker 400 om assistent + global vector inte matchar).
+ * Annika-chatt (/api/ai-chat) går via assistenten; vector: OPENAI_CHAT_VECTOR_STORE_ID om satt, annars OPENAI_VECTOR_STORE_ID.
  */
 function formatOpenAIAssistantError(err, step) {
   const status = err.response && err.response.status;
@@ -512,6 +512,35 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     || oaMessages.find((m) => m.role === 'assistant');
   const parts = assistantMsg?.content || [];
   return parts.map((c) => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
+}
+
+/** Samma assistent-anrop med enkel backoff vid 429/temporära fel. */
+async function runOpenAIAssistantRunWithRetry(openaiKey, userContent, opts = {}, retryOpts = {}) {
+  const maxAttempts = Math.max(1, Math.min(retryOpts.maxAttempts ?? 3, 8));
+  const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await runOpenAIAssistantRun(openaiKey, userContent, opts);
+    } catch (e) {
+      lastErr = e;
+      const status = e.response?.status;
+      const em = String(e.message || '');
+      const shouldRetry =
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504 ||
+        /rate limit|429|timeout|temporar|unavailable/i.test(em);
+      if (!shouldRetry || attempt === maxAttempts) break;
+      const backoff = attempt === 1 ? 1500 : 2800;
+      // eslint-disable-next-line no-await-in-loop
+      await sleepMs(backoff);
+    }
+  }
+  throw lastErr || new Error('Okänt AI-fel');
 }
 
 // Redantera känsliga fält vid loggning – använd aldrig full req.body i loggar
@@ -801,8 +830,9 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   console.log('💬 POST /api/ai-chat anropad');
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
-  const { message, history = [] } = req.body || {};
+  const { message, history = [], threadId: threadIdBody } = req.body || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'Meddelande krävs.' });
   }
@@ -852,30 +882,45 @@ Stil:
       return false;
     };
 
-    const apiBase = 'https://api.openai.com/v1';
-    const headers = {
-      Authorization: `Bearer ${openaiKey}`,
-      'Content-Type': 'application/json'
-    };
-    const model = (process.env.OPENAI_CHAT_MODEL || '').toString().trim() || 'gpt-4o-mini';
-
     const safeMsg = sanitizeChatText(message, 2000);
+    const threadIdIn = (threadIdBody && String(threadIdBody).trim()) ? String(threadIdBody).trim() : '';
     const hist = Array.isArray(history) ? history.slice(-10) : [];
-    const messages = [
-      { role: 'system', content: systemContent },
-      ...hist
+    const chatVector =
+      (process.env.OPENAI_CHAT_VECTOR_STORE_ID || '').toString().trim()
+      || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
+      || null;
+
+    let userContent;
+    if (threadIdIn) {
+      userContent = safeMsg;
+    } else {
+      const histLines = hist
         .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map(m => ({ role: m.role, content: sanitizeChatText(m.content, 1200) })),
-      { role: 'user', content: safeMsg }
-    ];
+        .map(m => `${m.role === 'user' ? 'Användare' : 'Assistent'}: ${sanitizeChatText(m.content, 1200)}`);
+      userContent = [
+        '[ClientFlow – roll och kontext]',
+        systemContent,
+        '',
+        ...(histLines.length ? ['Tidigare i samtalet:', ...histLines, ''] : []),
+        'Nuvarande fråga:',
+        safeMsg
+      ].join('\n');
+    }
 
-    const ccRes = await axios.post(`${apiBase}/chat/completions`, {
-      model,
-      messages,
-      temperature: 0.2
-    }, { headers, timeout: 30000 });
-
-    const reply = ccRes.data?.choices?.[0]?.message?.content || '';
+    const threadIdOut = { value: null };
+    const reply = await runOpenAIAssistantRunWithRetry(
+      openaiKey,
+      userContent,
+      {
+        threadId: threadIdIn || undefined,
+        threadIdOut,
+        vectorStoreId: chatVector || undefined,
+        maxWaitMs: 120000,
+        pollMs: 1500,
+        debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
+      },
+      { maxAttempts: 3 }
+    );
 
     const safeReply = sanitizeChatText(reply || '', 12000);
     if (!safeReply || looksGarbled(safeReply)) {
@@ -883,7 +928,8 @@ Stil:
         error: 'Chatten fick ett trasigt svar. Försök igen. Om det återkommer: korta ner frågan eller ladda om sidan.'
       });
     }
-    res.json({ reply: safeReply });
+    const outThreadId = threadIdOut.value || threadIdIn || null;
+    res.json({ reply: safeReply, threadId: outThreadId });
   } catch (error) {
     console.error('❌ AI-chat fel:', error.message, error.response && error.response.data);
     const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
@@ -11121,6 +11167,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
   const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const kundRes = await axios.get(
@@ -11184,11 +11231,26 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
       })()
     ]);
 
-    // Syftet med affärsförbindelsen: använd registrerat syfte om finns, annars tjänsterna
+    // Syfte (fritext) — tjänster hanteras separat i kanonisk lista nedan
     const syfteRaw = arr(f['Syfte med affärsförbindelsen']);
-    const syfteMedTjanster = syfteRaw !== '–'
-      ? `${syfteRaw} (Tjänster byrån utför: ${tjansterText})`
-      : `Byråns tjänster till kunden (= syftet med affärsförbindelsen): ${tjansterText}`;
+    const tjansterTrim = String(tjansterText || '').trim();
+    const tjansterListaCanonical =
+      !tjansterTrim || tjansterTrim === '–'
+        ? 'Inga tjänster är kopplade till kunden i ClientFlow (fältet "Kundens utvalda tjänster" är tomt).'
+        : tjansterTrim;
+
+    // Anonymiserat underlag till AI: inget kundnamn/orgnr; beskrivningsfält i sin helhet (inkl. namn användaren skrivit där)
+    const rawBesk = f['Beskrivning av kunden'];
+    const beskrivningKundFull =
+      rawBesk == null || String(rawBesk).trim() === '' ? '–' : String(rawBesk);
+    const rawExtra = f['Ytterligare beskrivning av kunden och verksamheten'];
+    const beskrivningExtraFull =
+      rawExtra == null || String(rawExtra).trim() === '' ? '–' : String(rawExtra);
+    const verkligHuvudmanAnon = (() => {
+      const v = f['Verklig huvudman'];
+      if (v == null || String(v).trim() === '' || String(v).trim() === '–') return '–';
+      return 'Uppgift finns i ClientFlow (namn/identifierare skickas inte till AI)';
+    })();
 
     const pepStatus = arr(f['PEP']);
     const pepTraffar = f['Antal träffar PEP och sanktionslistor'] ?? '–';
@@ -11208,24 +11270,31 @@ BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Ta hänsy
 - Sparade åtgärder: ${sparadeAtgarder || '–'}
 ` : ''}
 
-VIKTIGT: Syftet med affärsförbindelsen definieras av vilka tjänster byrån utför åt kunden. Dessa tjänster ska framgå tydligt i riskbedömningen.
+VIKTIGT: Syftet med affärsförbindelsen ska stämma med underlaget nedan. Nämn endast tjänster enligt reglerna under "TJÄNSTLISTA".
 Skriv på enkel, korrekt svenska. Undvik “intern logik/UI-termer” som kryss/bockat/markerat/flik/formulär och hänvisa aldrig till hur informationen valts i systemet — beskriv istället fakta.
 Använd inte fraser som “Detta är utan PEP-status” eller “som kryss särskilt högrisk”. Skriv hellre t.ex. “Inga PEP-indikationer har noterats” och “Tjänsterna omfattar … vilket bedöms riskhöjande”.
 
-KUNDUPPGIFTER:
-- Företagsnamn: ${f['Name'] || f['Namn'] || '–'}
+TJÄNSTLISTA — ENDA AUKTORITATIVA KÄLLAN FÖR VILKA TJÄNSTER BYRÅN UTFÖR ÅT DENNA KUND I CLIENTFLOW:
+${tjansterListaCanonical}
+REGLER FÖR TJÄNSTER (KRITISKT):
+- Du får bara nämna konkreta tjänster som (1) står i listan ovan ordagrant, ELLER (2) uttryckligen framgår i fältet "Byråns beskrivning av kunden" eller "Ytterligare beskrivning av kunden och verksamheten" nedan (om användaren skrivit tjänsterna där).
+- Lista ALDRIG tjänster (t.ex. ROT/RUT, löpande bokföring, bokslut) bara för att de är vanliga i branschen eller sannolika — det är fel om de inte finns i listan eller i nämnda beskrivningar.
+- Om tjänstlistan säger att inga tjänster är kopplade och beskrivningarna inte nämner tjänster: skriv att uppdragets omfattning inte är tydligt specificerat i underlaget — gissa inte.
+- Fältet "Syfte med affärsförbindelsen" är fritext; det får inte ersätta tjänstlistan om de säger olika — prioritera tjänstlistan + beskrivningarna.
+
+KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
 - Organisationsform: ${f['Bolagsform'] || '–'}
 - Bransch/SNI: ${f['SNI-bransch'] || f['Bransch'] || '–'}
 - Omsättning: ${f['Omsättning'] || '–'}
-- Verklig huvudman: ${f['Verklig huvudman'] || '–'}
+- Verklig huvudman: ${verkligHuvudmanAnon}
 - Skatterättslig hemvist: ${arr(f['Skatterättslig hemvist'])}
 - Betalningar: ${arr(f['Betalningar'])}
-- Syfte med affärsförbindelsen / Tjänster: ${syfteMedTjanster}
+- Syfte med affärsförbindelsen (fritext i ClientFlow): ${syfteRaw}
 - Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}
 - Kapitalets ursprung: ${arr(f['Vilket ursprung har företagets kapital?'])}
 - Affärsmodell: ${f['Affärsmodell'] || '–'}
-- Byråns beskrivning av kunden: ${f['Beskrivning av kunden'] || '–'}
-- Ytterligare beskrivning av kunden och verksamheten: ${f['Ytterligare beskrivning av kunden och verksamheten'] || '–'}
+- Byråns beskrivning av kunden (hela texten, kan innehålla namn om byrån skrivit det): ${beskrivningKundFull}
+- Ytterligare beskrivning av kunden och verksamheten (hela texten): ${beskrivningExtraFull}
 
 PEP & SANKTIONER (från fliken Riskbedömning — vad som är bockat/registrerat i Airtable):
 - PEP-status: ${pepStatus}
@@ -11268,7 +11337,7 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
    SÄRSKILT vid "förstärkt kundkännedom (EDD)": Beskriv vad det innebär i praktiken för detta case, t.ex. bekräfta verklig huvudman, inhämta/bedöm källa till medel, affärsrational, förväntade betalningar (länder/belopp/frekvens), och dokumentera beslut/underlag.
 
-3. RISKBEDÖMNINGSTEXT: 2-4 meningar. Motivera risknivån konkret utifrån kundens faktiska profil. Nämn vilka tjänster byrån utför.
+3. RISKBEDÖMNINGSTEXT: 2-4 meningar. Motivera risknivån konkret utifrån kundens faktiska profil. Nämn endast de tjänster byrån utför enligt reglerna under TJÄNSTLISTA ovan.
 
 Svara EXAKT i detta JSON-format (inget annat):
 {
@@ -11340,25 +11409,22 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
-    const apiBase = 'https://api.openai.com/v1';
-    const headers = {
-      Authorization: `Bearer ${openaiKey}`,
-      'Content-Type': 'application/json'
-    };
-    const model = (process.env.OPENAI_RISK_MODEL || '').toString().trim() || 'gpt-4o-mini';
-    const callAi = async (userPrompt, timeoutMs = 45000) => {
-      const r = await axios.post(`${apiBase}/chat/completions`, {
-        model,
-        messages: [
-          { role: 'system', content: 'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Svara endast med det format som efterfrågas.' },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.1
-      }, { headers, timeout: timeoutMs });
-      return r.data?.choices?.[0]?.message?.content || '';
-    };
+    // Via samma OpenAI-assistent som övriga ClientFlow (OPENAI_ASSISTANT_ID). Run-instruktioner säkerställer JSON-svar.
+    const assistantInstructions =
+      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
 
-    const aiText = await callAi(prompt, 45000);
+    const aiText = await runOpenAIAssistantRunWithRetry(
+      openaiKey,
+      prompt,
+      {
+        instructions: assistantInstructions,
+        vectorStoreId: null,
+        maxWaitMs: 180000,
+        pollMs: 1500,
+        debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
+      },
+      { maxAttempts: 3 }
+    );
     let result = parseAssistantJson(aiText);
 
     // Om modellen svarar “konstigt”, gör en enkel omskrivningsrunda med tydliga krav.
@@ -11373,7 +11439,18 @@ ${prompt}
 
 NUVARANDE AI-SVAR (att förbättra):
 ${aiText}`;
-      const rewriteText = await callAi(rewritePrompt, 45000);
+      const rewriteText = await runOpenAIAssistantRunWithRetry(
+        openaiKey,
+        rewritePrompt,
+        {
+          instructions: assistantInstructions,
+          vectorStoreId: null,
+          maxWaitMs: 180000,
+          pollMs: 1500,
+          debugMeta: { route: '/api/ai-riskbedomning-rewrite', user: req.user?.email || '' }
+        },
+        { maxAttempts: 3 }
+      );
       result = parseAssistantJson(rewriteText);
     }
 
@@ -11386,8 +11463,15 @@ ${aiText}`;
     });
 
   } catch (error) {
-    console.error('❌ AI-riskbedömning fel:', error.message);
-    res.status(500).json({ error: 'Kunde inte generera AI-analys: ' + error.message });
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    console.error('❌ AI-riskbedömning fel:', status, msg);
+    if (status === 429) {
+      return res.status(429).json({
+        error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.'
+      });
+    }
+    res.status(status).json({ error: 'Kunde inte generera AI-analys: ' + msg });
   }
 });
 

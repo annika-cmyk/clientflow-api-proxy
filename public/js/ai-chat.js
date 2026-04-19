@@ -16,6 +16,8 @@
   let messagesEl = null;
   let inputEl = null;
   let history = [];
+  /** OpenAI thread-id för Assistants API (återanvänds mellan meddelanden). */
+  let chatThreadId = null;
   const STORAGE_OPEN_KEY = 'aiChatOpen';
   const STORAGE_HISTORY_KEY = 'aiChatHistory';
   const STORAGE_THREAD_KEY = 'aiChatThreadId';
@@ -36,6 +38,21 @@
   function saveHistory() {
     try {
       sessionStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history.slice(-60)));
+    } catch (_) {}
+  }
+
+  function loadThreadId() {
+    try {
+      return sessionStorage.getItem(STORAGE_THREAD_KEY) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveThreadId(id) {
+    try {
+      if (id) sessionStorage.setItem(STORAGE_THREAD_KEY, id);
+      else sessionStorage.removeItem(STORAGE_THREAD_KEY);
     } catch (_) {}
   }
 
@@ -95,6 +112,11 @@
 
     // Återställ konversation vid sidbyte/refresh
     history = loadHistory();
+    chatThreadId = loadThreadId();
+    if (history.length === 0) {
+      chatThreadId = null;
+      saveThreadId(null);
+    }
     renderHistory();
   }
 
@@ -153,7 +175,11 @@
       const res = await fetch(url, {
         method: 'POST',
         ...getAuthOpts(),
-        body: JSON.stringify({ message: text, history: history.slice(0, -1) })
+        body: JSON.stringify({
+          message: text,
+          history: history.slice(0, -1),
+          threadId: chatThreadId || undefined
+        })
       });
       const raw = await res.text();
       let data = {};
@@ -168,6 +194,10 @@
         throw new Error(msg);
       }
       const reply = (data && data.reply) ? data.reply : 'Inget svar.';
+      if (data && data.threadId) {
+        chatThreadId = data.threadId;
+        saveThreadId(chatThreadId);
+      }
       appendMessage('assistant', reply);
       history.push({ role: 'assistant', content: reply });
       saveHistory();
