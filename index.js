@@ -11274,6 +11274,11 @@ VIKTIGT: Syftet med affärsförbindelsen ska stämma med underlaget nedan. Nämn
 Skriv på enkel, korrekt svenska. Undvik “intern logik/UI-termer” som kryss/bockat/markerat/flik/formulär och hänvisa aldrig till hur informationen valts i systemet — beskriv istället fakta.
 Använd inte fraser som “Detta är utan PEP-status” eller “som kryss särskilt högrisk”. Skriv hellre t.ex. “Inga PEP-indikationer har noterats” och “Tjänsterna omfattar … vilket bedöms riskhöjande”.
 
+KUNSKAPSBAS (vector store / file_search — om tillgängligt i denna körning):
+- Om du har tillgång till uppladdade dokument via file_search: använd dem för att hitta saker att beakta enligt PVML och vedertagen praxis (riskfaktorer, kontroller, vägledning). Det är ett komplement till — inte ersättning för — kundens faktiska uppgifter nedan.
+- Koppla resonemanget till kundunderlaget; hitta inte på kundspecifika fakta bara för att något liknar ett dokument.
+- Om sökningen inte ger relevant träff: fortsätt utifrån fälten nedan och dessa regler.
+
 TJÄNSTLISTA — ENDA AUKTORITATIVA KÄLLAN FÖR VILKA TJÄNSTER BYRÅN UTFÖR ÅT DENNA KUND I CLIENTFLOW:
 ${tjansterListaCanonical}
 REGLER FÖR TJÄNSTER (KRITISKT):
@@ -11285,7 +11290,7 @@ REGLER FÖR TJÄNSTER (KRITISKT):
 KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
 - Organisationsform: ${f['Bolagsform'] || '–'}
 - Bransch/SNI: ${f['SNI-bransch'] || f['Bransch'] || '–'}
-- Omsättning: ${f['Omsättning'] || '–'}
+- Omsättning (valt intervall, t.ex. 0–200 000 kr): ${f['Omsättning'] || '–'}
 - Verklig huvudman: ${verkligHuvudmanAnon}
 - Skatterättslig hemvist: ${arr(f['Skatterättslig hemvist'])}
 - Betalningar: ${arr(f['Betalningar'])}
@@ -11311,6 +11316,10 @@ ${lankadeRiskerText || '  Inga specifika riskfaktorer registrerade.'}
 
 Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt.
 
+RISKNIVÅ — ANVÄND "Lag" ENDAST NÄR DET ÄR TYDLIGT MOTIVERAT:
+- Sätt "Lag" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver "Medel" eller "Hog", och tjänster/exponering är okontroversiella utifrån underlaget.
+- Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj "Medel" eller "Hog" — inte "Lag".
+
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
 1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd", ska kundens sammanlagda risknivå vara "Hog" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Medel" på PEP-faktorn ska sammanlagd risk vara minst "Medel". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
@@ -11322,7 +11331,7 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
    - PROPORTIONALITET / ARBETSINSATS: Åtgärderna ska vara rimliga för en redovisningsbyrå. Vi ska inte agera “polis” eller skapa onödigt merarbete.
      Välj hellre 1-3 högsignal-kontroller med låg insats än många breda kontroller. Sikta på åtgärder som normalt tar totalt ca 10–30 minuter att genomföra och dokumentera.
      Förbjudna formuleringar/krav: “övervakning i realtid”, “kontinuerlig övervakning”, “granska alla transaktioner”, eller andra åtgärder som kräver löpande manuellt arbete utan tydlig nytta.
-   - "Hog": Lista 3-5 åtgärder enligt formatkravet ovan, specifikt anpassade till just denna kunds riskbild. Generella formuleringar är FÖRBJUDNA.
+   - "Hog": Lista 3-5 åtgärder enligt formatkravet ovan, specifikt anpassade till just denna kunds riskbild (bransch, identifierade riskfaktorer, geografik, PEP, tjänster enligt TJÄNSTLISTA m.m.). Varje punkt ska kunna motiveras utifrån denna kund — generiska mallar är FÖRBJUDNA.
    - "Medel": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
    - "Lag": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
 
@@ -11409,16 +11418,22 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
+    // Vector: OPENAI_RISK_VECTOR_STORE_ID om satt, annars OPENAI_VECTOR_STORE_ID (file_search i assistentkörning när ID finns).
+    const riskVectorStoreId =
+      (process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
+      || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
+      || null;
+
     // Via samma OpenAI-assistent som övriga ClientFlow (OPENAI_ASSISTANT_ID). Run-instruktioner säkerställer JSON-svar.
     const assistantInstructions =
-      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
+      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Om file_search finns: använd kunskapsbasen som komplement till kundunderlaget, inte som ersättning. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
 
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
       prompt,
       {
         instructions: assistantInstructions,
-        vectorStoreId: null,
+        vectorStoreId: riskVectorStoreId || undefined,
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
@@ -11444,7 +11459,7 @@ ${aiText}`;
         rewritePrompt,
         {
           instructions: assistantInstructions,
-          vectorStoreId: null,
+          vectorStoreId: riskVectorStoreId || undefined,
           maxWaitMs: 180000,
           pollMs: 1500,
           debugMeta: { route: '/api/ai-riskbedomning-rewrite', user: req.user?.email || '' }

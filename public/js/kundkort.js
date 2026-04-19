@@ -5,6 +5,14 @@ console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 function getAuthOptsKundkort() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
 function isLoggedInKundkort() { return !!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()); }
 
+/** Omsättningsintervall (Airtable-fält "Omsättning") — samma texter skickas till AI-riskbedömning */
+const KUND_OMSATTNING_VAL = [
+    '0–200 000 kr',
+    '200 000–1 500 000 kr',
+    '1 500 000–10 000 000 kr',
+    'Över 10 000 000 kr'
+];
+
 class CustomerCardManager {
     constructor() {
         console.log('🔍 CONSTRUCTOR - Creating CustomerCardManager');
@@ -2221,6 +2229,41 @@ class CustomerCardManager {
         }
     }
 
+    async saveOmsattning() {
+        const customerId = this.customerId;
+        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
+        const sel = document.getElementById('kyc-omsattning-select');
+        if (!sel) return;
+        const val = (sel.value || '').trim();
+        if (!val) {
+            this.showNotification('Välj ett omsättningsintervall.', 'error');
+            return;
+        }
+        const btn = sel.closest('.kyc-omsattning-edit')?.querySelector('button');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields: { 'Omsättning': val } })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            if (this.customerData?.fields) this.customerData.fields['Omsättning'] = val;
+            this.renderOvrigKYCBase();
+            this.loadServices();
+            this.showNotification('Omsättning sparad.', 'success');
+        } catch (e) {
+            this.showNotification('Kunde inte spara omsättning: ' + (e.message || 'fel'), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig || '<i class="fas fa-save"></i> Spara'; }
+        }
+    }
+
     async saveRedovisning() {
         const customerId = this.customerId;
         if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
@@ -2939,6 +2982,15 @@ class CustomerCardManager {
         const uppdragCheck = f['Uppdraget kan antas'];
         const avtalsDatum = f['Avtalet gäller ifrån'] ? fmtDate(f['Avtalet gäller ifrån']) : null;
 
+        const curOms = (f['Omsättning'] || '').toString().trim();
+        let omsOpts = '<option value="">Välj omsättningsintervall...</option>';
+        for (const v of KUND_OMSATTNING_VAL) {
+            omsOpts += `<option value="${this._esc(v)}" ${curOms === v ? 'selected' : ''}>${this._esc(v)}</option>`;
+        }
+        if (curOms && !KUND_OMSATTNING_VAL.includes(curOms)) {
+            omsOpts += `<option value="${this._esc(curOms)}" selected>${this._esc(curOms)} (befintligt värde)</option>`;
+        }
+
         container.innerHTML = `
             <div class="kyc-layout">
 
@@ -2964,7 +3016,13 @@ class CustomerCardManager {
                 </div>
 
                 ${section('Kunden & verksamheten', 'fa-building', `
-                    ${row('Omsättning', fmt(f['Omsättning']), 'fa-chart-line')}
+                    <div class="kyc-row kyc-row--omsattning">
+                        <span class="kyc-row-label"><i class="fas fa-chart-line"></i> Omsättning</span>
+                        <div class="kyc-omsattning-edit" style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+                            <select id="kyc-omsattning-select" class="kunduppgifter-input" style="min-width:min(100%,18rem);flex:1;">${omsOpts}</select>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.saveOmsattning()"><i class="fas fa-save"></i> Spara</button>
+                        </div>
+                    </div>
                     ${row('Frekvens', fmtList(f['Frekvens']).join(', ') || null, 'fa-sync')}
                     ${row('Omfattning (h)', fmt(f['omfattning i h']), 'fa-hourglass-half')}
                     ${row('Verklig huvudman', fmt(f['Verklig huvudman']), 'fa-user-shield')}
