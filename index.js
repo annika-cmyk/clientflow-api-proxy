@@ -6046,6 +6046,7 @@ async function processUppdragUnderlagSchedule() {
     const recipientEmail = String(f['Underlagsmottagare e-post'] || '').trim();
     const recipientName = String(f['Underlagsmottagare namn'] || '').trim() || 'Kund';
     const template = String(f['Underlagsmall'] || '').trim();
+    const customerMessage = String(f['Underlagsmeddelande'] || '').trim();
     if (!recipientEmail || !recipientEmail.includes('@') || !template) continue;
 
     const byraId = String(f['Byrå ID'] || '').trim();
@@ -6080,6 +6081,7 @@ async function processUppdragUnderlagSchedule() {
             'Mottagare namn': it.recipientName,
             'Mottagare e-post': it.recipientEmail,
             'Typ': 'Filer',
+            ...(customerMessage ? { 'Meddelande': customerMessage } : {}),
             'Titel': it.title,
             'Token': it.token,
             'Status': 'Väntar',
@@ -9978,7 +9980,8 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Historik', type: 'multilineText', description: 'JSON-array med körningar (datum/anteckning)' },
   // Underlagsförfrågningar (Samarbete) – schemalagda utskick
   { name: 'Auto underlagsförfrågan', type: 'checkbox', options: { icon: 'check', color: 'blueBright' } },
-  { name: 'Underlagsmall', type: 'multilineText', description: 'Mall för förfrågan (en punkt per rad). Stöd: {PERIOD} ersätts med t.ex. mars 2026.' },
+  { name: 'Underlagsmeddelande', type: 'multilineText', description: 'Valfritt meddelande som visas i mejlet vid auto-utskick' },
+  { name: 'Underlagsmall', type: 'multilineText', description: 'Underlagsfrågor (en punkt per rad). Stöd: {PERIOD} ersätts med t.ex. mars 2026.' },
   { name: 'Underlagsmottagare namn', type: 'singleLineText', description: 'Mottagare (kund)' },
   { name: 'Underlagsmottagare e-post', type: 'email', description: 'Mottagarens e-post' },
   { name: 'Underlagsutskick dag', type: 'number', description: 'Dag i månaden då förfrågan ska skickas (1–28)' },

@@ -699,8 +699,9 @@ class CustomerCardManager {
                     <thead>
                         <tr>
                             <th class="uppdragboard-th-client" style="width:44%; text-align:left;">Uppdrag</th>
-                            <th class="uppdragboard-th-run" style="width:28%; text-align:center;">Körning</th>
-                            <th class="uppdragboard-th-done" style="width:22%; text-align:center;">Status</th>
+                            <th class="uppdragboard-th-run" style="width:22%; text-align:center;">Klart senast</th>
+                            <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Underlag</th>
+                            <th class="uppdragboard-th-done" style="width:12%; text-align:center;">Status</th>
                             <th class="uppdragboard-th-arrow" style="width:6%;"></th>
                         </tr>
                     </thead>
@@ -769,6 +770,40 @@ class CustomerCardManager {
                 return `<a href="${this._esc(url)}" target="_blank" rel="noopener" class="samarbete-file-link"><i class="fas fa-download"></i> ${label}</a>`;
             };
             const openTyp = (this._kundUppdragBoardOpenTyp || '').toString();
+            const todayIso = (() => {
+                try { return new Date().toISOString().slice(0, 10); } catch (_) { return ''; }
+            })();
+            const quarterKeyForMonth = (ym) => {
+                const y = Number(String(ym || '').slice(0, 4));
+                const m = Number(String(ym || '').slice(5, 7));
+                if (!y || !m) return '';
+                const q = Math.ceil(m / 3);
+                return `${y}-Q${q}`;
+            };
+            const yearKeyForMonth = (ym) => {
+                const y = Number(String(ym || '').slice(0, 4));
+                return y ? String(y) : '';
+            };
+            const getModeForUppdrag = (typ, freqStr) => {
+                const tt = (typ || '').toString().trim();
+                const ff = (freqStr || '').toString().toLowerCase();
+                if (tt === 'Momsredovisning') {
+                    if (ff.includes('kvartal')) return 'quarter';
+                    if (ff.includes('år')) return 'year';
+                    return 'month';
+                }
+                if (tt === 'Bokslut' || tt === 'Deklaration') return 'year';
+                return 'month';
+            };
+            const periodMatchesRun = (periodStr) => {
+                const p = (periodStr || '').toString().trim();
+                if (!p) return false;
+                if (p.includes(mk)) return true; // vanligast: "2026-03"
+                // fallback: försök matcha "Mars 2026" m.m. genom att leta efter år + månad
+                const yyyy = mk.slice(0, 4);
+                const mm = mk.slice(5, 7);
+                return (p.includes(yyyy) && p.includes(mm));
+            };
             const rows = existingTypes.map((t) => {
                 const rec = byType(t);
                 if (!rec) return '';
@@ -790,6 +825,53 @@ class CustomerCardManager {
                 const isOpen = openTyp === t;
                 const samList = (samarbeteByUppdragTyp.get(t) || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
                 const stripFileObligatorisk = (s) => (s || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
+                const isReqFullyAnswered = (s) => {
+                    const status = (s?.status || '').toString().trim().toLowerCase();
+                    if (status === 'besvarad' || status === 'stängd' || status === 'klar') return true;
+                    const respTxt = (s?.responseText || '').toString().trim();
+                    const answersArray = parseAnswersArray(respTxt);
+                    const titleFull = stripFileObligatorisk((s?.title || '').toString().trim());
+                    const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+                    const total = titleLines.length || (Array.isArray(answersArray) ? answersArray.length : 0);
+                    if (!total) return false;
+                    const answeredCount = (Array.isArray(answersArray) && total)
+                        ? titleLines.reduce((acc, _, idx) => {
+                            const a = answersArray[idx] || {};
+                            const hasText = a.text && String(a.text).trim();
+                            const hasFile = a.filename && String(a.filename).trim();
+                            return acc + ((hasText || hasFile) ? 1 : 0);
+                        }, 0)
+                        : 0;
+                    return answeredCount >= total;
+                };
+                const samForRun = samList.filter(s => periodMatchesRun(s.uppdragPeriod));
+                const underlagTotal = samForRun.length;
+                const underlagDone = samForRun.reduce((acc, s) => acc + (isReqFullyAnswered(s) ? 1 : 0), 0);
+                const anyLate = samForRun.some(s => {
+                    const dl = String(s?.deadline || '').slice(0, 10);
+                    return !!dl && !!todayIso && dl < todayIso && !isReqFullyAnswered(s);
+                });
+                const underlagState = (underlagTotal === 0)
+                    ? 'none'
+                    : (underlagDone >= underlagTotal)
+                        ? 'done'
+                        : (anyLate ? 'late' : 'wait');
+                const underlagHtml = (underlagTotal === 0)
+                    ? `<span class="uppdrag-muted">—</span>`
+                    : `<span class="uppdragboard-progress" style="${
+                        underlagState === 'done'
+                            ? 'background:#dcfce7; color:#166534; border-color:#86efac;'
+                            : underlagState === 'late'
+                                ? 'background:#fee2e2; color:#991b1b; border-color:#fecaca;'
+                                : 'background:#fef9c3; color:#854d0e; border-color:#fde68a;'
+                    }">${underlagDone}/${underlagTotal}</span>`;
+
+                const modeForPrefill = getModeForUppdrag(t, freq);
+                const prefillPeriodKey = (modeForPrefill === 'quarter')
+                    ? quarterKeyForMonth(mk)
+                    : (modeForPrefill === 'year')
+                        ? yearKeyForMonth(mk)
+                        : mk;
                 const samHtml = samList.length ? `
                     <div class="uppdrag-view-field" style="margin-top:0.25rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
@@ -895,6 +977,14 @@ class CustomerCardManager {
                             </div>
                         </div>
                         ${samHtml}
+                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.75rem; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-primary btn-sm"
+                                data-kund-action="begar-underlag"
+                                data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
+                                data-kund-uppdrag-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                <i class="fas fa-paper-plane"></i> Begär underlag
+                            </button>
+                        </div>
                         <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
                             <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Anteckning (för denna körning)</div>
                             <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning...">${this._esc(runningNote)}</textarea>
@@ -909,10 +999,14 @@ class CustomerCardManager {
                         <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
                             <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
                             <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                                <input type="file" class="kunduppgifter-input" style="padding:0.45rem;" data-kund-docs-input="${this._esc(docsKey)}" multiple />
+                                <input type="file" class="kunduppgifter-input" style="padding:0.45rem; display:none;" data-kund-docs-input="${this._esc(docsKey)}" multiple />
+                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="pick-docs" data-kund-docs-key="${this._esc(docsKey)}">
+                                    <i class="fas fa-paperclip"></i> Välj filer
+                                </button>
                                 <button type="button" class="btn btn-secondary btn-sm" data-kund-action="upload-docs" data-kund-typ="${this._esc(t)}" data-kund-deadline="${this._esc(docsDeadlineKey)}" data-kund-docs-key="${this._esc(docsKey)}">
                                     <i class="fas fa-upload"></i> Ladda upp
                                 </button>
+                                <span class="uppdrag-muted" data-kund-docs-picked="${this._esc(docsKey)}" style="margin:0;">Inga filer valda.</span>
                                 <span class="uppdrag-muted" data-kund-docs-status="${this._esc(docsKey)}" style="margin:0;"></span>
                             </div>
                             <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
@@ -929,6 +1023,7 @@ class CustomerCardManager {
                         </div>
                     </td>
                     <td>${runHtml}</td>
+                    <td style="text-align:center;">${underlagHtml}</td>
                     <td>${statusHtml}</td>
                     <td class="uppdragboard-arrow">
                         <button type="button" class="uppdragboard-expandbtn" title="Visa mer" aria-label="Visa mer" data-kund-toggle-typ="${this._esc(t)}">
@@ -937,11 +1032,11 @@ class CustomerCardManager {
                     </td>
                 </tr>
                 <tr class="uppdragboard-details" data-kund-details-for="${this._esc(t)}" style="${isOpen ? '' : 'display:none;'}">
-                    <td colspan="4">${detailsHtml}</td>
+                    <td colspan="5">${detailsHtml}</td>
                 </tr>
                 `;
             }).filter(Boolean).join('');
-            tbody.innerHTML = rows || `<tr><td colspan="4" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
+            tbody.innerHTML = rows || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
         };
 
         const prevBtn = document.getElementById('kund-uppdragboard-prev');
@@ -976,6 +1071,16 @@ class CustomerCardManager {
                     }
                 }
 
+                // Begär underlag direkt från uppdragets detaljvy (förvalt uppdrag + period)
+                const begarBtn = e.target.closest('[data-kund-action="begar-underlag"]');
+                if (begarBtn) {
+                    e.preventDefault();
+                    const uppdragId = begarBtn.getAttribute('data-kund-uppdrag-id') || '';
+                    const uppdragPeriod = begarBtn.getAttribute('data-kund-uppdrag-period') || '';
+                    this.openBegarUnderlagModal(null, { uppdragId, uppdragPeriod });
+                    return;
+                }
+
                 const toggle = e.target.closest('[data-kund-toggle-typ]');
                 if (toggle) {
                     const t = toggle.getAttribute('data-kund-toggle-typ');
@@ -984,6 +1089,25 @@ class CustomerCardManager {
                     const anyOpen = !!(this._kundUppdragBoardOpenTyp || '');
                     const tbody = document.getElementById('kund-uppdragboard-tbody');
                     if (tbody) tbody.classList.toggle('uppdragboard-has-open', anyOpen);
+                    return;
+                }
+
+                // Välj filer för dokumentation (öppna dold input)
+                const pickBtn = e.target.closest('[data-kund-action="pick-docs"]');
+                if (pickBtn) {
+                    e.preventDefault();
+                    const docsKey = pickBtn.getAttribute('data-kund-docs-key') || '';
+                    const input = container.querySelector(`input[type="file"][data-kund-docs-input="${CSS.escape(docsKey)}"]`);
+                    const pickedEl = container.querySelector(`[data-kund-docs-picked="${CSS.escape(docsKey)}"]`);
+                    if (!input) return;
+                    if (!input._kundBound) {
+                        input._kundBound = true;
+                        input.addEventListener('change', () => {
+                            const files = input.files ? Array.from(input.files) : [];
+                            if (pickedEl) pickedEl.textContent = files.length ? `${files.length} fil(er) valda.` : 'Inga filer valda.';
+                        });
+                    }
+                    try { input.click(); } catch (_) {}
                     return;
                 }
 
@@ -1024,6 +1148,7 @@ class CustomerCardManager {
                     const input = container.querySelector(`input[type="file"][data-kund-docs-input="${CSS.escape(docsKey)}"]`);
                     const statusEl = container.querySelector(`[data-kund-docs-status="${CSS.escape(docsKey)}"]`);
                     const listEl = container.querySelector(`[data-kund-docs-list="${CSS.escape(docsKey)}"]`);
+                    const pickedEl = container.querySelector(`[data-kund-docs-picked="${CSS.escape(docsKey)}"]`);
                     const files = input && input.files ? Array.from(input.files) : [];
                     if (!dl) { if (statusEl) statusEl.textContent = 'Saknar deadline.'; return; }
                     if (!files.length) { if (statusEl) statusEl.textContent = 'Välj minst en fil.'; return; }
@@ -1080,6 +1205,7 @@ class CustomerCardManager {
 
                         if (statusEl) statusEl.textContent = 'Uppladdat.';
                         if (input) input.value = '';
+                        if (pickedEl) pickedEl.textContent = 'Inga filer valda.';
                         setTimeout(() => { if (statusEl && statusEl.textContent === 'Uppladdat.') statusEl.textContent = ''; }, 2500);
                     })().catch((err) => {
                         if (statusEl) statusEl.textContent = 'Kunde inte ladda upp: ' + (err.message || 'fel');
@@ -1161,6 +1287,36 @@ class CustomerCardManager {
             if (underlagNamnEl) {
                 underlagNamnEl.addEventListener('input', markManualNameEdit);
                 underlagNamnEl.addEventListener('change', markManualNameEdit);
+            }
+
+            // Schemalagd förfrågan: lägga till / ta bort rader (som Samarbete)
+            const underlagAddBtn = root.querySelector('[data-action="underlag-add-item"]');
+            const underlagWrap = root.querySelector('[data-underlag-items-wrap]');
+            if (underlagAddBtn && underlagWrap) {
+                underlagAddBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const n = underlagWrap.querySelectorAll('.samarbete-item-row').length;
+                    const row = document.createElement('div');
+                    row.className = 'samarbete-item-row';
+                    row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. ytterligare underlag eller fråga" data-underlag-item="${n}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-underlag-item="${n}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><button type="button" class="btn btn-ghost btn-sm underlag-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
+                    underlagWrap.appendChild(row);
+                });
+
+                underlagWrap.addEventListener('click', (e) => {
+                    const rm = e.target.closest('.underlag-item-remove');
+                    if (rm && rm.closest('.samarbete-item-row')) rm.closest('.samarbete-item-row').remove();
+                });
+
+                underlagWrap.addEventListener('change', (e) => {
+                    const chk = e.target.closest('.samarbete-file-required-input');
+                    if (chk) {
+                        const wrap = chk.closest('.samarbete-file-req-wrap');
+                        if (wrap) {
+                            wrap.classList.toggle('is-checked', chk.checked);
+                            wrap.title = chk.checked ? 'Fil krävs – klicka för att ta bort kravet' : 'Klicka för att kräva fil från kunden';
+                        }
+                    }
+                });
             }
 
             // Edit mode toggle
@@ -1982,8 +2138,33 @@ class CustomerCardManager {
                                     </div>
                                 </div>
                                 <div style="margin-top:0.75rem;">
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mall (en punkt per rad)</label>
-                                    <textarea class="kunduppgifter-input" rows="3" data-field="Underlagsmall" placeholder="t.ex. Löneunderlag {PERIOD}\nTidrapport {PERIOD}">${this._esc(String(f['Underlagsmall'] || ''))}</textarea>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Meddelande till kunden <span style="color:#64748b; font-weight:400;">(visas i mejlet)</span></label>
+                                    <textarea class="kunduppgifter-input" rows="2" data-field="Underlagsmeddelande" placeholder="t.ex. Jag behöver detta senast på torsdag">${this._esc(String(f['Underlagsmeddelande'] || ''))}</textarea>
+                                </div>
+
+                                <div style="margin-top:0.75rem;">
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Begärt underlag <span style="color:#ef4444;">*</span></label>
+                                    <div data-underlag-items-wrap>
+                                        ${(String(f['Underlagsmall'] || '').trim()
+                                            ? String(f['Underlagsmall']).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+                                            : ['']
+                                        ).map((line, idx) => {
+                                            const hasReq = /\[fil obligatorisk\]\s*$/i.test(line || '');
+                                            const clean = (line || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
+                                            return `
+                                                <div class="samarbete-item-row">
+                                                    <input type="text" class="form-control samarbete-item-input" placeholder="t.ex. kontoutdrag {PERIOD} eller en längre fråga" data-underlag-item="${idx}" value="${this._esc(clean)}">
+                                                    <label class="samarbete-file-req-wrap ${hasReq ? 'is-checked' : ''}" title="${hasReq ? 'Fil krävs – klicka för att ta bort kravet' : 'Klicka för att kräva fil från kunden'}">
+                                                        <input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-underlag-item="${idx}" ${hasReq ? 'checked' : ''}>
+                                                        <span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span>
+                                                    </label>
+                                                    <button type="button" class="btn btn-ghost btn-sm underlag-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-action="underlag-add-item" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Lägg till fler frågor</button>
+                                    <div class="uppdrag-muted" style="margin-top:0.35rem;">Stöd: <strong>{PERIOD}</strong> ersätts med t.ex. “mars 2026”.</div>
                                 </div>
                                 ${lastUnderlagInfo}
                             </div>
@@ -2031,7 +2212,18 @@ class CustomerCardManager {
             fields['Underlagsdeadline dag'] = getVal('Underlagsdeadline dag')?.value || '';
             fields['Underlagsmottagare namn'] = getVal('Underlagsmottagare namn')?.value || '';
             fields['Underlagsmottagare e-post'] = getVal('Underlagsmottagare e-post')?.value || '';
-            fields['Underlagsmall'] = getVal('Underlagsmall')?.value || '';
+            fields['Underlagsmeddelande'] = getVal('Underlagsmeddelande')?.value || '';
+            // Underlagsfrågor (sparas fortfarande i Underlagsmall i Airtable)
+            const underlagRows = Array.from(root.querySelectorAll('[data-underlag-items-wrap] .samarbete-item-row'));
+            const underlagLines = [];
+            underlagRows.forEach((row) => {
+                const inp = row.querySelector('.samarbete-item-input');
+                const chk = row.querySelector('.samarbete-file-required');
+                const text = (inp && inp.value) ? inp.value.trim() : '';
+                if (!text) return;
+                underlagLines.push(text + ((chk && chk.checked) ? ' [fil obligatorisk]' : ''));
+            });
+            fields['Underlagsmall'] = underlagLines.join('\n');
             if (typ === 'Deklaration') {
                 // Deklarationsrader (typ + fritext) sparas som JSON
                 const rowsWrap = root.querySelector('[data-dek-rows]');
@@ -6536,9 +6728,10 @@ class CustomerCardManager {
         }
     }
 
-    openBegarUnderlagModal(existingDraft) {
+    openBegarUnderlagModal(existingDraft, prefill) {
         const personer = this.getKontaktPersonerForSamarbete();
         const draft = existingDraft && typeof existingDraft === 'object' ? existingDraft : null;
+        const pre = (prefill && typeof prefill === 'object') ? prefill : null;
         const options = personer.length
             ? personer.map((p, i) => `<option value="${this.escapeDocHtml(p.epost)}" data-name="${this.escapeDocHtml(p.namn)}">${this.escapeDocHtml(p.namn)}${p.epost ? ' – ' + p.epost : ' (e-post saknas)'}</option>`).join('')
             : '<option value="">Inga roller med e-post – lägg till på Företagsinformation</option>';
@@ -6717,6 +6910,27 @@ class CustomerCardManager {
             uppdragSel.addEventListener('change', renderPeriodForUppdrag);
             // initial
             renderPeriodForUppdrag();
+        }
+
+        // Prefill uppdrag + period (t.ex. från uppdragsöversikten)
+        if (pre && uppdragSel) {
+            const preUppdragId = (pre.uppdragId || '').toString().trim();
+            const prePeriod = (pre.uppdragPeriod || '').toString().trim();
+            if (preUppdragId) {
+                uppdragSel.value = preUppdragId;
+                renderPeriodForUppdrag();
+                if (periodSel && prePeriod) {
+                    // Om perioden inte finns i listan (ovanligt) – lägg till den överst
+                    if (![...periodSel.options].some(o => String(o.value) === String(prePeriod))) {
+                        const opt = document.createElement('option');
+                        opt.value = prePeriod;
+                        opt.textContent = `${prePeriod} – (förvalt)`;
+                        periodSel.insertBefore(opt, periodSel.firstChild);
+                    }
+                    periodSel.value = prePeriod;
+                    if (periodWrap) periodWrap.style.display = '';
+                }
+            }
         }
 
         const wrapEl = document.getElementById('samarbete-items-wrap');
