@@ -4815,6 +4815,38 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
 // Kräver Airtable-tabell "Samarbete" med fält: Kund ID, Mottagare namn, Mottagare e-post, Typ, Titel, Token, Status, Svar text, Svar bifogad fil, Besvarad
 const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
 
+async function ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId }) {
+  const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`, {
+    headers: { Authorization: `Bearer ${airtableAccessToken}` },
+    timeout: 10000
+  });
+  const tables = (metaRes.data?.tables || []);
+  const samarbeteTable = tables.find(t => (t.id || '') === samarbeteTableId);
+  if (!samarbeteTable) return { created: [], skipped: 0 };
+
+  const existingNames = (samarbeteTable.fields || []).map(f => (f.name || '').trim());
+  const toCreate = SAMARBETE_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+  const created = [];
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${samarbeteTable.id}/fields`;
+  for (const field of toCreate) {
+    try {
+      const body = { name: field.name, type: field.type };
+      if (field.description) body.description = field.description;
+      if (field.options) body.options = field.options;
+      await axios.post(createUrl, body, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      created.push(field.name);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message;
+      console.warn('Kunde inte skapa fält', field.name, msg);
+    }
+  }
+  const skipped = SAMARBETE_REQUIRED_FIELDS.length - toCreate.length;
+  return { created, skipped };
+}
+
 // POST /api/setup/airtable-samarbete – Skapa tabellen "Samarbete" i Airtable (auth)
 // Kräver Personal Access Token med schema.bases:read och schema.bases:write.
 app.post('/api/setup/airtable-samarbete', authenticateToken, async (req, res) => {
@@ -4831,7 +4863,16 @@ app.post('/api/setup/airtable-samarbete', authenticateToken, async (req, res) =>
     const tables = (metaRes.data?.tables || []);
     const existing = tables.find(t => (t.name || '').toLowerCase() === 'samarbete');
     if (existing) {
-      return res.json({ success: true, message: 'Tabellen "Samarbete" finns redan.', tableId: existing.id, alreadyExists: true });
+      const ensured = await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: existing.id });
+      return res.json({
+        success: true,
+        message: ensured.created.length
+          ? `Tabellen "Samarbete" finns redan. ${ensured.created.length} fält lades till.`
+          : 'Tabellen "Samarbete" finns redan.',
+        tableId: existing.id,
+        alreadyExists: true,
+        createdFields: ensured.created
+      });
     }
     const createRes = await axios.post(
       `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`,
@@ -4848,7 +4889,9 @@ app.post('/api/setup/airtable-samarbete', authenticateToken, async (req, res) =>
           { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }] } },
           { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
           { name: 'Svar bifogad fil', type: 'multipleAttachments', description: 'Fil som kunden laddade upp' },
-          { name: 'Besvarad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
+          { name: 'Besvarad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
+          { name: 'Deadline', type: 'date', description: 'Deadline för kundens svar (valfri)' },
+          { name: 'Senast påminnelse skickad', type: 'date', description: 'Intern: datum när senaste påminnelse skickades (för att begränsa till en per dag)' }
         ]
       },
       {
@@ -4858,6 +4901,11 @@ app.post('/api/setup/airtable-samarbete', authenticateToken, async (req, res) =>
     );
     const newTable = createRes.data;
     const tableId = newTable?.id || (newTable?.tables && newTable.tables[0] && newTable.tables[0].id);
+    if (tableId) {
+      try {
+        await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
+      } catch (_) {}
+    }
     return res.json({
       success: true,
       message: 'Tabellen "Samarbete" skapades i Airtable.',
@@ -4892,6 +4940,8 @@ const SAMARBETE_REQUIRED_FIELDS = [
   { name: 'Titel', type: 'multilineText', description: 'Vad som begärs från kunden' },
   { name: 'Token', type: 'singleLineText', description: 'Unik token för kundlänk' },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }, { name: 'Arkiverad' }] } },
+  { name: 'Deadline', type: 'date', description: 'Deadline för kundens svar (valfri)' },
+  { name: 'Senast påminnelse skickad', type: 'date', description: 'Intern: datum när senaste påminnelse skickades (för att begränsa till en per dag)' },
   { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
   { name: 'Svar bifogad fil', type: 'multipleAttachments', description: 'Fil som kunden laddade upp' },
   { name: 'Besvarad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
