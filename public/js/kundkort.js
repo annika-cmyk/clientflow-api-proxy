@@ -752,6 +752,22 @@ class CustomerCardManager {
                 if (!s) return '—';
                 try { return new Date(s + 'T00:00:00').toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }); } catch (_) { return s; }
             };
+            const parseAnswersArray = (rawText) => {
+                const raw = (rawText || '').toString().trim();
+                if (!raw || !raw.startsWith('[')) return null;
+                try {
+                    const arr = JSON.parse(raw);
+                    return Array.isArray(arr) ? arr : null;
+                } catch (_) {
+                    return null;
+                }
+            };
+            const attachmentLink = (att) => {
+                if (!att || (!att.url && !att.id)) return '';
+                const url = att.url || '#';
+                const label = this._esc(att.filename || att.name || 'Bifogad fil');
+                return `<a href="${this._esc(url)}" target="_blank" rel="noopener" class="samarbete-file-link"><i class="fas fa-download"></i> ${label}</a>`;
+            };
             const openTyp = (this._kundUppdragBoardOpenTyp || '').toString();
             const rows = existingTypes.map((t) => {
                 const rec = byType(t);
@@ -784,11 +800,48 @@ class CustomerCardManager {
                                 const answered = s.answeredAt ? new Date(s.answeredAt).toLocaleDateString('sv-SE') : '';
                                 const attCount = Array.isArray(s.responseAttachment) ? s.responseAttachment.length : 0;
                                 const respTxt = (s.responseText || '').toString().trim();
+                                const answersArray = parseAnswersArray(respTxt);
+                                const titleLines = (s.title || '').toString().trim().split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+                                const total = titleLines.length || (Array.isArray(answersArray) ? answersArray.length : 0);
+                                const answeredCount = (Array.isArray(answersArray) && total)
+                                    ? titleLines.reduce((acc, _, idx) => {
+                                        const a = answersArray[idx] || {};
+                                        const hasText = a.text && String(a.text).trim();
+                                        const hasFile = a.filename && String(a.filename).trim();
+                                        return acc + ((hasText || hasFile) ? 1 : 0);
+                                    }, 0)
+                                    : 0;
                                 const hasResp = !!answered || !!respTxt || attCount > 0;
-                                const meta = `${created}${period ? ` · ${period}` : ''} · ${status}${answered ? ` · Besvarad ${answered}` : ''}${attCount ? ` · ${attCount} fil` : ''}`;
-                                return `<div class="uppdrag-view-list-item">
-                                    <i class="fas ${hasResp ? 'fa-check-circle' : 'fa-paper-plane'}"></i>
-                                    <span>${this._esc(meta)}</span>
+                                const progress = (answeredCount > 0 && total > 0) ? ` · Påbörjad: ${answeredCount}/${total}` : '';
+                                const meta = `${created}${period ? ` · ${period}` : ''} · ${status}${answered ? ` · Besvarad ${answered}` : ''}${attCount ? ` · ${attCount} fil` : ''}${progress}`;
+
+                                let details = '';
+                                if (Array.isArray(answersArray) && answersArray.length) {
+                                    // Visa upp till 2 rader med svar (snabb överblick)
+                                    const snippets = [];
+                                    for (let i = 0; i < Math.min(titleLines.length || answersArray.length, 2); i++) {
+                                        const a = answersArray[i] || {};
+                                        const text = (a && a.text) ? String(a.text).trim() : '';
+                                        const att = Array.isArray(s.responseAttachment) ? s.responseAttachment[i] : null;
+                                        const parts = [];
+                                        if (text) parts.push(this._esc(text.slice(0, 140) + (text.length > 140 ? '…' : '')));
+                                        if (att) parts.push(attachmentLink(att));
+                                        if (parts.length) snippets.push(parts.join(' · '));
+                                    }
+                                    if (snippets.length) {
+                                        details = `<div class="uppdrag-muted" style="margin-left:1.6rem; margin-top:0.15rem;">${snippets.join('<br>')}</div>`;
+                                    }
+                                } else if (attCount > 0 && Array.isArray(s.responseAttachment)) {
+                                    const links = s.responseAttachment.slice(0, 2).map(attachmentLink).filter(Boolean).join(' ');
+                                    if (links) details = `<div class="uppdrag-muted" style="margin-left:1.6rem; margin-top:0.15rem;">${links}</div>`;
+                                }
+
+                                return `<div>
+                                    <div class="uppdrag-view-list-item">
+                                        <i class="fas ${hasResp ? 'fa-check-circle' : 'fa-paper-plane'}"></i>
+                                        <span>${this._esc(meta)}</span>
+                                    </div>
+                                    ${details}
                                 </div>`;
                             }).join('')}
                         </div>
@@ -5858,6 +5911,7 @@ class CustomerCardManager {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const isArchived = (r) => (r.status || '') === 'Arkiverad' || !!r.archived;
         const archived = requests.filter(isArchived);
+        const drafts = requests.filter(r => (r.status || '') === 'Utkast' && !isArchived(r));
         const pending = requests.filter(r => (r.status || 'Väntar') === 'Väntar' && !isArchived(r));
         const answered = requests.filter(r => (r.status || '') === 'Besvarad' && !isArchived(r));
 
@@ -5879,19 +5933,58 @@ class CustomerCardManager {
             return ` <span class="badge badge-info" style="margin-left:0.5rem; background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.75rem;"><i class="fas fa-briefcase"></i> ${this.escapeDocHtml(label + extra)}</span>`;
         };
 
+        const parseAnswersArray = (rawText) => {
+            const raw = (rawText || '').toString().trim();
+            if (!raw || !raw.startsWith('[')) return null;
+            try {
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr : null;
+            } catch (_) {
+                return null;
+            }
+        };
+
+        const attachmentLink = (att) => {
+            if (!att || (!att.url && !att.id)) return '';
+            const url = att.url || '#';
+            const label = this.escapeDocHtml(att.filename || att.name || 'Bifogad fil');
+            return `<a href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener" class="samarbete-file-link"><i class="fas fa-download"></i> ${label}</a>`;
+        };
+
         const pendingItems = pending.map(req => {
             const created = fmtDate(req.createdAt);
             const deadline = fmtDeadline(req.deadline);
             const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
             const titleLines = titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
             const n = titleLines.length;
-            const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}`;
+            const answersArray = parseAnswersArray(req.responseText);
+            const attachments = Array.isArray(req.responseAttachment) ? req.responseAttachment : [];
+            const answeredCount = Array.isArray(answersArray)
+                ? titleLines.reduce((acc, _, idx) => {
+                    const a = answersArray[idx] || {};
+                    const hasText = a.text && String(a.text).trim();
+                    const hasFile = a.filename && String(a.filename).trim();
+                    return acc + ((hasText || hasFile) ? 1 : 0);
+                }, 0)
+                : 0;
+            const progress = (answeredCount > 0 && n > 0) ? ` · Påbörjad: ${answeredCount}/${n}` : '';
+            const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}${progress}`;
             let questionsHtml = '';
             if (titleLines.length > 0) {
                 questionsHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
                 titleLines.forEach((line, idx) => {
                     const qShort = line.slice(0, 80);
-                    questionsHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this.escapeDocHtml(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">—</div></li>`;
+                    let svar = '—';
+                    if (Array.isArray(answersArray)) {
+                        const a = answersArray[idx] || {};
+                        const text = (a && a.text) ? String(a.text).trim() : '';
+                        const att = attachments[idx];
+                        const parts = [];
+                        if (text) parts.push(this.escapeDocHtml(text));
+                        if (att) parts.push(attachmentLink(att));
+                        if (parts.length) svar = parts.join(' · ');
+                    }
+                    questionsHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this.escapeDocHtml(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
                 });
                 questionsHtml += '</ul></div>';
             }
@@ -5933,12 +6026,6 @@ class CustomerCardManager {
             const titleFirst = titleLines[0] || 'Förfrågan';
             const numPoints = titleLines.length;
 
-            const attachmentLink = (att) => {
-                if (!att || (!att.url && !att.id)) return '';
-                const url = att.url || '#';
-                const label = this.escapeDocHtml(att.filename || att.name || 'Bifogad fil');
-                return `<a href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener" class="samarbete-file-link"><i class="fas fa-download"></i> ${label}</a>`;
-            };
             if (Array.isArray(answersArray) && answersArray.length > 0) {
                 responseHtml += '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
                 answersArray.forEach((a, idx) => {
@@ -6022,8 +6109,58 @@ class CustomerCardManager {
                 </div>`;
         }).join('');
 
+        const editDraftBtn = (req) => `<button type="button" class="btn btn-secondary btn-sm" onclick='customerCardManager.openBegarUnderlagModal(${JSON.stringify({
+            id: req.id,
+            title: req.title || '',
+            recipientEmail: req.recipientEmail || '',
+            recipientName: req.recipientName || '',
+            customerMessage: req.customerMessage || '',
+            deadline: req.deadline || '',
+            uppdragId: req.uppdragId || '',
+            uppdragTyp: req.uppdragTyp || '',
+            uppdragPeriod: req.uppdragPeriod || ''
+        }).replace(/'/g, "\\'")})' title="Redigera utkast"><i class="fas fa-pen"></i> Redigera</button>`;
+        const sendDraftBtn = (req) => `<button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.sendSamarbeteDraft('${this.escapeDocHtml(req.id)}')" title="Skicka utkast"><i class="fas fa-paper-plane"></i> Skicka</button>`;
+
+        const draftItems = drafts.map(req => {
+            const created = fmtDate(req.createdAt);
+            const deadline = fmtDeadline(req.deadline);
+            const titleFull = stripFileObligatorisk((req.title || 'Utkast').trim());
+            const n = titleFull.split('\n').filter(Boolean).length;
+            const headerLine = `${req.recipientName || '—'} · Utkast · Skapat ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}`;
+            return `
+                <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
+                    <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
+                        <div class="samarbete-item-head-inner">
+                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}${uppdragBadge(req)}</span>
+                        </div>
+                        <i class="fas fa-chevron-down samarbete-item-chevron"></i>
+                    </div>
+                    <div class="samarbete-item-collapse">
+                        <div class="samarbete-item-body samarbete-response-block">
+                            <div class="samarbete-block">
+                                <div style="white-space:pre-line; color:#334155;">${this.escapeDocHtml(titleFull)}</div>
+                            </div>
+                        </div>
+                        <div class="samarbete-item-actions">
+                            ${editDraftBtn(req)}
+                            ${sendDraftBtn(req)}
+                            <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.archiveSamarbeteRequest('${this.escapeDocHtml(req.id)}')" title="Arkivera utkast"><i class="fas fa-archive"></i> Arkivera</button>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+
         content.innerHTML = `
             <div class="documentation-content documentation-cards">
+                <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
+                    <div class="collapsible-header">
+                        <div class="collapsible-title"><i class="fas fa-pen"></i> Utkast</div>
+                    </div>
+                    <div class="collapsible-body">
+                        ${drafts.length ? `<div class="samarbete-list">${draftItems}</div>` : '<p class="samarbete-empty">Inga utkast.</p>'}
+                    </div>
+                </div>
                 <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                     <div class="collapsible-header">
                         <div class="collapsible-title"><i class="fas fa-clock"></i> Väntande förfrågningar</div>
@@ -6239,8 +6376,9 @@ class CustomerCardManager {
         }
     }
 
-    openBegarUnderlagModal() {
+    openBegarUnderlagModal(existingDraft) {
         const personer = this.getKontaktPersonerForSamarbete();
+        const draft = existingDraft && typeof existingDraft === 'object' ? existingDraft : null;
         const options = personer.length
             ? personer.map((p, i) => `<option value="${this.escapeDocHtml(p.epost)}" data-name="${this.escapeDocHtml(p.namn)}">${this.escapeDocHtml(p.namn)}${p.epost ? ' – ' + p.epost : ' (e-post saknas)'}</option>`).join('')
             : '<option value="">Inga roller med e-post – lägg till på Företagsinformation</option>';
@@ -6263,6 +6401,7 @@ class CustomerCardManager {
                         <button class="modal-close" onclick="customerCardManager.closeBegarUnderlagModal()"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="modal-body">
+                        <input type="hidden" id="samarbete-draft-id" value="${draft ? this.escapeDocHtml(draft.id || '') : ''}">
                         <div class="form-group">
                             <label for="samarbete-recipient">Välj mottagare</label>
                             <select id="samarbete-recipient" class="form-control">${options}</select>
@@ -6293,16 +6432,19 @@ class CustomerCardManager {
                         </div>
                         <div class="form-group">
                             <label for="samarbete-customer-message">Meddelande till kunden <span style="color:#64748b; font-weight:400;">(visas i mejlet)</span></label>
-                            <textarea id="samarbete-customer-message" class="form-control" rows="2" placeholder="t.ex. Jag behöver dessa senast på torsdag"></textarea>
+                            <textarea id="samarbete-customer-message" class="form-control" rows="2" placeholder="t.ex. Jag behöver dessa senast på torsdag">${draft ? this.escapeDocHtml(draft.customerMessage || '') : ''}</textarea>
                         </div>
                         <div class="form-group">
                             <label for="samarbete-deadline">Deadline <span style="color:#64748b; font-weight:400;">(valfri)</span></label>
-                            <input type="date" id="samarbete-deadline" class="form-control" />
+                            <input type="date" id="samarbete-deadline" class="form-control" value="${draft ? this.escapeDocHtml((draft.deadline || '').toString().slice(0, 10)) : ''}" />
                             <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Om du anger en deadline visas den i mejlet och kunden får automatiska påminnelser.</div>
                         </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-ghost" onclick="customerCardManager.closeBegarUnderlagModal()">Avbryt</button>
-                            <button type="button" class="btn btn-primary" id="samarbete-submit-btn" onclick="customerCardManager.submitBegarUnderlag()">
+                            <button type="button" class="btn btn-secondary" id="samarbete-draft-btn" onclick="customerCardManager.submitBegarUnderlag({ asDraft: true })">
+                                <i class="fas fa-save"></i> Spara utkast
+                            </button>
+                            <button type="button" class="btn btn-primary" id="samarbete-submit-btn" onclick="customerCardManager.submitBegarUnderlag({ asDraft: false })">
                                 <i class="fas fa-paper-plane"></i> Skapa förfrågan
                             </button>
                         </div>
@@ -6450,6 +6592,33 @@ class CustomerCardManager {
                 }
             });
         }
+
+        // Prefill frågor för utkast
+        if (draft && wrapEl) {
+            try {
+                const titleFull = ((draft.title || '') + '').trim();
+                const lines = titleFull
+                    ? titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
+                    : [];
+                if (lines.length) {
+                    wrapEl.innerHTML = '';
+                    lines.forEach((line, idx) => {
+                        const row = document.createElement('div');
+                        row.className = 'samarbete-item-row';
+                        row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. kontoutdrag 2025 eller en längre fråga" data-item="${idx}" value="${this.escapeDocHtml(line)}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${idx}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
+                        wrapEl.appendChild(row);
+                    });
+                }
+            } catch (_) {}
+        }
+
+        // Prefill mottagare om finns
+        if (draft) {
+            const sel = document.getElementById('samarbete-recipient');
+            if (sel && draft.recipientEmail) {
+                sel.value = draft.recipientEmail;
+            }
+        }
     }
 
     closeBegarUnderlagModal() {
@@ -6457,12 +6626,15 @@ class CustomerCardManager {
         if (modal) modal.remove();
     }
 
-    async submitBegarUnderlag() {
+    async submitBegarUnderlag(options) {
+        const asDraft = !!(options && options.asDraft);
         const recipientSelect = document.getElementById('samarbete-recipient');
         const typeSelect = document.getElementById('samarbete-type');
         const uppdragSelect = document.getElementById('samarbete-uppdrag-link');
+        const draftIdEl = document.getElementById('samarbete-draft-id');
+        const draftId = (draftIdEl && draftIdEl.value) ? draftIdEl.value.trim() : '';
         const rows = document.querySelectorAll('#samarbete-items-wrap .samarbete-item-row');
-        const btn = document.getElementById('samarbete-submit-btn');
+        const btn = document.getElementById(asDraft ? 'samarbete-draft-btn' : 'samarbete-submit-btn');
         const items = [];
         rows.forEach((row, i) => {
             const inp = row.querySelector('.samarbete-item-input');
@@ -6489,26 +6661,36 @@ class CustomerCardManager {
             : '';
         const uppdragPeriodEl = document.getElementById('samarbete-uppdrag-period');
         const uppdragPeriod = uppdragPeriodEl ? (uppdragPeriodEl.value || '').trim() : '';
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const res = await fetch(`${baseUrl}/api/samarbete/requests`, {
-                method: 'POST',
-                ...getAuthOptsKundkort(),
-                headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
-                body: JSON.stringify({
-                    customerId: this.customerId,
-                    recipientName: recipientName || 'Kund',
-                    recipientEmail: recipientEmail || '',
-                    type: typeSelect ? typeSelect.value : 'Filer',
-                    title: title,
-                    customerMessage: customerMessage || undefined,
-                    deadline: deadline || undefined,
-                    uppdragId: uppdragId || undefined,
-                    uppdragTyp: uppdragTyp || undefined,
-                    uppdragPeriod: uppdragPeriod || undefined
+            const payload = {
+                customerId: this.customerId,
+                recipientName: recipientName || 'Kund',
+                recipientEmail: recipientEmail || '',
+                type: typeSelect ? typeSelect.value : 'Filer',
+                title: title,
+                customerMessage: customerMessage || undefined,
+                deadline: deadline || undefined,
+                uppdragId: uppdragId || undefined,
+                uppdragTyp: uppdragTyp || undefined,
+                uppdragPeriod: uppdragPeriod || undefined,
+                status: asDraft ? 'Utkast' : 'Väntar'
+            };
+
+            const res = draftId
+                ? await fetch(`${baseUrl}/api/samarbete/requests/${encodeURIComponent(draftId)}`, {
+                    method: 'PUT',
+                    ...getAuthOptsKundkort(),
+                    headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                    body: JSON.stringify(payload)
                 })
-            });
+                : await fetch(`${baseUrl}/api/samarbete/requests`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                    body: JSON.stringify(payload)
+                });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 // Logga detaljer så vi kan se exakt Airtable-fel (t.ex. okänt fält, ogiltig e-post, saknade select-vals)
@@ -6526,7 +6708,7 @@ class CustomerCardManager {
                 throw new Error(combined);
             }
             this.closeBegarUnderlagModal();
-            this.showNotification(data.message || 'Förfrågan skapad.', 'success');
+            this.showNotification(data.message || (asDraft ? 'Utkast sparat.' : 'Förfrågan skapad.'), 'success');
             if (data.link) {
                 const linkModal = document.createElement('div');
                 linkModal.className = 'modal-overlay';
@@ -6563,7 +6745,20 @@ class CustomerCardManager {
                 this.showNotification(msg, 'error');
             }
         }
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Skapa förfrågan'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = asDraft ? '<i class="fas fa-save"></i> Spara utkast' : '<i class="fas fa-paper-plane"></i> Skapa förfrågan'; }
+    }
+
+    async sendSamarbeteDraft(requestId) {
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/samarbete/requests/${encodeURIComponent(requestId)}/send`, { method: 'POST', ...getAuthOptsKundkort() });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Kunde inte skicka utkast');
+            this.showNotification('Utkast skickat.', 'success');
+            this.loadSamarbete();
+        } catch (e) {
+            this.showNotification(e.message || 'Kunde inte skicka utkast', 'error');
+        }
     }
 
     showStatusValModal() {

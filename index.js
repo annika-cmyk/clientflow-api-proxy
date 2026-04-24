@@ -4937,9 +4937,10 @@ const SAMARBETE_REQUIRED_FIELDS = [
   { name: 'Mottagare namn', type: 'singleLineText' },
   { name: 'Mottagare e-post', type: 'email' },
   { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Filer' }, { name: 'Kommentar' }] } },
+  { name: 'Meddelande', type: 'multilineText', description: 'Intern: meddelande som visas i mejlet till kunden (valfritt)' },
   { name: 'Titel', type: 'multilineText', description: 'Vad som begärs från kunden' },
   { name: 'Token', type: 'singleLineText', description: 'Unik token för kundlänk' },
-  { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }, { name: 'Arkiverad' }] } },
+  { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Utkast' }, { name: 'Väntar' }, { name: 'Besvarad' }, { name: 'Arkiverad' }] } },
   { name: 'Skapad från uppdrag', type: 'checkbox', description: 'Intern: markerar att förfrågan skapats automatiskt från Uppdrag' },
   { name: 'Uppdrag ID', type: 'singleLineText', description: 'Intern: record-id för uppdraget som skapade förfrågan' },
   { name: 'Uppdrag typ', type: 'singleLineText', description: 'Intern: uppdragstyp (t.ex. Löneuppdrag)' },
@@ -5193,9 +5194,10 @@ async function sendSamarbeteInviteEmail(options) {
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
-    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod } = req.body;
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod, status } = req.body;
     if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
     const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
+    const desiredStatus = (String(status || '').trim() === 'Utkast') ? 'Utkast' : 'Väntar';
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
@@ -5255,9 +5257,10 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
         'Mottagare namn': (recipientName || '').toString().trim() || 'Kund',
         'Mottagare e-post': (recipientEmail || '').toString().trim() || '',
         'Typ': typ,
+        ...(customerMessage != null && String(customerMessage).trim() ? { 'Meddelande': String(customerMessage).trim().slice(0, 100000) } : {}),
         'Titel': String(title).trim(),
         'Token': token,
-        'Status': 'Väntar',
+        'Status': desiredStatus,
         ...((uppdragId || uppdragTyp) ? {
           'Skapad från uppdrag': true,
           ...(uppdragId ? { 'Uppdrag ID': String(uppdragId).trim() } : {}),
@@ -5298,7 +5301,7 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     let emailSent = false;
     let emailError = null;
     const toEmail = (recipientEmail || '').toString().trim();
-    if (toEmail && toEmail.includes('@')) {
+    if (desiredStatus !== 'Utkast' && toEmail && toEmail.includes('@')) {
       const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';
       const senderByra = (userData.byra || '').toString().trim() || null;
       const logoRaw = userData.logo;
@@ -5322,9 +5325,11 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     }
     res.json({
       success: true,
-      request: { id: record.id, title: String(title).trim(), type: typ, token, status: 'Väntar', deadline: deadlineDate || undefined },
+      request: { id: record.id, title: String(title).trim(), type: typ, token, status: desiredStatus, deadline: deadlineDate || undefined },
       link: respondUrl,
-      message: emailSent ? `Förfrågan skapad och ett mejl har skickats till ${toEmail}.` : 'Förfrågan skapad. Dela länken med kunden.',
+      message: desiredStatus === 'Utkast'
+        ? 'Utkast sparat.'
+        : (emailSent ? `Förfrågan skapad och ett mejl har skickats till ${toEmail}.` : 'Förfrågan skapad. Dela länken med kunden.'),
       emailSent,
       emailError: emailError || undefined
     });
@@ -5404,6 +5409,7 @@ app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
         recipientName: fields['Mottagare namn'],
         recipientEmail: fields['Mottagare e-post'],
         type: fields['Typ'],
+        customerMessage: fields['Meddelande'] || '',
         title: fields['Titel'],
         status: fields['Status'] || 'Väntar',
         fromUppdrag: !!fields['Skapad från uppdrag'] || !!fields['Uppdrag ID'],
@@ -6599,6 +6605,165 @@ app.post('/api/samarbete/requests/:requestId/resend-email', authenticateToken, a
   } catch (error) {
     const msg = error.response?.data?.error?.message || error.message;
     console.error('POST /api/samarbete/requests/:requestId/resend-email:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId – uppdatera utkast (auth)
+app.put('/api/samarbete/requests/:requestId', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const { recipientName, recipientEmail, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod } = req.body || {};
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+
+    // Read to verify access + byrå check
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = recRes.data;
+    const fields = record.fields || {};
+    const customerId = fields['Kund ID'] || (fields['Kund'] && fields['Kund'][0]);
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const cf = custRes.data.fields || {};
+    const custByraId = (cf['Byrå ID'] || cf.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const parseDeadlineDateOnly = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const deadlineDate = parseDeadlineDateOnly(deadline);
+
+    const updateFields = {};
+    if (recipientName != null) updateFields['Mottagare namn'] = String(recipientName).trim();
+    if (recipientEmail != null) updateFields['Mottagare e-post'] = String(recipientEmail).trim();
+    if (title != null) updateFields['Titel'] = String(title).trim();
+    if (customerMessage != null) updateFields['Meddelande'] = String(customerMessage).trim().slice(0, 100000);
+    if (deadline != null) updateFields['Deadline'] = deadlineDate || null;
+
+    if (uppdragId || uppdragTyp || uppdragPeriod) {
+      updateFields['Skapad från uppdrag'] = true;
+      if (uppdragId != null) updateFields['Uppdrag ID'] = String(uppdragId).trim();
+      if (uppdragTyp != null) updateFields['Uppdrag typ'] = String(uppdragTyp).trim();
+      if (uppdragPeriod != null) updateFields['Uppdrag period'] = String(uppdragPeriod).trim();
+    }
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: updateFields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId:', msg);
+    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// POST /api/samarbete/requests/:requestId/send – skicka utkast (auth)
+app.post('/api/samarbete/requests/:requestId/send', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = recRes.data;
+    const fields = record.fields || {};
+    const customerId = fields['Kund ID'] || (fields['Kund'] && fields['Kund'][0]);
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const cf = custRes.data.fields || {};
+    const custByraId = (cf['Byrå ID'] || cf.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const toEmail = (fields['Mottagare e-post'] || '').toString().trim();
+    const toName = (fields['Mottagare namn'] || '').toString().trim() || 'Kund';
+    const title = (fields['Titel'] || '').toString().trim();
+    const token = (fields['Token'] || '').toString().trim();
+    if (!title) return res.status(400).json({ error: 'Titel saknas på utkastet.' });
+    if (!toEmail || !toEmail.includes('@')) return res.status(400).json({ error: 'Ange en giltig mottagare e-post innan du skickar.' });
+    if (!token) return res.status(400).json({ error: 'Token saknas på utkastet.' });
+
+    const reqHost = (req.get('host') || '').toString().trim();
+    const inferredBase = req.protocol + '://' + (reqHost || 'localhost:3001');
+    const defaultPublicBase = (reqHost.includes('localhost') || reqHost.includes('127.0.0.1')) ? inferredBase : 'https://www.app.clientflow.se';
+    const publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim() || defaultPublicBase;
+    const respondUrl = `${publicBaseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
+
+    const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';
+    const senderByra = (userData.byra || '').toString().trim() || null;
+    const logoRaw = userData.logo;
+    const senderLogoUrl = Array.isArray(logoRaw) && logoRaw.length > 0 && logoRaw[0].url
+      ? logoRaw[0].url
+      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+
+    const result = await sendSamarbeteInviteEmail({
+      toEmail,
+      toName,
+      senderName,
+      senderEmail: (req.user && req.user.email) ? String(req.user.email).trim() : undefined,
+      senderByra: senderByra || undefined,
+      senderLogoUrl: senderLogoUrl || undefined,
+      respondUrl,
+      title,
+      customerMessage: (fields['Meddelande'] || '').toString().trim() || undefined,
+      deadlineDate: fields['Deadline'] || undefined
+    });
+    if (!result.sent) return res.status(502).json({ error: result.error || 'Kunde inte skicka mejlet.' });
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: { 'Status': 'Väntar' } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('POST /api/samarbete/requests/:requestId/send:', msg);
     res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
   }
 });
