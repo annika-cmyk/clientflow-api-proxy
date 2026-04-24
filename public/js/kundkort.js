@@ -579,27 +579,241 @@ class CustomerCardManager {
 
         const addDisabled = missingTypes.length ? '' : 'disabled';
 
-        container.innerHTML = `
-            <div class="uppdrag-tab">
-                <div class="uppdrag-topbar">
-                    <button type="button" class="btn btn-primary" id="uppdrag-add-btn-top" ${addDisabled}>
-                        <i class="fas fa-plus"></i> Lägg upp uppdrag
-                    </button>
-                </div>
+        // ============================
+        // Uppdrag (översikt) – kundvy
+        // ============================
+        const toDateStr = (iso) => {
+            const s = String(iso || '').slice(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+        };
+        const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = (d) => d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+        const addMonthsIso = (iso, n) => {
+            const s = toDateStr(iso);
+            if (!s) return '';
+            const [y, m, d] = s.split('-').map(Number);
+            const base = new Date(y, (m - 1) + n, 1);
+            const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+            const day = Math.min(d, last);
+            const out = new Date(base.getFullYear(), base.getMonth(), day);
+            return `${out.getFullYear()}-${String(out.getMonth() + 1).padStart(2, '0')}-${String(out.getDate()).padStart(2, '0')}`;
+        };
+        const monthsStepFromFreq = (freqRaw) => {
+            const f = String(freqRaw || '').toLowerCase();
+            if (f.includes('kvartal')) return 3;
+            if (f.includes('månad')) return 1;
+            if (f.includes('årsvis')) return 12;
+            if (f.includes('engång')) return 0;
+            return 1;
+        };
+        const isDoneForPeriod = (fields, instanceDeadlineIso) => {
+            const doneAt = String(fields?.['Senast utförd'] || '').trim();
+            const nextDeadline = String(instanceDeadlineIso || fields?.['Nästa deadline'] || '').trim();
+            const freq = String(fields?.['Frekvens'] || '').toLowerCase();
+            if (!doneAt || !nextDeadline) return false;
+            const toD = (iso) => {
+                const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+                return Number.isNaN(d.getTime()) ? null : d;
+            };
+            const doneD = toD(doneAt);
+            const nextD = toD(nextDeadline);
+            if (!doneD || !nextD) return false;
+            const start = new Date(nextD.getTime());
+            if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
+            else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
+            else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+            else start.setMonth(start.getMonth() - 1);
+            return doneD >= start && doneD < nextD;
+        };
 
-                ${existingTypes.length ? existingTypes.map(t => {
-                    if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
-                    if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
-                    if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
-                    if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
-                    return '';
-                }).join('') : `
-                    <div class="uppdrag-empty" style="padding:0.25rem 0;">
-                        <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
+        const monthNow = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        if (!this._kundUppdragBoardMonth) this._kundUppdragBoardMonth = new Date(monthNow.getFullYear(), monthNow.getMonth(), 1);
+        const monthMin = new Date(monthNow.getFullYear(), monthNow.getMonth() - 12, 1);
+        const monthMax = new Date(monthNow.getFullYear(), monthNow.getMonth() + 12, 1);
+
+        // Bygg upp instanser (deadline per månad) för perioden [monthMin..monthMax]
+        const instByTypeMonth = new Map(); // typ -> Map(monthKey -> deadlineIso)
+        for (const r of records) {
+            const f = r.fields || {};
+            const typ = String(f['Typ'] || '').trim();
+            if (!typ) continue;
+            const deadline0 = toDateStr(f['Nästa deadline'] || '');
+            if (!deadline0) continue;
+            const step = monthsStepFromFreq(f['Frekvens']);
+            const map = instByTypeMonth.get(typ) || new Map();
+            if (step === 0) {
+                const mk = deadline0.slice(0, 7);
+                map.set(mk, deadline0);
+                instByTypeMonth.set(typ, map);
+                continue;
+            }
+            // gå bakåt och framåt från next deadline för att fylla spannet
+            let d = deadline0;
+            for (let guard = 0; guard < 60; guard++) {
+                const mk = d.slice(0, 7);
+                const cursor = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1, 1);
+                if (cursor >= monthMin && cursor <= monthMax) map.set(mk, d);
+                // Stoppa när vi gått för långt fram
+                if (cursor > monthMax) break;
+                d = addMonthsIso(d, step);
+                if (!d) break;
+            }
+            // och bakåt
+            d = deadline0;
+            for (let guard = 0; guard < 60; guard++) {
+                const mk = d.slice(0, 7);
+                const cursor = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1, 1);
+                if (cursor >= monthMin && cursor <= monthMax) map.set(mk, d);
+                if (cursor < monthMin) break;
+                d = addMonthsIso(d, -step);
+                if (!d) break;
+            }
+            instByTypeMonth.set(typ, map);
+        }
+
+        const boardHtml = `
+            <div class="uppdragboard-top" style="margin-bottom:0.85rem;">
+                <div class="uppdragboard-title">
+                    <h1 style="font-size:1.1rem; margin:0;">Uppdrag (översikt)</h1>
+                    <div class="uppdragboard-period">
+                        <button type="button" class="uppdragboard-navbtn" id="kund-uppdragboard-prev" title="Föregående månad" aria-label="Föregående månad"><i class="fas fa-chevron-left"></i></button>
+                        <div class="uppdragboard-month" id="kund-uppdragboard-month">—</div>
+                        <button type="button" class="uppdragboard-navbtn" id="kund-uppdragboard-next" title="Nästa månad" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
                     </div>
-                `}
+                </div>
+            </div>
+            <div class="uppdragboard-table-wrap" style="margin-bottom:1rem;">
+                <table class="uppdragboard-table">
+                    <thead>
+                        <tr>
+                            <th class="uppdragboard-th-client" style="width:44%; text-align:left;">Uppdrag</th>
+                            <th class="uppdragboard-th-run" style="width:28%; text-align:center;">Körning</th>
+                            <th class="uppdragboard-th-done" style="width:22%; text-align:center;">Status</th>
+                            <th class="uppdragboard-th-arrow" style="width:6%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="kund-uppdragboard-tbody"></tbody>
+                </table>
             </div>
         `;
+
+        container.innerHTML = `
+            <div class="uppdrag-tab">
+                ${boardHtml}
+
+                <div class="collapsible-card" id="kund-uppdrag-edit-card">
+                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
+                        <div class="collapsible-title"><i class="fas fa-pen"></i><span>Redigera uppdrag</span></div>
+                        <div class="collapsible-actions" onclick="event.stopPropagation()">
+                            <button type="button" class="btn btn-primary btn-sm" id="uppdrag-add-btn-top" ${addDisabled}>
+                                <i class="fas fa-plus"></i> Lägg upp uppdrag
+                            </button>
+                        </div>
+                        <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
+                    </div>
+                    <div class="collapsible-body">
+                        ${existingTypes.length ? existingTypes.map(t => {
+                            if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
+                            if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
+                            if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
+                            if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
+                            return '';
+                        }).join('') : `
+                            <div class="uppdrag-empty" style="padding:0.25rem 0;">
+                                <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const renderBoard = () => {
+            const monthEl = document.getElementById('kund-uppdragboard-month');
+            const tbody = document.getElementById('kund-uppdragboard-tbody');
+            if (!monthEl || !tbody) return;
+            const cursor = this._kundUppdragBoardMonth;
+            monthEl.textContent = monthLabel(cursor);
+            const mk = monthKey(cursor);
+            const fmtShort = (iso) => {
+                const s = toDateStr(iso);
+                if (!s) return '—';
+                try { return new Date(s + 'T00:00:00').toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }); } catch (_) { return s; }
+            };
+            const rows = ALL_TYPES.map((t) => {
+                const rec = byType(t);
+                if (!rec) {
+                    return `<tr class="uppdragboard-row">
+                        <td><div class="uppdragboard-client"><span class="uppdragboard-link" style="opacity:.7;">${this._esc(t)}</span></div></td>
+                        <td>—</td>
+                        <td><span class="uppdragboard-progress" style="opacity:.65;">Ej upplagt</span></td>
+                        <td></td>
+                    </tr>`;
+                }
+                const f = rec.fields || {};
+                const instMap = instByTypeMonth.get(t) || new Map();
+                const instDeadline = instMap.get(mk) || '';
+                const done = instDeadline ? isDoneForPeriod(f, instDeadline) : false;
+                const freq = (f['Frekvens'] || '').toString().trim() || '—';
+                const autoOn = !!f['Auto underlagsförfrågan'];
+                const autoChip = autoOn ? `<span class="uppdragboard-badge" style="margin-left:0.4rem;"><i class="fas fa-paper-plane"></i> Auto</span>` : '';
+                const statusHtml = instDeadline
+                    ? (done
+                        ? `<span class="uppdragboard-progress is-done"><i class="fas fa-check"></i> Klart</span>`
+                        : `<span class="uppdragboard-progress"><i class="fas fa-clock"></i> Ej klart</span>`)
+                    : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
+                const runHtml = instDeadline
+                    ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
+                    : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
+                return `<tr class="uppdragboard-row">
+                    <td>
+                        <div class="uppdragboard-client">
+                            <span class="uppdragboard-link">${this._esc(t)}</span>
+                            ${autoChip}
+                        </div>
+                    </td>
+                    <td>${runHtml}</td>
+                    <td>${statusHtml}</td>
+                    <td><button type="button" class="uppdragboard-expandbtn" title="Redigera" aria-label="Redigera" data-kund-edit-typ="${this._esc(t)}"><i class="fas fa-pen"></i></button></td>
+                </tr>`;
+            }).join('');
+            tbody.innerHTML = rows || `<tr><td colspan="4" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
+        };
+
+        const prevBtn = document.getElementById('kund-uppdragboard-prev');
+        const nextBtn = document.getElementById('kund-uppdragboard-next');
+        if (prevBtn) prevBtn.addEventListener('click', () => {
+            const d = this._kundUppdragBoardMonth;
+            const next = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+            if (next < monthMin) return;
+            this._kundUppdragBoardMonth = next;
+            renderBoard();
+        });
+        if (nextBtn) nextBtn.addEventListener('click', () => {
+            const d = this._kundUppdragBoardMonth;
+            const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+            if (next > monthMax) return;
+            this._kundUppdragBoardMonth = next;
+            renderBoard();
+        });
+
+        // Klick på penna i översikten: öppna Redigera-uppdrag och scrolla till rätt kort
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-kund-edit-typ]');
+            if (!btn) return;
+            const t = btn.getAttribute('data-kund-edit-typ');
+            const editCard = document.getElementById('kund-uppdrag-edit-card');
+            if (editCard) editCard.classList.remove('is-collapsed');
+            const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
+            if (target) {
+                try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+                // öppna kortet om det råkar vara kollapsat
+                target.classList.remove('is-collapsed');
+                target.querySelector('[data-action="toggle-edit"]')?.click();
+            }
+        }, { once: true });
+
+        renderBoard();
 
         // Setup actions
         const addBtn = document.getElementById('uppdrag-add-btn-top');
@@ -1451,8 +1665,11 @@ class CustomerCardManager {
                                     </label>
                                     <div>
                                         <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Underlaget avser</label>
-                                        <select class="form-control" data-field="Underlagsperiod">
-                                            ${['Föregående månad','Denna månad','Nästa månad'].map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
+                                    <select class="form-control" data-field="Underlagsperiod">
+                                            ${(typ === 'Momsredovisning'
+                                                ? ['Föregående månad','Föregående kvartal','Föregående år']
+                                                : ['Föregående månad','Denna månad','Nästa månad']
+                                            ).map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
                                         </select>
                                     </div>
                                     <div>

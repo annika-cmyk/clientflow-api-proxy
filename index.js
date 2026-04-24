@@ -5874,6 +5874,34 @@ function monthLabelSv(yyyyMm) {
   return d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' });
 }
 
+function currentQuarterFromYm(yyyyMm) {
+  const m = String(yyyyMm || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  if (!Number.isFinite(y) || !Number.isFinite(mo)) return null;
+  const q = Math.ceil(mo / 3);
+  return { year: y, quarter: q };
+}
+
+function prevQuarterKeyFromYm(yyyyMm) {
+  const cur = currentQuarterFromYm(yyyyMm);
+  if (!cur) return null;
+  let { year, quarter } = cur;
+  quarter -= 1;
+  if (quarter <= 0) {
+    quarter = 4;
+    year -= 1;
+  }
+  return `${year}-Q${quarter}`;
+}
+
+function quarterLabelSv(qKey) {
+  const m = String(qKey || '').match(/^(\d{4})-Q([1-4])$/);
+  if (!m) return '';
+  return `Kvartal ${m[2]} ${m[1]}`;
+}
+
 async function sendSamarbeteDigestEmail({ toEmail, toName, senderByra, senderLogoUrl, items }) {
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
@@ -5988,10 +6016,23 @@ async function processUppdragUnderlagSchedule() {
     if (todayDay !== sendDay) continue;
 
     const periodSel = String(f['Underlagsperiod'] || 'Föregående månad').trim();
-    const offset = periodSel.includes('Nästa') ? 1 : (periodSel.includes('Denna') ? 0 : -1);
-    const periodYm = monthAdd(todayYm, offset);
-    if (!periodYm) continue;
-    const periodKey = periodYm;
+    let periodKey = null;
+    let periodLabel = '';
+    if (periodSel.toLowerCase().includes('kvartal')) {
+      periodKey = prevQuarterKeyFromYm(todayYm);
+      periodLabel = quarterLabelSv(periodKey);
+    } else if (periodSel.toLowerCase().includes('år')) {
+      const y = parseInt(todayYm.slice(0, 4), 10);
+      periodKey = Number.isFinite(y) ? String(y - 1) : null;
+      periodLabel = periodKey || '';
+    } else {
+      const offset = periodSel.includes('Nästa') ? 1 : (periodSel.includes('Denna') ? 0 : -1);
+      const periodYm = monthAdd(todayYm, offset);
+      if (!periodYm) continue;
+      periodKey = periodYm;
+      periodLabel = monthLabelSv(periodKey);
+    }
+    if (!periodKey) continue;
     const last = String(f['Senast underlagsutskick period'] || '').trim();
     if (last === periodKey) continue;
 
@@ -6004,8 +6045,7 @@ async function processUppdragUnderlagSchedule() {
     const customerId = String(f['Kund ID'] || '').trim();
     const typ = String(f['Typ'] || '').trim();
 
-    const periodLabel = monthLabelSv(periodYm);
-    const lines = template.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => s.replace(/\{PERIOD\}/g, periodLabel));
+    const lines = template.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => s.replace(/\{PERIOD\}/g, periodLabel || ''));
     const title = lines.join('\n');
 
     const deadlineIso = `${todayYm}-${String(deadlineDay).padStart(2, '0')}`;
