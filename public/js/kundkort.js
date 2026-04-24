@@ -1000,10 +1000,10 @@ class CustomerCardManager {
                             <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Anteckning (för denna körning)</div>
                             ${(runningNote || '').toString().trim()
                                 ? `
-                                    <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning...">${this._esc(runningNote)}</textarea>
+                                    <textarea class="kunduppgifter-input uppdrag-run-note" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning..." readonly>${this._esc(runningNote)}</textarea>
                                     <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
-                                        <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
-                                            <i class="fas fa-save"></i> Spara anteckning
+                                        <button type="button" class="btn btn-secondary btn-sm" data-kund-action="toggle-note-edit" data-kund-mode="edit" data-kund-typ="${this._esc(t)}">
+                                            <i class="fas fa-pen"></i> Redigera
                                         </button>
                                         <span class="uppdrag-muted" data-kund-note-status="${this._esc(t)}" style="margin:0;"></span>
                                     </div>
@@ -1013,7 +1013,7 @@ class CustomerCardManager {
                                         <i class="fas fa-plus"></i> Skapa anteckning för körningen
                                     </button>
                                     <div style="margin-top:0.6rem; display:none;" data-kund-note-wrap="${this._esc(t)}">
-                                        <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning..."></textarea>
+                                        <textarea class="kunduppgifter-input uppdrag-run-note" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning..."></textarea>
                                         <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
                                             <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
                                                 <i class="fas fa-save"></i> Spara anteckning
@@ -1136,6 +1136,55 @@ class CustomerCardManager {
                         try { ta && ta.focus(); } catch (_) {}
                     }
                     createNoteBtn.style.display = 'none';
+                    return;
+                }
+
+                // Redigera / spara anteckning när det redan finns text (penna -> spara)
+                const toggleEditBtn = e.target.closest('[data-kund-action="toggle-note-edit"]');
+                if (toggleEditBtn) {
+                    e.preventDefault();
+                    const typ = toggleEditBtn.getAttribute('data-kund-typ') || '';
+                    const mode = (toggleEditBtn.getAttribute('data-kund-mode') || 'edit').toLowerCase();
+                    const textarea = container.querySelector(`textarea[data-kund-note-typ="${CSS.escape(typ)}"]`);
+                    const statusEl = container.querySelector(`[data-kund-note-status="${CSS.escape(typ)}"]`);
+
+                    if (mode === 'edit') {
+                        if (textarea) {
+                            textarea.removeAttribute('readonly');
+                            try { textarea.focus(); } catch (_) {}
+                        }
+                        toggleEditBtn.setAttribute('data-kund-mode', 'save');
+                        toggleEditBtn.innerHTML = '<i class="fas fa-save"></i> Spara anteckning';
+                        if (statusEl) statusEl.textContent = '';
+                        return;
+                    }
+
+                    const note = (textarea?.value || '').toString();
+                    if (statusEl) statusEl.textContent = 'Sparar...';
+                    fetch(`${baseUrl}/api/uppdrag`, {
+                        method: 'POST',
+                        ...getAuthOptsKundkort(),
+                        headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                        body: JSON.stringify({ customerId, typ, fields: { 'Anteckning för denna körning': note } })
+                    })
+                        .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
+                        .then((d) => {
+                            if (statusEl) statusEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
+                            // Uppdatera lokalt cache
+                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            if (rec && rec.fields) rec.fields['Anteckning för denna körning'] = note;
+                            setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+
+                            if (String(note || '').trim()) {
+                                if (textarea) textarea.setAttribute('readonly', 'readonly');
+                                toggleEditBtn.setAttribute('data-kund-mode', 'edit');
+                                toggleEditBtn.innerHTML = '<i class="fas fa-pen"></i> Redigera';
+                            } else {
+                                toggleEditBtn.setAttribute('data-kund-mode', 'save');
+                                toggleEditBtn.innerHTML = '<i class="fas fa-save"></i> Spara anteckning';
+                            }
+                        })
+                        .catch(err => { if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel'); });
                     return;
                 }
 

@@ -5775,6 +5775,24 @@ textarea.kunduppgifter-input {
     min-height: 90px;
 }
 
+/* Anteckning (för denna körning): visa utan "ruta" */
+textarea.kunduppgifter-input.uppdrag-run-note {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+textarea.kunduppgifter-input.uppdrag-run-note:focus {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+}
+
+textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
+    cursor: default;
+}
+
 /* Richtext-toolbar f?r Beskrivning av kunden */
 .richtext-toolbar {
     display: flex;

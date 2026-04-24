@@ -380,6 +380,7 @@
 
       const rutin = (f['Rutin'] || '').toString().trim();
       const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
+      const hasRunningNote = !!String(runningNote || '').trim();
       const riskValda = safeJson((f['Riskåtgärder valda'] || '').toString().trim(), []);
       const riskList = Array.isArray(riskValda) && riskValda.length
         ? `<div class="uppdrag-view-list">${riskValda.slice(0, 20).map(a => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${esc(a)}</div>`).join('')}</div>`
@@ -439,14 +440,22 @@
               <div class="uppdragboard-details-history" style="margin-top:1rem;">
                 <div class="form-group" style="margin-top:0.5rem; margin-bottom:0;">
                   <textarea
-                    class="kunduppgifter-input"
+                    class="kunduppgifter-input uppdrag-run-note"
                     rows="3"
                     data-note-for="${esc(x.key)}"
                     placeholder="Anteckning"
+                    ${hasRunningNote ? 'readonly' : ''}
                   >${esc(runningNote)}</textarea>
                   <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="save-note" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
-                      <i class="fas fa-save"></i> Spara anteckning
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      data-action="toggle-note"
+                      data-mode="${hasRunningNote ? 'edit' : 'save'}"
+                      data-key="${esc(x.key)}"
+                      data-customer-id="${esc(kundId)}"
+                    >
+                      ${hasRunningNote ? '<i class="fas fa-pen"></i> Redigera' : '<i class="fas fa-save"></i> Spara anteckning'}
                     </button>
                     <span class="uppdrag-muted" data-note-status-for="${esc(x.key)}" style="margin:0;"></span>
                   </div>
@@ -495,16 +504,29 @@
       });
     });
 
-    // bind save-note buttons
-    tbodyEl.querySelectorAll('[data-action="save-note"]').forEach(btn => {
+    // bind edit/save note buttons
+    tbodyEl.querySelectorAll('[data-action="toggle-note"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const mode = (btn.getAttribute('data-mode') || 'save').toLowerCase();
         const key = btn.getAttribute('data-key') || '';
         const customerId = btn.getAttribute('data-customer-id') || '';
         if (!customerId || !key) return;
         const textarea = tbodyEl.querySelector(`textarea[data-note-for="${CSS.escape(key)}"]`);
         const statusEl = tbodyEl.querySelector(`[data-note-status-for="${CSS.escape(key)}"]`);
+
+        if (mode === 'edit') {
+          if (textarea) {
+            textarea.removeAttribute('readonly');
+            try { textarea.focus(); } catch (_) {}
+          }
+          btn.setAttribute('data-mode', 'save');
+          btn.innerHTML = '<i class="fas fa-save"></i> Spara anteckning';
+          if (statusEl) statusEl.textContent = '';
+          return;
+        }
+
         const note = (textarea?.value || '').toString();
         if (statusEl) statusEl.textContent = 'Sparar...';
         try {
@@ -528,6 +550,17 @@
           // Visa varning om Airtable saknar fältet
           if (data.warning && statusEl) statusEl.textContent = String(data.warning);
           setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+
+          // om anteckning finns: lås och byt tillbaka till penna
+          if (String(note || '').trim()) {
+            if (textarea) textarea.setAttribute('readonly', 'readonly');
+            btn.setAttribute('data-mode', 'edit');
+            btn.innerHTML = '<i class="fas fa-pen"></i> Redigera';
+          } else {
+            // tom anteckning: låt användaren fortsätta skriva och spara
+            btn.setAttribute('data-mode', 'save');
+            btn.innerHTML = '<i class="fas fa-save"></i> Spara anteckning';
+          }
         } catch (err) {
           if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
         }
