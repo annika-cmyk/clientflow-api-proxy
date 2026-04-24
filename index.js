@@ -5789,6 +5789,239 @@ if (!global.__clientflowSamarbeteReminderStarted) {
   setInterval(() => { processSamarbeteReminders().catch(() => {}); }, 60 * 60 * 1000);
 }
 
+// ============================================================
+// Uppdrag → schemalagda underlagsförfrågningar (Samarbete)
+// ============================================================
+function clampDay(d) {
+  const n = parseInt(d, 10);
+  if (!Number.isFinite(n)) return null;
+  if (n < 1) return 1;
+  if (n > 28) return 28;
+  return n;
+}
+
+function monthAdd(yyyyMm, delta) {
+  const m = String(yyyyMm || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10) - 1;
+  const d = new Date(Date.UTC(y, mo + (delta || 0), 1));
+  const yy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${yy}-${mm}`;
+}
+
+function monthLabelSv(yyyyMm) {
+  const m = String(yyyyMm || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, 1);
+  return d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' });
+}
+
+async function sendSamarbeteDigestEmail({ toEmail, toName, senderByra, senderLogoUrl, items }) {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass) return { sent: false, error: 'SMTP ej konfigurerad' };
+
+  const from = process.env.MAIL_FROM || 'ClientFlow Underlag <noreply@clientflow.se>';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const safeToName = escapeHtml(String(toName || 'Kund'));
+  const safeByra = escapeHtml(String(senderByra || '').trim());
+  const logoImgInline = senderLogoUrl && senderLogoUrl.startsWith('http')
+    ? `<img src="${escapeHtml(senderLogoUrl)}" alt="" style="max-height:73px; max-width:260px; object-fit:contain; display:inline-block;" />`
+    : '';
+
+  const subject = safeByra ? `Underlagsförfrågningar från ${safeByra}` : 'Underlagsförfrågningar via ClientFlow';
+  const listHtml = (items || []).map(it => `
+    <div style="margin:0 0 12px 0; padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+      <div style="font-weight:600; color:#0f172a; margin-bottom:6px;">${escapeHtml(it.title || 'Underlag')}</div>
+      ${it.deadlineSv ? `<div style="font-size:0.9rem; color:#334155; margin-bottom:8px;"><strong>Deadline:</strong> ${escapeHtml(it.deadlineSv)}</div>` : ''}
+      <a href="${escapeHtml(it.respondUrl || '')}" style="display:inline-block; padding:10px 14px; background:#6366f1; color:#fff; text-decoration:none; border-radius:8px; font-weight:600; font-size:0.95rem;">Öppna och svara</a>
+    </div>
+  `).join('');
+
+  const html = `
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0; padding:0; font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif; background:#f0f4ff; color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f0f4ff;">
+    <tr><td style="padding:32px 16px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden;">
+        <tr><td style="background:#fff; padding:24px 28px; text-align:center; border-bottom:1px solid #e5e7eb;">${logoImgInline || '<span style="font-size:0.85rem; color:#94a3b8;">—</span>'}</td></tr>
+        <tr><td style="padding:28px;">
+          <p style="margin:0 0 10px 0; font-size:1rem; line-height:1.5; color:#334155;">Hej ${safeToName},</p>
+          <p style="margin:0 0 18px 0; font-size:1rem; line-height:1.5; color:#475569;">Du har nya underlagsförfrågningar via ClientFlow.</p>
+          ${listHtml}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  try {
+    const transporterOpts = { host, port, secure, auth: { user, pass } };
+    if (port === 587 && !secure) transporterOpts.requireTLS = true;
+    const transporter = nodemailer.createTransport(transporterOpts);
+    await transporter.sendMail({ from, to: toEmail, subject, html, text: (items || []).map(it => `- ${it.title || 'Underlag'}${it.deadlineSv ? ` (Deadline: ${it.deadlineSv})` : ''}\n  ${it.respondUrl || ''}`).join('\n') });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err.message };
+  }
+}
+
+async function processUppdragUnderlagSchedule() {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return;
+
+  const todayIso = stockholmDateStr(new Date()); // YYYY-MM-DD
+  const todayDay = parseInt(todayIso.slice(8, 10), 10);
+  const todayYm = todayIso.slice(0, 7);
+
+  const uppdragTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+  const uppdragUrl = `https://api.airtable.com/v0/${airtableBaseId}/${uppdragTableIdOrName}`;
+
+  const fetchAll = async () => {
+    const res = await axios.get(`${uppdragUrl}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    return res.data.records || [];
+  };
+  const fetchFiltered = async () => {
+    const formula = encodeURIComponent(`AND({Auto underlagsförfrågan}=1,{Status}="Aktiv")`);
+    const res = await axios.get(`${uppdragUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    return res.data.records || [];
+  };
+
+  let uppdragRecords = [];
+  try { uppdragRecords = await fetchFiltered(); } catch (_) { uppdragRecords = await fetchAll(); }
+
+  const toCreate = [];
+  for (const r of uppdragRecords) {
+    const f = r.fields || {};
+    if (!f['Auto underlagsförfrågan']) continue;
+    if ((f['Status'] || 'Aktiv') !== 'Aktiv') continue;
+    const freq = String(f['Frekvens'] || '').toLowerCase();
+    if (!freq.includes('månad')) continue; // v1: månad
+
+    const sendDay = clampDay(f['Underlagsutskick dag']);
+    const deadlineDay = clampDay(f['Underlagsdeadline dag']);
+    if (!sendDay || !deadlineDay) continue;
+    if (todayDay !== sendDay) continue;
+
+    const periodSel = String(f['Underlagsperiod'] || 'Föregående månad').trim();
+    const offset = periodSel.includes('Nästa') ? 1 : (periodSel.includes('Denna') ? 0 : -1);
+    const periodYm = monthAdd(todayYm, offset);
+    if (!periodYm) continue;
+    const periodKey = periodYm;
+    const last = String(f['Senast underlagsutskick period'] || '').trim();
+    if (last === periodKey) continue;
+
+    const recipientEmail = String(f['Underlagsmottagare e-post'] || '').trim();
+    const recipientName = String(f['Underlagsmottagare namn'] || '').trim() || 'Kund';
+    const template = String(f['Underlagsmall'] || '').trim();
+    if (!recipientEmail || !recipientEmail.includes('@') || !template) continue;
+
+    const byraId = String(f['Byrå ID'] || '').trim();
+    const customerId = String(f['Kund ID'] || '').trim();
+    const typ = String(f['Typ'] || '').trim();
+
+    const periodLabel = monthLabelSv(periodYm);
+    const lines = template.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => s.replace(/\{PERIOD\}/g, periodLabel));
+    const title = lines.join('\n');
+
+    const deadlineIso = `${todayYm}-${String(deadlineDay).padStart(2, '0')}`;
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://clientflow-api-proxy-1.onrender.com';
+    const token = crypto.randomBytes(32).toString('hex');
+    const respondUrl = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
+
+    toCreate.push({ uppdragId: r.id, customerId, byraId, typ, periodKey, recipientEmail, recipientName, title, token, respondUrl, deadlineIso });
+  }
+
+  if (!toCreate.length) return;
+
+  const samarbeteTableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+  if (!samarbeteTableId) return;
+
+  const byEmail = new Map();
+  for (const it of toCreate) {
+    try {
+      await axios.post(
+        `https://api.airtable.com/v0/${airtableBaseId}/${samarbeteTableId}`,
+        {
+          fields: {
+            'Kund ID': it.customerId,
+            'Mottagare namn': it.recipientName,
+            'Mottagare e-post': it.recipientEmail,
+            'Typ': 'Filer',
+            'Titel': it.title,
+            'Token': it.token,
+            'Status': 'Väntar',
+            'Deadline': it.deadlineIso
+          }
+        },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+
+      await axios.patch(
+        `${uppdragUrl}/${it.uppdragId}`,
+        { fields: { 'Senast underlagsutskick period': it.periodKey } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+
+      const group = byEmail.get(it.recipientEmail) || { toEmail: it.recipientEmail, toName: it.recipientName, byraId: it.byraId, items: [] };
+      group.items.push({
+        title: it.title.split('\n')[0] || `${it.typ} – ${it.periodKey}`,
+        deadlineSv: (() => { try { return new Date(it.deadlineIso + 'T00:00:00Z').toLocaleDateString('sv-SE'); } catch { return it.deadlineIso; } })(),
+        respondUrl: it.respondUrl
+      });
+      byEmail.set(it.recipientEmail, group);
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message;
+      console.warn('processUppdragUnderlagSchedule create failed:', msg);
+    }
+  }
+
+  for (const group of byEmail.values()) {
+    let senderByra;
+    let senderLogoUrl;
+    try {
+      const byraIdStr = String(group.byraId || '').trim();
+      if (byraIdStr) {
+        const byraNum = parseInt(byraIdStr, 10);
+        const byraFormula = isNaN(byraNum)
+          ? `{Byrå ID}="${byraIdStr.replace(/"/g, '\\"')}"`
+          : `OR({Byrå ID}="${byraIdStr}",{Byrå ID}=${byraNum})`;
+        const byraRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B'}?filterByFormula=${encodeURIComponent(byraFormula)}&maxRecords=1`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        const byraRecord = (byraRes.data.records || [])[0];
+        senderByra = (byraRecord?.fields || {})['Namn'] || undefined;
+        const logga = (byraRecord && (byraRecord.fields || {})['Logga']);
+        const loggaArr = Array.isArray(logga) ? logga : (logga ? [logga] : []);
+        const firstAtt = loggaArr[0];
+        if (firstAtt && firstAtt.url) senderLogoUrl = firstAtt.url;
+      }
+    } catch (_) {}
+
+    await sendSamarbeteDigestEmail({
+      toEmail: group.toEmail,
+      toName: group.toName,
+      senderByra,
+      senderLogoUrl,
+      items: group.items
+    });
+  }
+}
+
+if (!global.__clientflowUppdragUnderlagScheduleStarted) {
+  global.__clientflowUppdragUnderlagScheduleStarted = true;
+  setTimeout(() => { processUppdragUnderlagSchedule().catch(() => {}); }, 20000);
+  setInterval(() => { processUppdragUnderlagSchedule().catch(() => {}); }, 60 * 60 * 1000);
+}
+
 // POST /api/samarbete/respond – Kund lämnar svar (publik)
 // Body: antingen { token, comment?, file?, filename? } eller { token, answers: [ ... ] } eller { token, answerIndex, text?, file?, filename? } för ett enskilt "Klart"-svar
 app.post('/api/samarbete/respond', async (req, res) => {
@@ -9455,6 +9688,16 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Senast utförd', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Aktiv' }, { name: 'Pausad' }, { name: 'Avslutad' }] } },
   { name: 'Historik', type: 'multilineText', description: 'JSON-array med körningar (datum/anteckning)' },
+  // Underlagsförfrågningar (Samarbete) – schemalagda utskick
+  { name: 'Auto underlagsförfrågan', type: 'checkbox', options: { icon: 'check', color: 'blueBright' } },
+  { name: 'Underlagsmall', type: 'multilineText', description: 'Mall för förfrågan (en punkt per rad). Stöd: {PERIOD} ersätts med t.ex. mars 2026.' },
+  { name: 'Underlagsmottagare namn', type: 'singleLineText', description: 'Mottagare (kund)' },
+  { name: 'Underlagsmottagare e-post', type: 'email', description: 'Mottagarens e-post' },
+  { name: 'Underlagsutskick dag', type: 'number', description: 'Dag i månaden då förfrågan ska skickas (1–28)' },
+  { name: 'Underlagsdeadline dag', type: 'number', description: 'Dag i månaden för deadline (1–28)' },
+  { name: 'Underlagsperiod', type: 'singleSelect', options: { choices: [{ name: 'Föregående månad' }, { name: 'Denna månad' }, { name: 'Nästa månad' }] } },
+  { name: 'Senast underlagsutskick period', type: 'singleLineText', description: 'Lås per period, t.ex. 2026-03' },
+  { name: 'Underlagsavsändare e-post', type: 'email', description: 'Valfri Reply-To för utskick (t.ex. handläggare)' },
   { name: 'Deklaration rader', type: 'multilineText', description: 'JSON-array med deklarationstyper + fritext (kan förekomma flera gånger)' },
   { name: 'Deklarationstyp', type: 'singleSelect', options: { choices: [{ name: 'Inkomstdeklaration' }, { name: 'K10' }, { name: 'NE' }] } },
   { name: 'Ägare', type: 'multilineText', description: 'Ägare (en per rad) för K10/ägar-deklaration' },

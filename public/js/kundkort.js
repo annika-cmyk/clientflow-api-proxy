@@ -1342,6 +1342,43 @@ class CustomerCardManager {
                             </div>
                         </div>
 
+                        <div class="uppdrag-block">
+                            <label class="uppdrag-label"><i class="fas fa-paper-plane"></i> Schemalagd förfrågan till kund (valfritt)</label>
+                            <div class="uppdrag-muted" style="margin-top:0.25rem;">Skickar automatiskt en underlagsförfrågan via Samarbete enligt schema. Stöd i mall: <strong>{PERIOD}</strong> → t.ex. “mars 2026”.</div>
+                            <div style="display:grid; gap:0.65rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top:0.75rem;">
+                                <label style="display:flex; gap:0.5rem; align-items:center;">
+                                    <input type="checkbox" data-field="Auto underlagsförfrågan" ${f['Auto underlagsförfrågan'] ? 'checked' : ''}>
+                                    <span>Aktivera auto-utskick</span>
+                                </label>
+                                <div>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Underlaget avser</label>
+                                    <select class="form-control" data-field="Underlagsperiod">
+                                        ${['Föregående månad','Denna månad','Nästa månad'].map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Skickas dag i månaden</label>
+                                    <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsutskick dag" value="${this._esc(String(f['Underlagsutskick dag'] || ''))}" placeholder="t.ex. 1 eller 10">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Deadline dag i månaden</label>
+                                    <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsdeadline dag" value="${this._esc(String(f['Underlagsdeadline dag'] || ''))}" placeholder="t.ex. 5 eller 15">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare namn</label>
+                                    <input class="kunduppgifter-input" type="text" data-field="Underlagsmottagare namn" value="${this._esc(String(f['Underlagsmottagare namn'] || ''))}" placeholder="t.ex. Kund">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare e-post</label>
+                                    <input class="kunduppgifter-input" type="email" data-field="Underlagsmottagare e-post" value="${this._esc(String(f['Underlagsmottagare e-post'] || ''))}" placeholder="kund@foretag.se">
+                                </div>
+                            </div>
+                            <div style="margin-top:0.75rem;">
+                                <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mall (en punkt per rad)</label>
+                                <textarea class="kunduppgifter-input" rows="3" data-field="Underlagsmall" placeholder="t.ex. Löneunderlag {PERIOD}\nTidrapport {PERIOD}">${this._esc(String(f['Underlagsmall'] || ''))}</textarea>
+                            </div>
+                        </div>
+
                         ${decExtraHtml}
 
                         <div class="uppdrag-block">
@@ -1395,6 +1432,15 @@ class CustomerCardManager {
             fields['Riskåtgärder valda'] = JSON.stringify(riskSelected);
             fields['Riskåtgärder aktiverade'] = riskSelected.length > 0;
             fields['PTL Underlag'] = getVal('PTL Underlag')?.value || '[]';
+            // Schemalagd förfrågan (underlag)
+            const autoCb = getVal('Auto underlagsförfrågan');
+            fields['Auto underlagsförfrågan'] = !!(autoCb && autoCb.checked);
+            fields['Underlagsperiod'] = getVal('Underlagsperiod')?.value || '';
+            fields['Underlagsutskick dag'] = getVal('Underlagsutskick dag')?.value || '';
+            fields['Underlagsdeadline dag'] = getVal('Underlagsdeadline dag')?.value || '';
+            fields['Underlagsmottagare namn'] = getVal('Underlagsmottagare namn')?.value || '';
+            fields['Underlagsmottagare e-post'] = getVal('Underlagsmottagare e-post')?.value || '';
+            fields['Underlagsmall'] = getVal('Underlagsmall')?.value || '';
             if (typ === 'Deklaration') {
                 // Deklarationsrader (typ + fritext) sparas som JSON
                 const rowsWrap = root.querySelector('[data-dek-rows]');
