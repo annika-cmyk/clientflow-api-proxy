@@ -5288,9 +5288,13 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
       emailError: emailError || undefined
     });
   } catch (error) {
-    const msg = error.response?.data?.error?.message || error.message;
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
     console.error('POST /api/samarbete/requests:', msg);
-    res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+    res.status(status).json({
+      error: msg,
+      details: (status >= 400 && status !== 500) ? (error.response?.data || undefined) : undefined
+    });
   }
 });
 
