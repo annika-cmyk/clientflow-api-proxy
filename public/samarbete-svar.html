@@ -230,6 +230,19 @@
                     answerFiles[i] = [];
                 }
                 var html = '';
+                var deadlineInfo = '';
+                if (data.deadline) {
+                    var ds = '';
+                    try {
+                        var dt = new Date(String(data.deadline).trim());
+                        if (!isNaN(dt.getTime())) ds = dt.toLocaleDateString('sv-SE');
+                    } catch (e) {}
+                    if (!ds) ds = String(data.deadline);
+                    deadlineInfo = '<p class="subtitle" style="margin-top:-0.75rem;"><strong>Deadline:</strong> ' + escapeHtml(ds) + '</p>';
+                }
+                if (deadlineInfo) {
+                    html += '<div style="margin-bottom:1rem;">' + deadlineInfo + '</div>';
+                }
                 for (var i = 0; i < items.length; i++) {
                     var q = escapeHtml(items[i]);
                     var req = fileRequired[i];

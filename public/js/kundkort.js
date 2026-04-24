@@ -5439,6 +5439,7 @@ class CustomerCardManager {
 
         const stripFileObligatorisk = (s) => (s || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+        const fmtDeadline = (d) => d ? new Date(d).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const renderHiddenLinkInput = (req) => {
             const link = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(req.token || '')}`;
             return `<input type="text" readonly value="${this.escapeDocHtml(link)}" id="samarbete-link-${this.escapeDocHtml(req.id)}" class="samarbete-link-input-hidden" aria-hidden="true" tabindex="-1">`;
@@ -5448,10 +5449,11 @@ class CustomerCardManager {
 
         const pendingItems = pending.map(req => {
             const created = fmtDate(req.createdAt);
+            const deadline = fmtDeadline(req.deadline);
             const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
             const titleLines = titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
             const n = titleLines.length;
-            const headerLine = `${req.recipientName || '—'} · Skickad den ${created} · ${n} ${n === 1 ? 'punkt' : 'punkter'}`;
+            const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}`;
             let questionsHtml = '';
             if (titleLines.length > 0) {
                 questionsHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
@@ -5486,6 +5488,7 @@ class CustomerCardManager {
         const answeredItems = answered.map(req => {
             const created = fmtDate(req.createdAt);
             const answeredAt = fmtDate(req.answeredAt);
+            const deadline = fmtDeadline(req.deadline);
             let responseHtml = '';
             const rawText = (req.responseText || '').trim();
             const attachments = Array.isArray(req.responseAttachment) ? req.responseAttachment : [];
@@ -5538,7 +5541,7 @@ class CustomerCardManager {
             const responseAttr = this.escapeDocHtml((rawText || '').slice(0, 2000));
             const allAnswered = numPoints > 0 && Array.isArray(answersArray) && answersArray.length >= numPoints &&
                 answersArray.slice(0, numPoints).every(a => (a && ((a.text && String(a.text).trim()) || (a.filename && String(a.filename).trim()))));
-            const headerLine = `${req.recipientName || '—'} · Skickad den ${created} · ${numPoints} ${numPoints === 1 ? 'punkt' : 'punkter'} · Besvarad: ${answeredAt}`;
+            const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${numPoints} ${numPoints === 1 ? 'punkt' : 'punkter'} · Besvarad: ${answeredAt}`;
             return `
                 <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
                     ${renderHiddenLinkInput(req)}
@@ -5563,9 +5566,10 @@ class CustomerCardManager {
         const archivedItems = archived.map(req => {
             const created = fmtDate(req.createdAt);
             const answeredAt = fmtDate(req.answeredAt);
+            const deadline = fmtDeadline(req.deadline);
             const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
             const n = titleFull.split('\n').filter(Boolean).length;
-            const headerLine = `${req.recipientName || '—'} · Skickad den ${created} · ${n} ${n === 1 ? 'punkt' : 'punkter'}${req.answeredAt ? ' · Besvarad: ' + answeredAt : ''}`;
+            const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}${req.answeredAt ? ' · Besvarad: ' + answeredAt : ''}`;
             return `
                 <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
                     ${renderHiddenLinkInput(req)}
@@ -5838,6 +5842,11 @@ class CustomerCardManager {
                             <label for="samarbete-customer-message">Meddelande till kunden <span style="color:#64748b; font-weight:400;">(visas i mejlet)</span></label>
                             <textarea id="samarbete-customer-message" class="form-control" rows="2" placeholder="t.ex. Jag behöver dessa senast på torsdag"></textarea>
                         </div>
+                        <div class="form-group">
+                            <label for="samarbete-deadline">Deadline <span style="color:#64748b; font-weight:400;">(valfri)</span></label>
+                            <input type="date" id="samarbete-deadline" class="form-control" />
+                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Om du anger en deadline visas den i mejlet och kunden får automatiska påminnelser.</div>
+                        </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-ghost" onclick="customerCardManager.closeBegarUnderlagModal()">Avbryt</button>
                             <button type="button" class="btn btn-primary" id="samarbete-submit-btn" onclick="customerCardManager.submitBegarUnderlag()">
@@ -5913,6 +5922,8 @@ class CustomerCardManager {
         const recipientName = recipientSelect && recipientSelect.selectedOptions[0] ? recipientSelect.selectedOptions[0].getAttribute('data-name') || '' : '';
         const messageEl = document.getElementById('samarbete-customer-message');
         const customerMessage = (messageEl && messageEl.value) ? messageEl.value.trim() : '';
+        const deadlineEl = document.getElementById('samarbete-deadline');
+        const deadline = (deadlineEl && deadlineEl.value) ? deadlineEl.value : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...'; }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -5926,7 +5937,8 @@ class CustomerCardManager {
                     recipientEmail: recipientEmail || '',
                     type: typeSelect ? typeSelect.value : 'Filer',
                     title: title,
-                    customerMessage: customerMessage || undefined
+                    customerMessage: customerMessage || undefined,
+                    deadline: deadline || undefined
                 })
             });
             const data = await res.json().catch(() => ({}));

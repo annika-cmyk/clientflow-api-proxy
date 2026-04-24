@@ -5008,7 +5008,7 @@ async function ensureSamarbeteArkiveradField(airtableToken, baseId, tableId) {
  * Kräver SMTP i .env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (t.ex. "ClientFlow <underlag@clientflow.se>").
  */
 async function sendSamarbeteInviteEmail(options) {
-  const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage } = options;
+  const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage, deadlineDate } = options;
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
   const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
@@ -5041,6 +5041,21 @@ async function sendSamarbeteInviteEmail(options) {
     ? `<img src="${escapeHtml(senderLogoUrl)}" alt="" style="max-height:73px; max-width:260px; object-fit:contain; display:inline-block;" />`
     : '';
 
+  const fmtDeadlineSv = (d) => {
+    if (!d) return '';
+    try {
+      const dt = new Date(String(d).trim());
+      if (Number.isNaN(dt.getTime())) return '';
+      return dt.toLocaleDateString('sv-SE');
+    } catch (_) {
+      return '';
+    }
+  };
+  const deadlineStr = fmtDeadlineSv(deadlineDate);
+  const deadlineHtml = deadlineStr
+    ? `<p style="margin:0 0 12px 0; font-size:0.95rem; line-height:1.5; color:#0f172a;"><strong>Deadline:</strong> ${escapeHtml(deadlineStr)}</p>`
+    : '';
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -5065,6 +5080,7 @@ async function sendSamarbeteInviteEmail(options) {
               <p style="margin:0 0 16px 0; font-size:1rem; line-height:1.5; color:#334155;">Hej ${safeToName},</p>
               <p style="margin:0 0 20px 0; font-size:1rem; line-height:1.5; color:#475569;">${senderLine}</p>
               ${customerMessageHtml}
+              ${deadlineHtml}
               ${titleLinesHtml ? `<p style="margin:0 0 24px 0; font-size:0.9rem; color:#64748b; background:#f8fafc; padding:12px 16px; border-radius:8px; line-height:1.6;">${titleLinesHtml}</p>` : ''}
               <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
                 <tr>
@@ -5110,7 +5126,7 @@ async function sendSamarbeteInviteEmail(options) {
       to: toEmail,
       replyTo: senderEmail || undefined,
       subject: `Lämna underlag – från ${subjectLine}`,
-      text: `Hej ${safeToName},\n\n${textSenderLine}\n\nÖppna denna länk för att lämna underlag eller besvara frågor:\n${respondUrl}\n\nMed vänliga hälsningar,\nClientFlow`,
+      text: `Hej ${safeToName},\n\n${textSenderLine}\n${deadlineStr ? `\nDeadline: ${deadlineStr}\n` : '\n'}\nÖppna denna länk för att lämna underlag eller besvara frågor:\n${respondUrl}\n\nMed vänliga hälsningar,\nClientFlow`,
       html
     });
     return { sent: true };
@@ -5123,7 +5139,7 @@ async function sendSamarbeteInviteEmail(options) {
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
-    const { customerId, recipientName, recipientEmail, type, title, customerMessage } = req.body;
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline } = req.body;
     if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
     const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -5149,6 +5165,28 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     const baseUrl = process.env.PUBLIC_BASE_URL || req.protocol + '://' + (req.get('host') || 'localhost:3001');
     const respondUrl = `${baseUrl}/samarbete-svar.html?token=${token}`;
 
+    const parseDeadlineDateOnly = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      // Expect YYYY-MM-DD from <input type="date">. Accept other formats but normalize to YYYY-MM-DD.
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return null;
+      // Normalize to date in Europe/Stockholm (best-effort) then YYYY-MM-DD
+      try {
+        const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+        const y = parts.find(p => p.type === 'year')?.value;
+        const mo = parts.find(p => p.type === 'month')?.value;
+        const da = parts.find(p => p.type === 'day')?.value;
+        if (y && mo && da) return `${y}-${mo}-${da}`;
+      } catch (_) {}
+      const iso = d.toISOString().slice(0, 10);
+      return iso || null;
+    };
+    const deadlineDate = parseDeadlineDateOnly(deadline);
+
     const createRes = await axios.post(
       `https://api.airtable.com/v0/${airtableBaseId}/${tableId}`,
       {
@@ -5159,7 +5197,8 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
           'Typ': typ,
           'Titel': String(title).trim(),
           'Token': token,
-          'Status': 'Väntar'
+          'Status': 'Väntar',
+          ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
         }
       },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
@@ -5184,14 +5223,15 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
         senderLogoUrl: senderLogoUrl || undefined,
         respondUrl,
         title: String(title).trim(),
-        customerMessage: (customerMessage != null && String(customerMessage).trim()) ? String(customerMessage).trim() : undefined
+        customerMessage: (customerMessage != null && String(customerMessage).trim()) ? String(customerMessage).trim() : undefined,
+        deadlineDate: deadlineDate || undefined
       });
       emailSent = result.sent;
       emailError = result.error || null;
     }
     res.json({
       success: true,
-      request: { id: record.id, title: String(title).trim(), type: typ, token, status: 'Väntar' },
+      request: { id: record.id, title: String(title).trim(), type: typ, token, status: 'Väntar', deadline: deadlineDate || undefined },
       link: respondUrl,
       message: emailSent ? `Förfrågan skapad och ett mejl har skickats till ${toEmail}.` : 'Förfrågan skapad. Dela länken med kunden.',
       emailSent,
@@ -5272,6 +5312,7 @@ app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
         title: fields['Titel'],
         status: fields['Status'] || 'Väntar',
         createdAt: r.createdTime,
+        deadline: fields['Deadline'] || fields['deadline'] || null,
         responseText: fields['Svar text'],
         responseAttachment: normalizeAttachments(rawAtt),
         answeredAt: fields['Besvarad'],
@@ -5403,6 +5444,7 @@ app.get('/api/samarbete/request/:token', async (req, res) => {
       title: fields['Titel'] || 'Underlag',
       type: fields['Typ'] || 'Filer',
       recipientName: fields['Mottagare namn'],
+      deadline: fields['Deadline'] || null,
       existingAnswers: Array.isArray(existingAnswers) ? existingAnswers : null,
       existingAttachments,
       byraLogoUrl: byraLogoUrl || undefined
@@ -5413,6 +5455,262 @@ app.get('/api/samarbete/request/:token', async (req, res) => {
     res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
   }
 });
+
+// ============================================================
+// Samarbete – automatiska påminnelser (deadline)
+// ============================================================
+function stockholmDateStr(d = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const mo = parts.find(p => p.type === 'month')?.value;
+    const da = parts.find(p => p.type === 'day')?.value;
+    if (y && mo && da) return `${y}-${mo}-${da}`;
+  } catch (_) {}
+  return new Date(d).toISOString().slice(0, 10);
+}
+
+function parseDateOnly(s) {
+  if (!s) return null;
+  const str = String(s).trim();
+  if (!str) return null;
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function addDays(dateOnly, days) {
+  const d = new Date(dateOnly + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+async function sendSamarbeteReminderEmail({ toEmail, toName, senderName, senderByra, senderLogoUrl, items, isOverdue }) {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass) return { sent: false, error: 'SMTP ej konfigurerad' };
+
+  const from = process.env.MAIL_FROM || 'ClientFlow Underlag <noreply@clientflow.se>';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const safeToName = escapeHtml(String(toName || 'Kund'));
+  const safeSenderName = escapeHtml(String(senderName || 'Vi'));
+  const safeSenderByra = escapeHtml(String(senderByra || '').trim());
+
+  const intro = isOverdue
+    ? 'Det finns en eller flera förfrågningar där deadline har passerat.'
+    : 'Påminnelse: det finns en eller flera förfrågningar med deadline imorgon.';
+
+  const listHtml = (items || []).map((it) => {
+    const t = escapeHtml(it.title || 'Underlag');
+    const dl = it.deadline ? escapeHtml(it.deadlineSv || it.deadline) : '';
+    const link = escapeHtml(it.respondUrl || '');
+    return `
+      <div style="margin:0 0 12px 0; padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+        <div style="font-weight:600; color:#0f172a; margin-bottom:6px;">${t}</div>
+        ${dl ? `<div style="font-size:0.9rem; color:#334155; margin-bottom:8px;"><strong>Deadline:</strong> ${dl}</div>` : ''}
+        <a href="${link}" style="display:inline-block; padding:10px 14px; background:#6366f1; color:#fff; text-decoration:none; border-radius:8px; font-weight:600; font-size:0.95rem;">Öppna och svara</a>
+      </div>
+    `;
+  }).join('');
+
+  const logoImgInline = senderLogoUrl && senderLogoUrl.startsWith('http')
+    ? `<img src="${escapeHtml(senderLogoUrl)}" alt="" style="max-height:73px; max-width:260px; object-fit:contain; display:inline-block;" />`
+    : '';
+
+  const senderLine = safeSenderByra
+    ? `${safeSenderName} på ${safeSenderByra}`
+    : safeSenderName;
+
+  const subject = isOverdue
+    ? `Påminnelse: deadline har passerat (${senderLine})`
+    : `Påminnelse: deadline imorgon (${senderLine})`;
+
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0; padding:0; font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif; background:#f0f4ff; color:#1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f0f4ff;">
+    <tr><td style="padding:32px 16px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px; margin:0 auto; background:#fff; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden;">
+        <tr><td style="background:#fff; padding:24px 28px; text-align:center; border-bottom:1px solid #e5e7eb;">
+          ${logoImgInline || '<span style="font-size:0.85rem; color:#94a3b8;">—</span>'}
+        </td></tr>
+        <tr><td style="padding:28px;">
+          <p style="margin:0 0 10px 0; font-size:1rem; line-height:1.5; color:#334155;">Hej ${safeToName},</p>
+          <p style="margin:0 0 18px 0; font-size:1rem; line-height:1.5; color:#475569;">${escapeHtml(intro)}</p>
+          ${listHtml}
+          <p style="margin:18px 0 0 0; font-size:0.8rem; color:#94a3b8;">Detta är en automatisk påminnelse från ClientFlow.</p>
+        </td></tr>
+        <tr><td style="padding:20px 28px 16px; background:#f8fafc; border-top:1px solid #e2e8f0; text-align:center;">
+          <div style="font-family:Inter, sans-serif; color:#6366f1; font-size:1rem; font-weight:600; letter-spacing:-0.02em; margin-bottom:10px;">Client<span style="font-weight:700;">Flow</span></div>
+          <p style="margin:0; font-size:0.75rem; color:#94a3b8;">Systemstöd för redovisnings- och revisionsbyråer.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  try {
+    const transporterOpts = { host, port, secure, auth: user && pass ? { user, pass } : undefined };
+    if (port === 587 && !secure) transporterOpts.requireTLS = true;
+    const transporter = nodemailer.createTransport(transporterOpts);
+    await transporter.sendMail({ from, to: toEmail, subject, html, text: `${intro}\n\n` + (items || []).map(it => `- ${it.title || 'Underlag'}${it.deadline ? ` (Deadline: ${it.deadlineSv || it.deadline})` : ''}\n  ${it.respondUrl || ''}`).join('\n') });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err.message };
+  }
+}
+
+async function processSamarbeteReminders() {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return;
+
+  const today = stockholmDateStr(new Date());
+  const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+  if (!tableId) return;
+
+  // Hämta poster med deadline (försök med filterByFormula, fallback till all+filter)
+  const fetchAll = async () => {
+    const res = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${tableId}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    return res.data.records || [];
+  };
+
+  const tryFiltered = async () => {
+    const formula = encodeURIComponent(`AND({Deadline}!='', {Status}!='Besvarad')`);
+    const res = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${tableId}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    return res.data.records || [];
+  };
+
+  let records = [];
+  try {
+    records = await tryFiltered();
+  } catch (e) {
+    records = await fetchAll();
+  }
+
+  const dueByEmail = new Map();
+  for (const r of records) {
+    const f = r.fields || {};
+    if (!f['Deadline']) continue;
+    if (f['Stängd']) continue;
+    const status = (f['Status'] || '').toString();
+    if (status === 'Besvarad' || status === 'Arkiverad') continue;
+
+    const deadline = parseDateOnly(f['Deadline']);
+    if (!deadline) continue;
+
+    const createdDate = parseDateOnly(r.createdTime);
+    const lastSent = parseDateOnly(f['Senast påminnelse skickad'] || f['Last reminder date'] || f['Last reminder'] || '');
+    if (lastSent === today) continue;
+
+    const dayBefore = addDays(deadline, -1);
+    const isOverdue = today > deadline;
+    const isDayBefore = (today === dayBefore);
+    if (!isOverdue && !isDayBefore) continue;
+
+    // Ingen "dagen innan"-påminnelse om deadline är samma dag som förfrågan skapades.
+    if (isDayBefore && createdDate && createdDate === deadline) continue;
+
+    const toEmail = (f['Mottagare e-post'] || '').toString().trim();
+    if (!toEmail || !toEmail.includes('@')) continue;
+
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://clientflow.onrender.com';
+    const token = (f['Token'] || '').toString().trim();
+    const respondUrl = token ? `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}` : '';
+
+    const deadlineSv = (() => {
+      try { return new Date(deadline + 'T00:00:00Z').toLocaleDateString('sv-SE'); } catch { return deadline; }
+    })();
+
+    const item = { recordId: r.id, title: f['Titel'] || 'Underlag', deadline, deadlineSv, respondUrl };
+    const existing = dueByEmail.get(toEmail) || { toEmail, toName: (f['Mottagare namn'] || 'Kund'), items: [], isOverdue };
+    existing.items.push(item);
+    // Om någon i samma email är overdue => överdue-mail (hårdare) annars day-before
+    existing.isOverdue = existing.isOverdue || isOverdue;
+    dueByEmail.set(toEmail, existing);
+  }
+
+  if (dueByEmail.size === 0) return;
+
+  // Skicka max ett mejl per e-post per dag; uppdatera "Senast påminnelse skickad" på alla ingående poster.
+  for (const group of dueByEmail.values()) {
+    // Försök hämta byrå-logga via första kund-id (best-effort)
+    let senderLogoUrl;
+    let senderByra;
+    let senderName = 'ClientFlow';
+    try {
+      const firstRecId = group.items[0]?.recordId;
+      if (firstRecId) {
+        // Läs posten igen för att få Kund ID och ev. byrå ID
+        const recRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${firstRecId}`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+        const rf = recRes.data.fields || {};
+        const customerId = rf['Kund ID'] != null ? (Array.isArray(rf['Kund ID']) ? rf['Kund ID'][0] : rf['Kund ID']) : null;
+        if (customerId) {
+          const kundRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe/${customerId}`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+          const kundFields = kundRes.data.fields || {};
+          let byraId = kundFields['Byrå ID'] ?? kundFields['Byra ID'] ?? kundFields['ByraID'];
+          if (Array.isArray(byraId)) byraId = byraId[0];
+          if (byraId != null && String(byraId).trim()) {
+            const byraIdStr = String(byraId).trim();
+            const byraNum = parseInt(byraIdStr, 10);
+            const byraFormula = isNaN(byraNum)
+              ? `{Byrå ID}="${byraIdStr.replace(/"/g, '\\"')}"`
+              : `OR({Byrå ID}="${byraIdStr}",{Byrå ID}=${byraNum})`;
+            const byraRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B'}?filterByFormula=${encodeURIComponent(byraFormula)}&maxRecords=1`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+            const byraRecord = (byraRes.data.records || [])[0];
+            senderByra = (byraRecord?.fields || {})['Namn'] || undefined;
+            const logga = (byraRecord && (byraRecord.fields || {})['Logga']);
+            const loggaArr = Array.isArray(logga) ? logga : (logga ? [logga] : []);
+            const firstAtt = loggaArr[0];
+            if (firstAtt && firstAtt.url) senderLogoUrl = firstAtt.url;
+          }
+        }
+      }
+    } catch (_) {}
+
+    const result = await sendSamarbeteReminderEmail({
+      toEmail: group.toEmail,
+      toName: group.toName,
+      senderName,
+      senderByra,
+      senderLogoUrl,
+      items: group.items,
+      isOverdue: !!group.isOverdue
+    });
+    if (!result.sent) continue;
+
+    // Markera skickad idag för varje ingående request (kräver att fältet finns i tabellen)
+    for (const it of group.items) {
+      try {
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${it.recordId}`,
+          { fields: { 'Senast påminnelse skickad': today } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (e) {
+        // Om fältet saknas: undvik att kasta, men logga.
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Samarbete reminder patch failed:', msg);
+      }
+    }
+  }
+}
+
+// Kör påminnelser regelbundet (Render kan sova – men skyddas med "senast skickad" och max en per dag/e-post).
+if (!global.__clientflowSamarbeteReminderStarted) {
+  global.__clientflowSamarbeteReminderStarted = true;
+  setTimeout(() => { processSamarbeteReminders().catch(() => {}); }, 15000);
+  setInterval(() => { processSamarbeteReminders().catch(() => {}); }, 60 * 60 * 1000);
+}
 
 // POST /api/samarbete/respond – Kund lämnar svar (publik)
 // Body: antingen { token, comment?, file?, filename? } eller { token, answers: [ ... ] } eller { token, answerIndex, text?, file?, filename? } för ett enskilt "Klart"-svar
