@@ -5237,22 +5237,45 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     };
     const deadlineDate = parseDeadlineDateOnly(deadline);
 
-    const createRes = await axios.post(
-      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}`,
-      {
-        fields: {
-          'Kund ID': customerId,
-          'Mottagare namn': (recipientName || '').toString().trim() || 'Kund',
-          'Mottagare e-post': (recipientEmail || '').toString().trim() || '',
-          'Typ': typ,
-          'Titel': String(title).trim(),
-          'Token': token,
-          'Status': 'Väntar',
-          ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
+    const createPayload = {
+      fields: {
+        'Kund ID': customerId,
+        'Mottagare namn': (recipientName || '').toString().trim() || 'Kund',
+        'Mottagare e-post': (recipientEmail || '').toString().trim() || '',
+        'Typ': typ,
+        'Titel': String(title).trim(),
+        'Token': token,
+        'Status': 'Väntar',
+        ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
+      }
+    };
+
+    const createRequestRecord = async () =>
+      axios.post(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableId}`,
+        createPayload,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+
+    let createRes;
+    try {
+      createRes = await createRequestRecord();
+    } catch (e) {
+      const status = e.response?.status;
+      const msg = e.response?.data?.error?.message || e.message || '';
+      const isUnknownDeadlineField = status === 422 && /Unknown field name:\s*"?Deadline"?/i.test(String(msg));
+      if (isUnknownDeadlineField) {
+        // Försök skapa saknade fält automatiskt (kräver schema.bases:write) och gör om.
+        try {
+          await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
+          createRes = await createRequestRecord();
+        } catch (e2) {
+          throw e2;
         }
-      },
-      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
+      } else {
+        throw e;
+      }
+    }
     const record = createRes.data;
     let emailSent = false;
     let emailError = null;
