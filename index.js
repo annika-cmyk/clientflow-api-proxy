@@ -5877,6 +5877,27 @@ async function processUppdragUnderlagSchedule() {
   const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return;
 
+  // Försök säkerställa att Uppdrag-tabellen har fälten (kräver schema-token). Körs tyst.
+  try {
+    const t = await getUppdragTableMeta(airtableAccessToken, airtableBaseId);
+    if (t && t.id) {
+      const existingNames = (t.fields || []).map(f => (f.name || '').trim());
+      const missing = UPPDRAG_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+      if (missing.length) {
+        const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${t.id}/fields`;
+        for (const field of missing) {
+          try {
+            const body = { name: field.name, type: field.type };
+            if (field.description) body.description = field.description;
+            if (field.options) body.options = field.options;
+            // eslint-disable-next-line no-await-in-loop
+            await axios.post(createUrl, body, { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 10000 });
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+
   const todayIso = stockholmDateStr(new Date()); // YYYY-MM-DD
   const todayDay = parseInt(todayIso.slice(8, 10), 10);
   const todayYm = todayIso.slice(0, 7);
