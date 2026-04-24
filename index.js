@@ -5212,8 +5212,16 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     if (!tableId) return res.status(503).json({ error: 'Tabellen "Samarbete" finns inte i Airtable. Skapa den och lägg till fält enligt dokumentationen.' });
 
     const token = crypto.randomBytes(32).toString('hex');
-    const baseUrl = process.env.PUBLIC_BASE_URL || req.protocol + '://' + (req.get('host') || 'localhost:3001');
-    const respondUrl = `${baseUrl}/samarbete-svar.html?token=${token}`;
+    const reqHost = (req.get('host') || '').toString().trim();
+    const inferredBase = req.protocol + '://' + (reqHost || 'localhost:3001');
+    // Kundlänken ska normalt peka till app-domänen (inte API-proxy-domänen),
+    // annars kan Render visa "service waking up" eller blockera statiska filer.
+    const defaultPublicBase =
+      (reqHost.includes('localhost') || reqHost.includes('127.0.0.1'))
+        ? inferredBase
+        : 'https://www.app.clientflow.se';
+    const publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim() || defaultPublicBase;
+    const respondUrl = `${publicBaseUrl}/samarbete-svar.html?token=${token}`;
 
     const parseDeadlineDateOnly = (v) => {
       if (v == null) return null;
@@ -5700,7 +5708,7 @@ async function processSamarbeteReminders() {
     const toEmail = (f['Mottagare e-post'] || '').toString().trim();
     if (!toEmail || !toEmail.includes('@')) continue;
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://clientflow.onrender.com';
+    const baseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim() || 'https://www.app.clientflow.se';
     const token = (f['Token'] || '').toString().trim();
     const respondUrl = token ? `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}` : '';
 
@@ -5953,7 +5961,7 @@ async function processUppdragUnderlagSchedule() {
     const title = lines.join('\n');
 
     const deadlineIso = `${todayYm}-${String(deadlineDay).padStart(2, '0')}`;
-    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://clientflow-api-proxy-1.onrender.com';
+    const baseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim() || 'https://www.app.clientflow.se';
     const token = crypto.randomBytes(32).toString('hex');
     const respondUrl = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
 
@@ -6464,7 +6472,8 @@ app.post('/api/samarbete/requests/:requestId/resend-email', authenticateToken, a
       return res.status(400).json({ error: 'Ingen token är sparad för denna förfrågan – kan inte skicka om mejlet.' });
     }
 
-    const baseUrl = process.env.PUBLIC_BASE_URL || req.protocol + '://' + (req.get('host') || 'localhost:3001');
+    const baseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim()
+      || ((req.get('host') || '').includes('localhost') ? (req.protocol + '://' + (req.get('host') || 'localhost:3001')) : 'https://www.app.clientflow.se');
     const respondUrl = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
 
     const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';

@@ -620,6 +620,40 @@ class CustomerCardManager {
                 if (el && el.tagName === 'INPUT') el.addEventListener('input', () => this._syncUppdragHeaderMeta(root));
             });
 
+            // Autofyll mottagare-namn när mottagare-e-post väljs från Roller
+            const underlagEpostEl = root.querySelector('[data-field="Underlagsmottagare e-post"]');
+            const underlagNamnEl = root.querySelector('[data-field="Underlagsmottagare namn"]');
+            const tryAutofillUnderlagRecipient = () => {
+                if (!underlagEpostEl || !underlagNamnEl) return;
+                const email = (underlagEpostEl.value || '').toString().trim().toLowerCase();
+                if (!email) return;
+                const persons = Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [];
+                const match = persons.find(p => ((p?.epost || p?.email || '').toString().trim().toLowerCase() === email));
+                if (!match) return;
+                const name = (match?.namn || '').toString().trim();
+                if (!name) return;
+
+                const currentName = (underlagNamnEl.value || '').toString().trim();
+                const canOverwrite = !currentName || underlagNamnEl.dataset.autofilled === '1';
+                if (!canOverwrite) return;
+
+                underlagNamnEl.value = name;
+                underlagNamnEl.dataset.autofilled = '1';
+            };
+            const markManualNameEdit = () => {
+                if (!underlagNamnEl) return;
+                const v = (underlagNamnEl.value || '').toString().trim();
+                if (v) underlagNamnEl.dataset.autofilled = '0';
+            };
+            if (underlagEpostEl) {
+                underlagEpostEl.addEventListener('change', tryAutofillUnderlagRecipient);
+                underlagEpostEl.addEventListener('input', tryAutofillUnderlagRecipient);
+            }
+            if (underlagNamnEl) {
+                underlagNamnEl.addEventListener('input', markManualNameEdit);
+                underlagNamnEl.addEventListener('change', markManualNameEdit);
+            }
+
             // Edit mode toggle
             const editBtn = root.querySelector('[data-action="toggle-edit"]');
             const cancelBtn = root.querySelector('[data-action="cancel-edit"]');
@@ -1207,6 +1241,22 @@ class CustomerCardManager {
             : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
         const freqHtml = freqChoices.map(c => `<option value="${this._esc(c)}" ${String(c) === String(freq) ? 'selected' : ''}>${this._esc(c)}</option>`).join('');
 
+        const safeIdPart = String(recId || typ || 'uppdrag').replace(/[^a-z0-9_-]/gi, '_');
+        const underlagEpostListId = `underlag-epost-${safeIdPart}`;
+        const rollerEpostOptions = (Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [])
+            .map(p => ({
+                namn: (p?.namn || '').toString().trim(),
+                epost: (p?.epost || p?.email || '').toString().trim(),
+                roller: Array.isArray(p?.roller) ? p.roller : []
+            }))
+            .filter(p => p.epost)
+            .map(p => {
+                const labelParts = [p.namn || ''];
+                if (p.roller.length) labelParts.push(`(${p.roller.join(', ')})`);
+                return `<option value="${this._esc(p.epost)}" label="${this._esc(labelParts.filter(Boolean).join(' '))}"></option>`;
+            })
+            .join('');
+
         const riskChoicesHtml = (riskAtgarder || []).map(a => {
             const checked = riskValda.some(x => String(x).toLowerCase() === String(a).toLowerCase());
             return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
@@ -1214,6 +1264,7 @@ class CustomerCardManager {
                 <span>${this._esc(a)}</span>
             </label>`;
         }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
+        const hasRiskAtgarder = Array.isArray(riskAtgarder) && riskAtgarder.length > 0;
 
         const decRowsRaw = (f['Deklaration rader'] || '').toString().trim();
         let decRows = [];
@@ -1250,6 +1301,26 @@ class CustomerCardManager {
         const viewRutinHtml = rutin
             ? `<div class="uppdrag-view-text">${this._esc(String(rutin))}</div>`
             : `<div class="uppdrag-muted">Ingen rutin sparad.</div>`;
+
+        const viewRiskSectionHtml = hasRiskAtgarder
+            ? `<div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Åtgärd enligt kundens riskbedömning</div>
+                                ${riskOn ? viewRiskSelectedHtml : `<div class="uppdrag-muted">Ej aktiverat.</div>`}
+                            </div>`
+            : `<div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Inga åtgärder hittades i kundens riskbedömning</div>
+                            </div>`;
+
+        const editRiskSectionHtml = hasRiskAtgarder
+            ? `<div class="uppdrag-riskbox">
+                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                            <div class="uppdrag-riskbox-items" data-risk-wrap>
+                                ${riskChoicesHtml}
+                            </div>
+                        </div>`
+            : `<div class="uppdrag-riskbox">
+                            <div class="uppdrag-riskbox-title">Inga åtgärder hittades i kundens riskbedömning</div>
+                        </div>`;
 
         const viewDeklarationHtml = extra.showDeklaration ? `
             <div class="uppdrag-view-field uppdrag-span-full" style="margin-top:0.85rem;">
@@ -1299,10 +1370,7 @@ class CustomerCardManager {
                                 <div class="uppdrag-view-label">Rutin / instruktion</div>
                                 ${viewRutinHtml}
                             </div>
-                            <div class="uppdrag-view-field">
-                                <div class="uppdrag-view-label">Åtgärd enligt kundens riskbedömning</div>
-                                ${riskOn ? viewRiskSelectedHtml : `<div class="uppdrag-muted">Ej aktiverat.</div>`}
-                            </div>
+                            ${viewRiskSectionHtml}
                         </div>
 
                         ${viewDeklarationHtml}
@@ -1333,65 +1401,66 @@ class CustomerCardManager {
                                 <input class="kunduppgifter-input" type="date" data-field="Startdatum" value="${this._esc(String(startdatum || ''))}">
                             </div>
                             <div class="lead-field">
-                                <label>Nästa deadline</label>
-                                <input class="kunduppgifter-input" type="date" data-field="Nästa deadline" value="${this._esc(String(deadline || ''))}">
-                            </div>
-                            <div class="lead-field">
                                 <label>Handläggare</label>
                                 <select class="form-control" data-field="Ansvarig">${userOptHtml}</select>
                             </div>
-                        </div>
-
-                        <div class="uppdrag-block">
-                            <label class="uppdrag-label"><i class="fas fa-paper-plane"></i> Schemalagd förfrågan till kund (valfritt)</label>
-                            <div class="uppdrag-muted" style="margin-top:0.25rem;">Skickar automatiskt en underlagsförfrågan via Samarbete enligt schema. Stöd i mall: <strong>{PERIOD}</strong> → t.ex. “mars 2026”.</div>
-                            <div style="display:grid; gap:0.65rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top:0.75rem;">
-                                <label style="display:flex; gap:0.5rem; align-items:center;">
-                                    <input type="checkbox" data-field="Auto underlagsförfrågan" ${f['Auto underlagsförfrågan'] ? 'checked' : ''}>
-                                    <span>Aktivera auto-utskick</span>
-                                </label>
-                                <div>
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Underlaget avser</label>
-                                    <select class="form-control" data-field="Underlagsperiod">
-                                        ${['Föregående månad','Denna månad','Nästa månad'].map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Skickas dag i månaden</label>
-                                    <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsutskick dag" value="${this._esc(String(f['Underlagsutskick dag'] || ''))}" placeholder="t.ex. 1 eller 10">
-                                </div>
-                                <div>
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Deadline dag i månaden</label>
-                                    <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsdeadline dag" value="${this._esc(String(f['Underlagsdeadline dag'] || ''))}" placeholder="t.ex. 5 eller 15">
-                                </div>
-                                <div>
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare namn</label>
-                                    <input class="kunduppgifter-input" type="text" data-field="Underlagsmottagare namn" value="${this._esc(String(f['Underlagsmottagare namn'] || ''))}" placeholder="t.ex. Kund">
-                                </div>
-                                <div>
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare e-post</label>
-                                    <input class="kunduppgifter-input" type="email" data-field="Underlagsmottagare e-post" value="${this._esc(String(f['Underlagsmottagare e-post'] || ''))}" placeholder="kund@foretag.se">
-                                </div>
-                            </div>
-                            <div style="margin-top:0.75rem;">
-                                <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mall (en punkt per rad)</label>
-                                <textarea class="kunduppgifter-input" rows="3" data-field="Underlagsmall" placeholder="t.ex. Löneunderlag {PERIOD}\nTidrapport {PERIOD}">${this._esc(String(f['Underlagsmall'] || ''))}</textarea>
+                            <div class="lead-field">
+                                <label>Nästa deadline</label>
+                                <input class="kunduppgifter-input" type="date" data-field="Nästa deadline" value="${this._esc(String(deadline || ''))}">
                             </div>
                         </div>
-
-                        ${decExtraHtml}
 
                         <div class="uppdrag-block">
                             <label class="uppdrag-label"><i class="fas ${icon}"></i> Rutin / instruktion</label>
                             <textarea class="kunduppgifter-input" rows="4" data-field="Rutin" placeholder="Skriv rutin/instruktion...">${this._esc(String(rutin || ''))}</textarea>
                         </div>
 
-                        <div class="uppdrag-riskbox">
-                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
-                            <div class="uppdrag-riskbox-items" data-risk-wrap>
-                                ${riskChoicesHtml}
+                        <div class="collapsible-card uppdrag-subcard is-collapsed" style="margin-top:0.75rem;">
+                            <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
+                                <div class="collapsible-title"><i class="fas fa-paper-plane"></i><span>Schemalagd förfrågan till kund (valfritt)</span></div>
+                                <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
+                            </div>
+                            <div class="collapsible-body">
+                                <div class="uppdrag-muted" style="margin-top:0.1rem;">Skickar automatiskt en underlagsförfrågan via Samarbete enligt schema. Stöd i mall: <strong>{PERIOD}</strong> → t.ex. “mars 2026”.</div>
+                                <div style="display:grid; gap:0.65rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top:0.75rem;">
+                                    <label style="display:flex; gap:0.5rem; align-items:center;">
+                                        <input type="checkbox" data-field="Auto underlagsförfrågan" ${f['Auto underlagsförfrågan'] ? 'checked' : ''}>
+                                        <span>Aktivera auto-utskick</span>
+                                    </label>
+                                    <div>
+                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Underlaget avser</label>
+                                        <select class="form-control" data-field="Underlagsperiod">
+                                            ${['Föregående månad','Denna månad','Nästa månad'].map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Skickas dag i månaden</label>
+                                        <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsutskick dag" value="${this._esc(String(f['Underlagsutskick dag'] || ''))}" placeholder="t.ex. 1 eller 10">
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Deadline dag i månaden</label>
+                                        <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsdeadline dag" value="${this._esc(String(f['Underlagsdeadline dag'] || ''))}" placeholder="t.ex. 5 eller 15">
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare namn</label>
+                                        <input class="kunduppgifter-input" type="text" data-field="Underlagsmottagare namn" value="${this._esc(String(f['Underlagsmottagare namn'] || ''))}" placeholder="t.ex. Kund">
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare e-post</label>
+                                        <input class="kunduppgifter-input" type="email" list="${this._esc(underlagEpostListId)}" data-field="Underlagsmottagare e-post" value="${this._esc(String(f['Underlagsmottagare e-post'] || ''))}" placeholder="Välj från roller eller skriv...">
+                                        <datalist id="${this._esc(underlagEpostListId)}">${rollerEpostOptions}</datalist>
+                                    </div>
+                                </div>
+                                <div style="margin-top:0.75rem;">
+                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mall (en punkt per rad)</label>
+                                    <textarea class="kunduppgifter-input" rows="3" data-field="Underlagsmall" placeholder="t.ex. Löneunderlag {PERIOD}\nTidrapport {PERIOD}">${this._esc(String(f['Underlagsmall'] || ''))}</textarea>
+                                </div>
                             </div>
                         </div>
+
+                        ${decExtraHtml}
+
+                        ${editRiskSectionHtml}
 
                         <div class="uppdrag-block">
                             <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
