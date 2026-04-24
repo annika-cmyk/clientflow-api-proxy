@@ -789,19 +789,22 @@ class CustomerCardManager {
                     : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
                 const isOpen = openTyp === t;
                 const samList = (samarbeteByUppdragTyp.get(t) || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+                const stripFileObligatorisk = (s) => (s || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
                 const samHtml = samList.length ? `
                     <div class="uppdrag-view-field" style="margin-top:0.25rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
-                        <div class="uppdrag-view-list">
-                            ${samList.slice(0, 8).map(s => {
+                        <div class="samarbete-list" style="margin-top:0.5rem;">
+                            ${samList.slice(0, 6).map(s => {
                                 const period = (s.uppdragPeriod || '').toString().trim();
                                 const created = s.createdAt ? new Date(s.createdAt).toLocaleDateString('sv-SE') : '—';
+                                const deadline = s.deadline ? new Date(s.deadline).toLocaleDateString('sv-SE', { year:'numeric', month:'short', day:'numeric' }) : '';
                                 const status = (s.status || '').toString();
-                                const answered = s.answeredAt ? new Date(s.answeredAt).toLocaleDateString('sv-SE') : '';
-                                const attCount = Array.isArray(s.responseAttachment) ? s.responseAttachment.length : 0;
                                 const respTxt = (s.responseText || '').toString().trim();
                                 const answersArray = parseAnswersArray(respTxt);
-                                const titleLines = (s.title || '').toString().trim().split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+                                const attachments = Array.isArray(s.responseAttachment) ? s.responseAttachment : [];
+
+                                const titleFull = stripFileObligatorisk((s.title || 'Förfrågan').toString().trim());
+                                const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
                                 const total = titleLines.length || (Array.isArray(answersArray) ? answersArray.length : 0);
                                 const answeredCount = (Array.isArray(answersArray) && total)
                                     ? titleLines.reduce((acc, _, idx) => {
@@ -811,38 +814,43 @@ class CustomerCardManager {
                                         return acc + ((hasText || hasFile) ? 1 : 0);
                                     }, 0)
                                     : 0;
-                                const hasResp = !!answered || !!respTxt || attCount > 0;
                                 const progress = (answeredCount > 0 && total > 0) ? ` · Påbörjad: ${answeredCount}/${total}` : '';
-                                const meta = `${created}${period ? ` · ${period}` : ''} · ${status}${answered ? ` · Besvarad ${answered}` : ''}${attCount ? ` · ${attCount} fil` : ''}${progress}`;
+                                const headerLine = `${created}${period ? ` · ${period}` : ''}${deadline ? ` · Deadline ${deadline}` : ''} · ${status}${progress}`;
 
-                                let details = '';
-                                if (Array.isArray(answersArray) && answersArray.length) {
-                                    // Visa upp till 2 rader med svar (snabb överblick)
-                                    const snippets = [];
-                                    for (let i = 0; i < Math.min(titleLines.length || answersArray.length, 2); i++) {
-                                        const a = answersArray[i] || {};
-                                        const text = (a && a.text) ? String(a.text).trim() : '';
-                                        const att = Array.isArray(s.responseAttachment) ? s.responseAttachment[i] : null;
-                                        const parts = [];
-                                        if (text) parts.push(this._esc(text.slice(0, 140) + (text.length > 140 ? '…' : '')));
-                                        if (att) parts.push(attachmentLink(att));
-                                        if (parts.length) snippets.push(parts.join(' · '));
-                                    }
-                                    if (snippets.length) {
-                                        details = `<div class="uppdrag-muted" style="margin-left:1.6rem; margin-top:0.15rem;">${snippets.join('<br>')}</div>`;
-                                    }
-                                } else if (attCount > 0 && Array.isArray(s.responseAttachment)) {
-                                    const links = s.responseAttachment.slice(0, 2).map(attachmentLink).filter(Boolean).join(' ');
-                                    if (links) details = `<div class="uppdrag-muted" style="margin-left:1.6rem; margin-top:0.15rem;">${links}</div>`;
+                                let qaHtml = '';
+                                if (titleLines.length > 0) {
+                                    qaHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
+                                    titleLines.forEach((line, idx) => {
+                                        const qShort = line.slice(0, 80);
+                                        let svar = '—';
+                                        if (Array.isArray(answersArray)) {
+                                            const a = answersArray[idx] || {};
+                                            const text = (a && a.text) ? String(a.text).trim() : '';
+                                            const att = attachments[idx];
+                                            const parts = [];
+                                            if (text) parts.push(this._esc(text));
+                                            if (att) parts.push(attachmentLink(att));
+                                            if (parts.length) svar = parts.join(' · ');
+                                        }
+                                        qaHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this._esc(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
+                                    });
+                                    qaHtml += '</ul></div>';
                                 }
 
-                                return `<div>
-                                    <div class="uppdrag-view-list-item">
-                                        <i class="fas ${hasResp ? 'fa-check-circle' : 'fa-paper-plane'}"></i>
-                                        <span>${this._esc(meta)}</span>
-                                    </div>
-                                    ${details}
-                                </div>`;
+                                return `
+                                    <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
+                                        <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
+                                            <div class="samarbete-item-head-inner">
+                                                <span class="samarbete-item-title-main">${this._esc(headerLine)}</span>
+                                            </div>
+                                            <i class="fas fa-chevron-down samarbete-item-chevron"></i>
+                                        </div>
+                                        <div class="samarbete-item-collapse">
+                                            <div class="samarbete-item-body samarbete-response-block">
+                                                ${qaHtml ? `<div class="samarbete-block samarbete-block--questions">${qaHtml}</div>` : ''}
+                                            </div>
+                                        </div>
+                                    </div>`;
                             }).join('')}
                         </div>
                     </div>
@@ -850,6 +858,24 @@ class CustomerCardManager {
                         <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
                         <div class="uppdrag-muted">Inga skickade förfrågningar kopplade till detta uppdrag ännu.</div>
                     </div>`;
+
+                const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
+                const docsKey = `${t}:${mk}`;
+                const docsDeadlineKey = String(instDeadline || '').slice(0, 10);
+                const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);
+                const allAtt = attFieldName ? (f[attFieldName] || []) : [];
+                const runAtt = (Array.isArray(allAtt) && docsDeadlineKey)
+                    ? allAtt.filter(a => String(a?.filename || '').includes(docsDeadlineKey)).slice(0, 10)
+                    : [];
+                const runAttHtml = runAtt.length
+                    ? `<div class="uppdrag-view-list">${runAtt.map(a => {
+                        const fn = this._esc(String(a?.filename || 'Bilaga'));
+                        const url = this._esc(String(a?.url || ''));
+                        return url
+                            ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
+                            : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
+                    }).join('')}</div>`
+                    : ``;
 
                 const detailsHtml = `
                     <div class="uppdragboard-details-inner">
@@ -869,8 +895,27 @@ class CustomerCardManager {
                             </div>
                         </div>
                         ${samHtml}
-                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.75rem;">
-                            <button type="button" class="btn btn-secondary btn-sm" data-kund-edit-typ="${this._esc(t)}"><i class="fas fa-pen"></i> Redigera</button>
+                        <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
+                            <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Anteckning (för denna körning)</div>
+                            <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning...">${this._esc(runningNote)}</textarea>
+                            <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
+                                    <i class="fas fa-save"></i> Spara anteckning
+                                </button>
+                                <span class="uppdrag-muted" data-kund-note-status="${this._esc(t)}" style="margin:0;"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
+                            <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
+                            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                                <input type="file" class="kunduppgifter-input" style="padding:0.45rem;" data-kund-docs-input="${this._esc(docsKey)}" multiple />
+                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="upload-docs" data-kund-typ="${this._esc(t)}" data-kund-deadline="${this._esc(docsDeadlineKey)}" data-kund-docs-key="${this._esc(docsKey)}">
+                                    <i class="fas fa-upload"></i> Ladda upp
+                                </button>
+                                <span class="uppdrag-muted" data-kund-docs-status="${this._esc(docsKey)}" style="margin:0;"></span>
+                            </div>
+                            <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
                         </div>
                     </div>
                 `;
@@ -920,6 +965,17 @@ class CustomerCardManager {
         if (!container._kundUppdragBoardBound) {
             container._kundUppdragBoardBound = true;
             container.addEventListener('click', (e) => {
+                // Toggle Samarbete-mini-kort in uppdrag-details
+                const samHead = e.target.closest('.samarbete-item-head--toggle');
+                if (samHead && container.contains(samHead)) {
+                    const item = samHead.closest('.samarbete-list-item--collapsible');
+                    if (item) {
+                        item.classList.toggle('collapsed');
+                        samHead.setAttribute('aria-expanded', item.classList.contains('collapsed') ? 'false' : 'true');
+                        return;
+                    }
+                }
+
                 const toggle = e.target.closest('[data-kund-toggle-typ]');
                 if (toggle) {
                     const t = toggle.getAttribute('data-kund-toggle-typ');
@@ -930,16 +986,120 @@ class CustomerCardManager {
                     if (tbody) tbody.classList.toggle('uppdragboard-has-open', anyOpen);
                     return;
                 }
-                const btn = e.target.closest('[data-kund-edit-typ]');
-                if (!btn) return;
-                const t = btn.getAttribute('data-kund-edit-typ');
-                const editCard = document.getElementById('kund-uppdrag-edit-card');
-                if (editCard) editCard.classList.remove('is-collapsed');
-                const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
-                if (target) {
-                    try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-                    target.classList.remove('is-collapsed');
-                    target.querySelector('[data-action="toggle-edit"]')?.click();
+
+                // Spara anteckning för körning (som uppdragsöversikten)
+                const saveNoteBtn = e.target.closest('[data-kund-action="save-note"]');
+                if (saveNoteBtn) {
+                    e.preventDefault();
+                    const typ = saveNoteBtn.getAttribute('data-kund-typ') || '';
+                    const textarea = container.querySelector(`textarea[data-kund-note-typ="${CSS.escape(typ)}"]`);
+                    const statusEl = container.querySelector(`[data-kund-note-status="${CSS.escape(typ)}"]`);
+                    const note = (textarea?.value || '').toString();
+                    if (statusEl) statusEl.textContent = 'Sparar...';
+                    fetch(`${baseUrl}/api/uppdrag`, {
+                        method: 'POST',
+                        ...getAuthOptsKundkort(),
+                        headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                        body: JSON.stringify({ customerId, typ, fields: { 'Anteckning för denna körning': note } })
+                    })
+                        .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
+                        .then((d) => {
+                            if (statusEl) statusEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
+                            // Uppdatera lokalt cache
+                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            if (rec && rec.fields) rec.fields['Anteckning för denna körning'] = note;
+                            setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+                        })
+                        .catch(err => { if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel'); });
+                    return;
+                }
+
+                // Ladda upp dokumentation för körning (som uppdragsöversikten)
+                const uploadBtn = e.target.closest('[data-kund-action="upload-docs"]');
+                if (uploadBtn) {
+                    e.preventDefault();
+                    const typ = uploadBtn.getAttribute('data-kund-typ') || '';
+                    const dl = uploadBtn.getAttribute('data-kund-deadline') || '';
+                    const docsKey = uploadBtn.getAttribute('data-kund-docs-key') || '';
+                    const input = container.querySelector(`input[type="file"][data-kund-docs-input="${CSS.escape(docsKey)}"]`);
+                    const statusEl = container.querySelector(`[data-kund-docs-status="${CSS.escape(docsKey)}"]`);
+                    const listEl = container.querySelector(`[data-kund-docs-list="${CSS.escape(docsKey)}"]`);
+                    const files = input && input.files ? Array.from(input.files) : [];
+                    if (!dl) { if (statusEl) statusEl.textContent = 'Saknar deadline.'; return; }
+                    if (!files.length) { if (statusEl) statusEl.textContent = 'Välj minst en fil.'; return; }
+                    if (statusEl) statusEl.textContent = 'Laddar upp...';
+                    uploadBtn.disabled = true;
+
+                    const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+                        const r = new FileReader();
+                        r.onload = () => resolve(String(r.result || ''));
+                        r.onerror = () => reject(new Error('Kunde inte läsa fil'));
+                        r.readAsDataURL(file);
+                    });
+
+                    (async () => {
+                        for (const file of files.slice(0, 5)) {
+                            const dataUrl = await readAsDataUrl(file);
+                            const res = await fetch(`${baseUrl}/api/uppdrag/run-docs`, {
+                                method: 'POST',
+                                ...getAuthOptsKundkort(),
+                                headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                                body: JSON.stringify({
+                                    customerId,
+                                    typ,
+                                    deadline: String(dl).slice(0, 10),
+                                    filename: file.name,
+                                    contentType: file.type || 'application/octet-stream',
+                                    base64: dataUrl
+                                })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            if (rec && data.record && data.record.fields) rec.fields = data.record.fields;
+
+                            if (listEl && rec && rec.fields) {
+                                const f = rec.fields || {};
+                                const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : (data.fieldName || null));
+                                const allAtt = attFieldName ? (f[attFieldName] || []) : [];
+                                const runAtt = Array.isArray(allAtt) ? allAtt.filter(a => String(a?.filename || '').includes(String(dl).slice(0, 10))).slice(0, 10) : [];
+                                listEl.innerHTML = runAtt.length
+                                    ? `<div class="uppdrag-view-list">${runAtt.map(a => {
+                                        const fn = (a?.filename || 'Bilaga');
+                                        const url = (a?.url || '');
+                                        const eFn = (String(fn)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                                        const eUrl = (String(url)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                                        return url
+                                            ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${eUrl}" target="_blank" rel="noopener noreferrer">${eFn}</a></div>`
+                                            : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${eFn}</div>`;
+                                    }).join('')}</div>`
+                                    : ``;
+                            }
+                        }
+
+                        if (statusEl) statusEl.textContent = 'Uppladdat.';
+                        if (input) input.value = '';
+                        setTimeout(() => { if (statusEl && statusEl.textContent === 'Uppladdat.') statusEl.textContent = ''; }, 2500);
+                    })().catch((err) => {
+                        if (statusEl) statusEl.textContent = 'Kunde inte ladda upp: ' + (err.message || 'fel');
+                    }).finally(() => {
+                        uploadBtn.disabled = false;
+                    });
+                    return;
+                }
+                // Redigera-knapp borttagen från översiktsraderna.
+                // (Redigera sker i kortet "Redigera uppdrag" längre ner om man fäller ut det.)
+            });
+            container.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                const samHead = e.target.closest('.samarbete-item-head--toggle');
+                if (!samHead || !container.contains(samHead)) return;
+                e.preventDefault();
+                const item = samHead.closest('.samarbete-list-item--collapsible');
+                if (item) {
+                    item.classList.toggle('collapsed');
+                    samHead.setAttribute('aria-expanded', item.classList.contains('collapsed') ? 'false' : 'true');
                 }
             });
         }
