@@ -803,14 +803,20 @@ class CustomerCardManager {
                 if (tt === 'Bokslut' || tt === 'Deklaration') return 'year';
                 return 'month';
             };
-            const periodMatchesRun = (periodStr) => {
+            const periodMatchesRun = (periodStr, expectedKey) => {
                 const p = (periodStr || '').toString().trim();
-                if (!p) return false;
-                if (p.includes(mk)) return true; // vanligast: "2026-03"
-                // fallback: försök matcha "Mars 2026" m.m. genom att leta efter år + månad
-                const yyyy = mk.slice(0, 4);
-                const mm = mk.slice(5, 7);
-                return (p.includes(yyyy) && p.includes(mm));
+                const exp = (expectedKey || '').toString().trim();
+                if (!p || !exp) return false;
+                if (p === exp) return true;
+                // fallback: vissa perioder kan sparas med extra text
+                if (p.includes(exp)) return true;
+                // månad: matcha även på yyyy + mm om exp = YYYY-MM
+                if (/^\d{4}-\d{2}$/.test(exp)) {
+                    const yyyy = exp.slice(0, 4);
+                    const mm = exp.slice(5, 7);
+                    return (p.includes(yyyy) && p.includes(mm));
+                }
+                return false;
             };
             const rows = existingTypes.map((t) => {
                 const rec = byType(t);
@@ -858,7 +864,14 @@ class CustomerCardManager {
                         : 0;
                     return answeredCount >= total;
                 };
-                const samForRun = samList.filter(s => periodMatchesRun(s.uppdragPeriod));
+                const modeForPrefill = getModeForUppdrag(t, freq);
+                const prefillPeriodKey = (modeForPrefill === 'quarter')
+                    ? quarterKeyForMonth(mk)
+                    : (modeForPrefill === 'year')
+                        ? yearKeyForMonth(mk)
+                        : mk;
+
+                const samForRun = samList.filter(s => periodMatchesRun(s.uppdragPeriod, prefillPeriodKey));
                 const underlagTotal = samForRun.length;
                 const underlagDone = samForRun.reduce((acc, s) => acc + (isReqFullyAnswered(s) ? 1 : 0), 0);
                 const anyLate = samForRun.some(s => {
@@ -880,17 +893,11 @@ class CustomerCardManager {
                                 : 'background:#fef9c3; color:#854d0e; border-color:#fde68a;'
                     }">${underlagDone}/${underlagTotal}</span>`;
 
-                const modeForPrefill = getModeForUppdrag(t, freq);
-                const prefillPeriodKey = (modeForPrefill === 'quarter')
-                    ? quarterKeyForMonth(mk)
-                    : (modeForPrefill === 'year')
-                        ? yearKeyForMonth(mk)
-                        : mk;
-                const samHtml = samList.length ? `
+                const samHtml = samForRun.length ? `
                     <div class="uppdrag-view-field" style="margin-top:0.25rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
                         <div class="samarbete-list" style="margin-top:0.5rem;">
-                            ${samList.slice(0, 6).map(s => {
+                            ${samForRun.slice(0, 6).map(s => {
                                 const period = (s.uppdragPeriod || '').toString().trim();
                                 const created = s.createdAt ? new Date(s.createdAt).toLocaleDateString('sv-SE') : '—';
                                 const deadline = s.deadline ? new Date(s.deadline).toLocaleDateString('sv-SE', { year:'numeric', month:'short', day:'numeric' }) : '';
@@ -952,7 +959,7 @@ class CustomerCardManager {
                     </div>
                 ` : `<div class="uppdrag-view-field" style="margin-top:0.25rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
-                        <div class="uppdrag-muted">Inga skickade förfrågningar kopplade till detta uppdrag ännu.</div>
+                        <div class="uppdrag-muted">Inga skickade förfrågningar kopplade till denna körning ännu.</div>
                     </div>`;
 
                 const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
