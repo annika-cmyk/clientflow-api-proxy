@@ -5943,7 +5943,15 @@ class CustomerCardManager {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                throw new Error(data.error || 'Kunde inte skapa förfrågan');
+                // Logga detaljer så vi kan se exakt Airtable-fel (t.ex. okänt fält, ogiltig e-post, saknade select-vals)
+                console.error('❌ Samarbete create failed:', { status: res.status, data });
+                const detailMsg =
+                    (data && data.details && data.details.error && data.details.error.message)
+                        ? String(data.details.error.message)
+                        : '';
+                const baseMsg = (data && data.error) ? String(data.error) : 'Kunde inte skapa förfrågan';
+                const combined = (detailMsg && detailMsg !== baseMsg) ? `${baseMsg} (${detailMsg})` : baseMsg;
+                throw new Error(combined);
             }
             this.closeBegarUnderlagModal();
             this.showNotification(data.message || 'Förfrågan skapad.', 'success');
