@@ -908,74 +908,48 @@ class CustomerCardManager {
                                 : 'background:#fef9c3; color:#854d0e; border-color:#fde68a;'
                     }">${underlagDone}/${underlagTotal}</span>`;
 
-                const samHtml = samForRun.length ? `
-                    <div class="uppdrag-view-field" style="margin-top:0.25rem;">
-                        <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
-                        <div class="samarbete-list" style="margin-top:0.5rem;">
-                            ${samForRun.slice(0, 6).map(s => {
-                                const period = (s.uppdragPeriod || '').toString().trim();
-                                const created = s.createdAt ? new Date(s.createdAt).toLocaleDateString('sv-SE') : '—';
-                                const deadline = s.deadline ? new Date(s.deadline).toLocaleDateString('sv-SE', { year:'numeric', month:'short', day:'numeric' }) : '';
-                                const status = (s.status || '').toString();
-                                const respTxt = (s.responseText || '').toString().trim();
-                                const answersArray = parseAnswersArray(respTxt);
-                                const attachments = Array.isArray(s.responseAttachment) ? s.responseAttachment : [];
+                const samHtml = `
+                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.25rem;">
+                        <div class="uppdrag-view-label">Underlagsförfrågningar</div>
+                        ${samForRun.length ? `
+                            <div class="samarbete-list samarbete-list--plain" style="margin-top:0.35rem;">
+                                ${samForRun.slice(0, 6).map(s => {
+                                    const respTxt = (s.responseText || '').toString().trim();
+                                    const answersArray = parseAnswersArray(respTxt);
+                                    const attachments = Array.isArray(s.responseAttachment) ? s.responseAttachment : [];
 
-                                const titleFull = stripFileObligatorisk((s.title || 'Förfrågan').toString().trim());
-                                const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
-                                const total = titleLines.length || (Array.isArray(answersArray) ? answersArray.length : 0);
-                                const answeredCount = (Array.isArray(answersArray) && total)
-                                    ? titleLines.reduce((acc, _, idx) => {
-                                        const a = answersArray[idx] || {};
-                                        const hasText = a.text && String(a.text).trim();
-                                        const hasFile = a.filename && String(a.filename).trim();
-                                        return acc + ((hasText || hasFile) ? 1 : 0);
-                                    }, 0)
-                                    : 0;
-                                const progress = (answeredCount > 0 && total > 0) ? ` · Påbörjad: ${answeredCount}/${total}` : '';
-                                const headerLine = `${created}${period ? ` · ${period}` : ''}${deadline ? ` · Deadline ${deadline}` : ''} · ${status}${progress}`;
+                                    const titleFull = stripFileObligatorisk((s.title || 'Förfrågan').toString().trim());
+                                    const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
 
-                                let qaHtml = '';
-                                if (titleLines.length > 0) {
-                                    qaHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
-                                    titleLines.forEach((line, idx) => {
-                                        const qShort = line.slice(0, 80);
-                                        let svar = '—';
-                                        if (Array.isArray(answersArray)) {
-                                            const a = answersArray[idx] || {};
-                                            const text = (a && a.text) ? String(a.text).trim() : '';
-                                            const att = attachments[idx];
-                                            const parts = [];
-                                            if (text) parts.push(this._esc(text));
-                                            if (att) parts.push(attachmentLink(att));
-                                            if (parts.length) svar = parts.join(' · ');
-                                        }
-                                        qaHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this._esc(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
-                                    });
-                                    qaHtml += '</ul></div>';
-                                }
+                                    let qaHtml = '';
+                                    if (titleLines.length > 0) {
+                                        qaHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
+                                        titleLines.forEach((line, idx) => {
+                                            const qShort = line.slice(0, 120);
+                                            let svar = '—';
+                                            if (Array.isArray(answersArray)) {
+                                                const a = answersArray[idx] || {};
+                                                const text = (a && a.text) ? String(a.text).trim() : '';
+                                                const att = attachments[idx];
+                                                const parts = [];
+                                                if (text) parts.push(this._esc(text));
+                                                if (att) parts.push(attachmentLink(att));
+                                                if (parts.length) svar = parts.join(' · ');
+                                            }
+                                            qaHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this._esc(qShort)}${qShort.length >= 120 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
+                                        });
+                                        qaHtml += '</ul></div>';
+                                    }
 
-                                return `
-                                    <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
-                                        <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
-                                            <div class="samarbete-item-head-inner">
-                                                <span class="samarbete-item-title-main">${this._esc(headerLine)}</span>
-                                            </div>
-                                            <i class="fas fa-chevron-down samarbete-item-chevron"></i>
-                                        </div>
-                                        <div class="samarbete-item-collapse">
-                                            <div class="samarbete-item-body samarbete-response-block">
-                                                ${qaHtml ? `<div class="samarbete-block samarbete-block--questions">${qaHtml}</div>` : ''}
-                                            </div>
-                                        </div>
-                                    </div>`;
-                            }).join('')}
-                        </div>
+                                    return `
+                                        <div class="samarbete-list-item samarbete-list-item--plain">
+                                            ${qaHtml ? `<div class="samarbete-block samarbete-block--questions">${qaHtml}</div>` : `<div class="uppdrag-muted">—</div>`}
+                                        </div>`;
+                                }).join('')}
+                            </div>
+                        ` : `<div class="uppdrag-muted">Inga skickade förfrågningar kopplade till denna körning ännu.</div>`}
                     </div>
-                ` : `<div class="uppdrag-view-field" style="margin-top:0.25rem;">
-                        <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
-                        <div class="uppdrag-muted">Inga skickade förfrågningar kopplade till denna körning ännu.</div>
-                    </div>`;
+                `;
 
                 const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
                 const docsKey = `${t}:${mk}`;
@@ -998,7 +972,7 @@ class CustomerCardManager {
                 const detailsHtml = `
                     <div class="uppdragboard-details-inner">
                         <div class="uppdragboard-details-top">
-                            <div class="uppdrag-view-field">
+                            <div class="uppdrag-view-field uppdrag-view-field--plain">
                                 <div class="uppdrag-view-label">Rutin / instruktion</div>
                                 <div class="uppdrag-view-text">${(f['Rutin'] || '').toString().trim() ? this._esc(String(f['Rutin'])) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
                             </div>

@@ -7472,6 +7472,27 @@ textarea.kunduppgifter-input {
     padding: 0.75rem 0.85rem;
 }
 
+/* Variant: visa innehåll "utan ruta" */
+.uppdrag-view-field.uppdrag-view-field--plain {
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+}
+
+/* Variant: Samarbete-lista utan kort-rutor (används i uppdrag-detaljer) */
+.samarbete-list.samarbete-list--plain { gap: 0.5rem; }
+.samarbete-list-item.samarbete-list-item--plain {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+.samarbete-list-item.samarbete-list-item--plain + .samarbete-list-item.samarbete-list-item--plain {
+    padding-top: 0.65rem;
+    border-top: 1px solid #e2e8f0;
+}
+
 .uppdrag-view-label {
     font-size: 0.8rem;
     color: #64748b;
