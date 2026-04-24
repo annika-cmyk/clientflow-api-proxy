@@ -7878,6 +7878,36 @@ textarea.kunduppgifter-input {
     font-size: 0.85rem;
 }
 
+.uppdragboard-badge.is-tooltip {
+    position: relative;
+    cursor: help;
+    user-select: none;
+}
+.uppdragboard-badge.is-tooltip:focus { outline: none; }
+.uppdragboard-badge.is-tooltip .uppdragboard-tooltip {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    z-index: 20;
+    width: max-content;
+    max-width: 320px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 12px 34px rgba(2, 6, 23, 0.12);
+    font-size: 0.85rem;
+    line-height: 1.25rem;
+    display: none;
+    white-space: normal;
+}
+.uppdragboard-badge.is-tooltip .uppdragboard-tooltip strong { color: #334155; }
+.uppdragboard-badge.is-tooltip:hover .uppdragboard-tooltip,
+.uppdragboard-badge.is-tooltip.is-open .uppdragboard-tooltip {
+    display: block;
+}
+
 .uppdragboard-progress {
     display: inline-flex;
     align-items: center;

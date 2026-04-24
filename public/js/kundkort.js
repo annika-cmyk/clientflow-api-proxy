@@ -827,7 +827,20 @@ class CustomerCardManager {
                 const done = instDeadline ? isDoneForPeriod(f, instDeadline) : false;
                 const freq = (f['Frekvens'] || '').toString().trim() || '—';
                 const autoOn = !!f['Auto underlagsförfrågan'];
-                const autoChip = autoOn ? `<span class="uppdragboard-badge" style="margin-left:0.4rem;"><i class="fas fa-paper-plane"></i> Auto</span>` : '';
+                const autoTooltip = `
+                    <div class="uppdragboard-tooltip">
+                        <div><strong>Auto-utskick:</strong> ${autoOn ? 'På' : 'Av'}</div>
+                        ${(f['Underlagsutskick dag'] ? `<div><strong>Skickas:</strong> dag ${this._esc(String(f['Underlagsutskick dag']))}</div>` : '')}
+                        ${(f['Underlagsdeadline dag'] ? `<div><strong>Deadline:</strong> dag ${this._esc(String(f['Underlagsdeadline dag']))}</div>` : '')}
+                        ${(f['Underlagsperiod'] ? `<div><strong>Avser:</strong> ${this._esc(String(f['Underlagsperiod']))}</div>` : '')}
+                    </div>
+                `;
+                const autoChip = autoOn
+                    ? `<span class="uppdragboard-badge is-tooltip" style="margin-left:0.4rem;" role="button" tabindex="0" aria-label="Auto-utskick info" data-kund-action="toggle-auto-tooltip">
+                        <i class="fas fa-paper-plane"></i> Auto
+                        ${autoTooltip}
+                    </span>`
+                    : '';
                 const statusHtml = instDeadline
                     ? (done
                         ? `<span class="uppdragboard-progress is-done"><i class="fas fa-check"></i> Klart</span>`
@@ -987,15 +1000,6 @@ class CustomerCardManager {
                                 <div class="uppdrag-view-label">Rutin / instruktion</div>
                                 <div class="uppdrag-view-text">${(f['Rutin'] || '').toString().trim() ? this._esc(String(f['Rutin'])) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
                             </div>
-                            <div class="uppdrag-view-field">
-                                <div class="uppdrag-view-label">Schemaläggning</div>
-                                <div class="uppdrag-view-text">
-                                    ${(f['Auto underlagsförfrågan'] ? 'Auto-utskick: På' : 'Auto-utskick: Av')}
-                                    ${f['Underlagsutskick dag'] ? ` · Skickas dag ${this._esc(String(f['Underlagsutskick dag']))}` : ''}
-                                    ${f['Underlagsdeadline dag'] ? ` · Deadline dag ${this._esc(String(f['Underlagsdeadline dag']))}` : ''}
-                                    ${f['Underlagsperiod'] ? ` · Avser ${this._esc(String(f['Underlagsperiod']))}` : ''}
-                                </div>
-                            </div>
                         </div>
                         ${samHtml}
                         <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.75rem; flex-wrap:wrap;">
@@ -1008,26 +1012,39 @@ class CustomerCardManager {
                         </div>
                         <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
                             <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Anteckning (för denna körning)</div>
-                            <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning...">${this._esc(runningNote)}</textarea>
-                            <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
-                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
-                                    <i class="fas fa-save"></i> Spara anteckning
-                                </button>
-                                <span class="uppdrag-muted" data-kund-note-status="${this._esc(t)}" style="margin:0;"></span>
-                            </div>
+                            ${(runningNote || '').toString().trim()
+                                ? `
+                                    <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning...">${this._esc(runningNote)}</textarea>
+                                    <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
+                                            <i class="fas fa-save"></i> Spara anteckning
+                                        </button>
+                                        <span class="uppdrag-muted" data-kund-note-status="${this._esc(t)}" style="margin:0;"></span>
+                                    </div>
+                                `
+                                : `
+                                    <button type="button" class="btn btn-secondary btn-sm" data-kund-action="create-note" data-kund-typ="${this._esc(t)}">
+                                        <i class="fas fa-plus"></i> Skapa anteckning för körningen
+                                    </button>
+                                    <div style="margin-top:0.6rem; display:none;" data-kund-note-wrap="${this._esc(t)}">
+                                        <textarea class="kunduppgifter-input" rows="3" data-kund-note-typ="${this._esc(t)}" placeholder="Anteckning..."></textarea>
+                                        <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
+                                            <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}">
+                                                <i class="fas fa-save"></i> Spara anteckning
+                                            </button>
+                                            <span class="uppdrag-muted" data-kund-note-status="${this._esc(t)}" style="margin:0;"></span>
+                                        </div>
+                                    </div>
+                                `}
                         </div>
 
                         <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
                             <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
                             <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                                 <input type="file" class="kunduppgifter-input" style="padding:0.45rem; display:none;" data-kund-docs-input="${this._esc(docsKey)}" multiple />
-                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="pick-docs" data-kund-docs-key="${this._esc(docsKey)}">
-                                    <i class="fas fa-paperclip"></i> Välj filer
-                                </button>
                                 <button type="button" class="btn btn-secondary btn-sm" data-kund-action="upload-docs" data-kund-typ="${this._esc(t)}" data-kund-deadline="${this._esc(docsDeadlineKey)}" data-kund-docs-key="${this._esc(docsKey)}">
                                     <i class="fas fa-upload"></i> Ladda upp
                                 </button>
-                                <span class="uppdrag-muted" data-kund-docs-picked="${this._esc(docsKey)}" style="margin:0;">Inga filer valda.</span>
                                 <span class="uppdrag-muted" data-kund-docs-status="${this._esc(docsKey)}" style="margin:0;"></span>
                             </div>
                             <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
@@ -1113,22 +1130,26 @@ class CustomerCardManager {
                     return;
                 }
 
-                // Välj filer för dokumentation (öppna dold input)
-                const pickBtn = e.target.closest('[data-kund-action="pick-docs"]');
-                if (pickBtn) {
+                // Auto-tooltip för Auto-badge (click-to-pin)
+                const autoBadge = e.target.closest('[data-kund-action="toggle-auto-tooltip"]');
+                if (autoBadge && container.contains(autoBadge)) {
                     e.preventDefault();
-                    const docsKey = pickBtn.getAttribute('data-kund-docs-key') || '';
-                    const input = container.querySelector(`input[type="file"][data-kund-docs-input="${CSS.escape(docsKey)}"]`);
-                    const pickedEl = container.querySelector(`[data-kund-docs-picked="${CSS.escape(docsKey)}"]`);
-                    if (!input) return;
-                    if (!input._kundBound) {
-                        input._kundBound = true;
-                        input.addEventListener('change', () => {
-                            const files = input.files ? Array.from(input.files) : [];
-                            if (pickedEl) pickedEl.textContent = files.length ? `${files.length} fil(er) valda.` : 'Inga filer valda.';
-                        });
+                    autoBadge.classList.toggle('is-open');
+                    return;
+                }
+
+                // Skapa anteckning (visar textarea)
+                const createNoteBtn = e.target.closest('[data-kund-action="create-note"]');
+                if (createNoteBtn) {
+                    e.preventDefault();
+                    const typ = createNoteBtn.getAttribute('data-kund-typ') || '';
+                    const wrap = container.querySelector(`[data-kund-note-wrap="${CSS.escape(typ)}"]`);
+                    if (wrap) {
+                        wrap.style.display = '';
+                        const ta = wrap.querySelector(`textarea[data-kund-note-typ="${CSS.escape(typ)}"]`);
+                        try { ta && ta.focus(); } catch (_) {}
                     }
-                    try { input.click(); } catch (_) {}
+                    createNoteBtn.style.display = 'none';
                     return;
                 }
 
@@ -1169,10 +1190,15 @@ class CustomerCardManager {
                     const input = container.querySelector(`input[type="file"][data-kund-docs-input="${CSS.escape(docsKey)}"]`);
                     const statusEl = container.querySelector(`[data-kund-docs-status="${CSS.escape(docsKey)}"]`);
                     const listEl = container.querySelector(`[data-kund-docs-list="${CSS.escape(docsKey)}"]`);
-                    const pickedEl = container.querySelector(`[data-kund-docs-picked="${CSS.escape(docsKey)}"]`);
                     const files = input && input.files ? Array.from(input.files) : [];
                     if (!dl) { if (statusEl) statusEl.textContent = 'Saknar deadline.'; return; }
-                    if (!files.length) { if (statusEl) statusEl.textContent = 'Välj minst en fil.'; return; }
+                    if (!input) { if (statusEl) statusEl.textContent = 'Saknar filväljare.'; return; }
+                    if (!files.length) {
+                        // öppna filväljaren – användaren klickar på "Ladda upp" igen efter valet
+                        try { input.click(); } catch (_) {}
+                        if (statusEl) statusEl.textContent = 'Välj fil(er) och klicka sedan “Ladda upp”.';
+                        return;
+                    }
                     if (statusEl) statusEl.textContent = 'Laddar upp...';
                     uploadBtn.disabled = true;
 
@@ -1226,7 +1252,6 @@ class CustomerCardManager {
 
                         if (statusEl) statusEl.textContent = 'Uppladdat.';
                         if (input) input.value = '';
-                        if (pickedEl) pickedEl.textContent = 'Inga filer valda.';
                         setTimeout(() => { if (statusEl && statusEl.textContent === 'Uppladdat.') statusEl.textContent = ''; }, 2500);
                     })().catch((err) => {
                         if (statusEl) statusEl.textContent = 'Kunde inte ladda upp: ' + (err.message || 'fel');
