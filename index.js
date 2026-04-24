@@ -4940,6 +4940,10 @@ const SAMARBETE_REQUIRED_FIELDS = [
   { name: 'Titel', type: 'multilineText', description: 'Vad som begärs från kunden' },
   { name: 'Token', type: 'singleLineText', description: 'Unik token för kundlänk' },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Väntar' }, { name: 'Besvarad' }, { name: 'Arkiverad' }] } },
+  { name: 'Skapad från uppdrag', type: 'checkbox', description: 'Intern: markerar att förfrågan skapats automatiskt från Uppdrag' },
+  { name: 'Uppdrag ID', type: 'singleLineText', description: 'Intern: record-id för uppdraget som skapade förfrågan' },
+  { name: 'Uppdrag typ', type: 'singleLineText', description: 'Intern: uppdragstyp (t.ex. Löneuppdrag)' },
+  { name: 'Uppdrag period', type: 'singleLineText', description: 'Intern: periodnyckel för utskicket (t.ex. 2026-04)' },
   { name: 'Deadline', type: 'date', description: 'Deadline för kundens svar (valfri)' },
   { name: 'Senast påminnelse skickad', type: 'date', description: 'Intern: datum när senaste påminnelse skickades (för att begränsa till en per dag)' },
   { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
@@ -5189,7 +5193,7 @@ async function sendSamarbeteInviteEmail(options) {
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
-    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline } = req.body;
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp } = req.body;
     if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
     const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -5254,6 +5258,11 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
         'Titel': String(title).trim(),
         'Token': token,
         'Status': 'Väntar',
+        ...((uppdragId || uppdragTyp) ? {
+          'Skapad från uppdrag': true,
+          ...(uppdragId ? { 'Uppdrag ID': String(uppdragId).trim() } : {}),
+          ...(uppdragTyp ? { 'Uppdrag typ': String(uppdragTyp).trim() } : {})
+        } : {}),
         ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
       }
     };
@@ -5271,8 +5280,8 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
     } catch (e) {
       const status = e.response?.status;
       const msg = e.response?.data?.error?.message || e.message || '';
-      const isUnknownDeadlineField = status === 422 && /Unknown field name:\s*"?Deadline"?/i.test(String(msg));
-      if (isUnknownDeadlineField) {
+      const isUnknownField = status === 422 && /Unknown field name:/i.test(String(msg));
+      if (isUnknownField) {
         // Försök skapa saknade fält automatiskt (kräver schema.bases:write) och gör om.
         try {
           await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
@@ -5396,6 +5405,10 @@ app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
         type: fields['Typ'],
         title: fields['Titel'],
         status: fields['Status'] || 'Väntar',
+        fromUppdrag: !!fields['Skapad från uppdrag'] || !!fields['Uppdrag ID'],
+        uppdragId: fields['Uppdrag ID'] || null,
+        uppdragTyp: fields['Uppdrag typ'] || null,
+        uppdragPeriod: fields['Uppdrag period'] || null,
         createdAt: r.createdTime,
         deadline: fields['Deadline'] || fields['deadline'] || null,
         responseText: fields['Svar text'],
@@ -5663,6 +5676,12 @@ async function processSamarbeteReminders() {
   const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
   if (!tableId) return;
 
+  // Säkerställ att fältet "Senast påminnelse skickad" finns, annars kan vi inte dedup:a.
+  // (Utan detta kan Render-omstarter orsaka flera mejl samma dag.)
+  try {
+    await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
+  } catch (_) {}
+
   // Hämta poster med deadline (försök med filterByFormula, fallback till all+filter)
   const fetchAll = async () => {
     const res = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${tableId}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
@@ -5726,8 +5745,48 @@ async function processSamarbeteReminders() {
 
   if (dueByEmail.size === 0) return;
 
-  // Skicka max ett mejl per e-post per dag; uppdatera "Senast påminnelse skickad" på alla ingående poster.
+  // Skicka max ett mejl per e-post per dag.
+  // Viktigt: markera "Senast påminnelse skickad" FÖRE utskick.
+  // Om vi inte kan markera (t.ex. fält saknas / patch nekas) så skickar vi inte,
+  // annars kan kunden bli spammad vid server-omstarter.
   for (const group of dueByEmail.values()) {
+    const markSentForRecord = async (recordId) => {
+      try {
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${recordId}`,
+          { fields: { 'Senast påminnelse skickad': today } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        return true;
+      } catch (e) {
+        const status = e.response?.status;
+        const msg = e.response?.data?.error?.message || e.message;
+        const unknownField = status === 422 && /Unknown field name:\s*"?Senast påminnelse skickad"?/i.test(String(msg));
+        if (unknownField) {
+          try {
+            await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
+            await axios.patch(
+              `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${recordId}`,
+              { fields: { 'Senast påminnelse skickad': today } },
+              { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+            );
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+        return false;
+      }
+    };
+
+    // Markera innan vi skickar (minskar risk för dubbletter vid omstart / parallella instanser).
+    const markResults = await Promise.all((group.items || []).map(it => markSentForRecord(it.recordId)));
+    const anyMarked = markResults.some(Boolean);
+    if (!anyMarked) {
+      console.warn('processSamarbeteReminders: kunde inte markera "Senast påminnelse skickad" – skippar utskick för', group.toEmail);
+      continue;
+    }
+
     // Försök hämta byrå-logga via första kund-id (best-effort)
     let senderLogoUrl;
     let senderByra;
@@ -5771,21 +5830,10 @@ async function processSamarbeteReminders() {
       items: group.items,
       isOverdue: !!group.isOverdue
     });
-    if (!result.sent) continue;
-
-    // Markera skickad idag för varje ingående request (kräver att fältet finns i tabellen)
-    for (const it of group.items) {
-      try {
-        await axios.patch(
-          `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${it.recordId}`,
-          { fields: { 'Senast påminnelse skickad': today } },
-          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-        );
-      } catch (e) {
-        // Om fältet saknas: undvik att kasta, men logga.
-        const msg = e.response?.data?.error?.message || e.message;
-        console.warn('Samarbete reminder patch failed:', msg);
-      }
+    if (!result.sent) {
+      // Vi har redan markerat "skickad idag" för att undvika spam.
+      // Om mejlet misslyckades vill vi inte försöka igen samma dag automatiskt.
+      continue;
     }
   }
 }
@@ -5972,6 +6020,7 @@ async function processUppdragUnderlagSchedule() {
 
   const samarbeteTableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
   if (!samarbeteTableId) return;
+  try { await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId }); } catch (_) {}
 
   const byEmail = new Map();
   for (const it of toCreate) {
@@ -5987,6 +6036,9 @@ async function processUppdragUnderlagSchedule() {
             'Titel': it.title,
             'Token': it.token,
             'Status': 'Väntar',
+            'Skapad från uppdrag': true,
+            'Uppdrag ID': it.uppdragId,
+            'Uppdrag period': it.periodKey,
             'Deadline': it.deadlineIso
           }
         },

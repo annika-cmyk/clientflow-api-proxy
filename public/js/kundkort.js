@@ -571,6 +571,9 @@ class CustomerCardManager {
         const byType = (typ) => records.find(r => (r.fields?.['Typ'] || '') === typ) || null;
         const riskAtgarder = this._getRiskAtgarderList();
 
+        // Används i Samarbete-modalen för att kunna koppla en förfrågan till ett uppdrag
+        this._uppdragRecords = records.slice();
+
         const existingTypes = ALL_TYPES.filter(t => !!byType(t));
         const missingTypes = ALL_TYPES.filter(t => !byType(t));
 
@@ -1242,6 +1245,11 @@ class CustomerCardManager {
             : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
         const freqHtml = freqChoices.map(c => `<option value="${this._esc(c)}" ${String(c) === String(freq) ? 'selected' : ''}>${this._esc(c)}</option>`).join('');
 
+        const lastUnderlagPeriod = (f['Senast underlagsutskick period'] || '').toString().trim();
+        const lastUnderlagInfo = lastUnderlagPeriod
+            ? `<div class="uppdrag-muted" style="margin-top:0.5rem;"><i class="fas fa-paper-plane"></i> Senast skickad underlagsförfrågan: <strong>${this._esc(lastUnderlagPeriod)}</strong></div>`
+            : `<div class="uppdrag-muted" style="margin-top:0.5rem;"><i class="fas fa-paper-plane"></i> Ingen underlagsförfrågan har skickats ännu.</div>`;
+
         const safeIdPart = String(recId || typ || 'uppdrag').replace(/[^a-z0-9_-]/gi, '_');
         const underlagEpostListId = `underlag-epost-${safeIdPart}`;
         const rollerEpostOptions = (Array.isArray(this._kontaktPersoner) ? this._kontaktPersoner : [])
@@ -1322,6 +1330,19 @@ class CustomerCardManager {
             : `<div class="uppdrag-riskbox">
                             <div class="uppdrag-riskbox-title">Inga åtgärder hittades i kundens riskbedömning</div>
                         </div>`;
+
+        const ptlSectionHtml = hasRiskAtgarder ? `
+                        <div class="uppdrag-block">
+                            <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
+                            <input type="file" class="kunduppgifter-input" data-ptl-file multiple>
+                            <div class="uppdrag-actions" style="margin-top:0.5rem;">
+                                <button type="button" class="btn btn-secondary btn-sm" data-action="upload-ptl"><i class="fas fa-upload"></i> Ladda upp underlag</button>
+                            </div>
+                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${this._esc(ptlUnderlagRaw || '[]')}</textarea>
+                            <div class="uppdrag-ptl-files" data-ptl-files></div>
+                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
+                        </div>
+        ` : '';
 
         const viewDeklarationHtml = extra.showDeklaration ? `
             <div class="uppdrag-view-field uppdrag-span-full" style="margin-top:0.85rem;">
@@ -1456,6 +1477,7 @@ class CustomerCardManager {
                                     <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mall (en punkt per rad)</label>
                                     <textarea class="kunduppgifter-input" rows="3" data-field="Underlagsmall" placeholder="t.ex. Löneunderlag {PERIOD}\nTidrapport {PERIOD}">${this._esc(String(f['Underlagsmall'] || ''))}</textarea>
                                 </div>
+                                ${lastUnderlagInfo}
                             </div>
                         </div>
 
@@ -1463,16 +1485,7 @@ class CustomerCardManager {
 
                         ${editRiskSectionHtml}
 
-                        <div class="uppdrag-block">
-                            <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
-                            <input type="file" class="kunduppgifter-input" data-ptl-file multiple>
-                            <div class="uppdrag-actions" style="margin-top:0.5rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" data-action="upload-ptl"><i class="fas fa-upload"></i> Ladda upp underlag</button>
-                            </div>
-                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${this._esc(ptlUnderlagRaw || '[]')}</textarea>
-                            <div class="uppdrag-ptl-files" data-ptl-files></div>
-                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
-                        </div>
+                        ${ptlSectionHtml}
 
                         <div class="uppdrag-actions">
                             <button type="button" class="btn btn-primary btn-sm" data-action="save"><i class="fas fa-save"></i> Spara</button>
@@ -5562,6 +5575,12 @@ class CustomerCardManager {
         };
         const copyLinkBtn = (req) => `<button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.copySamarbeteLink('${this.escapeDocHtml(req.id)}')" title="Kopiera länk till kundformulär"><i class="fas fa-link"></i> Kopiera länk</button>`;
         const resendEmailBtn = (req) => `<button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.resendSamarbeteEmail('${this.escapeDocHtml(req.id)}')" title="Skicka mejlet igen"><i class="fas fa-envelope"></i> Skicka mejl igen</button>`;
+        const uppdragBadge = (req) => {
+            if (!(req && req.fromUppdrag)) return '';
+            const typ = (req.uppdragTyp || '').toString().trim();
+            const label = typ ? `Uppdrag: ${typ}` : 'Uppdrag';
+            return ` <span class="badge badge-info" style="margin-left:0.5rem; background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.75rem;"><i class="fas fa-briefcase"></i> ${this.escapeDocHtml(label)}</span>`;
+        };
 
         const pendingItems = pending.map(req => {
             const created = fmtDate(req.createdAt);
@@ -5584,7 +5603,7 @@ class CustomerCardManager {
                     ${renderHiddenLinkInput(req)}
                     <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
                         <div class="samarbete-item-head-inner">
-                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}</span>
+                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}${uppdragBadge(req)}</span>
                         </div>
                         <i class="fas fa-chevron-down samarbete-item-chevron"></i>
                     </div>
@@ -5663,7 +5682,7 @@ class CustomerCardManager {
                     ${renderHiddenLinkInput(req)}
                     <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
                         <div class="samarbete-item-head-inner">
-                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}</span>
+                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}${uppdragBadge(req)}</span>
                         </div>
                         <i class="fas fa-chevron-down samarbete-item-chevron"></i>
                     </div>
@@ -5691,7 +5710,7 @@ class CustomerCardManager {
                     ${renderHiddenLinkInput(req)}
                     <div class="samarbete-item-head samarbete-item-head--toggle samarbete-item-head--meta" role="button" tabindex="0" aria-expanded="false">
                         <div class="samarbete-item-head-inner">
-                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}</span>
+                            <span class="samarbete-item-title-main">${this.escapeDocHtml(headerLine)}${uppdragBadge(req)}</span>
                         </div>
                         <i class="fas fa-chevron-down samarbete-item-chevron"></i>
                     </div>
@@ -5928,6 +5947,17 @@ class CustomerCardManager {
         const options = personer.length
             ? personer.map((p, i) => `<option value="${this.escapeDocHtml(p.epost)}" data-name="${this.escapeDocHtml(p.namn)}">${this.escapeDocHtml(p.namn)}${p.epost ? ' – ' + p.epost : ' (e-post saknas)'}</option>`).join('')
             : '<option value="">Inga roller med e-post – lägg till på Företagsinformation</option>';
+
+        const uppdrag = Array.isArray(this._uppdragRecords) ? this._uppdragRecords : [];
+        const uppdragOptions = ['<option value="">Ingen koppling</option>'].concat(
+            uppdrag
+                .map(r => ({
+                    id: r?.id || '',
+                    typ: (r?.fields?.['Typ'] || '').toString().trim()
+                }))
+                .filter(x => x.id && x.typ)
+                .map(x => `<option value="${this.escapeDocHtml(x.id)}" data-typ="${this.escapeDocHtml(x.typ)}">${this.escapeDocHtml(x.typ)}</option>`)
+        ).join('');
         const modalHtml = `
             <div id="begar-underlag-modal" class="modal-overlay">
                 <div class="modal-content">
@@ -5939,6 +5969,11 @@ class CustomerCardManager {
                         <div class="form-group">
                             <label for="samarbete-recipient">Välj mottagare</label>
                             <select id="samarbete-recipient" class="form-control">${options}</select>
+                        </div>
+                        <div class="form-group">
+                            <label for="samarbete-uppdrag-link">Koppla till uppdrag <span style="color:#64748b; font-weight:400;">(valfritt)</span></label>
+                            <select id="samarbete-uppdrag-link" class="form-control">${uppdragOptions}</select>
+                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Visas som “Uppdrag” i Samarbete-listan så du ser att den hör ihop med ett uppdrag.</div>
                         </div>
                         <div class="form-group">
                             <label>Begärt underlag *</label>
@@ -6018,6 +6053,7 @@ class CustomerCardManager {
     async submitBegarUnderlag() {
         const recipientSelect = document.getElementById('samarbete-recipient');
         const typeSelect = document.getElementById('samarbete-type');
+        const uppdragSelect = document.getElementById('samarbete-uppdrag-link');
         const rows = document.querySelectorAll('#samarbete-items-wrap .samarbete-item-row');
         const btn = document.getElementById('samarbete-submit-btn');
         const items = [];
@@ -6040,6 +6076,10 @@ class CustomerCardManager {
         const customerMessage = (messageEl && messageEl.value) ? messageEl.value.trim() : '';
         const deadlineEl = document.getElementById('samarbete-deadline');
         const deadline = (deadlineEl && deadlineEl.value) ? deadlineEl.value : '';
+        const uppdragId = uppdragSelect ? (uppdragSelect.value || '').trim() : '';
+        const uppdragTyp = (uppdragSelect && uppdragSelect.selectedOptions && uppdragSelect.selectedOptions[0])
+            ? (uppdragSelect.selectedOptions[0].getAttribute('data-typ') || '').trim()
+            : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...'; }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -6054,7 +6094,9 @@ class CustomerCardManager {
                     type: typeSelect ? typeSelect.value : 'Filer',
                     title: title,
                     customerMessage: customerMessage || undefined,
-                    deadline: deadline || undefined
+                    deadline: deadline || undefined,
+                    uppdragId: uppdragId || undefined,
+                    uppdragTyp: uppdragTyp || undefined
                 })
             });
             const data = await res.json().catch(() => ({}));
