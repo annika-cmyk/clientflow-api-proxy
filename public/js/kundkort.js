@@ -1,5 +1,6 @@
 // Customer Card Management System
-console.log('🔍 SCRIPT LOADED - kundkort.js v10.0 (uppdrag layout + mottagare från roller + samarbete links)', new Date().toISOString());
+// Version marker to verify browser cache.
+console.log('🔍 SCRIPT LOADED - kundkort.js v12.4', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
