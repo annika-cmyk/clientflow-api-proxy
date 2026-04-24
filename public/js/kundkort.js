@@ -570,13 +570,21 @@ class CustomerCardManager {
         const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
         const samarbeteReqs = Array.isArray(samarbeteData.requests) ? samarbeteData.requests : [];
         const samarbeteByUppdragTyp = new Map();
+        const samarbeteByUppdragId = new Map();
         samarbeteReqs.forEach((r) => {
             if (!r || !r.fromUppdrag) return;
             const t = (r.uppdragTyp || '').toString().trim();
-            if (!t) return;
-            const arr = samarbeteByUppdragTyp.get(t) || [];
-            arr.push(r);
-            samarbeteByUppdragTyp.set(t, arr);
+            const id = (r.uppdragId || '').toString().trim();
+            if (t) {
+                const arr = samarbeteByUppdragTyp.get(t) || [];
+                arr.push(r);
+                samarbeteByUppdragTyp.set(t, arr);
+            }
+            if (id) {
+                const arr2 = samarbeteByUppdragId.get(id) || [];
+                arr2.push(r);
+                samarbeteByUppdragId.set(id, arr2);
+            }
         });
 
         const ALL_TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
@@ -823,7 +831,13 @@ class CustomerCardManager {
                     ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
                     : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
                 const isOpen = openTyp === t;
-                const samList = (samarbeteByUppdragTyp.get(t) || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+                const samList = (() => {
+                    const byTyp = (samarbeteByUppdragTyp.get(t) || []);
+                    const byId = (samarbeteByUppdragId.get(String(rec.id || '').trim()) || []);
+                    const uniq = new Map();
+                    byTyp.concat(byId).forEach(x => { if (x && x.id) uniq.set(String(x.id), x); });
+                    return Array.from(uniq.values()).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+                })();
                 const stripFileObligatorisk = (s) => (s || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
                 const isReqFullyAnswered = (s) => {
                     const status = (s?.status || '').toString().trim().toLowerCase();

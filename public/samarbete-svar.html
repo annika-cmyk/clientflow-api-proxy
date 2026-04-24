@@ -77,12 +77,12 @@
             padding-left: 0.25rem;
         }
         .question-response-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
-        .question-response-row {
+        .question-upload-row {
             display: flex;
+            align-items: center;
             gap: 0.5rem;
-            align-items: flex-start;
+            flex-wrap: wrap;
         }
-        .question-response-row textarea { flex: 1; min-width: 0; }
         .upload-btn-wrap {
             flex-shrink: 0;
             display: flex;
@@ -249,8 +249,8 @@
                     html += '<div class="question-card" data-index="' + i + '">';
                     html += '<div class="question-text">' + (i + 1) + '. ' + q + (req ? ' <span class="file-required-tag">Fil obligatorisk</span>' : '') + '</div>';
                     html += '<div class="question-response-wrap">';
-                    html += '<div class="question-response-row">';
                     html += '<textarea class="form-control" data-index="' + i + '" placeholder="din kommentar" rows="2">' + escapeHtml(answerTexts[i]) + '</textarea>';
+                    html += '<div class="question-upload-row">';
                     html += '<div class="upload-btn-wrap">';
                     html += '<input type="file" id="file-' + i + '" data-index="' + i + '" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple>';
                     html += '<label for="file-' + i + '" class="btn-upload"><i class="fas fa-upload"></i> Fil' + (req ? ' *' : '') + '</label>';

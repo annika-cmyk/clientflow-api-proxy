@@ -6087,6 +6087,7 @@ async function processUppdragUnderlagSchedule() {
             'Status': 'Väntar',
             'Skapad från uppdrag': true,
             'Uppdrag ID': it.uppdragId,
+            'Uppdrag typ': it.typ,
             'Uppdrag period': it.periodKey,
             'Deadline': it.deadlineIso
           }
