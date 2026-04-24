@@ -5193,7 +5193,7 @@ async function sendSamarbeteInviteEmail(options) {
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
-    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp } = req.body;
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod } = req.body;
     if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
     const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -5261,7 +5261,8 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
         ...((uppdragId || uppdragTyp) ? {
           'Skapad från uppdrag': true,
           ...(uppdragId ? { 'Uppdrag ID': String(uppdragId).trim() } : {}),
-          ...(uppdragTyp ? { 'Uppdrag typ': String(uppdragTyp).trim() } : {})
+          ...(uppdragTyp ? { 'Uppdrag typ': String(uppdragTyp).trim() } : {}),
+          ...(uppdragPeriod ? { 'Uppdrag period': String(uppdragPeriod).trim() } : {})
         } : {}),
         ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
       }

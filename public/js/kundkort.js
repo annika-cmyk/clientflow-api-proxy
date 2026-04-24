@@ -5795,8 +5795,10 @@ class CustomerCardManager {
         const uppdragBadge = (req) => {
             if (!(req && req.fromUppdrag)) return '';
             const typ = (req.uppdragTyp || '').toString().trim();
+            const period = (req.uppdragPeriod || '').toString().trim();
             const label = typ ? `Uppdrag: ${typ}` : 'Uppdrag';
-            return ` <span class="badge badge-info" style="margin-left:0.5rem; background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.75rem;"><i class="fas fa-briefcase"></i> ${this.escapeDocHtml(label)}</span>`;
+            const extra = period ? ` · ${period}` : '';
+            return ` <span class="badge badge-info" style="margin-left:0.5rem; background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.75rem;"><i class="fas fa-briefcase"></i> ${this.escapeDocHtml(label + extra)}</span>`;
         };
 
         const pendingItems = pending.map(req => {
@@ -6192,6 +6194,11 @@ class CustomerCardManager {
                             <select id="samarbete-uppdrag-link" class="form-control">${uppdragOptions}</select>
                             <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Visas som “Uppdrag” i Samarbete-listan så du ser att den hör ihop med ett uppdrag.</div>
                         </div>
+                        <div class="form-group" id="samarbete-uppdrag-period-wrap" style="display:none;">
+                            <label for="samarbete-uppdrag-period">Uppdragskörning / period <span style="color:#64748b; font-weight:400;">(valfri men rekommenderad)</span></label>
+                            <select id="samarbete-uppdrag-period" class="form-control"></select>
+                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Exempel: 2026-01 (lön januari), 2026-Q1 (moms kvartal 1), 2025 (år).</div>
+                        </div>
                         <div class="form-group">
                             <label>Begärt underlag *</label>
                             <div id="samarbete-items-wrap">
@@ -6227,6 +6234,91 @@ class CustomerCardManager {
         const wrap = document.createElement('div');
         wrap.innerHTML = modalHtml;
         document.body.appendChild(wrap.firstElementChild);
+
+        // Periodval för uppdragskoppling
+        const uppdragSel = document.getElementById('samarbete-uppdrag-link');
+        const periodWrap = document.getElementById('samarbete-uppdrag-period-wrap');
+        const periodSel = document.getElementById('samarbete-uppdrag-period');
+        const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const prevQuarterKey = (d) => {
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            let q = Math.ceil(m / 3) - 1;
+            let yy = y;
+            if (q <= 0) { q = 4; yy = y - 1; }
+            return `${yy}-Q${q}`;
+        };
+        const quarterKeyFor = (d) => {
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const q = Math.ceil(m / 3);
+            return `${y}-Q${q}`;
+        };
+        const buildPeriodOptions = (mode) => {
+            const now = new Date();
+            const opts = [];
+            if (mode === 'year') {
+                const y = now.getFullYear();
+                for (let i = 0; i < 6; i++) {
+                    const yy = String(y - i);
+                    opts.push({ value: yy, label: yy });
+                }
+                return opts;
+            }
+            if (mode === 'quarter') {
+                // senaste 10 kvartal
+                let cursor = new Date(now.getFullYear(), now.getMonth(), 1);
+                for (let i = 0; i < 10; i++) {
+                    const key = quarterKeyFor(cursor);
+                    opts.push({ value: key, label: `Kvartal ${key.split('Q')[1]} ${key.split('-')[0]}` });
+                    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 3, 1);
+                }
+                return opts;
+            }
+            // month
+            let cursor = new Date(now.getFullYear(), now.getMonth(), 1);
+            for (let i = 0; i < 18; i++) {
+                const key = monthKey(cursor);
+                const label = cursor.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' });
+                opts.push({ value: key, label: label.replace(/^\w/, c => c.toUpperCase()) });
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+            }
+            return opts;
+        };
+        const getUppdragMode = (rec) => {
+            const typ = (rec?.fields?.['Typ'] || '').toString().trim();
+            const freq = (rec?.fields?.['Frekvens'] || '').toString().toLowerCase();
+            if (typ === 'Momsredovisning') {
+                if (freq.includes('kvartal')) return 'quarter';
+                if (freq.includes('år')) return 'year';
+                return 'month';
+            }
+            if (typ === 'Bokslut' || typ === 'Deklaration') return 'year';
+            return 'month';
+        };
+        const renderPeriodForUppdrag = () => {
+            if (!uppdragSel || !periodWrap || !periodSel) return;
+            const uppdragId = (uppdragSel.value || '').trim();
+            if (!uppdragId) {
+                periodWrap.style.display = 'none';
+                periodSel.innerHTML = '';
+                return;
+            }
+            const rec = (Array.isArray(this._uppdragRecords) ? this._uppdragRecords : []).find(r => String(r?.id || '') === uppdragId) || null;
+            const mode = getUppdragMode(rec);
+            const opts = buildPeriodOptions(mode);
+            const pref = (mode === 'quarter') ? prevQuarterKey(new Date()) : (mode === 'year' ? String(new Date().getFullYear() - 1) : monthKey(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)));
+            periodSel.innerHTML = ['<option value="">Välj period...</option>'].concat(
+                opts.map(o => `<option value="${this.escapeDocHtml(o.value)}" ${o.value === pref ? 'selected' : ''}>${this.escapeDocHtml(o.value)} – ${this.escapeDocHtml(o.label)}</option>`)
+            ).join('');
+            periodWrap.style.display = '';
+        };
+        if (uppdragSel) {
+            uppdragSel.addEventListener('change', renderPeriodForUppdrag);
+            // initial
+            renderPeriodForUppdrag();
+        }
+
         const wrapEl = document.getElementById('samarbete-items-wrap');
         const addBtn = document.getElementById('samarbete-add-item');
         if (addBtn && wrapEl) {
@@ -6297,6 +6389,8 @@ class CustomerCardManager {
         const uppdragTyp = (uppdragSelect && uppdragSelect.selectedOptions && uppdragSelect.selectedOptions[0])
             ? (uppdragSelect.selectedOptions[0].getAttribute('data-typ') || '').trim()
             : '';
+        const uppdragPeriodEl = document.getElementById('samarbete-uppdrag-period');
+        const uppdragPeriod = uppdragPeriodEl ? (uppdragPeriodEl.value || '').trim() : '';
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...'; }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -6313,7 +6407,8 @@ class CustomerCardManager {
                     customerMessage: customerMessage || undefined,
                     deadline: deadline || undefined,
                     uppdragId: uppdragId || undefined,
-                    uppdragTyp: uppdragTyp || undefined
+                    uppdragTyp: uppdragTyp || undefined,
+                    uppdragPeriod: uppdragPeriod || undefined
                 })
             });
             const data = await res.json().catch(() => ({}));
