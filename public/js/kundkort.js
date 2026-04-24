@@ -5944,7 +5944,11 @@ class CustomerCardManager {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 // Logga detaljer så vi kan se exakt Airtable-fel (t.ex. okänt fält, ogiltig e-post, saknade select-vals)
-                console.error('❌ Samarbete create failed:', { status: res.status, data });
+                try {
+                    console.error('❌ Samarbete create failed (raw):', JSON.stringify({ status: res.status, data }, null, 2));
+                } catch (_) {
+                    console.error('❌ Samarbete create failed:', { status: res.status, data });
+                }
                 const detailMsg =
                     (data && data.details && data.details.error && data.details.error.message)
                         ? String(data.details.error.message)
