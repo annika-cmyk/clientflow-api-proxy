@@ -651,7 +651,9 @@ class CustomerCardManager {
         const monthMin = new Date(monthNow.getFullYear(), monthNow.getMonth() - 12, 1);
         const monthMax = new Date(monthNow.getFullYear(), monthNow.getMonth() + 12, 1);
 
-        // Bygg upp instanser (deadline per månad) för perioden [monthMin..monthMax]
+        // Bygg upp instanser för perioden [monthMin..monthMax]
+        // Viktigt: visa uppdraget när det är "öppet" (periodstart -> deadline-månad),
+        // inte bara i deadline-månaden.
         const instByTypeMonth = new Map(); // typ -> Map(monthKey -> deadlineIso)
         for (const r of records) {
             const f = r.fields || {};
@@ -662,31 +664,31 @@ class CustomerCardManager {
             const step = monthsStepFromFreq(f['Frekvens']);
             const map = instByTypeMonth.get(typ) || new Map();
             if (step === 0) {
-                const mk = deadline0.slice(0, 7);
-                map.set(mk, deadline0);
+                // Engång: visa från innevarande månad fram till deadline-månaden
+                const endMonth = deadline0.slice(0, 7);
+                let cursor = new Date(monthNow.getFullYear(), monthNow.getMonth(), 1);
+                const end = new Date(Number(endMonth.slice(0, 4)), Number(endMonth.slice(5, 7)) - 1, 1);
+                for (let guard = 0; guard < 36; guard++) {
+                    if (cursor > monthMax) break;
+                    if (cursor > end) break;
+                    if (cursor >= monthMin) map.set(monthKey(cursor), deadline0);
+                    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+                }
                 instByTypeMonth.set(typ, map);
                 continue;
             }
-            // gå bakåt och framåt från next deadline för att fylla spannet
-            let d = deadline0;
-            for (let guard = 0; guard < 60; guard++) {
-                const mk = d.slice(0, 7);
-                const cursor = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1, 1);
-                if (cursor >= monthMin && cursor <= monthMax) map.set(mk, d);
-                // Stoppa när vi gått för långt fram
+            // Öppen-period: från periodstart (deadline - step) fram till deadline-månaden
+            const deadlineMonth = deadline0.slice(0, 7);
+            let startIso = deadline0;
+            if (step > 0) startIso = addMonthsIso(deadline0, -step);
+            const startMonth = toDateStr(startIso) ? startIso.slice(0, 7) : deadlineMonth;
+            let cursor = new Date(Number(startMonth.slice(0, 4)), Number(startMonth.slice(5, 7)) - 1, 1);
+            const end = new Date(Number(deadlineMonth.slice(0, 4)), Number(deadlineMonth.slice(5, 7)) - 1, 1);
+            for (let guard = 0; guard < 36; guard++) {
                 if (cursor > monthMax) break;
-                d = addMonthsIso(d, step);
-                if (!d) break;
-            }
-            // och bakåt
-            d = deadline0;
-            for (let guard = 0; guard < 60; guard++) {
-                const mk = d.slice(0, 7);
-                const cursor = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1, 1);
-                if (cursor >= monthMin && cursor <= monthMax) map.set(mk, d);
-                if (cursor < monthMin) break;
-                d = addMonthsIso(d, -step);
-                if (!d) break;
+                if (cursor > end) break;
+                if (cursor >= monthMin) map.set(monthKey(cursor), deadline0);
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
             }
             instByTypeMonth.set(typ, map);
         }
