@@ -506,9 +506,10 @@ class CustomerCardManager {
         const customerId = this.customerId || this.currentCustomerId;
         if (!customerId) throw new Error('Saknar customerId');
 
-        const [uppdragRes, usersRes] = await Promise.all([
+        const [uppdragRes, usersRes, samarbeteRes] = await Promise.all([
             fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }),
-            fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }).catch(() => null)
+            fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }).catch(() => null),
+            fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null)
         ]);
         if (!uppdragRes.ok) {
             const err = await uppdragRes.json().catch(() => ({}));
@@ -563,9 +564,20 @@ class CustomerCardManager {
 
         const uppdragData = await uppdragRes.json().catch(() => ({ records: [] }));
         const usersData = (usersRes && usersRes.ok) ? await usersRes.json() : { users: [] };
+        const samarbeteData = (samarbeteRes && samarbeteRes.ok) ? await samarbeteRes.json() : { requests: [] };
 
         const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
         const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
+        const samarbeteReqs = Array.isArray(samarbeteData.requests) ? samarbeteData.requests : [];
+        const samarbeteByUppdragTyp = new Map();
+        samarbeteReqs.forEach((r) => {
+            if (!r || !r.fromUppdrag) return;
+            const t = (r.uppdragTyp || '').toString().trim();
+            if (!t) return;
+            const arr = samarbeteByUppdragTyp.get(t) || [];
+            arr.push(r);
+            samarbeteByUppdragTyp.set(t, arr);
+        });
 
         const ALL_TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
         const byType = (typ) => records.find(r => (r.fields?.['Typ'] || '') === typ) || null;
@@ -740,16 +752,10 @@ class CustomerCardManager {
                 if (!s) return '—';
                 try { return new Date(s + 'T00:00:00').toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }); } catch (_) { return s; }
             };
-            const rows = ALL_TYPES.map((t) => {
+            const openTyp = (this._kundUppdragBoardOpenTyp || '').toString();
+            const rows = existingTypes.map((t) => {
                 const rec = byType(t);
-                if (!rec) {
-                    return `<tr class="uppdragboard-row">
-                        <td><div class="uppdragboard-client"><span class="uppdragboard-link" style="opacity:.7;">${this._esc(t)}</span></div></td>
-                        <td>—</td>
-                        <td><span class="uppdragboard-progress" style="opacity:.65;">Ej upplagt</span></td>
-                        <td></td>
-                    </tr>`;
-                }
+                if (!rec) return '';
                 const f = rec.fields || {};
                 const instMap = instByTypeMonth.get(t) || new Map();
                 const instDeadline = instMap.get(mk) || '';
@@ -765,7 +771,59 @@ class CustomerCardManager {
                 const runHtml = instDeadline
                     ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
                     : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
-                return `<tr class="uppdragboard-row">
+                const isOpen = openTyp === t;
+                const samList = (samarbeteByUppdragTyp.get(t) || []).slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+                const samHtml = samList.length ? `
+                    <div class="uppdrag-view-field" style="margin-top:0.25rem;">
+                        <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
+                        <div class="uppdrag-view-list">
+                            ${samList.slice(0, 8).map(s => {
+                                const period = (s.uppdragPeriod || '').toString().trim();
+                                const created = s.createdAt ? new Date(s.createdAt).toLocaleDateString('sv-SE') : '—';
+                                const status = (s.status || '').toString();
+                                const answered = s.answeredAt ? new Date(s.answeredAt).toLocaleDateString('sv-SE') : '';
+                                const attCount = Array.isArray(s.responseAttachment) ? s.responseAttachment.length : 0;
+                                const respTxt = (s.responseText || '').toString().trim();
+                                const hasResp = !!answered || !!respTxt || attCount > 0;
+                                const meta = `${created}${period ? ` · ${period}` : ''} · ${status}${answered ? ` · Besvarad ${answered}` : ''}${attCount ? ` · ${attCount} fil` : ''}`;
+                                return `<div class="uppdrag-view-list-item">
+                                    <i class="fas ${hasResp ? 'fa-check-circle' : 'fa-paper-plane'}"></i>
+                                    <span>${this._esc(meta)}</span>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                ` : `<div class="uppdrag-view-field" style="margin-top:0.25rem;">
+                        <div class="uppdrag-view-label">Underlagsförfrågningar (Samarbete)</div>
+                        <div class="uppdrag-muted">Inga skickade förfrågningar kopplade till detta uppdrag ännu.</div>
+                    </div>`;
+
+                const detailsHtml = `
+                    <div class="uppdragboard-details-inner">
+                        <div class="uppdragboard-details-top">
+                            <div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Rutin / instruktion</div>
+                                <div class="uppdrag-view-text">${(f['Rutin'] || '').toString().trim() ? this._esc(String(f['Rutin'])) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
+                            </div>
+                            <div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Schemaläggning</div>
+                                <div class="uppdrag-view-text">
+                                    ${(f['Auto underlagsförfrågan'] ? 'Auto-utskick: På' : 'Auto-utskick: Av')}
+                                    ${f['Underlagsutskick dag'] ? ` · Skickas dag ${this._esc(String(f['Underlagsutskick dag']))}` : ''}
+                                    ${f['Underlagsdeadline dag'] ? ` · Deadline dag ${this._esc(String(f['Underlagsdeadline dag']))}` : ''}
+                                    ${f['Underlagsperiod'] ? ` · Avser ${this._esc(String(f['Underlagsperiod']))}` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        ${samHtml}
+                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.75rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" data-kund-edit-typ="${this._esc(t)}"><i class="fas fa-pen"></i> Redigera</button>
+                        </div>
+                    </div>
+                `;
+
+                return `
+                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''}" data-kund-board-typ="${this._esc(t)}">
                     <td>
                         <div class="uppdragboard-client">
                             <span class="uppdragboard-link">${this._esc(t)}</span>
@@ -774,9 +832,17 @@ class CustomerCardManager {
                     </td>
                     <td>${runHtml}</td>
                     <td>${statusHtml}</td>
-                    <td><button type="button" class="uppdragboard-expandbtn" title="Redigera" aria-label="Redigera" data-kund-edit-typ="${this._esc(t)}"><i class="fas fa-pen"></i></button></td>
-                </tr>`;
-            }).join('');
+                    <td class="uppdragboard-arrow">
+                        <button type="button" class="uppdragboard-expandbtn" title="Visa mer" aria-label="Visa mer" data-kund-toggle-typ="${this._esc(t)}">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </td>
+                </tr>
+                <tr class="uppdragboard-details" data-kund-details-for="${this._esc(t)}" style="${isOpen ? '' : 'display:none;'}">
+                    <td colspan="4">${detailsHtml}</td>
+                </tr>
+                `;
+            }).filter(Boolean).join('');
             tbody.innerHTML = rows || `<tr><td colspan="4" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
         };
 
@@ -797,21 +863,33 @@ class CustomerCardManager {
             renderBoard();
         });
 
-        // Klick på penna i översikten: öppna Redigera-uppdrag och scrolla till rätt kort
-        container.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-kund-edit-typ]');
-            if (!btn) return;
-            const t = btn.getAttribute('data-kund-edit-typ');
-            const editCard = document.getElementById('kund-uppdrag-edit-card');
-            if (editCard) editCard.classList.remove('is-collapsed');
-            const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
-            if (target) {
-                try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-                // öppna kortet om det råkar vara kollapsat
-                target.classList.remove('is-collapsed');
-                target.querySelector('[data-action="toggle-edit"]')?.click();
-            }
-        }, { once: true });
+        // Klick: toggle detaljer + redigera från översikten
+        if (!container._kundUppdragBoardBound) {
+            container._kundUppdragBoardBound = true;
+            container.addEventListener('click', (e) => {
+                const toggle = e.target.closest('[data-kund-toggle-typ]');
+                if (toggle) {
+                    const t = toggle.getAttribute('data-kund-toggle-typ');
+                    this._kundUppdragBoardOpenTyp = (this._kundUppdragBoardOpenTyp === t) ? '' : t;
+                    renderBoard();
+                    const anyOpen = !!(this._kundUppdragBoardOpenTyp || '');
+                    const tbody = document.getElementById('kund-uppdragboard-tbody');
+                    if (tbody) tbody.classList.toggle('uppdragboard-has-open', anyOpen);
+                    return;
+                }
+                const btn = e.target.closest('[data-kund-edit-typ]');
+                if (!btn) return;
+                const t = btn.getAttribute('data-kund-edit-typ');
+                const editCard = document.getElementById('kund-uppdrag-edit-card');
+                if (editCard) editCard.classList.remove('is-collapsed');
+                const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
+                if (target) {
+                    try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+                    target.classList.remove('is-collapsed');
+                    target.querySelector('[data-action="toggle-edit"]')?.click();
+                }
+            });
+        }
 
         renderBoard();
 
@@ -6256,34 +6334,50 @@ class CustomerCardManager {
         };
         const buildPeriodOptions = (mode) => {
             const now = new Date();
-            const opts = [];
+            const unique = new Set();
+            const out = [];
+            const push = (value, label) => {
+                const v = String(value || '').trim();
+                if (!v || unique.has(v)) return;
+                unique.add(v);
+                out.push({ value: v, label: String(label || v) });
+            };
+
             if (mode === 'year') {
+                // Visa: föregående år + 2 år framåt
                 const y = now.getFullYear();
-                for (let i = 0; i < 6; i++) {
-                    const yy = String(y - i);
-                    opts.push({ value: yy, label: yy });
-                }
-                return opts;
+                push(String(y - 1), String(y - 1));
+                push(String(y), String(y));
+                push(String(y + 1), String(y + 1));
+                push(String(y + 2), String(y + 2));
+                return out;
             }
+
             if (mode === 'quarter') {
-                // senaste 10 kvartal
-                let cursor = new Date(now.getFullYear(), now.getMonth(), 1);
-                for (let i = 0; i < 10; i++) {
+                // Visa: föregående kvartal + 6 kvartal framåt
+                const qLabel = (key) => `Kvartal ${String(key).split('Q')[1]} ${String(key).split('-')[0]}`;
+                const cur = quarterKeyFor(new Date(now.getFullYear(), now.getMonth(), 1));
+                const prev = prevQuarterKey(new Date(now.getFullYear(), now.getMonth(), 1));
+                push(prev, qLabel(prev));
+                push(cur, qLabel(cur));
+                let cursor = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+                for (let i = 0; i < 6; i++) {
                     const key = quarterKeyFor(cursor);
-                    opts.push({ value: key, label: `Kvartal ${key.split('Q')[1]} ${key.split('-')[0]}` });
-                    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 3, 1);
+                    push(key, qLabel(key));
+                    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
                 }
-                return opts;
+                return out;
             }
-            // month
-            let cursor = new Date(now.getFullYear(), now.getMonth(), 1);
-            for (let i = 0; i < 18; i++) {
-                const key = monthKey(cursor);
-                const label = cursor.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' });
-                opts.push({ value: key, label: label.replace(/^\w/, c => c.toUpperCase()) });
-                cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+
+            // month: Visa: föregående månad + 12 månader framåt
+            const mLabel = (d) => d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+            const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            push(monthKey(prev), mLabel(prev));
+            for (let i = 0; i < 13; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                push(monthKey(d), mLabel(d));
             }
-            return opts;
+            return out;
         };
         const getUppdragMode = (rec) => {
             const typ = (rec?.fields?.['Typ'] || '').toString().trim();
@@ -6307,9 +6401,13 @@ class CustomerCardManager {
             const rec = (Array.isArray(this._uppdragRecords) ? this._uppdragRecords : []).find(r => String(r?.id || '') === uppdragId) || null;
             const mode = getUppdragMode(rec);
             const opts = buildPeriodOptions(mode);
-            const pref = (mode === 'quarter') ? prevQuarterKey(new Date()) : (mode === 'year' ? String(new Date().getFullYear() - 1) : monthKey(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)));
+            const pref = (mode === 'quarter')
+                ? prevQuarterKey(new Date(now.getFullYear(), now.getMonth(), 1))
+                : (mode === 'year'
+                    ? String(now.getFullYear() - 1)
+                    : monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
             periodSel.innerHTML = ['<option value="">Välj period...</option>'].concat(
-                opts.map(o => `<option value="${this.escapeDocHtml(o.value)}" ${o.value === pref ? 'selected' : ''}>${this.escapeDocHtml(o.value)} – ${this.escapeDocHtml(o.label)}</option>`)
+                opts.map(o => `<option value="${this.escapeDocHtml(o.value)}" ${String(o.value) === String(pref) ? 'selected' : ''}>${this.escapeDocHtml(o.value)} – ${this.escapeDocHtml(o.label)}</option>`)
             ).join('');
             periodWrap.style.display = '';
         };
