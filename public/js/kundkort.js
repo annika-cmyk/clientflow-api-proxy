@@ -763,6 +763,11 @@ class CustomerCardManager {
                 if (!s) return '—';
                 try { return new Date(s + 'T00:00:00').toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }); } catch (_) { return s; }
             };
+            const fmtLong = (iso) => {
+                const s = toDateStr(iso);
+                if (!s) return '';
+                try { return new Date(s + 'T00:00:00').toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (_) { return s; }
+            };
             const parseAnswersArray = (rawText) => {
                 const raw = (rawText || '').toString().trim();
                 if (!raw || !raw.startsWith('[')) return null;
@@ -829,11 +834,15 @@ class CustomerCardManager {
                 const done = instDeadline ? isDoneForPeriod(f, instDeadline) : false;
                 const freq = (f['Frekvens'] || '').toString().trim() || '—';
                 const autoOn = !!f['Auto underlagsförfrågan'];
+                const sendDayNum = parseInt(String(f['Underlagsutskick dag'] || '').trim(), 10);
+                const deadlineDayNum = parseInt(String(f['Underlagsdeadline dag'] || '').trim(), 10);
+                const sendIso = (Number.isFinite(sendDayNum) && sendDayNum >= 1 && sendDayNum <= 28) ? `${mk}-${String(sendDayNum).padStart(2, '0')}` : '';
+                const custDeadlineIso = (Number.isFinite(deadlineDayNum) && deadlineDayNum >= 1 && deadlineDayNum <= 28) ? `${mk}-${String(deadlineDayNum).padStart(2, '0')}` : '';
                 const autoTooltip = `
                     <div class="uppdragboard-tooltip">
                         <div><strong>Auto-utskick:</strong> ${autoOn ? 'På' : 'Av'}</div>
-                        ${(f['Underlagsutskick dag'] ? `<div><strong>Skickas:</strong> dag ${this._esc(String(f['Underlagsutskick dag']))}</div>` : '')}
-                        ${(f['Underlagsdeadline dag'] ? `<div><strong>Deadline:</strong> dag ${this._esc(String(f['Underlagsdeadline dag']))}</div>` : '')}
+                        ${(sendIso ? `<div><strong>Skickas:</strong> ${this._esc(fmtLong(sendIso))}</div>` : (f['Underlagsutskick dag'] ? `<div><strong>Skickas:</strong> dag ${this._esc(String(f['Underlagsutskick dag']))}</div>` : ''))}
+                        ${(custDeadlineIso ? `<div><strong>Kund-deadline:</strong> ${this._esc(fmtLong(custDeadlineIso))}</div>` : (f['Underlagsdeadline dag'] ? `<div><strong>Kund-deadline:</strong> dag ${this._esc(String(f['Underlagsdeadline dag']))}</div>` : ''))}
                         ${(f['Underlagsperiod'] ? `<div><strong>Avser:</strong> ${this._esc(String(f['Underlagsperiod']))}</div>` : '')}
                     </div>
                 `;
@@ -909,7 +918,7 @@ class CustomerCardManager {
                     }">${underlagDone}/${underlagTotal}</span>`;
 
                 const samHtml = `
-                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.25rem;">
+                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.85rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar</div>
                         ${samForRun.length ? `
                             <div class="samarbete-list samarbete-list--plain" style="margin-top:0.35rem;">
