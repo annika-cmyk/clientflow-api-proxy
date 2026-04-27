@@ -4945,6 +4945,7 @@ const SAMARBETE_REQUIRED_FIELDS = [
   { name: 'Uppdrag ID', type: 'singleLineText', description: 'Intern: record-id för uppdraget som skapade förfrågan' },
   { name: 'Uppdrag typ', type: 'singleLineText', description: 'Intern: uppdragstyp (t.ex. Löneuppdrag)' },
   { name: 'Uppdrag period', type: 'singleLineText', description: 'Intern: periodnyckel för utskicket (t.ex. 2026-04)' },
+  { name: 'Uppdragskörning ID', type: 'singleLineText', description: 'Intern: record-id för uppdragskörningen som förfrågan hör till' },
   { name: 'Deadline', type: 'date', description: 'Deadline för kundens svar (valfri)' },
   { name: 'Senast påminnelse skickad', type: 'date', description: 'Intern: datum när senaste påminnelse skickades (för att begränsa till en per dag)' },
   { name: 'Svar text', type: 'multilineText', description: 'Kundens kommentar/svar' },
@@ -5968,6 +5969,11 @@ async function processUppdragUnderlagSchedule() {
   const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return;
 
+  const toIsoDate = (v) => {
+    const s = String(v || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+  };
+
   // Försök säkerställa att Uppdrag-tabellen har fälten (kräver schema-token). Körs tyst.
   try {
     const t = await getUppdragTableMeta(airtableAccessToken, airtableBaseId);
@@ -5989,12 +5995,37 @@ async function processUppdragUnderlagSchedule() {
     }
   } catch (_) {}
 
+  // Försök säkerställa att Uppdragskörningar-tabellen har fälten (kräver schema-token). Körs tyst.
+  try {
+    const t = await getUppdragRunsTableMeta(airtableAccessToken, airtableBaseId);
+    if (t && t.id) {
+      const existingNames = (t.fields || []).map(f => (f.name || '').trim());
+      const missing = UPPDRAG_RUNS_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+      if (missing.length) {
+        const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${t.id}/fields`;
+        for (const field of missing) {
+          try {
+            const body = { name: field.name, type: field.type };
+            if (field.description) body.description = field.description;
+            if (field.options) body.options = field.options;
+            // eslint-disable-next-line no-await-in-loop
+            await axios.post(createUrl, body, { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 10000 });
+          } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+
   const todayIso = stockholmDateStr(new Date()); // YYYY-MM-DD
   const todayDay = parseInt(todayIso.slice(8, 10), 10);
   const todayYm = todayIso.slice(0, 7);
+  const todayYear = todayIso.slice(0, 4);
 
   const uppdragTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
   const uppdragUrl = `https://api.airtable.com/v0/${airtableBaseId}/${uppdragTableIdOrName}`;
+
+  const uppdragRunsTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+  const uppdragRunsUrl = `https://api.airtable.com/v0/${airtableBaseId}/${uppdragRunsTableIdOrName}`;
 
   const fetchAll = async () => {
     const res = await axios.get(`${uppdragUrl}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
@@ -6008,6 +6039,88 @@ async function processUppdragUnderlagSchedule() {
 
   let uppdragRecords = [];
   try { uppdragRecords = await fetchFiltered(); } catch (_) { uppdragRecords = await fetchAll(); }
+
+  // Säkerställ att körningar finns 12 månader framåt (baserat på Nästa deadline + frekvens)
+  // Körs innan vi skapar dagens auto-underlag så att vi alltid kan koppla till en körning.
+  const ensureRunsAheadForUppdrag = async (uppdragRec) => {
+    const r = uppdragRec;
+    const f = r?.fields || {};
+    const uppdragId = String(r?.id || '').trim();
+    if (!uppdragId) return;
+    if ((f['Status'] || 'Aktiv') !== 'Aktiv') return;
+    const typ = String(f['Typ'] || '').trim();
+    if (!typ) return;
+    const freq = String(f['Frekvens'] || '').trim();
+    const deadline0 = toIsoDate(f['Nästa deadline'] || '');
+    if (!deadline0) return;
+
+    const horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
+
+    // Hämta existerande körningar för uppdraget
+    const existing = new Set();
+    try {
+      const formula = encodeURIComponent(`{Uppdrag ID} = "${uppdragId.replace(/"/g, '\\"')}"`);
+      const res = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      (res.data.records || []).forEach(rr => {
+        const key = String(rr?.fields?.['Run Key'] || '').trim();
+        if (key) existing.add(key);
+      });
+    } catch (_) {}
+
+    // Skapa körningar från deadline0 och framåt
+    let cur = deadline0;
+    for (let guard = 0; guard < 40; guard++) {
+      if (!cur) break;
+      if (cur > horizonEnd) break;
+
+      let periodKey = cur.slice(0, 7);
+      let periodLabel = monthLabelSv(periodKey);
+      const fLow = freq.toLowerCase();
+      if (fLow.includes('kvartal')) {
+        const q = currentQuarterFromYm(periodKey);
+        periodKey = q ? `${q.year}-Q${q.quarter}` : periodKey;
+        periodLabel = quarterLabelSv(periodKey) || periodLabel;
+      } else if (fLow.includes('årsvis') || fLow.includes('år')) {
+        periodKey = cur.slice(0, 4);
+        periodLabel = periodKey;
+      }
+
+      const runKey = `${uppdragId}:${periodKey}`;
+      if (!existing.has(runKey)) {
+        try {
+          await axios.post(
+            uppdragRunsUrl,
+            {
+              fields: {
+                'Run Key': runKey,
+                'Uppdrag ID': uppdragId,
+                'Kund ID': String(f['Kund ID'] || '').trim(),
+                'Byrå ID': String(f['Byrå ID'] || '').trim(),
+                'Typ': typ,
+                'Frekvens': freq,
+                'PeriodKey': periodKey,
+                'Period Label': periodLabel,
+                'Deadline': cur,
+                'Status': 'Planerad',
+                'Skapad': new Date().toISOString(),
+                'Uppdaterad': new Date().toISOString()
+              }
+            },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+          existing.add(runKey);
+        } catch (_) {}
+      }
+
+      cur = calcNextDeadline(cur, freq) || '';
+    }
+  };
+
+  // Batch: kör för alla uppdrag (best effort)
+  for (const r of uppdragRecords) {
+    // eslint-disable-next-line no-await-in-loop
+    await ensureRunsAheadForUppdrag(r);
+  }
 
   const toCreate = [];
   for (const r of uppdragRecords) {
@@ -6061,7 +6174,25 @@ async function processUppdragUnderlagSchedule() {
     const token = crypto.randomBytes(32).toString('hex');
     const respondUrl = `${baseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
 
-    toCreate.push({ uppdragId: r.id, customerId, byraId, typ, periodKey, recipientEmail, recipientName, title, token, respondUrl, deadlineIso });
+    // Koppla till en specifik uppdragskörning (utifrån "innevarande" körningsperiod)
+    const runPeriodKey = (() => {
+      const fLow = String(freq || '').toLowerCase();
+      if (fLow.includes('kvartal')) {
+        const q = currentQuarterFromYm(todayYm);
+        return q ? `${q.year}-Q${q.quarter}` : todayYm;
+      }
+      if (fLow.includes('årsvis') || fLow.includes('år')) return todayYear;
+      return todayYm;
+    })();
+    const runKey = `${r.id}:${runPeriodKey}`;
+    let runRecordId = '';
+    try {
+      const formula = encodeURIComponent(`{Run Key} = "${runKey.replace(/"/g, '\\"')}"`);
+      const rr = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&maxRecords=1`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      runRecordId = String((rr.data.records || [])[0]?.id || '').trim();
+    } catch (_) {}
+
+    toCreate.push({ uppdragId: r.id, customerId, byraId, typ, periodKey, recipientEmail, recipientName, title, token, respondUrl, deadlineIso, runRecordId });
   }
 
   if (!toCreate.length) return;
@@ -6089,6 +6220,7 @@ async function processUppdragUnderlagSchedule() {
             'Uppdrag ID': it.uppdragId,
             'Uppdrag typ': it.typ,
             'Uppdrag period': it.periodKey,
+            ...(it.runRecordId ? { 'Uppdragskörning ID': it.runRecordId } : {}),
             'Deadline': it.deadlineIso
           }
         },
@@ -9959,6 +10091,10 @@ app.patch('/api/uppdragsavtal/:id', authenticateToken, async (req, res) => {
 // ─── UPPDRAG (Lön/Moms/Bokslut/Deklaration) ──────────────────────────────────
 const UPPDRAG_TABLE_NAME = 'Uppdrag';
 
+// ─── UPPDRAGSKÖRNINGAR (instanser per period) ───────────────────────────────
+// En rad per (uppdragId + körningsperiod). Används för att kunna koppla underlag till specifika körningar.
+const UPPDRAG_RUNS_TABLE_NAME = 'Uppdragskörningar';
+
 // Fält som Uppdrag-tabellen behöver (namn + typ + options)
 const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA (rec...)' },
@@ -9996,6 +10132,23 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
 ];
 
+// Fält som Uppdragskörningar-tabellen behöver
+const UPPDRAG_RUNS_REQUIRED_FIELDS = [
+  { name: 'Run Key', type: 'singleLineText', description: 'Unik nyckel: <uppdragId>:<periodKey>' },
+  { name: 'Uppdrag ID', type: 'singleLineText', description: 'Record-id för uppdraget i Uppdrag-tabellen (rec...)' },
+  { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA (rec...)' },
+  { name: 'Byrå ID', type: 'singleLineText', description: 'Byrå-id för dataseparering' },
+  { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Löneuppdrag' }, { name: 'Momsredovisning' }, { name: 'Bokslut' }, { name: 'Deklaration' }] } },
+  { name: 'Frekvens', type: 'singleLineText', description: 'Kopia för enklare filtrering/diagnostik' },
+  { name: 'PeriodKey', type: 'singleLineText', description: 'Periodnyckel, t.ex. 2026-04 eller 2026-Q2 eller 2026' },
+  { name: 'Period Label', type: 'singleLineText', description: 'Visningsnamn för perioden (sv)' },
+  { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
+  { name: 'Skapad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
+  { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
+];
+
 async function getUppdragTableMeta(airtableToken, baseId) {
   const forcedId = process.env.AIRTABLE_TABLE_UPPDRAG_ID;
   try {
@@ -10007,6 +10160,23 @@ async function getUppdragTableMeta(airtableToken, baseId) {
     const t = forcedId
       ? tables.find(x => (x.id || '').trim() === forcedId.trim())
       : tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_TABLE_NAME.toLowerCase());
+    return t || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getUppdragRunsTableMeta(airtableToken, baseId) {
+  const forcedId = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID;
+  try {
+    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const tables = res.data?.tables || [];
+    const t = forcedId
+      ? tables.find(x => (x.id || '').trim() === forcedId.trim())
+      : tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_RUNS_TABLE_NAME.toLowerCase());
     return t || null;
   } catch (e) {
     return null;
@@ -10049,6 +10219,97 @@ app.post('/api/setup/airtable-uppdrag', authenticateToken, async (req, res) => {
       });
     }
     return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte skapa tabellen' });
+  }
+});
+
+// POST /api/setup/airtable-uppdrag-runs – Skapa tabellen "Uppdragskörningar" i Airtable (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-uppdrag-runs', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const existing = await getUppdragRunsTableMeta(airtableAccessToken, baseId);
+    if (existing) {
+      return res.json({ success: true, message: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" finns redan.`, tableId: existing.id, alreadyExists: true });
+    }
+    const createRes = await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+      {
+        name: UPPDRAG_RUNS_TABLE_NAME,
+        description: 'En rad per uppdragskörning (period) för att kunna koppla underlag och status per körning',
+        fields: UPPDRAG_RUNS_REQUIRED_FIELDS
+      },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    const newTable = createRes.data;
+    const tableId = newTable?.id || (newTable?.tables && newTable.tables[0] && newTable.tables[0].id);
+    return res.json({ success: true, message: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" skapades i Airtable.`, tableId: tableId || '', alreadyExists: false });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Uppdragskörningar:', status, msg, data);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte skapa tabellen' });
+  }
+});
+
+// POST /api/setup/airtable-uppdrag-runs-fields – Lägg till saknade fält i befintlig tabell "Uppdragskörningar" (auth)
+app.post('/api/setup/airtable-uppdrag-runs-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const t = await getUppdragRunsTableMeta(airtableAccessToken, baseId);
+    if (!t) return res.status(404).json({ success: false, error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" hittades inte i basen. Skapa den först.` });
+    const existingNames = (t.fields || []).map(f => (f.name || '').trim());
+    const toCreate = UPPDRAG_RUNS_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields`;
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Kunde inte skapa uppdragskörning-fält', field.name, msg);
+      }
+    }
+    const skipped = UPPDRAG_RUNS_REQUIRED_FIELDS.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} fält lades till i ${UPPDRAG_RUNS_TABLE_NAME}. ${skipped} fanns redan.`
+        : `Alla ${UPPDRAG_RUNS_REQUIRED_FIELDS.length} fält finns redan i tabellen ${UPPDRAG_RUNS_TABLE_NAME}.`,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Uppdragskörningar fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen' });
   }
 });
 
@@ -10193,6 +10454,35 @@ app.get('/api/uppdrag', authenticateToken, async (req, res) => {
         details: msg
       });
     }
+    res.status(status).json({ error: msg });
+  }
+});
+
+// GET /api/uppdrag/runs?customerId=recXXX – lista uppdragskörningar för kund
+app.get('/api/uppdrag/runs', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const formula = `{Kund ID} = "${esc(customerId)}"`;
+    let records = [];
+    let offset = null;
+    do {
+      const params = { pageSize: 100, filterByFormula: formula, sort: [{ field: 'Deadline', direction: 'asc' }] };
+      if (offset) params.offset = offset;
+      const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` }, params });
+      records = records.concat(r.data.records || []);
+      offset = r.data.offset || null;
+    } while (offset);
+    res.json({ records });
+  } catch (error) {
+    console.error('❌ GET /api/uppdrag/runs:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
     res.status(status).json({ error: msg });
   }
 });

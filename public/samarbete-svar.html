@@ -80,7 +80,8 @@
         .question-upload-row {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            justify-content: space-between;
+            gap: 0.75rem;
             flex-wrap: wrap;
         }
         .upload-btn-wrap {
@@ -93,14 +94,14 @@
         .upload-btn-wrap .btn-upload {
             padding: 0.5rem 0.75rem;
             font-size: 0.85rem;
-            background: #e0e7ff;
+            background: transparent;
             color: #4338ca;
-            border: none;
+            border: 1px solid #e2e8f0;
             border-radius: 6px;
             cursor: pointer;
         }
-        .upload-btn-wrap .btn-upload:hover { background: #c7d2fe; }
-        .question-submit-btn { margin-top: 0.5rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+        .upload-btn-wrap .btn-upload:hover { background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.35); }
+        .question-submit-btn { margin-top: 0; display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-left: auto; }
         .question-submit-btn .btn { padding: 0.5rem 1rem; font-size: 0.9rem; }
         .question-done-hint { display: none; color: #16a34a; font-size: 0.85rem; }
         .item-done .question-done-hint { display: inline-flex; align-items: center; gap: 0.25rem; }
@@ -255,12 +256,12 @@
                     html += '<input type="file" id="file-' + i + '" data-index="' + i + '" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple>';
                     html += '<label for="file-' + i + '" class="btn-upload"><i class="fas fa-upload"></i> Fil' + (req ? ' *' : '') + '</label>';
                     html += '</div>';
+                    html += '<div class="question-submit-btn"><button type="button" class="btn btn-primary question-send-btn" data-index="' + i + '"><i class="fas fa-paper-plane"></i> Skicka in svar</button><span class="question-done-hint"><i class="fas fa-check-circle"></i> Besvarat</span></div>';
                     html += '</div>';
                     var fn = (existing[i] && existing[i].filename) ? existing[i].filename : '';
                     var hasFile = !!fn;
                     html += '<p class="file-hint" id="file-name-' + i + '">' + (fn ? 'Lagt upp: ' + escapeHtml(fn) : '') + '</p>';
                     html += '<button type="button" class="file-clear-btn' + (hasFile ? '' : ' hidden') + '" data-index="' + i + '" id="file-clear-' + i + '">Ta bort fil(er)</button>';
-                    html += '<div class="question-submit-btn"><button type="button" class="btn btn-primary question-send-btn" data-index="' + i + '"><i class="fas fa-paper-plane"></i> Skicka in svar</button><span class="question-done-hint"><i class="fas fa-check-circle"></i> Besvarat</span></div>';
                     html += '</div>';
                     html += '</div>';
                 }

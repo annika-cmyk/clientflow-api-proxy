@@ -7947,6 +7947,24 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: block;
 }
 
+/* Overlay-tooltip för Auto-badge (renderas i <body> för att undvika clipping/scroll i kortet) */
+.uppdragboard-tooltip-overlay {
+    position: fixed;
+    z-index: 10000;
+    width: max-content;
+    max-width: 320px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 12px 34px rgba(2, 6, 23, 0.12);
+    font-size: 0.85rem;
+    line-height: 1.25rem;
+    white-space: normal;
+}
+.uppdragboard-tooltip-overlay strong { color: #334155; }
+
 .uppdragboard-progress {
     display: inline-flex;
     align-items: center;

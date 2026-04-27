@@ -507,10 +507,11 @@ class CustomerCardManager {
         const customerId = this.customerId || this.currentCustomerId;
         if (!customerId) throw new Error('Saknar customerId');
 
-        const [uppdragRes, usersRes, samarbeteRes] = await Promise.all([
+        const [uppdragRes, usersRes, samarbeteRes, runsRes] = await Promise.all([
             fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }),
             fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }).catch(() => null),
-            fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null)
+            fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null),
+            fetch(`${baseUrl}/api/uppdrag/runs?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null)
         ]);
         if (!uppdragRes.ok) {
             const err = await uppdragRes.json().catch(() => ({}));
@@ -566,8 +567,10 @@ class CustomerCardManager {
         const uppdragData = await uppdragRes.json().catch(() => ({ records: [] }));
         const usersData = (usersRes && usersRes.ok) ? await usersRes.json() : { users: [] };
         const samarbeteData = (samarbeteRes && samarbeteRes.ok) ? await samarbeteRes.json() : { requests: [] };
+        const runsData = (runsRes && runsRes.ok) ? await runsRes.json().catch(() => ({ records: [] })) : { records: [] };
 
         const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
+        const runRecords = Array.isArray(runsData.records) ? runsData.records : [];
         const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
         const samarbeteReqs = Array.isArray(samarbeteData.requests) ? samarbeteData.requests : [];
         const samarbeteByUppdragTyp = new Map();
@@ -656,11 +659,14 @@ class CustomerCardManager {
         // Viktigt: visa uppdraget när det är "öppet" (periodstart -> deadline-månad),
         // inte bara i deadline-månaden.
         const instByTypeMonth = new Map(); // typ -> Map(monthKey -> deadlineIso)
-        for (const r of records) {
+        // Primärt: använd Uppdragskörningar-tabellen om den finns (ger korrekt per-körning-koppling).
+        // Fallback: använd Uppdrag-tabellen (gamla beteendet) om körningar saknas.
+        const instanceSource = (runRecords && runRecords.length) ? runRecords : records;
+        for (const r of instanceSource) {
             const f = r.fields || {};
             const typ = String(f['Typ'] || '').trim();
             if (!typ) continue;
-            const deadline0 = toDateStr(f['Nästa deadline'] || '');
+            const deadline0 = toDateStr(f['Deadline'] || f['Nästa deadline'] || '');
             if (!deadline0) continue;
             const step = monthsStepFromFreq(f['Frekvens']);
             const map = instByTypeMonth.get(typ) || new Map();
@@ -697,7 +703,6 @@ class CustomerCardManager {
         const boardHtml = `
             <div class="uppdragboard-top" style="margin-bottom:0.85rem;">
                 <div class="uppdragboard-title">
-                    <h1 style="font-size:1.1rem; margin:0;">Uppdrag (översikt)</h1>
                     <div class="uppdragboard-period">
                         <button type="button" class="uppdragboard-navbtn" id="kund-uppdragboard-prev" title="Föregående månad" aria-label="Föregående månad"><i class="fas fa-chevron-left"></i></button>
                         <div class="uppdragboard-month" id="kund-uppdragboard-month">—</div>
@@ -719,35 +724,28 @@ class CustomerCardManager {
                     <tbody id="kund-uppdragboard-tbody"></tbody>
                 </table>
             </div>
+            <div style="display:flex; justify-content:flex-end; margin-top:0.5rem;">
+                <button type="button" class="btn btn-primary btn-sm" id="uppdrag-add-btn-top" ${addDisabled}>
+                    <i class="fas fa-plus"></i> Lägg upp uppdrag
+                </button>
+            </div>
         `;
 
         container.innerHTML = `
             <div class="uppdrag-tab">
                 ${boardHtml}
-
-                <div class="collapsible-card" id="kund-uppdrag-edit-card">
-                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
-                        <div class="collapsible-title"><i class="fas fa-pen"></i><span>Redigera uppdrag</span></div>
-                        <div class="collapsible-actions" onclick="event.stopPropagation()">
-                            <button type="button" class="btn btn-primary btn-sm" id="uppdrag-add-btn-top" ${addDisabled}>
-                                <i class="fas fa-plus"></i> Lägg upp uppdrag
-                            </button>
+                <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
+                    ${existingTypes.length ? existingTypes.map(t => {
+                        if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
+                        if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
+                        if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
+                        if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
+                        return '';
+                    }).join('') : `
+                        <div class="uppdrag-empty" style="padding:0.25rem 0;">
+                            <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
                         </div>
-                        <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
-                    </div>
-                    <div class="collapsible-body">
-                        ${existingTypes.length ? existingTypes.map(t => {
-                            if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
-                            if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
-                            if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
-                            if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
-                            return '';
-                        }).join('') : `
-                            <div class="uppdrag-empty" style="padding:0.25rem 0;">
-                                <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
-                            </div>
-                        `}
-                    </div>
+                    `}
                 </div>
             </div>
         `;
@@ -839,18 +837,18 @@ class CustomerCardManager {
                 const deadlineDayNum = parseInt(String(f['Underlagsdeadline dag'] || '').trim(), 10);
                 const sendIso = (Number.isFinite(sendDayNum) && sendDayNum >= 1 && sendDayNum <= 28) ? `${mk}-${String(sendDayNum).padStart(2, '0')}` : '';
                 const custDeadlineIso = (Number.isFinite(deadlineDayNum) && deadlineDayNum >= 1 && deadlineDayNum <= 28) ? `${mk}-${String(deadlineDayNum).padStart(2, '0')}` : '';
-                const autoTooltip = `
-                    <div class="uppdragboard-tooltip">
-                        <div><strong>Auto-utskick:</strong> ${autoOn ? 'På' : 'Av'}</div>
-                        ${(sendIso ? `<div><strong>Skickas:</strong> ${this._esc(fmtLong(sendIso))}</div>` : (f['Underlagsutskick dag'] ? `<div><strong>Skickas:</strong> dag ${this._esc(String(f['Underlagsutskick dag']))}</div>` : ''))}
-                        ${(custDeadlineIso ? `<div><strong>Kund-deadline:</strong> ${this._esc(fmtLong(custDeadlineIso))}</div>` : (f['Underlagsdeadline dag'] ? `<div><strong>Kund-deadline:</strong> dag ${this._esc(String(f['Underlagsdeadline dag']))}</div>` : ''))}
-                        ${(f['Underlagsperiod'] ? `<div><strong>Avser:</strong> ${this._esc(String(f['Underlagsperiod']))}</div>` : '')}
-                    </div>
-                `;
                 const autoChip = autoOn
-                    ? `<span class="uppdragboard-badge is-tooltip" style="margin-left:0.4rem;" role="button" tabindex="0" aria-label="Auto-utskick info" data-kund-action="toggle-auto-tooltip">
+                    ? `<span class="uppdragboard-badge is-tooltip" style="margin-left:0.4rem;" role="button" tabindex="0" aria-label="Auto-utskick info" data-kund-action="toggle-auto-tooltip"
+                        data-auto-on="${autoOn ? '1' : '0'}"
+                        data-auto-ym="${this._esc(mk || '')}"
+                        data-auto-send-iso="${this._esc(sendIso || '')}"
+                        data-auto-send-day="${this._esc(Number.isFinite(sendDayNum) ? String(sendDayNum) : (f['Underlagsutskick dag'] ? String(f['Underlagsutskick dag']) : ''))}"
+                        data-auto-deadline-iso="${this._esc(custDeadlineIso || '')}"
+                        data-auto-deadline-day="${this._esc(Number.isFinite(deadlineDayNum) ? String(deadlineDayNum) : (f['Underlagsdeadline dag'] ? String(f['Underlagsdeadline dag']) : ''))}"
+                        data-auto-period="${this._esc(f['Underlagsperiod'] ? String(f['Underlagsperiod']) : '')}"
+                        data-auto-rec-name="${this._esc(f['Underlagsmottagare namn'] ? String(f['Underlagsmottagare namn']) : '')}"
+                        data-auto-rec-email="${this._esc(f['Underlagsmottagare e-post'] ? String(f['Underlagsmottagare e-post']) : '')}">
                         <i class="fas fa-paper-plane"></i> Auto
-                        ${autoTooltip}
                     </span>`
                     : '';
                 const statusHtml = instDeadline
@@ -919,7 +917,7 @@ class CustomerCardManager {
                     }">${underlagDone}/${underlagTotal}</span>`;
 
                 const samHtml = `
-                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.85rem;">
+                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:1.35rem;">
                         <div class="uppdrag-view-label">Underlagsförfrågningar</div>
                         ${samForRun.length ? `
                             <div class="samarbete-list samarbete-list--plain" style="margin-top:0.35rem;">
@@ -988,7 +986,7 @@ class CustomerCardManager {
                             </div>
                         </div>
                         ${samHtml}
-                        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.75rem; flex-wrap:wrap;">
+                        <div style="display:flex; justify-content:flex-end; margin-top:0.5rem;">
                             <button type="button" class="btn btn-primary btn-sm"
                                 data-kund-action="begar-underlag"
                                 data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
@@ -1035,6 +1033,16 @@ class CustomerCardManager {
                             </div>
                             <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
                         </div>
+
+                        <div style="display:flex; justify-content:flex-end; margin-top:0.9rem;">
+                            <button type="button" class="btn btn-ghost btn-sm"
+                                title="Redigera uppdrag"
+                                aria-label="Redigera uppdrag"
+                                data-kund-action="edit-uppdrag"
+                                data-kund-edit-typ="${this._esc(t)}">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                        </div>
                     </div>
                 `;
 
@@ -1080,6 +1088,90 @@ class CustomerCardManager {
             renderBoard();
         });
 
+        // Auto-tooltip overlay (för att undvika clipping/scroll inne i kort)
+        const ensureAutoTooltipOverlay = () => {
+            let el = document.getElementById('auto-tooltip-overlay');
+            if (el) return el;
+            el = document.createElement('div');
+            el.id = 'auto-tooltip-overlay';
+            el.className = 'uppdragboard-tooltip-overlay';
+            el.style.display = 'none';
+            document.body.appendChild(el);
+            return el;
+        };
+        const hideAutoTooltipOverlay = (opts = {}) => {
+            const { force = false } = opts || {};
+            const el = document.getElementById('auto-tooltip-overlay');
+            if (!el) return;
+            if (!force && el.getAttribute('data-pinned') === '1') return;
+            el.style.display = 'none';
+            el.removeAttribute('data-for');
+            el.setAttribute('data-pinned', '0');
+        };
+        const showAutoTooltipOverlayFor = (badge, opts = {}) => {
+            const { pin = false } = opts || {};
+            if (!badge) return;
+            const el = ensureAutoTooltipOverlay();
+
+            const autoOn = (badge.getAttribute('data-auto-on') || '0') === '1';
+            const ym = (badge.getAttribute('data-auto-ym') || '').toString();
+            const sendIso = (badge.getAttribute('data-auto-send-iso') || '').toString();
+            const sendDay = (badge.getAttribute('data-auto-send-day') || '').toString();
+            const deadlineIso = (badge.getAttribute('data-auto-deadline-iso') || '').toString();
+            const deadlineDay = (badge.getAttribute('data-auto-deadline-day') || '').toString();
+            const period = (badge.getAttribute('data-auto-period') || '').toString();
+            const recName = (badge.getAttribute('data-auto-rec-name') || '').toString();
+            const recEmail = (badge.getAttribute('data-auto-rec-email') || '').toString();
+
+            const esc = (s) => this._esc((s == null) ? '' : String(s));
+            const fmtDate = (iso) => {
+                const t = (iso || '').toString().trim();
+                if (!t) return '';
+                try { return fmtLong(t); } catch (_) { return t; }
+            };
+
+            const computedSendIso = (!sendIso && ym && sendDay) ? `${ym}-${String(sendDay).padStart(2, '0')}` : sendIso;
+            const sendWhen = computedSendIso
+                ? `${esc(fmtDate(computedSendIso))}${(sendDay ? ` <span style="color:#64748b;">(dag ${esc(sendDay)})</span>` : '')}`
+                : (sendDay ? `dag ${esc(sendDay)}` : '');
+
+            el.innerHTML = [
+                `<div><strong>Auto-utskick sker:</strong> ${sendWhen || (autoOn ? 'På' : 'Av')}</div>`,
+                (deadlineIso
+                    ? `<div><strong>Kund-deadline:</strong> ${esc(fmtDate(deadlineIso))}${(deadlineDay ? ` <span style="color:#64748b;">(dag ${esc(deadlineDay)})</span>` : '')}</div>`
+                    : (deadlineDay ? `<div><strong>Kund-deadline:</strong> dag ${esc(deadlineDay)}</div>` : '')),
+                (period ? `<div><strong>Avser:</strong> ${esc(period)}</div>` : ''),
+                ((recName || recEmail)
+                    ? `<div><strong>Mottagare:</strong> ${esc(recName)}${(recEmail ? ` <span style="color:#64748b;">(${esc(recEmail)})</span>` : '')}</div>`
+                    : '')
+            ].filter(Boolean).join('');
+
+            el.setAttribute('data-pinned', pin ? '1' : '0');
+            const id = badge.id || '';
+            el.setAttribute('data-for', id || 'auto-badge');
+            el.style.display = '';
+
+            // Positionera likt help-popover, men med vit tooltip-stil
+            const r = badge.getBoundingClientRect();
+            const margin = 8;
+            const maxW = Math.min(360, Math.max(240, window.innerWidth - 2 * margin));
+            el.style.maxWidth = maxW + 'px';
+            const pr = el.getBoundingClientRect();
+
+            let left = r.left;
+            left = Math.min(left, window.innerWidth - pr.width - margin);
+            left = Math.max(margin, left);
+
+            let top = r.bottom + 8;
+            if (top + pr.height > window.innerHeight - margin) {
+                top = r.top - pr.height - 8;
+            }
+            top = Math.max(margin, top);
+
+            el.style.left = `${Math.round(left)}px`;
+            el.style.top = `${Math.round(top)}px`;
+        };
+
         // Klick: toggle detaljer + redigera från översikten
         if (!container._kundUppdragBoardBound) {
             container._kundUppdragBoardBound = true;
@@ -1105,6 +1197,22 @@ class CustomerCardManager {
                     return;
                 }
 
+                // Redigera uppdrag via liten penna i detaljvyn
+                const editBtn = e.target.closest('[data-kund-action="edit-uppdrag"]');
+                if (editBtn) {
+                    e.preventDefault();
+                    const t = editBtn.getAttribute('data-kund-edit-typ') || '';
+                    const host = document.getElementById('kund-uppdrag-edit-host');
+                    if (host) host.style.display = '';
+                    const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
+                    if (target) {
+                        try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
+                        target.classList.remove('is-collapsed');
+                        target.querySelector('[data-action="toggle-edit"]')?.click();
+                    }
+                    return;
+                }
+
                 const toggle = e.target.closest('[data-kund-toggle-typ]');
                 if (toggle) {
                     const t = toggle.getAttribute('data-kund-toggle-typ');
@@ -1116,11 +1224,17 @@ class CustomerCardManager {
                     return;
                 }
 
-                // Auto-tooltip för Auto-badge (click-to-pin)
+                // Auto-tooltip för Auto-badge (click-to-pin via overlay)
                 const autoBadge = e.target.closest('[data-kund-action="toggle-auto-tooltip"]');
                 if (autoBadge && container.contains(autoBadge)) {
                     e.preventDefault();
-                    autoBadge.classList.toggle('is-open');
+                    const overlay = document.getElementById('auto-tooltip-overlay');
+                    const alreadyForThis = overlay && overlay.style.display !== 'none' && (overlay.getAttribute('data-pinned') === '1');
+                    if (alreadyForThis) {
+                        hideAutoTooltipOverlay({ force: true });
+                    } else {
+                        showAutoTooltipOverlayFor(autoBadge, { pin: true });
+                    }
                     return;
                 }
 
@@ -1309,6 +1423,43 @@ class CustomerCardManager {
                     samHead.setAttribute('aria-expanded', item.classList.contains('collapsed') ? 'false' : 'true');
                 }
             });
+
+            // Hover: visa overlay utan att "pinna"
+            container.addEventListener('mouseover', (e) => {
+                const autoBadge = e.target.closest('[data-kund-action="toggle-auto-tooltip"]');
+                if (!autoBadge || !container.contains(autoBadge)) return;
+                const overlay = document.getElementById('auto-tooltip-overlay');
+                if (overlay && overlay.getAttribute('data-pinned') === '1') return;
+                showAutoTooltipOverlayFor(autoBadge, { pin: false });
+            });
+            container.addEventListener('mouseout', (e) => {
+                const fromBadge = e.target.closest('[data-kund-action="toggle-auto-tooltip"]');
+                if (!fromBadge || !container.contains(fromBadge)) return;
+                const to = e.relatedTarget;
+                if (to && fromBadge.contains && fromBadge.contains(to)) return;
+                const overlay = document.getElementById('auto-tooltip-overlay');
+                if (overlay && (to === overlay || (overlay.contains && overlay.contains(to)))) return;
+                hideAutoTooltipOverlay();
+            });
+
+            // Stäng overlay vid scroll/resize/click utanför (om inte pinnad)
+            const onAutoOverlayDoc = (e) => {
+                const overlay = document.getElementById('auto-tooltip-overlay');
+                if (!overlay || overlay.style.display === 'none') return;
+                const target = e.target;
+                if (overlay.contains(target)) return;
+                const badge = target.closest?.('[data-kund-action="toggle-auto-tooltip"]');
+                if (badge) return;
+                hideAutoTooltipOverlay({ force: true });
+            };
+            const onAutoOverlayEsc = (e) => {
+                if (e.key === 'Escape') hideAutoTooltipOverlay({ force: true });
+            };
+            const onAutoOverlayScroll = () => hideAutoTooltipOverlay({ force: true });
+            document.addEventListener('mousedown', onAutoOverlayDoc, true);
+            document.addEventListener('keydown', onAutoOverlayEsc, true);
+            window.addEventListener('scroll', onAutoOverlayScroll, true);
+            window.addEventListener('resize', onAutoOverlayScroll, true);
         }
 
         renderBoard();
@@ -2289,8 +2440,16 @@ class CustomerCardManager {
             const autoCb = getVal('Auto underlagsförfrågan');
             fields['Auto underlagsförfrågan'] = !!(autoCb && autoCb.checked);
             fields['Underlagsperiod'] = getVal('Underlagsperiod')?.value || '';
-            fields['Underlagsutskick dag'] = getVal('Underlagsutskick dag')?.value || '';
-            fields['Underlagsdeadline dag'] = getVal('Underlagsdeadline dag')?.value || '';
+            const clamp28 = (v) => {
+                const n = parseInt(String(v || '').trim(), 10);
+                if (!Number.isFinite(n)) return null;
+                if (n < 1 || n > 28) return null;
+                return n;
+            };
+            const sendDay = clamp28(getVal('Underlagsutskick dag')?.value);
+            const deadlineDay = clamp28(getVal('Underlagsdeadline dag')?.value);
+            fields['Underlagsutskick dag'] = sendDay;
+            fields['Underlagsdeadline dag'] = deadlineDay;
             fields['Underlagsmottagare namn'] = getVal('Underlagsmottagare namn')?.value || '';
             fields['Underlagsmottagare e-post'] = getVal('Underlagsmottagare e-post')?.value || '';
             fields['Underlagsmeddelande'] = getVal('Underlagsmeddelande')?.value || '';
@@ -2322,7 +2481,11 @@ class CustomerCardManager {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-            this.showNotification('Uppdrag sparat', 'success');
+            if (data.warning) {
+                this.showNotification(String(data.warning), 'error');
+            } else {
+                this.showNotification('Uppdrag sparat', 'success');
+            }
             this._syncUppdragHeaderMeta(root);
             // Re-render för att visa att kortet nu är "sparat i Airtable" + ev andra fält
             this.loadUppdrag();
@@ -7011,6 +7174,22 @@ class CustomerCardManager {
                     periodSel.value = prePeriod;
                     if (periodWrap) periodWrap.style.display = '';
                 }
+
+                // Om modalen öppnas från en specifik körning: lås kopplingen så den alltid sparas korrekt
+                try {
+                    uppdragSel.disabled = true;
+                    if (periodSel) periodSel.disabled = true;
+                    if (periodWrap && periodWrap.querySelector('label')) {
+                        const lbl = periodWrap.querySelector('label');
+                        if (lbl && !periodWrap.querySelector('.samarbete-prefill-hint')) {
+                            const hint = document.createElement('div');
+                            hint.className = 'samarbete-prefill-hint';
+                            hint.style.cssText = 'font-size:0.8rem;color:#64748b;margin-top:0.35rem;';
+                            hint.textContent = 'Förvalt från uppdragskörningen.';
+                            periodWrap.appendChild(hint);
+                        }
+                    }
+                } catch (_) {}
             }
         }
 
