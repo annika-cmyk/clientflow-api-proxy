@@ -740,7 +740,7 @@
       setVisible(els.content, true);
     } catch (e) {
       console.error('❌ Uppdrag översikt:', e);
-      tbodyEl.innerHTML = `<tr><td colspan="4" class="uppdragboard-empty">Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}</td></tr>`;
+      tbodyEl.innerHTML = `<tr><td colspan="5" class="uppdragboard-empty">Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}</td></tr>`;
       setVisible(els.loading, false);
       setVisible(els.content, true);
     }
@@ -818,10 +818,10 @@
   window.addEventListener('clientflow:authReady', () => load());
   monthCursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
   setViewMode('deadline');
-  activeType = 'Momsredovisning';
+  activeType = 'Löneuppdrag';
   if (els.typeTabs && els.typeTabs.length) {
     els.typeTabs.forEach(b => b.classList.toggle('is-active', (b.getAttribute('data-typ') || '') === activeType));
   }
-  setScope('mine');
+  setScope('byra');
 })();
 
