@@ -134,6 +134,46 @@
     return 1;
   }
 
+  function quarterKeyForMonth(ym) {
+    const y = Number(String(ym || '').slice(0, 4));
+    const m = Number(String(ym || '').slice(5, 7));
+    if (!y || !m) return '';
+    const qtr = Math.ceil(m / 3);
+    return `${y}-Q${qtr}`;
+  }
+
+  function yearKeyForMonth(ym) {
+    const y = Number(String(ym || '').slice(0, 4));
+    return y ? String(y) : '';
+  }
+
+  function getModeForUppdrag(typ, freqStr) {
+    const tt = (typ || '').toString().trim();
+    const ff = (freqStr || '').toString().toLowerCase();
+    if (tt === 'Momsredovisning') {
+      if (ff.includes('kvartal')) return 'quarter';
+      if (ff.includes('år')) return 'year';
+      return 'month';
+    }
+    if (tt === 'Bokslut' || tt === 'Deklaration') return 'year';
+    return 'month';
+  }
+
+  function runStatusFromHistory(fields, periodKey) {
+    const pk = String(periodKey || '').trim();
+    if (!pk) return '';
+    const hist = safeJson((fields?.['Historik'] || '').toString().trim(), []);
+    if (!Array.isArray(hist)) return '';
+    const hit = hist.find(it => it && String(it.periodKey || '').trim() === pk);
+    return hit ? String(hit.status || '').trim() : '';
+  }
+
+  function runStatusOptionsHtml(selected) {
+    const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
+    const sel = String(selected || '').trim();
+    return opts.map(o => `<option value="${esc(o)}" ${o === sel ? 'selected' : ''}>${esc(o)}</option>`).join('');
+  }
+
   function buildInstances(records) {
     const inst = [];
     for (const r of records || []) {
@@ -378,6 +418,30 @@
         ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
         : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
 
+      const freq = String(f['Frekvens'] || '').trim();
+      const modeForPrefill = getModeForUppdrag(activeType, freq);
+      const periodKey = (modeForPrefill === 'quarter')
+        ? quarterKeyForMonth(x.month)
+        : (modeForPrefill === 'year')
+          ? yearKeyForMonth(x.month)
+          : x.month;
+      const runStatus = runStatusFromHistory(f, periodKey) || 'Planerad';
+      const statusCell = `
+        <div class="uppdragboard-statuscell">
+          <select class="form-select uppdragboard-status-select"
+            aria-label="Status"
+            title="Ändra status"
+            data-action="set-run-status"
+            data-customer-id="${esc(kundId)}"
+            data-typ="${esc(activeType)}"
+            data-periodkey="${esc(periodKey)}"
+          >
+            ${runStatusOptionsHtml(runStatus)}
+          </select>
+          <span class="uppdrag-muted uppdragboard-status-msg" data-status-msg-for="${esc(kundId)}:${esc(activeType)}:${esc(periodKey)}"></span>
+        </div>
+      `;
+
       const rutin = (f['Rutin'] || '').toString().trim();
       const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
       const hasRunningNote = !!String(runningNote || '').trim();
@@ -416,6 +480,7 @@
             ${link ? `<a class="uppdragboard-link" href="${esc(link)}">${esc(kundLabel)}</a>` : esc(kundLabel)}
           </td>
           <td>${runCell}</td>
+          <td>${statusCell}</td>
           <td>
             <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" title="Klarmarkera">
               <i class="fas fa-check"></i>
@@ -424,7 +489,7 @@
           <td class="uppdragboard-arrow"><button type="button" class="uppdragboard-expandbtn" data-action="toggle" title="Visa mer"><i class="fas fa-chevron-down"></i></button></td>
         </tr>
         <tr class="uppdragboard-details" data-details-for="${esc(x.key)}" style="display:none;">
-          <td colspan="4">
+          <td colspan="5">
             <div class="uppdragboard-details-inner">
               <div class="uppdragboard-details-top">
                 <div class="uppdrag-view-field">
@@ -476,7 +541,7 @@
           </td>
         </tr>
       `;
-    }).join('') || `<tr><td colspan="4" class="uppdragboard-empty">Inga uppdrag för vald månad.</td></tr>`;
+    }).join('') || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag för vald månad.</td></tr>`;
 
     tbodyEl.innerHTML = rowsHtml;
 
@@ -720,6 +785,33 @@
     els.createBtn.addEventListener('click', () => {
       // Skapa sker idag på kundkortet. Vi håller detta enkelt och länkar till kundlistan.
       window.location.href = 'kundlista.html';
+    });
+
+    // status change
+    tbodyEl.querySelectorAll('[data-action="set-run-status"]').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const customerId = sel.getAttribute('data-customer-id') || '';
+        const typ = sel.getAttribute('data-typ') || '';
+        const periodKey = sel.getAttribute('data-periodkey') || '';
+        const status = sel.value || '';
+        const msgKey = `${customerId}:${typ}:${periodKey}`;
+        const msgEl = tbodyEl.querySelector(`[data-status-msg-for="${CSS.escape(msgKey)}"]`);
+        if (msgEl) msgEl.textContent = 'Sparar...';
+        try {
+          const res = await fetch(`${baseUrl}/api/uppdrag/run-status`, {
+            method: 'PATCH',
+            ...getAuthOpts(),
+            body: JSON.stringify({ customerId, typ, periodKey, status })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          if (msgEl) msgEl.textContent = 'Sparat.';
+          setTimeout(() => { if (msgEl && msgEl.textContent === 'Sparat.') msgEl.textContent = ''; }, 1500);
+          await load();
+        } catch (e) {
+          if (msgEl) msgEl.textContent = 'Kunde inte spara: ' + (e.message || 'fel');
+        }
+      });
     });
   }
 

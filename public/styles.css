@@ -639,15 +639,26 @@ body.sidebar-collapsed .logout-btn {
 .toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; padding: .5rem 0 1rem; }
 
 /* Buttons */
-.btn { 
-    appearance: none; 
-    border: 1px solid transparent; 
-    border-radius: var(--btn-radius); 
-    padding: 12px 20px; 
-    font: 500 0.95rem var(--body-font); 
-    cursor: pointer; 
-    transition: all 0.3s ease; 
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-success,
+.btn-inleed {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: var(--btn-radius);
+    padding: 12px 20px;
+    font: 500 0.95rem var(--body-font);
+    cursor: pointer;
+    transition: all 0.25s ease;
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    line-height: 1;
+    text-decoration: none;
 }
 .btn:active { transform: translateY(1px); }
 .btn-primary {
@@ -669,6 +680,37 @@ body.sidebar-collapsed .logout-btn {
 .btn-ghost:hover { 
     background: var(--muted); 
     border-color: var(--accent);
+}
+
+/* Secondary / danger / success – global, matchar kundkortets stil */
+.btn-secondary {
+    background: #fff;
+    border-color: var(--border);
+    color: var(--text);
+}
+.btn-secondary:hover {
+    background: var(--muted);
+    border-color: var(--accent);
+}
+.btn-danger {
+    background: #fff;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+.btn-danger:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+.btn-success {
+    background: #fff;
+    border-color: #bbf7d0;
+    color: #166534;
+}
+.btn-success:hover {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #14532d;
 }
 
 /* Cards */
@@ -1420,6 +1462,149 @@ body.sidebar-collapsed .logout-btn {
     display: block;
 }
 
+/* Uppdragsbrev – lite mer luft mellan korten */
+.byra-anvandare-tabs #uppdragsbrev {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+.byra-anvandare-tabs #uppdragsbrev .dashboard-section {
+    margin: 0;
+}
+
+/* Uppdragsbrev – layout polish */
+.byra-anvandare-tabs #uppdragsbrev .dashboard-card-body .form-actions {
+    align-items: center;
+    gap: 0.75rem;
+    justify-content: flex-end;
+}
+.byra-anvandare-tabs #uppdragsbrev .dashboard-card-body .form-actions .byra-spara-status {
+    margin-right: auto;
+    order: -1;
+}
+.byra-anvandare-tabs #uppdragsbrev .dashboard-card-desc {
+    margin-bottom: 0.9rem;
+}
+.byra-anvandare-tabs #uppdragsbrev .uppdragsbrev-bilagor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+.byra-anvandare-tabs #uppdragsbrev .uppdragsbrev-bilagor-actions .byra-spara-status {
+    margin-left: 0.25rem;
+}
+
+/* Bilagor – snygg lista */
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    margin-bottom: 0.6rem;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-left {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-ic {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-meta {
+    min-width: 0;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-title {
+    font-weight: 650;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-title-link {
+    text-decoration: none;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-title-link:hover {
+    text-decoration: underline;
+}
+
+/* Byråprofil – klickbar logga */
+.byra-logga-preview[role="button"] {
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.byra-logga-preview[role="button"]:hover {
+    border-color: #a5b4fc;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+.byra-logga-preview[role="button"]:active {
+    transform: translateY(1px);
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-sub {
+    font-size: 0.82rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-open {
+    text-decoration: none;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-remove {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #991b1b;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-remove:hover {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+.byra-anvandare-tabs #uppdragsbrev .byra-bilaga-remove:active {
+    transform: translateY(1px);
+}
+
+@media (max-width: 640px) {
+  .byra-anvandare-tabs #uppdragsbrev .byra-bilaga-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .byra-anvandare-tabs #uppdragsbrev .byra-bilaga-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
 /* Byråprislista */
 .byra-prislista-grid {
     border: 1px solid #dde3ec;
@@ -1430,7 +1615,7 @@ body.sidebar-collapsed .logout-btn {
 .byra-prislista-head,
 .byra-prislista-row {
     display: grid;
-    grid-template-columns: 1.6fr 0.7fr 0.7fr 40px;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.7fr) minmax(0, 0.7fr) 40px 40px;
     gap: 0.75rem;
     align-items: center;
     padding: 0.6rem 0.75rem;
@@ -1460,6 +1645,22 @@ body.sidebar-collapsed .logout-btn {
     background: #fff;
     color: #64748b;
     cursor: pointer;
+}
+.byra-prislista-eye {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #dde3ec;
+    background: #fff;
+    color: #64748b;
+    cursor: pointer;
+}
+.byra-prislista-eye.is-hidden {
+    color: #94a3b8;
+    border-color: #e2e8f0;
+}
+.byra-prislista-eye:hover {
+    background: #f8fafc;
 }
 .byra-prislista-remove:hover {
     color: #dc2626;
@@ -7982,6 +8183,34 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     background: rgba(22, 163, 74, 0.12);
     border-color: rgba(22, 163, 74, 0.35);
     color: var(--success);
+}
+
+.uppdrag-run-status-select {
+    min-width: 180px;
+    max-width: 260px;
+}
+
+.uppdragboard-statuscell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.uppdragboard-status-select {
+    min-width: 140px;
+    max-width: 190px;
+    height: 30px;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-weight: 700;
+}
+
+.uppdragboard-status-msg {
+    font-size: 0.8rem;
+    color: #64748b;
+    white-space: nowrap;
 }
 
 .uppdragboard-arrow {

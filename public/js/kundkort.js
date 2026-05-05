@@ -567,6 +567,16 @@ class CustomerCardManager {
         const uppdragData = await uppdragRes.json().catch(() => ({ records: [] }));
         const usersData = (usersRes && usersRes.ok) ? await usersRes.json() : { users: [] };
         const samarbeteData = (samarbeteRes && samarbeteRes.ok) ? await samarbeteRes.json() : { requests: [] };
+        if (runsRes && !runsRes.ok) {
+            const err = await runsRes.json().catch(() => ({}));
+            const msg = err.error || err.message || err.details || `HTTP ${runsRes.status}`;
+            console.warn('Uppdragskörningar kunde inte hämtas:', runsRes.status, msg);
+            // Visa bara en gång per sida för att undvika spam
+            if (!window.__clientflowRunsWarned) {
+                window.__clientflowRunsWarned = true;
+                this.showNotification('Kunde inte ladda uppdragskörningar (fallback: status sparas i uppdragets historik).', 'warning');
+            }
+        }
         const runsData = (runsRes && runsRes.ok) ? await runsRes.json().catch(() => ({ records: [] })) : { records: [] };
 
         const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
@@ -824,6 +834,48 @@ class CustomerCardManager {
                 }
                 return false;
             };
+
+            const runByTypPeriod = new Map();
+            (Array.isArray(runRecords) ? runRecords : []).forEach(rr => {
+                const ff = rr?.fields || {};
+                const typ = String(ff['Typ'] || '').trim();
+                const pk = String(ff['PeriodKey'] || '').trim();
+                if (!typ || !pk) return;
+                runByTypPeriod.set(`${typ}|||${pk}`, rr);
+            });
+
+            const runStatusFromUppdragHistory = (uppdragFields, periodKey) => {
+                const pk = String(periodKey || '').trim();
+                if (!pk) return '';
+                let history = [];
+                try {
+                    const raw = (uppdragFields?.['Historik'] || '').toString().trim();
+                    if (raw && raw.startsWith('[')) history = JSON.parse(raw);
+                    if (!Array.isArray(history)) history = [];
+                } catch (_) { history = []; }
+                const hit = history.find(it => it && String(it.periodKey || '').trim() === pk);
+                return hit ? String(hit.status || '').trim() : '';
+            };
+
+            const statusBadgeFromRunStatus = (st) => {
+                const s = String(st || '').trim();
+                if (!s) return '';
+                const style = (s === 'Klar')
+                    ? 'background:#dcfce7; color:#166534; border-color:#86efac;'
+                    : (s === 'Sen')
+                        ? 'background:#fee2e2; color:#991b1b; border-color:#fecaca;'
+                        : (s === 'Pågående')
+                            ? 'background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe;'
+                            : 'background:#f1f5f9; color:#334155; border-color:#e2e8f0;';
+                const icon = (s === 'Klar') ? 'fa-check' : (s === 'Sen') ? 'fa-exclamation-triangle' : (s === 'Pågående') ? 'fa-spinner' : 'fa-calendar';
+                return `<span class="uppdragboard-progress" style="${style}"><i class="fas ${icon}"></i> ${this._esc(s)}</span>`;
+            };
+
+            const runStatusOptionsHtml = (selected) => {
+                const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
+                const sel = String(selected || '').trim();
+                return opts.map(o => `<option value="${this._esc(o)}" ${o === sel ? 'selected' : ''}>${this._esc(o)}</option>`).join('');
+            };
             const rows = existingTypes.map((t) => {
                 const rec = byType(t);
                 if (!rec) return '';
@@ -851,11 +903,6 @@ class CustomerCardManager {
                         <i class="fas fa-paper-plane"></i> Auto
                     </span>`
                     : '';
-                const statusHtml = instDeadline
-                    ? (done
-                        ? `<span class="uppdragboard-progress is-done"><i class="fas fa-check"></i> Klart</span>`
-                        : `<span class="uppdragboard-progress"><i class="fas fa-clock"></i> Ej klart</span>`)
-                    : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
                 const runHtml = instDeadline
                     ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
                     : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
@@ -893,6 +940,11 @@ class CustomerCardManager {
                     : (modeForPrefill === 'year')
                         ? yearKeyForMonth(mk)
                         : mk;
+
+                const runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
+                // En källa: status i uppdragets historik (så det alltid matchar uppdragsöversikten).
+                // Om vi även har en runRec synkar backend den best-effort.
+                const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey) || '';
 
                 const samForRun = samList.filter(s => periodMatchesRun(s.uppdragPeriod, prefillPeriodKey));
                 const underlagTotal = samForRun.length;
@@ -985,6 +1037,21 @@ class CustomerCardManager {
                                 <div class="uppdrag-view-text">${(f['Rutin'] || '').toString().trim() ? this._esc(String(f['Rutin'])) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
                             </div>
                         </div>
+                        ${runRec ? `
+                          <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.85rem;">
+                            <div class="uppdrag-view-label">Status för uppdragskörning</div>
+                            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
+                              <select class="form-select uppdrag-run-status-select"
+                                data-kund-action="set-run-status"
+                                data-run-id="${this._esc(String(runRec.id || ''))}"
+                                data-run-typ="${this._esc(String(t || ''))}"
+                                data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                ${runStatusOptionsHtml(runStatus || 'Planerad')}
+                              </select>
+                              <span class="uppdrag-muted" data-kund-run-status-msg="${this._esc(String(runRec.id || ''))}" style="margin:0;"></span>
+                            </div>
+                          </div>
+                        ` : ``}
                         ${samHtml}
                         <div style="display:flex; justify-content:flex-end; margin-top:0.5rem;">
                             <button type="button" class="btn btn-primary btn-sm"
@@ -1045,6 +1112,39 @@ class CustomerCardManager {
                         </div>
                     </div>
                 `;
+
+                const statusHtml = instDeadline
+                    ? (runRec
+                        ? `
+                            <div class="uppdragboard-statuscell">
+                              <select class="form-select uppdragboard-status-select"
+                                aria-label="Status"
+                                title="Ändra status"
+                                data-kund-action="set-run-status"
+                                data-run-id="${this._esc(String(runRec.id || ''))}"
+                                data-run-typ="${this._esc(String(t || ''))}"
+                                data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                ${runStatusOptionsHtml(runStatus || 'Planerad')}
+                              </select>
+                              <span class="uppdrag-muted uppdragboard-status-msg" data-kund-run-status-msg="${this._esc(String(runRec.id || ''))}"></span>
+                            </div>
+                          `
+                        : `
+                            <div class="uppdragboard-statuscell">
+                              <select class="form-select uppdragboard-status-select"
+                                aria-label="Status"
+                                title="Ändra status"
+                                data-kund-action="set-run-status"
+                                data-run-id=""
+                                data-run-typ="${this._esc(String(t || ''))}"
+                                data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                ${runStatusOptionsHtml(runStatus || 'Planerad')}
+                              </select>
+                              <span class="uppdrag-muted uppdragboard-status-msg" data-kund-run-status-msg="fallback:${this._esc(String(t || ''))}:${this._esc(String(prefillPeriodKey || ''))}"></span>
+                            </div>
+                          `
+                    )
+                    : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
 
                 return `
                 <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''}" data-kund-board-typ="${this._esc(t)}">
@@ -1411,6 +1511,48 @@ class CustomerCardManager {
                 }
                 // Redigera-knapp borttagen från översiktsraderna.
                 // (Redigera sker i kortet "Redigera uppdrag" längre ner om man fäller ut det.)
+            });
+
+            container.addEventListener('change', (e) => {
+                const sel = e.target.closest('[data-kund-action="set-run-status"]');
+                if (!sel || !container.contains(sel)) return;
+                const runId = (sel.getAttribute('data-run-id') || '').toString();
+                const newStatus = (sel.value || '').toString().trim();
+                const typ = (sel.getAttribute('data-run-typ') || '').toString();
+                const periodKey = (sel.getAttribute('data-run-period') || '').toString();
+                const msgKey = runId ? runId : `fallback:${typ}:${periodKey}`;
+                const msgEl = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(runId)}"]`);
+                const msgEl2 = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(msgKey)}"]`) || msgEl;
+                if (msgEl2) msgEl2.textContent = 'Sparar...';
+                const doSave = fetch(`${baseUrl}/api/uppdrag/run-status`, {
+                    method: 'PATCH',
+                    ...getAuthOptsKundkort(),
+                    headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                    body: JSON.stringify({ customerId, typ, periodKey, status: newStatus, runId: runId || undefined })
+                });
+
+                doSave
+                    .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
+                    .then((d) => {
+                        // uppdatera lokal cache (uppdragspostens historik är källan)
+                        const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                        if (rec) {
+                            rec.fields = rec.fields || {};
+                            if (d && d.record && d.record.fields) rec.fields = d.record.fields;
+                        }
+                        // best-effort: uppdatera runRecords om vi har en (enbart för UI consistency)
+                        if (runId) {
+                            const rr = (Array.isArray(runRecords) ? runRecords : []).find(x => String(x?.id || '') === String(runId));
+                            if (rr) { rr.fields = rr.fields || {}; rr.fields['Status'] = newStatus; }
+                        }
+                        if (msgEl2) msgEl2.textContent = 'Sparat.';
+                        setTimeout(() => { if (msgEl2 && msgEl2.textContent === 'Sparat.') msgEl2.textContent = ''; }, 2000);
+                        // re-render så status uppdateras
+                        try { renderBoard(); } catch (_) {}
+                    })
+                    .catch(err => {
+                        if (msgEl2) msgEl2.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
+                    });
             });
             container.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -5177,6 +5319,15 @@ class CustomerCardManager {
         if (!container) return;
 
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const customerByraId =
+            this.customerData?.fields?.['Byrå ID'] ??
+            this.customerData?.fields?.['Byra ID'] ??
+            this.customerData?.fields?.['Byra_ID'] ??
+            this.customerData?.fields?.['ByraID'] ??
+            '';
+        const byraInfoUrl = customerByraId
+            ? `${baseUrl}/api/byra-info?byraId=${encodeURIComponent(String(customerByraId))}`
+            : `${baseUrl}/api/byra-info`;
 
         try {
             // Hämta avtal och byråinfo parallellt
@@ -5184,7 +5335,7 @@ class CustomerCardManager {
                 fetch(`${baseUrl}/api/uppdragsavtal?customerId=${this.customerId}`, {
                     ...getAuthOptsKundkort()
                 }),
-                fetch(`${baseUrl}/api/byra-info`, {
+                fetch(byraInfoUrl, {
                     ...getAuthOptsKundkort()
                 })
             ]);
@@ -5204,6 +5355,13 @@ class CustomerCardManager {
         if (!container) return;
 
         const rawF = avtal?.fields || {};
+        const hasField = (k) => Object.prototype.hasOwnProperty.call(rawF || {}, k);
+        const esc = (s) => String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
         // Normalisera fältnamn — stöd både gamla (å/ä/ö) och nya ASCII-namn
         const f = {
             'Uppdragsansvarig':    rawF['Uppdragsansvarig'] || '',
@@ -5217,6 +5375,7 @@ class CustomerCardManager {
             'Arvodekommentar':     rawF['Arvodekommentar'] || '',
             'Fakturaperiod':       rawF['Fakturaperiod'] || '',
             'Betalningsvillkor':   rawF['Betalningsvillkor'] ?? '',
+            // Legacy (bilagor 1/2 tas bort från UI men fälten kan finnas kvar i äldre avtal)
             'Kunden godkänner allmänna villkor':            rawF['Kunden godkanner allm villkor'] || rawF['Kunden godkänner allmänna villkor'] || false,
             'Kunden godkänner personuppgiftsbiträdesavtal': rawF['Kunden godkanner puba'] || rawF['Kunden godkänner personuppgiftsbiträdesavtal'] || false,
             'Status':              rawF['Avtalsstatus'] || rawF['Status'] || '',
@@ -5224,6 +5383,9 @@ class CustomerCardManager {
             'Utskickningsdatum':   rawF['Utskickningsdatum'] || rawF['fldCfjnBetFm03KES'] || '',
             'Signerat av kund':    rawF['Signerat av kund'] || rawF['Signerat av byra'] || '',
             'Signerat av byrå':    rawF['Signerat av byra'] || rawF['Signerat av byrå'] || '',
+            // Om fältet inte finns på avtalet än: default = true (ikryssad)
+            'Bifoga prislista':    hasField('Bifoga prislista') ? !!rawF['Bifoga prislista'] : true,
+            'Valda byråbilagor (JSON)': rawF['Valda byråbilagor (JSON)'] || ''
         };
         const isNew = !avtal;
 
@@ -5238,6 +5400,37 @@ class CustomerCardManager {
         const konsulter    = byraData.konsulter     || [];
         const inloggadNamn = byraData.inloggadNamn  || this.userData?.name || '';
         const avtalDefaults = byraData.avtalDefaults || {};
+        const byraBilagor = Array.isArray(byraData.uppdragsbrevBilagor) ? byraData.uppdragsbrevBilagor : [];
+        let selectedByraBilagaIds = [];
+        try {
+            const raw = (f['Valda byråbilagor (JSON)'] || '').toString().trim();
+            const arr = raw ? JSON.parse(raw) : [];
+            selectedByraBilagaIds = Array.isArray(arr) ? arr : [];
+        } catch (_) { selectedByraBilagaIds = []; }
+        // Default: om inget sparat val finns -> alla bilagor ikryssade
+        if ((!selectedByraBilagaIds || selectedByraBilagaIds.length === 0) && byraBilagor.length) {
+            selectedByraBilagaIds = byraBilagor.map(b => (b?.id || '').toString()).filter(Boolean);
+        }
+        const isSelected = (id) => selectedByraBilagaIds.includes(id);
+        const bilageChecklistHtml = `
+            <div style="display:grid;gap:0.45rem;margin-top:0.25rem;">
+                <label style="display:flex;align-items:center;gap:0.6rem;margin:0;">
+                    <input type="checkbox" id="ua-bifoga-prislista" ${f['Bifoga prislista'] ? 'checked' : ''}>
+                    <span style="font-weight:650;">Prislista</span>
+                </label>
+
+                ${byraBilagor.length ? byraBilagor.map((b) => {
+                    const id = (b.id || '').toString();
+                    const label = (b.label || b.filename || 'Bilaga').toString();
+                    return `
+                        <label style="display:flex;align-items:center;gap:0.6rem;margin:0;">
+                            <input type="checkbox" class="ua-byra-bilaga-cb" value="${esc(id)}" ${isSelected(id) ? 'checked' : ''}>
+                            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</span>
+                        </label>
+                    `;
+                }).join('') : `<div class="uppdrag-muted">Inga byråbilagor upplagda.</div>`}
+            </div>
+        `;
 
         // byransTjanster används bara för högrisk-kontroll — hämta namn ur {id, namn}-objekt
         const byransTjanster = this._byransTjanster?.length
@@ -5260,9 +5453,15 @@ class CustomerCardManager {
             ? f['Uppsägningstid']
             : (avtalDefaults.defaultUppsagningstid ?? 3);
         const fakturaperiodVal = (f['Fakturaperiod'] || avtalDefaults.defaultFakturaperiod || '');
-        const betalningsvillkorVal = (f['Betalningsvillkor'] !== '' && f['Betalningsvillkor'] !== null && f['Betalningsvillkor'] !== undefined)
-            ? f['Betalningsvillkor']
-            : (avtalDefaults.defaultBetalningsvillkor ?? 10);
+        const betalningsvillkorVal = (() => {
+            const hasAvtalValue = (f['Betalningsvillkor'] !== '' && f['Betalningsvillkor'] !== null && f['Betalningsvillkor'] !== undefined);
+            if (hasAvtalValue) return f['Betalningsvillkor'];
+            const d = avtalDefaults.defaultBetalningsvillkor;
+            // hantera att default kan komma som '' eller sträng
+            if (d === '' || d === null || d === undefined) return 10;
+            const n = Number(String(d).trim().replace(',', '.'));
+            return Number.isFinite(n) ? n : 10;
+        })();
 
         // Tjänster visas direkt från kundens valda tjänster (sätts på fliken Övrig KYC)
         const tjansterDisplay = aktiva.length
@@ -5440,105 +5639,15 @@ class CustomerCardManager {
                         </div>
                     </div>
 
-                    <!-- BILAGA 2: ALLMÄNNA VILLKOR -->
+                    <!-- BILAGOR (valbara) -->
                     <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-file-alt"></i> Bilaga 1 – Allmänna villkor</div>
+                        <div class="uppdrag-section-title"><i class="fas fa-paperclip"></i> Bilagor till uppdragsavtal</div>
                         <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
                             <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
-                            Visa fullständiga allmänna villkor
+                            Välj bilagor
                         </div>
                         <div class="uppdrag-bilaga-text">
-                            <p>Dessa allmänna villkor gäller för uppdrag avseende redovisnings-, rådgivnings- och andra granskningstjänster som inte utgör lagstadgad revision eller lagstadgade tilläggsuppdrag ("Uppdraget") som Byrån åtar sig att utföra för Uppdragsgivarens räkning.</p>
-                            <p>Dessa allmänna villkor utgör tillsammans med uppdragsavtalet ("Uppdragsavtalet"), eller annan skriftlig överenskommelse, hela avtalet mellan Byrån och Uppdragsgivaren. Vid eventuella motstridigheter ska Uppdragsavtalet ha företräde.</p>
-                            <h5>Byråns ansvar</h5>
-                            <ul>
-                                <li>Byrån ska utföra Uppdraget med sådan skicklighet och omsorg som följer av tillämpliga lagar, förordningar och föreskrifter samt god yrkessed i branschen.</li>
-                                <li>Byrån ansvarar inte för slutsatser, rekommendationer och rapporter baserade på felaktig eller bristfällig information från Uppdragsgivaren eller tredje man som Uppdragsgivaren anvisat.</li>
-                                <li>Byrån förpliktas att ta ansvar för skador som orsakats till följd av Byråns brott mot överenskommet avtal eller om fel i den levererade tjänsten har begåtts.</li>
-                                <li>Byrån ska meddela Uppdragsgivaren avseende betydande fel eller uppgifter som upptäcks i räkenskapsmaterialet.</li>
-                                <li>Byrån kan inte göras skadeståndsskyldig för skador orsakade av att Uppdragsgivaren lämnat ofullständiga eller felaktiga uppgifter eller anvisningar.</li>
-                            </ul>
-                            <h5>Uppdragsgivarens ansvar</h5>
-                            <ul>
-                                <li>Uppdragsgivaren ansvarar för att de upplysningar och anvisningar som lämnas till Byrån är korrekta och inte strider mot gällande lagar.</li>
-                                <li>Uppdragsgivaren förpliktas att företagets skatter och avgifter redovisas och betalas och att aktuella tillstånd för verksamheten är aktuella.</li>
-                                <li>Uppdragsgivaren förpliktas till att räkenskapsmaterial samlas in och bevaras.</li>
-                                <li>Uppdragsgivaren ska på begäran av Byrån utan dröjsmål tillhandahålla sådan komplett och korrekt information som behövs för Uppdragets genomförande. Om Uppdragsgivaren dröjer med att tillhandahålla information kan detta orsaka förseningar och ökade kostnader. Byrån ansvarar inte för sådana förseningar och ökade kostnader.</li>
-                            </ul>
-                            <h5>Materialleveranser</h5>
-                            <p>Material ska levereras till Byrån i så god tid att Byrån kan utföra sina tjänster på normal arbetstid och inom gällande tidsfrister. Om parterna inte avtalat annat ska Uppdragsgivaren lämna material enligt följande:</p>
-                            <ul>
-                                <li>Underlag för den löpande bokföringen lämnas senast tio dagar efter utgången av den period redovisningen gäller.</li>
-                                <li>Underlag för löneadministration och löneberäkning lämnas minst sju dagar före attest- och löneutbetalningsdag.</li>
-                                <li>Bokslutsmaterial lämnas senast 30 dagar efter räkenskapsperiodens slut.</li>
-                                <li>Deklarations- och beskattningsmaterial lämnas senast 30 dagar efter beskattningsårets slut.</li>
-                            </ul>
-                            <h5>Sekretess och elektronisk kommunikation</h5>
-                            <p>Respektive Part förbinder sig att inte lämna konfidentiell information om Uppdraget till utomstående, inte heller information om den andra Partens verksamhet, utan den andra Partens skriftliga samtycke – med undantag för vad som följer av lag, professionell skyldighet eller myndighetsbeslut. Denna sekretesskyldighet fortsätter att gälla även efter att avtalet har upphört. Parterna accepterar elektronisk kommunikation dem emellan och de risker denna medför.</p>
-                            <h5>Uppsägning</h5>
-                            <p>Uppdragsavtalet börjar gälla från den dag som anges i Uppdragsavtalet. En Part får, om inget annat avtalats, genom skriftligt meddelande säga upp Uppdragsavtal som gäller tillsvidare med tre (3) månaders uppsägningstid.</p>
-                            <h5>Uppsägning – arvode</h5>
-                            <p>Vid uppsägning av Uppdragsavtalet ska Uppdragsgivaren betala Byrån arvode, utlägg och kostnader enligt Uppdragsavtalet fram till upphörandetidpunkten. Om uppsägningen inte grundar sig på ett väsentligt avtalsbrott från Byråns sida ska Uppdragsgivaren även ersätta Byrån för andra rimliga kostnader som uppstått i samband med Uppdraget.</p>
-                            <h5>Byråns rätt att omedelbart häva avtalet</h5>
-                            <ul>
-                                <li>Uppdragsgivaren är mer än sju dagar försenad med sina betalningar.</li>
-                                <li>Uppdragsgivaren levererar inte material eller orsakar på annat sätt att uppdraget inte kan utföras såsom avtalats.</li>
-                                <li>Uppdragsgivaren bryter mot ingånget avtal, lagar eller regler och underlåter att korrigera det påtalade felet inom sju dagar efter meddelande från Byrån.</li>
-                                <li>Uppdragsgivaren bemöter Byråns personal på ett oetiskt eller kränkande sätt.</li>
-                                <li>Uppdragsgivaren kan inte betala sina skulder, har konkursförvaltare, företagsrekonstruktör eller likvidator utsedd.</li>
-                            </ul>
-                            <h5>Uppdragsgivarens rätt att omedelbart häva avtalet</h5>
-                            <p>Om Byrån bryter mot avtalet och underlåter att vidta åtgärder för att korrigera avtalsbrottet inom rimlig tid har Uppdragsgivaren rätt att med omedelbar verkan säga upp avtalet.</p>
-                            <h5>Force majeure</h5>
-                            <p>Yttre händelser utanför parternas kontroll (t.ex. myndighetsåtgärder, krig, mobilisering, arbetsmarknadskonflikt, naturkatastrof) och som inte endast är av tillfällig natur och som förhindrar uppdragets genomförande berättigar vardera parten att helt inställa uppdraget utan rätt till skadestånd. Avtalspart ska genast meddela den andra parten när force majeure uppkommer och när den upphör.</p>
-                            <h5>Tvist</h5>
-                            <p>Tvist mellan parterna ska i första hand lösas genom förhandling och i andra hand av allmän domstol på den ort där Byrån har sitt säte.</p>
-                            <h5>Överlåtelse</h5>
-                            <p>Parts rättigheter och skyldigheter enligt detta avtal kan överlåtas endast om den andra parten ger sitt samtycke till överlåtelsen.</p>
-                            <h5>Prioritetsordning</h5>
-                            <ol><li>Uppdragsavtal</li><li>Bilagor till uppdragsavtal</li><li>Dessa allmänna villkor</li></ol>
-                        </div>
-                    </div>
-
-                    <!-- BILAGA 3: PERSONUPPGIFTSBITRÄDESAVTAL -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-shield-alt"></i> Bilaga 2 – Personuppgiftsbiträdesavtal (GDPR)</div>
-                        <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
-                            <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
-                            Visa fullständigt personuppgiftsbiträdesavtal
-                        </div>
-                        <div class="uppdrag-bilaga-text">
-                            <h5>1 Bakgrund</h5>
-                            <p>Parterna har i samband med detta Avtal ingått Tjänsteavtal avseende redovisningstjänster ("Tjänsteavtalet"). Inom åtagandena som följer av Tjänsteavtalet kan Byrån komma att behandla personuppgifter samt annan information för Uppdragsgivarens räkning. Med anledning härav ingår Parterna detta Avtal för att reglera förutsättningarna för behandling av – och tillgång till – Personuppgifter tillhöriga Uppdragsgivaren. Avtalet gäller så länge Byrån behandlar Personuppgifter för Uppdragsgivarens räkning.</p>
-                            <h5>2 Definitioner</h5>
-                            <p><strong>"Behandling"</strong> – en åtgärd eller kombination av åtgärder beträffande Personuppgifter, såsom insamling, registrering, lagring, bearbetning, utlämning eller radering.</p>
-                            <p><strong>"Dataskyddsförordningen"</strong> – Europaparlamentets och Rådets Förordning (EU) 2016/679 (GDPR).</p>
-                            <p><strong>"Personuppgifter"</strong> – varje upplysning som avser en identifierad eller identifierbar fysisk person.</p>
-                            <p><strong>"Personuppgiftsansvarig"</strong> – den som bestämmer ändamålen och medlen för Behandlingen av Personuppgifter.</p>
-                            <p><strong>"Personuppgiftsbiträde"</strong> – den som Behandlar Personuppgifter för den Personuppgiftsansvariges räkning.</p>
-                            <p><strong>"Personuppgiftsincident"</strong> – en säkerhetsincident som leder till oavsiktlig eller olaglig förstöring, förlust, ändring eller obehörigt röjande av Personuppgifter.</p>
-                            <h5>4 Allmänt om personuppgiftsbehandlingen</h5>
-                            <p>Uppdragsgivaren är Personuppgiftsansvarig för de Personuppgifter som Behandlas inom ramen för Uppdraget. Byrån är att betrakta som Personuppgiftsbiträde åt Uppdragsgivaren. Byrån har gett tillräckliga garantier om att genomföra lämpliga tekniska och organisatoriska åtgärder för att Behandlingen uppfyller kraven i Dataskyddsförordningen och att den Registrerades rättigheter skyddas.</p>
-                            <h5>6 Personal</h5>
-                            <p>Byråns anställda och andra personer som utför arbete under dess överinseende och som får del av Personuppgifter tillhöriga Uppdragsgivaren, får endast Behandla dessa på instruktion från Uppdragsgivaren. Byrån ska tillse att dessa personer åtagit sig att iaktta konfidentialitet.</p>
-                            <h5>7 Säkerhet</h5>
-                            <p>Byrån ska vidta alla åtgärder avseende säkerhet som krävs enligt artikel 32 i Dataskyddsförordningen. Vid bedömningen av lämplig säkerhetsnivå ska särskild hänsyn tas till de risker som Behandling medför, i synnerhet från oavsiktlig eller olaglig förstöring, förlust eller obehörigt röjande.</p>
-                            <h5>8 Personuppgiftsincident</h5>
-                            <p>Byrån ska, med beaktande av typen av Behandling och den information Byrån har att tillgå, bistå Uppdragsgivaren med att tillse att skyldigheterna i samband med eventuell Personuppgiftsincident kan fullgöras på sätt som följer av artikel 33–34 i Dataskyddsförordningen.</p>
-                            <h5>10 Underbiträde</h5>
-                            <p>Genom att teckna avtal med Byrån ska Uppdragsgivaren anses ha lämnat ett generellt skriftligt godkännande att anlita underbiträde. Byrån ska digitalt informera Uppdragsgivaren om ett nytt underbiträde ska anlitas och ge Uppdragsgivaren möjlighet att göra invändningar. Byrån ska tillse att nytt underbiträde ingår ett skriftligt personuppgiftsbiträdesavtal innan arbetet påbörjas. Om underbiträdet inte fullgör sina skyldigheter ska Byrån vara ansvarig gentemot Uppdragsgivaren.</p>
-                            <h5>11 Överföring till tredje land</h5>
-                            <p>Byrån får förflytta, förvara, överföra eller på annat sätt Behandla Personuppgifter utanför EU/EES om sådan överföring uppfyller de krav som följer av Dataskyddsförordningen.</p>
-                            <h5>12 Rätt till insyn</h5>
-                            <p>Byrån ska ge Uppdragsgivaren tillgång till all information som krävs för att visa att skyldigheterna enligt artikel 28 i Dataskyddsförordningen har fullgjorts. Byrån ska alltid ha rätt till skäligt varsel inför en granskning och Uppdragsgivaren ska ersätta Byrån för kostnader i samband med sådan granskning.</p>
-                            <h5>13 Register över behandlingen</h5>
-                            <p>Byrån ska föra ett elektroniskt register över alla kategorier av Behandling som utförts för Uppdragsgivarens räkning, innehållande bl.a. ändamålen med Behandlingen, kategorier av Registrerade och Personuppgifter, kategorier av mottagare och tidsfristerna för radering.</p>
-                            <h5>14 Ansvar</h5>
-                            <p>De ansvarsbegränsningar som framgår av Tjänsteavtalet gäller också i detta Avtal. Om dessa ansvarsbegränsningar inte skulle visa sig gälla begränsas ansvar till etthundratusen (100 000) kronor.</p>
-                            <h5>15 Avtalets upphörande</h5>
-                            <p>När Byrån upphör med Behandling av Personuppgifter för Uppdragsgivaren räkning ska Byrån återlämna alla Personuppgifter till Uppdragsgivaren – eller, om Uppdragsgivaren så skriftligen meddelar, förstöra och radera dem. Efter att Avtalet upphör äger Byrån inte rätt att spara Personuppgifter tillhöriga Uppdragsgivaren.</p>
-                            <h5>17 Tillämplig lag och tvister</h5>
-                            <p>Svensk lag ska tillämpas på Avtalet. Tvister som uppstår i anledning av Avtalet ska slutligt avgöras genom skiljedomsförfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljeförfarandets säte ska vara Stockholm och språket ska vara svenska. Skiljeförfarande som påkallats med hänvisning till denna skiljeklausul omfattas av sekretess. Part har rätt att vid svensk domstol anhängiggöra tvist om tvisteföremålets storlek understiger 100 000 kr.</p>
+                            ${bilageChecklistHtml}
                         </div>
                     </div>
 
@@ -5634,13 +5743,19 @@ class CustomerCardManager {
             'Arvodekommentar':                      val('ua-arvode-kommentar'),
             'Fakturaperiod':                        val('ua-fakturaperiod'),
             'Betalningsvillkor':                    parseInt(val('ua-betvillkor')) || null,
-            'Kunden godkanner allm villkor':        chk('ua-godkanner-villkor'),
-            'Kunden godkanner puba':                chk('ua-godkanner-puba'),
+            // Bilaga 1/2 (legacy) är borttaget från UI, men fälten kan finnas kvar i gamla avtal.
             'Avtalsstatus':                          val('ua-status'),
             'Signeringsdatum':                      val('ua-signdatum') || null,
             'Signerat av kund':                     val('ua-sign-kund'),
             'Signerat av byra':                     val('ua-sign-byra'),
         };
+
+        // Valbara bilagor: prislista + byråbilagor (per kund)
+        fields['Bifoga prislista'] = chk('ua-bifoga-prislista');
+        const selectedBilagor = Array.from(document.querySelectorAll('.ua-byra-bilaga-cb:checked'))
+            .map(cb => (cb?.value || '').toString().trim())
+            .filter(Boolean);
+        fields['Valda byråbilagor (JSON)'] = JSON.stringify(selectedBilagor);
 
         // Ta bort tomma / null-värden
         Object.keys(fields).forEach(k => {

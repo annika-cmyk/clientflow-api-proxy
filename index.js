@@ -2392,6 +2392,16 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
           return Array.from(new Set(candidates)).join(', ');
         })();
 
+        // Organisationsform (Bolagsform i Airtable) kan komma i olika format beroende på miljö/version
+        const organisationsformText = (() => {
+          const pick = (v) => {
+            if (!v) return '';
+            if (typeof v === 'string') return v;
+            return v.klartext || v.beskrivning || v.text || v.name || v.kod || '';
+          };
+          return pick(orgData.organisationsform) || pick(orgData.juridiskForm) || '';
+        })();
+
         // Förbered data för Airtable med förbättrad mappning
         const airtableData = {
           fields: {
@@ -2400,7 +2410,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
             'Verksamhetsbeskrivning': descriptions.join(', ') || '',
             'Address': orgData.postadressOrganisation?.postadress ?
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
-            'Bolagsform': orgData.organisationsform?.klartext || '',
+            'Bolagsform': organisationsformText,
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
@@ -7121,15 +7131,24 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (!allowedRoles.includes(result.userData.role)) {
       return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera byråinfo' });
     }
+    const toNumberOrNull = (v) => {
+      if (v == null) return null;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+      const s = String(v).trim();
+      if (!s) return null;
+      // Tillåt både "10" och "10,5" från UI
+      const n = Number(s.replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    };
     const fields = {};
     if (body.antalAnstallda !== undefined) fields['Antal anställda'] = body.antalAnstallda;
     if (body.omsattning !== undefined) fields['Omsättning'] = body.omsattning;
     if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
     if (body.logga !== undefined) fields['Logga'] = body.logga;
     if (body.bransch !== undefined) fields['Bransch'] = body.bransch;
-    if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = body.defaultUppsagningstid;
+    if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = toNumberOrNull(body.defaultUppsagningstid);
     if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = body.defaultFakturaperiod;
-    if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = body.defaultBetalningsvillkor;
+    if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = toNumberOrNull(body.defaultBetalningsvillkor);
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (Object.keys(fields).length === 0) {
@@ -7165,6 +7184,245 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     console.error('❌ PUT /api/byra/info:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// POST /api/byra/logo – Ladda upp byrålogga (klick på placeholder)
+app.post('/api/byra/logo', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData?.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får ladda upp logga' });
+    }
+
+    const body = req.body || {};
+    const fileBase64 = (body.fileBase64 || '').toString();
+    const filename = (body.filename || 'logga.png').toString();
+    const contentType = (body.contentType || 'image/png').toString();
+    if (!fileBase64) return res.status(400).json({ error: 'fileBase64 saknas' });
+    if (!/^image\//i.test(contentType)) return res.status(400).json({ error: 'Endast bildfiler tillåts' });
+
+    const buf = Buffer.from(fileBase64, 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'Tom fil' });
+    if (buf.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'Filen är för stor (max 8MB)' });
+
+    const recordId = result.record.id;
+    const BYRAER_TABLE_ID = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+    const att = await uploadAttachmentToAirtableFieldReturnAttachment(
+      airtableAccessToken,
+      airtableBaseId,
+      recordId,
+      buf,
+      filename,
+      contentType,
+      BYRAER_TABLE_ID,
+      'Logga'
+    );
+    if (!att) return res.status(500).json({ error: 'Kunde inte ladda upp logga till Airtable' });
+
+    res.json({ success: true, attachment: att });
+  } catch (e) {
+    console.error('❌ POST /api/byra/logo:', e.response?.data || e.message);
+    res.status(500).json({ error: e.response?.data?.error?.message || e.message });
+  }
+});
+
+// Uppdragsbrev: Byrå-bilagor (sparas i tabellen "Byråer" som attachments)
+const BYRA_UPPDRAGSBREV_BILAGOR_FIELD = 'Uppdragsbrev bilagor';
+const BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD = 'Uppdragsbrev bilagor meta (JSON)';
+const BYRA_UPPDRAGSBREV_BILAGOR_MAX = 6;
+
+function parseByraBilagorMeta(raw) {
+  if (!raw) return [];
+  try {
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (Array.isArray(obj)) return obj;
+    return [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function labelFromFilename(filename) {
+  const s = (filename || '').toString().trim();
+  if (!s) return '';
+  return s.replace(/\.[a-z0-9]{2,6}$/i, '').trim();
+}
+
+function safeFilenameFromLabel(label, fallbackBase = 'bilaga', ext = 'pdf') {
+  const base = (label || '').toString().trim() || fallbackBase;
+  const cleaned = base
+    .replace(/[\\/:*?"<>|]/g, '-')   // windows-forbidden chars
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  const e = (ext || 'pdf').toString().replace(/[^a-z0-9]/gi, '').toLowerCase() || 'pdf';
+  return `${cleaned || fallbackBase}.${e}`;
+}
+
+app.get('/api/byra/uppdragsbrev/bilagor', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const fields = result.record.fields || {};
+    const bilagor = Array.isArray(fields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? fields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+    const meta = parseByraBilagorMeta(fields[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+    const labelById = {};
+    meta.forEach(m => { if (m && m.id) labelById[m.id] = (m.label || '').toString(); });
+    const out = bilagor.map(b => ({
+      ...b,
+      label: (b && b.id && labelById[b.id]) ? labelById[b.id] : labelFromFilename(b?.filename)
+    }));
+    return res.json({ success: true, bilagor: out, max: BYRA_UPPDRAGSBREV_BILAGOR_MAX });
+  } catch (error) {
+    console.error('❌ GET /api/byra/uppdragsbrev/bilagor:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    return res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+app.post('/api/byra/uppdragsbrev/bilagor', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får lägga upp bilagor' });
+    }
+
+    const body = req.body || {};
+    const label = (body.label || body.namn || body.name || '').toString().trim();
+    const originalFilename = (body.originalFilename || body.filename || '').toString();
+    const contentType = (body.contentType || body.mime || 'application/octet-stream').toString();
+    const base64 = (body.base64 || '').toString();
+    if (!base64 || base64.length < 16) return res.status(400).json({ error: 'base64 saknas' });
+    if (!label) return res.status(400).json({ error: 'Bilagan måste ha ett namn (label).' });
+    // Endast PDF
+    const isPdf = contentType === 'application/pdf' || originalFilename.toLowerCase().endsWith('.pdf');
+    if (!isPdf) return res.status(400).json({ error: 'Endast PDF är tillåtet.' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable inte konfigurerad (AIRTABLE_ACCESS_TOKEN saknas)' });
+
+    // Max 6 bilagor
+    const currentFields = result.record.fields || {};
+    const currentList = Array.isArray(currentFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? currentFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+    if (currentList.length >= BYRA_UPPDRAGSBREV_BILAGOR_MAX) {
+      return res.status(400).json({ error: `Max ${BYRA_UPPDRAGSBREV_BILAGOR_MAX} bilagor.` });
+    }
+
+    const fileBuffer = Buffer.from(base64, 'base64');
+    const filename = safeFilenameFromLabel(label, 'bilaga', 'pdf');
+    const att = await uploadAttachmentToAirtableFieldReturnAttachment(
+      airtableAccessToken,
+      airtableBaseId,
+      result.record.id,
+      fileBuffer,
+      filename,
+      contentType,
+      null,
+      BYRA_UPPDRAGSBREV_BILAGOR_FIELD
+    );
+
+    if (!att) {
+      return res.status(400).json({
+        error: `Kunde inte ladda upp till Airtable-fältet "${BYRA_UPPDRAGSBREV_BILAGOR_FIELD}". Kontrollera att fältet finns i tabellen "Byråer" och är av typen Attachment.`,
+      });
+    }
+
+    // Uppdatera meta-JSON med label per attachment-id
+    try {
+      const prevMeta = parseByraBilagorMeta(currentFields[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+      const without = prevMeta.filter(m => m && m.id && m.id !== att.id);
+      const nextMeta = [...without, { id: att.id, label }].slice(0, 50);
+      const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}/${result.record.id}`;
+      await axios.patch(patchUrl, { fields: { [BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]: JSON.stringify(nextMeta) } }, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+    } catch (e) {
+      console.warn('ℹ️ Kunde inte uppdatera bilage-metadata:', e.response?.status, e.response?.data || e.message);
+    }
+
+    // Läs tillbaka uppdaterade bilagor + meta
+    const refreshed = await getByraerRecordForUser(req);
+    const refreshedFields = refreshed.record?.fields || {};
+    const bilagorRaw = Array.isArray(refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+    const meta2 = parseByraBilagorMeta(refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+    const labelById = {};
+    meta2.forEach(m => { if (m && m.id) labelById[m.id] = (m.label || '').toString(); });
+    const bilagor = bilagorRaw.map(b => ({ ...b, label: (b && b.id && labelById[b.id]) ? labelById[b.id] : labelFromFilename(b?.filename) }));
+
+    return res.json({
+      success: true,
+      attachment: att,
+      bilagor,
+      max: BYRA_UPPDRAGSBREV_BILAGOR_MAX
+    });
+  } catch (error) {
+    console.error('❌ POST /api/byra/uppdragsbrev/bilagor:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    return res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+app.delete('/api/byra/uppdragsbrev/bilagor/:attachmentId', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
+    if (!allowedRoles.includes(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får ta bort bilagor' });
+    }
+
+    const attachmentId = (req.params.attachmentId || '').toString().trim();
+    if (!attachmentId) return res.status(400).json({ error: 'attachmentId saknas' });
+
+    const current = result.record.fields?.[BYRA_UPPDRAGSBREV_BILAGOR_FIELD];
+    const list = Array.isArray(current) ? current : [];
+    const remaining = list.filter(a => (a && a.id) ? a.id !== attachmentId : true);
+
+    const toSend = remaining.map(a => {
+      if (a && a.id) return { id: a.id };
+      if (a && a.url) return { url: a.url };
+      return null;
+    }).filter(Boolean);
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable inte konfigurerad (AIRTABLE_ACCESS_TOKEN saknas)' });
+
+    const BYRAER_TABLE = 'Byråer';
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${result.record.id}`;
+    // Uppdatera även meta så label försvinner
+    const prevMeta = parseByraBilagorMeta(result.record.fields?.[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+    const nextMeta = prevMeta.filter(m => m && m.id && m.id !== attachmentId);
+    await axios.patch(patchUrl, { fields: { [BYRA_UPPDRAGSBREV_BILAGOR_FIELD]: toSend, [BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]: JSON.stringify(nextMeta) } }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
+
+    // Läs tillbaka uppdaterade bilagor
+    const refreshed = await getByraerRecordForUser(req);
+    const refreshedFields = refreshed.record?.fields || {};
+    const bilagorRaw = Array.isArray(refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+    const meta2 = parseByraBilagorMeta(refreshedFields[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+    const labelById = {};
+    meta2.forEach(m => { if (m && m.id) labelById[m.id] = (m.label || '').toString(); });
+    const bilagor = bilagorRaw.map(b => ({ ...b, label: (b && b.id && labelById[b.id]) ? labelById[b.id] : labelFromFilename(b?.filename) }));
+    return res.json({ success: true, bilagor, max: BYRA_UPPDRAGSBREV_BILAGOR_MAX });
+  } catch (error) {
+    console.error('❌ DELETE /api/byra/uppdragsbrev/bilagor:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    return res.status(status).json({ error: error.response?.data?.error?.message || error.message });
   }
 });
 
@@ -7224,6 +7482,53 @@ app.post('/api/setup/airtable-byra-avtalsdefaults-fields', authenticateToken, as
     const data = err.response?.data || {};
     const msg = (data.error && data.error.message) || data.message || err.message;
     console.error('Setup Byrå avtals-defaults fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen Byråer' });
+  }
+});
+
+// POST /api/setup/airtable-byra-uppdragsbrev-bilagor-field – Lägg till attachment-fält för uppdragsbrev-bilagor i tabellen "Byråer"
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-byra-uppdragsbrev-bilagor-field', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 15000
+    });
+    const tables = metaRes.data?.tables || [];
+    const byraTable = tables.find(t => (t.name || '').trim().toLowerCase() === 'byråer' || (t.name || '').trim().toLowerCase() === 'byraer');
+    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
+
+    const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+    if (existingNames.includes(BYRA_UPPDRAGSBREV_BILAGOR_FIELD)) {
+      return res.json({ success: true, message: `Fältet "${BYRA_UPPDRAGSBREV_BILAGOR_FIELD}" finns redan i tabellen Byråer.` });
+    }
+
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+    await axios.post(createUrl, {
+      name: BYRA_UPPDRAGSBREV_BILAGOR_FIELD,
+      type: 'multipleAttachments',
+      description: 'Bilagor som byrån själv kan använda i uppdragsbrev/uppdragsavtal.'
+    }, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    return res.json({ success: true, message: `Fältet "${BYRA_UPPDRAGSBREV_BILAGOR_FIELD}" skapades i tabellen Byråer.` });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup Byrå uppdragsbrev bilagor-fält:', status, msg);
     if (status === 403 || status === 401) {
       return res.status(status).json({
         success: false,
@@ -10183,6 +10488,35 @@ async function getUppdragRunsTableMeta(airtableToken, baseId) {
   }
 }
 
+async function ensureUppdragRunsStatusChoices(airtableToken, baseId, tableMeta) {
+  try {
+    const t = tableMeta || await getUppdragRunsTableMeta(airtableToken, baseId);
+    if (!t || !t.id) return { ok: false, reason: 'Tabell saknas' };
+    const statusField = (t.fields || []).find(f => (f.name || '').trim() === 'Status');
+    if (!statusField || !statusField.id) return { ok: false, reason: 'Fältet "Status" saknas' };
+
+    const desired = ['Planerad', 'Pågående', 'Klar', 'Sen'];
+    const current = (statusField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false };
+
+    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${statusField.id}`;
+    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+    await axios.patch(patchUrl, {
+      name: 'Status',
+      type: 'singleSelect',
+      options: { choices }
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera status-val' };
+  }
+}
+
 // POST /api/setup/airtable-uppdrag – Skapa tabellen "Uppdrag" i Airtable (auth)
 // Kräver Personal Access Token med schema.bases:read och schema.bases:write.
 app.post('/api/setup/airtable-uppdrag', authenticateToken, async (req, res) => {
@@ -10244,6 +10578,8 @@ app.post('/api/setup/airtable-uppdrag-runs', authenticateToken, async (req, res)
     );
     const newTable = createRes.data;
     const tableId = newTable?.id || (newTable?.tables && newTable.tables[0] && newTable.tables[0].id);
+    // Best-effort: säkerställ att statusfältets val finns (ifall Airtable normaliserat options)
+    try { await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId); } catch (_) {}
     return res.json({ success: true, message: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" skapades i Airtable.`, tableId: tableId || '', alreadyExists: false });
   } catch (err) {
     const status = err.response?.status;
@@ -10289,13 +10625,16 @@ app.post('/api/setup/airtable-uppdrag-runs-fields', authenticateToken, async (re
       }
     }
     const skipped = UPPDRAG_RUNS_REQUIRED_FIELDS.length - toCreate.length;
+    // Best-effort: säkerställ att Status har rätt val
+    const statusEnsure = await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId, t);
     return res.json({
       success: true,
       message: created.length
         ? `${created.length} fält lades till i ${UPPDRAG_RUNS_TABLE_NAME}. ${skipped} fanns redan.`
         : `Alla ${UPPDRAG_RUNS_REQUIRED_FIELDS.length} fält finns redan i tabellen ${UPPDRAG_RUNS_TABLE_NAME}.`,
       created,
-      alreadyExisted: skipped
+      alreadyExisted: skipped,
+      statusChoices: statusEnsure
     });
   } catch (err) {
     const status = err.response?.status;
@@ -10310,6 +10649,23 @@ app.post('/api/setup/airtable-uppdrag-runs-fields', authenticateToken, async (re
       });
     }
     return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen' });
+  }
+});
+
+// POST /api/setup/airtable-uppdrag-runs-status-choices – säkerställ att Status-val finns i "Uppdragskörningar" (auth)
+app.post('/api/setup/airtable-uppdrag-runs-status-choices', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const t = await getUppdragRunsTableMeta(airtableAccessToken, baseId);
+    if (!t) return res.status(404).json({ success: false, error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" hittades inte i basen. Skapa den först.` });
+    const r = await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId, t);
+    if (!r.ok) return res.status(500).json({ success: false, error: r.reason || 'Kunde inte uppdatera status-val' });
+    return res.json({ success: true, result: r });
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return res.status(e.response?.status || 500).json({ success: false, error: msg });
   }
 });
 
@@ -10484,6 +10840,55 @@ app.get('/api/uppdrag/runs', authenticateToken, async (req, res) => {
     const status = error.response?.status || 500;
     const msg = error.response?.data?.error?.message || error.message;
     res.status(status).json({ error: msg });
+  }
+});
+
+// PATCH /api/uppdrag/runs/:runId/status – uppdatera status på en uppdragskörning
+// Body: { status }
+app.patch('/api/uppdrag/runs/:runId/status', authenticateToken, async (req, res) => {
+  try {
+    const { runId } = req.params || {};
+    const { status } = req.body || {};
+    const id = String(runId || '').trim();
+    if (!id) return res.status(400).json({ error: 'runId saknas' });
+
+    const nextStatus = String(status || '').trim();
+    const allowed = new Set(['Planerad', 'Pågående', 'Klar', 'Sen']);
+    if (!allowed.has(nextStatus)) {
+      return res.status(400).json({ error: 'Ogiltig status. Tillåtna: Planerad, Pågående, Klar, Sen.' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${encodeURIComponent(id)}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+
+    // Behörighetskontroll: samma byrå som inloggad användare
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const existing = await axios.get(url, { headers });
+    const f = existing.data?.fields || {};
+    const recordByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+    if (!recordByra || recordByra !== byraIdClean) {
+      return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
+    }
+
+    const patchRes = await axios.patch(url, {
+      fields: {
+        'Status': nextStatus,
+        'Uppdaterad': new Date().toISOString()
+      }
+    }, { headers });
+
+    return res.json({ record: patchRes.data });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/runs/:runId/status:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg, airtableError: error.response?.data });
   }
 });
 
@@ -10747,6 +11152,79 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
   }
 });
 
+// PATCH /api/uppdrag/run-status – sätt status för en period (fallback om Uppdragskörningar ej används/åtkomlig)
+// Body: { customerId, typ, periodKey, status, runId? }
+// Sparas i fältet "Historik" som JSON-array (vi lägger/uppdaterar entry { periodKey, status, updatedAt, user })
+app.patch('/api/uppdrag/run-status', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const { customerId, typ, periodKey, status, runId } = req.body || {};
+    if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+    const pk = String(periodKey || '').trim();
+    if (!pk) return res.status(400).json({ error: 'periodKey krävs' });
+
+    const nextStatus = String(status || '').trim();
+    const allowed = new Set(['Planerad', 'Pågående', 'Klar', 'Sen']);
+    if (!allowed.has(nextStatus)) {
+      return res.status(400).json({ error: 'Ogiltig status. Tillåtna: Planerad, Pågående, Klar, Sen.' });
+    }
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const existingRes = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { maxRecords: 1 },
+      formulas: buildUppdragFilterFormulas(customerId, typ)
+    });
+    const existing = (existingRes.data.records || [])[0];
+    if (!existing) return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+
+    const f = existing.fields || {};
+    let history = [];
+    try {
+      const raw = (f['Historik'] || '').toString().trim();
+      if (raw) history = JSON.parse(raw);
+      if (!Array.isArray(history)) history = [];
+    } catch (_) { history = []; }
+
+    const nowIso = new Date().toISOString();
+    const user = req.user?.email || '';
+    const idx = history.findIndex(it => it && String(it.periodKey || '').trim() === pk);
+    const entry = { periodKey: pk, status: nextStatus, updatedAt: nowIso, user };
+    if (idx >= 0) history[idx] = { ...(history[idx] || {}), ...entry };
+    else history.unshift(entry);
+    history = history.slice(0, 250);
+
+    const updateRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
+      { fields: { 'Historik': JSON.stringify(history), 'Uppdaterad': nowIso } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    // Best effort: om vi även har en uppdragskörning (Uppdragskörningar-tabellen) så håll den synkad.
+    // Ignorera fel här, eftersom vissa installationer saknar rättighet/tabell.
+    const runIdClean = String(runId || '').trim();
+    if (runIdClean) {
+      try {
+        const runsTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${runsTableIdOrName}/${encodeURIComponent(runIdClean)}`,
+          { fields: { 'Status': nextStatus, 'Uppdaterad': nowIso } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (_) {}
+    }
+
+    return res.json({ record: updateRes.data, periodKey: pk, status: nextStatus, syncedRun: !!runIdClean });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/run-status:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg, airtableError: error.response?.data });
+  }
+});
+
 // ============================================================
 // POST /api/uppdrag/run-docs — Ladda upp dokumentation för en körning (bilaga)
 // Body: { customerId, typ, deadline, filename, contentType, base64 }
@@ -10904,18 +11382,27 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
   try {
     const userEmail = req.user.email;
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const requestedByraId = (req.query.byraId || '').toString().trim();
 
     // Hämta inloggad användare för att få byraId och byranamn
     const inloggedUser = await getAirtableUser(userEmail);
     if (!inloggedUser) return res.status(404).json({ error: 'Användaren hittades inte' });
 
-    const byraId   = inloggedUser.byraId || '';
-    const byraNamn = inloggedUser.byra   || '';
+    // Behörighet: admin får hämta valfri byrå. Övriga får bara hämta byråer de är kopplade till.
+    const userData = await getUser(userEmail).catch(() => null);
+    const role = userData?.role || inloggedUser.role || req.user.role || '';
+    const isClientFlowAdmin = role === 'ClientFlowAdmin';
+    const allowedByraIds = Array.isArray(userData?.byraIds)
+      ? userData.byraIds.map(x => String(x).trim()).filter(Boolean)
+      : [(inloggedUser.byraId || '').toString().trim()].filter(Boolean);
+    const canUseRequested = !!requestedByraId && (isClientFlowAdmin || allowedByraIds.includes(requestedByraId));
+    const byraId = canUseRequested ? requestedByraId : (inloggedUser.byraId || '');
+    const byraNamnFallback = inloggedUser.byra || '';
 
     // Hämta alla konsulter på samma byrå
     const filterFormula = byraId
       ? `{Byrå ID i text 2}="${byraId}"`
-      : `{Byrå}="${byraNamn}"`;
+      : `{Byrå}="${byraNamnFallback}"`;
 
     const konsultRes = await axios.get(
       `https://api.airtable.com/v0/${airtableBaseId}/${USERS_TABLE}`,
@@ -10975,19 +11462,53 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
       console.warn('⚠️ Kunde inte hämta tjänster via metadata:', metaErr.message);
     }
 
-    // Hämta byråns orgnr från Application Users-posten
-    const byraOrgnr = inloggedUser.orgnr || '';
+    // Hämta byråns orgnr från Application Users-posten (fallback)
+    let byraOrgnr = inloggedUser.orgnr || '';
+    let byraNamn = byraNamnFallback;
 
     // Hämta avtals-defaults från Byråer-tabellen (om fälten finns)
     let avtalDefaults = {};
+    let uppdragsbrevBilagor = [];
     try {
-      const byraRec = await getByraerRecordForUser(req);
-      const bf = byraRec?.record?.fields || {};
-      avtalDefaults = {
-        defaultUppsagningstid: bf['Default uppsägningstid'] ?? bf['Default uppsagningstid'] ?? null,
-        defaultFakturaperiod: bf['Default faktureringsperiod'] ?? bf['Default faktureringsperiod'] ?? bf['Default fakturaperiod'] ?? '',
-        defaultBetalningsvillkor: bf['Default betalningsvillkor'] ?? null
+      // Hämta Byråer-record för vald byrå (om admin kan den vara annan än inloggad)
+      const BYRAER_TABLE = 'Byråer';
+      const num = parseInt(String(byraId));
+      const ff = isNaN(num)
+        ? `{Byrå ID}="${byraId}"`
+        : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+      const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(ff)}&maxRecords=1`;
+      const atRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      const record = atRes.data.records?.[0];
+      const bf = record?.fields || {};
+
+      byraNamn = bf['Byrå'] || bf['Namn'] || byraNamnFallback || '';
+      byraOrgnr = bf['Orgnr'] || bf['OrgNr'] || bf['Organisationsnummer'] || byraOrgnr || '';
+      const toNumberOrNull = (v) => {
+        if (v == null) return null;
+        if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+        const s = String(v).trim();
+        if (!s) return null;
+        const n = Number(s.replace(',', '.'));
+        return Number.isFinite(n) ? n : null;
       };
+      avtalDefaults = {
+        defaultUppsagningstid: toNumberOrNull(bf['Default uppsägningstid'] ?? bf['Default uppsagningstid']),
+        defaultFakturaperiod: bf['Default faktureringsperiod'] ?? bf['Default faktureringsperiod'] ?? bf['Default fakturaperiod'] ?? '',
+        defaultBetalningsvillkor: toNumberOrNull(bf['Default betalningsvillkor'])
+      };
+      const bilagorRaw = Array.isArray(bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+      const meta = parseByraBilagorMeta(bf[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+      const labelById = {};
+      meta.forEach(m => { if (m && m.id) labelById[m.id] = (m.label || '').toString(); });
+      uppdragsbrevBilagor = bilagorRaw
+        .slice(0, BYRA_UPPDRAGSBREV_BILAGOR_MAX)
+        .map(b => ({
+          id: b?.id,
+          url: b?.url,
+          filename: b?.filename,
+          label: (b && b.id && labelById[b.id]) ? labelById[b.id] : labelFromFilename(b?.filename)
+        }))
+        .filter(b => b.url);
     } catch (_) {}
 
     res.json({
@@ -10998,7 +11519,8 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
       konsulter,
       tjanster: byransTjanster,
       highRiskTjanster: byransHighRisk,
-      avtalDefaults
+      avtalDefaults,
+      uppdragsbrevBilagor
     });
   } catch (error) {
     console.error('❌ Error fetching byra-info:', error.message);
@@ -11017,6 +11539,40 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
     );
     const f = avtalRes.data.fields || {};
+
+    // Valbara bilagor (per avtal)
+    // Om fälten saknas (nytt avtal ej sparat än) -> default = inkludera prislista + alla byråbilagor
+    const hasPrislistaField = Object.prototype.hasOwnProperty.call(f || {}, 'Bifoga prislista');
+    const includePrislista = hasPrislistaField
+      ? !!(f['Bifoga prislista'] || f['Bifoga prislista'] === 1 || f['Bifoga prislista'] === '1')
+      : true;
+
+    const hasBilagorField = Object.prototype.hasOwnProperty.call(f || {}, 'Valda byråbilagor (JSON)');
+    const rawSelectedBilagor = (f['Valda byråbilagor (JSON)'] || '').toString().trim();
+    let selectedByraBilagaIds = [];
+    try {
+      const arr = rawSelectedBilagor ? JSON.parse(rawSelectedBilagor) : [];
+      selectedByraBilagaIds = Array.isArray(arr) ? arr.map(x => String(x)) : [];
+    } catch (_) { selectedByraBilagaIds = []; }
+    // Viktigt: bifoga INTE byråbilagor automatiskt. Endast explicit valda bilagor ska följa med.
+    // (Annars kan t.ex. PUBA/Bilaga 2 råka bifogas för alla kunder.)
+    const defaultIncludeAllByraBilagor = false;
+
+    // Välj rätt byrå för prislista/bilagor (utgå från avtalet, inte inloggad användare)
+    const avtalByraIdRaw = (f['Byra ID'] ?? f['Byrå ID'] ?? f['ByråID'] ?? f['Byra_ID'] ?? f['ByraID'] ?? '').toString().trim();
+    let targetByraId = avtalByraIdRaw;
+    try {
+      const userData = await getUser(req.user.email);
+      const allowedByraIds = Array.isArray(userData?.byraIds)
+        ? userData.byraIds.map(x => String(x).trim()).filter(Boolean)
+        : [];
+      const isAdmin = userData?.role === 'ClientFlowAdmin';
+      if (!targetByraId) targetByraId = (userData?.byraId || '').toString().trim();
+      if (targetByraId && !isAdmin && allowedByraIds.length && !allowedByraIds.includes(targetByraId)) {
+        // Saknar rätt till efterfrågad byrå → fallback till egen byrå
+        targetByraId = (userData?.byraId || '').toString().trim();
+      }
+    } catch (_) {}
 
     // Hämta byråinfo för den inloggade användaren
     const pdfUser = await getAirtableUser(req.user.email);
@@ -11067,8 +11623,20 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     // Hämta prislista från Byråer (om fälten finns)
     let prislista = { tjanster: {}, fritext: [] };
     try {
-      const byraRes = await getByraerRecordForUser(req);
-      const bf = byraRes?.record?.fields || {};
+      let bf = {};
+      if (targetByraId) {
+        const BYRAER_TABLE = 'Byråer';
+        const num = parseInt(String(targetByraId));
+        const ff = isNaN(num)
+          ? `{Byrå ID}="${targetByraId}"`
+          : `OR({Byrå ID}="${targetByraId}",{Byrå ID}=${targetByraId})`;
+        const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(ff)}&maxRecords=1`;
+        const atRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+        bf = atRes.data.records?.[0]?.fields || {};
+      } else {
+        const byraRes = await getByraerRecordForUser(req);
+        bf = byraRes?.record?.fields || {};
+      }
       const pJson = bf['Tjänstepriser (JSON)'] ?? bf['Tjanstepriser (JSON)'] ?? bf['Prislista (JSON)'] ?? '';
       const fJson = bf['Fritexttjänster (JSON)'] ?? bf['Fritexttjanster (JSON)'] ?? '';
       const safeParseObj = (s) => {
@@ -11108,12 +11676,12 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 
     const prislistaTjansterRows = Object.entries(prislista?.tjanster || {})
       .map(([namn, v]) => {
-        const obj = (v && typeof v === 'object') ? v : { pris: v, enhet: '' };
+        const obj = (v && typeof v === 'object') ? v : { pris: v, enhet: '', visible: true };
         const prisText = fmtPris(obj.pris) || '—';
         const enhet = normalizeEnhet(obj.enhet);
-        return { namn: (namn || '').toString().trim(), prisText, enhet };
+        return { namn: (namn || '').toString().trim(), prisText, enhet, visible: obj.visible !== false };
       })
-      .filter(x => x.namn)
+      .filter(x => x.namn && x.visible)
       .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
 
     const prislistaFritextRows = (prislista?.fritext || [])
@@ -11121,9 +11689,9 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
         const namn = (x?.namn || '').toString().trim();
         const prisText = fmtPris(x?.pris) || '—';
         const enhet = normalizeEnhet(x?.enhet);
-        return { namn, prisText, enhet };
+        return { namn, prisText, enhet, visible: x?.visible !== false };
       })
-      .filter(x => x.namn)
+      .filter(x => x.namn && x.visible)
       .sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
 
     const ACCENT = '#2c4a8f';
@@ -11264,9 +11832,9 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
   <div class="tjanster-grid">
     ${tjanster.length ? tjanster.map(t => `<div class="tjanst-item">&#9746;&nbsp;${t}</div>`).join('') : '<span style="font-size:9pt;color:#999;font-style:italic;">Inga tj\u00e4nster angivna</span>'}
     ${nf['\u00d6vrigt uppdrag'] ? `<div class="tjanst-item" style="min-width:100%;margin-top:2px;">&#9746;&nbsp;\u00d6vrigt: ${nf['\u00d6vrigt uppdrag']}</div>` : ''}
-    <div class="tjanst-item" style="min-width:100%;margin-top:6px;color:#475569;font-style:italic;">
-      Pris per tjänst framgår av prislistan (Bilaga 3). Prislistan gäller vid avtalets ingång och revideras årligen om inte annat avtalas.
-    </div>
+    ${includePrislista ? `<div class="tjanst-item" style="min-width:100%;margin-top:6px;color:#475569;font-style:italic;">
+      Pris per tjänst framgår av bifogad prislista.
+    </div>` : ''}
   </div>
 </div>
 
@@ -11312,12 +11880,14 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     <h4 style="color:#007fa3;">Kvalitetsuppf\u00f6ljning</h4>
     <p>Hos byr\u00e5n anst\u00e4llda Auktoriserade Redovisningskonsulter genomg\u00e5r minst vart sj\u00e4tte \u00e5r kvalitetsuppf\u00f6ljning som genomf\u00f6rs av Srf konsulternas f\u00f6rbund. Kvalitetsuppf\u00f6ljningen \u00e4r en granskning av att den Auktoriserade Redovisningskonsulten f\u00f6ljt Rex - Svensk Standad f\u00f6r redovisningsuppdrag. Kvalitetsuppf\u00f6ljningen innefattas av tystnadplikt och sekretess. Kvalitetsuppf\u00f6ljningen inneb\u00e4r bl.a. att ett antal av byr\u00e5ns uppdrag kommer att granskas. Som underlag f\u00f6r kontrollen anv\u00e4nds ett antal transaktionsfiler fr\u00e5n bokf\u00f6ringssystemet. Filerna makuleras efter avslutad kvalitetsuppf\u00f6ljning. Uppdragsgivaren godk\u00e4nner genom detta avtal s\u00e5dan anv\u00e4ndning av material.</p>
 
-    <h4 style="color:#007fa3;">Allm\u00e4nna villkor</h4>
-    <p>Utöver vad som anges i detta avtal g\u00e4ller \u00e4ven Allm\u00e4nna villkor Srf konsulterna, vilka bifogas som bilaga.</p>
+    <h4 style="color:#007fa3;">Bilagor</h4>
+    <p>Eventuella bilagor till uppdragsavtalet framgår av bilagevalet på kundkortet och bifogas i den genererade PDF:en.</p>
   </div>
 </div>
 
-<!-- ═══════════ SIDA 2: BILAGA 2 ═══════════ -->
+<!-- Bilaga 1/2 borttagen (tidigare fasta bilagor) -->
+<!-- (tidigare avtalsmall innehöll fasta bilagor här) -->
+<!--
 <div class="page-break"></div>
 <div class="section">
   <div class="section-title">Bilaga 1 \u2013 Allm\u00e4nna villkor</div>
@@ -11412,10 +11982,10 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       <h4>17 Till\u00e4mplig lag och tvister</h4>
       <p>Svensk lag ska till\u00e4mpas p\u00e5 Avtalet. Tvister som uppst\u00e5r i anledning av Avtalet ska slutligt avg\u00f6ras genom skiljedomsf\u00f6rfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljedomsf\u00f6rfarandets s\u00e4te ska vara Stockholm och spr\u00e5ket ska vara svenska. Skiljedom omfattas av sekretess. Part har r\u00e4tt att vid svensk domstol anh\u00e4ngig\u00f6ra tvist om tvistem\u00e5lets storlek understiger 100\u00a0000 kr.</p>
     </div></div>
-  ${nf['Kunden godkänner personuppgiftsbiträdesavtal'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att personuppgiftsbir\u00e4desavtalet (Bilaga 2) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
-</div>
-
+-->
+<!-- (slut på borttaget bilageblock) -->
 <!-- ═══════════ SIDA 4: BILAGA 3 ═══════════ -->
+<div style="display:${includePrislista ? 'block' : 'none'};">
 <div class="page-break"></div>
 <div class="section">
   <div class="section-title">Bilaga 3 \u2013 Prislista</div>
@@ -11448,6 +12018,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     ` : `<div class="muted">Inga övriga tjänster är ifyllda.</div>`}
   </div>
 </div>
+</div>
 
 <!-- Underskrifter visas ej i PDF (signeras via BankID) -->
 
@@ -11475,6 +12046,48 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     await browser.close();
     console.log(`\u2705 PDF genererad: ${pdfBuffer.length} bytes`);
 
+    // Slå ihop kundens egna bilagor (PDF) i samma PDF (append som extra sidor)
+    let outPdfBuffer = Buffer.from(pdfBuffer);
+    try {
+      // Hitta "kundbilagor" i avtalsrecordet: attachment-fält vars namn innehåller "bilag"
+      const customerBilagor = [];
+      for (const [fieldName, v] of Object.entries(f || {})) {
+        if (!/bilag/i.test(fieldName || '')) continue;
+        if (!Array.isArray(v)) continue;
+        for (const a of v) {
+          const url = a?.url;
+          const filename = a?.filename || a?.name || '';
+          const isPdf = (a?.type && String(a.type).toLowerCase() === 'application/pdf') || /\.pdf$/i.test(String(filename));
+          if (url && isPdf) customerBilagor.push({ url, filename: String(filename || 'bilaga.pdf') });
+        }
+      }
+
+      if (customerBilagor.length) {
+        const mainDoc = await PDFDocument.load(outPdfBuffer);
+        const merged = await PDFDocument.create();
+        const mainPages = await merged.copyPages(mainDoc, mainDoc.getPageIndices());
+        mainPages.forEach(p => merged.addPage(p));
+
+        for (const b of customerBilagor) {
+          try {
+            const fileRes = await axios.get(b.url, { responseType: 'arraybuffer', timeout: 30000 });
+            const attBuf = Buffer.from(fileRes.data);
+            const attDoc = await PDFDocument.load(attBuf);
+            const attPages = await merged.copyPages(attDoc, attDoc.getPageIndices());
+            attPages.forEach(p => merged.addPage(p));
+          } catch (e) {
+            console.warn('ℹ️ Kunde inte merga kundbilaga i PDF:', b.filename, e.message);
+          }
+        }
+
+        const mergedBytes = await merged.save();
+        outPdfBuffer = Buffer.from(mergedBytes);
+        console.log(`✅ PDF efter kundbilagor: ${outPdfBuffer.length} bytes (kundbilagor: ${customerBilagor.length})`);
+      }
+    } catch (e) {
+      console.warn('ℹ️ Kunde inte merga kundbilagor i PDF:', e.message);
+    }
+
     const safeNamn = (f['Kundnamn'] || 'kund').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
     const datum = (f['Avtalsdatum'] || new Date().toISOString()).split('T')[0];
     const filename = `${safeNamn}-Uppdragsavtal-${datum}.pdf`;
@@ -11482,9 +12095,9 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      'Content-Length': pdfBuffer.length
+      'Content-Length': outPdfBuffer.length
     });
-    res.send(Buffer.from(pdfBuffer));
+    res.send(Buffer.from(outPdfBuffer));
 
   } catch (error) {
     console.error('\u274c Error generating uppdragsavtal PDF:', error.message);
@@ -12187,6 +12800,37 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         base64_content: pdfBase64
       }]
     };
+
+    // 4b. Lägg till kundens egna bilagor (PDF) i DocSign (attachment-fält vars namn innehåller "bilag")
+    try {
+      const customerBilagor = [];
+      for (const [fieldName, v] of Object.entries(avtalFields || {})) {
+        if (!/bilag/i.test(fieldName || '')) continue;
+        if (!Array.isArray(v)) continue;
+        for (const a of v) {
+          const url = a?.url;
+          const filename = a?.filename || a?.name || '';
+          const isPdf = (a?.type && String(a.type).toLowerCase() === 'application/pdf') || /\.pdf$/i.test(String(filename));
+          if (url && isPdf) customerBilagor.push({ url, filename: String(filename || 'bilaga.pdf') });
+        }
+      }
+
+      for (const b of customerBilagor) {
+        try {
+          const fileRes = await axios.get(b.url, { responseType: 'arraybuffer', timeout: 30000 });
+          const buf = Buffer.from(fileRes.data);
+          const attName = safeFilenameFromLabel(b.filename || 'Bilaga', 'bilaga', 'pdf');
+          docPayload.attachments.push({
+            name: attName,
+            base64_content: buf.toString('base64')
+          });
+        } catch (e) {
+          console.warn('ℹ️ Kunde inte hämta kundbilaga för DocSign:', b.filename, e.message);
+        }
+      }
+    } catch (e) {
+      console.warn('ℹ️ Kunde inte lägga till kundbilagor i DocSign:', e.message);
+    }
 
     console.log('📤 Skapar dokument i Inleed för:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Konsult:', konsultPartyId, 'Kunder:', kundPartyIds);
 
