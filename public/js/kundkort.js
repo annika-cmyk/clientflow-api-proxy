@@ -456,7 +456,7 @@ class CustomerCardManager {
         }
     }
 
-    loadUppdrag() {
+    async loadUppdrag() {
         const container = document.getElementById('uppdrag-content');
         if (!container) return;
 
@@ -467,7 +467,7 @@ class CustomerCardManager {
             </div>
         `;
 
-        this.loadUppdragDataAndRender().catch((e) => {
+        return this.loadUppdragDataAndRender().catch((e) => {
             console.error('❌ loadUppdrag:', e);
             container.innerHTML = `
                 <div class="empty-state">
@@ -1113,7 +1113,7 @@ class CustomerCardManager {
                     </div>
                 `;
 
-                const statusHtml = instDeadline
+                const statusHtml = (instDeadline || runStatus)
                     ? (runRec
                         ? `
                             <div class="uppdragboard-statuscell">
@@ -2669,8 +2669,8 @@ class CustomerCardManager {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
             this.showNotification(data.nextDeadline ? `Klart ✅ Nästa deadline: ${data.nextDeadline}` : 'Klart ✅', 'success');
-            // Reload the tab to show updated history/deadline
-            this.loadUppdrag();
+            // Reload uppdrag och vänta in render så listan aldrig blir "tom" i mellanläge
+            await this.loadUppdrag();
         } catch (e) {
             console.error('❌ _completeUppdragFromCard:', e);
             this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');

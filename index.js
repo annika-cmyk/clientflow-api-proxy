@@ -6041,16 +6041,16 @@ async function processUppdragUnderlagSchedule() {
     const res = await axios.get(`${uppdragUrl}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
     return res.data.records || [];
   };
-  const fetchFiltered = async () => {
-    const formula = encodeURIComponent(`AND({Auto underlagsförfrågan}=1,{Status}="Aktiv")`);
+  const fetchActive = async () => {
+    const formula = encodeURIComponent(`{Status}="Aktiv"`);
     const res = await axios.get(`${uppdragUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
     return res.data.records || [];
   };
 
   let uppdragRecords = [];
-  try { uppdragRecords = await fetchFiltered(); } catch (_) { uppdragRecords = await fetchAll(); }
+  try { uppdragRecords = await fetchActive(); } catch (_) { uppdragRecords = await fetchAll(); }
 
-  // Säkerställ att körningar finns 12 månader framåt (baserat på Nästa deadline + frekvens)
+  // Säkerställ att körningar finns 12 månader framåt (per uppdrag och frekvens).
   // Körs innan vi skapar dagens auto-underlag så att vi alltid kan koppla till en körning.
   const ensureRunsAheadForUppdrag = async (uppdragRec) => {
     const r = uppdragRec;
@@ -6065,6 +6065,8 @@ async function processUppdragUnderlagSchedule() {
     if (!deadline0) return;
 
     const horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
+    const horizonYm = horizonEnd.slice(0, 7);
+    const freqLow = freq.toLowerCase();
 
     // Hämta existerande körningar för uppdraget
     const existing = new Set();
@@ -6077,7 +6079,52 @@ async function processUppdragUnderlagSchedule() {
       });
     } catch (_) {}
 
-    // Skapa körningar från deadline0 och framåt
+    const nowIso = new Date().toISOString();
+    const createRun = async ({ periodKey, periodLabel, deadlineIso }) => {
+      const runKey = `${uppdragId}:${periodKey}`;
+      if (existing.has(runKey)) return;
+      try {
+        await axios.post(
+          uppdragRunsUrl,
+          {
+            fields: {
+              'Run Key': runKey,
+              'Uppdrag ID': uppdragId,
+              'Kund ID': String(f['Kund ID'] || '').trim(),
+              'Byrå ID': String(f['Byrå ID'] || '').trim(),
+              'Typ': typ,
+              'Frekvens': freq,
+              'PeriodKey': periodKey,
+              'Period Label': periodLabel,
+              'Deadline': deadlineIso,
+              'Status': 'Planerad',
+              'Skapad': nowIso,
+              'Uppdaterad': nowIso
+            }
+          },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        existing.add(runKey);
+      } catch (_) {}
+    };
+
+    // Månad: skapa 12 körningar från innevarande månad och framåt (oavsett nästa deadline),
+    // så man kan anteckna/ladda upp per månad även innan deadline närmar sig.
+    if (freqLow.includes('månad')) {
+      const day = parseInt(String(deadline0).slice(8, 10), 10);
+      const dayClamped = (Number.isFinite(day) && day >= 1 && day <= 28) ? day : 15;
+      for (let i = 0; i < 12; i++) {
+        const ym = monthAdd(todayYm, i);
+        if (!ym) continue;
+        if (ym > horizonYm) break;
+        const deadlineIso = `${ym}-${String(dayClamped).padStart(2, '0')}`;
+        // eslint-disable-next-line no-await-in-loop
+        await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
+      }
+      return;
+    }
+
+    // Kvartal/År/Engång: behåll tidigare logik (iterera från nästa deadline fram till horisont)
     let cur = deadline0;
     for (let guard = 0; guard < 40; guard++) {
       if (!cur) break;
@@ -6085,43 +6132,17 @@ async function processUppdragUnderlagSchedule() {
 
       let periodKey = cur.slice(0, 7);
       let periodLabel = monthLabelSv(periodKey);
-      const fLow = freq.toLowerCase();
-      if (fLow.includes('kvartal')) {
+      if (freqLow.includes('kvartal')) {
         const q = currentQuarterFromYm(periodKey);
         periodKey = q ? `${q.year}-Q${q.quarter}` : periodKey;
         periodLabel = quarterLabelSv(periodKey) || periodLabel;
-      } else if (fLow.includes('årsvis') || fLow.includes('år')) {
+      } else if (freqLow.includes('årsvis') || freqLow.includes('år')) {
         periodKey = cur.slice(0, 4);
         periodLabel = periodKey;
       }
 
-      const runKey = `${uppdragId}:${periodKey}`;
-      if (!existing.has(runKey)) {
-        try {
-          await axios.post(
-            uppdragRunsUrl,
-            {
-              fields: {
-                'Run Key': runKey,
-                'Uppdrag ID': uppdragId,
-                'Kund ID': String(f['Kund ID'] || '').trim(),
-                'Byrå ID': String(f['Byrå ID'] || '').trim(),
-                'Typ': typ,
-                'Frekvens': freq,
-                'PeriodKey': periodKey,
-                'Period Label': periodLabel,
-                'Deadline': cur,
-                'Status': 'Planerad',
-                'Skapad': new Date().toISOString(),
-                'Uppdaterad': new Date().toISOString()
-              }
-            },
-            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-          );
-          existing.add(runKey);
-        } catch (_) {}
-      }
-
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({ periodKey, periodLabel, deadlineIso: cur });
       cur = calcNextDeadline(cur, freq) || '';
     }
   };
@@ -8402,13 +8423,24 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
           });
     }
 
-    let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-    if (filterFormula) url += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
-    const response = await axios.get(url, {
-      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-      timeout: 15000
-    });
-    records = response.data.records || [];
+    const baseUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    const baseParams = new URLSearchParams();
+    baseParams.append('pageSize', '100');
+    if (filterFormula) baseParams.append('filterByFormula', filterFormula);
+
+    let offset = null;
+    do {
+      const params = new URLSearchParams(baseParams);
+      if (offset) params.append('offset', offset);
+      const response = await axios.get(`${baseUrl}?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      const page = response.data.records || [];
+      records.push(...page);
+      offset = response.data.offset || null;
+    } while (offset);
+
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
     const formattedRecords = records.map(record => ({
@@ -8879,26 +8911,32 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
         });
     }
 
-    let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-    const params = new URLSearchParams();
-    if (filterFormula) params.append('filterByFormula', filterFormula);
-    if (maxRecords) params.append('maxRecords', maxRecords);
-    if (params.toString()) url += `?${params.toString()}`;
+    const baseUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+    const baseParams = new URLSearchParams();
+    baseParams.append('pageSize', '100');
+    if (filterFormula) baseParams.append('filterByFormula', filterFormula);
+    if (maxRecords) baseParams.append('maxRecords', maxRecords);
 
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
-    });
+    let offset = null;
+    do {
+      const params = new URLSearchParams(baseParams);
+      if (offset) params.append('offset', offset);
+      const response = await axios.get(`${baseUrl}?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${airtableAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      });
+      const page = response.data.records || [];
+      records.push(...page.map(record => ({
+        id: record.id,
+        createdTime: record.createdTime,
+        fields: record.fields
+      })));
+      offset = response.data.offset || null;
+    } while (offset);
 
-    const airtableRecords = response.data.records || [];
-    records = airtableRecords.map(record => ({
-      id: record.id,
-      createdTime: record.createdTime,
-      fields: record.fields
-    }));
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
@@ -10447,6 +10485,8 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Frekvens', type: 'singleLineText', description: 'Kopia för enklare filtrering/diagnostik' },
   { name: 'PeriodKey', type: 'singleLineText', description: 'Periodnyckel, t.ex. 2026-04 eller 2026-Q2 eller 2026' },
   { name: 'Period Label', type: 'singleLineText', description: 'Visningsnamn för perioden (sv)' },
+  { name: 'Anteckning', type: 'multilineText', description: 'Anteckning specifikt för denna uppdragskörning' },
+  { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor kopplade till denna uppdragskörning' },
   { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
@@ -11108,6 +11148,45 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
     const freq = f['Frekvens'] || '';
     const currentDeadline = f['Nästa deadline'] || doneIso;
 
+    const toDateStr = (iso) => {
+      const s = String(iso || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    };
+    const monthKey = (iso) => {
+      const s = toDateStr(iso);
+      return s ? s.slice(0, 7) : '';
+    };
+    const quarterKey = (iso) => {
+      const s = toDateStr(iso);
+      if (!s) return '';
+      const y = Number(s.slice(0, 4));
+      const m = Number(s.slice(5, 7));
+      if (!y || !m) return '';
+      const q = Math.ceil(m / 3);
+      return `${y}-Q${q}`;
+    };
+    const yearKey = (iso) => {
+      const s = toDateStr(iso);
+      return s ? s.slice(0, 4) : '';
+    };
+    const getModeForUppdrag = (typStr, freqStr) => {
+      const tt = String(typStr || '').trim();
+      const ff = String(freqStr || '').toLowerCase();
+      if (tt === 'Momsredovisning') {
+        if (ff.includes('kvartal')) return 'quarter';
+        if (ff.includes('år')) return 'year';
+        return 'month';
+      }
+      if (tt === 'Bokslut' || tt === 'Deklaration') return 'year';
+      return 'month';
+    };
+    const mode = getModeForUppdrag(typ, freq);
+    const periodKey = (mode === 'quarter')
+      ? quarterKey(currentDeadline || doneIso)
+      : (mode === 'year')
+        ? yearKey(currentDeadline || doneIso)
+        : monthKey(currentDeadline || doneIso);
+
     let history = [];
     try {
       const raw = (f['Historik'] || '').toString().trim();
@@ -11117,6 +11196,8 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
 
     history.unshift({
       doneAt: doneIso,
+      ...(periodKey ? { periodKey } : {}),
+      status: 'Klar',
       note: (note || '').toString().trim(),
       user: req.user?.email || ''
     });
