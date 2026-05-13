@@ -500,6 +500,7 @@ class CustomerCardManager {
     }
 
     async loadUppdragDataAndRender() {
+        console.log('[UppdragBoard] loadUppdragDataAndRender anropad', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
         const container = document.getElementById('uppdrag-content');
         if (!container) return;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -602,7 +603,9 @@ class CustomerCardManager {
         });
 
         const ALL_TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
-        const byType = (typ) => records.find(r => (r.fields?.['Typ'] || '') === typ) || null;
+        const _recByType = new Map();
+        records.forEach(r => { const t = (r.fields?.['Typ'] || '').toString().trim(); if (t) _recByType.set(t, r); });
+        const byType = (typ) => _recByType.get(typ) || null;
         const riskAtgarder = this._getRiskAtgarderList();
 
         // Används i Samarbete-modalen för att kunna koppla en förfrågan till ett uppdrag
@@ -878,7 +881,10 @@ class CustomerCardManager {
             };
             const rows = existingTypes.map((t) => {
                 const rec = byType(t);
-                if (!rec) return '';
+                if (!rec) {
+                    console.warn('[UppdragBoard] byType returnerade null för typ:', t, '– records:', records.length, records.map(r => r?.fields?.['Typ']));
+                    return '';
+                }
                 const f = rec.fields || {};
                 const instMap = instByTypeMonth.get(t) || new Map();
                 const instDeadline = instMap.get(mk) || '';
@@ -1168,6 +1174,9 @@ class CustomerCardManager {
                 </tr>
                 `;
             }).filter(Boolean).join('');
+            if (!rows && existingTypes.length) {
+                console.error('[UppdragBoard] rows blev tomt trots existingTypes:', existingTypes, '– records:', records.map(r => ({ id: r?.id, typ: r?.fields?.['Typ'] })));
+            }
             tbody.innerHTML = rows || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
         };
 
@@ -1320,7 +1329,7 @@ class CustomerCardManager {
                 if (toggle) {
                     const t = toggle.getAttribute('data-kund-toggle-typ');
                     this._kundUppdragBoardOpenTyp = (this._kundUppdragBoardOpenTyp === t) ? '' : t;
-                    renderBoard();
+                    try { renderBoard(); } catch (err) { console.error('[UppdragBoard] renderBoard kastade fel vid toggle:', err); }
                     const anyOpen = !!(this._kundUppdragBoardOpenTyp || '');
                     const tbody = document.getElementById('kund-uppdragboard-tbody');
                     if (tbody) tbody.classList.toggle('uppdragboard-has-open', anyOpen);
@@ -1388,7 +1397,7 @@ class CustomerCardManager {
                         .then((d) => {
                             if (statusEl) statusEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
                             // Uppdatera lokalt cache
-                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
                             if (rec && rec.fields) rec.fields['Anteckning för denna körning'] = note;
                             setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
 
@@ -1424,7 +1433,7 @@ class CustomerCardManager {
                         .then((d) => {
                             if (statusEl) statusEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
                             // Uppdatera lokalt cache
-                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
                             if (rec && rec.fields) rec.fields['Anteckning för denna körning'] = note;
                             setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
                         })
@@ -1480,8 +1489,12 @@ class CustomerCardManager {
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-                            const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
-                            if (rec && data.record && data.record.fields) rec.fields = data.record.fields;
+                            const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                            if (rec && data.record && data.record.fields) {
+                                const savedTyp = rec.fields?.['Typ'];
+                                rec.fields = data.record.fields;
+                                if (savedTyp && !rec.fields['Typ']) rec.fields['Typ'] = savedTyp;
+                            }
 
                             if (listEl && rec && rec.fields) {
                                 const f = rec.fields || {};
@@ -1538,10 +1551,12 @@ class CustomerCardManager {
                     .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
                     .then((d) => {
                         // uppdatera lokal cache (uppdragspostens historik är källan)
-                        const rec = records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                        const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
                         if (rec) {
+                            const savedTyp = rec.fields?.['Typ'];
                             rec.fields = rec.fields || {};
                             if (d && d.record && d.record.fields) rec.fields = d.record.fields;
+                            if (savedTyp && !rec.fields['Typ']) rec.fields['Typ'] = savedTyp;
                         }
                         // best-effort: uppdatera runRecords om vi har en (enbart för UI consistency)
                         if (runId) {
