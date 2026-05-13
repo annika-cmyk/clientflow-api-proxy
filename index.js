@@ -7130,7 +7130,8 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         defaultFakturaperiod: fields['Default faktureringsperiod'] ?? fields['Default faktureringsperiod'] ?? fields['Default fakturaperiod'] ?? '',
         defaultBetalningsvillkor: fields['Default betalningsvillkor'] ?? fields['Default betalningsvillkor (dagar)'] ?? '',
         tjanstepriserJson: typeof prislistaJson === 'string' ? prislistaJson : JSON.stringify(prislistaJson),
-        fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson)
+        fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson),
+        uppdragsbrevInformationstext: fields['Uppdragsbrev informationstext'] ?? ''
       },
       raw: fields
     });
@@ -7172,6 +7173,7 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = toNumberOrNull(body.defaultBetalningsvillkor);
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
+    if (body.uppdragsbrevInformationstext !== undefined) fields['Uppdragsbrev informationstext'] = body.uppdragsbrevInformationstext;
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
     }
@@ -7195,6 +7197,12 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
       if (String(msg).toLowerCase().includes('unknown field name') && (body.defaultUppsagningstid !== undefined || body.defaultFakturaperiod !== undefined || body.defaultBetalningsvillkor !== undefined)) {
         return res.status(400).json({
           error: 'Avtals-defaults saknas i Airtable-tabellen "Byråer". Skapa fälten "Default uppsägningstid", "Default faktureringsperiod" och "Default betalningsvillkor" (kan även göras via /api/setup/airtable-byra-avtalsdefaults-fields om token har schema-scope).',
+          details: msg
+        });
+      }
+      if (String(msg).toLowerCase().includes('unknown field name') && body.uppdragsbrevInformationstext !== undefined) {
+        return res.status(400).json({
+          error: 'Fältet "Uppdragsbrev informationstext" saknas i Airtable-tabellen "Byråer". Skapa ett fält av typen "Long text" med det namnet.',
           details: msg
         });
       }
@@ -11702,8 +11710,10 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       ? valdaTjansterRaw.split(',').map(t => t.trim()).filter(Boolean)
       : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw : []);
 
-    // Hämta prislista från Byråer (om fälten finns)
+    // Hämta prislista + informationstext + bilagor från Byråer (om fälten finns)
     let prislista = { tjanster: {}, fritext: [] };
+    let byraInformationstext = '';
+    let byraBilagorForPdf = [];
     try {
       let bf = {};
       if (targetByraId) {
@@ -11737,9 +11747,51 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
         tjanster: safeParseObj(pJson),
         fritext: safeParseArr(fJson)
       };
+      byraInformationstext = (bf['Uppdragsbrev informationstext'] || '').toString().trim();
+
+      // Spara byråbilagor (PDF:er som byrån laddat upp) för merge längre ner
+      const bilagorRaw = Array.isArray(bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
+      const bilagorMeta = parseByraBilagorMeta(bf[BYRA_UPPDRAGSBREV_BILAGOR_META_FIELD]);
+      const bilagaLabelById = {};
+      bilagorMeta.forEach(m => { if (m && m.id) bilagaLabelById[m.id] = (m.label || '').toString(); });
+      byraBilagorForPdf = bilagorRaw
+        .filter(b => b?.url)
+        .map(b => ({
+          id: (b?.id || '').toString(),
+          url: b.url,
+          filename: b?.filename || 'bilaga.pdf',
+          label: (b?.id && bilagaLabelById[b.id]) ? bilagaLabelById[b.id] : (b?.filename || 'bilaga.pdf')
+        }));
     } catch (_) {}
 
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    const informationstextToHtml = (rawText) => {
+      if (!rawText) return '';
+      const lines = rawText.split('\n');
+      let html = '';
+      let currentParagraph = [];
+      const flushParagraph = () => {
+        if (currentParagraph.length) {
+          html += `<p>${currentParagraph.join('<br>')}</p>\n`;
+          currentParagraph = [];
+        }
+      };
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^#+\s+/.test(trimmed)) {
+          flushParagraph();
+          const heading = esc(trimmed.replace(/^#+\s+/, ''));
+          html += `<h4 style="color:#007fa3;">${heading}</h4>\n`;
+        } else if (trimmed === '') {
+          flushParagraph();
+        } else {
+          currentParagraph.push(esc(trimmed));
+        }
+      }
+      flushParagraph();
+      return html;
+    };
 
     const fmtPris = (v) => {
       if (v == null || v === '') return '';
@@ -11944,6 +11996,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 <div class="section">
   <div class="section-title">Information</div>
   <div class="villkor-text">
+    ${byraInformationstext ? informationstextToHtml(byraInformationstext) : `
     <h4 style="color:#007fa3;">Utf\u00f6rande</h4>
     <p>Uppdraget kommer att utf\u00f6ras i enlighet med den branschstandard som fastst\u00e4llts under Rex - Svensk standard f\u00f6r redovisningsuppdrag.</p>
     <p>Standarden har framtagits av branschorganisationen Srf konsulternas f\u00f6rbund. Standarden har som m\u00e5ls\u00e4ttning att uppn\u00e5 en h\u00f6g kvalitet p\u00e5 redovisningen och rapporteringen samt att det utf\u00f6rda arbetet utg\u00f6r ett bra beslutsunderlag i uppdragsgivarens verksamhet.</p>
@@ -11956,116 +12009,19 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     <p>Enligt kraven i bokf\u00f6ringslagen har uppdragsgivaren ansvar att bevara komplett r\u00e4kenskapsinformation i 7 \u00e5r efter r\u00e4kenskaps\u00e5rets utg\u00e5ng. Redovisningskonsulten ska upprätta och tillhandah\u00e5lla uppdragsgivaren den r\u00e4kenskapsinformation som f\u00f6ljer av uppdraget.</p>
 
     <h4 style="color:#007fa3;">Rapportmottagare</h4>
-    <p>Den som \u00e4r angiven som kontaktperson hos uppdragsgivaren \u00e4r den som \u00e4r utsedd mottaga den rapportering och \u00f6vrig kommunikation som sker fr\u00e5n byr\u00e5n till uppdragsgivaren. Kontaktpersonen ansvarar f\u00f6r att erh\u00e5llen information vidarebefordras till ber\u00f6rda personer inom sin organisation. Rapportering till annan \u00e4n angiven person kr\u00e4ver s\u00e4rskilt godk\u00e4nnande av uppdragsgivaren.</p>
+    <p>Den som \u00e4r angiven som kontaktperson hos uppdragsgivaren \u00e4r den som \u00e4r utsedd att mottaga den rapportering och \u00f6vrig kommunikation som sker fr\u00e5n byr\u00e5n till uppdragsgivaren. Kontaktpersonen ansvarar f\u00f6r att erh\u00e5llen information vidarebefordras till ber\u00f6rda personer inom sin organisation. Rapportering till annan \u00e4n angiven person kr\u00e4ver s\u00e4rskilt godk\u00e4nnande av uppdragsgivaren.</p>
     <p>Om inget avtalats f\u00e5r uppdragstagaren l\u00e4mna information till bolagets revisor i samband med revision.</p>
 
     <h4 style="color:#007fa3;">Kvalitetsuppf\u00f6ljning</h4>
-    <p>Hos byr\u00e5n anst\u00e4llda Auktoriserade Redovisningskonsulter genomg\u00e5r minst vart sj\u00e4tte \u00e5r kvalitetsuppf\u00f6ljning som genomf\u00f6rs av Srf konsulternas f\u00f6rbund. Kvalitetsuppf\u00f6ljningen \u00e4r en granskning av att den Auktoriserade Redovisningskonsulten f\u00f6ljt Rex - Svensk Standad f\u00f6r redovisningsuppdrag. Kvalitetsuppf\u00f6ljningen innefattas av tystnadplikt och sekretess. Kvalitetsuppf\u00f6ljningen inneb\u00e4r bl.a. att ett antal av byr\u00e5ns uppdrag kommer att granskas. Som underlag f\u00f6r kontrollen anv\u00e4nds ett antal transaktionsfiler fr\u00e5n bokf\u00f6ringssystemet. Filerna makuleras efter avslutad kvalitetsuppf\u00f6ljning. Uppdragsgivaren godk\u00e4nner genom detta avtal s\u00e5dan anv\u00e4ndning av material.</p>
+    <p>Hos byr\u00e5n anst\u00e4llda Auktoriserade Redovisningskonsulter genomg\u00e5r minst vart sj\u00e4tte \u00e5r kvalitetsuppf\u00f6ljning som genomf\u00f6rs av Srf konsulternas f\u00f6rbund. Kvalitetsuppf\u00f6ljningen \u00e4r en granskning av att den Auktoriserade Redovisningskonsulten f\u00f6ljt Rex - Svensk standard f\u00f6r redovisningsuppdrag. Kvalitetsuppf\u00f6ljningen innefattas av tystnadplikt och sekretess. Kvalitetsuppf\u00f6ljningen inneb\u00e4r bl.a. att ett antal av byr\u00e5ns uppdrag kommer att granskas. Som underlag f\u00f6r kontrollen anv\u00e4nds ett antal transaktionsfiler fr\u00e5n bokf\u00f6ringssystemet. Filerna makuleras efter avslutad kvalitetsuppf\u00f6ljning. Uppdragsgivaren godk\u00e4nner genom detta avtal s\u00e5dan anv\u00e4ndning av material.</p>
 
     <h4 style="color:#007fa3;">Bilagor</h4>
-    <p>Eventuella bilagor till uppdragsavtalet framgår av bilagevalet på kundkortet och bifogas i den genererade PDF:en.</p>
+    <p>Eventuella bilagor till uppdragsavtalet framg\u00e5r av bilagevalet p\u00e5 kundkortet och bifogas i den genererade PDF:en.</p>
+    `}
   </div>
 </div>
 
-<!-- Bilaga 1/2 borttagen (tidigare fasta bilagor) -->
-<!-- (tidigare avtalsmall innehöll fasta bilagor här) -->
-<!--
-<div class="page-break"></div>
-<div class="section">
-  <div class="section-title">Bilaga 1 \u2013 Allm\u00e4nna villkor</div>
-  <div class="bilaga-wrap"><div class="villkor-text">
-      <p>Dessa allm\u00e4nna villkor g\u00e4ller f\u00f6r uppdrag avseende redovisnings-, r\u00e5dgivnings- och andra granskningstj\u00e4nster som inte utg\u00f6r lagstadgad revision eller lagstadgade till\u00e4ggsuppdrag (\u201dUppdraget\u201d) som Byr\u00e5n \u00e5tar sig att utf\u00f6ra f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
-      <p>Dessa allm\u00e4nna villkor utg\u00f6r tillsammans med uppdragsavtalet (\u201dUppdragsavtalet\u201d), eller annan skriftlig \u00f6verenskommelse, hela avtalet mellan Byr\u00e5n och Uppdragsgivaren. Vid eventuella motstridigheter ska Uppdragsavtalet ha f\u00f6retr\u00e4de.</p>
-      <h4>Byr\u00e5ns ansvar</h4>
-      <ul>
-        <li>Byr\u00e5n ska utf\u00f6ra Uppdraget med s\u00e5dan skicklighet och omsorg som f\u00f6ljer av till\u00e4mpliga lagar, f\u00f6rordningar och f\u00f6reskrifter samt god yrkessed i branschen.</li>
-        <li>Byr\u00e5n ansvarar inte f\u00f6r slutsatser, rekommendationer och rapporter baserade p\u00e5 felaktig eller bristf\u00e4llig information fr\u00e5n Uppdragsgivaren eller tredje man som Uppdragsgivaren anvisat.</li>
-        <li>Byr\u00e5n f\u00f6rpliktas att ta ansvar f\u00f6r skador som orsakats till f\u00f6ljd av Byr\u00e5ns brott mot \u00f6verenskommet avtal eller om fel i den levererade tj\u00e4nsten har beg\u00e5tts.</li>
-        <li>Byr\u00e5n ska meddela Uppdragsgivaren avseende betydande fel eller uppgifter som uppt\u00e4cks i r\u00e4kenskapsmaterialet.</li>
-        <li>Byr\u00e5n kan inte g\u00f6ras skadest\u00e5ndsskyldig f\u00f6r skador orsakade av att Uppdragsgivaren l\u00e4mnat ofullst\u00e4ndiga eller felaktiga uppgifter eller anvisningar.</li>
-      </ul>
-      <h4>Uppdragsgivarens ansvar</h4>
-      <ul>
-        <li>Uppdragsgivaren ansvarar f\u00f6r att de upplysningar och anvisningar som l\u00e4mnas till Byr\u00e5n \u00e4r korrekta och inte strider mot g\u00e4llande lagar.</li>
-        <li>Uppdragsgivaren f\u00f6rpliktas att f\u00f6retagets skatter och avgifter redovisas och betalas och att aktuella tillst\u00e5nd f\u00f6r verksamheten \u00e4r aktuella.</li>
-        <li>Uppdragsgivaren f\u00f6rpliktas till att r\u00e4kenskapsmaterial samlas in och bevaras.</li>
-        <li>Uppdragsgivaren ska p\u00e5 beg\u00e4ran av Byr\u00e5n utan dr\u00f6jsm\u00e5l tillhandah\u00e5lla s\u00e5dan komplett och korrekt information som beh\u00f6vs f\u00f6r Uppdragets genomf\u00f6rande. Om Uppdragsgivaren dr\u00f6jer med att tillhandah\u00e5lla information kan detta orsaka f\u00f6rseningar och \u00f6kade kostnader. Byr\u00e5n ansvarar inte f\u00f6r s\u00e5dana f\u00f6rseningar och \u00f6kade kostnader.</li>
-      </ul>
-      <h4>Materialleveranser</h4>
-      <p>Material ska levereras till Byr\u00e5n i s\u00e5 god tid att Byr\u00e5n kan utf\u00f6ra sina tj\u00e4nster p\u00e5 normal arbetstid och inom g\u00e4llande tidsfrister. Om parterna inte avtalat annat ska Uppdragsgivaren l\u00e4mna material enligt f\u00f6ljande:</p>
-      <ul>
-        <li>Underlag f\u00f6r den l\u00f6pande bokf\u00f6ringen l\u00e4mnas senast tio dagar efter utg\u00e5ngen av den period redovisningen g\u00e4ller.</li>
-        <li>Underlag f\u00f6r l\u00f6neadministration och l\u00f6neber\u00e4kning l\u00e4mnas minst sju dagar f\u00f6re attest- och l\u00f6neutbetalningsdag.</li>
-        <li>Bokslutsmaterial l\u00e4mnas senast 30 dagar efter r\u00e4kenskapsperiodens slut.</li>
-        <li>Deklarations- och beskattningsmaterial l\u00e4mnas senast 30 dagar efter beskattnings\u00e5rets slut.</li>
-      </ul>
-      <h4>Sekretess och elektronisk kommunikation</h4>
-      <p>Respektive Part f\u00f6rbinder sig att inte l\u00e4mna konfidentiell information om Uppdraget till utomst\u00e5ende, inte heller information om den andra Partens verksamhet, utan den andra Partens skriftliga samtycke \u2013 med undantag f\u00f6r vad som f\u00f6ljer av lag, professionell skyldighet eller myndighetsbeslut. Denna sekretessskyldighet forts\u00e4tter att g\u00e4lla \u00e4ven efter att avtalet har upph\u00f6rt. Parterna accepterar elektronisk kommunikation dem emellan och de risker denna medf\u00f6r.</p>
-      <h4>Upps\u00e4gning</h4>
-      <p>Uppdragsavtalet b\u00f6rjar g\u00e4lla fr\u00e5n den dag som anges i Uppdragsavtalet. En Part f\u00e5r, om inget annat avtalats, genom skriftligt meddelande s\u00e4ga upp Uppdragsavtal som g\u00e4ller tillsvidare med tre (3) m\u00e5naders upps\u00e4gningstid.</p>
-      <h4>Upps\u00e4gning \u2013 arvode</h4>
-      <p>Vid upps\u00e4gning av Uppdragsavtalet ska Uppdragsgivaren betala Byr\u00e5n arvode, utl\u00e4gg och kostnader enligt Uppdragsavtalet fram till upph\u00f6randetidpunkten. Om upps\u00e4gningen inte grundar sig p\u00e5 ett v\u00e4sentligt avtalsbrott fr\u00e5n Byr\u00e5ns sida ska Uppdragsgivaren \u00e4ven ers\u00e4tta Byr\u00e5n f\u00f6r andra rimliga kostnader som uppst\u00e5tt i samband med Uppdraget.</p>
-      <h4>Byr\u00e5ns r\u00e4tt att omedelbart h\u00e4va avtalet</h4>
-      <ul>
-        <li>Uppdragsgivaren \u00e4r mer \u00e4n sju dagar f\u00f6rsenad med sina betalningar.</li>
-        <li>Uppdragsgivaren levererar inte material eller orsakar p\u00e5 annat s\u00e4tt att uppdraget inte kan utf\u00f6ras s\u00e5som avtalats.</li>
-        <li>Uppdragsgivaren bryter mot ing\u00e5nget avtal, lagar eller regler och underl\u00e5ter att korrigera det p\u00e5talade felet inom sju dagar efter meddelande fr\u00e5n Byr\u00e5n.</li>
-        <li>Uppdragsgivaren bem\u00f6ter Byr\u00e5ns personal p\u00e5 ett oetiskt eller kr\u00e4nkande s\u00e4tt.</li>
-        <li>Uppdragsgivaren kan inte betala sina skulder, har konkursf\u00f6rvaltare, f\u00f6retagsrekonstrukt\u00f6r eller likvidator utsedd.</li>
-      </ul>
-      <h4>Uppdragsgivarens r\u00e4tt att omedelbart h\u00e4va avtalet</h4>
-      <p>Om Byr\u00e5n bryter mot avtalet och underl\u00e5ter att vidta \u00e5tg\u00e4rder f\u00f6r att korrigera avtalsbrottet inom rimlig tid har Uppdragsgivaren r\u00e4tt att med omedelbar verkan s\u00e4ga upp avtalet.</p>
-      <h4>Force majeure</h4>
-      <p>Yttre h\u00e4ndelser utanf\u00f6r parternas kontroll (t.ex. myndighets\u00e5tg\u00e4rder, krig, mobilisering, arbetsmarknadskonflikt, naturkatastrof) och som inte endast \u00e4r av tillf\u00e4llig natur och som f\u00f6rhindrar uppdragets genomf\u00f6rande ber\u00e4ttigar vardera parten att helt inst\u00e4lla uppdraget utan r\u00e4tt till skadest\u00e5nd. Avtalspart ska genast meddela den andra parten n\u00e4r force majeure uppkommer och n\u00e4r den upph\u00f6r.</p>
-      <h4>Tvist</h4>
-      <p>Tvist mellan parterna ska i f\u00f6rsta hand l\u00f6sas genom f\u00f6rhandling och i andra hand av allm\u00e4n domstol p\u00e5 den ort d\u00e4r Byr\u00e5n har sitt s\u00e4te.</p>
-      <h4>\u00d6verl\u00e5telse</h4>
-      <p>Parts r\u00e4ttigheter och skyldigheter enligt detta avtal kan \u00f6verl\u00e5tas endast om den andra parten ger sitt samtycke till \u00f6verl\u00e5telsen.</p>
-      <h4>Prioritetsordning</h4>
-      <ol><li>Uppdragsavtal</li><li>Bilagor till uppdragsavtal</li><li>Dessa allm\u00e4nna villkor</li></ol>
-    </div></div>
-  ${nf['Kunden godkänner allmänna villkor'] ? '<div class="confirm-row">&#9746;&nbsp; Kunden bekr\u00e4ftar att allm\u00e4nna villkoren (Bilaga 1) har l\u00e4sts och godk\u00e4nts.</div>' : ''}
-</div>
-
-<!-- ═══════════ SIDA 3: BILAGA 3 ═══════════ -->
-<div class="page-break"></div>
-<div class="section">
-  <div class="section-title">Bilaga 2 \u2013 Personuppgiftsbir\u00e4desavtal</div>
-  <div class="bilaga-wrap"><div class="villkor-text">
-      <h4>1 Bakgrund</h4>
-      <p>Parterna har i samband med detta Avtal ing\u00e5tt Tj\u00e4nsteavtal avseende redovisningstj\u00e4nster (\u201dTj\u00e4nsteavtalet\u201d). Inom \u00e5tagandena som f\u00f6ljer av Tj\u00e4nsteavtalet kan Byr\u00e5n komma att behandla personuppgifter samt annan information f\u00f6r Uppdragsgivarens r\u00e4kning. Med anledning h\u00e4rav ing\u00e5r Parterna detta Avtal f\u00f6r att reglera f\u00f6ruts\u00e4ttningarna f\u00f6r behandling av \u2013 och tillg\u00e5ng till \u2013 Personuppgifter tillh\u00f6riga Uppdragsgivaren. Avtalet g\u00e4ller s\u00e5 l\u00e4nge Byr\u00e5n behandlar Personuppgifter f\u00f6r Uppdragsgivarens r\u00e4kning.</p>
-      <h4>2 Definitioner</h4>
-      <p><strong>\u201dBehandling\u201d</strong> \u2013 en \u00e5tg\u00e4rd eller kombination av \u00e5tg\u00e4rder betr\u00e4ffande Personuppgifter, s\u00e5som insamling, registrering, lagring, bearbetning, utl\u00e4mning eller radering.</p>
-      <p><strong>\u201dDataskyddsf\u00f6rordningen\u201d</strong> \u2013 Europaparlamentets och R\u00e5dets F\u00f6rordning (EU) 2016/679 (GDPR).</p>
-      <p><strong>\u201dPersonuppgifter\u201d</strong> \u2013 varje upplysning som avser en identifierad eller identifierbar fysisk person.</p>
-      <p><strong>\u201dPersonuppgiftsansvarig\u201d</strong> \u2013 den som best\u00e4mmer \u00e4ndam\u00e5len och medlen f\u00f6r Behandlingen av Personuppgifter.</p>
-      <p><strong>\u201dPersonuppgiftsbir\u00e4de\u201d</strong> \u2013 den som Behandlar Personuppgifter f\u00f6r den Personuppgiftsansvariges r\u00e4kning.</p>
-      <p><strong>\u201dPersonuppgiftsincident\u201d</strong> \u2013 en s\u00e4kerhetsincident som leder till oavsiktlig eller olaglig f\u00f6rst\u00f6ring, f\u00f6rlust, \u00e4ndring eller obeh\u00f6rigt r\u00f6jande av Personuppgifter.</p>
-      <h4>4 Allm\u00e4nt om personuppgiftsbehandlingen</h4>
-      <p>Uppdragsgivaren \u00e4r Personuppgiftsansvarig f\u00f6r de Personuppgifter som Behandlas inom ramen f\u00f6r Uppdraget. Byr\u00e5n \u00e4r att betrakta som Personuppgiftsbir\u00e4de \u00e5t Uppdragsgivaren. Byr\u00e5n har gett tillr\u00e4ckliga garantier om att genomf\u00f6ra l\u00e4mpliga tekniska och organisatoriska \u00e5tg\u00e4rder f\u00f6r att Behandlingen uppfyller kraven i Dataskyddsf\u00f6rordningen och att den Registrerades r\u00e4ttigheter skyddas.</p>
-      <h4>6 Personal</h4>
-      <p>Byr\u00e5ns anst\u00e4llda och andra personer som utf\u00f6r arbete under dess \u00f6verinseende och som f\u00e5r del av Personuppgifter tillh\u00f6riga Uppdragsgivaren, f\u00e5r endast Behandla dessa p\u00e5 instruktion fr\u00e5n Uppdragsgivaren. Byr\u00e5n ska tillse att dessa personer \u00e5tagit sig att iaktta konfidentialitet.</p>
-      <h4>7 S\u00e4kerhet</h4>
-      <p>Byr\u00e5n ska vidta alla \u00e5tg\u00e4rder avseende s\u00e4kerhet som kr\u00e4vs enligt artikel 32 i Dataskyddsf\u00f6rordningen. Vid bed\u00f6mningen av l\u00e4mplig s\u00e4kerhetsniv\u00e5 ska s\u00e4rskild h\u00e4nsyn tas till de risker som Behandling medf\u00f6r, i synnerhet fr\u00e5n oavsiktlig eller olaglig f\u00f6rst\u00f6ring, f\u00f6rlust eller obeh\u00f6rigt r\u00f6jande.</p>
-      <h4>8 Personuppgiftsincident</h4>
-      <p>Byr\u00e5n ska, med beaktande av typen av Behandling och den information Byr\u00e5n har att tillg\u00e5, bist\u00e5 Uppdragsgivaren med att tillse att skyldigheterna i samband med eventuell Personuppgiftsincident kan fullg\u00f6ras p\u00e5 s\u00e4tt som f\u00f6ljer av artikel 33\u201334 i Dataskyddsf\u00f6rordningen.</p>
-      <h4>10 Underbir\u00e4de</h4>
-      <p>Genom att teckna avtal med Byr\u00e5n ska Uppdragsgivaren anses ha l\u00e4mnat ett generellt skriftligt godk\u00e4nnande att anlita underbir\u00e4de. Byr\u00e5n ska digitalt informera Uppdragsgivaren om ett nytt underbir\u00e4de ska anlitas och ge Uppdragsgivaren m\u00f6jlighet att g\u00f6ra inv\u00e4ndningar. Byr\u00e5n ska tillse att nytt underbir\u00e4de ing\u00e5r ett skriftligt personuppgiftsbir\u00e4desavtal innan arbetet p\u00e5b\u00f6rjas. Om underbir\u00e4det inte fullg\u00f6r sina skyldigheter ska Byr\u00e5n vara ansvarig gentemot Uppdragsgivaren.</p>
-      <h4>11 \u00d6verf\u00f6ring till tredje land</h4>
-      <p>Byr\u00e5n f\u00e5r f\u00f6rflytta, f\u00f6rvara, \u00f6verf\u00f6ra eller p\u00e5 annat s\u00e4tt Behandla Personuppgifter utanf\u00f6r EU/EES om s\u00e5dan \u00f6verf\u00f6ring uppfyller de krav som f\u00f6ljer av Dataskyddsf\u00f6rordningen.</p>
-      <h4>12 R\u00e4tt till insyn</h4>
-      <p>Byr\u00e5n ska ge Uppdragsgivaren tillg\u00e5ng till all information som kr\u00e4vs f\u00f6r att visa att skyldigheterna enligt artikel 28 i Dataskyddsf\u00f6rordningen har fullgjorts. Byr\u00e5n ska alltid ha r\u00e4tt till sk\u00e4ligt varsel inf\u00f6r en granskning och Uppdragsgivaren ska ers\u00e4tta Byr\u00e5n f\u00f6r kostnader i samband med s\u00e5dan granskning.</p>
-      <h4>13 Register \u00f6ver behandlingen</h4>
-      <p>Byr\u00e5n ska f\u00f6ra ett elektroniskt register \u00f6ver alla kategorier av Behandling som utf\u00f6rts f\u00f6r Uppdragsgivarens r\u00e4kning, inneh\u00e5llande bl.a. \u00e4ndam\u00e5len med Behandlingen, kategorier av Registrerade och Personuppgifter, kategorier av mottagare och tidsfristerna f\u00f6r radering.</p>
-      <h4>14 Ansvar</h4>
-      <p>De ansvarsbegr\u00e4nsningar som framg\u00e5r av Tj\u00e4nsteavtalet g\u00e4ller ocks\u00e5 i detta Avtal. Om dessa ansvarsbegr\u00e4nsningar inte skulle visa sig g\u00e4lla begr\u00e4nsas ansvar till etthundratusen (100\u00a0000) kronor.</p>
-      <h4>15 Avtalets upph\u00f6rande</h4>
-      <p>N\u00e4r Byr\u00e5n upph\u00f6r med Behandling av Personuppgifter f\u00f6r Uppdragsgivarens r\u00e4kning ska Byr\u00e5n \u00e5terl\u00e4mna alla Personuppgifter till Uppdragsgivaren \u2013 eller, om Uppdragsgivaren s\u00e5 skriftligen meddelar, f\u00f6rst\u00f6ra och radera dem. Efter att Avtalet upph\u00f6r \u00e4ger Byr\u00e5n inte r\u00e4tt att spara Personuppgifter tillh\u00f6riga Uppdragsgivaren.</p>
-      <h4>17 Till\u00e4mplig lag och tvister</h4>
-      <p>Svensk lag ska till\u00e4mpas p\u00e5 Avtalet. Tvister som uppst\u00e5r i anledning av Avtalet ska slutligt avg\u00f6ras genom skiljedomsf\u00f6rfarande administrerat av Stockholms Handelskammares Skiljedomsinstitut (SCC). Skiljedomsf\u00f6rfarandets s\u00e4te ska vara Stockholm och spr\u00e5ket ska vara svenska. Skiljedom omfattas av sekretess. Part har r\u00e4tt att vid svensk domstol anh\u00e4ngig\u00f6ra tvist om tvistem\u00e5lets storlek understiger 100\u00a0000 kr.</p>
-    </div></div>
--->
-<!-- (slut på borttaget bilageblock) -->
+<!-- Bilaga 1 (Allmänna villkor) och Bilaga 2 (PUBA) borttagna — hanteras som valbara byråbilagor -->
 <!-- ═══════════ SIDA 4: BILAGA 3 ═══════════ -->
 <div style="display:${includePrislista ? 'block' : 'none'};">
 <div class="page-break"></div>
@@ -12168,6 +12124,44 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
       }
     } catch (e) {
       console.warn('ℹ️ Kunde inte merga kundbilagor i PDF:', e.message);
+    }
+
+    // Merga valda byråbilagor (uppladdade på byråsidan, valda per kund på uppdragsavtalsfliken)
+    try {
+      const bilagorToMerge = (byraBilagorForPdf || []).filter(b => {
+        if (!selectedByraBilagaIds.length && !defaultIncludeAllByraBilagor) return false;
+        if (!selectedByraBilagaIds.length && defaultIncludeAllByraBilagor) return true;
+        return selectedByraBilagaIds.includes(b.id);
+      });
+
+      if (bilagorToMerge.length) {
+        console.log(`📎 Mergar ${bilagorToMerge.length} valda byråbilagor: ${bilagorToMerge.map(b => b.label).join(', ')}`);
+        const mainDoc = await PDFDocument.load(outPdfBuffer);
+        const merged = await PDFDocument.create();
+        const mainPages = await merged.copyPages(mainDoc, mainDoc.getPageIndices());
+        mainPages.forEach(p => merged.addPage(p));
+
+        for (const b of bilagorToMerge) {
+          try {
+            const isPdf = /\.pdf$/i.test(b.filename) || true;
+            if (!isPdf) continue;
+            const fileRes = await axios.get(b.url, { responseType: 'arraybuffer', timeout: 30000 });
+            const attBuf = Buffer.from(fileRes.data);
+            const attDoc = await PDFDocument.load(attBuf, { ignoreEncryption: true });
+            const attPages = await merged.copyPages(attDoc, attDoc.getPageIndices());
+            attPages.forEach(p => merged.addPage(p));
+            console.log(`  ✅ Bifogade byråbilaga: ${b.label} (${attPages.length} sidor)`);
+          } catch (e) {
+            console.warn(`  ⚠️ Kunde inte merga byråbilaga "${b.label}":`, e.message);
+          }
+        }
+
+        const mergedBytes = await merged.save();
+        outPdfBuffer = Buffer.from(mergedBytes);
+        console.log(`✅ PDF efter byråbilagor: ${outPdfBuffer.length} bytes`);
+      }
+    } catch (e) {
+      console.warn('ℹ️ Kunde inte merga byråbilagor i PDF:', e.message);
     }
 
     const safeNamn = (f['Kundnamn'] || 'kund').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');

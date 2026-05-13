@@ -67,6 +67,11 @@ async function main() {
       name: 'Uppdragsbrev bilagor meta (JSON)',
       type: 'multilineText',
       description: 'Metadata för uppdragsbrev-bilagor (JSON med {id,label}).'
+    },
+    {
+      name: 'Uppdragsbrev informationstext',
+      type: 'multilineText',
+      description: 'Byråns egen informationstext som visas under "Information" i uppdragsavtals-PDF:en. Lämna tomt för standardtext.'
     }
   ];
 

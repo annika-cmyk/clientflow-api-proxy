@@ -170,6 +170,8 @@ class ByraAnvandareManager {
       if (defFaktura) defFaktura.value = f.defaultFakturaperiod ?? '';
       const defBet = document.getElementById('byra-default-betalningsvillkor');
       if (defBet) defBet.value = f.defaultBetalningsvillkor ?? '';
+      const infoText = document.getElementById('byra-uppdragsbrev-informationstext');
+      if (infoText) infoText.value = f.uppdragsbrevInformationstext ?? '';
       const loggaUrl = (function () {
         const v = f.logga;
         if (!v) return '';
@@ -509,21 +511,16 @@ class ByraAnvandareManager {
     if (statusEl) statusEl.textContent = 'Sparar...';
     if (btn) btn.disabled = true;
     try {
-      // Skicka endast fält som har ett explicit värde, så vi inte råkar skriva över andra defaults med tom sträng.
       const body = {};
       const upps = (document.getElementById('byra-default-uppsagningstid')?.value ?? '').toString().trim();
       const fakt = (document.getElementById('byra-default-fakturaperiod')?.value ?? '').toString().trim();
       const bet = (document.getElementById('byra-default-betalningsvillkor')?.value ?? '').toString().trim();
+      const infoText = (document.getElementById('byra-uppdragsbrev-informationstext')?.value ?? '');
 
       if (upps !== '') body.defaultUppsagningstid = upps;
       if (fakt !== '') body.defaultFakturaperiod = fakt;
       if (bet !== '') body.defaultBetalningsvillkor = bet;
-
-      if (Object.keys(body).length === 0) {
-        if (statusEl) statusEl.textContent = 'Inget att spara.';
-        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
-        return;
-      }
+      body.uppdragsbrevInformationstext = infoText;
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || res.statusText || `HTTP ${res.status}`);
