@@ -1273,8 +1273,11 @@ class CustomerCardManager {
         };
 
         // Klick: toggle detaljer + redigera från översikten
-        if (!container._kundUppdragBoardBound) {
-            container._kundUppdragBoardBound = true;
+        // Avregistrera gamla lyssnare så att vi aldrig kör en stale renderBoard-closure
+        if (this._kundUppdragBoardAbort) this._kundUppdragBoardAbort.abort();
+        this._kundUppdragBoardAbort = new AbortController();
+        const _boardSignal = this._kundUppdragBoardAbort.signal;
+        {
             container.addEventListener('click', (e) => {
                 // Toggle Samarbete-mini-kort in uppdrag-details
                 const samHead = e.target.closest('.samarbete-item-head--toggle');
@@ -1511,7 +1514,7 @@ class CustomerCardManager {
                 }
                 // Redigera-knapp borttagen från översiktsraderna.
                 // (Redigera sker i kortet "Redigera uppdrag" längre ner om man fäller ut det.)
-            });
+            }, { signal: _boardSignal });
 
             container.addEventListener('change', (e) => {
                 const sel = e.target.closest('[data-kund-action="set-run-status"]');
@@ -1553,7 +1556,7 @@ class CustomerCardManager {
                     .catch(err => {
                         if (msgEl2) msgEl2.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
                     });
-            });
+            }, { signal: _boardSignal });
             container.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 const samHead = e.target.closest('.samarbete-item-head--toggle');
@@ -1564,7 +1567,7 @@ class CustomerCardManager {
                     item.classList.toggle('collapsed');
                     samHead.setAttribute('aria-expanded', item.classList.contains('collapsed') ? 'false' : 'true');
                 }
-            });
+            }, { signal: _boardSignal });
 
             // Hover: visa overlay utan att "pinna"
             container.addEventListener('mouseover', (e) => {
@@ -1573,7 +1576,7 @@ class CustomerCardManager {
                 const overlay = document.getElementById('auto-tooltip-overlay');
                 if (overlay && overlay.getAttribute('data-pinned') === '1') return;
                 showAutoTooltipOverlayFor(autoBadge, { pin: false });
-            });
+            }, { signal: _boardSignal });
             container.addEventListener('mouseout', (e) => {
                 const fromBadge = e.target.closest('[data-kund-action="toggle-auto-tooltip"]');
                 if (!fromBadge || !container.contains(fromBadge)) return;
@@ -1582,7 +1585,7 @@ class CustomerCardManager {
                 const overlay = document.getElementById('auto-tooltip-overlay');
                 if (overlay && (to === overlay || (overlay.contains && overlay.contains(to)))) return;
                 hideAutoTooltipOverlay();
-            });
+            }, { signal: _boardSignal });
 
             // Stäng overlay vid scroll/resize/click utanför (om inte pinnad)
             const onAutoOverlayDoc = (e) => {
@@ -1598,10 +1601,10 @@ class CustomerCardManager {
                 if (e.key === 'Escape') hideAutoTooltipOverlay({ force: true });
             };
             const onAutoOverlayScroll = () => hideAutoTooltipOverlay({ force: true });
-            document.addEventListener('mousedown', onAutoOverlayDoc, true);
-            document.addEventListener('keydown', onAutoOverlayEsc, true);
-            window.addEventListener('scroll', onAutoOverlayScroll, true);
-            window.addEventListener('resize', onAutoOverlayScroll, true);
+            document.addEventListener('mousedown', onAutoOverlayDoc, { capture: true, signal: _boardSignal });
+            document.addEventListener('keydown', onAutoOverlayEsc, { capture: true, signal: _boardSignal });
+            window.addEventListener('scroll', onAutoOverlayScroll, { capture: true, signal: _boardSignal });
+            window.addEventListener('resize', onAutoOverlayScroll, { capture: true, signal: _boardSignal });
         }
 
         renderBoard();
@@ -5734,15 +5737,15 @@ class CustomerCardManager {
             'Uppdragsansvarig':                     val('ua-ansvarig'),
             'Avtalsdatum':                          val('ua-avtalsdatum') || null,
             'Avtalet galler fran':                  val('ua-galler-fran') || null,
-            'Uppsagningstid':                       parseInt(val('ua-uppsagningstid')) || null,
+            'Uppsagningstid':                       (() => { const n = parseInt(val('ua-uppsagningstid'), 10); return isNaN(n) ? null : n; })(),
             'Valda tjanster':                       valdaTjanster.join(', '),
             'Ovrigt uppdrag':                       val('ua-tjanster-ovrigt'),
             'Ersattningsmodell':                    ersattningsmodell,
-            'Arvode':                               parseFloat(val('ua-arvode')) || null,
+            'Arvode':                               (() => { const n = parseFloat(val('ua-arvode')); return isNaN(n) ? null : n; })(),
             'Arvodesperiod':                        val('ua-arvode-period') || 'manad',
             'Arvodekommentar':                      val('ua-arvode-kommentar'),
             'Fakturaperiod':                        val('ua-fakturaperiod'),
-            'Betalningsvillkor':                    parseInt(val('ua-betvillkor')) || null,
+            'Betalningsvillkor':                    (() => { const n = parseInt(val('ua-betvillkor'), 10); return isNaN(n) ? null : n; })(),
             // Bilaga 1/2 (legacy) är borttaget från UI, men fälten kan finnas kvar i gamla avtal.
             'Avtalsstatus':                          val('ua-status'),
             'Signeringsdatum':                      val('ua-signdatum') || null,
