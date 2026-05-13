@@ -11673,30 +11673,31 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '\u2014';
 
     // Normalisera fältnamn: Airtable sparar med ASCII-namn från frontend
+    // → Prioritera ASCII-namn (det vi sparar) framför svenska tecken (äldre fält)
     // Ansvarig hos byrån = den som genererar PDF:en (inloggad användare), inte bara värdet från avtalet
     const nf = {};
     nf['Kundnamn']           = f['Kundnamn'] || f['Namn'] || '\u2014';
     nf['Orgnr']              = f['Orgnr'] || '';
     nf['Uppdragsansvarig']   = (pdfUser?.name && pdfUser.name.trim()) ? pdfUser.name.trim() : (f['Uppdragsansvarig'] || '\u2014');
     nf['Avtalsdatum']        = f['Avtalsdatum'] || null;
-    nf['Avtalet g\u00e4ller ifr\u00e5n'] = f['Avtalet g\u00e4ller ifr\u00e5n'] || f['Avtalet galler fran'] || null;
-    nf['Upps\u00e4gningstid']     = f['Upps\u00e4gningstid'] ?? f['Uppsagningstid'] ?? null;
-    nf['Ersättningsmodell']  = f['Ersättningsmodell'] || f['Ersattningsmodell'] || '';
+    nf['Avtalet g\u00e4ller ifr\u00e5n'] = f['Avtalet galler fran'] || f['Avtalet g\u00e4ller ifr\u00e5n'] || null;
+    nf['Upps\u00e4gningstid']     = f['Uppsagningstid'] ?? f['Upps\u00e4gningstid'] ?? null;
+    nf['Ersättningsmodell']  = f['Ersattningsmodell'] || f['Ersättningsmodell'] || '';
     nf['Arvode']             = f['Arvode'] ?? null;
-    nf['Arvodesperiod']      = f['Arvodesperiod'] || f['Arvodesperiod'] || 'm\u00e5nad';
+    nf['Arvodesperiod']      = f['Arvodesperiod'] || 'm\u00e5nad';
     nf['Arvodekommentar']    = f['Arvodekommentar'] || '';
     nf['Fakturaperiod']      = f['Fakturaperiod'] || '';
     nf['Betalningsvillkor']  = f['Betalningsvillkor'] ?? null;
-    nf['Kunden godkänner allmänna villkor']         = f['Kunden godkänner allmänna villkor'] || f['Kunden godkanner allm villkor'] || false;
-    nf['Kunden godkänner personuppgiftsbiträdesavtal'] = f['Kunden godkänner personuppgiftsbiträdesavtal'] || f['Kunden godkanner puba'] || false;
+    nf['Kunden godkänner allmänna villkor']         = f['Kunden godkanner allm villkor'] || f['Kunden godkänner allmänna villkor'] || false;
+    nf['Kunden godkänner personuppgiftsbiträdesavtal'] = f['Kunden godkanner puba'] || f['Kunden godkänner personuppgiftsbiträdesavtal'] || false;
     nf['Avtalsstatus']       = f['Avtalsstatus'] || f['Status'] || '';
     nf['Signeringsdatum']    = f['Signeringsdatum'] || null;
-    nf['Signerat av kund']   = f['Signerat av kund'] || f['Signerat av kund'] || '';
-    nf['Signerat av byr\u00e5']  = f['Signerat av byr\u00e5'] || f['Signerat av byra'] || '';
-    nf['\u00d6vrigt uppdrag']    = f['\u00d6vrigt uppdrag'] || f['Ovrigt uppdrag'] || '';
+    nf['Signerat av kund']   = f['Signerat av kund'] || '';
+    nf['Signerat av byr\u00e5']  = f['Signerat av byra'] || f['Signerat av byr\u00e5'] || '';
+    nf['\u00d6vrigt uppdrag']    = f['Ovrigt uppdrag'] || f['\u00d6vrigt uppdrag'] || '';
 
     // Valda tjänster sparas som kommaseparerad sträng
-    const valdaTjansterRaw = f['Valda tj\u00e4nster'] || f['Valda tjanster'] || '';
+    const valdaTjansterRaw = f['Valda tjanster'] || f['Valda tj\u00e4nster'] || '';
     const tjanster = typeof valdaTjansterRaw === 'string'
       ? valdaTjansterRaw.split(',').map(t => t.trim()).filter(Boolean)
       : (Array.isArray(valdaTjansterRaw) ? valdaTjansterRaw : []);
