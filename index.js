@@ -11748,6 +11748,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
         fritext: safeParseArr(fJson)
       };
       byraInformationstext = (bf['Uppdragsbrev informationstext'] || '').toString().trim();
+      console.log('📝 PDF informationstext:', byraInformationstext ? `"${byraInformationstext.substring(0, 80)}..."` : '(tom – använder standardtext)');
 
       // Spara byråbilagor (PDF:er som byrån laddat upp) för merge längre ner
       const bilagorRaw = Array.isArray(bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD]) ? bf[BYRA_UPPDRAGSBREV_BILAGOR_FIELD] : [];
@@ -11762,7 +11763,9 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
           filename: b?.filename || 'bilaga.pdf',
           label: (b?.id && bilagaLabelById[b.id]) ? bilagaLabelById[b.id] : (b?.filename || 'bilaga.pdf')
         }));
-    } catch (_) {}
+    } catch (priceBilagaErr) {
+      console.warn('⚠️ Kunde inte hämta prislista/bilagor/informationstext:', priceBilagaErr.message);
+    }
 
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
