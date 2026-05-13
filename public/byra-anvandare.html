@@ -112,8 +112,15 @@
                                     </div>
                                     <div class="form-group" style="grid-column: 1 / -1; margin-top: 0.5rem;">
                                         <label>Informationstext i uppdragsavtalet</label>
-                                        <p class="dashboard-card-desc" style="margin:0 0 0.5rem;">Denna text visas under rubriken "Information" i den genererade PDF:en. Rader som börjar med <code>#</code> blir underrubriker. Lämna tomt för standardtext.</p>
-                                        <textarea id="byra-uppdragsbrev-informationstext" class="form-input" rows="12" style="font-size:0.9rem;line-height:1.5;resize:vertical;" placeholder="# Utförande&#10;Uppdraget kommer att utföras i enlighet med...&#10;&#10;# Ansvar&#10;Uppdragsgivaren har ett självständigt ansvar..."></textarea>
+                                        <p class="dashboard-card-desc" style="margin:0 0 0.5rem;">Denna text visas under rubriken "Information" i den genererade PDF:en. Lämna tomt för standardtext.<br>
+                                            <strong>Formatering:</strong>
+                                            <code>#</code> Rubrik &nbsp;
+                                            <code>**text**</code> Fetstil &nbsp;
+                                            <code>*text*</code> Kursiv &nbsp;
+                                            <code>- text</code> Punktlista &nbsp;
+                                            Tom rad = nytt stycke
+                                        </p>
+                                        <textarea id="byra-uppdragsbrev-informationstext" class="form-input" rows="12" style="font-size:0.9rem;line-height:1.5;resize:vertical;" placeholder="# Utförande&#10;Uppdraget kommer att utföras i enlighet med...&#10;&#10;# Ansvar&#10;Uppdragsgivaren har ett **självständigt** ansvar...&#10;&#10;- Punkt ett&#10;- Punkt två"></textarea>
                                     </div>
                                     <div class="form-actions">
                                         <button type="button" id="byra-uppdragsbrev-spara" class="btn-primary">Spara uppdragsbrev</button>

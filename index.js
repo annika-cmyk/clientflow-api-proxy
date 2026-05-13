@@ -11769,30 +11769,50 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+    const applyInlineFormatting = (text) => {
+      let s = esc(text);
+      s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      return s;
+    };
+
     const informationstextToHtml = (rawText) => {
       if (!rawText) return '';
       const lines = rawText.split('\n');
       let html = '';
       let currentParagraph = [];
+      let inList = false;
       const flushParagraph = () => {
         if (currentParagraph.length) {
           html += `<p>${currentParagraph.join('<br>')}</p>\n`;
           currentParagraph = [];
         }
       };
+      const flushList = () => {
+        if (inList) { html += '</ul>\n'; inList = false; }
+      };
       for (const line of lines) {
         const trimmed = line.trim();
-        if (/^#+\s+/.test(trimmed)) {
+        if (/^#{1,4}\s*/.test(trimmed) && trimmed !== '#') {
           flushParagraph();
-          const heading = esc(trimmed.replace(/^#+\s+/, ''));
-          html += `<h4 style="color:#007fa3;">${heading}</h4>\n`;
+          flushList();
+          const heading = trimmed.replace(/^#{1,4}\s*/, '').replace(/\s*#{1,4}\s*$/, '');
+          html += `<h4 style="color:#007fa3;">${applyInlineFormatting(heading)}</h4>\n`;
+        } else if (/^[-•]\s+/.test(trimmed)) {
+          flushParagraph();
+          if (!inList) { html += '<ul>\n'; inList = true; }
+          const item = trimmed.replace(/^[-•]\s+/, '');
+          html += `  <li>${applyInlineFormatting(item)}</li>\n`;
         } else if (trimmed === '') {
           flushParagraph();
+          flushList();
         } else {
-          currentParagraph.push(esc(trimmed));
+          flushList();
+          currentParagraph.push(applyInlineFormatting(trimmed));
         }
       }
       flushParagraph();
+      flushList();
       return html;
     };
 
