@@ -4662,8 +4662,10 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const category = a._category || (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt');
       const customCategory = a._customCategory || '';
       const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
-      let namn = a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : `Riskbedömning ${i + 1}`));
-      let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : isDok ? (customCategory || categoryLabels[category] || 'Dokument') : 'Dokumenterad riskbedömning');
+      let namn = a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
+      const fnLower = (a.filename || '').toLowerCase();
+      const autoDesc = fnLower.includes('uppdragsavtal') ? 'Uppdragsavtal' : fnLower.includes('kyc') ? 'KYC-formulär' : (a._typ === 'riskbedomning' ? 'Dokumenterad riskbedömning' : '');
+      let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : isDok ? (customCategory || categoryLabels[category] || 'Dokument') : (autoDesc || categoryLabels[category] || ''));
       if (isDok && customCategory) beskrivning = customCategory;
       return {
         id: `${a._typ}-${i}`,
@@ -13550,6 +13552,20 @@ app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req,
         { fields: { Avtalsstatus: 'Signerat', Signeringsdatum: datumStr } },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       ).catch(() => {});
+
+      // Spara kategori-metadata så dokumentet visas under rätt rubrik
+      try {
+        let kategorier = [];
+        const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+        if (raw) kategorier = JSON.parse(raw);
+        if (!Array.isArray(kategorier)) kategorier = [];
+        kategorier.push({ filename: filnamn, category: 'uppdragsavtal' });
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${kundId}`,
+          { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (_) {}
     }
 
     res.json({
