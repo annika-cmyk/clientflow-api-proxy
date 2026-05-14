@@ -13240,15 +13240,17 @@ Skriv på enkel, korrekt svenska. Undvik “intern logik/UI-termer” som kryss/
 Använd inte fraser som “Detta är utan PEP-status” eller “som kryss särskilt högrisk”. Skriv hellre t.ex. “Inga PEP-indikationer har noterats” och “Tjänsterna omfattar … vilket bedöms riskhöjande”.
 
 KUNSKAPSBAS (vector store / file_search — om tillgängligt i denna körning):
-- Om du har tillgång till uppladdade dokument via file_search: använd dem för att hitta saker att beakta enligt PVML och vedertagen praxis (riskfaktorer, kontroller, vägledning). Det är ett komplement till — inte ersättning för — kundens faktiska uppgifter nedan.
+- Om du har tillgång till uppladdade dokument via file_search: använd dem ENBART för generell vägledning om PVML och vedertagen praxis (metodik, kontrollfrekvens, vägledning). Det är ett komplement till — inte ersättning för — kundens faktiska uppgifter nedan.
+- KRITISKT: Kunskapsbasen kan innehålla information om tjänster och risker som gäller byråns GENERELLA riskbedömning (alla tjänster byrån erbjuder). Applicera ALDRIG denna information på den enskilda kunden om tjänsten inte finns i kundens TJÄNSTLISTA nedan. T.ex. om kunskapsbasen nämner ROT/RUT som en generell risk för byrån, men kunden inte har ROT/RUT i sin tjänstlista — nämn det INTE.
 - Koppla resonemanget till kundunderlaget; hitta inte på kundspecifika fakta bara för att något liknar ett dokument.
 - Om sökningen inte ger relevant träff: fortsätt utifrån fälten nedan och dessa regler.
 
 TJÄNSTLISTA — ENDA AUKTORITATIVA KÄLLAN FÖR VILKA TJÄNSTER BYRÅN UTFÖR ÅT DENNA KUND I CLIENTFLOW:
 ${tjansterListaCanonical}
-REGLER FÖR TJÄNSTER (KRITISKT):
-- Du får bara nämna konkreta tjänster som (1) står i listan ovan ordagrant, ELLER (2) uttryckligen framgår i fältet "Byråns beskrivning av kunden" eller "Ytterligare beskrivning av kunden och verksamheten" nedan (om användaren skrivit tjänsterna där).
-- Lista ALDRIG tjänster (t.ex. ROT/RUT, löpande bokföring, bokslut) bara för att de är vanliga i branschen eller sannolika — det är fel om de inte finns i listan eller i nämnda beskrivningar.
+REGLER FÖR TJÄNSTER (KRITISKT — BROTT MOT DESSA REGLER GER FELAKTIG RISKBEDÖMNING):
+- Du får ENBART nämna konkreta tjänster som (1) står i TJÄNSTLISTA ovan ordagrant, ELLER (2) uttryckligen framgår i fältet "Byråns beskrivning av kunden" eller "Ytterligare beskrivning av kunden och verksamheten" nedan.
+- TOTALFÖRBUD: Nämn ALDRIG tjänster som ROT/RUT, bokslut, årsredovisning, deklaration, lönehantering eller andra tjänster om de INTE finns i TJÄNSTLISTA eller i beskrivningarna ovan. Att en tjänst är vanlig i branschen är INTE skäl att nämna den.
+- Analysera ALDRIG risk kopplad till tjänster som kunden inte har. Om kunden t.ex. inte har ROT/RUT i sin tjänstlista, får du under inga omständigheter diskutera ROT/RUT-relaterade risker.
 - Om tjänstlistan säger att inga tjänster är kopplade och beskrivningarna inte nämner tjänster: skriv att uppdragets omfattning inte är tydligt specificerat i underlaget — gissa inte.
 - Fältet "Syfte med affärsförbindelsen" är fritext; det får inte ersätta tjänstlistan om de säger olika — prioritera tjänstlistan + beskrivningarna.
 
@@ -13285,6 +13287,11 @@ ${lankadeRiskerText || '  Inga specifika riskfaktorer registrerade.'}
 
 Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt.
 
+FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
+- Beskriv kundens verksamhet på ett naturligt och sammanhängande sätt. Använd inte enbart branschkoden/SNI-koden ordagrant (t.ex. skriv inte "Kunden verkar inom onkologi" utan "Kunden driver en konsultverksamhet/hyrläkarverksamhet inom onkologi" eller liknande, baserat på vad beskrivningsfälten säger).
+- Läs ALLTID "Byråns beskrivning av kunden" och "Ytterligare beskrivning" noggrant — de ger viktig kontext om vad kunden faktiskt gör (t.ex. hyrläkare, konsult, e-handel, restaurang). Använd den informationen för att ge en verklighetstrogen bild av verksamheten.
+- Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
+
 RISKNIVÅ — ANVÄND "Lag" ENDAST NÄR DET ÄR TYDLIGT MOTIVERAT:
 - Sätt "Lag" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver "Medel" eller "Hog", och tjänster/exponering är okontroversiella utifrån underlaget.
 - Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj "Medel" eller "Hog" — inte "Lag".
@@ -13315,12 +13322,21 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
    SÄRSKILT vid "förstärkt kundkännedom (EDD)": Beskriv vad det innebär i praktiken för detta case, t.ex. bekräfta verklig huvudman, inhämta/bedöm källa till medel, affärsrational, förväntade betalningar (länder/belopp/frekvens), och dokumentera beslut/underlag.
 
-3. RISKBEDÖMNINGSTEXT: 2-4 meningar. Motivera risknivån konkret utifrån kundens faktiska profil. Nämn endast de tjänster byrån utför enligt reglerna under TJÄNSTLISTA ovan.
+3. RISKBEDÖMNINGSTEXT: Skriv en utförlig riskbedömning på 5-10 meningar (MINST 5 meningar, gärna fler). Texten ska vara professionell, konkret och bygga på kundens faktiska underlag. Nämn BARA tjänster som finns i TJÄNSTLISTA — inga andra.
+
+   STRUKTURERA TEXTEN SÅ HÄR (alla relevanta punkter ska beröras):
+   a) VERKSAMHETSBESKRIVNING: Beskriv kort vad kunden gör (baserat på bransch, beskrivningsfält och affärsmodell). Var specifik — inte bara branschkoden.
+   b) RISKSÄNKANDE FAKTORER: Vad talar för lägre risk? T.ex. enkel affärsstruktur, inhemska transaktioner, transparent verksamhet, känd bransch.
+   c) RISKHÖJANDE FAKTORER: Vad talar för högre risk? T.ex. kontantintensiv bransch, internationella transaktioner, PEP, komplex ägarstruktur. Nämn BARA saker som faktiskt framgår av underlaget.
+   d) TJÄNSTER OCH DERAS RISKPROFIL: Beskriv kort riskprofilen kopplad till de tjänster byrån faktiskt utför åt kunden (ENBART från TJÄNSTLISTA).
+   e) SAMMANVÄGD BEDÖMNING: Motivera den valda risknivån genom att väga samman ovanstående.
+
+   VIKTIG REGEL: Om det inte finns riskhöjande faktorer, skriv tydligt att inga riskhöjande faktorer noterats — hitta INTE PÅ risker för att "balansera" texten.
 
 Svara EXAKT i detta JSON-format (inget annat):
 {
   "riskniva": "Lag" eller "Medel" eller "Hog",
-  "riskbedomning": "2-4 meningar som motiverar risknivån konkret.",
+  "riskbedomning": "5-10 meningar som motiverar risknivån konkret enligt strukturen ovan.",
   "atgarder": "Punkter med bindestreck (-) vid Hog eller specifik risk, annars exakt tom sträng."
 }`;
 
@@ -13370,7 +13386,7 @@ Svara EXAKT i detta JSON-format (inget annat):
     const isLowQualityRiskText = (s) => {
       if (!s) return true;
       const t = String(s).trim();
-      if (t.length < 30) return true;
+      if (t.length < 80) return true;
       // Undvik att svaret läcker UI/implementation-termer.
       if (/(kryss|bocka(t|de)?|markerad|checkbox|flik|formulär|klicka|modal|dropdown|fältet\s+")/i.test(t)) return true;
       // Vanliga “knas-artefakter”
