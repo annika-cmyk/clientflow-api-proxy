@@ -1265,6 +1265,45 @@ app.post('/api/setup/airtable-dokumentation-kategorier', authenticateToken, asyn
   }
 });
 
+// POST /api/setup/airtable-kyc-formular-field – Skapa fältet "KYC-formular (JSON)" i KUNDDATA
+app.post('/api/setup/airtable-kyc-formular-field', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+    const FIELD_NAME = 'KYC-formular (JSON)';
+
+    // Kolla om fältet redan finns
+    const metaUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables`;
+    const metaRes = await axios.get(metaUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 10000 });
+    const tables = metaRes.data.tables || [];
+    const kundTable = tables.find(t => t.id === KUNDDATA_TABLE_ID);
+    if (!kundTable) {
+      return res.status(404).json({ success: false, error: `Tabell ${KUNDDATA_TABLE_ID} hittades inte.` });
+    }
+    const hasField = (kundTable.fields || []).some(f => (f.name || '') === FIELD_NAME);
+    if (hasField) {
+      return res.json({ success: true, message: `Fältet "${FIELD_NAME}" finns redan.`, alreadyExists: true });
+    }
+
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${KUNDDATA_TABLE_ID}/fields`;
+    await axios.post(createUrl, { name: FIELD_NAME, type: 'multilineText' }, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    return res.json({ success: true, message: `Fältet "${FIELD_NAME}" har skapats i KUNDDATA-tabellen.`, alreadyExists: false });
+  } catch (err) {
+    const status = err.response?.status;
+    const msg = err.response?.data?.error?.message || err.message;
+    console.error('Setup KYC-formular field:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({ success: false, error: 'Token saknar schema-behörighet. Behöver scope schema.bases:read + schema.bases:write.', details: msg });
+    }
+    return res.status(500).json({ success: false, error: msg || 'Kunde inte skapa fält.' });
+  }
+});
+
 // Bolagsverket test endpoint
 app.get('/api/bolagsverket/test', (req, res) => {
   res.json({
@@ -10295,6 +10334,439 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── KYC-FORMULÄR ────────────────────────────────────────────────────────────
+
+// GET /api/kyc-formular/:customerId – Hämta sparat KYC-formulär
+app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME || 'Kunder')}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const raw = f['KYC-formular (JSON)'] || '';
+    let kyc = {};
+    try { kyc = raw ? JSON.parse(raw) : {}; } catch (_) { kyc = {}; }
+    res.json({ kyc });
+  } catch (error) {
+    console.error('❌ Error fetching KYC-formular:', error.message);
+    res.status(500).json({ error: 'Kunde inte hämta KYC-formulär.' });
+  }
+});
+
+// POST /api/kyc-formular/:customerId – Spara KYC-formulär
+app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    const kycData = {
+      ...req.body,
+      status: req.body.status || 'Sparat',
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user?.email || ''
+    };
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true, message: 'KYC-formulär sparat.' });
+  } catch (error) {
+    console.error('❌ Error saving KYC-formular:', error.message);
+    if (error.response?.status === 422) {
+      console.error('   Airtable 422 – fältet "KYC-formular (JSON)" kanske saknas. Skapa ett "Long text"-fält med det namnet i tabellen Kunder.');
+    }
+    res.status(500).json({ error: 'Kunde inte spara KYC-formulär.' });
+  }
+});
+
+// POST /api/kyc-formular/:customerId/pdf – Generera PDF
+app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const raw = f['KYC-formular (JSON)'] || '';
+    let kyc = {};
+    try { kyc = JSON.parse(raw); } catch (_) { kyc = {}; }
+
+    if (!kyc.foretagsnamn) {
+      return res.status(400).json({ error: 'Inget sparat KYC-formulär hittades. Spara först.' });
+    }
+
+    // Hämta byråinfo (logotyp, byrånamn)
+    const pdfUser = await getAirtableUser(req.user.email);
+    const logoRaw = pdfUser?.logo;
+    const logoUrl = Array.isArray(logoRaw) && logoRaw.length > 0
+      ? logoRaw[0].url
+      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
+
+    const janej = (v) => v === 'Ja' ? '<span style="color:#dc2626;font-weight:600;">Ja</span>' : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : esc(v || '–'));
+
+    let logoHtml = '';
+    if (logoUrl) {
+      try {
+        const logoRes = await axios.get(logoUrl, { responseType: 'arraybuffer', timeout: 10000 });
+        const b64 = Buffer.from(logoRes.data).toString('base64');
+        const mime = logoRes.headers['content-type'] || 'image/png';
+        logoHtml = `<img src="data:${mime};base64,${b64}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="Logo">`;
+      } catch (_) {}
+    }
+
+    const byraNamn = pdfUser?.byra || '';
+    const datum = new Date().toLocaleDateString('sv-SE');
+
+    const html = `<!DOCTYPE html>
+<html lang="sv"><head><meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 25mm 20mm 30mm 20mm; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; line-height: 1.55; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #667eea; padding-bottom: 12px; }
+  .header-left h1 { margin: 0; font-size: 18pt; color: #1a1a2e; }
+  .header-left p { margin: 2px 0; font-size: 9pt; color: #64748b; }
+  .section { margin-top: 18px; }
+  .section h2 { font-size: 12pt; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; }
+  .field { margin-bottom: 6px; }
+  .field-label { font-weight: 600; color: #475569; font-size: 10pt; }
+  .field-value { margin-left: 4px; }
+  .row { display: flex; gap: 30px; margin-bottom: 6px; }
+  .row .col { flex: 1; }
+  .attestation { margin-top: 30px; padding: 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; }
+  .attestation p { font-size: 10pt; line-height: 1.5; margin: 0 0 10px; }
+  .sign-row { display: flex; gap: 40px; margin-top: 30px; }
+  .sign-box { flex: 1; border-top: 1px solid #1a1a2e; padding-top: 6px; font-size: 9pt; color: #64748b; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #94a3b8; padding: 8px 20mm; border-top: 1px solid #e2e8f0; }
+</style></head><body>
+  <div class="header">
+    <div class="header-left">
+      <h1>KYC \u2014 Kundkännedomsformulär</h1>
+      <p>${esc(byraNamn)} | ${datum}</p>
+    </div>
+    <div class="header-right">${logoHtml}</div>
+  </div>
+
+  <div class="section">
+    <h2>1. Grunduppgifter om företaget</h2>
+    <div class="row">
+      <div class="col"><span class="field-label">Företagets namn:</span> <span class="field-value">${esc(kyc.foretagsnamn)}</span></div>
+      <div class="col"><span class="field-label">Organisationsnummer:</span> <span class="field-value">${esc(kyc.orgnr)}</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>2. Företrädare</h2>
+    <div class="row">
+      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(kyc.foretradareNamn)}</span></div>
+      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(kyc.foretradarePnr)}</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>3. Verklig huvudman</h2>
+    <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br><span class="field-value">${nl2br(kyc.huvudmanInfo || '\u2014')}</span></div>
+    ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
+  </div>
+
+  <div class="section">
+    <h2>4. Politiskt exponerad person (PEP)</h2>
+    <div class="field"><span class="field-label">PEP-status:</span> ${janej(kyc.pep)}</div>
+    ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepDetaljer)}</span></div>` : ''}
+    <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${janej(kyc.pepFamilj)}</div>
+    ${kyc.pepFamilj === 'Ja' && kyc.pepFamiljDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> <span class="field-value">${esc(kyc.pepFamiljDetaljer)}</span></div>` : ''}
+  </div>
+
+  <div class="section">
+    <h2>5. Affärsförbindelsens syfte och art</h2>
+    <div class="field"><span class="field-label">Huvudsaklig verksamhet:</span><br><span class="field-value">${nl2br(kyc.verksamhet || '\u2014')}</span></div>
+    <div class="field"><span class="field-label">Byråns tjänster:</span> <span class="field-value">${esc(kyc.tjanster || '\u2014')}</span></div>
+    <div class="field"><span class="field-label">Pengarnas ursprung:</span> <span class="field-value">${esc(kyc.kapitalUrsprung || '\u2014')}</span></div>
+    <div class="row">
+      <div class="col"><span class="field-label">Antal anställda:</span> <span class="field-value">${esc(kyc.anstallda || '\u2014')}</span></div>
+      <div class="col"><span class="field-label">Uppskattad årsomsättning:</span> <span class="field-value">${esc(kyc.omsattning || '\u2014')}</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>6. Internationell handel</h2>
+    <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${janej(kyc.internationellHandel)}</div>
+    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> <span class="field-value">${esc(kyc.internationellaLander)}</span></div>` : ''}
+  </div>
+
+  <div class="section">
+    <h2>7. Kontanthantering</h2>
+    <div class="field"><span class="field-label">Kontanthantering:</span> ${janej(kyc.kontanter)}</div>
+    ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> <span class="field-value">${esc(kyc.kontanterAndel)}</span></div>` : ''}
+  </div>
+
+  <div class="attestation">
+    <h2 style="border:none;padding:0;margin:0 0 8px;">Kundens intygande</h2>
+    <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
+    <div class="sign-row">
+      <div class="sign-box">Datum</div>
+      <div class="sign-box">Underskrift</div>
+      <div class="sign-box">Namnförtydligande</div>
+    </div>
+  </div>
+
+  <div class="footer">${esc(byraNamn)} | KYC-formulär genererat ${datum}</div>
+</body></html>`;
+
+    // Generera PDF med Puppeteer
+    const pup = loadPuppeteer();
+    if (!pup) {
+      return res.status(500).json({ error: 'Puppeteer ej tillgängligt – kan inte generera PDF.' });
+    }
+    const launchOpts = chromium
+      ? { args: chromium.args, defaultViewport: chromium.defaultViewport, executablePath: await chromium.executablePath(), headless: chromium.headless }
+      : { headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+    const browser = await pup.launch(launchOpts);
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', bottom: '20mm', left: '15mm', right: '15mm' } });
+    await browser.close();
+
+    const safeNamn = (kyc.foretagsnamn || 'Kund').replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
+    const filename = `${safeNamn}-KYC-formular-${datum}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(Buffer.from(pdfBuffer));
+
+  } catch (error) {
+    console.error('❌ Error generating KYC-formular PDF:', error.message);
+    res.status(500).json({ error: 'Kunde inte generera KYC PDF.' });
+  }
+});
+
+// POST /api/kyc-formular/:customerId/skicka-for-signering – Inleed BankID-signering
+app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    let { signerare } = req.body;
+    const signerareList = Array.isArray(signerare) ? signerare : (signerare?.namn && signerare?.epost ? [signerare] : []);
+
+    if (signerareList.length === 0 || signerareList.some(s => !s.namn || !s.epost)) {
+      return res.status(400).json({ error: 'Välj minst en signerare med namn och e-post.' });
+    }
+
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    if (!docsignApiKey) {
+      return res.status(500).json({ error: 'DOCSIGN_API_KEY saknas.' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    // Hämta kunddata och KYC
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const custFields = custRes.data.fields || {};
+    const kundnamn = custFields['Namn'] || 'Kund';
+
+    // Generera PDF internt
+    const pdfRes = await axios.post(
+      `http://localhost:${process.env.PORT || 3001}/api/kyc-formular/${customerId}/pdf`,
+      {},
+      { responseType: 'arraybuffer', headers: { Authorization: req.headers.authorization } }
+    );
+    const pdfBuffer = Buffer.from(pdfRes.data);
+
+    // Inleed: konsult
+    let inloggedUser = await getAirtableUser(req.user.email);
+    if (!inloggedUser?.email && req.user?.email) {
+      inloggedUser = { id: req.user.id, email: req.user.email, name: req.user.name || req.user.email.split('@')[0], byra: req.user.byra || 'Byrån' };
+    }
+
+    const konsultPayload = {
+      api_key: docsignApiKey,
+      name: inloggedUser.name || req.user.email.split('@')[0],
+      email: inloggedUser.email,
+      company: inloggedUser.byra || 'Byrån',
+      sign_method: 'bankid',
+      external_id: `kyc-konsult-${inloggedUser.id}-${Date.now()}`,
+      debug: false
+    };
+    const konsultPartyRes = await axios.post('https://docsign.se/api/parties', konsultPayload, { headers: { 'Content-Type': 'application/json' } });
+    if (!konsultPartyRes.data?.success) {
+      return res.status(500).json({ error: 'Kunde inte skapa konsult som undertecknare.' });
+    }
+    const konsultPartyId = konsultPartyRes.data.party_id;
+
+    const kundPartyIds = [];
+    for (const s of signerareList) {
+      const p = {
+        api_key: docsignApiKey,
+        name: s.namn,
+        email: s.epost,
+        company: kundnamn,
+        sign_method: 'bankid',
+        external_id: `kyc-kund-${(s.personnr || 'x')}-${Date.now()}`,
+        debug: false
+      };
+      if (s.telefon) p.phone_number = s.telefon;
+      const r = await axios.post('https://docsign.se/api/parties', p, { headers: { 'Content-Type': 'application/json' } });
+      if (!r.data?.success) {
+        return res.status(500).json({ error: `Kunde inte skapa ${s.namn} som undertecknare.` });
+      }
+      kundPartyIds.push(r.data.party_id);
+    }
+
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const docPayload = {
+      api_key: docsignApiKey,
+      name: `KYC-formulär - ${kundnamn}`,
+      parties: [konsultPartyId, ...kundPartyIds],
+      send_reminders: true,
+      send_receipt: true,
+      attachments: [{ name: 'kyc-formular.pdf', base64_content: pdfBase64 }]
+    };
+    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, { headers: { 'Content-Type': 'application/json' } });
+    if (!docRes.data?.success) {
+      return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.' });
+    }
+
+    const documentId = docRes.data.document_id;
+    const utskickningsdatum = new Date().toISOString().split('T')[0];
+
+    // Uppdatera KYC-formulär med Inleed-status
+    const rawKyc = custFields['KYC-formular (JSON)'] || '{}';
+    let kycData = {};
+    try { kycData = JSON.parse(rawKyc); } catch (_) {}
+    kycData.status = 'Skickat till kund';
+    kycData.inleedDokumentId = String(documentId);
+    kycData.utskickningsdatum = utskickningsdatum;
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({
+      success: true,
+      document_id: documentId,
+      message: `KYC-formuläret har skickats till ${signerareList.length} signerare för BankID-signering.`
+    });
+
+  } catch (error) {
+    console.error('❌ Fel vid KYC skicka-för-signering:', error.message);
+    res.status(500).json({ error: 'Kunde inte skicka KYC-formuläret för signering.' });
+  }
+});
+
+// POST /api/kyc-formular/:customerId/hamta-signerat – Hämta signerat KYC-dokument från Inleed
+app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const custFields = custRes.data.fields || {};
+    const kundnamn = custFields['Namn'] || 'Kund';
+
+    const rawKyc = custFields['KYC-formular (JSON)'] || '{}';
+    let kycData = {};
+    try { kycData = JSON.parse(rawKyc); } catch (_) {}
+    const inleedId = kycData.inleedDokumentId;
+    if (!inleedId) {
+      return res.status(400).json({ error: 'Inget InleedDokumentId hittat.' });
+    }
+
+    // Hämta dokument från Inleed
+    const docsRes = await axios.get(`https://docsign.se/api/documents?api_key=${docsignApiKey}`);
+    const docs = docsRes.data?.documents || docsRes.data || [];
+    const doc = docs.find(d => String(d.id) === String(inleedId));
+    if (!doc) {
+      return res.status(404).json({ error: 'Dokumentet hittades inte i Inleed.' });
+    }
+
+    if (doc.status !== 'completed' && doc.status !== 'signed') {
+      return res.status(400).json({ error: `Dokumentet är inte signerat ännu (status: ${doc.status}).` });
+    }
+
+    // Hämta signerad PDF
+    const pdfUrl = doc.signed_document_url || doc.download_url;
+    if (!pdfUrl) {
+      return res.status(400).json({ error: 'Ingen signerad PDF-URL hittad.' });
+    }
+    const pdfDownload = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+    const signedPdfBuffer = Buffer.from(pdfDownload.data);
+
+    // Spara till Dokumentation (samma mönster som uppdragsavtalet)
+    const datum = new Date().toISOString().split('T')[0];
+    const safeNamn = (kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
+    const docFilename = `${safeNamn}-KYC-signerat-${datum}.pdf`;
+
+    // Spara som attachment i Airtable Dokumentation-tabell
+    const DOCS_TABLE = 'Dokument';
+    const docsPayload = {
+      records: [{
+        fields: {
+          'Kund': [customerId],
+          'Dokumentnamn': docFilename,
+          'Kategori': 'ovrigt',
+          'Filtyp': 'application/pdf',
+          'Uppladdad av': req.user?.email || '',
+          'Datum': datum
+        }
+      }]
+    };
+
+    try {
+      await axios.post(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(DOCS_TABLE)}`,
+        docsPayload,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (e) {
+      console.warn('⚠️ Kunde inte spara till Dokument-tabellen:', e.message);
+    }
+
+    // Uppdatera KYC-status till Signerat
+    kycData.status = 'Signerat';
+    kycData.signeringsdatum = datum;
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ success: true, savedToDocs: true, message: 'Signerat KYC-dokument hämtat och sparat.' });
+
+  } catch (error) {
+    console.error('❌ Fel vid hämtning av signerat KYC:', error.message);
+    res.status(500).json({ error: 'Kunde inte hämta signerat KYC-dokument.' });
+  }
+});
+
 // ─── UPPDRAGSAVTAL ───────────────────────────────────────────────────────────
 const UPPDRAGSAVTAL_TABLE = 'tblpKIMpde6sFFqDH'; // Uppdragsavtal tabell-ID
 const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'; // Global för alla uppdragsavtal-endpoints
@@ -12828,15 +13300,25 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
 
     // 2. Generera PDF via intern anrop
-    const pdfRes = await axios.post(
-      `http://localhost:${process.env.PORT || 3001}/api/uppdragsavtal/${id}/pdf`,
-      {},
-      {
-        responseType: 'arraybuffer',
-        headers: { Authorization: req.headers.authorization }
-      }
-    );
-    const pdfBuffer = Buffer.from(pdfRes.data);
+    console.log('📄 Genererar PDF för signering, avtal:', id);
+    let pdfBuffer;
+    try {
+      const pdfRes = await axios.post(
+        `http://localhost:${process.env.PORT || 3001}/api/uppdragsavtal/${id}/pdf`,
+        {},
+        {
+          responseType: 'arraybuffer',
+          headers: { Authorization: req.headers.authorization },
+          timeout: 60000
+        }
+      );
+      pdfBuffer = Buffer.from(pdfRes.data);
+      console.log('✅ PDF genererad för signering:', pdfBuffer.length, 'bytes');
+    } catch (pdfErr) {
+      const errBody = pdfErr.response?.data ? Buffer.from(pdfErr.response.data).toString('utf8').substring(0, 500) : '';
+      console.error('❌ PDF-generering misslyckades:', pdfErr.message, '| Status:', pdfErr.response?.status, '| Body:', errBody);
+      return res.status(500).json({ error: 'Kunde inte generera PDF för signering.', details: errBody || pdfErr.message });
+    }
 
     // 3. Skapa undertecknare i Inleed: först konsult (byrå), sedan kund
     const konsultPayload = {
