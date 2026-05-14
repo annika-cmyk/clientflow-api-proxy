@@ -10591,27 +10591,7 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     );
     const pdfBuffer = Buffer.from(pdfRes.data);
 
-    // Inleed: konsult
-    let inloggedUser = await getAirtableUser(req.user.email);
-    if (!inloggedUser?.email && req.user?.email) {
-      inloggedUser = { id: req.user.id, email: req.user.email, name: req.user.name || req.user.email.split('@')[0], byra: req.user.byra || 'Byrån' };
-    }
-
-    const konsultPayload = {
-      api_key: docsignApiKey,
-      name: inloggedUser.name || req.user.email.split('@')[0],
-      email: inloggedUser.email,
-      company: inloggedUser.byra || 'Byrån',
-      sign_method: 'bankid',
-      external_id: `kyc-konsult-${inloggedUser.id}-${Date.now()}`,
-      debug: false
-    };
-    const konsultPartyRes = await axios.post('https://docsign.se/api/parties', konsultPayload, { headers: { 'Content-Type': 'application/json' } });
-    if (!konsultPartyRes.data?.success) {
-      return res.status(500).json({ error: 'Kunde inte skapa konsult som undertecknare.' });
-    }
-    const konsultPartyId = konsultPartyRes.data.party_id;
-
+    // Inleed: bara kunden signerar (KYC är kundens intygande, inte byråns)
     const kundPartyIds = [];
     for (const s of signerareList) {
       const p = {
@@ -10635,7 +10615,7 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     const docPayload = {
       api_key: docsignApiKey,
       name: `KYC-formulär - ${kundnamn}`,
-      parties: [konsultPartyId, ...kundPartyIds],
+      parties: kundPartyIds,
       send_reminders: true,
       send_receipt: true,
       attachments: [{ name: 'kyc-formular.pdf', base64_content: pdfBase64 }]
