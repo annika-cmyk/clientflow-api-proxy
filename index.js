@@ -10520,11 +10520,6 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
   <div class="attestation">
     <h2 style="border:none;padding:0;margin:0 0 8px;">Kundens intygande</h2>
     <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
-    <div class="sign-row">
-      <div class="sign-box">Datum</div>
-      <div class="sign-box">Underskrift</div>
-      <div class="sign-box">Namnförtydligande</div>
-    </div>
   </div>
 
   <div class="footer">${esc(byraNamn)} | KYC-formulär genererat ${datum}</div>
