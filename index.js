@@ -10581,10 +10581,13 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     const kundnamn = custFields['Namn'] || 'Kund';
 
     // Generera PDF internt
+    const kycInternalHeaders = {};
+    if (req.headers.authorization) kycInternalHeaders['Authorization'] = req.headers.authorization;
+    if (req.cookies?.authToken) kycInternalHeaders['Cookie'] = `authToken=${req.cookies.authToken}`;
     const pdfRes = await axios.post(
       `http://localhost:${process.env.PORT || 3001}/api/kyc-formular/${customerId}/pdf`,
       {},
-      { responseType: 'arraybuffer', headers: { Authorization: req.headers.authorization } }
+      { responseType: 'arraybuffer', headers: kycInternalHeaders, timeout: 60000 }
     );
     const pdfBuffer = Buffer.from(pdfRes.data);
 
@@ -13298,12 +13301,19 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     console.log('📄 Genererar PDF för signering, avtal:', id);
     let pdfBuffer;
     try {
+      const internalHeaders = {};
+      if (req.headers.authorization) {
+        internalHeaders['Authorization'] = req.headers.authorization;
+      }
+      if (req.cookies?.authToken) {
+        internalHeaders['Cookie'] = `authToken=${req.cookies.authToken}`;
+      }
       const pdfRes = await axios.post(
         `http://localhost:${process.env.PORT || 3001}/api/uppdragsavtal/${id}/pdf`,
         {},
         {
           responseType: 'arraybuffer',
-          headers: { Authorization: req.headers.authorization },
+          headers: internalHeaders,
           timeout: 60000
         }
       );
