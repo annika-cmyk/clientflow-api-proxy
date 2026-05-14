@@ -10435,18 +10435,18 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
     const byraNamn = pdfUser?.byra || '';
     const datum = new Date().toLocaleDateString('sv-SE');
 
-    const ACCENT = '#667eea';
+    const ACCENT_KYC = '#3b4c8a';
     const html = `<!DOCTYPE html>
 <html lang="sv"><head><meta charset="UTF-8">
 <style>
   @page { margin: 18mm 20mm 22mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, 'Helvetica Neue', sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT}; padding-bottom: 10px; }
-  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; letter-spacing: 0.03em; color: ${ACCENT}; line-height: 1; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT_KYC}; padding-bottom: 10px; }
+  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; letter-spacing: 0.03em; color: #1a1a2e; line-height: 1; }
   .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
   .section { margin-top: 14px; }
-  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT}; border-bottom: 1.5px solid ${ACCENT}; padding-bottom: 3px; margin-bottom: 7px; }
+  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT_KYC}; border-bottom: 1.5px solid ${ACCENT_KYC}; padding-bottom: 3px; margin-bottom: 7px; }
   .field { margin-bottom: 4px; }
   .field-label { font-weight: 700; color: #1a1a2e; font-size: 8pt; }
   .field-value { margin-left: 4px; font-size: 8pt; }
