@@ -10435,26 +10435,27 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
     const byraNamn = pdfUser?.byra || '';
     const datum = new Date().toLocaleDateString('sv-SE');
 
+    const ACCENT = '#667eea';
     const html = `<!DOCTYPE html>
 <html lang="sv"><head><meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 25mm 20mm 30mm 20mm; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; line-height: 1.55; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #667eea; padding-bottom: 12px; }
-  .header-left h1 { margin: 0; font-size: 18pt; color: #1a1a2e; }
-  .header-left p { margin: 2px 0; font-size: 9pt; color: #64748b; }
-  .section { margin-top: 18px; }
-  .section h2 { font-size: 12pt; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px; }
-  .field { margin-bottom: 6px; }
-  .field-label { font-weight: 600; color: #475569; font-size: 10pt; }
-  .field-value { margin-left: 4px; }
-  .row { display: flex; gap: 30px; margin-bottom: 6px; }
+  @page { margin: 18mm 20mm 22mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, 'Helvetica Neue', sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT}; padding-bottom: 10px; }
+  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; letter-spacing: 0.03em; color: ${ACCENT}; line-height: 1; }
+  .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
+  .section { margin-top: 14px; }
+  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT}; border-bottom: 1.5px solid ${ACCENT}; padding-bottom: 3px; margin-bottom: 7px; }
+  .field { margin-bottom: 4px; }
+  .field-label { font-weight: 700; color: #1a1a2e; font-size: 8pt; }
+  .field-value { margin-left: 4px; font-size: 8pt; }
+  .row { display: flex; gap: 24px; margin-bottom: 4px; }
   .row .col { flex: 1; }
-  .attestation { margin-top: 30px; padding: 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; }
-  .attestation p { font-size: 10pt; line-height: 1.5; margin: 0 0 10px; }
-  .sign-row { display: flex; gap: 40px; margin-top: 30px; }
-  .sign-box { flex: 1; border-top: 1px solid #1a1a2e; padding-top: 6px; font-size: 9pt; color: #64748b; }
-  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #94a3b8; padding: 8px 20mm; border-top: 1px solid #e2e8f0; }
+  .attestation { margin-top: 20px; padding: 12px 14px; border: 1.5px solid #dce3f0; border-radius: 6px; background: #f4f6fb; }
+  .attestation h2 { font-size: 8pt; border: none; padding: 0; margin: 0 0 6px; }
+  .attestation p { font-size: 8pt; line-height: 1.55; margin: 0; color: #334155; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 6.5pt; color: #94a3b8; padding: 6px 20mm; border-top: 1px solid #e2e8f0; }
 </style></head><body>
   <div class="header">
     <div class="header-left">
@@ -10518,7 +10519,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
   </div>
 
   <div class="attestation">
-    <h2 style="border:none;padding:0;margin:0 0 8px;">Kundens intygande</h2>
+    <h2>Kundens intygande</h2>
     <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
   </div>
 
