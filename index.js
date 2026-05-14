@@ -11797,7 +11797,7 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
           flushParagraph();
           flushList();
           const heading = trimmed.replace(/^#{1,4}\s*/, '').replace(/\s*#{1,4}\s*$/, '');
-          html += `<h4 style="color:#007fa3;">${applyInlineFormatting(heading)}</h4>\n`;
+          html += `<h4 style="color:#1a1a2e;">${applyInlineFormatting(heading)}</h4>\n`;
         } else if (/^[-•]\s+/.test(trimmed)) {
           flushParagraph();
           if (!inList) { html += '<ul>\n'; inList = true; }
@@ -11873,19 +11873,16 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
                       font-size: 7pt; color: #bbb; text-align: center; line-height: 1.3; }
 
   /* ── Parter ── */
-  .parter { display: flex; gap: 16px; margin-bottom: 18px; }
-  .part { flex: 1; background: #f4f6fb; border: 1px solid #dce3f0;
-          border-left: 4px solid ${ACCENT}; border-radius: 5px; padding: 10px 14px; }
+  .parter { display: flex; gap: 32px; margin-bottom: 20px; }
+  .part { flex: 1; padding: 0; }
   .part-label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.08em;
                 color: ${ACCENT}; margin-bottom: 4px; font-weight: 700; }
   .part-name { font-size: 11pt; font-weight: 700; color: #1a1a2e; }
   .part-sub { font-size: 8.5pt; color: #666; margin-top: 2px; }
 
   /* ── Meta-rad ── */
-  .meta-grid { display: flex; gap: 0; margin-bottom: 18px;
-               border: 1px solid #dce3f0; border-radius: 5px; overflow: hidden; }
-  .meta-item { flex: 1; padding: 8px 14px; border-right: 1px solid #dce3f0; background: #fafbfe; }
-  .meta-item:last-child { border-right: none; }
+  .meta-grid { display: flex; gap: 24px; margin-bottom: 20px; }
+  .meta-item { flex: 1; padding: 0; }
   .meta-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.08em;
                 color: #888; font-weight: 700; margin-bottom: 3px; }
   .meta-value { font-size: 9.5pt; font-weight: 700; color: #1a1a2e; }
@@ -12020,25 +12017,25 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
   <div class="section-title">Information</div>
   <div class="villkor-text">
     ${byraInformationstext ? informationstextToHtml(byraInformationstext) : `
-    <h4 style="color:#007fa3;">Utf\u00f6rande</h4>
+    <h4 style="color:#1a1a2e;">Utf\u00f6rande</h4>
     <p>Uppdraget kommer att utf\u00f6ras i enlighet med den branschstandard som fastst\u00e4llts under Rex - Svensk standard f\u00f6r redovisningsuppdrag.</p>
     <p>Standarden har framtagits av branschorganisationen Srf konsulternas f\u00f6rbund. Standarden har som m\u00e5ls\u00e4ttning att uppn\u00e5 en h\u00f6g kvalitet p\u00e5 redovisningen och rapporteringen samt att det utf\u00f6rda arbetet utg\u00f6r ett bra beslutsunderlag i uppdragsgivarens verksamhet.</p>
 
-    <h4 style="color:#007fa3;">Ansvar</h4>
+    <h4 style="color:#1a1a2e;">Ansvar</h4>
     <p>Uppdragsgivaren har ett sj\u00e4lvst\u00e4ndigt ansvar f\u00f6r sin redovisning och rapportering mot myndigheter och utomst\u00e5ende. Det avser s\u00e5v\u00e4l brister i inl\u00e4mnade underlag som i rapporter d\u00e4r redovisningskonsulten har bitr\u00e4tt i arbetet. Detta f\u00f6ljer av lagstiftning och kan inte avtalas bort.</p>
     <p>Byr\u00e5n har ett utf\u00f6randeansvar mot uppdragsgivaren. Detta inneb\u00e4r att det arbete som omfattas av avtalet ska utf\u00f6ras enligt lagar och regler, samt enligt Rex - Svensk standard f\u00f6r redovisningsuppdrag.</p>
 
-    <h4 style="color:#007fa3;">Uppdragsgivarens r\u00e4kenskapsinformation</h4>
+    <h4 style="color:#1a1a2e;">Uppdragsgivarens r\u00e4kenskapsinformation</h4>
     <p>Enligt kraven i bokf\u00f6ringslagen har uppdragsgivaren ansvar att bevara komplett r\u00e4kenskapsinformation i 7 \u00e5r efter r\u00e4kenskaps\u00e5rets utg\u00e5ng. Redovisningskonsulten ska upprätta och tillhandah\u00e5lla uppdragsgivaren den r\u00e4kenskapsinformation som f\u00f6ljer av uppdraget.</p>
 
-    <h4 style="color:#007fa3;">Rapportmottagare</h4>
+    <h4 style="color:#1a1a2e;">Rapportmottagare</h4>
     <p>Den som \u00e4r angiven som kontaktperson hos uppdragsgivaren \u00e4r den som \u00e4r utsedd att mottaga den rapportering och \u00f6vrig kommunikation som sker fr\u00e5n byr\u00e5n till uppdragsgivaren. Kontaktpersonen ansvarar f\u00f6r att erh\u00e5llen information vidarebefordras till ber\u00f6rda personer inom sin organisation. Rapportering till annan \u00e4n angiven person kr\u00e4ver s\u00e4rskilt godk\u00e4nnande av uppdragsgivaren.</p>
     <p>Om inget avtalats f\u00e5r uppdragstagaren l\u00e4mna information till bolagets revisor i samband med revision.</p>
 
-    <h4 style="color:#007fa3;">Kvalitetsuppf\u00f6ljning</h4>
+    <h4 style="color:#1a1a2e;">Kvalitetsuppf\u00f6ljning</h4>
     <p>Hos byr\u00e5n anst\u00e4llda Auktoriserade Redovisningskonsulter genomg\u00e5r minst vart sj\u00e4tte \u00e5r kvalitetsuppf\u00f6ljning som genomf\u00f6rs av Srf konsulternas f\u00f6rbund. Kvalitetsuppf\u00f6ljningen \u00e4r en granskning av att den Auktoriserade Redovisningskonsulten f\u00f6ljt Rex - Svensk standard f\u00f6r redovisningsuppdrag. Kvalitetsuppf\u00f6ljningen innefattas av tystnadplikt och sekretess. Kvalitetsuppf\u00f6ljningen inneb\u00e4r bl.a. att ett antal av byr\u00e5ns uppdrag kommer att granskas. Som underlag f\u00f6r kontrollen anv\u00e4nds ett antal transaktionsfiler fr\u00e5n bokf\u00f6ringssystemet. Filerna makuleras efter avslutad kvalitetsuppf\u00f6ljning. Uppdragsgivaren godk\u00e4nner genom detta avtal s\u00e5dan anv\u00e4ndning av material.</p>
 
-    <h4 style="color:#007fa3;">Bilagor</h4>
+    <h4 style="color:#1a1a2e;">Bilagor</h4>
     <p>Eventuella bilagor till uppdragsavtalet framg\u00e5r av bilagevalet p\u00e5 kundkortet och bifogas i den genererade PDF:en.</p>
     `}
   </div>
