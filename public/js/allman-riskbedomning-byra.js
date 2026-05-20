@@ -19,6 +19,8 @@
   ];
 
   const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
+  const RISK_FALT_AIRTABLE = '4. Identifierade Risker och Sårbarheter';
+  var tjanstIdToNamn = {};
 
   function getEl(id) { return document.getElementById(id); }
   function getAuthOpts() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
@@ -39,9 +41,66 @@
     return d.innerHTML;
   }
 
+  function isAirtableRecordId(s) {
+    return typeof s === 'string' && /^rec[a-zA-Z0-9]{10,}$/.test(String(s).trim());
+  }
+
+  function isEmptyRiskValue(v) {
+    var t = String(v == null ? '' : v).trim();
+    return !t || /^[—\-–\s.]+$/.test(t);
+  }
+
+  function sanitizeIdentifieradeRiskerText(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    var out = text;
+    Object.keys(tjanstIdToNamn).forEach(function (id) {
+      var namn = tjanstIdToNamn[id];
+      if (!id || !namn) return;
+      var esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = out.replace(new RegExp('(\\*\\*Tjänst:\\s*)' + esc + '(\\s*\\*\\*)', 'gi'), '$1' + namn + '$2');
+      out = out.replace(new RegExp('(^|\\r?\\n)(Tjänst:\\s*)' + esc + '(?=\\s*(?:\\r?\\n|$))', 'gim'), '$1$2' + namn);
+    });
+    out = out.replace(/(\*\*Tjänst:\s*)(rec[a-zA-Z0-9]{10,})(\s*\*\*)/gi, function (_, p1, id, p3) {
+      return tjanstIdToNamn[id] ? p1 + tjanstIdToNamn[id] + p3 : _;
+    });
+    out = out.replace(/(^|\r?\n)(Tjänst:\s*)(rec[a-zA-Z0-9]{10,})(?=\s*(?:\r?\n|$))/gim, function (full, p1, p2, id) {
+      return tjanstIdToNamn[id] ? p1 + p2 + tjanstIdToNamn[id] : full;
+    });
+    return stripEmptyTjanstRiskSections(out);
+  }
+
+  function stripEmptyTjanstRiskSections(text) {
+    if (!text) return '';
+    var blocks = text.split(/\n\n+/);
+    var kept = blocks.filter(function (block) {
+      var trimmed = block.trim();
+      if (!/^\*\*Tjänst:|^Tjänst:/im.test(trimmed)) return true;
+      var hotM = trimmed.match(/\*\*Hot:\*\*\s*([^\n]*?)(?:\n|$)|^Hot:\s*([^\n]*?)(?:\n|$)/im);
+      var sarM = trimmed.match(/\*\*Sårbarhet:\*\*\s*([^\n]*?)(?:\n|$)|^Sårbarhet:\s*([^\n]*?)(?:\n|$)/im);
+      var riskM = trimmed.match(/\*\*Risknivå och åtgärder:\*\*\s*([^\n]*?)(?:\n|$)|^Risknivå och åtgärder:\s*([^\n]*?)(?:\n|$)/im);
+      var h = hotM ? (hotM[1] != null ? hotM[1] : hotM[2]) : '';
+      var s = sarM ? (sarM[1] != null ? sarM[1] : sarM[2]) : '';
+      var r = riskM ? (riskM[1] != null ? riskM[1] : riskM[2]) : '';
+      if (!isEmptyRiskValue(h) || !isEmptyRiskValue(s) || !isEmptyRiskValue(r)) return true;
+      var body = trimmed
+        .replace(/^\*\*Tjänst:[^\n]+\*\*\s*/i, '')
+        .replace(/^Tjänst:[^\n]+\s*/i, '')
+        .replace(/\*\*Hot:\*\*[^\n]*/gi, '')
+        .replace(/\*\*Sårbarhet:\*\*[^\n]*/gi, '')
+        .replace(/\*\*Risknivå och åtgärder:\*\*[^\n]*/gi, '')
+        .replace(/^Hot:[^\n]*/gim, '')
+        .replace(/^Sårbarhet:[^\n]*/gim, '')
+        .replace(/^Risknivå och åtgärder:[^\n]*/gim, '')
+        .trim();
+      if (!body || /^[—\-–\s.]*$/.test(body)) return false;
+      return true;
+    });
+    return kept.join('\n\n');
+  }
+
   function markdownToHtml(text) {
     if (!text || typeof text !== 'string') return '';
-    var t = escapeHtml(text);
+    var t = escapeHtml(sanitizeIdentifieradeRiskerText(text));
     t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
     var lines = t.split(/\r?\n/);
@@ -129,6 +188,7 @@
       var el = getEl(m.id);
       if (!el) return;
       var val = getFieldValue(fields, m.airtable);
+      if (m.airtable === RISK_FALT_AIRTABLE && val) val = sanitizeIdentifieradeRiskerText(String(val));
       if (m.type === 'number') el.value = val === '' || val == null ? '' : Number(val);
       else if (m.type === 'date') el.value = val ? String(val).substring(0, 10) : '';
       else el.value = val == null ? '' : String(val);
@@ -299,6 +359,7 @@
       }
     } catch (_) {}
     try {
+      tjanstIdToNamn = {};
       var res = await fetch(getBaseUrl() + '/api/byra-rutiner', getAuthOpts());
       var data = await res.json();
       if (loading) loading.style.display = 'none';
@@ -312,6 +373,22 @@
       }
       var recordId = getEl('byra-rutiner-record-id');
       if (recordId) recordId.value = data.id || data.record.id || '';
+      try {
+        var meRes2 = await fetch(getBaseUrl() + '/api/auth/me', getAuthOpts());
+        if (meRes2.ok) {
+          var me2 = await meRes2.json();
+          var byraId = me2.user && me2.user.byraId;
+          if (byraId) {
+            var tjRes = await fetch(getBaseUrl() + '/api/byra-tjanster?byraId=' + encodeURIComponent(byraId), getAuthOpts());
+            if (tjRes.ok) {
+              var tjData = await tjRes.json();
+              (tjData.tjanster || []).forEach(function (t) {
+                if (t.id && t.namn && !isAirtableRecordId(t.namn)) tjanstIdToNamn[t.id] = String(t.namn).trim();
+              });
+            }
+          }
+        }
+      } catch (_) {}
       populateForm(data.fields, canEdit);
       initPreviews(canEdit);
       initCards(canEdit);
@@ -415,7 +492,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
-          ta.value = data.text;
+          ta.value = sanitizeIdentifieradeRiskerText(data.text);
           updateCardView(card);
         } else {
           alert(data.error || data.message || 'Kunde inte generera AI-förslag');

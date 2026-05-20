@@ -3445,6 +3445,127 @@ async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverrid
 // Risk Assessment API Endpoints
 const RISK_ASSESSMENT_TABLE = 'Risker kopplad till tjänster';
 
+function isAirtableRecordIdStr(s) {
+  return typeof s === 'string' && /^rec[A-Za-z0-9]{10,}$/.test(String(s).trim());
+}
+
+function extractRecIdsFromText(text) {
+  if (!text) return [];
+  const ids = new Set();
+  const re = /rec[A-Za-z0-9]{10,}/g;
+  let m;
+  const s = String(text);
+  while ((m = re.exec(s)) !== null) ids.add(m[0]);
+  return [...ids];
+}
+
+function isEmptyRiskLabelValue(v) {
+  const t = String(v == null ? '' : v).trim();
+  return !t || /^[—\-–\s.]+$/.test(t);
+}
+
+async function fetchTjanstRecordName(id, airtableAccessToken, airtableBaseId) {
+  try {
+    const r = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 8000 }
+    );
+    return (r.data.fields && r.data.fields['Task Name'] || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+/** Byråns tjänster + eventuella rec-ID:n i text → id → Task Name */
+async function buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, extraTextOrIds = []) {
+  const map = new Map();
+  if (!byraId || !airtableAccessToken) return map;
+
+  const formula = encodeURIComponent(`{Byrå ID}="${byraId}"`);
+  let allRecords = [];
+  let offset = null;
+  do {
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}?filterByFormula=${formula}`
+      + `&fields[]=Task%20Name&pageSize=100`;
+    if (offset) url += `&offset=${offset}`;
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` }
+    });
+    allRecords = allRecords.concat(response.data.records || []);
+    offset = response.data.offset;
+  } while (offset);
+
+  for (const r of allRecords) {
+    const namn = (r.fields['Task Name'] || '').trim();
+    if (r.id && namn && !isAirtableRecordIdStr(namn)) map.set(r.id, namn);
+  }
+
+  const extraIds = Array.isArray(extraTextOrIds)
+    ? extraTextOrIds.filter(isAirtableRecordIdStr)
+    : extractRecIdsFromText(extraTextOrIds);
+  await Promise.all(extraIds.map(async (id) => {
+    if (map.has(id)) return;
+    const namn = await fetchTjanstRecordName(id, airtableAccessToken, airtableBaseId);
+    if (namn && !isAirtableRecordIdStr(namn)) map.set(id, namn);
+  }));
+  return map;
+}
+
+function sanitizeIdentifieradeRiskerText(text, idToNamn) {
+  if (!text || typeof text !== 'string') return text || '';
+  const map = idToNamn instanceof Map ? idToNamn : new Map(Object.entries(idToNamn || {}));
+  let out = text;
+
+  for (const [id, namn] of map) {
+    if (!id || !namn) continue;
+    const escId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`(\\*\\*Tjänst:\\s*)${escId}(\\s*\\*\\*)`, 'gi'), `$1${namn}$2`);
+    out = out.replace(new RegExp(`(^|[\\r\\n])(Tjänst:\\s*)${escId}(?=\\s*(?:[\\r\\n]|$))`, 'gim'), `$1$2${namn}`);
+  }
+
+  out = out.replace(/(\*\*Tjänst:\s*)(rec[A-Za-z0-9]{10,})(\s*\*\*)/gi, (full, p1, id, p3) => {
+    const namn = map.get(id);
+    return namn ? `${p1}${namn}${p3}` : full;
+  });
+  out = out.replace(/(^|[\r\n])(Tjänst:\s*)(rec[A-Za-z0-9]{10,})(?=\s*(?:[\r\n]|$))/gim, (full, p1, p2, id) => {
+    const namn = map.get(id);
+    return namn ? `${p1}${p2}${namn}` : full;
+  });
+
+  return stripEmptyTjanstRiskSections(out);
+}
+
+/** Ta bort tomma tjänstsektioner (endast — under Hot/Sårbarhet/Risknivå) */
+function stripEmptyTjanstRiskSections(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  const blocks = text.split(/\n\n+/);
+  const kept = blocks.filter((block) => {
+    const trimmed = block.trim();
+    if (!/^\*\*Tjänst:|^Tjänst:/im.test(trimmed)) return true;
+    const hotM = trimmed.match(/\*\*Hot:\*\*\s*([^\n]*?)(?:\n|$)|^Hot:\s*([^\n]*?)(?:\n|$)/im);
+    const sarM = trimmed.match(/\*\*Sårbarhet:\*\*\s*([^\n]*?)(?:\n|$)|^Sårbarhet:\s*([^\n]*?)(?:\n|$)/im);
+    const riskM = trimmed.match(/\*\*Risknivå och åtgärder:\*\*\s*([^\n]*?)(?:\n|$)|^Risknivå och åtgärder:\s*([^\n]*?)(?:\n|$)/im);
+    const h = hotM ? (hotM[1] != null ? hotM[1] : hotM[2]) : '';
+    const s = sarM ? (sarM[1] != null ? sarM[1] : sarM[2]) : '';
+    const r = riskM ? (riskM[1] != null ? riskM[1] : riskM[2]) : '';
+    if (!isEmptyRiskLabelValue(h) || !isEmptyRiskLabelValue(s) || !isEmptyRiskLabelValue(r)) return true;
+    let body = trimmed
+      .replace(/^\*\*Tjänst:[^\n]+\*\*\s*/i, '')
+      .replace(/^Tjänst:[^\n]+\s*/i, '');
+    body = body
+      .replace(/\*\*Hot:\*\*[^\n]*/gi, '')
+      .replace(/\*\*Sårbarhet:\*\*[^\n]*/gi, '')
+      .replace(/\*\*Risknivå och åtgärder:\*\*[^\n]*/gi, '')
+      .replace(/^Hot:[^\n]*/gim, '')
+      .replace(/^Sårbarhet:[^\n]*/gim, '')
+      .replace(/^Risknivå och åtgärder:[^\n]*/gim, '')
+      .trim();
+    if (!body || /^[—\-–\s.]*$/.test(body)) return false;
+    return true;
+  });
+  return kept.join('\n\n');
+}
+
 // GET /api/risk-assessments - Hämta alla riskbedömningar med pagination
 app.get('/api/risk-assessments', async (req, res) => {
   const startTime = Date.now();
@@ -7254,10 +7375,20 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     }
 
     const record = airtableRes.data.records[0];
+    const fields = { ...record.fields };
+    const riskKey = '4. Identifierade Risker och Sårbarheter';
+    const riskRaw = fields[riskKey];
+    if (riskRaw && typeof riskRaw === 'string' && /rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
+      const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
+      fields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
+    } else if (riskRaw && typeof riskRaw === 'string') {
+      fields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+    }
+
     res.json({
       success: true,
-      record: { id: record.id, fields: record.fields },
-      fields: record.fields,
+      record: { id: record.id, fields },
+      fields,
       id: record.id
     });
   } catch (error) {
@@ -14528,6 +14659,15 @@ Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en
     text = text.replace(/\n\*\*Distributionskanaler\*\*/g, '\n\n**Distributionskanaler**');
     text = text.replace(/\n\*\*Geografiska riskfaktorer\*\*/g, '\n\n**Geografiska riskfaktorer**');
     text = text.replace(/\n\*\*Verksamhetsspecifika omständigheter\*\*/g, '\n\n**Verksamhetsspecifika omständigheter**');
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (airtableAccessToken) {
+      const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, text);
+      text = sanitizeIdentifieradeRiskerText(text, idMap);
+    } else {
+      text = stripEmptyTjanstRiskSections(text);
+    }
 
     res.json({ text });
   } catch (error) {
