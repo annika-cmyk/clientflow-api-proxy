@@ -4380,10 +4380,19 @@ class CustomerCardManager {
 
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : null;
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
-        const fmt = (v) => (v !== undefined && v !== null && v !== '') ? v : null;
+        const fmt = (v) => {
+            const d = this.formatFieldDisplay(v);
+            return d != null ? this._esc(d) : null;
+        };
+        const rich = (v) => {
+            const d = this.formatFieldDisplay(v);
+            return d ? this._esc(d).replace(/\n/g, '<br>') : '';
+        };
 
-        const chips = (items) => fmtList(items).map(i =>
-            `<span class="kyc-chip">${i}</span>`).join('');
+        const chips = (items) => fmtList(items)
+            .map(i => this.formatFieldDisplay(i))
+            .filter(Boolean)
+            .map(i => `<span class="kyc-chip">${this._esc(i)}</span>`).join('');
 
         const row = (label, content, icon = '') => content ? `
             <div class="kyc-row">
@@ -4436,11 +4445,11 @@ class CustomerCardManager {
                     ${row('Verklig huvudman', fmt(f['Verklig huvudman']), 'fa-user-shield')}
                     ${row('Ombud', fmt(f['Ombud']), 'fa-user-tie')}
                     ${chipsRow('Skatterättslig hemvist', f['Skatterättslig hemvist'], 'fa-flag')}
-                    ${f['Affärsmodell'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-project-diagram"></i> Affärsmodell</span><div class="kyc-richtext">${f['Affärsmodell']}</div></div>` : ''}
-                    ${f['Ytterligare beskrivning av kunden och verksamheten'] ? `
+                    ${rich(f['Affärsmodell']) ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-project-diagram"></i> Affärsmodell</span><div class="kyc-richtext">${rich(f['Affärsmodell'])}</div></div>` : ''}
+                    ${rich(f['Ytterligare beskrivning av kunden och verksamheten']) ? `
                     <div class="kyc-richtext-row">
                         <span class="kyc-row-label"><i class="fas fa-align-left"></i> Ytterligare beskrivning</span>
-                        <div class="kyc-richtext">${f['Ytterligare beskrivning av kunden och verksamheten']}</div>
+                        <div class="kyc-richtext">${rich(f['Ytterligare beskrivning av kunden och verksamheten'])}</div>
                     </div>` : ''}
                 `)}
 
@@ -4527,7 +4536,7 @@ class CustomerCardManager {
                         ${row('Uppdrag', fmt(f['Uppdrag']), 'fa-briefcase')}
                         ${row('Uppdrag 2', fmt(f['Uppdrag 2']), 'fa-briefcase')}
                         ${chipsRow('Momsuppdrag', f['Momsuppdrag'], 'fa-receipt')}
-                        ${f['Uppdragstext'] ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-align-left"></i> Uppdragstext</span><div class="kyc-richtext">${f['Uppdragstext']}</div></div>` : ''}
+                        ${rich(f['Uppdragstext']) ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-align-left"></i> Uppdragstext</span><div class="kyc-richtext">${rich(f['Uppdragstext'])}</div></div>` : ''}
 
                         <div class="uppdrag-antas-section">
                             <div class="uppdrag-antas-row">
@@ -4568,12 +4577,16 @@ class CustomerCardManager {
             ? `<div class="riskf-chips"><span class="kyc-chip riskf-chip">${ingaLabels[id]}</span></div>`
             : null;
 
+        const viewText = this.formatFieldDisplay(värde);
         const viewContent = typ === 'text'
-            ? (värde ? `<div class="kyc-richtext">${värde}</div>` : '<span class="missing-data">Ej angiven</span>')
+            ? (viewText ? `<div class="kyc-richtext">${this._esc(viewText).replace(/\n/g, '<br>')}</div>` : '<span class="missing-data">Ej angiven</span>')
             : (ingaHtml
                 ? ingaHtml
                 : valda.length
-                    ? `<div class="riskf-chips">${valda.map(v => `<span class="${chipClass}">${v}</span>`).join('')}</div>`
+                    ? `<div class="riskf-chips">${valda.map(v => {
+                        const label = this.formatFieldDisplay(v) || String(v || '');
+                        return label ? `<span class="${chipClass}">${this._esc(label)}</span>` : '';
+                    }).filter(Boolean).join('')}</div>`
                     : '<span class="missing-data">Inga valda</span>');
 
         const editContent = typ === 'text'
@@ -5060,7 +5073,7 @@ class CustomerCardManager {
                 ${f['Motivering'] ? `
                 <div class="rb-section">
                     <div class="rb-section-title"><i class="fas fa-align-left"></i> Motivering</div>
-                    <p class="rb-text">${f['Motivering']}</p>
+                    <p class="rb-text">${this._esc(this.formatFieldDisplay(f['Motivering']) || '')}</p>
                 </div>` : ''}
 
                 <!-- Riskfaktorer -->
@@ -5079,7 +5092,7 @@ class CustomerCardManager {
                 ${f['Risksänkande åtgjärder'] ? `
                 <div class="rb-section">
                     <div class="rb-section-title"><i class="fas fa-shield-alt"></i> Risksänkande åtgärder</div>
-                    <p class="rb-text">${f['Risksänkande åtgjärder']}</p>
+                    <p class="rb-text">${this._esc(this.formatFieldDisplay(f['Risksänkande åtgjärder']) || '')}</p>
                 </div>` : ''}
 
                 <!-- PEP & sanktioner -->
@@ -7410,9 +7423,10 @@ class CustomerCardManager {
         lines.forEach((line, idx) => {
             const qShort = String(line || '').slice(0, qMaxLen);
             const a = (Array.isArray(answersArray) && answersArray[idx]) ? answersArray[idx] : {};
-            const text = (a && a.text) ? String(a.text).trim() : '';
+            const textRaw = (a && a.text) ? String(a.text).trim() : '';
             const att = this.matchSamarbeteAttachment(attachments, a, usedKeys);
             const parts = [];
+            const text = this.formatSamarbeteAnswerText(textRaw, linkFn);
             if (text) parts.push(escape(text));
             if (att && linkFn) parts.push(linkFn(att));
             const svar = parts.length ? parts.join(' · ') : '—';
@@ -8413,6 +8427,59 @@ class CustomerCardManager {
             this.showNotification(e.message || 'Kunde inte skapa tabellen', 'error');
         }
         if (btn) { btn.disabled = false; if (btn.innerHTML.indexOf('Klart') === -1) btn.innerHTML = '<i class="fas fa-plus"></i> Skapa tabell i Airtable'; }
+    }
+
+    /** Visar Airtable-värden som läsbar text (inte rec-id eller rå JSON för bilagor). */
+    formatFieldDisplay(val) {
+        if (val == null || val === '') return null;
+        if (typeof val === 'boolean') return val ? 'Ja' : 'Nej';
+        if (typeof val === 'number') return String(val);
+        if (typeof val === 'object' && !Array.isArray(val)) {
+            if (val.text != null) return String(val.text).trim() || null;
+            if (val.filename) return String(val.filename).trim();
+            return null;
+        }
+        if (Array.isArray(val)) {
+            if (!val.length) return null;
+            const first = val[0];
+            if (first && typeof first === 'object' && (first.filename || first.url || (first.id && String(first.id).startsWith('att')))) {
+                return val.map(a => a.filename || a.name || 'Bifogad fil').filter(Boolean).join(', ') || null;
+            }
+            const parts = val.map(x => this.formatFieldDisplay(x)).filter(Boolean);
+            return parts.length ? parts.join(', ') : null;
+        }
+        const s = String(val).trim();
+        if (!s) return null;
+        if (/^rec[a-zA-Z0-9]{14}$/.test(s)) return null;
+        if ((s.startsWith('{') || s.startsWith('[')) && (s.includes('airtable') || s.includes('"url"') || s.includes('"filename"'))) {
+            try {
+                const parsed = JSON.parse(s);
+                const list = Array.isArray(parsed) ? parsed : [parsed];
+                const names = list.filter(x => x && (x.filename || x.url)).map(x => x.filename || x.name || 'Bifogad fil');
+                if (names.length) return names.join(', ');
+            } catch (_) {}
+            return null;
+        }
+        return s;
+    }
+
+    formatSamarbeteAnswerText(text, linkFn) {
+        const raw = String(text || '').trim();
+        if (!raw) return '';
+        if (/^rec[a-zA-Z0-9]{14}$/.test(raw)) return '';
+        if ((raw.startsWith('{') || raw.startsWith('[')) && raw.includes('"url"')) {
+            try {
+                const parsed = JSON.parse(raw);
+                const list = Array.isArray(parsed) ? parsed : [parsed];
+                const parts = list.filter(x => x && (x.filename || x.url)).map(x => {
+                    if (linkFn && x.url) return linkFn(x);
+                    return x.filename || x.name || 'Bifogad fil';
+                });
+                if (parts.length) return parts.join(' · ');
+            } catch (_) {}
+            return '';
+        }
+        return raw;
     }
 
     escapeDocHtml(s) {

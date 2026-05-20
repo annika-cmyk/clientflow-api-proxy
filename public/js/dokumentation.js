@@ -37,6 +37,65 @@
     return d.innerHTML;
   }
 
+  const REC_ID_RE = /^rec[a-zA-Z0-9]{14}$/;
+
+  function isAirtableRecordId(s) {
+    return REC_ID_RE.test(String(s || '').trim());
+  }
+
+  function parseAttachmentJson(text) {
+    const t = String(text || '').trim();
+    if (!t || (!t.startsWith('{') && !t.startsWith('['))) return null;
+    try {
+      const parsed = JSON.parse(t);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      const names = list
+        .filter(x => x && typeof x === 'object' && (x.filename || x.url || x.id))
+        .map(x => x.filename || x.name || 'Bifogad fil');
+      return names.length ? names.join(', ') : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function formatAirtableValue(val) {
+    if (val == null || val === '') return '';
+    if (typeof val === 'boolean') return val ? 'Ja' : 'Nej';
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'object' && !Array.isArray(val)) {
+      if (val.text != null) return String(val.text).trim();
+      if (val.filename) return String(val.filename).trim();
+      if (val.url && val.filename) return String(val.filename).trim();
+      return '';
+    }
+    if (Array.isArray(val)) {
+      if (!val.length) return '';
+      const first = val[0];
+      if (first && typeof first === 'object' && (first.filename || first.url || (first.id && String(first.id).startsWith('att')))) {
+        return val.map(a => a.filename || a.name || 'Bifogad fil').filter(Boolean).join(', ');
+      }
+      const parts = val
+        .map(x => formatAirtableValue(x))
+        .filter(x => x && !isAirtableRecordId(x));
+      return parts.join(', ');
+    }
+    const s = String(val).trim();
+    if (!s) return '';
+    if (isAirtableRecordId(s)) return '';
+    const fromJson = parseAttachmentJson(s);
+    if (fromJson) return fromJson;
+    return s;
+  }
+
+  function isNoiseLine(line) {
+    const t = String(line || '').trim();
+    if (!t) return false;
+    if (isAirtableRecordId(t)) return true;
+    if (t === 'true' || t === 'false' || t === 'null') return true;
+    if ((t.startsWith('{') || t.startsWith('[')) && (t.includes('airtable') || t.includes('"url"') || t.includes('att'))) return true;
+    return false;
+  }
+
   function markdownToHtml(text) {
     if (!text || typeof text !== 'string') return '—';
     let t = escapeHtml(text);
@@ -47,6 +106,7 @@
     let inUl = false, inOl = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      if (isNoiseLine(line)) continue;
       if (/^-\s/.test(line)) {
         if (!inUl) { if (inOl) { out.push('</ol>'); inOl = false; } out.push('<ul>'); inUl = true; }
         out.push('<li>' + line.replace(/^-\s/, '') + '</li>');
@@ -104,9 +164,7 @@
   function getField(fields, key) {
     let val = fields[key];
     if (val === undefined) val = fields[key.trim()];
-    if (val == null || (typeof val === 'object' && !Array.isArray(val))) return '';
-    if (Array.isArray(val)) return '';
-    return String(val).trim();
+    return formatAirtableValue(val);
   }
 
   async function load() {
