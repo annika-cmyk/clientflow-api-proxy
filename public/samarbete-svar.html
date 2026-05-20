@@ -1,38 +1,68 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="sv" style="color-scheme: light only;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <meta name="theme-color" content="#f0f4ff">
     <title>ClientFlow – Lämna underlag</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* Tvinga ljust tema – kundsidan ska inte påverkas av webbläsarens mörkläge */
+        :root {
+            color-scheme: light only;
+            --bg-page: #f0f4ff;
+            --bg-page-end: #e8eeff;
+            --bg-card: #ffffff;
+            --bg-question: #f8fafc;
+            --bg-question-done: #f0fdf4;
+            --text-primary: #1e293b;
+            --text-heading: #334155;
+            --text-muted: #64748b;
+            --text-hint: #94a3b8;
+            --border: #e2e8f0;
+            --border-done: #bbf7d0;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --accent-soft: #4338ca;
+        }
+        html {
+            color-scheme: light only;
+            background-color: var(--bg-page);
+        }
         * { box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
             margin: 0;
             min-height: 100vh;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
+            background: linear-gradient(135deg, var(--bg-page) 0%, var(--bg-page-end) 100%);
+            background-color: var(--bg-page);
             padding: 2rem 1rem;
-            color: #1e293b;
+            color: var(--text-primary);
         }
         .container { max-width: 600px; margin: 0 auto; }
         .card {
-            background: #fff;
+            background: var(--bg-card);
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
             padding: 2rem;
             margin-bottom: 1.5rem;
+            color: var(--text-primary);
         }
-        h1 { font-size: 1.35rem; margin: 0 0 0.5rem 0; color: #334155; }
-        .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        h1 { font-size: 1.35rem; margin: 0 0 0.5rem 0; color: var(--text-heading); }
+        .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
         .form-control {
             width: 100%;
             padding: 0.65rem 0.85rem;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--border);
             border-radius: 8px;
             font-size: 1rem;
             font-family: inherit;
+            background-color: #ffffff;
+            color: var(--text-primary);
+            -webkit-text-fill-color: var(--text-primary);
         }
         textarea.form-control { min-height: 80px; resize: vertical; }
         .btn {
@@ -59,20 +89,21 @@
         .hidden { display: none !important; }
 
         .question-card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: var(--bg-question);
+            border: 1px solid var(--border);
             border-radius: 10px;
             padding: 1.25rem;
             margin-bottom: 1rem;
             transition: opacity 0.25s, background 0.25s, border-color 0.25s;
+            color: var(--text-primary);
         }
         .question-card.item-done {
-            background: #f0fdf4;
-            border-color: #bbf7d0;
+            background: var(--bg-question-done);
+            border-color: var(--border-done);
         }
         .question-card .question-text {
             font-weight: 600;
-            color: #334155;
+            color: var(--text-heading);
             margin-bottom: 0.75rem;
             padding-left: 0.25rem;
         }
@@ -131,6 +162,13 @@
             border: none;
             box-shadow: none;
         }
+        .clientflow-logo-wrap {
+            display: inline-block;
+            background: #ffffff;
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+        }
         .clientflow-header .clientflow-logo {
             max-width: 160px;
             height: auto;
@@ -140,16 +178,68 @@
         .byra-logo-wrap {
             margin-top: 1.5rem;
             padding-top: 1.5rem;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid var(--border);
             text-align: center;
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 1.25rem;
         }
         .byra-logo-wrap img { max-height: 73px; max-width: 260px; object-fit: contain; }
+
+        /* Om webbläsaren ändå tvingar mörkt läge – behåll sidans ljusa design */
+        @media (prefers-color-scheme: dark) {
+            :root { color-scheme: light only; }
+            html, body {
+                background-color: var(--bg-page) !important;
+                background-image: linear-gradient(135deg, var(--bg-page) 0%, var(--bg-page-end) 100%) !important;
+                color: var(--text-primary) !important;
+            }
+            .card,
+            .clientflow-logo-wrap,
+            .byra-logo-wrap {
+                background-color: var(--bg-card) !important;
+                color: var(--text-primary) !important;
+            }
+            .question-card {
+                background-color: var(--bg-question) !important;
+                border-color: var(--border) !important;
+                color: var(--text-primary) !important;
+            }
+            .question-card.item-done {
+                background-color: var(--bg-question-done) !important;
+                border-color: var(--border-done) !important;
+            }
+            h1, .question-card .question-text, strong {
+                color: var(--text-heading) !important;
+            }
+            .subtitle, .file-hint, .file-clear-btn, .loading {
+                color: var(--text-muted) !important;
+            }
+            .form-control,
+            textarea.form-control {
+                background-color: #ffffff !important;
+                color: var(--text-primary) !important;
+                border-color: var(--border) !important;
+                -webkit-text-fill-color: var(--text-primary) !important;
+            }
+            .btn-primary {
+                background-color: var(--accent) !important;
+                color: #ffffff !important;
+            }
+            .upload-btn-wrap .btn-upload {
+                background-color: #ffffff !important;
+                color: var(--accent-soft) !important;
+                border-color: var(--border) !important;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="clientflow-header" class="clientflow-header">
-            <img src="/images/Clientflow%20logga.png" alt="ClientFlow" class="clientflow-logo">
+            <div class="clientflow-logo-wrap">
+                <img src="/images/Clientflow%20logga%20vit%20bakgrund.png" alt="ClientFlow" class="clientflow-logo" onerror="this.onerror=null;this.src='/images/Clientflow%20logga.png';">
+            </div>
         </div>
         <div id="loading" class="card loading">
             <i class="fas fa-spinner fa-spin"></i>
