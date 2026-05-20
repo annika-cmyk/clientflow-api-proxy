@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v12.5', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v13.4', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -799,7 +799,7 @@ class CustomerCardManager {
                 const label = this._esc(att.filename || att.name || 'Bifogad fil');
                 return `<a href="${this._esc(url)}" target="_blank" rel="noopener" class="samarbete-file-link"><i class="fas fa-download"></i> ${label}</a>`;
             };
-            const openTyp = (this._kundUppdragBoardOpenTyp || '').toString();
+            const openKey = (this._kundUppdragBoardOpenKey || this._kundUppdragBoardOpenTyp || '').toString();
             const todayIso = (() => {
                 try { return new Date().toISOString().slice(0, 10); } catch (_) { return ''; }
             })();
@@ -882,17 +882,74 @@ class CustomerCardManager {
                 const sel = String(selected || '').trim();
                 return opts.map(o => `<option value="${this._esc(o)}" ${o === sel ? 'selected' : ''}>${this._esc(o)}</option>`).join('');
             };
-            const rows = existingTypes.map((t) => {
+            const rowContexts = [];
+            existingTypes.forEach((t) => {
                 const rec = byType(t);
                 if (!rec) {
                     console.warn('[UppdragBoard] byType returnerade null för typ:', t, '– records:', records.length, records.map(r => r?.fields?.['Typ']));
-                    return '';
+                    return;
                 }
                 const f = rec.fields || {};
+                const freq = (f['Frekvens'] || '').toString().trim() || '—';
+                const modeForPrefillDefault = getModeForUppdrag(t, freq);
+                const defaultPeriodKey = (modeForPrefillDefault === 'quarter')
+                    ? quarterKeyForMonth(mk)
+                    : (modeForPrefillDefault === 'year')
+                        ? yearKeyForMonth(mk)
+                        : mk;
+
+                if (t === 'Momsredovisning' && window.MomsPeriod && (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq))) {
+                    let visible = (Array.isArray(runRecords) ? runRecords : [])
+                        .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === 'Momsredovisning')
+                        .filter((rr) => MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                    visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
+                    if (!visible.length) {
+                        const instMap = instByTypeMonth.get(t) || new Map();
+                        rowContexts.push({
+                            t, rec, f, freq,
+                            boardKey: t,
+                            displayTitle: t,
+                            instDeadline: instMap.get(mk) || '',
+                            prefillPeriodKey: defaultPeriodKey,
+                            runRec: runByTypPeriod.get(`${t}|||${defaultPeriodKey}`) || null
+                        });
+                    } else {
+                        visible.forEach((rr) => {
+                            const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
+                            rowContexts.push({
+                                t, rec, f, freq,
+                                boardKey: `${t}|||${pk}`,
+                                displayTitle: String(rr?.fields?.['Period Label'] || '').trim() || MomsPeriod.displayLabel(pk, freq),
+                                instDeadline: String(rr?.fields?.['Deadline'] || '').trim(),
+                                prefillPeriodKey: pk,
+                                runRec: rr
+                            });
+                        });
+                    }
+                    return;
+                }
+
                 const instMap = instByTypeMonth.get(t) || new Map();
                 const instDeadline = instMap.get(mk) || '';
+                rowContexts.push({
+                    t, rec, f, freq,
+                    boardKey: t,
+                    displayTitle: t,
+                    instDeadline,
+                    prefillPeriodKey: defaultPeriodKey,
+                    runRec: runByTypPeriod.get(`${t}|||${defaultPeriodKey}`) || null
+                });
+            });
+
+            const rows = rowContexts.map((ctx) => {
+                const t = ctx.t;
+                const rec = ctx.rec;
+                const f = ctx.f;
+                const instDeadline = ctx.instDeadline || '';
                 const done = instDeadline ? isDoneForPeriod(f, instDeadline) : false;
-                const freq = (f['Frekvens'] || '').toString().trim() || '—';
+                const freq = ctx.freq || '—';
+                const boardKey = ctx.boardKey || t;
+                const displayTitle = ctx.displayTitle || t;
                 const autoOn = !!f['Auto underlagsförfrågan'];
                 const sendDayNum = parseInt(String(f['Underlagsutskick dag'] || '').trim(), 10);
                 const deadlineDayNum = parseInt(String(f['Underlagsdeadline dag'] || '').trim(), 10);
@@ -915,7 +972,7 @@ class CustomerCardManager {
                 const runHtml = instDeadline
                     ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
                     : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
-                const isOpen = openTyp === t;
+                const isOpen = openKey === boardKey;
                 const samList = (() => {
                     const byTyp = (samarbeteByUppdragTyp.get(t) || []);
                     const byId = (samarbeteByUppdragId.get(String(rec.id || '').trim()) || []);
@@ -943,14 +1000,8 @@ class CustomerCardManager {
                         : 0;
                     return answeredCount >= total;
                 };
-                const modeForPrefill = getModeForUppdrag(t, freq);
-                const prefillPeriodKey = (modeForPrefill === 'quarter')
-                    ? quarterKeyForMonth(mk)
-                    : (modeForPrefill === 'year')
-                        ? yearKeyForMonth(mk)
-                        : mk;
-
-                const runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
+                const prefillPeriodKey = ctx.prefillPeriodKey || mk;
+                const runRec = ctx.runRec || runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
                 // En källa: status i uppdragets historik (så det alltid matchar uppdragsöversikten).
                 // Om vi även har en runRec synkar backend den best-effort.
                 const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey) || '';
@@ -1145,10 +1196,10 @@ class CustomerCardManager {
                     : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
 
                 return `
-                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''}" data-kund-board-typ="${this._esc(t)}">
+                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}">
                     <td>
                         <div class="uppdragboard-client">
-                            <span class="uppdragboard-link">${this._esc(t)}</span>
+                            <span class="uppdragboard-link">${this._esc(displayTitle)}</span>
                             ${autoChip}
                         </div>
                     </td>
@@ -1156,12 +1207,12 @@ class CustomerCardManager {
                     <td style="text-align:center;">${underlagHtml}</td>
                     <td>${statusHtml}</td>
                     <td class="uppdragboard-arrow">
-                        <button type="button" class="uppdragboard-expandbtn" title="Visa mer" aria-label="Visa mer" data-kund-toggle-typ="${this._esc(t)}">
+                        <button type="button" class="uppdragboard-expandbtn" title="Visa mer" aria-label="Visa mer" data-kund-board-key="${this._esc(boardKey)}" data-kund-toggle-typ="${this._esc(t)}">
                             <i class="fas fa-chevron-down"></i>
                         </button>
                     </td>
                 </tr>
-                <tr class="uppdragboard-details" data-kund-details-for="${this._esc(t)}" style="${isOpen ? '' : 'display:none;'}">
+                <tr class="uppdragboard-details" data-kund-details-for="${this._esc(boardKey)}" style="${isOpen ? '' : 'display:none;'}">
                     <td colspan="5">${detailsHtml}</td>
                 </tr>
                 `;
@@ -1317,12 +1368,13 @@ class CustomerCardManager {
                     return;
                 }
 
-                const toggle = e.target.closest('[data-kund-toggle-typ]');
+                const toggle = e.target.closest('[data-kund-board-key]') || e.target.closest('[data-kund-toggle-typ]');
                 if (toggle) {
-                    const t = toggle.getAttribute('data-kund-toggle-typ');
-                    this._kundUppdragBoardOpenTyp = (this._kundUppdragBoardOpenTyp === t) ? '' : t;
+                    const key = toggle.getAttribute('data-kund-board-key') || toggle.getAttribute('data-kund-toggle-typ') || '';
+                    this._kundUppdragBoardOpenKey = (this._kundUppdragBoardOpenKey === key) ? '' : key;
+                    this._kundUppdragBoardOpenTyp = toggle.getAttribute('data-kund-toggle-typ') || '';
                     try { renderBoard(); } catch (err) { console.error('[UppdragBoard] renderBoard kastade fel vid toggle:', err); }
-                    const anyOpen = !!(this._kundUppdragBoardOpenTyp || '');
+                    const anyOpen = !!(this._kundUppdragBoardOpenKey || '');
                     const tbody = document.getElementById('kund-uppdragboard-tbody');
                     if (tbody) tbody.classList.toggle('uppdragboard-has-open', anyOpen);
                     return;
@@ -2094,13 +2146,22 @@ class CustomerCardManager {
                             <label>Frekvens *</label>
                             <select class="form-control" id="uppdrag-new-frekvens"></select>
                         </div>
-                        <div class="lead-field">
+                        <div class="lead-field uppdrag-span-full" id="uppdrag-moms-period-wrap" style="display:none;">
+                            <label id="uppdrag-moms-period-label">Första momsperiod *</label>
+                            <select class="form-control" id="uppdrag-new-forsta-period"></select>
+                            <p class="uppdrag-muted" style="margin:0.35rem 0 0;" id="uppdrag-moms-period-hint">Start och deadline enligt Skatteverket (12:e, 17:e i jan/aug) fylls i automatiskt.</p>
+                        </div>
+                        <div class="lead-field" id="uppdrag-new-start-wrap">
                             <label>Startdatum *</label>
                             <input class="kunduppgifter-input" type="date" id="uppdrag-new-start">
                         </div>
-                        <div class="lead-field">
+                        <div class="lead-field" id="uppdrag-new-deadline-wrap">
                             <label>Deadline *</label>
                             <input class="kunduppgifter-input" type="date" id="uppdrag-new-deadline">
+                        </div>
+                        <div class="lead-field uppdrag-span-full" id="uppdrag-moms-preview-wrap" style="display:none;">
+                            <label>Beräknat (SKV)</label>
+                            <p class="uppdrag-muted" style="margin:0;" id="uppdrag-moms-preview-text">—</p>
                         </div>
                         <div class="lead-field uppdrag-span-full">
                             <label>Rutin / instruktion</label>
@@ -2173,15 +2234,62 @@ class CustomerCardManager {
             node.querySelector('.uppdrag-dek-remove')?.addEventListener('click', () => node.remove());
         };
 
+        const momsWrap = document.getElementById('uppdrag-moms-period-wrap');
+        const momsPeriodEl = document.getElementById('uppdrag-new-forsta-period');
+        const momsPeriodLabel = document.getElementById('uppdrag-moms-period-label');
+        const startWrap = document.getElementById('uppdrag-new-start-wrap');
+        const deadlineWrap = document.getElementById('uppdrag-new-deadline-wrap');
+        const momsPreviewWrap = document.getElementById('uppdrag-moms-preview-wrap');
+        const momsPreviewText = document.getElementById('uppdrag-moms-preview-text');
+        const startEl = document.getElementById('uppdrag-new-start');
+        const deadlineEl = document.getElementById('uppdrag-new-deadline');
+
+        const fillMomsPeriodOptions = () => {
+            if (!momsPeriodEl || !window.MomsPeriod) return;
+            const freq = freqEl.value || '';
+            const isQ = MomsPeriod.isQuarterlyFreq(freq);
+            const opts = isQ
+                ? MomsPeriod.quarterOptionsForYear(new Date().getFullYear())
+                : MomsPeriod.monthOptionsAroundNow();
+            momsPeriodLabel.textContent = isQ ? 'Första kvartalsperiod *' : 'Första momsperiod (månad) *';
+            momsPeriodEl.innerHTML = opts.map(o => `<option value="${this._esc(o.value)}">${this._esc(o.label)}</option>`).join('');
+        };
+
+        const applyMomsFromPeriod = () => {
+            if (!window.MomsPeriod || !momsPeriodEl) return;
+            const pk = momsPeriodEl.value;
+            const freq = freqEl.value || '';
+            const meta = MomsPeriod.runMeta(pk, freq);
+            if (startEl) startEl.value = meta.startIso || '';
+            if (deadlineEl) deadlineEl.value = meta.deadlineIso || '';
+            if (momsPreviewText) {
+                momsPreviewText.textContent = meta.periodLabel
+                    ? `${meta.periodLabel} · start ${meta.startIso || '—'} · klart senast ${meta.deadlineIso || '—'}`
+                    : '—';
+            }
+        };
+
         const syncExtra = () => {
             const t = typEl.value;
             setFreqOptions(t);
             declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
+            const isMoms = t === 'Momsredovisning';
+            if (momsWrap) momsWrap.style.display = isMoms ? 'block' : 'none';
+            if (momsPreviewWrap) momsPreviewWrap.style.display = isMoms ? 'block' : 'none';
+            const manualDates = !isMoms;
+            if (startWrap) startWrap.style.display = manualDates ? '' : 'none';
+            if (deadlineWrap) deadlineWrap.style.display = manualDates ? '' : 'none';
+            if (isMoms) {
+                fillMomsPeriodOptions();
+                applyMomsFromPeriod();
+            }
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
                 addDekRow({ typ: 'NE', text: '' });
             }
         };
         typEl.addEventListener('change', syncExtra);
+        freqEl.addEventListener('change', () => { if (typEl.value === 'Momsredovisning') { fillMomsPeriodOptions(); applyMomsFromPeriod(); } });
+        if (momsPeriodEl) momsPeriodEl.addEventListener('change', applyMomsFromPeriod);
         syncExtra();
 
         if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NE', text: '' }));
@@ -2201,8 +2309,14 @@ class CustomerCardManager {
                 if (!typ) throw new Error('Välj typ');
                 if (!ansvarig) throw new Error('Välj handläggare');
                 if (!frekvens) throw new Error('Välj frekvens');
-                if (!startdatum) throw new Error('Välj startdatum');
-                if (!deadline) throw new Error('Välj deadline');
+                const forstaPeriod = (typ === 'Momsredovisning' && momsPeriodEl) ? (momsPeriodEl.value || '').trim() : '';
+                if (typ === 'Momsredovisning') {
+                    if (!forstaPeriod) throw new Error('Välj första momsperiod');
+                    if (!startdatum || !deadline) throw new Error('Kunde inte beräkna start/deadline – välj period igen');
+                } else {
+                    if (!startdatum) throw new Error('Välj startdatum');
+                    if (!deadline) throw new Error('Välj deadline');
+                }
 
                 const riskSelected = Array.from(document.querySelectorAll('#uppdrag-new-risk-items .uppdrag-risk-cb:checked')).map(i => i.value);
                 const riskOn = riskSelected.length > 0;
@@ -2214,8 +2328,10 @@ class CustomerCardManager {
                     'Nästa deadline': deadline,
                     'Rutin': rutin,
                     'Riskåtgärder aktiverade': riskOn,
-                    'Riskåtgärder valda': JSON.stringify(riskSelected)
+                    'Riskåtgärder valda': JSON.stringify(riskSelected),
+                    'Status': 'Aktiv'
                 };
+                if (forstaPeriod) fields['Första period'] = forstaPeriod;
 
                 if (typ === 'Deklaration') {
                     const rows = Array.from(document.querySelectorAll('#uppdrag-dek-rows .uppdrag-dek-row')).map(r => ({

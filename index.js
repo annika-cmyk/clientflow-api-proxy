@@ -5961,6 +5961,108 @@ function quarterLabelSv(qKey) {
   return `Kvartal ${m[2]} ${m[1]}`;
 }
 
+const MOMS_MONTHS_SV = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+
+function momsParseYm(ym) {
+  const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (!Number.isFinite(year) || month < 1 || month > 12) return null;
+  return { year, month };
+}
+
+function momsParseQuarterKey(qKey) {
+  const m = String(qKey || '').match(/^(\d{4})-Q([1-4])$/i);
+  if (!m) return null;
+  return { year: parseInt(m[1], 10), quarter: parseInt(m[2], 10) };
+}
+
+function momsQuarterAdd(qKey, delta) {
+  const p = momsParseQuarterKey(qKey);
+  if (!p) return null;
+  let { year, quarter } = p;
+  quarter += (delta || 0);
+  while (quarter > 4) { quarter -= 4; year += 1; }
+  while (quarter < 1) { quarter += 4; year -= 1; }
+  return `${year}-Q${quarter}`;
+}
+
+function momsPeriodEndFromKey(periodKey, freq) {
+  const f = String(freq || '').toLowerCase();
+  if (f.includes('kvartal')) {
+    const q = momsParseQuarterKey(periodKey);
+    if (!q) return null;
+    return { year: q.year, month: q.quarter * 3 };
+  }
+  return momsParseYm(periodKey);
+}
+
+function momsStartIsoFromPeriodKey(periodKey, freq) {
+  const end = momsPeriodEndFromKey(periodKey, freq);
+  if (!end) return '';
+  let y = end.year;
+  let m = end.month + 1;
+  if (m > 12) { m = 1; y += 1; }
+  return `${y}-${String(m).padStart(2, '0')}-01`;
+}
+
+function momsDeadlineIsoFromPeriodKey(periodKey, freq) {
+  const end = momsPeriodEndFromKey(periodKey, freq);
+  if (!end) return '';
+  let y = end.year;
+  let m = end.month + 1;
+  if (m > 12) { m = 1; y += 1; }
+  const day = (m === 1 || m === 8) ? 17 : 12;
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function momsDisplayLabel(periodKey, freq) {
+  const f = String(freq || '').toLowerCase();
+  if (f.includes('kvartal')) {
+    const q = momsParseQuarterKey(periodKey);
+    if (q) return `Momsredovisning Q${q.quarter} ${q.year}`;
+  }
+  const ym = momsParseYm(periodKey);
+  if (ym) return `Momsredovisning ${MOMS_MONTHS_SV[ym.month - 1]} ${ym.year}`;
+  return 'Momsredovisning';
+}
+
+function momsPeriodKeysAhead(firstPeriodKey, freq, count) {
+  const f = String(freq || '').toLowerCase();
+  const n = count || (f.includes('kvartal') ? 4 : 12);
+  const keys = [];
+  let pk = firstPeriodKey;
+  for (let i = 0; i < n; i++) {
+    if (!pk) break;
+    keys.push(pk);
+    pk = f.includes('kvartal') ? momsQuarterAdd(pk, 1) : monthAdd(pk, 1);
+  }
+  return keys;
+}
+
+function momsInferFirstPeriod(fields, freq) {
+  const stored = String(fields['Första period'] || '').trim();
+  if (stored) return stored;
+  const start = toIsoDate(fields['Startdatum'] || '');
+  if (start) {
+    const f = String(freq || '').toLowerCase();
+    if (f.includes('kvartal')) {
+      const ym = start.slice(0, 7);
+      const q = currentQuarterFromYm(ym);
+      if (q) {
+        let qq = q.quarter - 1;
+        let yy = q.year;
+        if (qq <= 0) { qq = 4; yy -= 1; }
+        return `${yy}-Q${qq}`;
+      }
+    }
+    const prev = monthAdd(start.slice(0, 7), -1);
+    if (prev) return prev;
+  }
+  return null;
+}
+
 async function sendSamarbeteDigestEmail({ toEmail, toName, senderByra, senderLogoUrl, items }) {
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
@@ -6103,11 +6205,12 @@ async function processUppdragUnderlagSchedule() {
     if (!typ) return;
     const freq = String(f['Frekvens'] || '').trim();
     const deadline0 = toIsoDate(f['Nästa deadline'] || '');
-    if (!deadline0) return;
+    const freqLow = freq.toLowerCase();
+    const isMomsSched = typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'));
+    if (!deadline0 && !isMomsSched) return;
 
     const horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
     const horizonYm = horizonEnd.slice(0, 7);
-    const freqLow = freq.toLowerCase();
 
     // Hämta existerande körningar för uppdraget
     const existing = new Set();
@@ -6149,8 +6252,26 @@ async function processUppdragUnderlagSchedule() {
       } catch (_) {}
     };
 
-    // Månad: skapa 12 körningar från innevarande månad och framåt (oavsett nästa deadline),
-    // så man kan anteckna/ladda upp per månad även innan deadline närmar sig.
+    // Momsredovisning: SKV-deadlines + tydliga periodetiketter, 12 månader (eller 4 kvartal) framåt.
+    if (typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'))) {
+      let firstPk = momsInferFirstPeriod(f, freq);
+      if (!firstPk) firstPk = freqLow.includes('kvartal') ? `${todayYear}-Q${Math.ceil(parseInt(todayYm.slice(5, 7), 10) / 3)}` : todayYm;
+      const keys = momsPeriodKeysAhead(firstPk, freq, freqLow.includes('kvartal') ? 4 : 12);
+      for (const pk of keys) {
+        const deadlineIso = momsDeadlineIsoFromPeriodKey(pk, freq);
+        if (!deadlineIso) continue;
+        if (deadlineIso.slice(0, 7) > horizonYm) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await createRun({
+          periodKey: pk,
+          periodLabel: momsDisplayLabel(pk, freq),
+          deadlineIso
+        });
+      }
+      return;
+    }
+
+    // Övriga månadsuppdrag (t.ex. lön): 12 körningar från innevarande månad.
     if (freqLow.includes('månad')) {
       const day = parseInt(String(deadline0).slice(8, 10), 10);
       const dayClamped = (Number.isFinite(day) && day >= 1 && day <= 28) ? day : 15;
@@ -10922,6 +11043,7 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Namn', type: 'singleLineText', description: 'Valfritt namn på uppdraget' },
   { name: 'Frekvens', type: 'singleSelect', options: { choices: [{ name: 'Varje månad' }, { name: 'Varje kvartal' }, { name: 'Årsvis' }, { name: 'Årsvis med deklaration' }, { name: 'Engång' }] } },
   { name: 'Startdatum', type: 'date', description: 'Tidigast datum uppdraget ska börja synas i att-göra', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Första period', type: 'singleLineText', description: 'Första momsperiod (YYYY-MM eller YYYY-Qn) – sätts vid upplägg av moms' },
   { name: 'Nästa deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Ansvarig', type: 'singleLineText', description: 'Handläggare (namn eller user-id)' },
   { name: 'Rutin', type: 'multilineText', description: 'Instruktion/rutin för uppdraget' },
@@ -11570,6 +11692,9 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       const record = await tryWriteWithFallback(write);
       const warning = record && record.__clientflow_warning;
       if (warning) delete record.__clientflow_warning;
+      setImmediate(() => {
+        processUppdragUnderlagSchedule().catch((e) => console.warn('ensure runs after uppdrag update:', e.message));
+      });
       return res.json({ record, updated: true, warning });
     }
 
@@ -11585,6 +11710,9 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     const record = await tryWriteWithFallback(write);
     const warning = record && record.__clientflow_warning;
     if (warning) delete record.__clientflow_warning;
+    setImmediate(() => {
+      processUppdragUnderlagSchedule().catch((e) => console.warn('ensure runs after uppdrag create:', e.message));
+    });
     return res.json({ record, created: true, warning });
   } catch (error) {
     console.error('❌ POST /api/uppdrag:', error.response?.data || error.message);
