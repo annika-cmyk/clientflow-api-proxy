@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v12.4', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v12.5', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -992,22 +992,11 @@ class CustomerCardManager {
 
                                     let qaHtml = '';
                                     if (titleLines.length > 0) {
-                                        qaHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
-                                        titleLines.forEach((line, idx) => {
-                                            const qShort = line.slice(0, 120);
-                                            let svar = '—';
-                                            if (Array.isArray(answersArray)) {
-                                                const a = answersArray[idx] || {};
-                                                const text = (a && a.text) ? String(a.text).trim() : '';
-                                                const att = attachments[idx];
-                                                const parts = [];
-                                                if (text) parts.push(this._esc(text));
-                                                if (att) parts.push(attachmentLink(att));
-                                                if (parts.length) svar = parts.join(' · ');
-                                            }
-                                            qaHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this._esc(qShort)}${qShort.length >= 120 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
+                                        qaHtml = this.buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, {
+                                            escape: (s) => this._esc(s),
+                                            attachmentLink,
+                                            qMaxLen: 120
                                         });
-                                        qaHtml += '</ul></div>';
                                     }
 
                                     return `
@@ -7177,6 +7166,109 @@ class CustomerCardManager {
         this.displayDocuments([]);
     }
 
+    parseSamarbeteAnswersArray(rawText) {
+        const raw = (rawText || '').toString().trim();
+        if (!raw || !raw.startsWith('[')) return null;
+        try {
+            const arr = JSON.parse(raw);
+            return Array.isArray(arr) ? arr : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _samarbeteAttKey(att) {
+        if (!att) return '';
+        if (att.id) return `id:${att.id}`;
+        if (att.url) return `url:${att.url}`;
+        const fn = (att.filename || att.name || '').trim().toLowerCase();
+        return fn ? `fn:${fn}` : '';
+    }
+
+    /** Airtable lagrar alla filer i en lista i uppladdningsordning – inte per frågeindex. */
+    matchSamarbeteAttachment(attachments, answer, usedKeys = null) {
+        if (!Array.isArray(attachments) || attachments.length === 0) return null;
+        const a = answer || {};
+        const want = String(a.filename || a.attachmentFilename || '').trim().toLowerCase();
+        if (want) {
+            const hit = attachments.find((att) => {
+                const key = this._samarbeteAttKey(att);
+                if (usedKeys && key && usedKeys.has(key)) return false;
+                const fn = String(att.filename || att.name || '').trim().toLowerCase();
+                if (!fn) return false;
+                return fn === want || fn.endsWith(want) || want.endsWith(fn);
+            });
+            if (hit) {
+                const key = this._samarbeteAttKey(hit);
+                if (usedKeys && key) usedKeys.add(key);
+                return hit;
+            }
+        }
+        if (a.attachmentUrl) {
+            const byUrl = attachments.find((att) => {
+                const key = this._samarbeteAttKey(att);
+                if (usedKeys && key && usedKeys.has(key)) return false;
+                return att.url && att.url === a.attachmentUrl;
+            });
+            if (byUrl) {
+                const key = this._samarbeteAttKey(byUrl);
+                if (usedKeys && key) usedKeys.add(key);
+                return byUrl;
+            }
+        }
+        if (a.attachmentId) {
+            const byId = attachments.find((att) => {
+                const key = this._samarbeteAttKey(att);
+                if (usedKeys && key && usedKeys.has(key)) return false;
+                return att.id === a.attachmentId;
+            });
+            if (byId) {
+                const key = this._samarbeteAttKey(byId);
+                if (usedKeys && key) usedKeys.add(key);
+                return byId;
+            }
+        }
+        return null;
+    }
+
+    buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, opts = {}) {
+        const escape = opts.escape || ((s) => this.escapeDocHtml(s));
+        const linkFn = opts.attachmentLink;
+        const qMaxLen = opts.qMaxLen || 80;
+        const lines = (titleLines && titleLines.length)
+            ? titleLines
+            : (Array.isArray(answersArray) ? answersArray.map((_, i) => `Punkt ${i + 1}`) : []);
+        if (!lines.length) return '';
+        const usedKeys = new Set();
+        let html = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
+        lines.forEach((line, idx) => {
+            const qShort = String(line || '').slice(0, qMaxLen);
+            const a = (Array.isArray(answersArray) && answersArray[idx]) ? answersArray[idx] : {};
+            const text = (a && a.text) ? String(a.text).trim() : '';
+            const att = this.matchSamarbeteAttachment(attachments, a, usedKeys);
+            const parts = [];
+            if (text) parts.push(escape(text));
+            if (att && linkFn) parts.push(linkFn(att));
+            const svar = parts.length ? parts.join(' · ') : '—';
+            html += `<li class="samarbete-response-row"><div class="samarbete-response-q">${escape(qShort)}${qShort.length >= qMaxLen ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
+        });
+        html += '</ul>';
+        const extra = (attachments || []).filter((att) => {
+            const key = this._samarbeteAttKey(att);
+            return key && !usedKeys.has(key);
+        });
+        if (extra.length && linkFn) {
+            html += '<p class="samarbete-extra-files"><strong>Övriga bifogade filer:</strong> ';
+            extra.forEach((att, i) => {
+                html += linkFn(att);
+                if (i < extra.length - 1) html += ' ';
+            });
+            html += '</p>';
+        }
+        html += '</div>';
+        return html;
+    }
+
     async loadSamarbete() {
         const content = document.getElementById('samarbete-content');
         if (!content) return;
@@ -7278,25 +7370,13 @@ class CustomerCardManager {
                 : 0;
             const progress = (answeredCount > 0 && n > 0) ? ` · Påbörjad: ${answeredCount}/${n}` : '';
             const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}${progress}`;
-            let questionsHtml = '';
-            if (titleLines.length > 0) {
-                questionsHtml = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
-                titleLines.forEach((line, idx) => {
-                    const qShort = line.slice(0, 80);
-                    let svar = '—';
-                    if (Array.isArray(answersArray)) {
-                        const a = answersArray[idx] || {};
-                        const text = (a && a.text) ? String(a.text).trim() : '';
-                        const att = attachments[idx];
-                        const parts = [];
-                        if (text) parts.push(this.escapeDocHtml(text));
-                        if (att) parts.push(attachmentLink(att));
-                        if (parts.length) svar = parts.join(' · ');
-                    }
-                    questionsHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this.escapeDocHtml(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
-                });
-                questionsHtml += '</ul></div>';
-            }
+            const questionsHtml = titleLines.length > 0
+                ? this.buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, {
+                    escape: (s) => this.escapeDocHtml(s),
+                    attachmentLink,
+                    qMaxLen: 80
+                })
+                : '';
             return `
                 <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
                     ${renderHiddenLinkInput(req)}
@@ -7335,28 +7415,13 @@ class CustomerCardManager {
             const titleFirst = titleLines[0] || 'Förfrågan';
             const numPoints = titleLines.length;
 
-            if (Array.isArray(answersArray) && answersArray.length > 0) {
-                responseHtml += '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
-                answersArray.forEach((a, idx) => {
-                    const qShort = (titleLines[idx] || `Punkt ${idx + 1}`).slice(0, 80);
-                    const text = (a && a.text) ? String(a.text).trim() : '';
-                    const att = attachments[idx];
-                    let svar = '';
-                    if (text) svar = this.escapeDocHtml(text);
-                    if (att) svar += (svar ? ' · ' : '') + attachmentLink(att);
-                    if (!svar) svar = '—';
-                    responseHtml += `<li class="samarbete-response-row"><div class="samarbete-response-q">${this.escapeDocHtml(qShort)}${qShort.length >= 80 ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
-                });
-                responseHtml += '</ul>';
-                if (attachments.length > answersArray.length) {
-                    responseHtml += '<p class="samarbete-extra-files"><strong>Övriga bifogade filer:</strong> ';
-                    for (let i = answersArray.length; i < attachments.length; i++) {
-                        responseHtml += attachmentLink(attachments[i]);
-                        if (i < attachments.length - 1) responseHtml += ' ';
-                    }
-                    responseHtml += '</p>';
-                }
-                responseHtml += '</div>';
+            if (numPoints > 0 || (Array.isArray(answersArray) && answersArray.length > 0)) {
+                responseHtml += this.buildSamarbeteQaTableHtml(
+                    titleLines.length ? titleLines : null,
+                    answersArray,
+                    attachments,
+                    { escape: (s) => this.escapeDocHtml(s), attachmentLink, qMaxLen: 80 }
+                );
             } else {
                 if (rawText) responseHtml += `<p class="samarbete-response-text">${this.escapeDocHtml(rawText)}</p>`;
                 if (attachments.length > 0) {

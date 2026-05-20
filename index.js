@@ -6444,6 +6444,7 @@ app.post('/api/samarbete/respond', async (req, res) => {
             ? [{ file: req.body.file, filename: req.body.filename }]
             : []);
 
+      let primaryUploadMeta = null;
       for (const f of filesToUpload) {
         if (!f || typeof f.file !== 'string' || !f.filename) continue;
         let buffer;
@@ -6453,8 +6454,16 @@ app.post('/api/samarbete/respond', async (req, res) => {
         if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
         const fname = String(f.filename);
         const contentType = fname.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
-        const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, record.id, buffer, fname, contentType, tableId, 'Svar bifogad fil');
-        if (!uploaded) return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable.' });
+        const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, fname, contentType, tableId, 'Svar bifogad fil');
+        if (!uploadedAtt) return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable.' });
+        if (!primaryUploadMeta) primaryUploadMeta = uploadedAtt;
+      }
+      if (primaryUploadMeta) {
+        existingAnswers[answerIndex] = {
+          ...existingAnswers[answerIndex],
+          attachmentId: primaryUploadMeta.id || null,
+          attachmentUrl: primaryUploadMeta.url || null
+        };
       }
       svarText = JSON.stringify(existingAnswers);
       const statusInfo = computeStatus(existingAnswers);
@@ -6495,10 +6504,16 @@ app.post('/api/samarbete/respond', async (req, res) => {
           try { buffer = Buffer.from(a.file, 'base64'); } catch (e) { continue; }
           if (buffer.length <= 15 * 1024 * 1024) {
             const contentType = (String(a.filename).toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-            const uploaded = await uploadAttachmentToAirtableField(airtableAccessToken, airtableBaseId, record.id, buffer, a.filename, contentType, tableId, 'Svar bifogad fil');
-            if (!uploaded) {
+            const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, a.filename, contentType, tableId, 'Svar bifogad fil');
+            if (!uploadedAtt) {
               return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable. Kontrollera att fältet \"Svar bifogad fil\" finns och är av typen bilaga (attachments).' });
             }
+            merged[i] = {
+              ...merged[i],
+              filename: String(a.filename).slice(0, 255),
+              attachmentId: uploadedAtt.id || null,
+              attachmentUrl: uploadedAtt.url || null
+            };
           }
         }
       }
