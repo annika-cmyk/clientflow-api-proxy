@@ -554,7 +554,13 @@ class CustomerCardManager {
                             const r2 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-fields`, { method: 'POST', ...opts });
                             const d2 = await r2.json().catch(() => ({}));
                             if (!r2.ok) throw new Error(d2.error || `HTTP ${r2.status}`);
-                            this.showNotification('Uppdrag-tabell installerad ✅', 'success');
+                            const r3 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-runs`, { method: 'POST', ...opts });
+                            const d3 = await r3.json().catch(() => ({}));
+                            if (!r3.ok) throw new Error(d3.error || `HTTP ${r3.status}`);
+                            const r4 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-runs-fields`, { method: 'POST', ...opts });
+                            const d4 = await r4.json().catch(() => ({}));
+                            if (!r4.ok) throw new Error(d4.error || `HTTP ${r4.status}`);
+                            this.showNotification('Uppdrag- och körningstabeller installerade ✅', 'success');
                             this.loadUppdrag();
                         } catch (e) {
                             this.showNotification('Kunde inte installera: ' + (e.message || 'fel'), 'error');
@@ -571,17 +577,18 @@ class CustomerCardManager {
         const uppdragData = await uppdragRes.json().catch(() => ({ records: [] }));
         const usersData = (usersRes && usersRes.ok) ? await usersRes.json() : { users: [] };
         const samarbeteData = (samarbeteRes && samarbeteRes.ok) ? await samarbeteRes.json() : { requests: [] };
+        const runsData = (runsRes && runsRes.ok) ? await runsRes.json().catch(() => ({ records: [] })) : { records: [] };
         if (runsRes && !runsRes.ok) {
             const err = await runsRes.json().catch(() => ({}));
             const msg = err.error || err.message || err.details || `HTTP ${runsRes.status}`;
             console.warn('Uppdragskörningar kunde inte hämtas:', runsRes.status, msg);
-            // Visa bara en gång per sida för att undvika spam
             if (!window.__clientflowRunsWarned) {
                 window.__clientflowRunsWarned = true;
                 this.showNotification('Kunde inte ladda uppdragskörningar (fallback: status sparas i uppdragets historik).', 'warning');
             }
+        } else if (runsData.tableMissing) {
+            console.warn('Uppdragskörningar-tabellen saknas i Airtable:', runsData.hint || '');
         }
-        const runsData = (runsRes && runsRes.ok) ? await runsRes.json().catch(() => ({ records: [] })) : { records: [] };
 
         const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
         const runRecords = Array.isArray(runsData.records) ? runsData.records : [];
@@ -747,8 +754,28 @@ class CustomerCardManager {
             </div>
         `;
 
+        const runsSetupHtml = runsData.tableMissing ? `
+            <div class="collapsible-card uppdrag-setup-card" style="margin-bottom:1rem;">
+                <div class="collapsible-header" style="cursor:default;">
+                    <div class="collapsible-title"><i class="fas fa-database"></i><span>Installera tabellen Uppdragskörningar</span></div>
+                </div>
+                <div class="collapsible-body">
+                    <div class="uppdrag-setup-desc">
+                        Momsuppdrag och per-period-anteckningar kräver tabellen <strong>Uppdragskörningar</strong> i Airtable. Den saknas eller är felkonfigurerad (403).
+                    </div>
+                    <div class="uppdrag-setup-hint" style="margin-bottom:0.75rem;">${this._esc(String(runsData.hint || 'Skapa tabellen med knappen nedan.'))}</div>
+                    <div class="uppdrag-actions">
+                        <button type="button" class="btn btn-primary" id="uppdrag-install-runs-btn">
+                            <i class="fas fa-magic"></i> Skapa Uppdragskörningar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+
         container.innerHTML = `
             <div class="uppdrag-tab">
+                ${runsSetupHtml}
                 ${boardHtml}
                 <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
                     ${existingTypes.length ? existingTypes.map(t => {
@@ -1222,6 +1249,29 @@ class CustomerCardManager {
             }
             tbody.innerHTML = rows || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
         };
+
+        const installRunsBtn = document.getElementById('uppdrag-install-runs-btn');
+        if (installRunsBtn) {
+            installRunsBtn.addEventListener('click', async () => {
+                try {
+                    installRunsBtn.disabled = true;
+                    installRunsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...';
+                    const r3 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-runs`, { method: 'POST', ...opts });
+                    const d3 = await r3.json().catch(() => ({}));
+                    if (!r3.ok) throw new Error(d3.error || `HTTP ${r3.status}`);
+                    const r4 = await fetch(`${baseUrl}/api/setup/airtable-uppdrag-runs-fields`, { method: 'POST', ...opts });
+                    const d4 = await r4.json().catch(() => ({}));
+                    if (!r4.ok) throw new Error(d4.error || `HTTP ${r4.status}`);
+                    this.showNotification('Uppdragskörningar installerad ✅', 'success');
+                    window.__clientflowRunsWarned = false;
+                    this.loadUppdrag();
+                } catch (e) {
+                    this.showNotification('Kunde inte skapa tabellen: ' + (e.message || 'fel'), 'error');
+                    installRunsBtn.disabled = false;
+                    installRunsBtn.innerHTML = '<i class="fas fa-magic"></i> Skapa Uppdragskörningar';
+                }
+            });
+        }
 
         const prevBtn = document.getElementById('kund-uppdragboard-prev');
         const nextBtn = document.getElementById('kund-uppdragboard-next');

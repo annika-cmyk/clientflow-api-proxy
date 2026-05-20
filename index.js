@@ -6177,8 +6177,13 @@ async function processUppdragUnderlagSchedule() {
   const uppdragTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
   const uppdragUrl = `https://api.airtable.com/v0/${airtableBaseId}/${uppdragTableIdOrName}`;
 
-  const uppdragRunsTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
-  const uppdragRunsUrl = `https://api.airtable.com/v0/${airtableBaseId}/${uppdragRunsTableIdOrName}`;
+  const uppdragRunsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+  const uppdragRunsUrl = uppdragRunsTableId
+    ? `https://api.airtable.com/v0/${airtableBaseId}/${uppdragRunsTableId}`
+    : null;
+  if (!uppdragRunsUrl) {
+    console.warn(`processUppdragUnderlagSchedule: tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas – körningar skapas inte förrän tabellen installeras.`);
+  }
 
   const fetchAll = async () => {
     const res = await axios.get(`${uppdragUrl}?pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
@@ -6211,6 +6216,8 @@ async function processUppdragUnderlagSchedule() {
 
     const horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
     const horizonYm = horizonEnd.slice(0, 7);
+
+    if (!uppdragRunsUrl) return;
 
     // Hämta existerande körningar för uppdraget
     const existing = new Set();
@@ -11110,20 +11117,112 @@ async function getUppdragTableMeta(airtableToken, baseId) {
 }
 
 async function getUppdragRunsTableMeta(airtableToken, baseId) {
-  const forcedId = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID;
+  const forcedId = (process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || '').trim();
   try {
     const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
       headers: { Authorization: `Bearer ${airtableToken}` },
       timeout: 10000
     });
     const tables = res.data?.tables || [];
-    const t = forcedId
-      ? tables.find(x => (x.id || '').trim() === forcedId.trim())
-      : tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_RUNS_TABLE_NAME.toLowerCase());
-    return t || null;
+    const byName = tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_RUNS_TABLE_NAME.toLowerCase());
+    if (byName) return byName;
+    if (forcedId) {
+      const byId = tables.find(x => (x.id || '').trim() === forcedId);
+      if (byId) return byId;
+      console.warn(`getUppdragRunsTableMeta: AIRTABLE_TABLE_UPPDRAG_RUNS_ID=${forcedId} hittades inte i basen – tabell "${UPPDRAG_RUNS_TABLE_NAME}" saknas troligen.`);
+    }
+    return null;
   } catch (e) {
     return null;
   }
+}
+
+async function resolveUppdragRunsTableId(airtableToken, baseId) {
+  const meta = await getUppdragRunsTableMeta(airtableToken, baseId);
+  return meta?.id || null;
+}
+
+async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId }) {
+  const tableId = await resolveUppdragRunsTableId(airtableToken, baseId);
+  if (!tableId) {
+    return { records: [], tableMissing: true };
+  }
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
+  const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const cust = esc(customerId);
+  const formulas = [
+    `{Kund ID} = "${cust}"`,
+    `FIND("${cust}", ARRAYJOIN({Kund ID}))`
+  ];
+  const fetchPages = async (baseParams) => {
+    let out = [];
+    let offset = null;
+    do {
+      const params = { ...baseParams, pageSize: 100 };
+      if (offset) params.offset = offset;
+      const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
+      out = out.concat(r.data.records || []);
+      offset = r.data.offset || null;
+    } while (offset);
+    return out;
+  };
+  let records = [];
+  for (const formula of formulas) {
+    try {
+      records = await fetchPages({ filterByFormula: formula, sort: [{ field: 'Deadline', direction: 'asc' }] });
+      if (records.length) break;
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || '';
+      if (/Invalid permissions|not found/i.test(msg) && !records.length) {
+        return { records: [], tableMissing: true, error: msg };
+      }
+      if (/Unknown field|sort/i.test(String(msg))) {
+        try {
+          records = await fetchPages({ filterByFormula: formula });
+          if (records.length) break;
+        } catch (e2) {
+          const msg2 = e2.response?.data?.error?.message || e2.message || '';
+          if (/Invalid permissions|not found/i.test(msg2)) {
+            return { records: [], tableMissing: true, error: msg2 };
+          }
+        }
+      } else {
+        throw e;
+      }
+    }
+  }
+  if (!records.length) {
+    try {
+      let offset = null;
+      do {
+        const params = { pageSize: 100 };
+        if (offset) params.offset = offset;
+        const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
+        const all = r.data.records || [];
+        records = all.filter(rec => {
+          const f = rec.fields || {};
+          const k = f['Kund ID'];
+          if (k === customerId) return true;
+          if (Array.isArray(k) && k.includes(customerId)) return true;
+          return false;
+        });
+        offset = r.data.offset || null;
+        if (records.length) break;
+      } while (offset);
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || '';
+      if (/Invalid permissions|not found/i.test(String(msg))) {
+        return { records: [], tableMissing: true, error: msg };
+      }
+      throw e;
+    }
+  }
+  records.sort((a, b) => {
+    const da = String(a?.fields?.['Deadline'] || '');
+    const db = String(b?.fields?.['Deadline'] || '');
+    return da.localeCompare(db);
+  });
+  return { records, tableId };
 }
 
 async function ensureUppdragRunsStatusChoices(airtableToken, baseId, tableMeta) {
@@ -11459,20 +11558,20 @@ app.get('/api/uppdrag/runs', authenticateToken, async (req, res) => {
     if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
-    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
-    const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const formula = `{Kund ID} = "${esc(customerId)}"`;
-    let records = [];
-    let offset = null;
-    do {
-      const params = { pageSize: 100, filterByFormula: formula, sort: [{ field: 'Deadline', direction: 'asc' }] };
-      if (offset) params.offset = offset;
-      const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` }, params });
-      records = records.concat(r.data.records || []);
-      offset = r.data.offset || null;
-    } while (offset);
-    res.json({ records });
+    const result = await listUppdragRunsForCustomer({
+      airtableToken: airtableAccessToken,
+      baseId: airtableBaseId,
+      customerId: String(customerId).trim()
+    });
+    if (result.tableMissing) {
+      return res.json({
+        records: [],
+        tableMissing: true,
+        hint: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas i Airtable (eller AIRTABLE_TABLE_UPPDRAG_RUNS_ID pekar fel). Installera via Uppdrag-fliken eller POST /api/setup/airtable-uppdrag-runs.`,
+        details: result.error || null
+      });
+    }
+    res.json({ records: result.records || [], tableId: result.tableId || null });
   } catch (error) {
     console.error('❌ GET /api/uppdrag/runs:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -11498,8 +11597,11 @@ app.patch('/api/uppdrag/runs/:runId/status', authenticateToken, async (req, res)
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
-    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${encodeURIComponent(id)}`;
+    const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+    if (!runsTableId) {
+      return res.status(404).json({ error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas. Installera via /api/setup/airtable-uppdrag-runs.` });
+    }
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(id)}`;
     const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
 
     // Behörighetskontroll: samma byrå som inloggad användare
@@ -11892,9 +11994,10 @@ app.patch('/api/uppdrag/run-status', authenticateToken, async (req, res) => {
     const runIdClean = String(runId || '').trim();
     if (runIdClean) {
       try {
-        const runsTableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+        const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+        if (!runsTableId) throw new Error('runs table missing');
         await axios.patch(
-          `https://api.airtable.com/v0/${airtableBaseId}/${runsTableIdOrName}/${encodeURIComponent(runIdClean)}`,
+          `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(runIdClean)}`,
           { fields: { 'Status': nextStatus, 'Uppdaterad': nowIso } },
           { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
         );
