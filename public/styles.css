@@ -5660,6 +5660,17 @@ body.sidebar-collapsed .logout-btn {
 .documentation-category-title i {
     color: #64748b;
 }
+.dokumentation-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.dokumentation-page-header .risk-header-content { flex: 1; min-width: 12rem; }
+.dokumentation-page-desc { margin: 0.35rem 0 0; max-width: 36rem; }
+.dokumentation-header-actions { flex-shrink: 0; }
+.dokumentation-export-history { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0; }
 .dokumentation-section { margin-bottom: 2rem; }
 .dokumentation-riskbedomning-view {
     background: #fff;

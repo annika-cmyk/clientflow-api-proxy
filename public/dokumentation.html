@@ -14,9 +14,15 @@
 
         <main class="main-content">
             <div class="container">
-                <header class="content-header risk-header">
+                <header class="content-header risk-header dokumentation-page-header">
                     <div class="risk-header-content">
                         <h1>Dokumentation</h1>
+                        <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning och byrårutiner enligt penningtvättslagen.</p>
+                    </div>
+                    <div class="dokumentation-header-actions" id="dokumentation-export-wrap" style="display:none;">
+                        <button type="button" class="btn btn-primary" id="btn-export-dokumentation" title="Generera PDF, ladda ner och spara i historiken">
+                            <i class="fas fa-file-export"></i> Exportera PDF
+                        </button>
                     </div>
                 </header>
 
@@ -36,8 +42,9 @@
                         <div id="riskbedomning-view" class="dokumentation-riskbedomning-view"></div>
                     </section>
 
-                    <section class="info-section dokumentation-section">
-                        <h3><i class="fas fa-file-pdf"></i> Historik</h3>
+                    <section class="info-section dokumentation-section dokumentation-export-history">
+                        <h3><i class="fas fa-file-pdf"></i> Exporterade dokument</h3>
+                        <p class="section-desc">Varje export sparas här med datumstämpel. Du kan ladda ner tidigare versioner igen.</p>
                         <div id="lansstyrelsen-pdf-list" class="dokumentation-pdf-list"></div>
                     </section>
                 </div>
@@ -59,7 +66,7 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="js/dokumentation.js?v=2"></script>
+    <script src="js/dokumentation.js?v=3"></script>
     <script src="app.js"></script>
 </body>
 </html>

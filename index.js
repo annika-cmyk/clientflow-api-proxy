@@ -13055,8 +13055,19 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     ]);
 
     const byraRec = byraRes.data.records?.[0];
-    const byraFields = byraRec?.fields || {};
+    const byraFields = { ...(byraRec?.fields || {}) };
+    const riskKey = '4. Identifierade Risker och Sårbarheter';
+    const riskRaw = byraFields[riskKey];
+    if (riskRaw && typeof riskRaw === 'string') {
+      if (/rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
+        const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
+        byraFields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
+      } else {
+        byraFields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+      }
+    }
     const byraNamn = byraFields['Byrå'] || byraFields['Namn'] || 'Byrån';
+    const exportStamp = new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' });
     const tjanster = (tjansterRes.data?.tjanster || []);
     const stat = statRes.data || {};
     const riskRecords = riskRes.data?.records || [];
@@ -13074,7 +13085,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const ACCENT = '#2c4a8f';
     const htmlParts = [];
 
-    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Länsstyrelsen – Dokumentation penningtvätt</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Export: ${fmtDate(new Date())}</p></div>`);
+    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Byråns allmänna riskbedömning och rutiner</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Exporterad: ${escape(exportStamp)}</p><p class="doc-meta">Dokumentation enligt penningtvättslagen (4 kap. 3 §) – för tillsyn och arkivering.</p></div>`);
 
     const rutinerFields = [
       ['1. Syfte och omfattning policy', '1. Syfte och omfattning policy'],
@@ -13137,9 +13148,9 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const pdfBuffer = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
     await browser.close();
 
-    const ar = new Date().getFullYear();
+    const datumIso = new Date().toISOString().split('T')[0];
     const safeByra = (byraNamn || 'byra').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
-    const filename = `Lansstyrelsen-${safeByra}-${ar}.pdf`;
+    const filename = `Allman-riskbedomning-och-rutiner-${safeByra}-${datumIso}.pdf`;
 
     if (byraRec && byraRec.id) {
       try {

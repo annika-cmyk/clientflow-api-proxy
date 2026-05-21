@@ -307,9 +307,14 @@ window.exportLansstyrelsenPdf = async function () {
         }
         const blob = await res.blob();
         const cd = res.headers.get('Content-Disposition') || '';
-        const m = cd.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\n]+)/);
-        const apiFilename = m ? decodeURIComponent(m[1].trim()) : 'Lansstyrelsen-' + new Date().getFullYear() + '.pdf';
-        const displayFilename = 'Byråns allmänna riskbedömning samt rutiner ' + new Date().toLocaleDateString('sv-SE') + '.pdf';
+        const m = cd.match(/filename\*?=(?:UTF-8'')?([^;\n]+)/i);
+        let apiFilename = 'Allman-riskbedomning-och-rutiner-' + new Date().toISOString().split('T')[0] + '.pdf';
+        if (m) {
+            try { apiFilename = decodeURIComponent(m[1].trim().replace(/^["']|["']$/g, '')); } catch (_) { apiFilename = m[1].trim(); }
+        }
+        const now = new Date();
+        const dateDisplay = now.toLocaleDateString('sv-SE');
+        const displayFilename = 'Byråns allmänna riskbedömning och rutiner ' + dateDisplay + '.pdf';
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = apiFilename;
@@ -324,7 +329,12 @@ window.exportLansstyrelsenPdf = async function () {
                 const getRes = await fetch(baseUrl + '/api/settings/dokumentation-pdfs', opts);
                 let list = [];
                 if (getRes.ok) { const data = await getRes.json(); list = Array.isArray(data.list) ? data.list : []; }
-                list.unshift({ date: new Date().toLocaleDateString('sv-SE'), filename: displayFilename, base64: base64 });
+                list.unshift({
+                    date: dateDisplay,
+                    exportedAt: now.toISOString(),
+                    filename: displayFilename,
+                    base64: base64
+                });
                 list = list.slice(0, MAX_SAVED);
                 await fetch(baseUrl + '/api/settings/dokumentation-pdfs', { method: 'PUT', ...opts, body: JSON.stringify({ list }) });
             } catch (_) {}

@@ -132,6 +132,42 @@
     return m[3] + ' ' + (months[parseInt(m[2], 10) - 1] || m[2]) + ' ' + m[1];
   }
 
+  function formatExportTimestamp(iso) {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function buildExportDisplayFilename(dateDisplay) {
+    return 'Byråns allmänna riskbedömning och rutiner ' + (dateDisplay || new Date().toLocaleDateString('sv-SE')) + '.pdf';
+  }
+
+  function parseFilenameFromResponse(res) {
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*?=(?:UTF-8'')?([^;\n]+)/i);
+    if (!m) return null;
+    try {
+      return decodeURIComponent(m[1].trim().replace(/^["']|["']$/g, ''));
+    } catch (_) {
+      return m[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () {
+        const parts = String(reader.result || '').split(',');
+        resolve(parts[1] || '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   const RUTINER_LABELS = [
     { key: '1. Syfte och omfattning policy', label: '1. Syfte och omfattning policy' },
     { key: '2. Centralt Funktionsansvarig ', label: '2. Centralt Funktionsansvarig' },
@@ -218,6 +254,8 @@
     }
     loading.style.display = 'none';
     content.style.display = 'block';
+    const exportWrap = getEl('dokumentation-export-wrap');
+    if (exportWrap) exportWrap.style.display = 'flex';
     renderPdfList();
   }
 
@@ -236,18 +274,23 @@
     const container = getEl('lansstyrelsen-pdf-list');
     if (!container) return;
     if (list.length === 0) {
-      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga dokument sparade ännu. Följ stegen på dashboarden (Kom igång) för att generera och spara rutiner och riskbedömning.</p>';
+      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga exporter sparade ännu. Klicka på <strong>Exportera PDF</strong> ovan för att ladda ner och spara en version med dagens datumstämpel.</p>';
       return;
     }
-    container.innerHTML = '<ul class="document-list">' + list.map((item, i) => `
+    container.innerHTML = '<ul class="document-list">' + list.map((item, i) => {
+      const stamp = item.exportedAt
+        ? formatExportTimestamp(item.exportedAt)
+        : (item.date || '');
+      const label = item.filename || buildExportDisplayFilename(item.date);
+      return `
       <li class="document-list-item">
         <i class="fas fa-file-pdf"></i>
-        <span>${escapeHtml(item.filename || '')} — ${escapeHtml(item.date || '')}</span>
+        <span><strong>${escapeHtml(label)}</strong><br><span class="section-desc" style="margin:0;">Exporterad: ${escapeHtml(stamp)}</span></span>
         <button type="button" class="btn btn-secondary btn-sm" data-pdf-index="${i}">
           <i class="fas fa-download"></i> Ladda ner
         </button>
-      </li>
-    `).join('') + '</ul>';
+      </li>`;
+    }).join('') + '</ul>';
     container.querySelectorAll('[data-pdf-index]').forEach(btn => {
       const i = parseInt(btn.getAttribute('data-pdf-index'), 10);
       btn.addEventListener('click', () => window.dokumentationDownloadPdf(i, list));
@@ -275,6 +318,73 @@
 
   window.getDokumentationSavePdf = function () { return savePdfToList; };
 
+  async function exportDokumentationPdf() {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+      alert('Du måste logga in för att exportera.');
+      return;
+    }
+    const btn = getEl('btn-export-dokumentation');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
+    }
+    if (typeof window.showAiThinking === 'function') {
+      window.showAiThinking('Genererar PDF med rutiner och riskbedömning...');
+    }
+    try {
+      const res = await fetch(getBaseUrl() + '/api/byra/lansstyrelsen-pdf', {
+        method: 'POST',
+        ...getAuthOpts()
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(function () { return {}; });
+        throw new Error(err.error || err.message || 'Kunde inte generera PDF');
+      }
+      const blob = await res.blob();
+      const now = new Date();
+      const dateDisplay = now.toLocaleDateString('sv-SE');
+      const exportedAt = now.toISOString();
+      const apiFilename = parseFilenameFromResponse(res);
+      const displayFilename = buildExportDisplayFilename(dateDisplay);
+      const downloadName = apiFilename || displayFilename;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadName;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      const base64 = await blobToBase64(blob);
+      if (base64) {
+        await savePdfToList({
+          date: dateDisplay,
+          exportedAt: exportedAt,
+          filename: displayFilename,
+          base64: base64
+        });
+      }
+    } catch (err) {
+      console.error('Dokumentation export:', err);
+      alert('Kunde inte exportera: ' + (err.message || 'Okänt fel'));
+    } finally {
+      if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  }
+
+  window.dokumentationExportPdf = exportDokumentationPdf;
+  window.exportLansstyrelsenPdf = exportDokumentationPdf;
+
+  function initExportButton() {
+    const btn = getEl('btn-export-dokumentation');
+    if (btn) btn.addEventListener('click', exportDokumentationPdf);
+  }
+
   /** Kör load() när auth är klar – annars kan getCurrentUser() vara null eftersom checkAuthStatus() är asynkron. */
   let loadStarted = false;
   function runLoadWhenReady() {
@@ -286,6 +396,8 @@
     window.addEventListener('clientflow:authReady', runLoadWhenReady, { once: true });
     setTimeout(runLoadWhenReady, 1500);
   }
+  initExportButton();
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', whenReady);
   else whenReady();
 })();
