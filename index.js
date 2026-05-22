@@ -4622,6 +4622,7 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h2>Riskfaktorer (fliken Riskbedömning)</h2>
       <div class="section">
         <p><strong>Högriskbransch</strong></p>${chipList(data.hogriskbransch, true)}
+        ${(data.riskhojTjanster || []).length ? `<p><strong>Riskhöjande – tjänster (endast kundens valda)</strong></p>${chipList(data.riskhojTjanster, true)}` : ''}
         <p><strong>Riskhöjande – övrigt</strong></p>${chipList(data.riskhojOvrigt, true)}
         <p><strong>Risksänkande faktorer</strong></p>${chipList(data.risksankande, false)}
         ${data.kommentarRisk ? `<p><strong>Kommentar till riskfaktorerna:</strong><br>${nl2br(data.kommentarRisk)}</p>` : ''}
@@ -4677,35 +4678,96 @@ async function mergePdfBuffers(buffers) {
   return Buffer.from(await merged.save());
 }
 
-/** Endast tjänster som finns i kundens länkfält – aldrig hela byråns lista */
-async function fetchKundValdaTjansterNamn(airtableAccessToken, airtableBaseId, linkedIdsRaw) {
-  const linkedSet = new Set(
-    (Array.isArray(linkedIdsRaw) ? linkedIdsRaw : []).filter(isAirtableRecordIdStr)
-  );
-  if (!linkedSet.size) return [];
+function normTjanstKey(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
-  const namnList = [];
-  const seen = new Set();
-  const addNamn = (namn) => {
-    const n = (namn || '').trim();
-    if (!n || isAirtableRecordIdStr(n)) return;
-    const key = n.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    namnList.push(n);
-  };
+function dedupeByraTjansterForPdf(tjanster) {
+  const buckets = new Map();
+  for (const t of tjanster) {
+    const n = (t.namn || '').trim();
+    if (!n || isAirtableRecordIdStr(n)) continue;
+    const key = normTjanstKey(n);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(t);
+  }
+  const merged = [];
+  for (const arr of buckets.values()) {
+    arr.sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+    const primary = { ...arr[0] };
+    primary.mergedIds = arr.map((x) => x.id);
+    merged.push(primary);
+  }
+  merged.sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
+  return merged;
+}
 
-  await Promise.all([...linkedSet].map(async (id) => {
-    try {
-      const r = await axios.get(
-        `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}/${id}`,
-        { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 8000 }
-      );
-      addNamn(r.data.fields?.['Task Name']);
-    } catch (_) { /* post saknas eller fel id */ }
-  }));
+async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId) {
+  if (!byraId) return [];
+  const formula = encodeURIComponent(`{Byrå ID}="${byraId}"`);
+  let all = [];
+  let offset = null;
+  do {
+    let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}?filterByFormula=${formula}`
+      + `&fields[]=Task%20Name&pageSize=100`;
+    if (offset) url += `&offset=${offset}`;
+    const r = await axios.get(url, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` }
+    });
+    all = all.concat((r.data.records || []).map((rec) => ({
+      id: rec.id,
+      namn: (rec.fields['Task Name'] || '').trim()
+    })));
+    offset = r.data.offset;
+  } while (offset);
+  return all;
+}
 
-  return namnList.sort((a, b) => a.localeCompare(b, 'sv'));
+/**
+ * Samma logik som kundkortet renderTjanster: byråns tjänster där minst ett record-ID finns i kundens länkfält.
+ * Returnerar även allowedKeys för att filtrera bort byråtjänster som felaktigt hamnat under riskfaktorer.
+ */
+async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedRaw) {
+  const linked = Array.isArray(linkedRaw) ? linkedRaw : [];
+  const empty = { namn: [], allowedKeys: new Set(), linkedTjanstIdSet: new Set(), allByraKeys: new Set() };
+  if (!linked.length) return empty;
+
+  const byraRowsForKeys = byraId
+    ? await fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId)
+    : [];
+  const dedupedForKeys = dedupeByraTjansterForPdf(byraRowsForKeys);
+  const allByraKeys = new Set(dedupedForKeys.map((t) => normTjanstKey(t.namn)).filter(Boolean));
+
+  // Multi-select med tjänstenamn (text), inte record-ID — behåll bara namn som finns i byråns katalog
+  if (!isAirtableRecordIdStr(String(linked[0]).trim())) {
+    const seen = new Set();
+    const namn = [];
+    for (const raw of linked) {
+      const s = String(raw).trim();
+      if (!s || s === '---' || isAirtableRecordIdStr(s)) continue;
+      const k = normTjanstKey(s);
+      if (allByraKeys.size && !allByraKeys.has(k)) continue;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      namn.push(s);
+    }
+    namn.sort((a, b) => a.localeCompare(b, 'sv'));
+    return { namn, allowedKeys: new Set(namn.map(normTjanstKey)), linkedTjanstIdSet: new Set(), allByraKeys };
+  }
+
+  const linkedSet = new Set(linked.filter(isAirtableRecordIdStr));
+  const deduped = dedupedForKeys;
+  const aktiv = deduped.filter((t) => (t.mergedIds || [t.id]).some((id) => linkedSet.has(id)));
+  const namn = aktiv.map((t) => t.namn).filter(Boolean);
+  const allowedKeys = new Set(namn.map(normTjanstKey));
+  return { namn, allowedKeys, linkedTjanstIdSet: linkedSet, allByraKeys };
+}
+
+function riskPosterIsByraTjanstTemplate(riskfaktor, allowedKeys, allByraKeys) {
+  const k = normTjanstKey(riskfaktor);
+  if (!k) return false;
+  if (allowedKeys.has(k)) return false;
+  return allByraKeys.has(k);
 }
 
 // POST /api/kunddata/:id/riskbedomning-pdf – Dokumentera riskbedömning som PDF, spara på kunden
@@ -4745,12 +4807,27 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[sammanlagdRisk] || 'medel';
 
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
-    const tjansterNamn = await fetchKundValdaTjansterNamn(airtableAccessToken, airtableBaseId, linkedTjanstIds);
+    const {
+      namn: tjansterNamn,
+      allowedKeys: allowedTjanstKeys,
+      linkedTjanstIdSet,
+      allByraKeys
+    } = await resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedTjanstIds);
 
-    // Identifierade riskfaktorer som kunden har valt
+    const filterRiskChipList = (list) => pdfFmtList(list).filter((item) => {
+      const k = normTjanstKey(item);
+      if (!k || k === 'inga') return true;
+      return !allByraKeys.has(k) || allowedTjanstKeys.has(k);
+    });
+
+    // Identifierade riskfaktorer (KYC) – exkludera poster som är byråns tjänstmallar, inte kundens KYC-risker
     const riskerPerTyp = [];
-    const linkedRiskIds = f['risker kopplat till tjänster'] || [];
-    if (Array.isArray(linkedRiskIds) && linkedRiskIds.length > 0) {
+    const linkedRiskIds = (f['risker kopplat till tjänster'] || []).filter((id) => {
+      if (!isAirtableRecordIdStr(id)) return false;
+      if (linkedTjanstIdSet.has(id)) return false;
+      return true;
+    });
+    if (linkedRiskIds.length > 0) {
       const formula = encodeURIComponent('OR(' + linkedRiskIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
       const riskRes = await axios.get(
         `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_KUND_TABLE}?filterByFormula=${formula}`,
@@ -4761,16 +4838,18 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         const rf = rec.fields || {};
         const typ = (rf['Typ av riskfaktor'] || 'Övriga').trim();
         if (/tjänst|produkt/i.test(typ)) continue;
+        const riskfaktor = (rf['Riskfaktor'] || '').trim() || '—';
+        if (riskPosterIsByraTjanstTemplate(riskfaktor, allowedTjanstKeys, allByraKeys)) continue;
         if (!byTyp[typ]) byTyp[typ] = [];
         byTyp[typ].push({
-          riskfaktor: (rf['Riskfaktor'] || '').trim() || '—',
+          riskfaktor,
           niva: rf['Riskbedömning'] || '',
           beskrivning: pdfToText(rf['Beskrivning']),
           atgard: pdfToText(rf['Åtgärd'])
         });
       }
       for (const [typ, poster] of Object.entries(byTyp)) {
-        riskerPerTyp.push({ typ, poster });
+        if (poster.length) riskerPerTyp.push({ typ, poster });
       }
       riskerPerTyp.sort((a, b) => a.typ.localeCompare(b.typ, 'sv'));
     }
@@ -4782,7 +4861,8 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
       hogriskbransch: pdfFmtList(f['Kunden verkar i en högriskbransch']),
-      riskhojOvrigt: pdfFmtList(f['Riskhöjande faktorer övrigt']),
+      riskhojTjanster: filterRiskChipList(f['Riskhöjande faktorer tjänster']),
+      riskhojOvrigt: filterRiskChipList(f['Riskhöjande faktorer övrigt']),
       risksankande: pdfFmtList(f['Risksänkande faktorer']),
       kommentarRisk: pdfToText(f['Kommentar till riskfaktorerna ovan']),
       risksankandeAtgarder: pdfToText(f['Risksänkande åtgjärder']),
