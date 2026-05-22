@@ -4558,7 +4558,7 @@ class CustomerCardManager {
                     <button type="button" class="btn btn-primary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
                         <i class="fas fa-file-pdf"></i> Dokumentera riskbedömning
                     </button>
-                    <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Skapar en PDF med nuvarande riskbedömning, sparar på fliken Dokumentation. Görs årligen per kund.</p>
+                    <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Skapar PDF med KYC-formulär, alla bedömningspunkter på riskbedömningen och endast kundens valda tjänster. Sparas på fliken Dokumentation.</p>
                 </div>
 
             </div>

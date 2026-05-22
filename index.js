@@ -4469,9 +4469,224 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
   }
 });
 
+function pdfEscape(s) {
+  return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function pdfNl2br(s) {
+  return pdfEscape(s).replace(/\n/g, '<br>');
+}
+function pdfToText(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map(b => b?.text ?? '').join('');
+  return String(v);
+}
+function pdfFmtList(v) {
+  return Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+}
+function pdfRichToHtml(s) {
+  if (s == null || s === '') return '';
+  let t = pdfEscape(s);
+  t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+  return t.replace(/\n/g, '<br>');
+}
+function pdfJanej(v) {
+  return v === 'Ja'
+    ? '<span style="color:#dc2626;font-weight:600;">Ja</span>'
+    : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : pdfEscape(v || '–'));
+}
+
+function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
+  const ACCENT_KYC = '#3b4a8a';
+  const esc = pdfEscape;
+  const nl2br = (s) => pdfNl2br(s);
+  return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8">
+<style>
+  @page { margin: 18mm 20mm 22mm; }
+  body { font-family: Arial, sans-serif; font-size: 8pt; color: #1a1a2e; line-height: 1.6; margin: 0; padding: 12px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 3px solid ${ACCENT_KYC}; padding-bottom: 10px; }
+  .header-left h1 { margin: 0; font-size: 18pt; font-weight: 900; color: #1a1a2e; }
+  .header-left p { margin: 4px 0 0; font-size: 7.5pt; color: #888; }
+  .section { margin-top: 14px; }
+  .section h2 { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: ${ACCENT_KYC}; border-bottom: 1.5px solid ${ACCENT_KYC}; padding-bottom: 3px; margin-bottom: 7px; }
+  .field { margin-bottom: 4px; }
+  .field-label { font-weight: 700; }
+  .row { display: flex; gap: 24px; margin-bottom: 4px; }
+  .row .col { flex: 1; }
+  .attestation { margin-top: 20px; padding: 12px 14px; border: 1.5px solid #dce3f0; border-radius: 6px; background: #f4f6fb; }
+</style></head><body>
+  <div class="header">
+    <div class="header-left">
+      <h1>KYC — Kundkännedomsformulär</h1>
+      <p>${esc(byraNamn)} | ${datum}</p>
+    </div>
+    <div class="header-right">${logoHtml || ''}</div>
+  </div>
+  <div class="section"><h2>1. Grunduppgifter om företaget</h2>
+    <div class="row">
+      <div class="col"><span class="field-label">Företagets namn:</span> ${esc(kyc.foretagsnamn)}</div>
+      <div class="col"><span class="field-label">Organisationsnummer:</span> ${esc(kyc.orgnr)}</div>
+    </div>
+  </div>
+  <div class="section"><h2>2. Företrädare</h2>
+    <div class="row">
+      <div class="col"><span class="field-label">Namn:</span> ${esc(kyc.foretradareNamn)}</div>
+      <div class="col"><span class="field-label">Personnummer:</span> ${esc(kyc.foretradarePnr)}</div>
+    </div>
+  </div>
+  <div class="section"><h2>3. Verklig huvudman</h2>
+    <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br>${nl2br(kyc.huvudmanInfo || '—')}</div>
+    ${kyc.huvudmanAnnatSatt ? `<div class="field"><span class="field-label">Kontroll genom avtal:</span><br>${nl2br(kyc.huvudmanAnnatSatt)}</div>` : ''}
+  </div>
+  <div class="section"><h2>4. PEP</h2>
+    <div class="field"><span class="field-label">PEP-status:</span> ${pdfJanej(kyc.pep)}</div>
+    ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> ${esc(kyc.pepDetaljer)}</div>` : ''}
+    <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${pdfJanej(kyc.pepFamilj)}</div>
+  </div>
+  <div class="section"><h2>5. Affärsförbindelsens syfte och art</h2>
+    <div class="field"><span class="field-label">Huvudsaklig verksamhet:</span><br>${nl2br(kyc.verksamhet || '—')}</div>
+    <div class="field"><span class="field-label">Byråns tjänster (kundens valda):</span> ${esc(kyc.tjanster || '—')}</div>
+    <div class="field"><span class="field-label">Pengarnas ursprung:</span> ${esc(kyc.kapitalUrsprung || '—')}</div>
+    <div class="row">
+      <div class="col"><span class="field-label">Antal anställda:</span> ${esc(kyc.anstallda || '—')}</div>
+      <div class="col"><span class="field-label">Uppskattad årsomsättning:</span> ${esc(kyc.omsattning || '—')}</div>
+    </div>
+  </div>
+  <div class="section"><h2>6. Internationell handel</h2>
+    <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${pdfJanej(kyc.internationellHandel)}</div>
+    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> ${esc(kyc.internationellaLander)}</div>` : ''}
+  </div>
+  <div class="section"><h2>7. Kontanthantering</h2>
+    <div class="field"><span class="field-label">Kontanthantering:</span> ${pdfJanej(kyc.kontanter)}</div>
+  </div>
+  <div class="attestation"><strong>Kundens intygande</strong><p>Jag intygar att lämnade uppgifter är korrekta och fullständiga.</p></div>
+</body></html>`;
+}
+
+function buildKundRiskbedomningPdfHtml(data) {
+  const ACCENT = '#2c4a8f';
+  const esc = pdfEscape;
+  const nl2br = (s) => pdfNl2br(s);
+  const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
+  const chipList = (items, neg) => items.length
+    ? `<div class="chips">${items.map(i => `<span class="chip ${neg ? 'chip-neg' : 'chip-pos'}">${esc(i)}</span>`).join('')}</div>`
+    : '<p>—</p>';
+
+  const tjansterHtml = data.tjanster.length
+    ? data.tjanster.map(t => `
+      <div class="tjanst">
+        <div class="tjanst-namn">${esc(t.namn)}${t.riskbedomning ? ` <span class="tjanst-meta">(${esc(t.riskbedomning)})</span>` : ''}</div>
+        ${t.beskrivning ? `<p class="tjanst-meta"><strong>Beskrivning:</strong> ${nl2br(t.beskrivning)}</p>` : ''}
+        ${t.atgard ? `<p class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(t.atgard)}</p>` : ''}
+      </div>`).join('')
+    : '<p>—</p>';
+
+  const riskerTypHtml = (data.riskerPerTyp || []).map(grupp => {
+    if (!grupp.poster.length) return '';
+    return `<h3>${esc(grupp.typ)}</h3>` + grupp.poster.map(p => `
+      <div class="tjanst">
+        <div class="tjanst-namn">${esc(p.riskfaktor)}${p.niva ? ` <span class="tjanst-meta">(${esc(p.niva)})</span>` : ''}</div>
+        ${p.beskrivning ? `<p class="tjanst-meta">${nl2br(p.beskrivning)}</p>` : ''}
+        ${p.atgard ? `<p class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(p.atgard)}</p>` : ''}
+      </div>`).join('');
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
+    @page { size: A4; margin: 14mm; }
+    body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.5;color:#1a1a2e;margin:0;padding:20px;}
+    .doc-page { page-break-before: always; }
+    h1{color:${ACCENT};font-size:14pt;margin-bottom:8px;}
+    .meta{color:#666;font-size:8pt;margin-bottom:16px;}
+    h2{color:${ACCENT};font-size:11pt;border-bottom:1px solid ${ACCENT};padding-bottom:4px;margin-top:16px;}
+    h3{font-size:10pt;margin-top:12px;color:#334155;}
+    .section{margin:10px 0;}
+    .niva{display:inline-block;padding:4px 12px;border-radius:4px;font-weight:700;}
+    .niva-lag{background:#dcfce7;color:#166534;}
+    .niva-medel{background:#fef9c3;color:#854d0e;}
+    .niva-hog{background:#fee2e2;color:#991b1b;}
+    .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
+    .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
+    .chip-neg{background:#fee2e2;color:#991b1b;}
+    .chip-pos{background:#dcfce7;color:#166534;}
+    .tjanst{margin:10px 0;padding:8px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0;}
+    .tjanst-namn{font-weight:600;}
+    .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
+  </style></head><body>
+    <div class="doc-page">
+      <h1>Riskbedömning — ${esc(data.kundnamn)}</h1>
+      <p class="meta">Organisationsnummer: ${esc(data.orgnr)} | Exporterad: ${esc(data.exportStamp)}${data.riskUtford ? ' | Utförd: ' + esc(data.riskUtford) : ''}${data.riskGodkand ? ' | Godkänd: ' + esc(data.riskGodkand) : ''}</p>
+
+      ${data.verksamhet ? section('Beskrivning av verksamheten', nl2br(data.verksamhet)) : ''}
+
+      <h2>Sammanlagd risknivå</h2>
+      <p><span class="niva niva-${data.nivaClass}">${esc(data.nivaLabel)}</span></p>
+
+      ${data.motivering ? section('Motivering', nl2br(data.motivering)) : ''}
+
+      <h2>Riskfaktorer (fliken Riskbedömning)</h2>
+      <div class="section">
+        <p><strong>Högriskbransch</strong></p>${chipList(data.hogriskbransch, true)}
+        <p><strong>Riskhöjande – tjänster</strong></p>${chipList(data.riskhojTjanster, true)}
+        <p><strong>Riskhöjande – övrigt</strong></p>${chipList(data.riskhojOvrigt, true)}
+        <p><strong>Risksänkande faktorer</strong></p>${chipList(data.risksankande, false)}
+        ${data.kommentarRisk ? `<p><strong>Kommentar till riskfaktorerna:</strong><br>${nl2br(data.kommentarRisk)}</p>` : ''}
+      </div>
+
+      ${data.risksankandeAtgarder ? section('Risksänkande åtgärder', nl2br(data.risksankandeAtgarder)) : ''}
+
+      <h2>Identifierade riskfaktorer (valda på kundkortet)</h2>
+      <div class="section">${riskerTypHtml || '<p>—</p>'}</div>
+
+      <h2>Tjänster som kunden har</h2>
+      <div class="section">${tjansterHtml}</div>
+
+      <h2>Byråns bedömning av kunden</h2>
+      <div class="section">${data.byransRiskbedomning ? nl2br(data.byransRiskbedomning) : '—'}</div>
+      <h2>Åtgärder</h2>
+      <div class="section">${data.atgarder ? nl2br(data.atgarder) : '—'}</div>
+
+      <h2>PEP &amp; sanktioner</h2>
+      <div class="section">
+        <p><strong>PEP-status:</strong> ${data.pepList.length ? esc(data.pepList.join(', ')) : '—'}${data.pepTraffar !== '' && data.pepTraffar != null ? ` | Antal träffar: ${esc(String(data.pepTraffar))}` : ''}</p>
+        ${data.rapportPep ? `<p><strong>Rapport:</strong> ${esc(data.rapportPep)}</p>` : ''}
+      </div>
+
+      <p class="meta" style="margin-top:24px;">ClientFlow — riskbedömning dokumenterad ${esc(data.datumStr)}</p>
+    </div>
+  </body></html>`;
+}
+
+async function htmlToPdfBuffer(html) {
+  const pup = loadPuppeteer();
+  if (!pup) throw new Error('PDF-generering ej tillgänglig (puppeteer saknas)');
+  const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'], headless: true, timeout: 30000 };
+  if (chromium) launchOpts.executablePath = await chromium.executablePath();
+  const browser = await pup.launch(launchOpts);
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+    return await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function mergePdfBuffers(buffers) {
+  const merged = await PDFDocument.create();
+  for (const buf of buffers) {
+    if (!buf || !buf.length) continue;
+    const doc = await PDFDocument.load(buf);
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(p => merged.addPage(p));
+  }
+  return Buffer.from(await merged.save());
+}
+
 // POST /api/kunddata/:id/riskbedomning-pdf – Dokumentera riskbedömning som PDF, spara på kunden
 app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  const RISKER_KUND_TABLE = 'tblWw6tM2YOTYFn2H';
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -4496,126 +4711,154 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
 
     const kundnamn = f['Namn'] || f['Företagsnamn'] || 'Okänd';
     const orgnr = f['Orgnr'] || f['Organisationsnummer'] || '';
-    const riskniva = f['Riskniva'] || f['sammanlagd risk'] || '';
-    const riskbedomning = f['Byrans riskbedomning'] || '';
-    const atgarder = f['Atgarder riskbedomning'] || '';
+    const sammanlagdRisk = f['sammanlagd risk'] || f['Riskniva'] || '';
     const datumStr = new Date().toLocaleDateString('sv-SE');
     const datumIso = new Date().toISOString().split('T')[0];
+    const exportStamp = new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' });
 
-    const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const nl2br = (s) => (s == null ? '' : String(s)).replace(/\n/g, '<br>');
-    const toText = (v) => {
-      if (v == null || v === '') return '';
-      if (typeof v === 'string') return v;
-      if (Array.isArray(v)) return v.map(b => b?.text ?? '').join('');
-      return String(v);
-    };
-    const fmtList = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
-    const ACCENT = '#2c4a8f';
+    const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[sammanlagdRisk] || sammanlagdRisk || 'Ej angiven';
+    const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[sammanlagdRisk] || 'medel';
 
-    const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[riskniva] || riskniva || 'Ej angiven';
-    const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[riskniva] || 'medel';
-
-    const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
-
-    // Hämta länkade tjänster
+    // Endast kundens valda tjänster (samma källa som kundkortet)
     let tjanster = [];
-    const linkedIds = f['Kundens utvalda tjänster'] || [];
-    if (linkedIds.length > 0) {
-      try {
-        const tjanstRes = await Promise.all(linkedIds.map(id =>
-          axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`,
-            { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-          ).then(r => ({
-            namn: r.data.fields?.['Task Name'] || '',
-            beskrivning: toText(r.data.fields?.['Beskrivning av riskfaktor']),
-            riskbedomning: r.data.fields?.['Riskbedömning'] || '',
-            atgard: toText(r.data.fields?.['Åtgjärd'])
-          })).catch(() => null)
-        ));
-        tjanster = tjanstRes.filter(Boolean).filter(t => t.namn);
-      } catch (e) { console.warn('Tjänster för PDF:', e.message); }
+    const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
+    if (Array.isArray(linkedTjanstIds) && linkedTjanstIds.length > 0) {
+      const tjanstRes = await Promise.all(linkedTjanstIds.map(id =>
+        axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}/${id}`, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 8000
+        }).then(r => ({
+          namn: (r.data.fields?.['Task Name'] || '').trim(),
+          beskrivning: pdfToText(r.data.fields?.['Beskrivning av riskfaktor']),
+          riskbedomning: r.data.fields?.['Riskbedömning'] || '',
+          atgard: pdfToText(r.data.fields?.['Åtgjärd'])
+        })).catch(() => null)
+      ));
+      const seen = new Set();
+      tjanster = tjanstRes.filter(Boolean).filter(t => {
+        if (!t.namn || isAirtableRecordIdStr(t.namn)) return false;
+        const key = t.namn.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     }
 
-    const verksamhet = toText(f['Verksamhetsbeskrivning']) || toText(f['Beskrivning av kunden']) || '';
-    const hogriskbransch = fmtList(f['Kunden verkar i en högriskbransch']);
-    const riskhojTjanster = fmtList(f['Riskhöjande faktorer tjänster']);
-    const riskhojOvrigt = fmtList(f['Riskhöjande faktorer övrigt']);
-    const risksankande = fmtList(f['Risksänkande faktorer']);
-    const pepList = fmtList(f['PEP']);
-    const pepTräffar = f['Antal träffar PEP och sanktionslistor'];
-    const riskUtford = f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '';
-    const riskGodkand = f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '';
+    // Identifierade riskfaktorer som kunden har valt
+    const riskerPerTyp = [];
+    const linkedRiskIds = f['risker kopplat till tjänster'] || [];
+    if (Array.isArray(linkedRiskIds) && linkedRiskIds.length > 0) {
+      const formula = encodeURIComponent('OR(' + linkedRiskIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
+      const riskRes = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_KUND_TABLE}?filterByFormula=${formula}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const byTyp = {};
+      for (const rec of (riskRes.data.records || [])) {
+        const rf = rec.fields || {};
+        const typ = (rf['Typ av riskfaktor'] || 'Övriga').trim();
+        if (!byTyp[typ]) byTyp[typ] = [];
+        byTyp[typ].push({
+          riskfaktor: (rf['Riskfaktor'] || '').trim() || '—',
+          niva: rf['Riskbedömning'] || '',
+          beskrivning: pdfToText(rf['Beskrivning']),
+          atgard: pdfToText(rf['Åtgärd'])
+        });
+      }
+      for (const [typ, poster] of Object.entries(byTyp)) {
+        riskerPerTyp.push({ typ, poster });
+      }
+      riskerPerTyp.sort((a, b) => a.typ.localeCompare(b.typ, 'sv'));
+    }
 
-    const html = `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
-      body{font-family:Arial,sans-serif;font-size:9pt;line-height:1.5;color:#1a1a2e;margin:0;padding:20px;}
-      h1{color:${ACCENT};font-size:14pt;margin-bottom:8px;}
-      .meta{color:#666;font-size:8pt;margin-bottom:20px;}
-      h2{color:${ACCENT};font-size:11pt;border-bottom:1px solid ${ACCENT};padding-bottom:4px;margin-top:16px;}
-      .section{margin:12px 0;}
-      .niva{display:inline-block;padding:4px 12px;border-radius:4px;font-weight:700;}
-      .niva-lag{background:#dcfce7;color:#166534;}
-      .niva-medel{background:#fef9c3;color:#854d0e;}
-      .niva-hog{background:#fee2e2;color:#991b1b;}
-      .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
-      .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
-      .chip-neg{background:#fee2e2;color:#991b1b;}
-      .chip-pos{background:#dcfce7;color:#166534;}
-      .tjanst{margin:10px 0;padding:8px;background:#f8fafc;border-radius:4px;}
-      .tjanst-namn{font-weight:600;}
-      .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
-    </style></head><body>
-      <h1>Riskbedömning – ${escape(kundnamn)}</h1>
-      <p class="meta">Organisationsnummer: ${escape(orgnr)} | Dokumenterat: ${datumStr}${riskUtford ? ' | Utförd: ' + riskUtford : ''}${riskGodkand ? ' | Godkänd: ' + riskGodkand : ''}</p>
+    const normTjanst = (s) => String(s || '').trim().toLowerCase();
+    const kundTjanstKeys = new Set(tjanster.map(t => normTjanst(t.namn)).filter(Boolean));
+    const filterTillKundensTjanster = (list) => {
+      const items = pdfFmtList(list);
+      if (!kundTjanstKeys.size) return items;
+      return items.filter(item => {
+        const key = normTjanst(item);
+        if (!key || key === 'inga') return true;
+        return [...kundTjanstKeys].some(k => key === k || key.includes(k) || k.includes(key));
+      });
+    };
 
-      ${verksamhet ? section('Beskrivning av verksamheten', nl2br(verksamhet)) : ''}
+    const riskData = {
+      kundnamn, orgnr, datumStr, exportStamp,
+      nivaLabel, nivaClass,
+      verksamhet: pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      sammanlagdRisk,
+      motivering: pdfToText(f['Motivering']),
+      hogriskbransch: pdfFmtList(f['Kunden verkar i en högriskbransch']),
+      riskhojTjanster: filterTillKundensTjanster(f['Riskhöjande faktorer tjänster']),
+      riskhojOvrigt: pdfFmtList(f['Riskhöjande faktorer övrigt']),
+      risksankande: pdfFmtList(f['Risksänkande faktorer']),
+      kommentarRisk: pdfToText(f['Kommentar till riskfaktorerna ovan']),
+      risksankandeAtgarder: pdfToText(f['Risksänkande åtgjärder']),
+      byransRiskbedomning: pdfToText(f['Byrans riskbedomning']),
+      atgarder: pdfToText(f['Atgarder riskbedomning']),
+      pepList: pdfFmtList(f['PEP']),
+      pepTraffar: f['Antal träffar PEP och sanktionslistor'],
+      rapportPep: f['Rapport PEP'] || '',
+      riskUtford: f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '',
+      riskGodkand: f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '',
+      tjanster,
+      riskerPerTyp
+    };
 
-      <h2>Sammanlagd risknivå</h2>
-      <p><span class="niva niva-${nivaClass}">${escape(nivaLabel)}</span></p>
+    const pdfParts = [];
 
-      ${tjanster.length ? `
-      <h2>Tjänster aktuella för kunden</h2>
-      <div class="section">
-        <ul style="margin:0;padding-left:1.2rem;">
-          ${tjanster.map(t => `<li>${escape(t.namn)}${t.riskbedomning ? ' – ' + escape(t.riskbedomning) : ''}</li>`).join('')}
-        </ul>
-      </div>` : ''}
+    // KYC-formulär (sparad JSON + komplettering från kunddata)
+    let savedKyc = {};
+    try { savedKyc = JSON.parse(f['KYC-formular (JSON)'] || '{}'); } catch (_) { savedKyc = {}; }
+    const tjansterNamnLista = tjanster.map(t => t.namn).join(', ');
+    const kycForPdf = {
+      foretagsnamn: savedKyc.foretagsnamn || kundnamn,
+      orgnr: savedKyc.orgnr || orgnr,
+      foretradareNamn: savedKyc.foretradareNamn || '',
+      foretradarePnr: savedKyc.foretradarePnr || '',
+      huvudmanInfo: savedKyc.huvudmanInfo || pdfToText(f['Verklig huvudman']) || '',
+      huvudmanAnnatSatt: savedKyc.huvudmanAnnatSatt || '',
+      pep: savedKyc.pep || (pdfFmtList(f['PEP']).length && !pdfFmtList(f['PEP']).includes('Inte PEP') ? 'Ja' : 'Nej'),
+      pepDetaljer: savedKyc.pepDetaljer || '',
+      pepFamilj: savedKyc.pepFamilj || 'Nej',
+      verksamhet: savedKyc.verksamhet || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      tjanster: tjansterNamnLista || savedKyc.tjanster || '',
+      kapitalUrsprung: savedKyc.kapitalUrsprung || pdfFmtList(f['Vilket ursprung har företagets kapital?']).join(', ') || '',
+      anstallda: savedKyc.anstallda || '',
+      omsattning: savedKyc.omsattning || f['Omsättning'] || '',
+      internationellHandel: savedKyc.internationellHandel || f['Har företaget transaktioner med andra länder?'] || '',
+      internationellaLander: savedKyc.internationellaLander || '',
+      kontanter: savedKyc.kontanter || ''
+    };
 
-      ${(hogriskbransch.length || riskhojTjanster.length || riskhojOvrigt.length || risksankande.length) ? `
-      <h2>Riskfaktorer aktuella för kunden</h2>
-      <div class="section">
-        ${hogriskbransch.length ? `<p><strong>Högriskbransch:</strong> ${hogriskbransch.map(i => escape(i)).join(', ')}</p>` : ''}
-        ${riskhojTjanster.length ? `<p><strong>Riskhöjande – tjänster:</strong> ${riskhojTjanster.map(i => escape(i)).join(', ')}</p>` : ''}
-        ${riskhojOvrigt.length ? `<p><strong>Riskhöjande – övrigt:</strong> ${riskhojOvrigt.map(i => escape(i)).join(', ')}</p>` : ''}
-        ${risksankande.length ? `<p><strong>Risksänkande:</strong> ${risksankande.map(i => escape(i)).join(', ')}</p>` : ''}
-      </div>` : ''}
+    const pdfUser = await getAirtableUser(req.user.email);
+    const byraNamn = pdfUser?.byra || '';
+    let logoHtml = '';
+    const logoRaw = pdfUser?.logo;
+    const logoUrl = Array.isArray(logoRaw) && logoRaw.length > 0
+      ? logoRaw[0].url
+      : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+    if (logoUrl) {
+      try {
+        const logoRes = await axios.get(logoUrl, { responseType: 'arraybuffer', timeout: 10000 });
+        const b64 = Buffer.from(logoRes.data).toString('base64');
+        const mime = logoRes.headers['content-type'] || 'image/png';
+        logoHtml = `<img src="data:${mime};base64,${b64}" style="max-height:60px;max-width:200px;object-fit:contain;" alt="Logo">`;
+      } catch (_) {}
+    }
 
-      <h2>Kundens riskbedömning</h2>
-      <div class="section">${riskbedomning ? nl2br(riskbedomning) : '—'}</div>
-      <h2>Åtgärder</h2>
-      <div class="section">${atgarder ? nl2br(atgarder) : '—'}</div>
+    if (kycForPdf.foretagsnamn) {
+      const kycHtml = buildKycFormularPdfHtml(kycForPdf, byraNamn, logoHtml, datumStr);
+      pdfParts.push(await htmlToPdfBuffer(kycHtml));
+    }
 
-      ${(pepList.length || (pepTräffar !== undefined && pepTräffar !== '')) ? `
-      <h2>PEP &amp; sanktioner</h2>
-      <div class="section">
-        <p><strong>PEP-status:</strong> ${pepList.length ? escape(pepList.join(', ')) : '—'}${pepTräffar !== undefined && pepTräffar !== '' ? ` | Antal träffar: ${escape(String(pepTräffar))}` : ''}</p>
-      </div>` : ''}
+    const riskHtml = buildKundRiskbedomningPdfHtml(riskData);
+    pdfParts.push(await htmlToPdfBuffer(riskHtml));
 
-      <p class="meta" style="margin-top:24px;">ClientFlow – dokumenterat ${datumStr}</p>
-    </body></html>`;
-
-    const pup = loadPuppeteer();
-    if (!pup) return res.status(501).json({ error: 'PDF-generering ej tillgänglig (puppeteer saknas)' });
-    const launchOpts = { args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'], headless: true, timeout: 30000 };
-    if (chromium) launchOpts.executablePath = await chromium.executablePath();
-    const browser = await pup.launch(launchOpts);
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
-    await browser.close();
+    const pdfBuffer = await mergePdfBuffers(pdfParts);
 
     const safeNamn = (kundnamn || 'kund').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
-    const filename = `Riskbedomning-${safeNamn}-${datumIso}.pdf`;
+    const filename = `Riskbedomning-KYC-${safeNamn}-${datumIso}.pdf`;
 
     // Använd requestens host så Airtable kan hämta filen vid ngrok/tunnel
     const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
