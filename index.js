@@ -4518,7 +4518,7 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
 </style></head><body>
   <div class="header">
     <div class="header-left">
-      <h1>KYC — Kundkännedomsformulär</h1>
+      <h1>KYC — Kundkännedomsformulär (bilaga)</h1>
       <p>${esc(byraNamn)} | ${datum}</p>
     </div>
     <div class="header-right">${logoHtml || ''}</div>
@@ -4573,13 +4573,8 @@ function buildKundRiskbedomningPdfHtml(data) {
     ? `<div class="chips">${items.map(i => `<span class="chip ${neg ? 'chip-neg' : 'chip-pos'}">${esc(i)}</span>`).join('')}</div>`
     : '<p>—</p>';
 
-  const tjansterHtml = data.tjanster.length
-    ? data.tjanster.map(t => `
-      <div class="tjanst">
-        <div class="tjanst-namn">${esc(t.namn)}${t.riskbedomning ? ` <span class="tjanst-meta">(${esc(t.riskbedomning)})</span>` : ''}</div>
-        ${t.beskrivning ? `<p class="tjanst-meta"><strong>Beskrivning:</strong> ${nl2br(t.beskrivning)}</p>` : ''}
-        ${t.atgard ? `<p class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(t.atgard)}</p>` : ''}
-      </div>`).join('')
+  const tjansterHtml = (data.tjansterNamn || []).length
+    ? `<ul style="margin:0;padding-left:1.2rem;">${data.tjansterNamn.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`
     : '<p>—</p>';
 
   const riskerTypHtml = (data.riskerPerTyp || []).map(grupp => {
@@ -4613,7 +4608,7 @@ function buildKundRiskbedomningPdfHtml(data) {
     .tjanst-namn{font-weight:600;}
     .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
   </style></head><body>
-    <div class="doc-page">
+    <div>
       <h1>Riskbedömning — ${esc(data.kundnamn)}</h1>
       <p class="meta">Organisationsnummer: ${esc(data.orgnr)} | Exporterad: ${esc(data.exportStamp)}${data.riskUtford ? ' | Utförd: ' + esc(data.riskUtford) : ''}${data.riskGodkand ? ' | Godkänd: ' + esc(data.riskGodkand) : ''}</p>
 
@@ -4627,7 +4622,6 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h2>Riskfaktorer (fliken Riskbedömning)</h2>
       <div class="section">
         <p><strong>Högriskbransch</strong></p>${chipList(data.hogriskbransch, true)}
-        <p><strong>Riskhöjande – tjänster</strong></p>${chipList(data.riskhojTjanster, true)}
         <p><strong>Riskhöjande – övrigt</strong></p>${chipList(data.riskhojOvrigt, true)}
         <p><strong>Risksänkande faktorer</strong></p>${chipList(data.risksankande, false)}
         ${data.kommentarRisk ? `<p><strong>Kommentar till riskfaktorerna:</strong><br>${nl2br(data.kommentarRisk)}</p>` : ''}
@@ -4683,6 +4677,37 @@ async function mergePdfBuffers(buffers) {
   return Buffer.from(await merged.save());
 }
 
+/** Endast tjänster som finns i kundens länkfält – aldrig hela byråns lista */
+async function fetchKundValdaTjansterNamn(airtableAccessToken, airtableBaseId, linkedIdsRaw) {
+  const linkedSet = new Set(
+    (Array.isArray(linkedIdsRaw) ? linkedIdsRaw : []).filter(isAirtableRecordIdStr)
+  );
+  if (!linkedSet.size) return [];
+
+  const namnList = [];
+  const seen = new Set();
+  const addNamn = (namn) => {
+    const n = (namn || '').trim();
+    if (!n || isAirtableRecordIdStr(n)) return;
+    const key = n.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    namnList.push(n);
+  };
+
+  await Promise.all([...linkedSet].map(async (id) => {
+    try {
+      const r = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}/${id}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 8000 }
+      );
+      addNamn(r.data.fields?.['Task Name']);
+    } catch (_) { /* post saknas eller fel id */ }
+  }));
+
+  return namnList.sort((a, b) => a.localeCompare(b, 'sv'));
+}
+
 // POST /api/kunddata/:id/riskbedomning-pdf – Dokumentera riskbedömning som PDF, spara på kunden
 app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
@@ -4719,29 +4744,8 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[sammanlagdRisk] || sammanlagdRisk || 'Ej angiven';
     const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[sammanlagdRisk] || 'medel';
 
-    // Endast kundens valda tjänster (samma källa som kundkortet)
-    let tjanster = [];
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
-    if (Array.isArray(linkedTjanstIds) && linkedTjanstIds.length > 0) {
-      const tjanstRes = await Promise.all(linkedTjanstIds.map(id =>
-        axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}/${id}`, {
-          headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 8000
-        }).then(r => ({
-          namn: (r.data.fields?.['Task Name'] || '').trim(),
-          beskrivning: pdfToText(r.data.fields?.['Beskrivning av riskfaktor']),
-          riskbedomning: r.data.fields?.['Riskbedömning'] || '',
-          atgard: pdfToText(r.data.fields?.['Åtgjärd'])
-        })).catch(() => null)
-      ));
-      const seen = new Set();
-      tjanster = tjanstRes.filter(Boolean).filter(t => {
-        if (!t.namn || isAirtableRecordIdStr(t.namn)) return false;
-        const key = t.namn.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
+    const tjansterNamn = await fetchKundValdaTjansterNamn(airtableAccessToken, airtableBaseId, linkedTjanstIds);
 
     // Identifierade riskfaktorer som kunden har valt
     const riskerPerTyp = [];
@@ -4756,6 +4760,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       for (const rec of (riskRes.data.records || [])) {
         const rf = rec.fields || {};
         const typ = (rf['Typ av riskfaktor'] || 'Övriga').trim();
+        if (/tjänst|produkt/i.test(typ)) continue;
         if (!byTyp[typ]) byTyp[typ] = [];
         byTyp[typ].push({
           riskfaktor: (rf['Riskfaktor'] || '').trim() || '—',
@@ -4770,18 +4775,6 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       riskerPerTyp.sort((a, b) => a.typ.localeCompare(b.typ, 'sv'));
     }
 
-    const normTjanst = (s) => String(s || '').trim().toLowerCase();
-    const kundTjanstKeys = new Set(tjanster.map(t => normTjanst(t.namn)).filter(Boolean));
-    const filterTillKundensTjanster = (list) => {
-      const items = pdfFmtList(list);
-      if (!kundTjanstKeys.size) return items;
-      return items.filter(item => {
-        const key = normTjanst(item);
-        if (!key || key === 'inga') return true;
-        return [...kundTjanstKeys].some(k => key === k || key.includes(k) || k.includes(key));
-      });
-    };
-
     const riskData = {
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
@@ -4789,7 +4782,6 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
       hogriskbransch: pdfFmtList(f['Kunden verkar i en högriskbransch']),
-      riskhojTjanster: filterTillKundensTjanster(f['Riskhöjande faktorer tjänster']),
       riskhojOvrigt: pdfFmtList(f['Riskhöjande faktorer övrigt']),
       risksankande: pdfFmtList(f['Risksänkande faktorer']),
       kommentarRisk: pdfToText(f['Kommentar till riskfaktorerna ovan']),
@@ -4801,7 +4793,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       rapportPep: f['Rapport PEP'] || '',
       riskUtford: f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '',
       riskGodkand: f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '',
-      tjanster,
+      tjansterNamn,
       riskerPerTyp
     };
 
@@ -4810,7 +4802,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     // KYC-formulär (sparad JSON + komplettering från kunddata)
     let savedKyc = {};
     try { savedKyc = JSON.parse(f['KYC-formular (JSON)'] || '{}'); } catch (_) { savedKyc = {}; }
-    const tjansterNamnLista = tjanster.map(t => t.namn).join(', ');
+    const tjansterNamnLista = tjansterNamn.join(', ');
     const kycForPdf = {
       foretagsnamn: savedKyc.foretagsnamn || kundnamn,
       orgnr: savedKyc.orgnr || orgnr,
@@ -4822,7 +4814,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       pepDetaljer: savedKyc.pepDetaljer || '',
       pepFamilj: savedKyc.pepFamilj || 'Nej',
       verksamhet: savedKyc.verksamhet || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
-      tjanster: tjansterNamnLista || savedKyc.tjanster || '',
+      tjanster: tjansterNamnLista,
       kapitalUrsprung: savedKyc.kapitalUrsprung || pdfFmtList(f['Vilket ursprung har företagets kapital?']).join(', ') || '',
       anstallda: savedKyc.anstallda || '',
       omsattning: savedKyc.omsattning || f['Omsättning'] || '',
@@ -4847,13 +4839,13 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       } catch (_) {}
     }
 
+    const riskHtml = buildKundRiskbedomningPdfHtml(riskData);
+    pdfParts.push(await htmlToPdfBuffer(riskHtml));
+
     if (kycForPdf.foretagsnamn) {
       const kycHtml = buildKycFormularPdfHtml(kycForPdf, byraNamn, logoHtml, datumStr);
       pdfParts.push(await htmlToPdfBuffer(kycHtml));
     }
-
-    const riskHtml = buildKundRiskbedomningPdfHtml(riskData);
-    pdfParts.push(await htmlToPdfBuffer(riskHtml));
 
     const pdfBuffer = await mergePdfBuffers(pdfParts);
 
