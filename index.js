@@ -4569,23 +4569,22 @@ function buildKundRiskbedomningPdfHtml(data) {
   const esc = pdfEscape;
   const nl2br = (s) => pdfNl2br(s);
   const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
-  const chipList = (items, neg) => items.length
-    ? `<div class="chips">${items.map(i => `<span class="chip ${neg ? 'chip-neg' : 'chip-pos'}">${esc(i)}</span>`).join('')}</div>`
-    : '<p>—</p>';
 
-  const tjansterHtml = (data.tjansterNamn || []).length
-    ? `<ul style="margin:0;padding-left:1.2rem;">${data.tjansterNamn.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`
-    : '<p>—</p>';
+  const bulletList = (items) => {
+    const list = (items || []).filter(Boolean);
+    if (!list.length) return '<p>—</p>';
+    return `<ul style="margin:0;padding-left:1.2rem;">${list.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+  };
 
-  const riskerTypHtml = (data.riskerPerTyp || []).map(grupp => {
-    if (!grupp.poster.length) return '';
-    return `<h3>${esc(grupp.typ)}</h3>` + grupp.poster.map(p => `
-      <div class="tjanst">
-        <div class="tjanst-namn">${esc(p.riskfaktor)}${p.niva ? ` <span class="tjanst-meta">(${esc(p.niva)})</span>` : ''}</div>
-        ${p.beskrivning ? `<p class="tjanst-meta">${nl2br(p.beskrivning)}</p>` : ''}
-        ${p.atgard ? `<p class="tjanst-meta"><strong>Åtgärd:</strong> ${nl2br(p.atgard)}</p>` : ''}
-      </div>`).join('');
-  }).join('');
+  const rf = data.riskfaktorer || {};
+  const riskfaktorerHtml = `
+      <h3>Kundens tjänster</h3>${bulletList(rf.tjanster)}
+      <h3>Geografiska riskfaktorer</h3>${bulletList(rf.geografiska)}
+      <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund)}
+      <h3>Distributionskanaler</h3>${bulletList(rf.distribution)}
+      <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet)}
+      <h3>Riskhöjande faktorer övrigt</h3>${bulletList(rf.riskhojOvrigt)}
+      <h3>Risksänkande faktorer</h3>${bulletList(rf.risksankande)}`;
 
   return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
     @page { size: A4; margin: 14mm; }
@@ -4619,22 +4618,11 @@ function buildKundRiskbedomningPdfHtml(data) {
 
       ${data.motivering ? section('Motivering', nl2br(data.motivering)) : ''}
 
-      <h2>Riskfaktorer (fliken Riskbedömning)</h2>
-      <div class="section">
-        <p><strong>Högriskbransch</strong></p>${chipList(data.hogriskbransch, true)}
-        ${(data.riskhojTjanster || []).length ? `<p><strong>Riskhöjande – tjänster (endast kundens valda)</strong></p>${chipList(data.riskhojTjanster, true)}` : ''}
-        <p><strong>Riskhöjande – övrigt</strong></p>${chipList(data.riskhojOvrigt, true)}
-        <p><strong>Risksänkande faktorer</strong></p>${chipList(data.risksankande, false)}
-        ${data.kommentarRisk ? `<p><strong>Kommentar till riskfaktorerna:</strong><br>${nl2br(data.kommentarRisk)}</p>` : ''}
-      </div>
+      <h2>Riskfaktorer</h2>
+      <div class="section">${riskfaktorerHtml}</div>
 
+      ${data.kommentarRisk ? section('Kommentar till riskfaktorerna ovan', nl2br(data.kommentarRisk)) : ''}
       ${data.risksankandeAtgarder ? section('Risksänkande åtgärder', nl2br(data.risksankandeAtgarder)) : ''}
-
-      <h2>Identifierade riskfaktorer (valda på kundkortet)</h2>
-      <div class="section">${riskerTypHtml || '<p>—</p>'}</div>
-
-      <h2>Tjänster som kunden har</h2>
-      <div class="section">${tjansterHtml}</div>
 
       <h2>Byråns bedömning av kunden</h2>
       <div class="section">${data.byransRiskbedomning ? nl2br(data.byransRiskbedomning) : '—'}</div>
@@ -4770,6 +4758,24 @@ function riskPosterIsByraTjanstTemplate(riskfaktor, allowedKeys, allByraKeys) {
   return allByraKeys.has(k);
 }
 
+/** Punktlistor i PDF – exkludera "Inga …" platshållare från flervalsfält */
+function pdfRiskFactorNames(list) {
+  return pdfFmtList(list).filter((item) => {
+    const k = normTjanstKey(item);
+    if (!k || k === 'inga') return false;
+    if (/^inga\b/.test(k)) return false;
+    return true;
+  });
+}
+
+const PDF_RISK_TYP_MAP = {
+  'Geografiska riskfaktorer': 'geografiska',
+  'Riskfaktorer kopplat till kund': 'kund',
+  'Distrubutionskanaler': 'distribution',
+  'Distributionskanaler': 'distribution',
+  'Verksamhetsspecifika riskfaktorer': 'verksamhet'
+};
+
 // POST /api/kunddata/:id/riskbedomning-pdf – Dokumentera riskbedömning som PDF, spara på kunden
 app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
@@ -4820,8 +4826,16 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       return !allByraKeys.has(k) || allowedTjanstKeys.has(k);
     });
 
-    // Identifierade riskfaktorer (KYC) – exkludera poster som är byråns tjänstmallar, inte kundens KYC-risker
-    const riskerPerTyp = [];
+    const riskfaktorer = {
+      tjanster: tjansterNamn,
+      geografiska: [],
+      kund: pdfRiskFactorNames(f['Kunden verkar i en högriskbransch']),
+      distribution: [],
+      verksamhet: [],
+      riskhojOvrigt: pdfRiskFactorNames(filterRiskChipList(f['Riskhöjande faktorer övrigt'])),
+      risksankande: pdfRiskFactorNames(pdfFmtList(f['Risksänkande faktorer']))
+    };
+
     const linkedRiskIds = (f['risker kopplat till tjänster'] || []).filter((id) => {
       if (!isAirtableRecordIdStr(id)) return false;
       if (linkedTjanstIdSet.has(id)) return false;
@@ -4833,25 +4847,21 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_KUND_TABLE}?filterByFormula=${formula}`,
         { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
       );
-      const byTyp = {};
       for (const rec of (riskRes.data.records || [])) {
-        const rf = rec.fields || {};
-        const typ = (rf['Typ av riskfaktor'] || 'Övriga').trim();
+        const rfRec = rec.fields || {};
+        const typ = (rfRec['Typ av riskfaktor'] || '').trim();
         if (/tjänst|produkt/i.test(typ)) continue;
-        const riskfaktor = (rf['Riskfaktor'] || '').trim() || '—';
+        const riskfaktor = (rfRec['Riskfaktor'] || '').trim();
+        if (!riskfaktor) continue;
         if (riskPosterIsByraTjanstTemplate(riskfaktor, allowedTjanstKeys, allByraKeys)) continue;
-        if (!byTyp[typ]) byTyp[typ] = [];
-        byTyp[typ].push({
-          riskfaktor,
-          niva: rf['Riskbedömning'] || '',
-          beskrivning: pdfToText(rf['Beskrivning']),
-          atgard: pdfToText(rf['Åtgärd'])
-        });
+        if (riskfaktor.toLowerCase().includes('högriskbransch')) continue;
+        const key = PDF_RISK_TYP_MAP[typ];
+        if (!key) continue;
+        riskfaktorer[key].push(riskfaktor);
       }
-      for (const [typ, poster] of Object.entries(byTyp)) {
-        if (poster.length) riskerPerTyp.push({ typ, poster });
+      for (const key of ['geografiska', 'kund', 'distribution', 'verksamhet']) {
+        riskfaktorer[key].sort((a, b) => a.localeCompare(b, 'sv'));
       }
-      riskerPerTyp.sort((a, b) => a.typ.localeCompare(b.typ, 'sv'));
     }
 
     const riskData = {
@@ -4860,10 +4870,6 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       verksamhet: pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
-      hogriskbransch: pdfFmtList(f['Kunden verkar i en högriskbransch']),
-      riskhojTjanster: filterRiskChipList(f['Riskhöjande faktorer tjänster']),
-      riskhojOvrigt: filterRiskChipList(f['Riskhöjande faktorer övrigt']),
-      risksankande: pdfFmtList(f['Risksänkande faktorer']),
       kommentarRisk: pdfToText(f['Kommentar till riskfaktorerna ovan']),
       risksankandeAtgarder: pdfToText(f['Risksänkande åtgjärder']),
       byransRiskbedomning: pdfToText(f['Byrans riskbedomning']),
@@ -4874,7 +4880,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       riskUtford: f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '',
       riskGodkand: f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '',
       tjansterNamn,
-      riskerPerTyp
+      riskfaktorer
     };
 
     const pdfParts = [];
