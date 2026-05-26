@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v14.0', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v14.1', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -508,17 +508,95 @@ class CustomerCardManager {
         return !!(sammanlagd && (utförd || bedömning));
     }
 
+    _fieldIsChecked(fields, fieldName) {
+        const v = fields?.[fieldName];
+        return v === true || v === 1 || v === 'true' || v === 'Ja' || v === 'checked';
+    }
+
+    _renderExternClientFlowOption({ id, checked, label, hint, onChangeHandler }) {
+        return `
+            <div class="kundkort-extern-option-card">
+                <label class="kundkort-extern-option">
+                    <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}
+                        onchange="customerCardManager.${onChangeHandler}(this.checked)">
+                    <span>${this._esc(label)}</span>
+                </label>
+                ${hint ? `<p class="kundkort-extern-option-hint">${this._esc(hint)}</p>` : ''}
+            </div>`;
+    }
+
+    async _patchKunddataFields(fields) {
+        const customerId = this.customerId;
+        if (!customerId) {
+            this.showNotification('Kund-ID saknas', 'error');
+            return false;
+        }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                const msg = err.error || err.message || `HTTP ${response.status}`;
+                if (response.status === 422) {
+                    throw new Error(`${msg} Skapa checkbox-fält i KUNDDATA: ${Object.keys(fields).join(', ')}`);
+                }
+                throw new Error(msg);
+            }
+            if (this.customerData?.fields) {
+                Object.assign(this.customerData.fields, fields);
+            }
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
+            return true;
+        } catch (error) {
+            console.error('❌ Kunde inte spara kundfält:', error);
+            this.showNotification('Kunde inte spara: ' + error.message, 'error');
+            return false;
+        }
+    }
+
+    async setUppdragsavtalUtanforClientFlow(checked) {
+        const ok = await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked });
+        if (ok) {
+            const cb = document.getElementById('kund-ua-utanfor-cf');
+            if (cb) cb.checked = !!checked;
+            this.showNotification(checked ? 'Uppdragsavtal utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
+        } else {
+            const cb = document.getElementById('kund-ua-utanfor-cf');
+            if (cb) cb.checked = !checked;
+        }
+    }
+
+    async setKycFormularUtanforClientFlow(checked) {
+        const ok = await this._patchKunddataFields({ 'KYC-formulär utanför ClientFlow': !!checked });
+        if (ok) {
+            const cb = document.getElementById('kund-kyc-utanfor-cf');
+            if (cb) cb.checked = !!checked;
+            this.showNotification(checked ? 'KYC utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
+            this.loadKYCFormular();
+        } else {
+            const cb = document.getElementById('kund-kyc-utanfor-cf');
+            if (cb) cb.checked = !checked;
+        }
+    }
+
     _isKycFormularKlar(fields, savedKyc = {}) {
         if (!fields) return false;
         const manual = fields['Flik klar - KYC-formulär'];
         if (manual === true) return true;
         if (manual === false) return false;
+        if (this._fieldIsChecked(fields, 'KYC-formulär utanför ClientFlow')) return true;
+        if (savedKyc?.utanforClientFlow === true) return true;
         const status = (savedKyc?.status || '').toString().trim();
         if (status === 'Signerat') return true;
         return !!(fields['KYC UTFÖRD DATUM']);
     }
 
-    _isUppdragsavtalKlar(avtalFields) {
+    _isUppdragsavtalKlar(avtalFields, customerFields = {}) {
+        if (this._fieldIsChecked(customerFields, 'Uppdragsavtal utanför ClientFlow')) return true;
         if (!avtalFields) return false;
         const status = (avtalFields['Avtalsstatus'] || avtalFields['Status'] || '').toString().trim();
         return status === 'Signerat';
@@ -616,7 +694,7 @@ class CustomerCardManager {
         }
 
         const avtalF = this._uppdragsavtalFields;
-        if (this._isUppdragsavtalKlar(avtalF)) {
+        if (this._isUppdragsavtalKlar(avtalF, f)) {
             this._setTabStatus('uppdragsavtal',
                 '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
                 'Uppdragsavtal klarmarkerat');
@@ -1073,8 +1151,18 @@ class CustomerCardManager {
             </div>
         ` : '';
 
+        const uaUtanfor = this._fieldIsChecked(this.customerData?.fields, 'Uppdragsavtal utanför ClientFlow');
+        const uaUtanforHtml = this._renderExternClientFlowOption({
+            id: 'kund-ua-utanfor-cf',
+            checked: uaUtanfor,
+            label: 'Uppdragsavtal utanför ClientFlow',
+            hint: 'Fliken Uppdragsavtal markeras som klar när detta är valt.',
+            onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
+        });
+
         container.innerHTML = `
             <div class="uppdrag-tab">
+                ${uaUtanforHtml}
                 ${runsSetupHtml}
                 ${boardHtml}
                 <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
@@ -5928,8 +6016,21 @@ class CustomerCardManager {
         const kycStatus = saved.status || '';
         const kycInleedId = saved.inleedDokumentId || '';
         const kycSigneringsdatum = saved.signeringsdatum || '';
+        const kycUtanfor = this._fieldIsChecked(f, 'KYC-formulär utanför ClientFlow');
 
-        const statusBannerHtml = kycStatus === 'Signerat' ? `
+        const kycUtanforHtml = this._renderExternClientFlowOption({
+            id: 'kund-kyc-utanfor-cf',
+            checked: kycUtanfor,
+            label: 'Finns utanför ClientFlow',
+            hint: 'Fliken KYC-formulär markeras som klar när detta är valt.',
+            onChangeHandler: 'setKycFormularUtanforClientFlow'
+        });
+
+        const statusBannerHtml = kycUtanfor ? `
+            <div class="uppdrag-banner uppdrag-banner--ok">
+                <i class="fas fa-check-circle"></i>
+                KYC-formulär finns utanför ClientFlow.
+            </div>` : kycStatus === 'Signerat' ? `
             <div class="uppdrag-banner uppdrag-banner--ok">
                 <i class="fas fa-check-circle"></i>
                 KYC-formuläret signerat${kycSigneringsdatum ? ' ' + kycSigneringsdatum : ''}.
@@ -5949,6 +6050,7 @@ class CustomerCardManager {
 
         container.innerHTML = `
             <div class="uppdrag-wrap">
+                ${kycUtanforHtml}
                 ${statusBannerHtml}
 
                 <div class="uppdrag-doc-header">
@@ -6465,6 +6567,13 @@ class CustomerCardManager {
             'Valda byråbilagor (JSON)': rawF['Valda byråbilagor (JSON)'] || ''
         };
         const isNew = !avtal;
+        const kundFields = this.customerData?.fields || {};
+        const uaUtanfor = this._fieldIsChecked(kundFields, 'Uppdragsavtal utanför ClientFlow');
+        const uaUtanforBanner = uaUtanfor ? `
+            <div class="uppdrag-banner uppdrag-banner--ok">
+                <i class="fas fa-check-circle"></i>
+                Uppdragsavtalet finns utanför ClientFlow (markerat på fliken Uppdrag).
+            </div>` : '';
 
         const today = new Date().toISOString().split('T')[0];
         const fmtDate = (d) => d ? d.split('T')[0] : '';
@@ -6553,6 +6662,7 @@ class CustomerCardManager {
 
         container.innerHTML = `
             <div class="uppdrag-wrap">
+                ${uaUtanforBanner}
 
                 <!-- STATUS-BANNER -->
                 ${isNew ? `
