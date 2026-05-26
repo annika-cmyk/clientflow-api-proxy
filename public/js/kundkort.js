@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v13.5', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v14.0', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -35,6 +35,8 @@ class CustomerCardManager {
         this.setupEventListeners();
         this.setupTabNavigation();
         this.setupRollerEventDelegation();
+        this._ensureTabStatusElements();
+        this._updateKlarTabIndicators({});
         
         // Ensure first tab is visible on load
         this.ensureFirstTabVisible();
@@ -425,8 +427,30 @@ class CustomerCardManager {
         console.log('✅ Customer info displayed');
     }
 
+    _ensureTabStatusElements() {
+        const tabIds = [
+            'foretagsinformation', 'ovrigkyc', 'kycformular', 'uppdragsavtal',
+            'uppdrag', 'avvikelser', 'samarbete'
+        ];
+        tabIds.forEach((tabId) => {
+            const btn = document.querySelector(`.customer-details-section .tab-button[data-tab="${tabId}"]`);
+            if (!btn) return;
+            const mainIcon = btn.querySelector(':scope > i');
+            if (mainIcon) mainIcon.classList.add('tab-button-icon');
+            let status = btn.querySelector(`:scope > .tab-status[data-tab-status="${tabId}"]`);
+            if (!status) {
+                status = document.createElement('span');
+                status.className = 'tab-status';
+                status.dataset.tabStatus = tabId;
+                status.setAttribute('aria-hidden', 'true');
+                btn.appendChild(status);
+            }
+        });
+    }
+
     _tabStatusEl(tabId) {
-        return document.querySelector(`.tab-status[data-tab-status="${tabId}"]`);
+        this._ensureTabStatusElements();
+        return document.querySelector(`.customer-details-section .tab-status[data-tab-status="${tabId}"]`);
     }
 
     _setTabStatus(tabId, html, title = '') {
@@ -445,12 +469,19 @@ class CustomerCardManager {
 
     _parseKontaktPersoner(fields) {
         const raw = fields['Kontaktpersoner'] || fields['Befattningshavare'] || '';
-        if (!raw || !String(raw).trim().startsWith('[')) return [];
-        try {
-            return JSON.parse(raw) || [];
-        } catch (_) {
-            return [];
+        if (!raw) return [];
+        const s = String(raw).trim();
+        if (s.startsWith('[')) {
+            try {
+                return JSON.parse(s) || [];
+            } catch (_) {
+                return [];
+            }
         }
+        return s.split('\n').map(r => r.trim()).filter(Boolean).map(r => {
+            const match = r.match(/^(.+?)\s*\((.+)\)$/);
+            return { namn: match ? match[1].trim() : r };
+        });
     }
 
     _isForetagsinformationKlar(fields) {
@@ -597,7 +628,11 @@ class CustomerCardManager {
     }
 
     async refreshTabIndicators() {
-        if (!this.customerId) return;
+        this._ensureTabStatusElements();
+        if (!this.customerId) {
+            this._updateKlarTabIndicators({});
+            return;
+        }
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const opts = getAuthOptsKundkort();
         const f = this.customerData?.fields || {};

@@ -1405,14 +1405,19 @@ body.sidebar-collapsed .logout-btn {
     background: transparent;
 }
 
-.customer-details-section .tab-button i {
+.customer-details-section .tab-button > i.tab-button-icon {
     font-size: 0.8rem;
     opacity: 0.75;
 }
 
-.customer-details-section .tab-button.active i {
+.customer-details-section .tab-button.active > i.tab-button-icon {
     opacity: 1;
     color: var(--accent);
+}
+
+.customer-details-section .tab-status i {
+    opacity: 1;
+    font-size: 0.9rem;
 }
 
 .customer-details-section .tab-button-label {
@@ -9364,8 +9369,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
         gap: 0.4rem;
     }
 
-    .customer-details-section .tab-button i {
+    .customer-details-section .tab-button > i.tab-button-icon {
         font-size: 0.8rem;
+    }
+
+    .customer-details-section .tab-status i {
+        font-size: 0.85rem;
     }
 
     .customer-details-section .tab-pane {
