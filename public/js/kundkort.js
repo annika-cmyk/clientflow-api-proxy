@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v14.1', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v14.2', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -435,15 +435,18 @@ class CustomerCardManager {
         tabIds.forEach((tabId) => {
             const btn = document.querySelector(`.customer-details-section .tab-button[data-tab="${tabId}"]`);
             if (!btn) return;
-            const mainIcon = btn.querySelector(':scope > i');
-            if (mainIcon) mainIcon.classList.add('tab-button-icon');
+            btn.querySelectorAll(':scope > i.fas, :scope > i.tab-button-icon').forEach((el) => el.remove());
+            const label = btn.querySelector(':scope > .tab-button-label');
             let status = btn.querySelector(`:scope > .tab-status[data-tab-status="${tabId}"]`);
             if (!status) {
                 status = document.createElement('span');
                 status.className = 'tab-status';
                 status.dataset.tabStatus = tabId;
                 status.setAttribute('aria-hidden', 'true');
-                btn.appendChild(status);
+                if (label) btn.insertBefore(status, label);
+                else btn.appendChild(status);
+            } else if (label && status.nextElementSibling !== label) {
+                btn.insertBefore(status, label);
             }
         });
     }
