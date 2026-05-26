@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v14.2', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v14.4', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -564,17 +564,13 @@ class CustomerCardManager {
     async setUppdragsavtalUtanforClientFlow(checked) {
         const ok = await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked });
         if (ok) {
-            ['kund-ua-utanfor-cf', 'kund-ua-utanfor-avtal-cf'].forEach((id) => {
-                const cb = document.getElementById(id);
-                if (cb) cb.checked = !!checked;
-            });
+            const cb = document.getElementById('kund-ua-utanfor-avtal-cf');
+            if (cb) cb.checked = !!checked;
             this.showNotification(checked ? 'Uppdragsavtal utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
             this.loadUppdragsavtal();
         } else {
-            ['kund-ua-utanfor-cf', 'kund-ua-utanfor-avtal-cf'].forEach((id) => {
-                const cb = document.getElementById(id);
-                if (cb) cb.checked = !checked;
-            });
+            const cb = document.getElementById('kund-ua-utanfor-avtal-cf');
+            if (cb) cb.checked = !checked;
         }
     }
 
@@ -1159,18 +1155,8 @@ class CustomerCardManager {
             </div>
         ` : '';
 
-        const uaUtanfor = this._fieldIsChecked(this.customerData?.fields, 'Uppdragsavtal utanför ClientFlow');
-        const uaUtanforHtml = this._renderExternClientFlowOption({
-            id: 'kund-ua-utanfor-cf',
-            checked: uaUtanfor,
-            label: 'Finns utanför ClientFlow',
-            hint: 'Gäller uppdragsavtalet — fliken Uppdragsavtal markeras som klar.',
-            onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
-        });
-
         container.innerHTML = `
             <div class="uppdrag-tab">
-                ${uaUtanforHtml}
                 ${runsSetupHtml}
                 ${boardHtml}
                 <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
@@ -6580,7 +6566,7 @@ class CustomerCardManager {
         const uaUtanforHtml = this._renderExternClientFlowOption({
             id: 'kund-ua-utanfor-avtal-cf',
             checked: uaUtanfor,
-            label: 'Finns utanför ClientFlow',
+            label: 'Uppdragsavtal utanför ClientFlow',
             hint: 'Fliken Uppdragsavtal markeras som klar när detta är valt.',
             onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
         });
