@@ -564,12 +564,17 @@ class CustomerCardManager {
     async setUppdragsavtalUtanforClientFlow(checked) {
         const ok = await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked });
         if (ok) {
-            const cb = document.getElementById('kund-ua-utanfor-cf');
-            if (cb) cb.checked = !!checked;
+            ['kund-ua-utanfor-cf', 'kund-ua-utanfor-avtal-cf'].forEach((id) => {
+                const cb = document.getElementById(id);
+                if (cb) cb.checked = !!checked;
+            });
             this.showNotification(checked ? 'Uppdragsavtal utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
+            this.loadUppdragsavtal();
         } else {
-            const cb = document.getElementById('kund-ua-utanfor-cf');
-            if (cb) cb.checked = !checked;
+            ['kund-ua-utanfor-cf', 'kund-ua-utanfor-avtal-cf'].forEach((id) => {
+                const cb = document.getElementById(id);
+                if (cb) cb.checked = !checked;
+            });
         }
     }
 
@@ -1158,8 +1163,8 @@ class CustomerCardManager {
         const uaUtanforHtml = this._renderExternClientFlowOption({
             id: 'kund-ua-utanfor-cf',
             checked: uaUtanfor,
-            label: 'Uppdragsavtal utanför ClientFlow',
-            hint: 'Fliken Uppdragsavtal markeras som klar när detta är valt.',
+            label: 'Finns utanför ClientFlow',
+            hint: 'Gäller uppdragsavtalet — fliken Uppdragsavtal markeras som klar.',
             onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
         });
 
@@ -6572,11 +6577,13 @@ class CustomerCardManager {
         const isNew = !avtal;
         const kundFields = this.customerData?.fields || {};
         const uaUtanfor = this._fieldIsChecked(kundFields, 'Uppdragsavtal utanför ClientFlow');
-        const uaUtanforBanner = uaUtanfor ? `
-            <div class="uppdrag-banner uppdrag-banner--ok">
-                <i class="fas fa-check-circle"></i>
-                Uppdragsavtalet finns utanför ClientFlow (markerat på fliken Uppdrag).
-            </div>` : '';
+        const uaUtanforHtml = this._renderExternClientFlowOption({
+            id: 'kund-ua-utanfor-avtal-cf',
+            checked: uaUtanfor,
+            label: 'Finns utanför ClientFlow',
+            hint: 'Fliken Uppdragsavtal markeras som klar när detta är valt.',
+            onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
+        });
 
         const today = new Date().toISOString().split('T')[0];
         const fmtDate = (d) => d ? d.split('T')[0] : '';
@@ -6665,10 +6672,14 @@ class CustomerCardManager {
 
         container.innerHTML = `
             <div class="uppdrag-wrap">
-                ${uaUtanforBanner}
+                ${uaUtanforHtml}
 
                 <!-- STATUS-BANNER -->
-                ${isNew ? `
+                ${uaUtanfor ? `
+                <div class="uppdrag-banner uppdrag-banner--ok">
+                    <i class="fas fa-check-circle"></i>
+                    Uppdragsavtalet finns utanför ClientFlow.
+                </div>` : isNew ? `
                 <div class="uppdrag-banner uppdrag-banner--ny">
                     <i class="fas fa-info-circle"></i>
                     Inget uppdragsavtal finns ännu. Fyll i och spara som utkast.
