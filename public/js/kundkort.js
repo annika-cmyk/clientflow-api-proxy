@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v13.4', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v13.5', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -350,6 +350,7 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
+                this.refreshTabIndicators();
                 const urlParams = new URLSearchParams(window.location.search);
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
@@ -422,6 +423,262 @@ class CustomerCardManager {
         }
         
         console.log('✅ Customer info displayed');
+    }
+
+    _tabStatusEl(tabId) {
+        return document.querySelector(`.tab-status[data-tab-status="${tabId}"]`);
+    }
+
+    _setTabStatus(tabId, html, title = '') {
+        const el = this._tabStatusEl(tabId);
+        if (!el) return;
+        el.innerHTML = html || '';
+        el.className = 'tab-status' + (html ? '' : '');
+        if (title) {
+            el.setAttribute('title', title);
+            el.removeAttribute('aria-hidden');
+        } else {
+            el.removeAttribute('title');
+            el.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    _parseKontaktPersoner(fields) {
+        const raw = fields['Kontaktpersoner'] || fields['Befattningshavare'] || '';
+        if (!raw || !String(raw).trim().startsWith('[')) return [];
+        try {
+            return JSON.parse(raw) || [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    _isForetagsinformationKlar(fields) {
+        if (!fields) return false;
+        const manual = fields['Flik klar - Företagsinformation'];
+        if (manual === true) return true;
+        if (manual === false) return false;
+        const email = (fields['e-post'] || fields['Email'] || fields['E-post'] || '').toString().trim();
+        const telefon = (fields['Telefonnr'] || fields['telefon'] || '').toString().trim();
+        const beskrivning = (fields['Beskrivning av kunden'] || '').toString().trim();
+        const personer = this._parseKontaktPersoner(fields);
+        const harKontakt = personer.length > 0;
+        return !!(email && telefon && beskrivning && harKontakt);
+    }
+
+    _isRiskbedomningKlar(fields) {
+        if (!fields) return false;
+        const manual = fields['Flik klar - Riskbedömning'];
+        if (manual === true) return true;
+        if (manual === false) return false;
+        const sammanlagd = (fields['sammanlagd risk'] || fields['Riskniva'] || '').toString().trim();
+        const utförd = fields['Riskbedömning utförd datum'];
+        const bedömning = (fields['Byrans riskbedomning'] || fields['Motivering'] || '').toString().trim();
+        return !!(sammanlagd && (utförd || bedömning));
+    }
+
+    _isKycFormularKlar(fields, savedKyc = {}) {
+        if (!fields) return false;
+        const manual = fields['Flik klar - KYC-formulär'];
+        if (manual === true) return true;
+        if (manual === false) return false;
+        const status = (savedKyc?.status || '').toString().trim();
+        if (status === 'Signerat') return true;
+        return !!(fields['KYC UTFÖRD DATUM']);
+    }
+
+    _isUppdragsavtalKlar(avtalFields) {
+        if (!avtalFields) return false;
+        const status = (avtalFields['Avtalsstatus'] || avtalFields['Status'] || '').toString().trim();
+        return status === 'Signerat';
+    }
+
+    _samarbetePendingProgress(req) {
+        const titleFull = (req.title || 'Förfrågan').trim().replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
+        const titleLines = titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+        const n = titleLines.length;
+        if (!n) return { answered: 0, total: 0, hasPartial: false, unanswered: true };
+        const raw = (req.responseText || '').toString().trim();
+        if (!raw || !raw.startsWith('[')) return { answered: 0, total: n, hasPartial: false, unanswered: true };
+        try {
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return { answered: 0, total: n, hasPartial: false, unanswered: true };
+            let answered = 0;
+            titleLines.forEach((_, idx) => {
+                const a = arr[idx] || {};
+                const hasText = a.text && String(a.text).trim();
+                const hasFile = a.filename && String(a.filename).trim();
+                if (hasText || hasFile) answered++;
+            });
+            return {
+                answered,
+                total: n,
+                hasPartial: answered > 0 && answered < n,
+                unanswered: answered === 0
+            };
+        } catch (_) {
+            return { answered: 0, total: n, hasPartial: false, unanswered: true };
+        }
+    }
+
+    _computeSamarbeteTabState(requests) {
+        const list = Array.isArray(requests) ? requests : [];
+        const isArchived = (r) => (r.status || '') === 'Arkiverad' || !!r.archived;
+        const active = list.filter(r => !isArchived(r));
+        const pending = active.filter(r => (r.status || 'Väntar') === 'Väntar');
+        const answered = active.filter(r => (r.status || '') === 'Besvarad');
+
+        let hasUnanswered = false;
+        let hasPartial = false;
+        pending.forEach((req) => {
+            const p = this._samarbetePendingProgress(req);
+            if (p.unanswered) hasUnanswered = true;
+            else if (p.hasPartial) hasPartial = true;
+        });
+
+        if (hasUnanswered) return 'red';
+        if (hasPartial) return 'yellow';
+        if (answered.length > 0) return 'green';
+        return null;
+    }
+
+    _hasOpenAvvikelser(avvikelser) {
+        const closed = new Set(['Avslutad', 'Avslutade']);
+        return (avvikelser || []).some((a) => {
+            const status = (a.fields?.['Status'] || 'Öppen').toString().trim();
+            return !closed.has(status);
+        });
+    }
+
+    _updateKlarTabIndicators(fields) {
+        const f = fields || this.customerData?.fields || {};
+        const savedKyc = this._savedKycFormular || {};
+
+        if (this._isForetagsinformationKlar(f)) {
+            this._setTabStatus('foretagsinformation',
+                '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
+                'Företagsinformation klarmarkerad');
+        } else {
+            this._setTabStatus('foretagsinformation',
+                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                'Företagsinformation ej klarmarkerad');
+        }
+
+        if (this._isRiskbedomningKlar(f)) {
+            this._setTabStatus('ovrigkyc',
+                '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
+                'Riskbedömning klarmarkerad');
+        } else {
+            this._setTabStatus('ovrigkyc',
+                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                'Riskbedömning ej klarmarkerad');
+        }
+
+        if (this._isKycFormularKlar(f, savedKyc)) {
+            this._setTabStatus('kycformular',
+                '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
+                'KYC-formulär klarmarkerat');
+        } else {
+            this._setTabStatus('kycformular',
+                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                'KYC-formulär ej klarmarkerat');
+        }
+
+        const avtalF = this._uppdragsavtalFields;
+        if (this._isUppdragsavtalKlar(avtalF)) {
+            this._setTabStatus('uppdragsavtal',
+                '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
+                'Uppdragsavtal klarmarkerat');
+        } else {
+            this._setTabStatus('uppdragsavtal',
+                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                'Uppdragsavtal ej klarmarkerat');
+        }
+    }
+
+    async refreshTabIndicators() {
+        if (!this.customerId) return;
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const opts = getAuthOptsKundkort();
+        const f = this.customerData?.fields || {};
+
+        this._updateKlarTabIndicators(f);
+
+        try {
+            const [kycRes, avtalRes, uppdragRes, avvikRes, samRes] = await Promise.all([
+                fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, { method: 'GET', ...opts }).catch(() => null),
+                fetch(`${baseUrl}/api/uppdragsavtal?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
+                fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
+                fetch(`${baseUrl}/api/avvikelser?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
+                fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null)
+            ]);
+
+            if (kycRes?.ok) {
+                const kycData = await kycRes.json().catch(() => ({}));
+                this._savedKycFormular = kycData.kyc || {};
+            }
+
+            if (avtalRes?.ok) {
+                const avtalData = await avtalRes.json().catch(() => ({}));
+                this._uppdragsavtalFields = avtalData.avtal?.fields || null;
+            } else {
+                this._uppdragsavtalFields = null;
+            }
+
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
+
+            let uppdragCount = 0;
+            if (uppdragRes?.ok) {
+                const uppdragData = await uppdragRes.json().catch(() => ({}));
+                const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
+                uppdragCount = records.length;
+                this._uppdragCount = uppdragCount;
+            }
+            if (uppdragCount > 0) {
+                this._setTabStatus('uppdrag',
+                    `<span class="tab-status--count">${uppdragCount}</span>`,
+                    `${uppdragCount} uppdrag upplagda`);
+            } else {
+                this._setTabStatus('uppdrag', '');
+            }
+
+            let avvikelser = [];
+            if (avvikRes?.ok) {
+                const avvikData = await avvikRes.json().catch(() => ({}));
+                avvikelser = avvikData.avvikelser || [];
+            }
+            if (this._hasOpenAvvikelser(avvikelser)) {
+                this._setTabStatus('avvikelser',
+                    '<i class="fas fa-exclamation-triangle tab-status--warn" aria-hidden="true"></i>',
+                    'Öppna avvikelser finns');
+            } else {
+                this._setTabStatus('avvikelser', '');
+            }
+
+            let requests = [];
+            if (samRes?.ok) {
+                const samData = await samRes.json().catch(() => ({}));
+                requests = samData.requests || [];
+            }
+            const samState = this._computeSamarbeteTabState(requests);
+            if (samState === 'red') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--red" aria-hidden="true">?</span>',
+                    'Förfrågningar utan svar från kund');
+            } else if (samState === 'yellow') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--yellow" aria-hidden="true">?</span>',
+                    'Förfrågningar delvis besvarade');
+            } else if (samState === 'green') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--green" aria-hidden="true"><i class="fas fa-comment"></i></span>',
+                    'Kund har svarat på förfrågningar');
+            } else {
+                this._setTabStatus('samarbete', '');
+            }
+        } catch (e) {
+            console.warn('Kunde inte uppdatera flikindikatorer:', e.message);
+        }
     }
 
     async loadTabContent(tabName) {
@@ -591,6 +848,14 @@ class CustomerCardManager {
         }
 
         const records = Array.isArray(uppdragData.records) ? uppdragData.records : [];
+        this._uppdragCount = records.length;
+        if (records.length > 0) {
+            this._setTabStatus('uppdrag',
+                `<span class="tab-status--count">${records.length}</span>`,
+                `${records.length} uppdrag upplagda`);
+        } else {
+            this._setTabStatus('uppdrag', '');
+        }
         const runRecords = Array.isArray(runsData.records) ? runsData.records : [];
         const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
         const samarbeteReqs = Array.isArray(samarbeteData.requests) ? samarbeteData.requests : [];
@@ -2985,6 +3250,7 @@ class CustomerCardManager {
         }
 
         this._kontaktPersoner = kontaktPersoner;
+        this._updateKlarTabIndicators(fields);
 
         const rollerHTML = this._renderRollerView(kontaktPersoner);
 
@@ -3481,6 +3747,7 @@ class CustomerCardManager {
             }
 
             this.toggleKunduppgifterEdit();
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.showNotification('Kontaktuppgifter sparade!', 'success');
 
         } catch (error) {
@@ -3546,6 +3813,7 @@ class CustomerCardManager {
             if (viewEl) viewEl.innerHTML = beskrivning || '<span class="missing-data">Ej angiven</span>';
             if (this.customerData?.fields) this.customerData.fields['Beskrivning av kunden'] = beskrivning;
             this.toggleBeskrivningEdit();
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.showNotification('Beskrivning sparad!', 'success');
         } catch (error) {
             this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
@@ -3836,6 +4104,7 @@ class CustomerCardManager {
 
             if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
             this._updateUppdragAntasLock();
+            this._updateKlarTabIndicators(this.customerData.fields);
             const el = ikonEl || document.getElementById('kyc-icon-' + String(fältnamn).replace(/\s+/g, '-'));
             if (el) {
                 el.style.color = 'var(--accent, #667eea)';
@@ -4040,6 +4309,7 @@ class CustomerCardManager {
                     this.customerData.fields['Kontaktpersoner'] = JSON.stringify(this._kontaktPersoner);
                     for (const [k, v] of Object.entries(extraFields)) this.customerData.fields[k] = v;
                 }
+                this._updateKlarTabIndicators(this.customerData?.fields || {});
                 if (!opts.skipSuccessNotification && !extraFields['Verklig huvudman']) this.showNotification('Kontaktpersoner sparade', 'success');
             }
         } catch(e) {
@@ -4083,6 +4353,7 @@ class CustomerCardManager {
         }
 
         this.renderOvrigKYCBase();
+        this._updateKlarTabIndicators(this.customerData?.fields || {});
         this.loadServices(); // fyller #ovrigkyc-tjanster
         await this.loadKundRisker();
     }
@@ -5555,6 +5826,7 @@ class CustomerCardManager {
         } catch (e) { console.warn('Kunde inte hämta sparat KYC-formulär:', e.message); }
 
         this._savedKycFormular = savedKyc;
+        this._updateKlarTabIndicators(this.customerData?.fields || {});
         this.renderKYCFormular(savedKyc);
     }
 
@@ -6109,9 +6381,13 @@ class CustomerCardManager {
             const avtalData = avtalRes.ok ? await avtalRes.json() : { avtal: null };
             const byraData  = byraRes.ok  ? await byraRes.json()  : {};
 
+            this._uppdragsavtalFields = avtalData.avtal?.fields || null;
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.renderUppdragsavtal(avtalData.avtal, byraData);
         } catch (e) {
             console.error('❌ loadUppdragsavtal:', e);
+            this._uppdragsavtalFields = null;
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.renderUppdragsavtal(null, {});
         }
     }
@@ -7014,7 +7290,15 @@ class CustomerCardManager {
 
             if (response.ok) {
                 const data = await response.json();
-                this.displayAvvikelser(data.avvikelser || []);
+                const list = data.avvikelser || [];
+                if (this._hasOpenAvvikelser(list)) {
+                    this._setTabStatus('avvikelser',
+                        '<i class="fas fa-exclamation-triangle tab-status--warn" aria-hidden="true"></i>',
+                        'Öppna avvikelser finns');
+                } else {
+                    this._setTabStatus('avvikelser', '');
+                }
+                this.displayAvvikelser(list);
             } else {
                 this.displayEmptyAvvikelser();
             }
@@ -7049,6 +7333,7 @@ class CustomerCardManager {
     }
 
     displayEmptyAvvikelser() {
+        this._setTabStatus('avvikelser', '');
         this.displayAvvikelser([]);
     }
 
@@ -7464,7 +7749,24 @@ class CustomerCardManager {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const res = await fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...getAuthOptsKundkort() });
             const data = res.ok ? await res.json() : { requests: [] };
-            this.displaySamarbete(data.requests || []);
+            const requests = data.requests || [];
+            const samState = this._computeSamarbeteTabState(requests);
+            if (samState === 'red') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--red" aria-hidden="true">?</span>',
+                    'Förfrågningar utan svar från kund');
+            } else if (samState === 'yellow') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--yellow" aria-hidden="true">?</span>',
+                    'Förfrågningar delvis besvarade');
+            } else if (samState === 'green') {
+                this._setTabStatus('samarbete',
+                    '<span class="tab-status-bubble tab-status-bubble--green" aria-hidden="true"><i class="fas fa-comment"></i></span>',
+                    'Kund har svarat på förfrågningar');
+            } else {
+                this._setTabStatus('samarbete', '');
+            }
+            this.displaySamarbete(requests);
         } catch (e) {
             console.error('loadSamarbete:', e);
             content.innerHTML = '<p class="lead-empty">Kunde inte ladda förfrågningar.</p>';

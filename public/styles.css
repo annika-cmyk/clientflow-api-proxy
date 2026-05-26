@@ -1415,6 +1415,117 @@ body.sidebar-collapsed .logout-btn {
     color: var(--accent);
 }
 
+.customer-details-section .tab-button-label {
+    line-height: 1.2;
+}
+
+.customer-details-section .tab-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: 0.15rem;
+    font-size: 0.78rem;
+    line-height: 1;
+}
+
+.customer-details-section .tab-status:empty {
+    display: none;
+}
+
+.customer-details-section .tab-status--warn {
+    color: #ef4444;
+}
+
+.customer-details-section .tab-status--ok {
+    color: #10b981;
+}
+
+.customer-details-section .tab-status--partial {
+    color: #eab308;
+}
+
+.customer-details-section .tab-status--count {
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: var(--accent, #667eea);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.customer-details-section .tab-status--bubble {
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 50%;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.customer-details-section .tab-status--bubble-red {
+    background: #ef4444;
+}
+
+.customer-details-section .tab-status--bubble-yellow {
+    background: #eab308;
+    color: #422006;
+}
+
+.customer-details-section .tab-status--bubble-green {
+    background: #10b981;
+}
+
+.customer-details-section .tab-status-bubble {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.2rem;
+    height: 1.05rem;
+    padding: 0 0.28rem;
+    border-radius: 0.55rem 0.55rem 0.55rem 0.15rem;
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+}
+
+.customer-details-section .tab-status-bubble::after {
+    content: '';
+    position: absolute;
+    left: 0.12rem;
+    bottom: -0.2rem;
+    width: 0;
+    height: 0;
+    border: 0.2rem solid transparent;
+    border-top-color: inherit;
+    border-right-color: inherit;
+    transform: rotate(12deg);
+    opacity: 0.85;
+}
+
+.customer-details-section .tab-status-bubble--red {
+    background: #ef4444;
+}
+
+.customer-details-section .tab-status-bubble--yellow {
+    background: #eab308;
+    color: #422006;
+}
+
+.customer-details-section .tab-status-bubble--green {
+    background: #10b981;
+    font-size: 0.55rem;
+    padding: 0 0.22rem;
+}
+
+.customer-details-section .tab-status-bubble--green i {
+    font-size: 0.55rem;
+}
+
 /* Byrå & Användare – samma tabb-stil som kundkort */
 .byra-anvandare-tabs .tab-navigation {
     display: flex;
