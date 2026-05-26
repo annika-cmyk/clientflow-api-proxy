@@ -3,6 +3,7 @@ class CustomerManager {
         this.baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'http://localhost:3001';
         this.customers = [];
         this.filteredCustomers = [];
+        this.avtalStatusMap = {};
         this.lastQuery = '';
         this.init();
     }
@@ -40,17 +41,30 @@ class CustomerManager {
         if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) return;
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/kunddata`, {
-                method: 'POST',
-                ...opts,
-                body: JSON.stringify({})
-            });
+            const [kundRes, avtalRes] = await Promise.all([
+                fetch(`${this.baseUrl}/api/kunddata`, {
+                    method: 'POST',
+                    ...opts,
+                    body: JSON.stringify({})
+                }),
+                fetch(`${this.baseUrl}/api/uppdragsavtal/status-map`, {
+                    method: 'GET',
+                    ...opts
+                }).catch(() => null)
+            ]);
 
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!kundRes.ok) throw new Error(`HTTP ${kundRes.status}`);
 
-            const data = await response.json();
+            const data = await kundRes.json();
             const records = (data.success && data.data) ? data.data : [];
 
+            this.avtalStatusMap = {};
+            if (avtalRes?.ok) {
+                const avtalData = await avtalRes.json().catch(() => ({}));
+                this.avtalStatusMap = avtalData.map || {};
+            }
+
+            const compliance = window.KundCompliance;
             this.customers = records.map(r => {
                 const f = r.fields || {};
 
@@ -73,12 +87,18 @@ class CustomerManager {
                     kontaktpersoner = String(rawKontakt);
                 }
 
+                const avtalStatus = this.avtalStatusMap[r.id] || '';
+                const complianceKlar = compliance
+                    ? compliance.isKundlistaComplianceKlar(f, avtalStatus)
+                    : false;
+
                 return {
                     id: r.id,
                     namn: f.Namn || f['Företagsnamn'] || 'Namn saknas',
                     organisationsnummer: f.Orgnr || f.Organisationsnummer || '',
                     bolagsform: f.Bolagsform || '',
-                    kontaktpersoner
+                    kontaktpersoner,
+                    complianceKlar
                 };
             }).sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
 
@@ -113,12 +133,20 @@ class CustomerManager {
             return;
         }
 
+        const iconHtml = (c) => {
+            if (window.KundCompliance?.kundlistaStatusIconHtml) {
+                return window.KundCompliance.kundlistaStatusIconHtml(!!c.complianceKlar);
+            }
+            return '<span class="kundlista-row-icon kundlista-row-icon--warn" title="Status okänd">' +
+                '<i class="fas fa-exclamation-circle" aria-hidden="true"></i></span>';
+        };
+
         list.innerHTML = `
             <div class="kundlista-table">
                 ${this.filteredCustomers.map(c => `
                     <div class="kundlista-row" onclick="window.location.href='kundkort.html?id=${c.id}'">
                         <div class="kundlista-row-name">
-                            <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                            ${iconHtml(c)}
                             <span class="kundlista-row-namn">${c.namn}</span>
                         </div>
                         <div class="kundlista-row-meta">

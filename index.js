@@ -11347,6 +11347,39 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
 const UPPDRAGSAVTAL_TABLE = 'tblpKIMpde6sFFqDH'; // Uppdragsavtal tabell-ID
 const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'; // Global för alla uppdragsavtal-endpoints
 
+// GET /api/uppdragsavtal/status-map – Kund-ID → avtalsstatus (för kundlista m.m.)
+app.get('/api/uppdragsavtal/status-map', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas', map: {} });
+    }
+    const map = {};
+    let offset = null;
+    do {
+      const params = { pageSize: 100 };
+      if (offset) params.offset = offset;
+      const response = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` }, params, timeout: 15000 }
+      );
+      for (const a of response.data.records || []) {
+        const kid = a.fields?.KundID;
+        const ids = kid ? (Array.isArray(kid) ? kid : [kid]) : [];
+        const status = (a.fields?.['Avtalsstatus'] || a.fields?.Status || '').toString().trim();
+        for (const id of ids) {
+          if (!map[id] || status === 'Signerat') map[id] = status;
+        }
+      }
+      offset = response.data.offset || null;
+    } while (offset);
+    res.json({ map });
+  } catch (error) {
+    console.error('❌ Fel vid hämtning av uppdragsavtal status-map:', error.message);
+    res.status(500).json({ error: error.message, map: {} });
+  }
+});
+
 // GET /api/uppdragsavtal?customerId=recXXX
 app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
   try {

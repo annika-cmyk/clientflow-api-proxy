@@ -10750,13 +10750,19 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 34px;
     height: 34px;
     border-radius: 8px;
-    background: #eef2ff;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--accent, #4f6ef7);
-    font-size: 0.85rem;
+    font-size: 1rem;
     flex-shrink: 0;
+}
+.kundlista-row-icon--ok {
+    background: #ecfdf5;
+    color: #10b981;
+}
+.kundlista-row-icon--warn {
+    background: #fef2f2;
+    color: #ef4444;
 }
 .kundlista-row-name {
     display: flex;
