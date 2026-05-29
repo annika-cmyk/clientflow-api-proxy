@@ -1,4 +1,6 @@
-// Risk Assessment Management System
+// Byråns tjänster – riskbedömning per tjänst
+// Hanterar listning, AI-förslag och CRUD av byråns tjänster i tabellen
+// "Risker kopplad till tjänster".
 class RiskAssessmentManager {
     constructor() {
         this.gristBaseId = null;
@@ -8,7 +10,7 @@ class RiskAssessmentManager {
         this.filteredRisks = [];
         this.userData = null;
         this.userByraIds = [];
-        
+
         this.init();
     }
 
@@ -18,8 +20,6 @@ class RiskAssessmentManager {
         this.setupEventListeners();
         this.setupRoleBasedUI();
         await this.loadRiskAssessments();
-        
-        // Apply initial filtering based on user role
         this.applyFilters();
     }
 
@@ -49,57 +49,28 @@ class RiskAssessmentManager {
                 return;
             }
 
-            if (response.ok) {
-                const data = await response.json();
-                this.userData = data.user;
-                
-                console.log('Raw user data:', this.userData);
-                
-                // Extract byrå IDs from various possible fields
-                this.userByraIds = [];
-                
-                // Method 1: Check byraId field (prioritized - contains actual byrå ID)
-                if (this.userData.byraId) {
-                    this.userByraIds = [this.userData.byraId.toString()];
-                    console.log('Found byrå ID from byraId field:', this.userByraIds);
+            const data = await response.json();
+            this.userData = data.user;
+            this.userByraIds = [];
+
+            if (this.userData.byraId) {
+                this.userByraIds = [this.userData.byraId.toString()];
+            } else if (this.userData.byraIds && Array.isArray(this.userData.byraIds)) {
+                this.userByraIds = this.userData.byraIds.map(id => id.toString());
+            } else if (this.userData.byra && typeof this.userData.byra === 'string') {
+                const match = this.userData.byra.match(/Byrå\s+(\d+)/);
+                if (match) this.userByraIds = [match[1]];
+            } else if (this.userData.byra && typeof this.userData.byra === 'object') {
+                if (this.userData.byra.id) {
+                    this.userByraIds = [this.userData.byra.id.toString()];
+                } else if (this.userData.byra.name) {
+                    const match = this.userData.byra.name.match(/Byrå\s+(\d+)/);
+                    if (match) this.userByraIds = [match[1]];
                 }
-                // Method 2: Check byraIds array (fallback - contains record IDs)
-                else if (this.userData.byraIds && Array.isArray(this.userData.byraIds)) {
-                    this.userByraIds = this.userData.byraIds.map(id => id.toString());
-                    console.log('Found byrå IDs from byraIds array:', this.userByraIds);
-                }
-                // Method 3: Check byra field (string)
-                else if (this.userData.byra) {
-                    // Try to extract byrå ID from byrå name (e.g., "Byrå 49" -> "49")
-                    const match = this.userData.byra.match(/Byrå\s+(\d+)/);
-                    if (match) {
-                        this.userByraIds = [match[1]];
-                        console.log('Found byrå ID from byra field:', this.userByraIds);
-                    }
-                }
-                // Method 4: Check byra field (object)
-                else if (this.userData.byra && typeof this.userData.byra === 'object') {
-                    if (this.userData.byra.id) {
-                        this.userByraIds = [this.userData.byra.id.toString()];
-                        console.log('Found byrå ID from byra object:', this.userByraIds);
-                    } else if (this.userData.byra.name) {
-                        const match = this.userData.byra.name.match(/Byrå\s+(\d+)/);
-                        if (match) {
-                            this.userByraIds = [match[1]];
-                            console.log('Found byrå ID from byra object name:', this.userByraIds);
-                        }
-                    }
-                }
-                
-                console.log('Final user byrå IDs:', this.userByraIds);
-                console.log('User role:', this.userData.role);
-                
-                // If no byrå IDs found, log warning
-                if (this.userByraIds.length === 0) {
-                    console.warn('No byrå IDs found for user:', this.userData.name);
-                }
-            } else {
-                console.warn('Could not load user data - HTTP', response.status);
+            }
+
+            if (this.userByraIds.length === 0) {
+                console.warn('No byrå IDs found for user:', this.userData.name);
             }
         } catch (error) {
             console.error('Error loading user data:', error);
@@ -111,148 +82,116 @@ class RiskAssessmentManager {
         const byraFilter = document.getElementById('byra-filter');
         if (!byraFilterGroup || !byraFilter) return;
 
-        console.log('Setting up role-based UI for user:', this.userData?.role);
-        console.log('User byrå IDs:', this.userByraIds);
-
-        // If no user data (not logged in), show login message
         if (!this.userData) {
             byraFilterGroup.style.display = 'none';
             this.showLoginRequiredMessage();
-            console.log('No user data - showing login required message');
             return;
         }
 
         if (this.userData.role !== 'ClientFlowAdmin') {
-            // For non-admin users, hide the byrå filter dropdown
             byraFilterGroup.style.display = 'none';
-            console.log('Hidden byrå filter for non-admin user');
-            
-            // Add info about user's access
             this.showUserAccessInfo();
         } else {
-            // For admin users, show all byråer in dropdown
             byraFilterGroup.style.display = 'block';
-            console.log('Showing byrå filter for admin user');
         }
     }
 
     showLoginRequiredMessage() {
         const header = document.querySelector('.risk-header-content');
-        if (header) {
-            // Remove existing info if any
-            const existingInfo = header.querySelector('.user-access-info');
-            if (existingInfo) {
-                existingInfo.remove();
-            }
-            
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'user-access-info';
-            infoDiv.innerHTML = `
-                <div class="access-info" style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px;">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Inloggning krävs</strong>
-                    <p>Du måste logga in för att se riskbedömningar. 
-                    <a href="/login.html" style="color: #856404; text-decoration: underline;">Klicka här för att logga in</a></p>
-                </div>
-            `;
-            header.appendChild(infoDiv);
-        }
+        if (!header) return;
+        const existingInfo = header.querySelector('.user-access-info');
+        if (existingInfo) existingInfo.remove();
+
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'user-access-info';
+        infoDiv.innerHTML = `
+            <div class="access-info" style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Inloggning krävs</strong>
+                <p>Du måste logga in för att se byråns tjänster.
+                <a href="/login.html" style="color: #856404; text-decoration: underline;">Klicka här för att logga in</a></p>
+            </div>
+        `;
+        header.appendChild(infoDiv);
     }
 
     showUserAccessInfo() {
-        // Add user access info to the page
         const header = document.querySelector('.risk-header-content');
-        if (header && this.userData) {
-            // Remove existing info if any
-            const existingInfo = header.querySelector('.user-access-info');
-            if (existingInfo) {
-                existingInfo.remove();
-            }
-            
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'user-access-info';
-            
-            const byraInfo = this.userByraIds.length > 0 
-                ? `Byrå: ${this.userByraIds.join(', ')}` 
-                : 'Ingen byrå tilldelad';
-                
-            infoDiv.innerHTML = `
-                <div class="access-info">
-                    <span class="user-byra-info">${byraInfo}</span>
-                    <span class="access-note">Visar endast risker för din byrå</span>
-                </div>
-            `;
-            header.appendChild(infoDiv);
-            
-            console.log('Added user access info:', byraInfo);
-        }
+        if (!header || !this.userData) return;
+        const existingInfo = header.querySelector('.user-access-info');
+        if (existingInfo) existingInfo.remove();
+
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'user-access-info';
+        const byraInfo = this.userByraIds.length > 0
+            ? `Byrå: ${this.userByraIds.join(', ')}`
+            : 'Ingen byrå tilldelad';
+        infoDiv.innerHTML = `
+            <div class="access-info">
+                <span class="user-byra-info">${byraInfo}</span>
+                <span class="access-note">Visar endast tjänster för din byrå</span>
+            </div>
+        `;
+        header.appendChild(infoDiv);
     }
 
-
-
     setupEventListeners() {
-        // Filter controls
-        document.getElementById('apply-filters').addEventListener('click', () => this.applyFilters());
-        document.getElementById('clear-filters').addEventListener('click', () => this.clearFilters());
+        document.getElementById('apply-filters')?.addEventListener('click', () => this.applyFilters());
+        document.getElementById('clear-filters')?.addEventListener('click', () => this.clearFilters());
+        document.getElementById('byra-filter')?.addEventListener('change', () => this.applyFilters());
+        document.getElementById('risk-filter')?.addEventListener('change', () => this.applyFilters());
+        document.getElementById('status-filter')?.addEventListener('change', () => this.applyFilters());
 
-        // Auto-apply filters when dropdown values change
-        document.getElementById('byra-filter').addEventListener('change', () => this.applyFilters());
-        document.getElementById('risk-filter').addEventListener('change', () => this.applyFilters());
-        document.getElementById('status-filter').addEventListener('change', () => this.applyFilters());
+        document.getElementById('tjanst-form')?.addEventListener('submit', (e) => this.handleSaveTjanst(e));
+        document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
 
-        // Form submissions
-        document.getElementById('add-risk-form').addEventListener('submit', (e) => this.handleAddRisk(e));
-        document.getElementById('edit-risk-form').addEventListener('submit', (e) => this.handleEditRisk(e));
+        // Lägg till-rad-knappar i modalen
+        document.querySelectorAll('.btn-add-row').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const kind = btn.dataset.add;
+                if (kind === 'hot') this.addHotRow();
+                else if (kind === 'sarbarhet') this.addSarbarhetRow();
+                else if (kind === 'atgard') this.addAtgardRow();
+            });
+        });
 
-        // Modal controls
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
                 const modal = e.target.closest('.modal');
-                if (modal) {
-                    this.closeModal(modal.id);
-                }
+                if (modal) this.closeModal(modal.id);
             }
         });
     }
 
     async loadRiskAssessments() {
         const riskList = document.getElementById('risk-list');
-        
         try {
             riskList.innerHTML = `
                 <div class="loading-spinner">
                     <i class="fas fa-spinner fa-spin"></i>
-                    <p>Laddar riskbedömningar...</p>
+                    <p>Laddar tjänster...</p>
                 </div>
             `;
 
-            // Load from Airtable via our API
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (response.ok) {
                 const data = await response.json();
                 this.risks = data.records || [];
-                
-                // Populate byrå dropdown with unique byrå IDs from the data
                 this.populateByraDropdown();
-                
-                // Apply role-based filtering automatically
                 this.applyFilters();
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-
         } catch (error) {
             console.error('Error loading risk assessments:', error);
             riskList.innerHTML = `
                 <div class="error-message">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <h3>Fel vid laddning av riskbedömningar</h3>
+                    <h3>Fel vid laddning av tjänster</h3>
                     <p>${error.message}</p>
                     <button class="btn btn-primary" onclick="riskManager.loadRiskAssessments()">
                         <i class="fas fa-refresh"></i>
@@ -267,42 +206,66 @@ class RiskAssessmentManager {
         const byraFilter = document.getElementById('byra-filter');
         if (!byraFilter) return;
 
-        // Get unique byrå IDs from the risks data
         const uniqueByraIds = [...new Set(this.risks.map(risk => risk.fields['Byrå ID']).filter(id => id))];
-        
-        console.log('Found unique byrå IDs:', uniqueByraIds);
-        
-        // Clear existing options except "Alla byråer"
         byraFilter.innerHTML = '<option value="">Alla byråer</option>';
-        
-        if (uniqueByraIds.length === 0) {
-            console.log('No byrå IDs found in the data');
-            return;
-        }
-        
-        // Add options for each unique byrå ID
+        if (uniqueByraIds.length === 0) return;
+
         uniqueByraIds.sort((a, b) => a - b).forEach(byraId => {
             const option = document.createElement('option');
             option.value = byraId;
             option.textContent = `Byrå ${byraId}`;
             byraFilter.appendChild(option);
         });
-        
-        console.log('Byrå dropdown populated with', uniqueByraIds.length, 'byråer');
     }
 
+    // ---- Hjälpfunktioner ----
+    esc(text) {
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    parseJsonField(value) {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    getRiskLevelClass(level) {
+        switch (level) {
+            case 'Hög': return 'risk-high';
+            case 'Medel': return 'risk-medium';
+            case 'Låg': return 'risk-low';
+            default: return 'risk-medium';
+        }
+    }
+
+    formatDescription(text) {
+        if (!text) return '<em>Ingen beskrivning tillgänglig</em>';
+        return this.esc(text).replace(/\n/g, '<br>');
+    }
+
+    // ---- Rendering ----
     renderRiskList() {
         const riskList = document.getElementById('risk-list');
-        
+
         if (this.filteredRisks.length === 0) {
             riskList.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-clipboard-list"></i>
-                    <h3>Inga riskbedömningar hittades</h3>
-                    <p>Prova att justera dina filter eller lägg till en ny riskbedömning.</p>
-                    <button class="btn btn-primary" onclick="this.openAddModal()">
+                    <h3>Inga tjänster hittades</h3>
+                    <p>Lägg till en tjänst för att börja, eller justera dina filter.</p>
+                    <button class="btn btn-primary" onclick="riskManager.openAddModal()">
                         <i class="fas fa-plus"></i>
-                        Lägg till riskbedömning
+                        Lägg till tjänst
                     </button>
                 </div>
             `;
@@ -310,36 +273,137 @@ class RiskAssessmentManager {
         }
 
         const riskItems = this.filteredRisks.map(risk => this.createRiskItem(risk)).join('');
-        
-        riskList.innerHTML = `
-            <div class="risk-items">
-                ${riskItems}
-            </div>
-        `;
-
-        // Add event listeners to buttons
+        riskList.innerHTML = `<div class="risk-items">${riskItems}</div>`;
         this.setupRiskItemEventListeners();
     }
 
     createRiskItem(risk) {
-        const riskLevelClass = this.getRiskLevelClass(risk.fields['Riskbedömning'] || 'Medel');
-        const isChecked = risk.fields['Aktuell'] === true;
-        const taskName = risk.fields['Task Name'] || 'Namnlös uppgift';
-        const riskLevel = risk.fields['Riskbedömning'] || 'Medel';
-        const approvalDate = risk.fields['Riskbedömning godkänd datum'] || '';
-        
+        const f = risk.fields || {};
+        const riskLevel = f['Riskbedömning'] || 'Medel';
+        const riskLevelClass = this.getRiskLevelClass(riskLevel);
+        const isChecked = f['Aktuell'] === true;
+        const taskName = f['Task Name'] || 'Namnlös tjänst';
+
+        const beskrivning = f['Tjänstebeskrivning'] || '';
+        const hot = this.parseJsonField(f['Hot']);
+        const sarbarheter = this.parseJsonField(f['Sårbarheter']);
+        const samspel = f['Samspelsexempel'] || '';
+        const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
+        // Bakåtkompatibilitet: gamla fritextfält
+        const legacyBeskrivning = f['Beskrivning av riskfaktor'] || '';
+        const legacyAtgard = f['Åtgjärd'] || '';
+
+        const sections = [];
+
+        if (beskrivning) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning</h5>
+                    <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
+                </div>
+            `);
+        } else if (legacyBeskrivning) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Beskrivning av riskfaktor</h5>
+                    <p class="risk-content-text">${this.formatDescription(legacyBeskrivning)}</p>
+                </div>
+            `);
+        }
+
+        if (hot.length) {
+            const rows = hot.map(h => {
+                const typ = (h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
+                const typClass = typ === 'TF' ? 'tag-tf' : 'tag-pt';
+                return `
+                    <div class="threat-row">
+                        <span class="tag ${typClass}">${typ}</span>
+                        <div class="threat-body">
+                            <div class="threat-title">${this.esc(h.titel || '')}</div>
+                            <div class="threat-desc">${this.esc(h.beskrivning || '')}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-triangle-exclamation"></i> Hot</h5>
+                    <div class="threat-list">${rows}</div>
+                </div>
+            `);
+        }
+
+        if (sarbarheter.length) {
+            const tagClassMap = { 'Kunder': 'tag-kund', 'Distribution': 'tag-dist', 'Geografi': 'tag-geo', 'Verksamhet': 'tag-verk' };
+            const items = sarbarheter.map(s => {
+                const kat = s.kategori || 'Verksamhet';
+                const tagClass = tagClassMap[kat] || 'tag-verk';
+                return `
+                    <div class="vuln-item">
+                        <div class="tags-row"><span class="tag ${tagClass}">${this.esc(kat)}</span></div>
+                        <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
+                        <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
+                    </div>
+                `;
+            }).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-shield-halved"></i> Sårbarheter</h5>
+                    <div class="vuln-grid">${items}</div>
+                </div>
+            `);
+        }
+
+        if (samspel) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-arrows-to-circle"></i> Samspelsexempel</h5>
+                    <div class="scenario-box">${this.formatDescription(samspel)}</div>
+                </div>
+            `);
+        }
+
+        if (atgarder.length) {
+            const items = atgarder.map(a => `
+                <div class="action-item">
+                    <i class="fas fa-check action-icon"></i>
+                    <span class="action-text"><strong>${this.esc(a.titel || '')}</strong>${a.beskrivning ? ' — ' + this.esc(a.beskrivning) : ''}</span>
+                </div>
+            `).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-list-check"></i> Tjänstespecifika åtgärder</h5>
+                    <div class="action-list">${items}</div>
+                </div>
+            `);
+        } else if (legacyAtgard) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-tools"></i> Åtgärd</h5>
+                    <p class="risk-content-text">${this.formatDescription(legacyAtgard)}</p>
+                </div>
+            `);
+        }
+
+        if (!sections.length) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <p class="risk-content-text"><em>Inget innehåll ännu. Klicka på "Redigera" och låt AI föreslå ett underlag.</em></p>
+                </div>
+            `);
+        }
+
         return `
-            <div class="risk-item ${riskLevelClass}" data-record-id="${risk.id}">
+            <div class="risk-item ${riskLevelClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
                     <div class="risk-item-title">
                         <div class="risk-status-indicator ${isChecked ? 'checked' : 'unchecked'}">
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${taskName}</h4>
+                            <h4 class="risk-task-name">${this.esc(taskName)}</h4>
                             <div class="risk-meta-info">
-                                <span class="risk-level-badge ${riskLevelClass}">${riskLevel}</span>
-                                ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
+                                <span class="risk-level-badge ${riskLevelClass}">${this.esc(riskLevel)}</span>
                             </div>
                         </div>
                     </div>
@@ -349,22 +413,10 @@ class RiskAssessmentManager {
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="risk-item-content">
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-exclamation-triangle"></i> Beskrivning av riskfaktor</h5>
-                        <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Beskrivning av riskfaktor'] || '')}
-                        </p>
-                    </div>
-                    
-                    <div class="risk-content-section">
-                        <h5><i class="fas fa-tools"></i> Åtgärd</h5>
-                        <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Åtgjärd'] || '')}
-                        </p>
-                    </div>
-                    
+                    ${sections.join('')}
+
                     <div class="risk-item-footer">
                         <button class="btn btn-secondary btn-sm edit-risk" data-record-id="${risk.id}">
                             <i class="fas fa-edit"></i>
@@ -384,36 +436,17 @@ class RiskAssessmentManager {
         `;
     }
 
-    formatDescription(text) {
-        if (!text) return '<em>Ingen beskrivning tillgänglig</em>';
-        
-        // Convert line breaks to HTML
-        return text.replace(/\n/g, '<br>');
-    }
-
-    getRiskLevelClass(level) {
-        switch (level) {
-            case 'Hög': return 'risk-high';
-            case 'Medel': return 'risk-medium';
-            case 'Låg': return 'risk-low';
-            default: return 'risk-medium';
-        }
-    }
-
     toggleRiskItem(headerElement) {
         const riskItem = headerElement.closest('.risk-item');
-        const content = riskItem.querySelector('.risk-item-content');
         const toggle = riskItem.querySelector('.expand-toggle');
         const icon = toggle.querySelector('i');
-        
+
         if (riskItem.classList.contains('expanded')) {
-            // Collapse
             riskItem.classList.remove('expanded');
             toggle.classList.remove('expanded');
             icon.classList.remove('fa-chevron-up');
             icon.classList.add('fa-chevron-down');
         } else {
-            // Expand
             riskItem.classList.add('expanded');
             toggle.classList.add('expanded');
             icon.classList.remove('fa-chevron-down');
@@ -422,23 +455,18 @@ class RiskAssessmentManager {
     }
 
     setupRiskItemEventListeners() {
-        // Edit buttons
         document.querySelectorAll('.edit-risk').forEach(button => {
             button.addEventListener('click', (e) => {
                 const recordId = e.target.closest('.edit-risk').dataset.recordId;
                 this.openEditModal(recordId);
             });
         });
-
-        // Mark complete buttons
         document.querySelectorAll('.mark-complete').forEach(button => {
             button.addEventListener('click', (e) => {
                 const recordId = e.target.closest('.mark-complete').dataset.recordId;
                 this.markAsComplete(recordId);
             });
         });
-
-        // Delete buttons
         document.querySelectorAll('.delete-risk').forEach(button => {
             button.addEventListener('click', (e) => {
                 const recordId = e.target.closest('.delete-risk').dataset.recordId;
@@ -448,15 +476,14 @@ class RiskAssessmentManager {
     }
 
     applyFilters() {
-        // Don't apply filters if data isn't loaded yet
         if (!this.risks || this.risks.length === 0) {
-            console.log('No risks data available yet, skipping filters');
+            this.filteredRisks = [];
+            this.renderRiskList();
+            this.updateStats();
             return;
         }
 
-        // If user is not logged in, don't show any risks
         if (!this.userData) {
-            console.log('User not logged in - showing no risks');
             this.filteredRisks = [];
             this.renderRiskList();
             this.updateStats();
@@ -467,303 +494,363 @@ class RiskAssessmentManager {
         const riskFilter = document.getElementById('risk-filter')?.value || '';
         const statusFilter = document.getElementById('status-filter')?.value || '';
 
-        console.log('Applying filters with user role:', this.userData?.role);
-        console.log('User byrå IDs:', this.userByraIds);
-        console.log('Byrå filter value:', byraFilter);
-        console.log('Risk filter value:', riskFilter);
-        console.log('Status filter value:', statusFilter);
-
         this.filteredRisks = this.risks.filter(risk => {
             const fields = risk.fields;
             const riskByraId = fields['Byrå ID']?.toString();
-            
-            console.log('Checking risk:', fields['Task Name'], 'with byrå ID:', riskByraId);
-            
-            // Role-based byrå filtering
+
             if (this.userData && this.userData.role !== 'ClientFlowAdmin') {
-                // For non-admin users, only show risks from their byrå
-                if (this.userByraIds.length === 0) {
-                    console.log('No byrå IDs found for user, filtering out all risks');
-                    return false;
-                }
-                
-                if (!this.userByraIds.includes(riskByraId)) {
-                    // console.log('Filtered out risk - not in user\'s byrå (user has:', this.userByraIds, ', risk has:', riskByraId, ')');
-                    return false;
-                }
-                // console.log('Risk included - matches user\'s byrå');
+                if (this.userByraIds.length === 0) return false;
+                if (!this.userByraIds.includes(riskByraId)) return false;
             } else {
-                // For admin users, apply manual byrå filter if selected
-                if (byraFilter && riskByraId !== byraFilter) {
-                    // console.log('Filtered out risk - doesn\'t match selected byrå');
-                    return false;
-                }
-                // console.log('Risk included - admin user or matches selected byrå');
+                if (byraFilter && riskByraId !== byraFilter) return false;
             }
-            
-            // Risk level filter
-            if (riskFilter && fields['Riskbedömning'] !== riskFilter) {
-                // console.log('Filtered out risk - doesn\'t match risk level filter');
-                return false;
-            }
-            
-            // Status filter
+
+            if (riskFilter && fields['Riskbedömning'] !== riskFilter) return false;
+
             if (statusFilter) {
                 const isChecked = fields['Aktuell'] === true;
                 const status = isChecked ? 'checked' : 'unchecked';
-                if (status !== statusFilter) {
-                    // console.log('Filtered out risk - doesn\'t match status filter');
-                    return false;
-                }
+                if (status !== statusFilter) return false;
             }
-            
-            // console.log('Risk included - passed all filters');
+
             return true;
         });
 
-        console.log('Filtered risks count:', this.filteredRisks.length);
         this.renderRiskList();
         this.updateStats();
     }
 
     clearFilters() {
-        // Only clear byrå filter for admin users
         if (this.userData && this.userData.role === 'ClientFlowAdmin') {
             const byraFilter = document.getElementById('byra-filter');
             if (byraFilter) byraFilter.value = '';
         }
-        
         const riskFilter = document.getElementById('risk-filter');
         const statusFilter = document.getElementById('status-filter');
-        
         if (riskFilter) riskFilter.value = '';
         if (statusFilter) statusFilter.value = '';
-        
-        console.log('Filters cleared, re-applying...');
-        
-        // Re-apply role-based filtering
         this.applyFilters();
     }
 
     updateStats() {
-        const highRiskCount = this.filteredRisks.filter(risk => 
-            risk.fields['Riskbedömning'] === 'Hög'
-        ).length;
-        const completedCount = this.filteredRisks.filter(risk => 
-            risk.fields['Aktuell'] === true
-        ).length;
+        const highRiskCount = this.filteredRisks.filter(risk => risk.fields['Riskbedömning'] === 'Hög').length;
+        const completedCount = this.filteredRisks.filter(risk => risk.fields['Aktuell'] === true).length;
+        const highEl = document.getElementById('high-risk-count');
+        const compEl = document.getElementById('completed-count');
+        if (highEl) highEl.textContent = highRiskCount;
+        if (compEl) compEl.textContent = completedCount;
+    }
 
-        document.getElementById('high-risk-count').textContent = highRiskCount;
-        document.getElementById('completed-count').textContent = completedCount;
+    // ---- Modal: dynamiska rader ----
+    addHotRow(data = {}) {
+        const list = document.getElementById('hot-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.className = 'dyn-row dyn-row-hot';
+        row.innerHTML = `
+            <select class="dyn-typ">
+                <option value="PT" ${data.typ === 'TF' ? '' : 'selected'}>PT</option>
+                <option value="TF" ${data.typ === 'TF' ? 'selected' : ''}>TF</option>
+            </select>
+            <div class="dyn-fields">
+                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(data.titel || '')}">
+                <textarea class="dyn-besk" rows="2" placeholder="Tillvägagångssätt">${this.esc(data.beskrivning || '')}</textarea>
+            </div>
+            <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+        `;
+        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        list.appendChild(row);
+    }
+
+    addSarbarhetRow(data = {}) {
+        const list = document.getElementById('sarbarhet-list');
+        if (!list) return;
+        const kategorier = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
+        const opts = kategorier.map(k => `<option value="${k}" ${data.kategori === k ? 'selected' : ''}>${k}</option>`).join('');
+        const row = document.createElement('div');
+        row.className = 'dyn-row dyn-row-sarbarhet';
+        row.innerHTML = `
+            <select class="dyn-kategori">${opts}</select>
+            <div class="dyn-fields">
+                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(data.titel || '')}">
+                <textarea class="dyn-besk" rows="2" placeholder="Beskrivning">${this.esc(data.beskrivning || '')}</textarea>
+            </div>
+            <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+        `;
+        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        list.appendChild(row);
+    }
+
+    addAtgardRow(data = {}) {
+        const list = document.getElementById('atgard-list');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.className = 'dyn-row dyn-row-atgard';
+        row.innerHTML = `
+            <div class="dyn-fields">
+                <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(data.titel || '')}">
+                <textarea class="dyn-besk" rows="2" placeholder="Vad kontrolleras och dokumenteras?">${this.esc(data.beskrivning || '')}</textarea>
+            </div>
+            <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+        `;
+        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        list.appendChild(row);
+    }
+
+    collectHot() {
+        return [...document.querySelectorAll('#hot-list .dyn-row')].map(row => ({
+            typ: row.querySelector('.dyn-typ')?.value || 'PT',
+            titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+        })).filter(h => h.titel || h.beskrivning);
+    }
+
+    collectSarbarhet() {
+        return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map(row => ({
+            kategori: row.querySelector('.dyn-kategori')?.value || 'Verksamhet',
+            titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+        })).filter(s => s.titel || s.beskrivning);
+    }
+
+    collectAtgard() {
+        return [...document.querySelectorAll('#atgard-list .dyn-row')].map(row => ({
+            titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+        })).filter(a => a.titel || a.beskrivning);
+    }
+
+    resetModal() {
+        document.getElementById('tjanst-form')?.reset();
+        document.getElementById('tjanst-record-id').value = '';
+        ['hot-list', 'sarbarhet-list', 'atgard-list'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+    }
+
+    fillModal(risk) {
+        const f = risk.fields || {};
+        document.getElementById('tjanst-record-id').value = risk.id;
+        document.getElementById('tjanst-name').value = f['Task Name'] || '';
+        document.getElementById('tjanst-risk-level').value = f['Riskbedömning'] || '';
+        document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
+        document.getElementById('tjanst-samspel').value = f['Samspelsexempel'] || '';
+
+        this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
+        this.parseJsonField(f['Sårbarheter']).forEach(s => this.addSarbarhetRow(s));
+        this.parseJsonField(f['Tjänstespecifika åtgärder']).forEach(a => this.addAtgardRow(a));
     }
 
     openAddModal() {
-        document.getElementById('add-risk-modal').style.display = 'flex';
+        this.resetModal();
+        document.getElementById('tjanst-modal-title').textContent = 'Lägg till tjänst';
+        document.getElementById('tjanst-modal').style.display = 'flex';
     }
 
-    closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-    }
-
-    async openEditModal(recordId) {
+    openEditModal(recordId) {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
-
-        const fields = risk.fields;
-        
-        // Populate form fields
-        document.getElementById('edit-record-id').value = recordId;
-        document.getElementById('edit-task-name').value = fields['Task Name'] || '';
-        
-        document.getElementById('edit-risk-description').value = fields['Beskrivning av riskfaktor'] || '';
-        document.getElementById('edit-risk-level').value = fields['Riskbedömning'] || '';
-        document.getElementById('edit-action').value = fields['Åtgjärd'] || '';
-
-        document.getElementById('edit-risk-modal').style.display = 'flex';
+        this.resetModal();
+        document.getElementById('tjanst-modal-title').textContent = 'Redigera tjänst';
+        this.fillModal(risk);
+        document.getElementById('tjanst-modal').style.display = 'flex';
     }
 
     closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-        
-        // Clear forms
-        if (modalId === 'add-risk-modal') {
-            document.getElementById('add-risk-form').reset();
-        }
+        const modal = document.getElementById(modalId);
+        if (modal) modal.style.display = 'none';
+        if (modalId === 'tjanst-modal') this.resetModal();
     }
 
-    async handleAddRisk(event) {
-        event.preventDefault();
-        
-        const formData = new FormData(event.target);
-        
-        // Use the first byrå ID from user's data
-        const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
-        
-        if (!userByraId) {
-            this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
+    // ---- AI-förslag ----
+    async generateAiSuggestion() {
+        const namn = document.getElementById('tjanst-name').value.trim();
+        if (!namn) {
+            this.showNotification('Ange tjänstens namn först.', 'error');
+            document.getElementById('tjanst-name').focus();
             return;
         }
-        
-        const riskData = {
-            'Task Name': formData.get('task-name'),
-            'Byrå ID': userByraId,
-            'Beskrivning av riskfaktor': formData.get('risk-description'),
-            'Riskbedömning': formData.get('risk-level'),
-            'Åtgjärd': formData.get('action'),
-            'Aktuell': true
-        };
+
+        const btn = document.getElementById('ai-suggest-btn');
+        const label = btn.querySelector('.ai-btn-label');
+        const originalLabel = label.textContent;
+        btn.disabled = true;
+        btn.classList.add('loading');
+        label.textContent = 'Genererar…';
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
+            const befintligt = {
+                tjanstebeskrivning: document.getElementById('tjanst-beskrivning').value.trim(),
+                riskniva: document.getElementById('tjanst-risk-level').value,
+                samspelsexempel: document.getElementById('tjanst-samspel').value.trim()
+            };
+
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/ai-byra-tjanst`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(riskData)
+                ...opts,
+                headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+                body: JSON.stringify({ namn, befintligt })
             });
 
-            if (response.ok) {
-                this.closeModal('add-risk-modal');
-                await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning tillagd framgångsrikt', 'success');
-            } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
             }
+
+            const data = await response.json();
+
+            if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
+            if (data.samspelsexempel) document.getElementById('tjanst-samspel').value = data.samspelsexempel;
+            if (data.riskniva) document.getElementById('tjanst-risk-level').value = data.riskniva;
+
+            // Ersätt befintliga rader med AI-förslag
+            ['hot-list', 'sarbarhet-list', 'atgard-list'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+            (data.hot || []).forEach(h => this.addHotRow(h));
+            (data.sarbarheter || []).forEach(s => this.addSarbarhetRow(s));
+            (data.atgarder || []).forEach(a => this.addAtgardRow(a));
+
+            this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
-            console.error('Error adding risk assessment:', error);
-            this.showNotification('Fel vid tillägg av riskbedömning', 'error');
+            console.error('AI-förslag fel:', error);
+            this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            label.textContent = originalLabel;
         }
     }
 
-    async handleEditRisk(event) {
+    // ---- Spara (skapa/uppdatera) ----
+    buildPayload() {
+        return {
+            'Task Name': document.getElementById('tjanst-name').value.trim(),
+            'Riskbedömning': document.getElementById('tjanst-risk-level').value || '',
+            'Tjänstebeskrivning': document.getElementById('tjanst-beskrivning').value.trim(),
+            'Samspelsexempel': document.getElementById('tjanst-samspel').value.trim(),
+            'Hot': JSON.stringify(this.collectHot()),
+            'Sårbarheter': JSON.stringify(this.collectSarbarhet()),
+            'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard())
+        };
+    }
+
+    async handleSaveTjanst(event) {
         event.preventDefault();
-        
-        const formData = new FormData(event.target);
-        const recordId = formData.get('record-id');
-        
-        // Use the first byrå ID from user's data
-        const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
-        
-        if (!userByraId) {
-            this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
+
+        const recordId = document.getElementById('tjanst-record-id').value;
+        const namn = document.getElementById('tjanst-name').value.trim();
+        if (!namn) {
+            this.showNotification('Tjänstens namn är obligatoriskt.', 'error');
             return;
         }
-        
-        const riskData = {
-            'Task Name': formData.get('task-name'),
-            'Byrå ID': userByraId,
-            'Beskrivning av riskfaktor': formData.get('risk-description'),
-            'Riskbedömning': formData.get('risk-level'),
-            'Åtgjärd': formData.get('action')
-        };
+
+        const payload = this.buildPayload();
+
+        // Vid skapande: koppla byrå-ID
+        if (!recordId) {
+            const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
+            if (!userByraId && this.userData?.role !== 'ClientFlowAdmin') {
+                this.showNotification('Inget byrå-ID hittat för användaren. Kontakta administratören.', 'error');
+                return;
+            }
+            if (userByraId) payload['Byrå ID'] = userByraId;
+            payload['Aktuell'] = true;
+        }
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(riskData)
+            const url = recordId
+                ? `${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`
+                : `${window.apiConfig.baseUrl}/api/risk-assessments`;
+            const method = recordId ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                this.closeModal('edit-risk-modal');
+                this.closeModal('tjanst-modal');
                 await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning uppdaterad framgångsrikt', 'success');
+                this.showNotification(recordId ? 'Tjänsten uppdaterad.' : 'Tjänsten tillagd.', 'success');
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${response.status}`);
             }
         } catch (error) {
-            console.error('Error updating risk assessment:', error);
-            this.showNotification('Fel vid uppdatering av riskbedömning', 'error');
+            console.error('Error saving tjänst:', error);
+            this.showNotification('Fel vid sparande: ' + error.message, 'error');
         }
     }
 
     async markAsComplete(recordId) {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
+        const newStatus = !(risk.fields['Aktuell'] === true);
 
-        const currentStatus = risk.fields['Aktuell'] === true;
-        const newStatus = !currentStatus;
-        
         try {
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    'Aktuell': newStatus
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'Aktuell': newStatus })
             });
-
             if (response.ok) {
                 await this.loadRiskAssessments();
-                const message = newStatus ? 'Riskbedömning klarmarkerad' : 'Klarmarkering avtagen';
-                this.showNotification(message, 'success');
+                this.showNotification(newStatus ? 'Tjänsten klarmarkerad.' : 'Klarmarkering avtagen.', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error toggling risk status:', error);
-            this.showNotification('Fel vid ändring av klarmarkering', 'error');
+            console.error('Error toggling status:', error);
+            this.showNotification('Fel vid ändring av status.', 'error');
         }
     }
 
     async deleteRisk(recordId) {
-        if (!confirm('Är du säker på att du vill ta bort denna riskbedömning?')) {
-            return;
-        }
+        if (!confirm('Är du säker på att du vill ta bort denna tjänst?')) return;
 
         try {
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'DELETE'
             });
-
             if (response.ok) {
                 await this.loadRiskAssessments();
-                this.showNotification('Riskbedömning borttagen', 'success');
+                this.showNotification('Tjänsten borttagen.', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error deleting risk assessment:', error);
-            this.showNotification('Fel vid borttagning av riskbedömning', 'error');
+            console.error('Error deleting tjänst:', error);
+            this.showNotification('Fel vid borttagning.', 'error');
         }
     }
 
     showNotification(message, type = 'info') {
-        // Create notification element
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
             <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'}"></i>
-            <span>${message}</span>
+            <span>${this.esc(message)}</span>
             <button class="notification-close" onclick="this.parentElement.remove()">
                 <i class="fas fa-times"></i>
             </button>
         `;
-
-        // Add to page
         document.body.appendChild(notification);
-
-        // Auto remove after 5 seconds
         setTimeout(() => {
-            if (notification.parentElement) {
-                notification.remove();
-            }
+            if (notification.parentElement) notification.remove();
         }, 5000);
     }
 }
 
-// Global functions for modal handling
+// Global funktion för modal-stängning (bakåtkompatibel med inline onclick)
 function closeModal(modalId) {
-    if (window.riskManager) {
-        riskManager.closeModal(modalId);
-    }
+    if (window.riskManager) riskManager.closeModal(modalId);
 }
 
-// Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.riskManager = new RiskAssessmentManager();
 });

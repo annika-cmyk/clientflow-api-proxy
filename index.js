@@ -3681,8 +3681,10 @@ app.post('/api/risk-assessments', async (req, res) => {
       }
     });
     
-    // Validera obligatoriska fält
-    const requiredFieldIds = ['fld4yI8yL4PyHO5LX', 'fldA3OjtA9IOnH0XL', 'fldxHa72ao5Zpekt2', 'fldFQcjlerFO8GGQf', 'fldnrHoCosECXWaQM'];
+    // Validera obligatoriska fält – numera räcker tjänstens namn (Task Name).
+    // Övrigt innehåll (beskrivning, hot, sårbarheter, åtgärder) fylls i efterhand,
+    // ofta via AI-förslag, så byrån kan skapa en tjänst med bara ett namn.
+    const requiredFieldIds = ['fld4yI8yL4PyHO5LX'];
     const missingFields = requiredFieldIds.filter(fieldId => !airtableData[fieldId]);
     
     if (missingFields.length > 0) {
@@ -3690,7 +3692,7 @@ app.post('/api/risk-assessments', async (req, res) => {
       console.log('📝 Missing field IDs:', missingFields);
       return res.status(400).json({
         error: 'Saknade obligatoriska fält',
-        message: `Följande fält är obligatoriska: ${missingFields.join(', ')}`,
+        message: 'Tjänstens namn (Task Name) är obligatoriskt.',
         receivedData: airtableData
       });
     }
@@ -14393,15 +14395,55 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             const ok = expanded.filter(Boolean);
             if (ok.length > 0) {
               tjansterText = ok.map((x) => x.namn).join(', ');
+              const parseJsonArr = (v) => {
+                if (!v) return [];
+                if (Array.isArray(v)) return v;
+                try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
+              };
               byraValdaTjansterDetaljText = ok.map(({ namn, tf }) => {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
+                const tjBeskr = (tf['Tjänstebeskrivning'] || '').trim();
                 const brf = (tf['Beskrivning av riskfaktor'] || '').trim();
                 const risk = (tf['Riskbedömning'] || '').trim();
-                const atg = (tf['Åtgjärd'] || '').trim();
+                const atgLegacy = (tf['Åtgjärd'] || '').trim();
+                const samspel = (tf['Samspelsexempel'] || '').trim();
+                const hot = parseJsonArr(tf['Hot']);
+                const sarbarheter = parseJsonArr(tf['Sårbarheter']);
+                const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
+
                 let line = `  • ${namn}${typ ? ` (${typ})` : ''}`;
+                if (tjBeskr) line += `\n    Tjänstebeskrivning: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
                 if (risk) line += `\n    Byråns riskbedömning för tjänsten: ${risk}`;
-                if (atg) line += `\n    Byråns åtgärder kopplade till tjänsten: ${atg}`;
+                if (hot.length) {
+                  line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
+                  hot.forEach(h => {
+                    const t = (h && (h.typ || '')).toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
+                    const titel = (h && h.titel || '').toString().trim();
+                    const besk = (h && h.beskrivning || '').toString().trim();
+                    if (titel || besk) line += `\n      - [${t}] ${titel}${besk ? `: ${besk}` : ''}`;
+                  });
+                }
+                if (sarbarheter.length) {
+                  line += `\n    Sårbarheter/riskfaktorer kopplade till tjänsten:`;
+                  sarbarheter.forEach(s => {
+                    const kat = (s && s.kategori || '').toString().trim();
+                    const titel = (s && s.titel || '').toString().trim();
+                    const besk = (s && s.beskrivning || '').toString().trim();
+                    if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
+                  });
+                }
+                if (samspel) line += `\n    Samspelsexempel: ${samspel}`;
+                if (atgarder.length) {
+                  line += `\n    Byråns tjänstespecifika åtgärder:`;
+                  atgarder.forEach(a => {
+                    const titel = (a && a.titel || '').toString().trim();
+                    const besk = (a && a.beskrivning || '').toString().trim();
+                    if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
+                  });
+                } else if (atgLegacy) {
+                  line += `\n    Byråns åtgärder kopplade till tjänsten: ${atgLegacy}`;
+                }
                 return line;
               }).join('\n\n');
             }
@@ -14714,6 +14756,156 @@ ${aiText}`;
       });
     }
     res.status(status).json({ error: 'Kunde inte generera AI-analys: ' + msg });
+  }
+});
+
+// ============================================================
+// POST /api/ai-byra-tjanst
+// Genererar AI-förslag för en av byråns tjänster: tjänstebeskrivning,
+// hot (PT/TF), sårbarheter, samspelsexempel och tjänstespecifika åtgärder.
+// ============================================================
+app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
+
+  const namn = (req.body?.namn || '').toString().trim();
+  if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
+  const tjanstetyp = (req.body?.tjanstetyp || '').toString().trim();
+  const befintligt = req.body?.befintligt || {};
+
+  const befintligtText = (() => {
+    try {
+      const parts = [];
+      if (befintligt.tjanstebeskrivning) parts.push(`Tjänstebeskrivning: ${befintligt.tjanstebeskrivning}`);
+      if (befintligt.riskniva) parts.push(`Risknivå: ${befintligt.riskniva}`);
+      if (befintligt.samspelsexempel) parts.push(`Samspelsexempel: ${befintligt.samspelsexempel}`);
+      return parts.length ? parts.join('\n') : '';
+    } catch (_) { return ''; }
+  })();
+
+  const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
+Gör en strukturerad riskbedömning av EN av byråns tjänster enligt penningtvättslagen (PVML).
+Tjänsten beskriver något byrån UTFÖR åt sina kunder (t.ex. löpande bokföring, lönehantering, bokslut, ROT/RUT-hantering).
+
+TJÄNST ATT ANALYSERA: "${namn}"${tjanstetyp ? `\nTjänstetyp/kategori: ${tjanstetyp}` : ''}
+${befintligtText ? `\nBEFINTLIGT INNEHÅLL (förfina/uppdatera istället för att skriva om från noll om det fortfarande stämmer):\n${befintligtText}\n` : ''}
+Analysera hur just denna tjänst kan utnyttjas för penningtvätt (PT) eller terrorfinansiering (TF), vilka sårbarheter som finns och vilka konkreta åtgärder byrån bör vidta.
+
+KRAV PÅ INNEHÅLLET:
+- "tjanstebeskrivning": 2–4 meningar som beskriver vad tjänsten innebär i praktiken och varför den ger byrån insyn/exponering. Saklig svenska, inga UI-termer.
+- "hot": 2–4 konkreta hot. Varje hot har "typ" som är antingen "PT" (penningtvätt) eller "TF" (terrorfinansiering), en kort "titel" (3–6 ord) och en "beskrivning" (1–2 meningar om tillvägagångssättet).
+- "sarbarheter": 2–4 sårbarheter/riskfaktorer. Varje har "kategori" som är EXAKT en av: "Kunder", "Distribution", "Geografi", "Verksamhet". "titel" (2–5 ord) och "beskrivning" (1 mening).
+- "samspelsexempel": 1 stycke (2–4 meningar) som beskriver ett realistiskt scenario där flera riskfaktorer samverkar och varför det innebär förhöjd risk för just denna tjänst.
+- "atgarder": 3–5 tjänstespecifika åtgärder. Varje har en "titel" (2–6 ord) och en "beskrivning" som anger VAD som kontrolleras och VAD som dokumenteras. Proportionerligt för en redovisningsbyrå – inte "polisarbete" eller löpande realtidsövervakning.
+- "riskniva": EXAKT en av "Låg", "Medel" eller "Hög" – byråns sammanvägda inneboende risknivå för tjänsten.
+
+Skriv konkret och verklighetstroget för svensk redovisningsbransch. Hitta inte på orimliga detaljer.
+
+Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
+{
+  "tjanstebeskrivning": "…",
+  "riskniva": "Låg" | "Medel" | "Hög",
+  "hot": [ { "typ": "PT" | "TF", "titel": "…", "beskrivning": "…" } ],
+  "sarbarheter": [ { "kategori": "Kunder" | "Distribution" | "Geografi" | "Verksamhet", "titel": "…", "beskrivning": "…" } ],
+  "samspelsexempel": "…",
+  "atgarder": [ { "titel": "…", "beskrivning": "…" } ]
+}`;
+
+  const extractFirstJsonObject = (text) => {
+    if (!text) return null;
+    const start = text.indexOf('{');
+    if (start === -1) return null;
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return null;
+  };
+  const stripCodeFences = (text) => {
+    if (!text) return '';
+    let t = String(text).replace(/^\uFEFF/, '').trim();
+    if (/^```/m.test(t)) {
+      t = t.replace(/```[a-zA-Z0-9_-]*\s*/g, '```');
+      t = t.replace(/^```/g, '').replace(/```$/g, '').trim();
+    }
+    return t.trim();
+  };
+  const parseAssistantJson = (rawText) => {
+    const cleaned = stripCodeFences(rawText);
+    const candidate = extractFirstJsonObject(cleaned) || extractFirstJsonObject(rawText) || cleaned || rawText || '';
+    return JSON.parse(candidate);
+  };
+
+  const normRisk = (v) => {
+    const t = (v || '').toString().trim().toLowerCase();
+    if (t.startsWith('hög') || t.startsWith('hog') || t === 'high') return 'Hög';
+    if (t.startsWith('låg') || t.startsWith('lag') || t === 'low') return 'Låg';
+    return 'Medel';
+  };
+  const normHotTyp = (v) => ((v || '').toString().trim().toUpperCase() === 'TF' ? 'TF' : 'PT');
+  const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
+  const normKategori = (v) => {
+    const t = (v || '').toString().trim().toLowerCase();
+    return KATEGORIER.find(k => k.toLowerCase() === t) || 'Verksamhet';
+  };
+  const cleanStr = (v) => (v == null ? '' : String(v).trim());
+
+  try {
+    const assistantInstructions =
+      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
+    const riskVectorStoreId =
+      (process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
+      || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
+      || null;
+
+    const aiText = await runOpenAIAssistantRunWithRetry(
+      openaiKey,
+      prompt,
+      {
+        instructions: assistantInstructions,
+        vectorStoreId: riskVectorStoreId || undefined,
+        maxWaitMs: 180000,
+        pollMs: 1500,
+        debugMeta: { route: '/api/ai-byra-tjanst', user: req.user?.email || '' }
+      },
+      { maxAttempts: 3 }
+    );
+
+    const result = parseAssistantJson(aiText);
+    if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+
+    const hot = Array.isArray(result.hot) ? result.hot
+      .map(h => ({ typ: normHotTyp(h?.typ), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning) }))
+      .filter(h => h.titel || h.beskrivning) : [];
+    const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
+      .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
+      .filter(s => s.titel || s.beskrivning) : [];
+    const atgarder = Array.isArray(result.atgarder) ? result.atgarder
+      .map(a => ({ titel: cleanStr(a?.titel), beskrivning: cleanStr(a?.beskrivning) }))
+      .filter(a => a.titel || a.beskrivning) : [];
+
+    res.json({
+      tjanstebeskrivning: cleanStr(result.tjanstebeskrivning),
+      riskniva: normRisk(result.riskniva),
+      hot,
+      sarbarheter,
+      samspelsexempel: cleanStr(result.samspelsexempel),
+      atgarder
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    console.error('❌ AI-byrå-tjänst fel:', status, msg);
+    if (status === 429) {
+      return res.status(429).json({ error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.' });
+    }
+    res.status(status).json({ error: 'Kunde inte generera AI-förslag: ' + msg });
   }
 });
 
