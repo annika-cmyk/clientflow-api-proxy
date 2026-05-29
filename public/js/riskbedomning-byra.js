@@ -287,7 +287,6 @@ class RiskAssessmentManager {
         const beskrivning = f['Tjänstebeskrivning'] || '';
         const hot = this.parseJsonField(f['Hot']);
         const sarbarheter = this.parseJsonField(f['Sårbarheter']);
-        const samspel = f['Samspelsexempel'] || '';
         const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
         // Bakåtkompatibilitet: gamla fritextfält
         const legacyBeskrivning = f['Beskrivning av riskfaktor'] || '';
@@ -350,15 +349,6 @@ class RiskAssessmentManager {
                 <div class="risk-content-section">
                     <h5><i class="fas fa-shield-halved"></i> Sårbarheter</h5>
                     <div class="vuln-grid">${items}</div>
-                </div>
-            `);
-        }
-
-        if (samspel) {
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-arrows-to-circle"></i> Samspelsexempel</h5>
-                    <div class="scenario-box">${this.formatDescription(samspel)}</div>
                 </div>
             `);
         }
@@ -635,7 +625,6 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-name').value = f['Task Name'] || '';
         document.getElementById('tjanst-risk-level').value = f['Riskbedömning'] || '';
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
-        document.getElementById('tjanst-samspel').value = f['Samspelsexempel'] || '';
 
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
         this.parseJsonField(f['Sårbarheter']).forEach(s => this.addSarbarhetRow(s));
@@ -682,8 +671,7 @@ class RiskAssessmentManager {
         try {
             const befintligt = {
                 tjanstebeskrivning: document.getElementById('tjanst-beskrivning').value.trim(),
-                riskniva: document.getElementById('tjanst-risk-level').value,
-                samspelsexempel: document.getElementById('tjanst-samspel').value.trim()
+                riskniva: document.getElementById('tjanst-risk-level').value
             };
 
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
@@ -702,7 +690,6 @@ class RiskAssessmentManager {
             const data = await response.json();
 
             if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
-            if (data.samspelsexempel) document.getElementById('tjanst-samspel').value = data.samspelsexempel;
             if (data.riskniva) document.getElementById('tjanst-risk-level').value = data.riskniva;
 
             // Ersätt befintliga rader med AI-förslag
@@ -731,7 +718,6 @@ class RiskAssessmentManager {
             'Task Name': document.getElementById('tjanst-name').value.trim(),
             'Riskbedömning': document.getElementById('tjanst-risk-level').value || '',
             'Tjänstebeskrivning': document.getElementById('tjanst-beskrivning').value.trim(),
-            'Samspelsexempel': document.getElementById('tjanst-samspel').value.trim(),
             'Hot': JSON.stringify(this.collectHot()),
             'Sårbarheter': JSON.stringify(this.collectSarbarhet()),
             'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard())

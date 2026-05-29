@@ -14406,7 +14406,6 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 const brf = (tf['Beskrivning av riskfaktor'] || '').trim();
                 const risk = (tf['Riskbedömning'] || '').trim();
                 const atgLegacy = (tf['Åtgjärd'] || '').trim();
-                const samspel = (tf['Samspelsexempel'] || '').trim();
                 const hot = parseJsonArr(tf['Hot']);
                 const sarbarheter = parseJsonArr(tf['Sårbarheter']);
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
@@ -14433,7 +14432,6 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                     if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
-                if (samspel) line += `\n    Samspelsexempel: ${samspel}`;
                 if (atgarder.length) {
                   line += `\n    Byråns tjänstespecifika åtgärder:`;
                   atgarder.forEach(a => {
@@ -14762,7 +14760,7 @@ ${aiText}`;
 // ============================================================
 // POST /api/ai-byra-tjanst
 // Genererar AI-förslag för en av byråns tjänster: tjänstebeskrivning,
-// hot (PT/TF), sårbarheter, samspelsexempel och tjänstespecifika åtgärder.
+// hot (PT/TF), sårbarheter och tjänstespecifika åtgärder.
 // ============================================================
 app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
@@ -14779,7 +14777,6 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
       const parts = [];
       if (befintligt.tjanstebeskrivning) parts.push(`Tjänstebeskrivning: ${befintligt.tjanstebeskrivning}`);
       if (befintligt.riskniva) parts.push(`Risknivå: ${befintligt.riskniva}`);
-      if (befintligt.samspelsexempel) parts.push(`Samspelsexempel: ${befintligt.samspelsexempel}`);
       return parts.length ? parts.join('\n') : '';
     } catch (_) { return ''; }
   })();
@@ -14796,7 +14793,6 @@ KRAV PÅ INNEHÅLLET:
 - "tjanstebeskrivning": 2–4 meningar som beskriver vad tjänsten innebär i praktiken och varför den ger byrån insyn/exponering. Saklig svenska, inga UI-termer.
 - "hot": 2–4 konkreta hot. Varje hot har "typ" som är antingen "PT" (penningtvätt) eller "TF" (terrorfinansiering), en kort "titel" (3–6 ord) och en "beskrivning" (1–2 meningar om tillvägagångssättet).
 - "sarbarheter": 2–4 sårbarheter/riskfaktorer. Varje har "kategori" som är EXAKT en av: "Kunder", "Distribution", "Geografi", "Verksamhet". "titel" (2–5 ord) och "beskrivning" (1 mening).
-- "samspelsexempel": 1 stycke (2–4 meningar) som beskriver ett realistiskt scenario där flera riskfaktorer samverkar och varför det innebär förhöjd risk för just denna tjänst.
 - "atgarder": 3–5 tjänstespecifika åtgärder. Varje har en "titel" (2–6 ord) och en "beskrivning" som anger VAD som kontrolleras och VAD som dokumenteras. Proportionerligt för en redovisningsbyrå – inte "polisarbete" eller löpande realtidsövervakning.
 - "riskniva": EXAKT en av "Låg", "Medel" eller "Hög" – byråns sammanvägda inneboende risknivå för tjänsten.
 
@@ -14808,7 +14804,6 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
   "riskniva": "Låg" | "Medel" | "Hög",
   "hot": [ { "typ": "PT" | "TF", "titel": "…", "beskrivning": "…" } ],
   "sarbarheter": [ { "kategori": "Kunder" | "Distribution" | "Geografi" | "Verksamhet", "titel": "…", "beskrivning": "…" } ],
-  "samspelsexempel": "…",
   "atgarder": [ { "titel": "…", "beskrivning": "…" } ]
 }`;
 
@@ -14895,7 +14890,6 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
       riskniva: normRisk(result.riskniva),
       hot,
       sarbarheter,
-      samspelsexempel: cleanStr(result.samspelsexempel),
       atgarder
     });
   } catch (error) {

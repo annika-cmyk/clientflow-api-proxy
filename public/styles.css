@@ -11122,7 +11122,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .statistik-kunder-modal-error { color: #dc2626; padding: 1rem; }
 
 /* =====================================================================
-   Byråns tjänster – kortsektioner (hot, sårbarheter, samspel, åtgärder)
+   Byråns tjänster – kortsektioner (hot, sårbarheter, åtgärder)
    ===================================================================== */
 
 /* Tillåt rikare innehåll i expanderade tjänstekort */
@@ -11177,17 +11177,6 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .vuln-item .tags-row { margin-bottom: 0.4rem; }
 .vuln-item-title { font-size: 0.85rem; font-weight: 600; color: var(--title-text); margin-bottom: 0.15rem; }
 .vuln-item-desc { font-size: 0.8rem; color: #64748b; line-height: 1.45; }
-
-/* Samspelsexempel */
-.scenario-box {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: 10px;
-    padding: 0.7rem 0.9rem;
-    font-size: 0.88rem;
-    color: #374151;
-    line-height: 1.6;
-}
 
 /* Tjänstespecifika åtgärder */
 .action-list { display: flex; flex-direction: column; gap: 0.45rem; }
