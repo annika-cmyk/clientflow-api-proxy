@@ -11070,6 +11070,15 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       <div class="col"><span class="field-label">Företagets namn:</span> <span class="field-value">${esc(kyc.foretagsnamn)}</span></div>
       <div class="col"><span class="field-label">Organisationsnummer:</span> <span class="field-value">${esc(kyc.orgnr)}</span></div>
     </div>
+    <div class="row">
+      <div class="col"><span class="field-label">Bolagsform:</span> <span class="field-value">${esc(kyc.bolagsform || '\u2014')}</span></div>
+      <div class="col"><span class="field-label">Bransch:</span> <span class="field-value">${esc(kyc.bransch || '\u2014')}</span></div>
+    </div>
+    <div class="row">
+      <div class="col"><span class="field-label">SNI-kod:</span> <span class="field-value">${esc(kyc.sni_kod || '\u2014')}</span></div>
+      <div class="col"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretag || '\u2014')}</span></div>
+    </div>
+    ${(kyc.skatterattslig_hemvist_foretag && kyc.skatterattslig_hemvist_foretag.trim().toLowerCase() !== 'sverige' && kyc.tin_foretag) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretag)}</span></div>` : ''}
   </div>
 
   <div class="section">
@@ -11078,12 +11087,19 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(kyc.foretradareNamn)}</span></div>
       <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(kyc.foretradarePnr)}</span></div>
     </div>
+    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretradare || '\u2014')}</span></div>
+    ${(kyc.skatterattslig_hemvist_foretradare && kyc.skatterattslig_hemvist_foretradare.trim().toLowerCase() !== 'sverige' && kyc.tin_foretradare) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretradare)}</span></div>` : ''}
   </div>
 
   <div class="section">
     <h2>3. Verklig huvudman</h2>
     <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br><span class="field-value">${nl2br(kyc.huvudmanInfo || '\u2014')}</span></div>
     ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
+    ${(kyc.vh_agarandel !== null && kyc.vh_agarandel !== undefined && kyc.vh_agarandel !== '') ? `<div class="field"><span class="field-label">Total ägarandel:</span> <span class="field-value">${esc(kyc.vh_agarandel)} %</span></div>` : ''}
+    <div class="row">
+      <div class="col"><span class="field-label">Börsnoterat bolag:</span> ${janej(kyc.vh_noterat_bolag ? 'Ja' : 'Nej')}</div>
+      <div class="col"><span class="field-label">Utländska ägare:</span> ${janej(kyc.vh_utlandska_agare ? 'Ja' : 'Nej')}</div>
+    </div>
   </div>
 
   <div class="section">
@@ -11097,6 +11113,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
   <div class="section">
     <h2>5. Affärsförbindelsens syfte och art</h2>
     <div class="field"><span class="field-label">Huvudsaklig verksamhet:</span><br><span class="field-value">${nl2br(kyc.verksamhet || '\u2014')}</span></div>
+    ${kyc.syfte_affarsrelation ? `<div class="field"><span class="field-label">Syfte med affärsrelationen:</span><br><span class="field-value">${nl2br(kyc.syfte_affarsrelation)}</span></div>` : ''}
     <div class="field"><span class="field-label">Byråns tjänster:</span> <span class="field-value">${esc(kyc.tjanster || '\u2014')}</span></div>
     <div class="field"><span class="field-label">Pengarnas ursprung:</span> <span class="field-value">${esc(kyc.kapitalUrsprung || '\u2014')}</span></div>
     <div class="row">
