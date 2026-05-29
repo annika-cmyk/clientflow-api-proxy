@@ -5932,6 +5932,21 @@ class CustomerCardManager {
             }
         }
 
+        // Hämta byrånamn för formulärets header (om ej redan cachat)
+        if (this._kycByraNamn === undefined) {
+            try {
+                const customerByraId = this.customerData?.fields?.['Byrå ID'] ?? this.customerData?.fields?.['Byra_ID'] ?? byraId ?? '';
+                const byraInfoUrl = customerByraId
+                    ? `${baseUrl}/api/byra-info?byraId=${encodeURIComponent(String(customerByraId))}`
+                    : `${baseUrl}/api/byra-info`;
+                const res = await fetch(byraInfoUrl, { ...getAuthOptsKundkort() });
+                const data = res.ok ? await res.json() : {};
+                this._kycByraNamn = data.byraNamn || (window.AuthManager?.getCurrentUser?.()?.byra) || '';
+            } catch (e) {
+                this._kycByraNamn = (window.AuthManager?.getCurrentUser?.()?.byra) || '';
+            }
+        }
+
         // Hämta eventuellt sparat KYC-formulär
         let savedKyc = {};
         try {
@@ -6006,6 +6021,32 @@ class CustomerCardManager {
         const savedKontanter = saved.kontanter || defaultKontanter;
         const savedKontanterAndel = saved.kontanterAndel || '';
 
+        // Nya fält — Sektion 1 (grunduppgifter)
+        const bolagsformOptions = ['Aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Annat'];
+        const savedBolagsform = saved.bolagsform || (bolagsformOptions.includes(f['Bolagsform']) ? f['Bolagsform'] : '');
+        const savedBransch = saved.bransch || '';
+        const savedSniKod = saved.sni_kod || (Array.isArray(f['SNI-kod']) ? f['SNI-kod'][0] : (f['SNI-kod'] || ''));
+        const savedHemvistForetag = saved.skatterattslig_hemvist_foretag || 'Sverige';
+        const savedTinForetag = saved.tin_foretag || '';
+        const visaTinForetag = savedHemvistForetag.trim().toLowerCase() !== 'sverige' && savedHemvistForetag.trim() !== '';
+
+        // Nya fält — Sektion 2 (företrädare)
+        const savedHemvistForetradare = saved.skatterattslig_hemvist_foretradare || 'Sverige';
+        const savedTinForetradare = saved.tin_foretradare || '';
+        const visaTinForetradare = savedHemvistForetradare.trim().toLowerCase() !== 'sverige' && savedHemvistForetradare.trim() !== '';
+
+        // Nya fält — Sektion 3 (verklig huvudman)
+        const savedVhAgarandel = (saved.vh_agarandel === null || saved.vh_agarandel === undefined) ? '' : saved.vh_agarandel;
+        const savedVhNoteratBolag = saved.vh_noterat_bolag === true;
+        const savedVhUtlandskaAgare = saved.vh_utlandska_agare === true;
+
+        // Nya fält — Sektion 5 (syfte)
+        const savedSyfteAffarsrelation = saved.syfte_affarsrelation || '';
+
+        // Nya fält — Sektion 8 (riskklassificering — internt, endast byrå)
+        const savedRiskniva = saved.riskniva || '';
+        const savedRiskMotivering = saved.risk_motivering || '';
+
         // Status
         const kycStatus = saved.status || '';
         const kycInleedId = saved.inleedDokumentId || '';
@@ -6042,212 +6083,361 @@ class CustomerCardManager {
                 Fyll i KYC-formuläret. Data hämtas automatiskt från kundkortet men kan redigeras.
             </div>`;
 
+        // Dynamiska headervärden
+        const byraNamn = this._kycByraNamn || '';
+        const idagStr = new Date().toLocaleDateString('sv-SE');
+        const senastUppdaterad = saved.updatedAt ? new Date(saved.updatedAt).toLocaleDateString('sv-SE') : '—';
+
+        // Sektion 3 — booleaner representeras som Ja/Nej-badges
+        const savedVhNoteratBolagVal = saved.vh_noterat_bolag === true ? 'Ja' : (saved.vh_noterat_bolag === false ? 'Nej' : '');
+        const savedVhUtlandskaAgareVal = saved.vh_utlandska_agare === true ? 'Ja' : (saved.vh_utlandska_agare === false ? 'Nej' : '');
+
+        // Hjälpare: sektionsrubrik (numrerad cirkel + versalnamn + ev. tagg)
+        const secHead = (num, name, extra = '') => `
+            <div class="kyc-sec-head">
+                <span class="kyc-sec-num">${num}</span>
+                <span class="kyc-sec-name">${name}</span>
+                ${extra}
+            </div>`;
+
+        // Hjälpare: Ja/Nej-badgegrupp backad av dold input (id bevaras för _collectKYCFormularData)
+        const badge = (groupId, val, revealTarget = '') => {
+            const revealAttrs = revealTarget ? `data-reveal-target="${revealTarget}" data-reveal-when="Ja"` : '';
+            return `
+                <input type="hidden" id="${groupId}" value="${esc(val)}" ${revealAttrs}>
+                <div class="kyc-badge-group" role="group">
+                    <span class="kyc-badge${val === 'Ja' ? ' is-active-ja' : ''}" data-value="Ja" role="button" tabindex="0" onclick="customerCardManager._setKycBadge('${groupId}','Ja')"><span class="kyc-dot"></span>Ja</span>
+                    <span class="kyc-badge${val === 'Nej' ? ' is-active-nej' : ''}" data-value="Nej" role="button" tabindex="0" onclick="customerCardManager._setKycBadge('${groupId}','Nej')"><span class="kyc-dot"></span>Nej</span>
+                </div>`;
+        };
+
         container.innerHTML = `
+            <style>
+                .kyc-doc { max-width:700px; margin:0 auto; background:#fff; color:#1a1a2e; font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; font-size:14px; }
+                .kyc-doc * { box-sizing:border-box; }
+                .kyc-doc-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; border-bottom:2px solid #1B2A4A; padding-bottom:14px; margin-bottom:26px; }
+                .kyc-doc-head .kyc-h-title { font-size:22px; font-weight:500; color:#1B2A4A; line-height:1.2; }
+                .kyc-doc-head .kyc-h-sub { font-size:13px; color:#6b7280; margin-top:5px; }
+                .kyc-doc-head .kyc-h-right { font-size:13px; color:#6b7280; text-align:right; font-weight:500; max-width:220px; word-break:break-word; }
+                .kyc-sec { margin-bottom:22px; }
+                .kyc-sec-head { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+                .kyc-sec-num { width:22px; height:22px; border-radius:50%; background:#1B2A4A; color:#fff; font-size:12px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+                .kyc-sec-name { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#1B2A4A; }
+                .kyc-tag-intern { font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; border:1px solid #d1d5db; border-radius:4px; padding:1px 7px; font-weight:500; }
+                .kyc-card { background:#f6f7f9; border:0.5px solid #d8dce3; border-radius:8px; padding:14px 16px; }
+                .kyc-row { display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; }
+                .kyc-row--single { grid-template-columns:1fr; }
+                .kyc-row + .kyc-row { margin-top:14px; }
+                .kyc-divider { border:0; border-top:0.5px solid #d8dce3; margin:13px 0; }
+                .kyc-field label { display:block; font-size:11px; color:#6b7280; margin-bottom:4px; }
+                .kyc-field .kyc-input, .kyc-field textarea, .kyc-field select { width:100%; font-size:14px; font-weight:500; color:#1a1a2e; border:0.5px solid #cbd1da; border-radius:6px; padding:8px 10px; background:#fff; font-family:inherit; }
+                .kyc-field textarea { resize:vertical; line-height:1.5; }
+                .kyc-field .kyc-input:focus, .kyc-field textarea:focus, .kyc-field select:focus { outline:none; border-color:#1B2A4A; }
+                .kyc-badge-group { display:inline-flex; gap:8px; }
+                .kyc-badge { display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:500; padding:5px 13px; border-radius:999px; border:1px solid #d1d5db; background:#f3f4f6; color:#6b7280; cursor:pointer; user-select:none; transition:all .12s ease; }
+                .kyc-dot { width:7px; height:7px; border-radius:50%; background:#9ca3af; flex-shrink:0; }
+                .kyc-badge.is-active-ja { background:#EAF3DE; color:#3B6D11; border-color:#c4dba0; }
+                .kyc-badge.is-active-ja .kyc-dot { background:#639922; }
+                .kyc-badge.is-active-nej { background:#eceef1; color:#374151; border-color:#b8bfca; }
+                .kyc-badge.is-active-nej .kyc-dot { background:#6b7280; }
+                .kyc-grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:22px; }
+                .kyc-pills { display:flex; gap:10px; flex-wrap:wrap; }
+                .kyc-pill { font-size:13px; font-weight:500; padding:7px 18px; border-radius:999px; border:1px solid #d1d5db; background:#f3f4f6; color:#6b7280; cursor:pointer; user-select:none; transition:all .12s ease; }
+                .kyc-pill.is-active-lag { background:#EAF3DE; color:#3B6D11; border-color:#9cc06a; }
+                .kyc-pill.is-active-medel { background:#FEF3C7; color:#92660a; border-color:#e8c468; }
+                .kyc-pill.is-active-hog { background:#FDE8E8; color:#b42318; border-color:#e8a3a3; }
+                .kyc-attest { border-left:3px solid #1B2A4A; border-radius:0 8px 8px 0; background:#f6f7f9; padding:14px 16px; margin-top:28px; }
+                .kyc-attest h4 { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:#6b7280; margin:0 0 7px; font-weight:600; }
+                .kyc-attest p { font-size:13px; color:#6b7280; line-height:1.6; margin:0; }
+                .kyc-sign { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:34px; }
+                .kyc-sign .kyc-sig-space { height:32px; }
+                .kyc-sign .kyc-sig-line { border-top:0.5px solid #9ca3af; }
+                .kyc-sign .kyc-sig-label { font-size:11px; color:#6b7280; margin-top:7px; }
+                .kyc-foot { text-align:right; margin-top:24px; font-size:11px; color:#6b7280; }
+                .kyc-foot strong { color:#1a1a2e; font-weight:600; }
+            </style>
             <div class="uppdrag-wrap">
                 ${kycUtanforHtml}
                 ${statusBannerHtml}
 
-                <div class="uppdrag-doc-header">
-                    <div class="uppdrag-doc-titel">KYC — KUNDKÄNNEDOMSFORMULÄR</div>
-                    <div class="uppdrag-doc-välkommen">
-                        Formuläret används för att uppfylla penningtvättslagen (2017:630) och dokumentera kundkännedom.
-                    </div>
-                </div>
+                <form id="kyc-formular-form" class="kyc-doc" onsubmit="return false;">
 
-                <form id="kyc-formular-form" onsubmit="return false;">
+                    <!-- HEADER -->
+                    <div class="kyc-doc-head">
+                        <div class="kyc-h-left">
+                            <div class="kyc-h-title">KYC — Kundkännedomsformulär</div>
+                            <div class="kyc-h-sub">${esc(byraNamn) || 'Redovisningsbyrå'} · ${idagStr}</div>
+                        </div>
+                        <div class="kyc-h-right">${esc(byraNamn)}</div>
+                    </div>
 
                     <!-- 1. GRUNDUPPGIFTER -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-building"></i> 1. Grunduppgifter om företaget</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <div class="uppdrag-grid">
-                                <div class="uppdrag-field">
+                    <div class="kyc-sec">
+                        ${secHead(1, 'Grunduppgifter om företaget')}
+                        <div class="kyc-card">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
                                     <label>Företagets namn</label>
-                                    <input type="text" id="kyc-foretagsnamn" class="uppdrag-input" value="${esc(foretagsnamn)}">
+                                    <input type="text" id="kyc-foretagsnamn" class="kyc-input" value="${esc(foretagsnamn)}">
                                 </div>
-                                <div class="uppdrag-field">
+                                <div class="kyc-field">
                                     <label>Organisationsnummer</label>
-                                    <input type="text" id="kyc-orgnr" class="uppdrag-input" value="${esc(orgnr)}">
+                                    <input type="text" id="kyc-orgnr" class="kyc-input" value="${esc(orgnr)}">
+                                </div>
+                            </div>
+                            <hr class="kyc-divider">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
+                                    <label>Bolagsform *</label>
+                                    <select id="kyc-bolagsform" class="kyc-input">
+                                        <option value="">Välj...</option>
+                                        ${bolagsformOptions.map(o => `<option value="${esc(o)}" ${savedBolagsform === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="kyc-field">
+                                    <label>Bransch</label>
+                                    <input type="text" id="kyc-bransch" class="kyc-input" value="${esc(savedBransch)}" placeholder="t.ex. Bygg, Restaurang, Konsult">
+                                    <div style="height:10px;"></div>
+                                    <label>SNI-kod (valfritt)</label>
+                                    <input type="text" id="kyc-sni-kod" class="kyc-input" value="${esc(savedSniKod)}" placeholder="t.ex. 41200">
+                                </div>
+                            </div>
+                            <hr class="kyc-divider">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
+                                    <label>Skatterättslig hemvist *</label>
+                                    <input type="text" id="kyc-hemvist-foretag" class="kyc-input" value="${esc(savedHemvistForetag)}" placeholder="Sverige" oninput="customerCardManager._toggleKycTinByHemvist('kyc-hemvist-foretag','kyc-tin-foretag-wrap')">
+                                </div>
+                                <div class="kyc-field" id="kyc-tin-foretag-wrap" style="display:${visaTinForetag ? 'block' : 'none'};">
+                                    <label>Utländskt skatteregistreringsnummer (TIN)</label>
+                                    <input type="text" id="kyc-tin-foretag" class="kyc-input" value="${esc(savedTinForetag)}">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- 2. FÖRETRÄDARE -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-user-tie"></i> 2. Företrädare</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Vem är företrädare för företaget i kontakten med byrån?</p>
-                            <div class="uppdrag-grid">
-                                <div class="uppdrag-field">
+                    <div class="kyc-sec">
+                        ${secHead(2, 'Företrädare')}
+                        <div class="kyc-card">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
                                     <label>Namn</label>
-                                    <input type="text" id="kyc-foretradare-namn" class="uppdrag-input" value="${esc(savedForetradareNamn)}">
+                                    <input type="text" id="kyc-foretradare-namn" class="kyc-input" value="${esc(savedForetradareNamn)}">
                                 </div>
-                                <div class="uppdrag-field">
+                                <div class="kyc-field">
                                     <label>Personnummer</label>
-                                    <input type="text" id="kyc-foretradare-pnr" class="uppdrag-input" value="${esc(savedForetradarePnr)}" placeholder="YYYYMMDD-XXXX">
+                                    <input type="text" id="kyc-foretradare-pnr" class="kyc-input" value="${esc(savedForetradarePnr)}" placeholder="ÅÅÅÅMMDD-XXXX">
+                                </div>
+                            </div>
+                            <hr class="kyc-divider">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
+                                    <label>Skatterättslig hemvist</label>
+                                    <input type="text" id="kyc-hemvist-foretradare" class="kyc-input" value="${esc(savedHemvistForetradare)}" placeholder="Sverige" oninput="customerCardManager._toggleKycTinByHemvist('kyc-hemvist-foretradare','kyc-tin-foretradare-wrap')">
+                                </div>
+                                <div class="kyc-field" id="kyc-tin-foretradare-wrap" style="display:${visaTinForetradare ? 'block' : 'none'};">
+                                    <label>Utländskt skatteregistreringsnummer (TIN)</label>
+                                    <input type="text" id="kyc-tin-foretradare" class="kyc-input" value="${esc(savedTinForetradare)}">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- 3. VERKLIG HUVUDMAN -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-user-shield"></i> 3. Verklig huvudman</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Finns det någon eller några fysiska personer som (direkt eller indirekt) äger eller kontrollerar mer än 25 % av företaget? I så fall, ange namn och personnummer.</p>
-                            <div class="uppdrag-field uppdrag-field--full">
-                                <label>Verklig(a) huvudman/-män (namn och personnummer)</label>
-                                <textarea id="kyc-huvudman-info" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Namn (personnummer)&#10;Namn (personnummer)">${esc(savedHuvudmanInfo)}</textarea>
+                    <div class="kyc-sec">
+                        ${secHead(3, 'Verklig huvudman')}
+                        <div class="kyc-card">
+                            <div class="kyc-row kyc-row--single">
+                                <div class="kyc-field">
+                                    <label>Verklig(a) huvudman/-män (namn · personnummer)</label>
+                                    <textarea id="kyc-huvudman-info" class="kyc-input" rows="3" placeholder="Namn (personnummer)&#10;Namn (personnummer)">${esc(savedHuvudmanInfo)}</textarea>
+                                </div>
                             </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Finns det någon person som på annat sätt (t.ex. genom avtal) utövar den yttersta kontrollen över företaget?</label>
-                                <textarea id="kyc-huvudman-annat-satt" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Beskriv...">${esc(savedHuvudmanAnnatSatt)}</textarea>
+                            <div class="kyc-row kyc-row--single" style="margin-top:14px;">
+                                <div class="kyc-field">
+                                    <label>Person som på annat sätt (t.ex. genom avtal) utövar yttersta kontroll</label>
+                                    <textarea id="kyc-huvudman-annat-satt" class="kyc-input" rows="2" placeholder="Beskriv...">${esc(savedHuvudmanAnnatSatt)}</textarea>
+                                </div>
+                            </div>
+                            <hr class="kyc-divider">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
+                                    <label>Ägarandel (%)</label>
+                                    <input type="number" id="kyc-vh-agarandel" class="kyc-input" value="${esc(savedVhAgarandel)}" min="0" max="100" step="0.1" placeholder="t.ex. 100">
+                                </div>
+                                <div class="kyc-field">
+                                    <label>Noterat bolag eller ägt av noterat bolag</label>
+                                    ${badge('kyc-vh-noterat-bolag', savedVhNoteratBolagVal)}
+                                </div>
+                            </div>
+                            <div class="kyc-row kyc-row--single" style="margin-top:14px;">
+                                <div class="kyc-field">
+                                    <label>Utländska ägare eller styrelseledamöter</label>
+                                    ${badge('kyc-vh-utlandska-agare', savedVhUtlandskaAgareVal)}
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- 4. PEP -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-flag"></i> 4. Politiskt exponerad person (PEP)</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Är någon av företrädarna eller de verkliga huvudmännen en "PEP" (dvs. har, eller har det senaste året haft, en viktig offentlig funktion i en stat eller internationell organisation, t.ex. riksdagsledamot, ambassadör eller domare i högsta instans)?</p>
-                            <div class="uppdrag-grid">
-                                <div class="uppdrag-field">
+                    <div class="kyc-sec">
+                        ${secHead(4, 'Politiskt exponerad person (PEP)')}
+                        <div class="kyc-card">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
                                     <label>PEP-status</label>
-                                    <select id="kyc-pep" class="uppdrag-input" onchange="customerCardManager._toggleKycConditional('kyc-pep','Ja','kyc-pep-detaljer-wrap')">
-                                        <option value="">Välj...</option>
-                                        <option value="Ja" ${savedPep === 'Ja' ? 'selected' : ''}>Ja</option>
-                                        <option value="Nej" ${savedPep === 'Nej' ? 'selected' : ''}>Nej</option>
-                                    </select>
+                                    ${badge('kyc-pep', savedPep, 'kyc-pep-detaljer-wrap')}
                                 </div>
-                                <div class="uppdrag-field" id="kyc-pep-detaljer-wrap" style="display:${savedPep === 'Ja' ? 'block' : 'none'}">
-                                    <label>Vem? Beskriv vilken funktion.</label>
-                                    <input type="text" id="kyc-pep-detaljer" class="uppdrag-input" value="${esc(savedPepDetaljer)}">
+                                <div class="kyc-field">
+                                    <label>Familjemedlem/medarbetare till PEP</label>
+                                    ${badge('kyc-pep-familj', savedPepFamilj, 'kyc-pep-familj-detaljer-wrap')}
                                 </div>
                             </div>
-                            <p class="uppdrag-hint" style="margin-top:1rem;">Är någon av företrädarna eller de verkliga huvudmännen en nära familjemedlem (make/maka, sambo, barn, förälder) eller känd medarbetare till en PEP?</p>
-                            <div class="uppdrag-grid">
-                                <div class="uppdrag-field">
-                                    <label>Familjemedlem/medarbetare till PEP</label>
-                                    <select id="kyc-pep-familj" class="uppdrag-input" onchange="customerCardManager._toggleKycConditional('kyc-pep-familj','Ja','kyc-pep-familj-detaljer-wrap')">
-                                        <option value="">Välj...</option>
-                                        <option value="Ja" ${savedPepFamilj === 'Ja' ? 'selected' : ''}>Ja</option>
-                                        <option value="Nej" ${savedPepFamilj === 'Nej' ? 'selected' : ''}>Nej</option>
-                                    </select>
+                            <div class="kyc-row kyc-row--single" id="kyc-pep-detaljer-wrap" style="display:${savedPep === 'Ja' ? 'block' : 'none'};margin-top:14px;">
+                                <div class="kyc-field">
+                                    <label>Vem? Beskriv vilken funktion.</label>
+                                    <input type="text" id="kyc-pep-detaljer" class="kyc-input" value="${esc(savedPepDetaljer)}">
                                 </div>
-                                <div class="uppdrag-field" id="kyc-pep-familj-detaljer-wrap" style="display:${savedPepFamilj === 'Ja' ? 'block' : 'none'}">
+                            </div>
+                            <div class="kyc-row kyc-row--single" id="kyc-pep-familj-detaljer-wrap" style="display:${savedPepFamilj === 'Ja' ? 'block' : 'none'};margin-top:14px;">
+                                <div class="kyc-field">
                                     <label>Vem? Beskriv relation.</label>
-                                    <input type="text" id="kyc-pep-familj-detaljer" class="uppdrag-input" value="${esc(savedPepFamiljDetaljer)}">
+                                    <input type="text" id="kyc-pep-familj-detaljer" class="kyc-input" value="${esc(savedPepFamiljDetaljer)}">
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- 5. AFFÄRSFÖRBINDELSENS SYFTE OCH ART -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-briefcase"></i> 5. Affärsförbindelsens syfte och art</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Länsstyrelsen kräver att du vet hur kunden kommer använda dina tjänster och hur deras normala verksamhet ser ut, så att du senare kan upptäcka om något verkar avvikande.</p>
-                            <div class="uppdrag-field uppdrag-field--full">
-                                <label>Vad är företagets huvudsakliga verksamhet (vad säljer/gör ni)?</label>
-                                <textarea id="kyc-verksamhet" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Beskriv verksamheten...">${esc(savedVerksamhet)}</textarea>
-                            </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Vilka av byråns tjänster avser ni att använda?</label>
-                                <textarea id="kyc-tjanster" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Tjänster...">${esc(savedTjanster)}</textarea>
-                            </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Varifrån kommer de pengar som hanteras i verksamheten? (t.ex. intäkter från svensk försäljning, lån, investeringar, bidrag)</label>
-                                <textarea id="kyc-kapital-ursprung" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Beskriv kapitalets ursprung...">${esc(savedKapitalUrsprung)}</textarea>
-                            </div>
-                            <div class="uppdrag-grid" style="margin-top:0.75rem;">
-                                <div class="uppdrag-field">
-                                    <label>Hur många anställda har företaget?</label>
-                                    <input type="text" id="kyc-anstallda" class="uppdrag-input" value="${esc(savedAnstallda)}" placeholder="t.ex. 5">
+                    <div class="kyc-sec">
+                        ${secHead(5, 'Affärsförbindelsens syfte och art')}
+                        <div class="kyc-card">
+                            <div class="kyc-row kyc-row--single">
+                                <div class="kyc-field">
+                                    <label>Syfte med affärsrelationen</label>
+                                    <textarea id="kyc-syfte-affarsrelation" class="kyc-input" rows="2" placeholder="Varför ingås affärsrelationen och hur ska byråns tjänster användas?">${esc(savedSyfteAffarsrelation)}</textarea>
                                 </div>
-                                <div class="uppdrag-field">
+                            </div>
+                            <div class="kyc-row kyc-row--single" style="margin-top:14px;">
+                                <div class="kyc-field">
+                                    <label>Huvudsaklig verksamhet (vad säljer/gör ni)</label>
+                                    <textarea id="kyc-verksamhet" class="kyc-input" rows="3" placeholder="Beskriv verksamheten...">${esc(savedVerksamhet)}</textarea>
+                                </div>
+                            </div>
+                            <hr class="kyc-divider">
+                            <div class="kyc-row">
+                                <div class="kyc-field">
+                                    <label>Byråns tjänster</label>
+                                    <textarea id="kyc-tjanster" class="kyc-input" rows="2" placeholder="Vilka av byråns tjänster avses användas?">${esc(savedTjanster)}</textarea>
+                                </div>
+                                <div class="kyc-field">
+                                    <label>Pengarnas ursprung</label>
+                                    <textarea id="kyc-kapital-ursprung" class="kyc-input" rows="2" placeholder="t.ex. svensk försäljning, lån, investeringar">${esc(savedKapitalUrsprung)}</textarea>
+                                </div>
+                            </div>
+                            <div class="kyc-row" style="margin-top:14px;">
+                                <div class="kyc-field">
+                                    <label>Antal anställda</label>
+                                    <input type="text" id="kyc-anstallda" class="kyc-input" value="${esc(savedAnstallda)}" placeholder="t.ex. 5">
+                                </div>
+                                <div class="kyc-field">
                                     <label>Uppskattad årsomsättning</label>
-                                    <input type="text" id="kyc-omsattning" class="uppdrag-input" value="${esc(savedOmsattning)}" placeholder="t.ex. 2 000 000 kr">
+                                    <input type="text" id="kyc-omsattning" class="kyc-input" value="${esc(savedOmsattning)}" placeholder="t.ex. 2 000 000 kr">
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 6. INTERNATIONELL HANDEL -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-globe"></i> 6. Internationell handel</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <div class="uppdrag-field uppdrag-field--full">
-                                <label>Bedriver företaget handel med kunder eller leverantörer utanför Sverige?</label>
-                                <select id="kyc-internationell" class="uppdrag-input" style="max-width:200px;" onchange="customerCardManager._toggleKycConditional('kyc-internationell','Ja','kyc-internationella-lander-wrap')">
-                                    <option value="">Välj...</option>
-                                    <option value="Ja" ${savedInternationellHandel === 'Ja' ? 'selected' : ''}>Ja</option>
-                                    <option value="Nej" ${savedInternationellHandel === 'Nej' ? 'selected' : ''}>Nej</option>
-                                </select>
+                    <!-- 6 & 7 SIDA VID SIDA -->
+                    <div class="kyc-grid-2">
+                        <div class="kyc-sec" style="margin-bottom:0;">
+                            ${secHead(6, 'Handel utanför Sverige')}
+                            <div class="kyc-card">
+                                <div class="kyc-field">
+                                    <label>Handel med kunder/leverantörer utanför Sverige?</label>
+                                    ${badge('kyc-internationell', savedInternationellHandel, 'kyc-internationella-lander-wrap')}
+                                </div>
+                                <div class="kyc-field" id="kyc-internationella-lander-wrap" style="display:${savedInternationellHandel === 'Ja' ? 'block' : 'none'};margin-top:14px;">
+                                    <label>Vilka länder?</label>
+                                    <input type="text" id="kyc-internationella-lander" class="kyc-input" value="${esc(savedInternationellaLander)}" placeholder="t.ex. Norge, Tyskland">
+                                </div>
                             </div>
-                            <div class="uppdrag-field uppdrag-field--full" id="kyc-internationella-lander-wrap" style="display:${savedInternationellHandel === 'Ja' ? 'block' : 'none'};margin-top:0.75rem;">
-                                <label>Vilka länder handlar ni med?</label>
-                                <input type="text" id="kyc-internationella-lander" class="uppdrag-input" value="${esc(savedInternationellaLander)}" placeholder="t.ex. Norge, Tyskland">
+                        </div>
+                        <div class="kyc-sec" style="margin-bottom:0;">
+                            ${secHead(7, 'Kontanthantering')}
+                            <div class="kyc-card">
+                                <div class="kyc-field">
+                                    <label>Hanterar företaget kontanter?</label>
+                                    ${badge('kyc-kontanter', savedKontanter, 'kyc-kontanter-andel-wrap')}
+                                </div>
+                                <div class="kyc-field" id="kyc-kontanter-andel-wrap" style="display:${savedKontanter === 'Ja' ? 'block' : 'none'};margin-top:14px;">
+                                    <label>Ungefär hur stor andel?</label>
+                                    <input type="text" id="kyc-kontanter-andel" class="kyc-input" value="${esc(savedKontanterAndel)}" placeholder="t.ex. ca 30%">
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 7. KONTANTHANTERING -->
-                    <div class="uppdrag-section uppdrag-section--card">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-money-bill-wave"></i> 7. Kontanthantering</div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <div class="uppdrag-field uppdrag-field--full">
-                                <label>Hanterar företaget kontanter i sin verksamhet?</label>
-                                <select id="kyc-kontanter" class="uppdrag-input" style="max-width:200px;" onchange="customerCardManager._toggleKycConditional('kyc-kontanter','Ja','kyc-kontanter-andel-wrap')">
-                                    <option value="">Välj...</option>
-                                    <option value="Ja" ${savedKontanter === 'Ja' ? 'selected' : ''}>Ja</option>
-                                    <option value="Nej" ${savedKontanter === 'Nej' ? 'selected' : ''}>Nej</option>
-                                </select>
+                    <!-- 8. RISKKLASSIFICERING (INTERN) -->
+                    <div class="kyc-sec" style="margin-top:22px;">
+                        ${secHead(8, 'Riskklassificering', '<span class="kyc-tag-intern">Intern</span>')}
+                        <div class="kyc-card">
+                            <div class="kyc-field">
+                                <label>Risknivå</label>
+                                <input type="hidden" id="kyc-riskniva" value="${esc(savedRiskniva)}">
+                                <div class="kyc-pills" role="group">
+                                    <span class="kyc-pill${savedRiskniva === 'lag' ? ' is-active-lag' : ''}" data-riskniva="lag" role="button" tabindex="0" onclick="customerCardManager._setKycRiskniva('lag')">Låg</span>
+                                    <span class="kyc-pill${savedRiskniva === 'medel' ? ' is-active-medel' : ''}" data-riskniva="medel" role="button" tabindex="0" onclick="customerCardManager._setKycRiskniva('medel')">Medel</span>
+                                    <span class="kyc-pill${savedRiskniva === 'hog' ? ' is-active-hog' : ''}" data-riskniva="hog" role="button" tabindex="0" onclick="customerCardManager._setKycRiskniva('hog')">Hög</span>
+                                </div>
                             </div>
-                            <div class="uppdrag-field uppdrag-field--full" id="kyc-kontanter-andel-wrap" style="display:${savedKontanter === 'Ja' ? 'block' : 'none'};margin-top:0.75rem;">
-                                <label>Ungefär hur stor del av försäljningen utgörs av kontanter?</label>
-                                <input type="text" id="kyc-kontanter-andel" class="uppdrag-input" value="${esc(savedKontanterAndel)}" placeholder="t.ex. ca 30%">
+                            <hr class="kyc-divider">
+                            <div class="kyc-field">
+                                <label>Motivering / notering (valfritt)</label>
+                                <textarea id="kyc-risk-motivering" class="kyc-input" rows="2" placeholder="Motivera vald risknivå...">${esc(savedRiskMotivering)}</textarea>
                             </div>
                         </div>
                     </div>
+
+                    <!-- KUNDENS INTYGANDE -->
+                    <div class="kyc-attest">
+                        <h4>Kundens intygande</h4>
+                        <p>Jag intygar att lämnade uppgifter är korrekta och fullständiga. Jag förbinder mig att meddela redovisningsbyrån vid väsentliga förändringar i verksamheten, ägarstrukturen eller gällande vem som är verklig huvudman.</p>
+                    </div>
+
+                    <!-- UNDERSKRIFT -->
+                    <div class="kyc-sign">
+                        <div class="kyc-sig">
+                            <div class="kyc-sig-space"></div>
+                            <div class="kyc-sig-line"></div>
+                            <div class="kyc-sig-label">Underskrift</div>
+                        </div>
+                        <div class="kyc-sig">
+                            <div class="kyc-sig-space"></div>
+                            <div class="kyc-sig-line"></div>
+                            <div class="kyc-sig-label">Ort och datum</div>
+                        </div>
+                    </div>
+
+                    <!-- SIDFOT -->
+                    <div class="kyc-foot">Senast uppdaterad: <strong>${esc(senastUppdaterad)}</strong></div>
 
                     <!-- KNAPPAR -->
                     <div class="uppdrag-actions" style="margin-top:1.5rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
                         <button type="button" class="btn btn-primary" onclick="customerCardManager.saveKYCFormular()">
-                            <i class="fas fa-save"></i> Spara KYC-formulär
+                            Spara KYC-formulär
                         </button>
                         ${saved.status ? `
                         <button type="button" class="btn btn-secondary" onclick="customerCardManager.downloadKYCFormularPdf()">
-                            <i class="fas fa-file-pdf"></i> Ladda ner PDF
+                            Ladda ner PDF
                         </button>
                         <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaKYCFormularInleed()">
-                            <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
+                            Skicka för signering (InLeed)
                         </button>
                         ${(kycInleedId && kycStatus === 'Skickat till kund') ? `
                         <button type="button" class="btn btn-secondary" onclick="customerCardManager.hamtaSigneratKYCFormular()" title="Hämta färdigsignerat KYC-dokument från Inleed">
-                            <i class="fas fa-download"></i> Hämta signerat dokument
+                            Hämta signerat dokument
                         </button>` : ''}
                         ` : '<span class="uppdrag-hint">Spara formuläret först för att kunna generera PDF.</span>'}
                     </div>
@@ -6263,6 +6453,50 @@ class CustomerCardManager {
         if (sel && wrap) {
             wrap.style.display = sel.value === showValue ? 'block' : 'none';
         }
+    }
+
+    // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
+    _toggleKycTinByHemvist(hemvistId, wrapId) {
+        const input = document.getElementById(hemvistId);
+        const wrap = document.getElementById(wrapId);
+        if (!input || !wrap) return;
+        const v = (input.value || '').trim().toLowerCase();
+        const visa = v !== '' && v !== 'sverige';
+        wrap.style.display = visa ? 'block' : 'none';
+    }
+
+    // Sätt värde för en Ja/Nej-badgegrupp (dold input) och uppdatera styling + ev. villkorsfält
+    _setKycBadge(groupId, value) {
+        const input = document.getElementById(groupId);
+        if (!input) return;
+        input.value = value;
+        const group = input.parentElement?.querySelector('.kyc-badge-group');
+        if (group) {
+            group.querySelectorAll('.kyc-badge').forEach(b => {
+                const v = b.getAttribute('data-value');
+                b.classList.remove('is-active-ja', 'is-active-nej');
+                if (v === value) b.classList.add(value === 'Ja' ? 'is-active-ja' : 'is-active-nej');
+            });
+        }
+        const target = input.getAttribute('data-reveal-target');
+        if (target) {
+            const when = input.getAttribute('data-reveal-when') || 'Ja';
+            const wrap = document.getElementById(target);
+            if (wrap) wrap.style.display = (value === when) ? 'block' : 'none';
+        }
+    }
+
+    // Sätt riskklassificeringens pill (klick på vald nivå avmarkerar den)
+    _setKycRiskniva(value) {
+        const input = document.getElementById('kyc-riskniva');
+        if (!input) return;
+        const newVal = input.value === value ? '' : value;
+        input.value = newVal;
+        document.querySelectorAll('.kyc-pill[data-riskniva]').forEach(p => {
+            const v = p.getAttribute('data-riskniva');
+            p.classList.remove('is-active-lag', 'is-active-medel', 'is-active-hog');
+            if (v === newVal) p.classList.add('is-active-' + v);
+        });
     }
 
     _collectKYCFormularData() {
@@ -6286,18 +6520,49 @@ class CustomerCardManager {
             internationellHandel: g('kyc-internationell'),
             internationellaLander: g('kyc-internationella-lander'),
             kontanter: g('kyc-kontanter'),
-            kontanterAndel: g('kyc-kontanter-andel')
+            kontanterAndel: g('kyc-kontanter-andel'),
+            // Sektion 1 — nya fält
+            bolagsform: g('kyc-bolagsform'),
+            bransch: g('kyc-bransch'),
+            sni_kod: g('kyc-sni-kod'),
+            skatterattslig_hemvist_foretag: g('kyc-hemvist-foretag'),
+            tin_foretag: g('kyc-tin-foretag'),
+            // Sektion 2 — nya fält
+            skatterattslig_hemvist_foretradare: g('kyc-hemvist-foretradare'),
+            tin_foretradare: g('kyc-tin-foretradare'),
+            // Sektion 3 — nya fält
+            vh_agarandel: (() => { const v = g('kyc-vh-agarandel'); return v === '' ? null : Number(v); })(),
+            vh_noterat_bolag: document.getElementById('kyc-vh-noterat-bolag')?.value === 'Ja',
+            vh_utlandska_agare: document.getElementById('kyc-vh-utlandska-agare')?.value === 'Ja',
+            // Sektion 5 — nytt fält
+            syfte_affarsrelation: g('kyc-syfte-affarsrelation'),
+            // Sektion 8 — internt (endast byrå)
+            riskniva: document.getElementById('kyc-riskniva')?.value || null,
+            risk_motivering: g('kyc-risk-motivering')
         };
     }
 
     async saveKYCFormular() {
+        const data = this._collectKYCFormularData();
+
+        // Validering: bolagsform och skatterättslig hemvist (företag) är obligatoriska
+        const saknas = [];
+        if (!data.bolagsform) saknas.push('Bolagsform');
+        if (!data.skatterattslig_hemvist_foretag) saknas.push('Skatterättslig hemvist (företag)');
+        if (saknas.length > 0) {
+            this.showNotification(`Fyll i obligatoriska fält: ${saknas.join(', ')}.`, 'error');
+            const firstId = !data.bolagsform ? 'kyc-bolagsform' : 'kyc-hemvist-foretag';
+            const el = document.getElementById(firstId);
+            if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            return;
+        }
+
         const btn = document.querySelector('#kyc-formular-form .btn-primary');
         const origText = btn?.innerHTML;
         if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; btn.disabled = true; }
 
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const data = this._collectKYCFormularData();
             const resp = await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, {
                 method: 'POST',
                 ...getAuthOptsKundkort(),
