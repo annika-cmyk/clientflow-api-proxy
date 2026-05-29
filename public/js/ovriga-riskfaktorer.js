@@ -389,7 +389,7 @@ class RiskFactorsManager {
                     <div class="risk-content-section">
                         <h5><i class="fas fa-tools"></i> Åtgärd</h5>
                         <p class="risk-content-text">
-                            ${this.formatDescription(risk.fields['Åtgärd'] || '')}
+                            ${this.formatDescription(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '')}
                         </p>
                     </div>
                     
@@ -599,7 +599,7 @@ class RiskFactorsManager {
         document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
         document.getElementById('edit-risk-assessment').value = fields['Riskbedömning'] || '';
-        document.getElementById('edit-action').value = fields['Åtgärd'] || '';
+        document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
 
         document.getElementById('edit-risk-modal').style.display = 'flex';
     }
@@ -623,7 +623,7 @@ class RiskFactorsManager {
             'Riskfaktor': formData.get('risk-factor'),
             'Beskrivning': formData.get('description'),
             'Riskbedömning': formData.get('risk-assessment'),
-            'Åtgärd': formData.get('action'),
+            'Åtgjärd': formData.get('action'),
             'Aktuell': true
         };
 
@@ -669,7 +669,7 @@ class RiskFactorsManager {
             'Riskfaktor': formData.get('risk-factor'),
             'Beskrivning': formData.get('description'),
             'Riskbedömning': formData.get('risk-assessment'),
-            'Åtgärd': formData.get('action')
+            'Åtgjärd': formData.get('action')
         };
 
         try {

@@ -9970,6 +9970,7 @@ app.post('/api/risk-factors', async (req, res) => {
       'Riskfaktor': 'fldBXz24TIPi0dayY',
       'Beskrivning': 'fld4epowAz3n7gYxl',
       'Riskbedömning': 'flddfJfl5yru8rKyp',
+      'Åtgjärd': 'fld9EOySG5oGUNUJ0',
       'Åtgärd': 'fld9EOySG5oGUNUJ0',
       'Byrå ID': 'fld14CLMCwvjr8ReH',
       'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5'
@@ -10047,6 +10048,7 @@ app.put('/api/risk-factors/:id', async (req, res) => {
       'Riskfaktor': 'fldBXz24TIPi0dayY',
       'Beskrivning': 'fld4epowAz3n7gYxl',
       'Riskbedömning': 'flddfJfl5yru8rKyp',
+      'Åtgjärd': 'fld9EOySG5oGUNUJ0',
       'Åtgärd': 'fld9EOySG5oGUNUJ0',
       'Byrå ID': 'fld14CLMCwvjr8ReH',
       'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5',
