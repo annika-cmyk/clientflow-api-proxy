@@ -5729,7 +5729,7 @@ async function sendSamarbeteInviteEmail(options) {
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
-    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod, status } = req.body;
+    const { customerId, recipientName, recipientEmail, type, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod, uppdragskorningId, status } = req.body;
     if (!customerId || !title) return res.status(400).json({ error: 'customerId och title krävs' });
     const typ = (type === 'comment' || type === 'Kommentar') ? 'Kommentar' : 'Filer';
     const desiredStatus = (String(status || '').trim() === 'Utkast') ? 'Utkast' : 'Väntar';
@@ -5800,7 +5800,8 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
           'Skapad från uppdrag': true,
           ...(uppdragId ? { 'Uppdrag ID': String(uppdragId).trim() } : {}),
           ...(uppdragTyp ? { 'Uppdrag typ': String(uppdragTyp).trim() } : {}),
-          ...(uppdragPeriod ? { 'Uppdrag period': String(uppdragPeriod).trim() } : {})
+          ...(uppdragPeriod ? { 'Uppdrag period': String(uppdragPeriod).trim() } : {}),
+          ...(uppdragskorningId ? { 'Uppdragskörning ID': String(uppdragskorningId).trim() } : {})
         } : {}),
         ...(deadlineDate ? { 'Deadline': deadlineDate } : {})
       }
@@ -5961,6 +5962,7 @@ app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
         uppdragId: fields['Uppdrag ID'] || null,
         uppdragTyp: fields['Uppdrag typ'] || null,
         uppdragPeriod: fields['Uppdrag period'] || null,
+        uppdragskorningId: fields['Uppdragskörning ID'] || null,
         createdAt: r.createdTime,
         deadline: fields['Deadline'] || fields['deadline'] || null,
         responseText: fields['Svar text'],
@@ -7457,7 +7459,7 @@ app.put('/api/samarbete/requests/:requestId', authenticateToken, async (req, res
   try {
     const requestId = (req.params.requestId || '').trim();
     if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
-    const { recipientName, recipientEmail, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod } = req.body || {};
+    const { recipientName, recipientEmail, title, customerMessage, deadline, uppdragId, uppdragTyp, uppdragPeriod, uppdragskorningId } = req.body || {};
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -7507,11 +7509,12 @@ app.put('/api/samarbete/requests/:requestId', authenticateToken, async (req, res
     if (customerMessage != null) updateFields['Meddelande'] = String(customerMessage).trim().slice(0, 100000);
     if (deadline != null) updateFields['Deadline'] = deadlineDate || null;
 
-    if (uppdragId || uppdragTyp || uppdragPeriod) {
+    if (uppdragId || uppdragTyp || uppdragPeriod || uppdragskorningId) {
       updateFields['Skapad från uppdrag'] = true;
       if (uppdragId != null) updateFields['Uppdrag ID'] = String(uppdragId).trim();
       if (uppdragTyp != null) updateFields['Uppdrag typ'] = String(uppdragTyp).trim();
       if (uppdragPeriod != null) updateFields['Uppdrag period'] = String(uppdragPeriod).trim();
+      if (uppdragskorningId != null) updateFields['Uppdragskörning ID'] = String(uppdragskorningId).trim();
     }
 
     await axios.patch(

@@ -1415,7 +1415,14 @@ class CustomerCardManager {
                 // Om vi även har en runRec synkar backend den best-effort.
                 const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey) || '';
 
-                const samForRun = samList.filter(s => periodMatchesRun(s.uppdragPeriod, prefillPeriodKey));
+                const runId = runRec ? String(runRec.id || '').trim() : '';
+                const samForRun = samList.filter(s => {
+                    const sKorningId = (s.uppdragskorningId || '').toString().trim();
+                    // Förfrågningar som uttryckligen kopplats till en körning matchas på körningens id.
+                    if (sKorningId && runId) return sKorningId === runId;
+                    // Bakåtkompatibelt: äldre förfrågningar matchas på period.
+                    return periodMatchesRun(s.uppdragPeriod, prefillPeriodKey);
+                });
                 const underlagTotal = samForRun.length;
                 const underlagDone = samForRun.reduce((acc, s) => acc + (isReqFullyAnswered(s) ? 1 : 0), 0);
                 const anyLate = samForRun.some(s => {
@@ -1515,7 +1522,9 @@ class CustomerCardManager {
                             <button type="button" class="btn btn-primary btn-sm"
                                 data-kund-action="begar-underlag"
                                 data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
-                                data-kund-uppdrag-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                data-kund-uppdrag-typ="${this._esc(String(t || ''))}"
+                                data-kund-uppdrag-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                data-kund-korning-id="${this._esc(String(runRec ? (runRec.id || '') : ''))}">
                                 <i class="fas fa-paper-plane"></i> Begär underlag
                             </button>
                         </div>
@@ -1779,8 +1788,10 @@ class CustomerCardManager {
                 if (begarBtn) {
                     e.preventDefault();
                     const uppdragId = begarBtn.getAttribute('data-kund-uppdrag-id') || '';
+                    const uppdragTyp = begarBtn.getAttribute('data-kund-uppdrag-typ') || '';
                     const uppdragPeriod = begarBtn.getAttribute('data-kund-uppdrag-period') || '';
-                    this.openBegarUnderlagModal(null, { uppdragId, uppdragPeriod });
+                    const uppdragskorningId = begarBtn.getAttribute('data-kund-korning-id') || '';
+                    this.openBegarUnderlagModal(null, { uppdragId, uppdragTyp, uppdragPeriod, uppdragskorningId });
                     return;
                 }
 
@@ -8353,7 +8364,8 @@ class CustomerCardManager {
             deadline: req.deadline || '',
             uppdragId: req.uppdragId || '',
             uppdragTyp: req.uppdragTyp || '',
-            uppdragPeriod: req.uppdragPeriod || ''
+            uppdragPeriod: req.uppdragPeriod || '',
+            uppdragskorningId: req.uppdragskorningId || ''
         }).replace(/'/g, "\\'")})' title="Redigera utkast"><i class="fas fa-pen"></i> Redigera</button>`;
         const sendDraftBtn = (req) => `<button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.sendSamarbeteDraft('${this.escapeDocHtml(req.id)}')" title="Skicka utkast"><i class="fas fa-paper-plane"></i> Skicka</button>`;
 
@@ -8619,16 +8631,6 @@ class CustomerCardManager {
             ? personer.map((p, i) => `<option value="${this.escapeDocHtml(p.epost)}" data-name="${this.escapeDocHtml(p.namn)}">${this.escapeDocHtml(p.namn)}${p.epost ? ' – ' + p.epost : ' (e-post saknas)'}</option>`).join('')
             : '<option value="">Inga roller med e-post – lägg till på Företagsinformation</option>';
 
-        const uppdrag = Array.isArray(this._uppdragRecords) ? this._uppdragRecords : [];
-        const uppdragOptions = ['<option value="">Ingen koppling</option>'].concat(
-            uppdrag
-                .map(r => ({
-                    id: r?.id || '',
-                    typ: (r?.fields?.['Typ'] || '').toString().trim()
-                }))
-                .filter(x => x.id && x.typ)
-                .map(x => `<option value="${this.escapeDocHtml(x.id)}" data-typ="${this.escapeDocHtml(x.typ)}">${this.escapeDocHtml(x.typ)}</option>`)
-        ).join('');
         const modalHtml = `
             <div id="begar-underlag-modal" class="modal-overlay">
                 <div class="modal-content">
@@ -8642,15 +8644,14 @@ class CustomerCardManager {
                             <label for="samarbete-recipient">Välj mottagare</label>
                             <select id="samarbete-recipient" class="form-control">${options}</select>
                         </div>
-                        <div class="form-group">
-                            <label for="samarbete-uppdrag-link">Koppla till uppdrag <span style="color:#64748b; font-weight:400;">(valfritt)</span></label>
-                            <select id="samarbete-uppdrag-link" class="form-control">${uppdragOptions}</select>
-                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Visas som “Uppdrag” i Samarbete-listan så du ser att den hör ihop med ett uppdrag.</div>
-                        </div>
-                        <div class="form-group" id="samarbete-uppdrag-period-wrap" style="display:none;">
-                            <label for="samarbete-uppdrag-period">Uppdragskörning / period <span style="color:#64748b; font-weight:400;">(valfri men rekommenderad)</span></label>
-                            <select id="samarbete-uppdrag-period" class="form-control"></select>
-                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Exempel: 2026-01 (lön januari), 2026-Q1 (moms kvartal 1), 2025 (år).</div>
+                        <input type="hidden" id="samarbete-uppdrag-id" value="">
+                        <input type="hidden" id="samarbete-uppdrag-typ" value="">
+                        <input type="hidden" id="samarbete-uppdrag-period" value="">
+                        <input type="hidden" id="samarbete-uppdrag-korning-id" value="">
+                        <div class="form-group" id="samarbete-uppdrag-info-wrap" style="display:none;">
+                            <label>Kopplas till uppdrag</label>
+                            <div id="samarbete-uppdrag-info" class="form-control" style="background:#f8fafc; border-style:dashed; color:#334155;"></div>
+                            <div style="font-size:0.8rem;color:#64748b;margin-top:0.35rem;">Förfrågan kopplas automatiskt till uppdragskörningen den skapades från.</div>
                         </div>
                         <div class="form-group">
                             <label>Begärt underlag *</label>
@@ -8691,145 +8692,40 @@ class CustomerCardManager {
         wrap.innerHTML = modalHtml;
         document.body.appendChild(wrap.firstElementChild);
 
-        // Periodval för uppdragskoppling
-        const uppdragSel = document.getElementById('samarbete-uppdrag-link');
-        const periodWrap = document.getElementById('samarbete-uppdrag-period-wrap');
-        const periodSel = document.getElementById('samarbete-uppdrag-period');
-        const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const prevQuarterKey = (d) => {
-            const y = d.getFullYear();
-            const m = d.getMonth() + 1;
-            let q = Math.ceil(m / 3) - 1;
-            let yy = y;
-            if (q <= 0) { q = 4; yy = y - 1; }
-            return `${yy}-Q${q}`;
-        };
-        const quarterKeyFor = (d) => {
-            const y = d.getFullYear();
-            const m = d.getMonth() + 1;
-            const q = Math.ceil(m / 3);
-            return `${y}-Q${q}`;
-        };
-        const buildPeriodOptions = (mode) => {
-            const now = new Date();
-            const unique = new Set();
-            const out = [];
-            const push = (value, label) => {
-                const v = String(value || '').trim();
-                if (!v || unique.has(v)) return;
-                unique.add(v);
-                out.push({ value: v, label: String(label || v) });
-            };
+        // Kopplingen till uppdrag/körning sätts automatiskt utifrån var förfrågan skapades
+        // (från en uppdragskörning) eller från utkastet som redigeras – inget manuellt val.
+        const linkIdEl = document.getElementById('samarbete-uppdrag-id');
+        const linkTypEl = document.getElementById('samarbete-uppdrag-typ');
+        const linkPeriodEl = document.getElementById('samarbete-uppdrag-period');
+        const linkKorningEl = document.getElementById('samarbete-uppdrag-korning-id');
+        const linkInfoWrap = document.getElementById('samarbete-uppdrag-info-wrap');
+        const linkInfo = document.getElementById('samarbete-uppdrag-info');
 
-            if (mode === 'year') {
-                // Visa: föregående år + 2 år framåt
-                const y = now.getFullYear();
-                push(String(y - 1), String(y - 1));
-                push(String(y), String(y));
-                push(String(y + 1), String(y + 1));
-                push(String(y + 2), String(y + 2));
-                return out;
+        const setUppdragLink = (uppdragId, uppdragTyp, uppdragPeriod, uppdragskorningId) => {
+            const id = (uppdragId || '').toString().trim();
+            let typ = (uppdragTyp || '').toString().trim();
+            const period = (uppdragPeriod || '').toString().trim();
+            const korningId = (uppdragskorningId || '').toString().trim();
+            if (linkIdEl) linkIdEl.value = id;
+            if (linkPeriodEl) linkPeriodEl.value = period;
+            if (linkKorningEl) linkKorningEl.value = korningId;
+            if (!typ && id) {
+                const rec = (Array.isArray(this._uppdragRecords) ? this._uppdragRecords : []).find(r => String(r?.id || '') === id) || null;
+                typ = (rec?.fields?.['Typ'] || '').toString().trim();
             }
-
-            if (mode === 'quarter') {
-                // Visa: föregående kvartal + 6 kvartal framåt
-                const qLabel = (key) => `Kvartal ${String(key).split('Q')[1]} ${String(key).split('-')[0]}`;
-                const cur = quarterKeyFor(new Date(now.getFullYear(), now.getMonth(), 1));
-                const prev = prevQuarterKey(new Date(now.getFullYear(), now.getMonth(), 1));
-                push(prev, qLabel(prev));
-                push(cur, qLabel(cur));
-                let cursor = new Date(now.getFullYear(), now.getMonth() + 3, 1);
-                for (let i = 0; i < 6; i++) {
-                    const key = quarterKeyFor(cursor);
-                    push(key, qLabel(key));
-                    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
-                }
-                return out;
-            }
-
-            // month: Visa: föregående månad + 12 månader framåt
-            const mLabel = (d) => d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
-            const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            push(monthKey(prev), mLabel(prev));
-            for (let i = 0; i < 13; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-                push(monthKey(d), mLabel(d));
-            }
-            return out;
-        };
-        const getUppdragMode = (rec) => {
-            const typ = (rec?.fields?.['Typ'] || '').toString().trim();
-            const freq = (rec?.fields?.['Frekvens'] || '').toString().toLowerCase();
-            if (typ === 'Momsredovisning') {
-                if (freq.includes('kvartal')) return 'quarter';
-                if (freq.includes('år')) return 'year';
-                return 'month';
-            }
-            if (typ === 'Bokslut' || typ === 'Deklaration') return 'year';
-            return 'month';
-        };
-        const renderPeriodForUppdrag = () => {
-            if (!uppdragSel || !periodWrap || !periodSel) return;
-            const uppdragId = (uppdragSel.value || '').trim();
-            if (!uppdragId) {
-                periodWrap.style.display = 'none';
-                periodSel.innerHTML = '';
+            if (linkTypEl) linkTypEl.value = typ;
+            if (!id && !typ) {
+                if (linkInfoWrap) linkInfoWrap.style.display = 'none';
                 return;
             }
-            const rec = (Array.isArray(this._uppdragRecords) ? this._uppdragRecords : []).find(r => String(r?.id || '') === uppdragId) || null;
-            const mode = getUppdragMode(rec);
-            const opts = buildPeriodOptions(mode);
-            const pref = (mode === 'quarter')
-                ? prevQuarterKey(new Date(now.getFullYear(), now.getMonth(), 1))
-                : (mode === 'year'
-                    ? String(now.getFullYear() - 1)
-                    : monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
-            periodSel.innerHTML = ['<option value="">Välj period...</option>'].concat(
-                opts.map(o => `<option value="${this.escapeDocHtml(o.value)}" ${String(o.value) === String(pref) ? 'selected' : ''}>${this.escapeDocHtml(o.value)} – ${this.escapeDocHtml(o.label)}</option>`)
-            ).join('');
-            periodWrap.style.display = '';
+            if (linkInfo) linkInfo.textContent = [typ || 'Uppdrag', period ? '· ' + period : ''].filter(Boolean).join(' ');
+            if (linkInfoWrap) linkInfoWrap.style.display = '';
         };
-        if (uppdragSel) {
-            uppdragSel.addEventListener('change', renderPeriodForUppdrag);
-            // initial
-            renderPeriodForUppdrag();
-        }
 
-        // Prefill uppdrag + period (t.ex. från uppdragsöversikten)
-        if (pre && uppdragSel) {
-            const preUppdragId = (pre.uppdragId || '').toString().trim();
-            const prePeriod = (pre.uppdragPeriod || '').toString().trim();
-            if (preUppdragId) {
-                uppdragSel.value = preUppdragId;
-                renderPeriodForUppdrag();
-                if (periodSel && prePeriod) {
-                    // Om perioden inte finns i listan (ovanligt) – lägg till den överst
-                    if (![...periodSel.options].some(o => String(o.value) === String(prePeriod))) {
-                        const opt = document.createElement('option');
-                        opt.value = prePeriod;
-                        opt.textContent = `${prePeriod} – (förvalt)`;
-                        periodSel.insertBefore(opt, periodSel.firstChild);
-                    }
-                    periodSel.value = prePeriod;
-                    if (periodWrap) periodWrap.style.display = '';
-                }
-
-                // Om modalen öppnas från en specifik körning: lås kopplingen så den alltid sparas korrekt
-                try {
-                    uppdragSel.disabled = true;
-                    if (periodSel) periodSel.disabled = true;
-                    if (periodWrap && periodWrap.querySelector('label')) {
-                        const lbl = periodWrap.querySelector('label');
-                        if (lbl && !periodWrap.querySelector('.samarbete-prefill-hint')) {
-                            const hint = document.createElement('div');
-                            hint.className = 'samarbete-prefill-hint';
-                            hint.style.cssText = 'font-size:0.8rem;color:#64748b;margin-top:0.35rem;';
-                            hint.textContent = 'Förvalt från uppdragskörningen.';
-                            periodWrap.appendChild(hint);
-                        }
-                    }
-                } catch (_) {}
-            }
+        // Värden kommer antingen från prefill (skapad från körning) eller från ett utkast som redigeras.
+        const linkSource = pre || draft || null;
+        if (linkSource) {
+            setUppdragLink(linkSource.uppdragId, linkSource.uppdragTyp, linkSource.uppdragPeriod, linkSource.uppdragskorningId);
         }
 
         const wrapEl = document.getElementById('samarbete-items-wrap');
@@ -8903,7 +8799,6 @@ class CustomerCardManager {
         const asDraft = !!(options && options.asDraft);
         const recipientSelect = document.getElementById('samarbete-recipient');
         const typeSelect = document.getElementById('samarbete-type');
-        const uppdragSelect = document.getElementById('samarbete-uppdrag-link');
         const draftIdEl = document.getElementById('samarbete-draft-id');
         const draftId = (draftIdEl && draftIdEl.value) ? draftIdEl.value.trim() : '';
         const rows = document.querySelectorAll('#samarbete-items-wrap .samarbete-item-row');
@@ -8928,12 +8823,11 @@ class CustomerCardManager {
         const customerMessage = (messageEl && messageEl.value) ? messageEl.value.trim() : '';
         const deadlineEl = document.getElementById('samarbete-deadline');
         const deadline = (deadlineEl && deadlineEl.value) ? deadlineEl.value : '';
-        const uppdragId = uppdragSelect ? (uppdragSelect.value || '').trim() : '';
-        const uppdragTyp = (uppdragSelect && uppdragSelect.selectedOptions && uppdragSelect.selectedOptions[0])
-            ? (uppdragSelect.selectedOptions[0].getAttribute('data-typ') || '').trim()
-            : '';
-        const uppdragPeriodEl = document.getElementById('samarbete-uppdrag-period');
-        const uppdragPeriod = uppdragPeriodEl ? (uppdragPeriodEl.value || '').trim() : '';
+        const getVal = (id) => { const el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+        const uppdragId = getVal('samarbete-uppdrag-id');
+        const uppdragTyp = getVal('samarbete-uppdrag-typ');
+        const uppdragPeriod = getVal('samarbete-uppdrag-period');
+        const uppdragskorningId = getVal('samarbete-uppdrag-korning-id');
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -8948,6 +8842,7 @@ class CustomerCardManager {
                 uppdragId: uppdragId || undefined,
                 uppdragTyp: uppdragTyp || undefined,
                 uppdragPeriod: uppdragPeriod || undefined,
+                uppdragskorningId: uppdragskorningId || undefined,
                 status: asDraft ? 'Utkast' : 'Väntar'
             };
 
