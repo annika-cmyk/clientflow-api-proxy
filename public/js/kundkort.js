@@ -6073,10 +6073,6 @@ class CustomerCardManager {
         // Nya fält — Sektion 5 (syfte)
         const savedSyfteAffarsrelation = saved.syfte_affarsrelation || '';
 
-        // Nya fält — Sektion 8 (riskklassificering — internt, endast byrå)
-        const savedRiskniva = saved.riskniva || '';
-        const savedRiskMotivering = saved.risk_motivering || '';
-
         // Status
         const kycStatus = saved.status || '';
         const kycInleedId = saved.inleedDokumentId || '';
@@ -6333,30 +6329,6 @@ class CustomerCardManager {
                         </div>
                     </div>
 
-                    <!-- 8. RISKKLASSIFICERING (INTERNT — ENDAST BYRÅ) -->
-                    <div class="uppdrag-section uppdrag-section--card" data-internal="true">
-                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
-                            <div class="uppdrag-section-title"><i class="fas fa-shield-halved"></i> 8. Riskklassificering <span class="uppdrag-hint" style="font-weight:400;text-transform:none;letter-spacing:0;margin:0;">(internt — visas ej för kund)</span></div>
-                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
-                        </div>
-                        <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Byråns interna bedömning av kundens risknivå. Detta fält ingår inte i kundens formulär eller det signerade dokumentet.</p>
-                            <div class="uppdrag-field uppdrag-field--full">
-                                <label>Risknivå</label>
-                                <input type="hidden" id="kyc-riskniva" value="${esc(savedRiskniva)}">
-                                <div class="ai-rb-niva-grupp" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-                                    <button type="button" data-riskniva="lag" class="ai-rb-niva-btn ${savedRiskniva === 'lag' ? 'is-active is-lag' : ''}" onclick="customerCardManager._setKycRiskniva('lag')">Låg</button>
-                                    <button type="button" data-riskniva="medel" class="ai-rb-niva-btn ${savedRiskniva === 'medel' ? 'is-active is-medel' : ''}" onclick="customerCardManager._setKycRiskniva('medel')">Medel</button>
-                                    <button type="button" data-riskniva="hog" class="ai-rb-niva-btn ${savedRiskniva === 'hog' ? 'is-active is-hog' : ''}" onclick="customerCardManager._setKycRiskniva('hog')">Hög</button>
-                                </div>
-                            </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Motivering / notering <span class="uppdrag-hint" style="font-weight:400;text-transform:none;letter-spacing:0;">(valfritt)</span></label>
-                                <textarea id="kyc-risk-motivering" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Motivera vald risknivå...">${esc(savedRiskMotivering)}</textarea>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- KUNDENS INTYGANDE -->
                     <div class="uppdrag-section uppdrag-section--card" style="border-left:3px solid #4f6ef7;">
                         <div class="uppdrag-section-body" style="padding-top:0;">
@@ -6490,22 +6462,6 @@ class CustomerCardManager {
         wrap.style.display = visa ? 'block' : 'none';
     }
 
-    // Sätt riskklassificeringens nivåknapp (klick på vald nivå avmarkerar den)
-    _setKycRiskniva(value) {
-        const input = document.getElementById('kyc-riskniva');
-        if (!input) return;
-        const newVal = input.value === value ? '' : value;
-        input.value = newVal;
-        const grupp = input.parentElement?.querySelector('.ai-rb-niva-grupp');
-        if (grupp) {
-            grupp.querySelectorAll('.ai-rb-niva-btn').forEach(btn => {
-                const v = btn.getAttribute('data-riskniva');
-                btn.classList.remove('is-active', 'is-lag', 'is-medel', 'is-hog');
-                if (v && v === newVal) btn.classList.add('is-active', 'is-' + v);
-            });
-        }
-    }
-
     _collectKYCFormularData() {
         const g = (id) => (document.getElementById(id)?.value || '').trim();
         // Sektion 2 — samla in alla företrädar-rader
@@ -6551,10 +6507,7 @@ class CustomerCardManager {
             vh_noterat_bolag: document.getElementById('kyc-vh-noterat-bolag')?.value === 'Ja',
             vh_utlandska_agare: document.getElementById('kyc-vh-utlandska-agare')?.value === 'Ja',
             // Sektion 5 — nytt fält
-            syfte_affarsrelation: g('kyc-syfte-affarsrelation'),
-            // Sektion 8 — internt (endast byrå)
-            riskniva: document.getElementById('kyc-riskniva')?.value || null,
-            risk_motivering: g('kyc-risk-motivering')
+            syfte_affarsrelation: g('kyc-syfte-affarsrelation')
         };
     }
 
