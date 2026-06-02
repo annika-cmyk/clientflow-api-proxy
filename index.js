@@ -11085,12 +11085,24 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
 
   <div class="section">
     <h2>2. Företrädare</h2>
+    ${(() => {
+      const list = (Array.isArray(kyc.foretradare) && kyc.foretradare.length)
+        ? kyc.foretradare
+        : ((kyc.foretradareNamn || kyc.foretradarePnr) ? [{ namn: kyc.foretradareNamn, personnr: kyc.foretradarePnr, skatterattslig_hemvist: kyc.skatterattslig_hemvist_foretradare, tin: kyc.tin_foretradare }] : []);
+      if (!list.length) return '<div class="field"><span class="field-value">\u2014</span></div>';
+      return list.map(p => {
+        const hemvist = (p.skatterattslig_hemvist || '').toString();
+        const tinHtml = (hemvist && hemvist.trim().toLowerCase() !== 'sverige' && p.tin)
+          ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(p.tin)}</span></div>` : '';
+        return `
     <div class="row">
-      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(kyc.foretradareNamn)}</span></div>
-      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(kyc.foretradarePnr)}</span></div>
+      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(p.namn || '\u2014')}</span></div>
+      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(p.personnr || '\u2014')}</span></div>
     </div>
-    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretradare || '\u2014')}</span></div>
-    ${(kyc.skatterattslig_hemvist_foretradare && kyc.skatterattslig_hemvist_foretradare.trim().toLowerCase() !== 'sverige' && kyc.tin_foretradare) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretradare)}</span></div>` : ''}
+    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(hemvist || '\u2014')}</span></div>
+    ${tinHtml}`;
+      }).join('<div style="border-top:0.5px solid #e2e8f0;margin:6px 0;"></div>');
+    })()}
   </div>
 
   <div class="section">
