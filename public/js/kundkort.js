@@ -9047,13 +9047,12 @@ class CustomerCardManager {
                     <button class="modal-close" onclick="document.getElementById('samarbete-status-val-modal').remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body">
-                    <p>Fältet <strong>Status</strong> i tabellen <strong>Samarbete</strong> i Airtable behöver ha två val. Lägg till dem manuellt:</p>
+                    <p>Fältet <strong>Status</strong> i tabellen <strong>Samarbete</strong> i Airtable behöver ha följande val. Kontrollera att alla finns (även <strong>Utkast</strong> och <strong>Arkiverad</strong> som används internt) och lägg till de som saknas:</p>
                     <ol style="margin:1rem 0; padding-left:1.5rem;">
                         <li>Öppna din Airtable-bas och tabellen <strong>Samarbete</strong>.</li>
                         <li>Klicka på kolumnrubriken <strong>Status</strong> (eller pilen bredvid).</li>
                         <li>Välj <strong>Customize field type</strong> / Anpassa fälttyp.</li>
-                        <li>Under <strong>Single select</strong>, klicka <strong>Add option</strong> och lägg till exakt: <strong>Väntar</strong>.</li>
-                        <li>Lägg till ett till val: <strong>Besvarad</strong>.</li>
+                        <li>Under <strong>Single select</strong>, klicka <strong>Add option</strong> och lägg till exakt dessa fyra val: <strong>Utkast</strong>, <strong>Väntar</strong>, <strong>Besvarad</strong> och <strong>Arkiverad</strong>.</li>
                         <li>Spara. Försök sedan skapa förfrågan igen här.</li>
                     </ol>
                     <button type="button" class="btn btn-primary" onclick="document.getElementById('samarbete-status-val-modal').remove()">OK, jag förstår</button>

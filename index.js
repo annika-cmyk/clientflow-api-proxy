@@ -5527,6 +5527,45 @@ async function getSamarbeteTableId(airtableToken, baseId) {
   }
 }
 
+/**
+ * Säkerställ att Status-fältet i tabellen Samarbete har alla val appen använder
+ * (Utkast/Väntar/Besvarad/Arkiverad). Äldre baser skapades med endast Väntar/Besvarad,
+ * vilket gör att t.ex. utkast (Status="Utkast") avvisas av Airtable.
+ * Kräver Personal Access Token med schema.bases:write.
+ */
+async function ensureSamarbeteStatusChoices(airtableToken, baseId, tableId) {
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const table = (metaRes.data?.tables || []).find(t => (t.id || '') === tableId);
+    if (!table) return { ok: false, reason: 'Tabell saknas' };
+    const statusField = (table.fields || []).find(f => (f.name || '').trim() === 'Status');
+    if (!statusField || !statusField.id) return { ok: false, reason: 'Fältet "Status" saknas' };
+
+    const desired = ['Utkast', 'Väntar', 'Besvarad', 'Arkiverad'];
+    const current = (statusField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false };
+
+    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields/${statusField.id}`;
+    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+    await axios.patch(patchUrl, {
+      name: 'Status',
+      type: 'singleSelect',
+      options: { choices }
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera status-val' };
+  }
+}
+
 /** Skapa fältet "Arkiverad" i tabell Samarbete om det saknas (för arkiv-funktionen). */
 async function ensureSamarbeteArkiveradField(airtableToken, baseId, tableId) {
   try {
@@ -5781,10 +5820,20 @@ app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
       const status = e.response?.status;
       const msg = e.response?.data?.error?.message || e.message || '';
       const isUnknownField = status === 422 && /Unknown field name:/i.test(String(msg));
+      const isMissingSelectOption = status === 422 && /select option/i.test(String(msg));
       if (isUnknownField) {
         // Försök skapa saknade fält automatiskt (kräver schema.bases:write) och gör om.
         try {
           await ensureSamarbeteFieldsExist({ airtableAccessToken, airtableBaseId, samarbeteTableId: tableId });
+          createRes = await createRequestRecord();
+        } catch (e2) {
+          throw e2;
+        }
+      } else if (isMissingSelectOption) {
+        // Status-värdet (t.ex. "Utkast") saknas som val i Airtable. Lägg till alla val
+        // appen använder automatiskt (kräver schema.bases:write) och gör om.
+        try {
+          await ensureSamarbeteStatusChoices(airtableAccessToken, airtableBaseId, tableId);
           createRes = await createRequestRecord();
         } catch (e2) {
           throw e2;
