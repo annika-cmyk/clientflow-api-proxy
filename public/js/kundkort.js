@@ -5958,14 +5958,38 @@ class CustomerCardManager {
         const foretagsnamn = saved.foretagsnamn || f['Namn'] || '';
         const orgnr = saved.orgnr || f['Orgnr'] || '';
 
-        // 2. Företrädare - hämtas från roller
+        // 2. Företrädare - lista (sparad lista, äldre enskilt fält, eller förifyll från roller)
         const kontaktPersoner = this._kontaktPersoner || [];
         const foretradare = kontaktPersoner.filter(p => {
             const roller = p.roller || (p.roll ? [p.roll] : []);
             return roller.some(r => ['Styrelseledamot','VD','Firmatecknare','Ägare EF','Suppleant','Ombud'].includes(r));
         });
-        const savedForetradareNamn = saved.foretradareNamn || (foretradare[0]?.namn || '');
-        const savedForetradarePnr = saved.foretradarePnr || (foretradare[0]?.personnr || '');
+        let foretradareList = [];
+        if (Array.isArray(saved.foretradare) && saved.foretradare.length > 0) {
+            foretradareList = saved.foretradare.map(p => ({
+                namn: p.namn || '',
+                personnr: p.personnr || '',
+                hemvist: p.skatterattslig_hemvist || p.hemvist || 'Sverige',
+                tin: p.tin || ''
+            }));
+        } else if (saved.foretradareNamn || saved.foretradarePnr) {
+            // Bakåtkompatibilitet: tidigare enskilt företrädarfält
+            foretradareList = [{
+                namn: saved.foretradareNamn || '',
+                personnr: saved.foretradarePnr || '',
+                hemvist: saved.skatterattslig_hemvist_foretradare || 'Sverige',
+                tin: saved.tin_foretradare || ''
+            }];
+        } else if (foretradare.length > 0) {
+            // Förifyll från befattningshavare/roller
+            foretradareList = foretradare.map(p => ({
+                namn: p.namn || '',
+                personnr: p.personnr || '',
+                hemvist: 'Sverige',
+                tin: ''
+            }));
+        }
+        if (foretradareList.length === 0) foretradareList = [{ namn: '', personnr: '', hemvist: 'Sverige', tin: '' }];
 
         // 3. Verklig huvudman - hämtas från roller
         const huvudman = kontaktPersoner.filter(p => {
@@ -6040,11 +6064,6 @@ class CustomerCardManager {
         const savedHemvistForetag = saved.skatterattslig_hemvist_foretag || 'Sverige';
         const savedTinForetag = saved.tin_foretag || '';
         const visaTinForetag = savedHemvistForetag.trim().toLowerCase() !== 'sverige' && savedHemvistForetag.trim() !== '';
-
-        // Nya fält — Sektion 2 (företrädare)
-        const savedHemvistForetradare = saved.skatterattslig_hemvist_foretradare || 'Sverige';
-        const savedTinForetradare = saved.tin_foretradare || '';
-        const visaTinForetradare = savedHemvistForetradare.trim().toLowerCase() !== 'sverige' && savedHemvistForetradare.trim() !== '';
 
         // Nya fält — Sektion 3 (verklig huvudman)
         const savedVhAgarandel = (saved.vh_agarandel === null || saved.vh_agarandel === undefined) ? '' : saved.vh_agarandel;
@@ -6169,25 +6188,13 @@ class CustomerCardManager {
                             <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
                         </div>
                         <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Vem är företrädare för företaget i kontakten med byrån?</p>
-                            <div class="uppdrag-grid">
-                                <div class="uppdrag-field">
-                                    <label>Namn</label>
-                                    <input type="text" id="kyc-foretradare-namn" class="uppdrag-input" value="${esc(savedForetradareNamn)}">
-                                </div>
-                                <div class="uppdrag-field">
-                                    <label>Personnummer</label>
-                                    <input type="text" id="kyc-foretradare-pnr" class="uppdrag-input" value="${esc(savedForetradarePnr)}" placeholder="ÅÅÅÅMMDD-XXXX">
-                                </div>
-                                <div class="uppdrag-field">
-                                    <label>Skatterättslig hemvist</label>
-                                    <input type="text" id="kyc-hemvist-foretradare" class="uppdrag-input" value="${esc(savedHemvistForetradare)}" placeholder="Sverige" oninput="customerCardManager._toggleKycTinByHemvist('kyc-hemvist-foretradare','kyc-tin-foretradare-wrap')">
-                                </div>
-                                <div class="uppdrag-field" id="kyc-tin-foretradare-wrap" style="display:${visaTinForetradare ? 'block' : 'none'};">
-                                    <label>Utländskt skatteregistreringsnummer (TIN)</label>
-                                    <input type="text" id="kyc-tin-foretradare" class="uppdrag-input" value="${esc(savedTinForetradare)}">
-                                </div>
+                            <p class="uppdrag-hint">Vem är företrädare för företaget i kontakten med byrån? Lägg till fler vid behov.</p>
+                            <div id="kyc-foretradare-list">
+                                ${foretradareList.map(p => this._kycForetradareRowHtml(p)).join('')}
                             </div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.75rem;" onclick="customerCardManager.addKycForetradare()">
+                                <i class="fas fa-plus"></i> Lägg till företrädare
+                            </button>
                         </div>
                     </div>
 
@@ -6381,6 +6388,88 @@ class CustomerCardManager {
                 </form>
             </div>
         `;
+
+        this._updateKycForetradareRemoveButtons();
+    }
+
+    // HTML för en företrädar-rad (används vid render och när man lägger till fler)
+    _kycForetradareRowHtml(p = {}) {
+        const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const namn = p.namn || '';
+        const pnr = p.personnr || '';
+        const hemvist = (p.hemvist || p.skatterattslig_hemvist || 'Sverige');
+        const tin = p.tin || '';
+        const visaTin = hemvist.trim() !== '' && hemvist.trim().toLowerCase() !== 'sverige';
+        return `
+            <div class="kyc-foretradare-row" style="border-top:1px dashed #e2e8f0;padding-top:0.85rem;margin-top:0.85rem;">
+                <div class="uppdrag-grid">
+                    <div class="uppdrag-field">
+                        <label>Namn</label>
+                        <input type="text" class="uppdrag-input kyc-ftr-namn" value="${esc(namn)}">
+                    </div>
+                    <div class="uppdrag-field">
+                        <label>Personnummer</label>
+                        <input type="text" class="uppdrag-input kyc-ftr-pnr" value="${esc(pnr)}" placeholder="ÅÅÅÅMMDD-XXXX">
+                    </div>
+                    <div class="uppdrag-field">
+                        <label>Skatterättslig hemvist</label>
+                        <input type="text" class="uppdrag-input kyc-ftr-hemvist" value="${esc(hemvist)}" placeholder="Sverige" oninput="customerCardManager._toggleKycForetradareTin(this)">
+                    </div>
+                    <div class="uppdrag-field kyc-ftr-tin-wrap" style="display:${visaTin ? 'block' : 'none'};">
+                        <label>Utländskt skatteregistreringsnummer (TIN)</label>
+                        <input type="text" class="uppdrag-input kyc-ftr-tin" value="${esc(tin)}">
+                    </div>
+                </div>
+                <button type="button" class="kyc-ftr-remove" onclick="customerCardManager.removeKycForetradare(this)" title="Ta bort företrädare" style="margin-top:0.5rem;background:none;border:none;color:#dc2626;font-size:0.82rem;cursor:pointer;padding:0;">
+                    <i class="fas fa-times"></i> Ta bort
+                </button>
+            </div>`;
+    }
+
+    // Lägg till en ny tom företrädar-rad
+    addKycForetradare() {
+        const list = document.getElementById('kyc-foretradare-list');
+        if (!list) return;
+        list.insertAdjacentHTML('beforeend', this._kycForetradareRowHtml({}));
+        this._updateKycForetradareRemoveButtons();
+        const rows = list.querySelectorAll('.kyc-foretradare-row');
+        rows[rows.length - 1]?.querySelector('.kyc-ftr-namn')?.focus();
+    }
+
+    // Ta bort en företrädar-rad (töm sista raden i stället för att ta bort den)
+    removeKycForetradare(btn) {
+        const list = document.getElementById('kyc-foretradare-list');
+        const row = btn?.closest('.kyc-foretradare-row');
+        if (!list || !row) return;
+        const rows = list.querySelectorAll('.kyc-foretradare-row');
+        if (rows.length <= 1) {
+            row.querySelectorAll('input').forEach(i => {
+                i.value = i.classList.contains('kyc-ftr-hemvist') ? 'Sverige' : '';
+            });
+            this._toggleKycForetradareTin(row.querySelector('.kyc-ftr-hemvist'));
+        } else {
+            row.remove();
+        }
+        this._updateKycForetradareRemoveButtons();
+    }
+
+    // Dölj "Ta bort" när det bara finns en rad
+    _updateKycForetradareRemoveButtons() {
+        const rows = document.querySelectorAll('#kyc-foretradare-list .kyc-foretradare-row');
+        rows.forEach(r => {
+            const b = r.querySelector('.kyc-ftr-remove');
+            if (b) b.style.display = rows.length > 1 ? '' : 'none';
+        });
+    }
+
+    // Visa/dölj TIN-fältet i en företrädar-rad utifrån skatterättslig hemvist
+    _toggleKycForetradareTin(inputEl) {
+        const row = inputEl?.closest('.kyc-foretradare-row');
+        if (!row) return;
+        const wrap = row.querySelector('.kyc-ftr-tin-wrap');
+        if (!wrap) return;
+        const v = (inputEl.value || '').trim().toLowerCase();
+        wrap.style.display = (v !== '' && v !== 'sverige') ? 'block' : 'none';
     }
 
     _toggleKycConditional(selectId, showValue, wrapId) {
@@ -6419,11 +6508,20 @@ class CustomerCardManager {
 
     _collectKYCFormularData() {
         const g = (id) => (document.getElementById(id)?.value || '').trim();
+        // Sektion 2 — samla in alla företrädar-rader
+        const foretradare = Array.from(document.querySelectorAll('#kyc-foretradare-list .kyc-foretradare-row')).map(row => ({
+            namn: (row.querySelector('.kyc-ftr-namn')?.value || '').trim(),
+            personnr: (row.querySelector('.kyc-ftr-pnr')?.value || '').trim(),
+            skatterattslig_hemvist: (row.querySelector('.kyc-ftr-hemvist')?.value || '').trim(),
+            tin: (row.querySelector('.kyc-ftr-tin')?.value || '').trim()
+        })).filter(p => p.namn || p.personnr || p.tin || (p.skatterattslig_hemvist && p.skatterattslig_hemvist.toLowerCase() !== 'sverige'));
         return {
             foretagsnamn: g('kyc-foretagsnamn'),
             orgnr: g('kyc-orgnr'),
-            foretradareNamn: g('kyc-foretradare-namn'),
-            foretradarePnr: g('kyc-foretradare-pnr'),
+            // Företrädare som lista + bakåtkompatibla enskilda fält (för PDF/äldre läsare)
+            foretradare,
+            foretradareNamn: foretradare[0]?.namn || '',
+            foretradarePnr: foretradare[0]?.personnr || '',
             huvudmanInfo: g('kyc-huvudman-info'),
             huvudmanAnnatSatt: g('kyc-huvudman-annat-satt'),
             pep: g('kyc-pep'),
@@ -6445,9 +6543,9 @@ class CustomerCardManager {
             sni_kod: g('kyc-sni-kod'),
             skatterattslig_hemvist_foretag: g('kyc-hemvist-foretag'),
             tin_foretag: g('kyc-tin-foretag'),
-            // Sektion 2 — nya fält
-            skatterattslig_hemvist_foretradare: g('kyc-hemvist-foretradare'),
-            tin_foretradare: g('kyc-tin-foretradare'),
+            // Sektion 2 — bakåtkompatibla enskilda fält (första företrädaren)
+            skatterattslig_hemvist_foretradare: foretradare[0]?.skatterattslig_hemvist || 'Sverige',
+            tin_foretradare: foretradare[0]?.tin || '',
             // Sektion 3 — nya fält
             vh_agarandel: (() => { const v = g('kyc-vh-agarandel'); return v === '' ? null : Number(v); })(),
             vh_noterat_bolag: document.getElementById('kyc-vh-noterat-bolag')?.value === 'Ja',
