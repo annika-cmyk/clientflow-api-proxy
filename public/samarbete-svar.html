@@ -8,473 +8,664 @@
     <meta name="theme-color" content="#f0f4ff">
     <title>ClientFlow – Lämna underlag</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Tvinga ljust tema – kundsidan ska inte påverkas av webbläsarens mörkläge */
-        :root {
-            color-scheme: light only;
-            --bg-page: #f0f4ff;
-            --bg-page-end: #e8eeff;
-            --bg-card: #ffffff;
-            --bg-question: #f8fafc;
-            --bg-question-done: #f0fdf4;
-            --text-primary: #1e293b;
-            --text-heading: #334155;
-            --text-muted: #64748b;
-            --text-hint: #94a3b8;
-            --border: #e2e8f0;
-            --border-done: #bbf7d0;
-            --accent: #6366f1;
-            --accent-hover: #4f46e5;
-            --accent-soft: #4338ca;
-        }
-        html {
-            color-scheme: light only;
-            background-color: var(--bg-page);
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            min-height: 100vh;
-            background: linear-gradient(135deg, var(--bg-page) 0%, var(--bg-page-end) 100%);
-            background-color: var(--bg-page);
-            padding: 2rem 1rem;
-            color: var(--text-primary);
-        }
-        .container { max-width: 600px; margin: 0 auto; }
-        .card {
-            background: var(--bg-card);
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            padding: 2rem;
-            margin-bottom: 1.5rem;
-            color: var(--text-primary);
-        }
-        h1 { font-size: 1.35rem; margin: 0 0 0.5rem 0; color: var(--text-heading); }
-        .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
-        .form-control {
-            width: 100%;
-            padding: 0.65rem 0.85rem;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 1rem;
-            font-family: inherit;
-            background-color: #ffffff;
-            color: var(--text-primary);
-            -webkit-text-fill-color: var(--text-primary);
-        }
-        textarea.form-control { min-height: 80px; resize: vertical; }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            border: none;
-            transition: background 0.2s, opacity 0.2s;
-        }
-        .btn-primary { background: #6366f1; color: #fff; }
-        .btn-primary:hover { background: #4f46e5; }
-        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-ghost { background: #f1f5f9; color: #475569; }
-        .btn-ghost:hover { background: #e2e8f0; }
-        .error-msg { color: #dc2626; font-size: 0.9rem; margin-top: 0.5rem; }
-        .success-msg { color: #16a34a; font-size: 1rem; padding: 1rem; background: #f0fdf4; border-radius: 8px; margin-top: 1rem; }
-        .loading { text-align: center; padding: 2rem; color: #64748b; }
-        .hidden { display: none !important; }
+      :root{
+        color-scheme: light only;
+        --bg-page:#f0f4ff;
+        --bg-page-end:#e8eeff;
+        --card:#ffffff;
+        --ink:#1e293b;
+        --heading:#334155;
+        --ink-soft:#64748b;
+        --ink-faint:#94a3b8;
+        --line:#e2e8f0;
+        --line-strong:#cbd5e1;
+        --accent:#6366f1;
+        --accent-hover:#4f46e5;
+        --accent-deep:#4338ca;
+        --accent-tint:#eef2ff;
+        --accent-soft:#c7d2fe;
+        --done-bg:#f0fdf4;
+        --done-border:#bbf7d0;
+        --done-text:#16a34a;
+        --done-deep:#15803d;
+        --radius:14px;
+        --shadow-card:0 4px 20px rgba(0,0,0,.08);
+        --shadow-soft:0 1px 2px rgba(0,0,0,.04);
+      }
 
-        .question-card {
-            background: var(--bg-question);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 1.25rem;
-            margin-bottom: 1rem;
-            transition: opacity 0.25s, background 0.25s, border-color 0.25s;
-            color: var(--text-primary);
-        }
-        .question-card.item-done {
-            background: var(--bg-question-done);
-            border-color: var(--border-done);
-        }
-        .question-card .question-text {
-            font-weight: 600;
-            color: var(--text-heading);
-            margin-bottom: 0.75rem;
-            padding-left: 0.25rem;
-        }
-        .question-response-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
-        .question-upload-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.75rem;
-            flex-wrap: wrap;
-        }
-        .upload-btn-wrap {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-        .upload-btn-wrap input[type=file] { display: none; }
-        .upload-btn-wrap .btn-upload {
-            padding: 0.5rem 0.75rem;
-            font-size: 0.85rem;
-            background: transparent;
-            color: #4338ca;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .upload-btn-wrap .btn-upload:hover { background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.35); }
-        .question-submit-btn { margin-top: 0; display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-left: auto; }
-        .question-submit-btn .btn { padding: 0.5rem 1rem; font-size: 0.9rem; }
-        .question-done-hint { display: none; color: #16a34a; font-size: 0.85rem; }
-        .item-done .question-done-hint { display: inline-flex; align-items: center; gap: 0.25rem; }
-        .item-done .question-response-wrap { display: none; }
-        .item-done .question-submit-btn .question-send-btn { display: none; }
-        .item-done .question-submit-btn { justify-content: flex-start; }
-        .file-hint { font-size: 0.75rem; color: #94a3b8; margin-top: 0.2rem; }
-        .file-required-tag { font-size: 0.75rem; color: #dc2626; font-weight: 600; margin-left: 0.25rem; }
-        .file-clear-btn {
-            background: none;
-            border: none;
-            padding: 0;
-            margin-left: 0.5rem;
-            font-size: 0.75rem;
-            color: #64748b;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-        .file-clear-btn:hover { color: #334155; }
+      *{box-sizing:border-box;margin:0;padding:0}
 
-        .clientflow-header {
-            background: transparent;
-            text-align: center;
-            padding: 2rem 1.5rem 1.5rem;
-            border-radius: 0;
-            margin-bottom: 0;
-            border: none;
-            box-shadow: none;
-        }
-        .clientflow-logo-wrap {
-            display: inline-block;
-            background: #ffffff;
-            padding: 0.75rem 1.25rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-        }
-        .clientflow-header .clientflow-logo {
-            max-width: 160px;
-            height: auto;
-            display: block;
-            margin: 0 auto;
-        }
-        .byra-logo-wrap {
-            margin-top: 1.5rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--border);
-            text-align: center;
-            background: #ffffff;
-            border-radius: 10px;
-            padding: 1.25rem;
-        }
-        .byra-logo-wrap img { max-height: 73px; max-width: 260px; object-fit: contain; }
+      html{color-scheme:light only;background-color:var(--bg-page);}
 
-        /* Om webbläsaren ändå tvingar mörkt läge – behåll sidans ljusa design */
-        @media (prefers-color-scheme: dark) {
-            :root { color-scheme: light only; }
-            html, body {
-                background-color: var(--bg-page) !important;
-                background-image: linear-gradient(135deg, var(--bg-page) 0%, var(--bg-page-end) 100%) !important;
-                color: var(--text-primary) !important;
-            }
-            .card,
-            .clientflow-logo-wrap,
-            .byra-logo-wrap {
-                background-color: var(--bg-card) !important;
-                color: var(--text-primary) !important;
-            }
-            .question-card {
-                background-color: var(--bg-question) !important;
-                border-color: var(--border) !important;
-                color: var(--text-primary) !important;
-            }
-            .question-card.item-done {
-                background-color: var(--bg-question-done) !important;
-                border-color: var(--border-done) !important;
-            }
-            h1, .question-card .question-text, strong {
-                color: var(--text-heading) !important;
-            }
-            .subtitle, .file-hint, .file-clear-btn, .loading {
-                color: var(--text-muted) !important;
-            }
-            .form-control,
-            textarea.form-control {
-                background-color: #ffffff !important;
-                color: var(--text-primary) !important;
-                border-color: var(--border) !important;
-                -webkit-text-fill-color: var(--text-primary) !important;
-            }
-            .btn-primary {
-                background-color: var(--accent) !important;
-                color: #ffffff !important;
-            }
-            .upload-btn-wrap .btn-upload {
-                background-color: #ffffff !important;
-                color: var(--accent-soft) !important;
-                border-color: var(--border) !important;
-            }
+      body{
+        font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+        color:var(--ink);
+        background:linear-gradient(135deg,var(--bg-page) 0%,var(--bg-page-end) 100%);
+        background-color:var(--bg-page);
+        min-height:100vh;
+        line-height:1.5;
+        -webkit-font-smoothing:antialiased;
+        padding:40px 20px 72px;
+      }
+
+      .wrap{max-width:600px;margin:0 auto;position:relative;z-index:1}
+
+      .hidden{display:none !important}
+
+      /* ---------- brand / logo ---------- */
+      .clientflow-header{
+        text-align:center;
+        padding:0 0 22px;
+      }
+      .clientflow-logo-wrap{
+        display:inline-block;
+        background:#ffffff;
+        padding:.75rem 1.25rem;
+        border-radius:12px;
+        box-shadow:0 2px 12px rgba(0,0,0,.06);
+      }
+      .clientflow-logo-wrap .clientflow-logo{
+        max-width:160px;height:auto;display:block;margin:0 auto;
+      }
+
+      /* ---------- states ---------- */
+      .state-card{
+        background:var(--card);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        padding:28px 30px;
+        box-shadow:var(--shadow-card);
+        text-align:center;
+        color:var(--ink-soft);
+      }
+      .state-card h1{font-size:1.2rem;color:var(--heading);margin-bottom:.5rem}
+      .state-card .spin{
+        width:26px;height:26px;border-radius:50%;
+        border:3px solid var(--accent-soft);border-top-color:var(--accent);
+        margin:0 auto 14px;animation:spin .8s linear infinite;
+      }
+      @keyframes spin{to{transform:rotate(360deg)}}
+
+      /* ---------- header card ---------- */
+      .head{
+        background:var(--card);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        padding:28px 30px;
+        box-shadow:var(--shadow-card);
+        margin-bottom:22px;
+        position:relative;
+        overflow:hidden;
+      }
+      .head::after{
+        content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+        background:var(--accent);
+      }
+      .head h1{
+        font-weight:700;
+        font-size:1.6rem;
+        letter-spacing:-.01em;
+        line-height:1.15;
+        color:var(--heading);
+        margin-bottom:12px;
+      }
+      .head p{
+        color:var(--ink-soft);
+        font-size:14.5px;
+        max-width:46ch;
+        margin-bottom:20px;
+      }
+      .head p b{color:var(--ink);font-weight:600}
+
+      .meta{
+        display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+        padding-top:18px;border-top:1px solid var(--line);
+      }
+      .deadline{
+        display:flex;align-items:center;gap:9px;
+        font-size:13.5px;color:var(--ink-soft);
+      }
+      .deadline .dot{
+        width:7px;height:7px;border-radius:50%;background:var(--accent);
+        box-shadow:0 0 0 4px var(--accent-tint);
+      }
+      .deadline b{color:var(--ink);font-weight:600}
+      .deadline .left{
+        color:var(--accent-deep);font-weight:600;
+        background:var(--accent-tint);
+        padding:2px 9px;border-radius:20px;font-size:12.5px;
+      }
+
+      .progress-wrap{margin-left:auto;display:flex;align-items:center;gap:11px}
+      .progress-track{
+        width:120px;height:7px;border-radius:20px;background:#e2e8f0;
+        overflow:hidden;
+      }
+      .progress-fill{
+        height:100%;width:0%;border-radius:20px;
+        background:linear-gradient(90deg,var(--accent),var(--accent-hover));
+        transition:width .5s cubic-bezier(.2,.8,.2,1);
+      }
+      .progress-label{font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap}
+      .progress-label b{color:var(--accent);font-weight:600}
+
+      /* ---------- item cards ---------- */
+      .item{
+        background:var(--card);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        box-shadow:var(--shadow-soft);
+        margin-bottom:16px;
+        overflow:hidden;
+        transition:border-color .3s, box-shadow .3s, background .3s;
+      }
+      .item:hover{box-shadow:var(--shadow-card)}
+      .item.done{
+        background:var(--done-bg);
+        border-color:var(--done-border);
+      }
+
+      .item-top{
+        display:flex;align-items:center;gap:13px;
+        padding:18px 22px;
+        cursor:pointer;
+        user-select:none;
+      }
+      .num{
+        flex:none;width:30px;height:30px;border-radius:9px;
+        background:#eef2ff;color:var(--accent-deep);
+        display:grid;place-items:center;
+        font-weight:600;font-size:14px;
+        font-variant-numeric:tabular-nums;
+        transition:.3s;
+      }
+      .item.done .num{
+        background:var(--done-text);color:#fff;
+      }
+      .item-title{
+        font-weight:600;font-size:16px;letter-spacing:-.005em;flex:1;color:var(--heading);
+      }
+      .req-tag{
+        font-size:11px;font-weight:600;color:#dc2626;
+        margin-left:6px;white-space:nowrap;
+      }
+      .pill{
+        flex:none;display:flex;align-items:center;gap:6px;
+        font-size:12px;font-weight:600;
+        padding:4px 11px;border-radius:20px;
+        letter-spacing:.01em;
+      }
+      .pill.wait{background:#f1f5f9;color:var(--ink-soft)}
+      .pill.done{background:var(--done-bg);color:var(--done-deep)}
+      .pill svg{width:13px;height:13px}
+      .chev{
+        flex:none;color:var(--ink-faint);transition:transform .3s;
+        display:grid;place-items:center;
+      }
+      .item.open .chev{transform:rotate(180deg)}
+
+      .item-body{
+        max-height:0;overflow:hidden;
+        transition:max-height .4s cubic-bezier(.2,.8,.2,1);
+      }
+      .item.open .item-body{max-height:640px}
+      .body-inner{padding:2px 22px 22px;}
+
+      textarea{
+        width:100%;
+        font-family:inherit;font-size:14.5px;color:var(--ink);
+        background:#ffffff;
+        border:1px solid var(--line-strong);
+        border-radius:10px;
+        padding:13px 15px;
+        min-height:84px;resize:vertical;
+        transition:border-color .2s, box-shadow .2s, background .2s;
+      }
+      textarea::placeholder{color:var(--ink-faint)}
+      textarea:focus{
+        outline:none;border-color:var(--accent);
+        box-shadow:0 0 0 3px var(--accent-tint);
+      }
+
+      .drop{
+        margin-top:12px;
+        border:1.5px dashed var(--line-strong);
+        border-radius:10px;
+        padding:14px 16px;
+        display:flex;align-items:center;gap:11px;
+        color:var(--ink-soft);font-size:13.5px;
+        cursor:pointer;
+        transition:.2s;
+        background:#f8fafc;
+      }
+      .drop:hover{border-color:var(--accent-soft);background:var(--accent-tint)}
+      .drop.over{border-color:var(--accent);background:var(--accent-tint);color:var(--accent-deep)}
+      .drop svg{width:18px;height:18px;flex:none;color:var(--ink-faint)}
+      .drop:hover svg,.drop.over svg{color:var(--accent)}
+      .drop b{color:var(--ink);font-weight:600}
+
+      .files{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
+      .files:empty{display:none}
+      .chip{
+        display:flex;align-items:center;gap:7px;
+        background:var(--accent-tint);color:var(--accent-deep);
+        border:1px solid var(--accent-soft);
+        font-size:12.5px;font-weight:500;
+        padding:5px 8px 5px 11px;border-radius:8px;
+        max-width:100%;
+      }
+      .chip.existing{background:var(--done-bg);color:var(--done-deep);border-color:var(--done-border)}
+      .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+      .chip button{
+        border:none;background:none;cursor:pointer;color:inherit;
+        opacity:.55;display:grid;place-items:center;padding:1px;border-radius:4px;
+      }
+      .chip button:hover{opacity:1;background:rgba(67,56,202,.12)}
+
+      .actions{
+        display:flex;align-items:center;justify-content:flex-end;
+        gap:12px;margin-top:16px;
+      }
+      .row-error{color:#dc2626;font-size:12.5px;margin-right:auto;display:none}
+      .submit{
+        font-family:inherit;font-weight:600;font-size:14px;
+        color:#fff;background:var(--accent);
+        border:none;border-radius:10px;
+        padding:11px 20px;cursor:pointer;
+        display:inline-flex;align-items:center;gap:8px;
+        box-shadow:0 1px 2px rgba(99,102,241,.25);
+        transition:.18s;letter-spacing:.005em;
+      }
+      .submit:hover{background:var(--accent-hover);transform:translateY(-1px);box-shadow:0 4px 14px rgba(99,102,241,.22)}
+      .submit:active{transform:translateY(0)}
+      .submit:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+      .submit svg{width:15px;height:15px}
+      .submit.again{
+        background:transparent;color:var(--accent);
+        box-shadow:inset 0 0 0 1px var(--accent-soft);
+      }
+      .submit.again:hover{background:var(--accent-tint);transform:none;box-shadow:inset 0 0 0 1px var(--accent)}
+
+      .done-note{
+        display:none;align-items:center;gap:9px;
+        color:var(--done-deep);font-size:13.5px;font-weight:500;
+        padding:11px 14px;background:var(--done-bg);
+        border-radius:10px;margin-top:2px;
+      }
+      .item.done .done-note{display:flex}
+      .done-note svg{width:16px;height:16px;flex:none}
+
+      .byra-logo-wrap{
+        margin-top:8px;
+        padding:1.25rem;
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        text-align:center;
+        background:#ffffff;
+        box-shadow:var(--shadow-soft);
+      }
+      .byra-logo-wrap img{max-height:73px;max-width:260px;object-fit:contain}
+
+      .footer{
+        text-align:center;margin-top:28px;
+        font-size:12.5px;color:var(--ink-faint);
+      }
+      .footer b{color:var(--ink-soft);font-weight:600}
+
+      @media (prefers-color-scheme: dark){
+        :root{color-scheme:light only;}
+        html,body{
+          background-color:var(--bg-page) !important;
+          background-image:linear-gradient(135deg,var(--bg-page) 0%,var(--bg-page-end) 100%) !important;
+          color:var(--ink) !important;
         }
+        .head,.item,.state-card,.byra-logo-wrap,.clientflow-logo-wrap{
+          background-color:var(--card) !important;color:var(--ink) !important;
+        }
+        .item.done{background-color:var(--done-bg) !important;border-color:var(--done-border) !important;}
+        textarea{background-color:#ffffff !important;color:var(--ink) !important;-webkit-text-fill-color:var(--ink) !important;}
+      }
+
+      @media(max-width:520px){
+        body{padding:28px 14px 56px}
+        .head{padding:24px 20px}
+        .head h1{font-size:1.4rem}
+        .progress-wrap{margin-left:0;width:100%}
+        .progress-track{flex:1;width:auto}
+        .item-top{padding:16px 16px}
+        .body-inner{padding:2px 16px 18px}
+      }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div id="clientflow-header" class="clientflow-header">
-            <div class="clientflow-logo-wrap">
-                <img src="/images/Clientflow%20logga%20vit%20bakgrund.png" alt="ClientFlow" class="clientflow-logo" onerror="this.onerror=null;this.src='/images/Clientflow%20logga.png';">
-            </div>
-        </div>
-        <div id="loading" class="card loading">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Laddar förfrågan...</p>
-        </div>
-        <div id="error" class="card hidden">
-            <h1><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> Kunde inte ladda</h1>
-            <p id="error-text" class="subtitle"></p>
-        </div>
-        <div id="form-card" class="card hidden">
-            <h1>Lämna underlag</h1>
-            <p class="subtitle">Svara på varje punkt nedan – antingen med text eller genom att ladda upp en fil. Du kan skicka in delar nu och lägga till mer senare. Klicka på <strong>Skicka in svar</strong> för varje fråga när du är redo.</p>
-            <div id="questions-wrap"></div>
-            <div id="byra-logo-wrap" class="byra-logo-wrap hidden"></div>
-            <p class="error-msg" id="form-error"></p>
-        </div>
-        <div id="closed-card" class="card hidden">
-            <h1><i class="fas fa-lock" style="color:#64748b;"></i> Förfrågan är avslutad</h1>
-            <p class="subtitle">Denna förfrågan har stängts. Du kan inte längre lämna eller se underlag här.</p>
-        </div>
+<div class="wrap">
+
+  <div id="clientflow-header" class="clientflow-header">
+    <div class="clientflow-logo-wrap">
+      <img src="/images/Clientflow%20logga%20vit%20bakgrund.png" alt="ClientFlow" class="clientflow-logo" onerror="this.onerror=null;this.src='/images/Clientflow%20logga.png';">
     </div>
-    <script src="js/config.js"></script>
-    <script>
-        (function() {
-            const getBaseUrl = () => (window.apiConfig && window.apiConfig.baseUrl) ? window.apiConfig.baseUrl : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3001' : (window.location.origin || ''));
-            const params = new URLSearchParams(window.location.search);
-            const token = params.get('token');
-            const loadingEl = document.getElementById('loading');
-            const errorEl = document.getElementById('error');
-            const errorText = document.getElementById('error-text');
-            const formCard = document.getElementById('form-card');
-            const clientflowHeader = document.getElementById('clientflow-header');
-            const closedCard = document.getElementById('closed-card');
-            const questionsWrap = document.getElementById('questions-wrap');
-            const byraLogoWrap = document.getElementById('byra-logo-wrap');
-            const formError = document.getElementById('form-error');
+  </div>
 
-            let items = [];
-            let fileRequired = [];
-            const answerTexts = [];
-            const answerFiles = []; // per fråga: array av File-objekt
+  <div id="loading" class="state-card">
+    <div class="spin"></div>
+    <p>Laddar förfrågan...</p>
+  </div>
 
-            function show(el) { el.classList.remove('hidden'); }
-            function hide(el) { el.classList.add('hidden'); }
+  <div id="error" class="state-card hidden">
+    <h1>Kunde inte ladda</h1>
+    <p id="error-text"></p>
+  </div>
 
-            function escapeHtml(s) {
-                if (s == null) return '';
-                const t = String(s);
-                return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-            }
+  <div id="closed-card" class="state-card hidden">
+    <h1>Förfrågan är avslutad</h1>
+    <p>Denna förfrågan har stängts. Du kan inte längre lämna eller se underlag här.</p>
+  </div>
 
-            if (!token) {
-                hide(loadingEl);
-                show(errorEl);
-                errorText.textContent = 'Ogiltig länk. Token saknas.';
-                throw new Error('No token');
-            }
+  <div id="form-wrap" class="hidden">
+    <div class="head">
+      <h1>Lämna underlag</h1>
+      <p>Svara på varje punkt nedan – med en kommentar, en uppladdad fil, eller båda. Du kan skicka in delar nu och fylla på senare. Klicka <b>Skicka in</b> på varje rad när du är klar.</p>
+      <div class="meta">
+        <div class="deadline" id="deadlineBox" style="display:none">
+          <span class="dot"></span>
+          Deadline <b id="deadlineDate"></b>
+          <span class="left" id="daysLeft"></span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div class="progress-fill" id="bar"></div></div>
+          <div class="progress-label"><b id="cnt">0</b> av <span id="tot">0</span> inskickade</div>
+        </div>
+      </div>
+    </div>
 
-            const baseUrl = getBaseUrl();
-            function renderForm(data) {
-                const title = (data.title || 'Underlag').trim();
-                const rawLines = title.split('\n').map(function(s) { return s.replace(/^\d+\.\s*/, '').trim(); }).filter(Boolean);
-                if (rawLines.length === 0) rawLines.push(title || 'Underlag');
-                items = [];
-                fileRequired = [];
-                rawLines.forEach(function(line) {
-                    var req = line.indexOf(' [fil obligatorisk]') !== -1;
-                    if (req) line = line.replace(/\s*\[fil obligatorisk\]\s*$/, '').trim();
-                    items.push(line);
-                    fileRequired.push(req);
-                });
-                answerTexts.length = items.length;
-                answerFiles.length = items.length;
-                var existing = data.existingAnswers || [];
-                var attachments = data.existingAttachments || [];
-                var attIdx = 0;
-                for (var i = 0; i < items.length; i++) {
-                    answerTexts[i] = (existing[i] && existing[i].text) ? existing[i].text : '';
-                    answerFiles[i] = [];
-                }
-                var html = '';
-                var deadlineInfo = '';
-                if (data.deadline) {
-                    var ds = '';
-                    try {
-                        var dt = new Date(String(data.deadline).trim());
-                        if (!isNaN(dt.getTime())) ds = dt.toLocaleDateString('sv-SE');
-                    } catch (e) {}
-                    if (!ds) ds = String(data.deadline);
-                    deadlineInfo = '<p class="subtitle" style="margin-top:-0.75rem;"><strong>Deadline:</strong> ' + escapeHtml(ds) + '</p>';
-                }
-                if (deadlineInfo) {
-                    html += '<div style="margin-bottom:1rem;">' + deadlineInfo + '</div>';
-                }
-                for (var i = 0; i < items.length; i++) {
-                    var q = escapeHtml(items[i]);
-                    var req = fileRequired[i];
-                    html += '<div class="question-card" data-index="' + i + '">';
-                    html += '<div class="question-text">' + (i + 1) + '. ' + q + (req ? ' <span class="file-required-tag">Fil obligatorisk</span>' : '') + '</div>';
-                    html += '<div class="question-response-wrap">';
-                    html += '<textarea class="form-control" data-index="' + i + '" placeholder="din kommentar" rows="2">' + escapeHtml(answerTexts[i]) + '</textarea>';
-                    html += '<div class="question-upload-row">';
-                    html += '<div class="upload-btn-wrap">';
-                    html += '<input type="file" id="file-' + i + '" data-index="' + i + '" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple>';
-                    html += '<label for="file-' + i + '" class="btn-upload"><i class="fas fa-upload"></i> Fil' + (req ? ' *' : '') + '</label>';
-                    html += '</div>';
-                    html += '<div class="question-submit-btn"><button type="button" class="btn btn-primary question-send-btn" data-index="' + i + '"><i class="fas fa-paper-plane"></i> Skicka in svar</button><span class="question-done-hint"><i class="fas fa-check-circle"></i> Besvarat</span></div>';
-                    html += '</div>';
-                    var fn = (existing[i] && existing[i].filename) ? existing[i].filename : '';
-                    var hasFile = !!fn;
-                    html += '<p class="file-hint" id="file-name-' + i + '">' + (fn ? 'Lagt upp: ' + escapeHtml(fn) : '') + '</p>';
-                    html += '<button type="button" class="file-clear-btn' + (hasFile ? '' : ' hidden') + '" data-index="' + i + '" id="file-clear-' + i + '">Ta bort fil(er)</button>';
-                    html += '</div>';
-                    html += '</div>';
-                }
-                questionsWrap.innerHTML = html;
-                if (data.byraLogoUrl && data.byraLogoUrl.indexOf('http') === 0) {
-                    byraLogoWrap.innerHTML = '<img src="' + escapeHtml(data.byraLogoUrl) + '" alt="" />';
-                    show(byraLogoWrap);
-                } else {
-                    byraLogoWrap.innerHTML = '';
-                    hide(byraLogoWrap);
-                }
-                questionsWrap.querySelectorAll('textarea[data-index]').forEach(function(ta) {
-                    var i = parseInt(ta.getAttribute('data-index'), 10);
-                    ta.addEventListener('input', function() { answerTexts[i] = ta.value; });
-                });
-                questionsWrap.querySelectorAll('input[type=file]').forEach(function(inp) {
-                    var i = parseInt(inp.getAttribute('data-index'), 10);
-                    inp.addEventListener('change', function() {
-                        var list = Array.prototype.slice.call(inp.files || []);
-                        answerFiles[i] = list;
-                        var label = '';
-                        if (list.length === 1) {
-                            label = 'Vald fil: ' + list[0].name;
-                        } else if (list.length > 1) {
-                            label = 'Valda filer (' + list.length + '): ' + list.map(function(f) { return f.name; }).join(', ');
-                        }
-                        document.getElementById('file-name-' + i).textContent = label;
-                        var clearBtn = document.getElementById('file-clear-' + i);
-                        if (clearBtn) clearBtn.classList.toggle('hidden', list.length === 0);
-                    });
-                });
-                questionsWrap.querySelectorAll('.file-clear-btn').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var i = parseInt(btn.getAttribute('data-index'), 10);
-                        var inp = document.getElementById('file-' + i);
-                        if (inp) inp.value = '';
-                        answerFiles[i] = [];
-                        document.getElementById('file-name-' + i).textContent = '';
-                        btn.classList.add('hidden');
-                    });
-                });
-                questionsWrap.querySelectorAll('.question-send-btn').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var i = parseInt(btn.getAttribute('data-index'), 10);
-                        var card = btn.closest('.question-card');
-                        if (!card) return;
-                        formError.textContent = '';
-                        var filesForQuestion = answerFiles[i] || [];
-                        if (!answerTexts[i] && filesForQuestion.length === 0) {
-                            formError.textContent = 'Skriv en kommentar eller ladda upp en fil innan du skickar in svar.';
-                            return;
-                        }
-                        if (fileRequired[i] && filesForQuestion.length === 0) {
-                            formError.textContent = 'Fråga ' + (i + 1) + ' kräver att du laddar upp en fil.';
-                            return;
-                        }
-                        btn.disabled = true;
-                        var origHtml = btn.innerHTML;
-                        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...';
-                        var payload = { token: token, answerIndex: i, text: (answerTexts[i] || '').trim(), files: [] };
+    <div id="list"></div>
 
-                        var filesForUpload = (answerFiles[i] || []).slice();
+    <div id="byra-logo-wrap" class="byra-logo-wrap hidden"></div>
 
-                        var readFileAsBase64 = function(file) {
-                            return new Promise(function(resolve, reject) {
-                                var r = new FileReader();
-                                r.onload = function() {
-                                    var base64 = r.result.replace(/^data:[^;]+;base64,/, '');
-                                    resolve({ filename: file.name, file: base64 });
-                                };
-                                r.onerror = function() { reject(new Error('Kunde inte läsa fil')); };
-                                r.readAsDataURL(file);
-                            });
-                        };
+    <div class="footer">
+      Hanteras säkert i <b>ClientFlow</b>
+    </div>
+  </div>
 
-                        Promise.all(filesForUpload.map(readFileAsBase64))
-                            .then(function(results) {
-                                payload.files = results;
-                                return fetch(baseUrl + '/api/samarbete/respond', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(payload)
-                                });
-                            })
-                            .then(function(r) { return r.json().then(function(d) { if (!r.ok) throw new Error(d.error || 'Kunde inte spara'); return d; }); })
-                            .then(function() {
-                                card.classList.add('item-done');
-                            })
-                            .catch(function(err) {
-                                formError.textContent = err.message || 'Kunde inte spara. Försök igen.';
-                            })
-                            .then(function() { btn.disabled = false; btn.innerHTML = origHtml; });
-                    });
-                });
-                var hasExisting = existing.length > 0 && (existing[0].text || existing[0].filename);
-                if (hasExisting) {
-                    questionsWrap.querySelectorAll('.question-card').forEach(function(card, idx) {
-                        if ((existing[idx] && (existing[idx].text || existing[idx].filename))) card.classList.add('item-done');
-                    });
-                }
-            }
+</div>
 
-            fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token))
-                .then(function(r) {
-                    if (r.status === 410) return r.json().then(function(d) { return { _closed: true, error: d.error }; });
-                    if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Förfrågan hittades inte'); });
-                    return r.json();
-                })
-                .then(function(data) {
-                    hide(loadingEl);
-                    if (data._closed) {
-                        show(closedCard);
-                        return;
-                    }
-                    show(formCard);
-                    renderForm(data);
-                })
-                .catch(function(err) {
-                    hide(loadingEl);
-                    show(errorEl);
-                    errorText.textContent = err.message || 'Kunde inte ladda förfrågan. Länken kan vara ogiltig eller stängd.';
-                });
-        })();
-    </script>
+<script src="js/config.js"></script>
+<script>
+  (function() {
+    const I = {
+      send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+      check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+      up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>',
+      chev:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+      x:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+      spin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>',
+    };
+
+    const getBaseUrl = () => (window.apiConfig && window.apiConfig.baseUrl) ? window.apiConfig.baseUrl : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:3001' : (window.location.origin || ''));
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const errorText = document.getElementById('error-text');
+    const closedCard = document.getElementById('closed-card');
+    const formWrap = document.getElementById('form-wrap');
+    const listEl = document.getElementById('list');
+    const byraLogoWrap = document.getElementById('byra-logo-wrap');
+
+    function show(el){ el.classList.remove('hidden'); }
+    function hide(el){ el.classList.add('hidden'); }
+
+    function escapeHtml(s){
+      if (s == null) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    if (!token) {
+      hide(loadingEl);
+      show(errorEl);
+      errorText.textContent = 'Ogiltig länk. Token saknas.';
+      return;
+    }
+
+    const baseUrl = getBaseUrl();
+
+    // per fråga: { done, text, files:[File], existingFilename }
+    let state = [];
+    let items = [];
+    let fileRequired = [];
+
+    function updateProgress(){
+      const done = state.filter(s => s.done).length;
+      const tot = state.length;
+      document.getElementById('cnt').textContent = done;
+      document.getElementById('tot').textContent = tot;
+      document.getElementById('bar').style.width = tot ? (done / tot * 100) + '%' : '0%';
+    }
+
+    function renderForm(data){
+      const title = (data.title || 'Underlag').trim();
+      const rawLines = title.split('\n').map(function(s){ return s.replace(/^\d+\.\s*/, '').trim(); }).filter(Boolean);
+      if (rawLines.length === 0) rawLines.push(title || 'Underlag');
+
+      items = [];
+      fileRequired = [];
+      rawLines.forEach(function(line){
+        var req = line.indexOf(' [fil obligatorisk]') !== -1;
+        if (req) line = line.replace(/\s*\[fil obligatorisk\]\s*$/, '').trim();
+        items.push(line);
+        fileRequired.push(req);
+      });
+
+      var existing = data.existingAnswers || [];
+
+      state = items.map(function(_, i){
+        return {
+          done: !!(existing[i] && (existing[i].text || existing[i].filename)),
+          text: (existing[i] && existing[i].text) ? existing[i].text : '',
+          files: [],
+          existingFilename: (existing[i] && existing[i].filename) ? existing[i].filename : ''
+        };
+      });
+
+      // deadline
+      var deadlineBox = document.getElementById('deadlineBox');
+      if (data.deadline) {
+        var ds = '';
+        var dt = new Date(String(data.deadline).trim());
+        if (!isNaN(dt.getTime())) {
+          ds = dt.toLocaleDateString('sv-SE', { day:'numeric', month:'long', year:'numeric' });
+          var now = new Date();
+          var d = Math.ceil((dt.setHours(23,59,59,999) - now) / 86400000);
+          var leftEl = document.getElementById('daysLeft');
+          if (d > 1) leftEl.textContent = d + ' dagar kvar';
+          else if (d === 1) leftEl.textContent = '1 dag kvar';
+          else if (d === 0) leftEl.textContent = 'Idag';
+          else { leftEl.textContent = 'Förfallen'; }
+        } else {
+          ds = String(data.deadline);
+        }
+        document.getElementById('deadlineDate').textContent = ds;
+        deadlineBox.style.display = 'flex';
+      } else {
+        deadlineBox.style.display = 'none';
+      }
+
+      document.getElementById('tot').textContent = items.length;
+
+      // build cards
+      listEl.innerHTML = '';
+      var firstOpenSet = false;
+      items.forEach(function(titleText, i){
+        var st = state[i];
+        var openThis = !st.done && !firstOpenSet;
+        if (openThis) firstOpenSet = true;
+
+        var el = document.createElement('div');
+        el.className = 'item' + (st.done ? ' done' : '') + (openThis ? ' open' : '');
+        el.innerHTML =
+          '<div class="item-top" data-toggle>' +
+            '<div class="num">' + (st.done ? I.check : (i + 1)) + '</div>' +
+            '<div class="item-title">' + escapeHtml(titleText) + (fileRequired[i] ? '<span class="req-tag">Fil obligatorisk</span>' : '') + '</div>' +
+            '<div class="pill ' + (st.done ? 'done' : 'wait') + '" data-pill>' + (st.done ? (I.check + 'Inskickat') : 'Väntar') + '</div>' +
+            '<div class="chev">' + I.chev + '</div>' +
+          '</div>' +
+          '<div class="item-body">' +
+            '<div class="body-inner">' +
+              '<textarea placeholder="Din kommentar (valfritt)"></textarea>' +
+              '<div class="drop" data-drop>' +
+                I.up +
+                '<div>Dra hit en fil eller <b>bläddra</b> – PDF, bild eller Excel' + (fileRequired[i] ? ' <b style="color:#dc2626">*</b>' : '') + '</div>' +
+                '<input type="file" multiple hidden data-file accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">' +
+              '</div>' +
+              '<div class="files" data-files></div>' +
+              '<div class="actions">' +
+                '<div class="row-error" data-error></div>' +
+                '<button class="submit' + (st.done ? ' again' : '') + '" data-submit>' + (st.done ? (I.send + 'Uppdatera svar') : (I.send + 'Skicka in')) + '</button>' +
+              '</div>' +
+              '<div class="done-note">' + I.check + ' Inskickat – tack! Du kan uppdatera det här tills deadline.</div>' +
+            '</div>' +
+          '</div>';
+        listEl.appendChild(el);
+
+        var textarea = el.querySelector('textarea');
+        var filesBox = el.querySelector('[data-files]');
+        var drop = el.querySelector('[data-drop]');
+        var input = el.querySelector('[data-file]');
+        var pill = el.querySelector('[data-pill]');
+        var numEl = el.querySelector('.num');
+        var submit = el.querySelector('[data-submit]');
+        var errEl = el.querySelector('[data-error]');
+
+        textarea.value = st.text;
+        textarea.addEventListener('input', function(){ st.text = textarea.value; });
+
+        function renderFiles(){
+          filesBox.innerHTML = '';
+          if (st.existingFilename) {
+            var ce = document.createElement('div');
+            ce.className = 'chip existing';
+            ce.innerHTML = '<span>' + escapeHtml(st.existingFilename) + '</span>';
+            filesBox.appendChild(ce);
+          }
+          st.files.forEach(function(f, idx){
+            var c = document.createElement('div');
+            c.className = 'chip';
+            c.innerHTML = '<span>' + escapeHtml(f.name) + '</span><button data-rm="' + idx + '">' + I.x + '</button>';
+            filesBox.appendChild(c);
+          });
+        }
+        function addFiles(fl){
+          Array.prototype.slice.call(fl).forEach(function(f){ st.files.push(f); });
+          renderFiles();
+        }
+        renderFiles();
+
+        el.querySelector('[data-toggle]').addEventListener('click', function(){ el.classList.toggle('open'); });
+
+        drop.addEventListener('click', function(){ input.click(); });
+        input.addEventListener('change', function(e){ addFiles(e.target.files); input.value = ''; });
+        drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
+        drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
+        drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
+        filesBox.addEventListener('click', function(e){
+          var b = e.target.closest('[data-rm]');
+          if (b) { st.files.splice(+b.dataset.rm, 1); renderFiles(); }
+        });
+
+        var readFileAsBase64 = function(file){
+          return new Promise(function(resolve, reject){
+            var r = new FileReader();
+            r.onload = function(){ resolve({ filename: file.name, file: r.result.replace(/^data:[^;]+;base64,/, '') }); };
+            r.onerror = function(){ reject(new Error('Kunde inte läsa fil')); };
+            r.readAsDataURL(file);
+          });
+        };
+
+        submit.addEventListener('click', function(){
+          errEl.style.display = 'none';
+          errEl.textContent = '';
+
+          var hasExistingFile = !!st.existingFilename;
+          if (!st.text && st.files.length === 0 && !hasExistingFile) {
+            errEl.textContent = 'Skriv en kommentar eller ladda upp en fil innan du skickar in.';
+            errEl.style.display = 'block';
+            return;
+          }
+          if (fileRequired[i] && st.files.length === 0 && !hasExistingFile) {
+            errEl.textContent = 'Den här punkten kräver att du laddar upp en fil.';
+            errEl.style.display = 'block';
+            return;
+          }
+
+          submit.disabled = true;
+          var origHtml = submit.innerHTML;
+          submit.innerHTML = I.spin + 'Skickar...';
+
+          var payload = { token: token, answerIndex: i, text: (st.text || '').trim(), files: [] };
+          var filesForUpload = st.files.slice();
+
+          Promise.all(filesForUpload.map(readFileAsBase64))
+            .then(function(results){
+              payload.files = results;
+              return fetch(baseUrl + '/api/samarbete/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+            })
+            .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'Kunde inte spara'); return d; }); })
+            .then(function(){
+              st.done = true;
+              if (filesForUpload.length) st.existingFilename = filesForUpload[filesForUpload.length - 1].name;
+              el.classList.add('done');
+              numEl.innerHTML = I.check;
+              pill.className = 'pill done';
+              pill.innerHTML = I.check + 'Inskickat';
+              submit.className = 'submit again';
+              submit.innerHTML = I.send + 'Uppdatera svar';
+              el.classList.remove('open');
+              updateProgress();
+            })
+            .catch(function(err){
+              errEl.textContent = err.message || 'Kunde inte spara. Försök igen.';
+              errEl.style.display = 'block';
+            })
+            .then(function(){ submit.disabled = false; if (!st.done) submit.innerHTML = origHtml; });
+        });
+      });
+
+      // byrå logo
+      if (data.byraLogoUrl && data.byraLogoUrl.indexOf('http') === 0) {
+        byraLogoWrap.innerHTML = '<img src="' + escapeHtml(data.byraLogoUrl) + '" alt="" />';
+        show(byraLogoWrap);
+      } else {
+        byraLogoWrap.innerHTML = '';
+        hide(byraLogoWrap);
+      }
+
+      updateProgress();
+    }
+
+    fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token))
+      .then(function(r){
+        if (r.status === 410) return r.json().then(function(d){ return { _closed: true, error: d.error }; });
+        if (!r.ok) return r.json().then(function(d){ throw new Error(d.error || 'Förfrågan hittades inte'); });
+        return r.json();
+      })
+      .then(function(data){
+        hide(loadingEl);
+        if (data._closed) { show(closedCard); return; }
+        show(formWrap);
+        renderForm(data);
+      })
+      .catch(function(err){
+        hide(loadingEl);
+        show(errorEl);
+        errorText.textContent = err.message || 'Kunde inte ladda förfrågan. Länken kan vara ogiltig eller stängd.';
+      });
+  })();
+</script>
 </body>
 </html>
