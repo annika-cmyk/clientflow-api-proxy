@@ -10989,6 +10989,43 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
 
 // ─── KYC-FORMULÄR ────────────────────────────────────────────────────────────
 
+const KUNDDATA_TABLE_KYC = 'tblOIuLQS2DqmOQWe';
+
+function parseInleedDocumentsList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.documents)) return data.documents;
+  return [];
+}
+
+async function fetchInleedDocumentById(docsignApiKey, inleedDocId) {
+  if (!docsignApiKey || !inleedDocId) return null;
+  const matchId = (d) => String(d.id || d.document_id || '') === String(inleedDocId);
+  for (const state of ['completed', 'pending', 'signed']) {
+    try {
+      const docsRes = await axios.get('https://docsign.se/api/documents', {
+        params: { api_key: docsignApiKey, state },
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      const doc = parseInleedDocumentsList(docsRes.data).find(matchId);
+      if (doc) return doc;
+    } catch (_) { /* prova nästa state */ }
+  }
+  return null;
+}
+
+function getInleedSignedPdfUrl(doc) {
+  if (!doc) return null;
+  return doc.signed_pdf_url || doc.signed_document_url || doc.download_url || null;
+}
+
+function isInleedDocumentSigned(doc) {
+  if (!doc) return false;
+  if (getInleedSignedPdfUrl(doc)) return true;
+  const st = (doc.status || doc.state || '').toString().toLowerCase();
+  return ['completed', 'signed', 'done', 'finished'].includes(st);
+}
+
 // GET /api/kyc-formular/:customerId – Hämta sparat KYC-formulär
 app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => {
   try {
@@ -11004,6 +11041,27 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
     const raw = f['KYC-formular (JSON)'] || '';
     let kyc = {};
     try { kyc = raw ? JSON.parse(raw) : {}; } catch (_) { kyc = {}; }
+
+    // Synka status från Inleed om dokumentet är färdigsignerat men JSON fortfarande säger "Skickat till kund"
+    const inleedId = kyc.inleedDokumentId;
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    if (inleedId && docsignApiKey && (kyc.status || '') === 'Skickat till kund') {
+      try {
+        const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
+        if (isInleedDocumentSigned(doc)) {
+          const datum = (doc.completed_at || doc.signed_at || doc.updated_at || '')
+            .toString().split(' ')[0].split('T')[0] || new Date().toISOString().split('T')[0];
+          kyc.status = 'Signerat';
+          kyc.signeringsdatum = /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : new Date().toISOString().split('T')[0];
+          await axios.patch(
+            `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME || 'Kunder')}/${customerId}`,
+            { fields: { 'KYC-formular (JSON)': JSON.stringify(kyc) } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (_) { /* GET ska inte fallera om Inleed är otillgängligt */ }
+    }
+
     res.json({ kyc });
   } catch (error) {
     console.error('❌ Error fetching KYC-formular:', error.message);
@@ -11345,6 +11403,9 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
     const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    if (!docsignApiKey || !airtableAccessToken) {
+      return res.status(500).json({ error: 'DOCSIGN_API_KEY eller Airtable-token saknas.' });
+    }
 
     const custRes = await axios.get(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
@@ -11361,54 +11422,31 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       return res.status(400).json({ error: 'Inget InleedDokumentId hittat.' });
     }
 
-    // Hämta dokument från Inleed
-    const docsRes = await axios.get(`https://docsign.se/api/documents?api_key=${docsignApiKey}`);
-    const docs = docsRes.data?.documents || docsRes.data || [];
-    const doc = docs.find(d => String(d.id) === String(inleedId));
+    const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
+    const pdfUrl = getInleedSignedPdfUrl(doc);
     if (!doc) {
       return res.status(404).json({ error: 'Dokumentet hittades inte i Inleed.' });
     }
-
-    if (doc.status !== 'completed' && doc.status !== 'signed') {
-      return res.status(400).json({ error: `Dokumentet är inte signerat ännu (status: ${doc.status}).` });
+    if (!pdfUrl || !isInleedDocumentSigned(doc)) {
+      const st = doc.status || doc.state || 'okänd';
+      return res.status(400).json({
+        error: 'Dokumentet är ännu inte färdigsignerat.',
+        hint: `Status i Inleed: ${st}. Kontrollera att alla parter har signerat.`,
+      });
     }
 
-    // Hämta signerad PDF
-    const pdfUrl = doc.signed_document_url || doc.download_url;
-    if (!pdfUrl) {
-      return res.status(400).json({ error: 'Ingen signerad PDF-URL hittad.' });
-    }
-    const pdfDownload = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+    const pdfDownload = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 60000 });
     const signedPdfBuffer = Buffer.from(pdfDownload.data);
 
-    // Spara till Dokumentation (samma mönster som uppdragsavtalet)
     const datum = new Date().toISOString().split('T')[0];
     const safeNamn = (kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
     const docFilename = `${safeNamn}-KYC-signerat-${datum}.pdf`;
 
-    // Spara som attachment i Airtable Dokumentation-tabell
-    const DOCS_TABLE = 'Dokument';
-    const docsPayload = {
-      records: [{
-        fields: {
-          'Kund': [customerId],
-          'Dokumentnamn': docFilename,
-          'Kategori': 'ovrigt',
-          'Filtyp': 'application/pdf',
-          'Uppladdad av': req.user?.email || '',
-          'Datum': datum
-        }
-      }]
-    };
-
-    try {
-      await axios.post(
-        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(DOCS_TABLE)}`,
-        docsPayload,
-        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-      );
-    } catch (e) {
-      console.warn('⚠️ Kunde inte spara till Dokument-tabellen:', e.message);
+    let savedToDocs = await uploadAttachmentToAirtable(
+      airtableAccessToken, baseId, customerId, signedPdfBuffer, docFilename, 'application/pdf', KUNDDATA_TABLE_KYC
+    );
+    if (!savedToDocs) {
+      console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation via Content API');
     }
 
     // Uppdatera KYC-status till Signerat
@@ -11420,7 +11458,13 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    res.json({ success: true, savedToDocs: true, message: 'Signerat KYC-dokument hämtat och sparat.' });
+    res.json({
+      success: true,
+      savedToDocs,
+      message: savedToDocs
+        ? 'Signerat KYC-dokument hämtat och sparat på Dokumentation.'
+        : 'Signerat KYC-dokument hämtat men kunde inte sparas på Dokumentation – kontakta support.'
+    });
 
   } catch (error) {
     console.error('❌ Fel vid hämtning av signerat KYC:', error.message);

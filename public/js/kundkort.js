@@ -6360,7 +6360,7 @@ class CustomerCardManager {
                         <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaKYCFormularInleed()">
                             <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
                         </button>
-                        ${(kycInleedId && kycStatus === 'Skickat till kund') ? `
+                        ${(kycInleedId && (kycStatus === 'Skickat till kund' || kycStatus === 'Signerat')) ? `
                         <button type="button" class="btn btn-secondary" onclick="customerCardManager.hamtaSigneratKYCFormular()" title="Hämta färdigsignerat KYC-dokument från Inleed">
                             <i class="fas fa-download"></i> Hämta signerat dokument
                         </button>` : ''}
@@ -6714,12 +6714,13 @@ class CustomerCardManager {
                 ...getAuthOptsKundkort()
             });
             const data = await resp.json();
-            if (resp.ok && data.savedToDocs) {
-                this.showNotification(data.message || 'Signerat KYC-dokument sparat på Dokumentation.', 'success');
+            if (resp.ok && data.success) {
+                this.showNotification(data.message || 'Signerat KYC-dokument hämtat.', data.savedToDocs ? 'success' : 'warning');
                 this.loadKYCFormular();
                 this.loadDocuments();
             } else {
-                this.showNotification(data.error || 'Kunde inte hämta signerat dokument.', 'error');
+                const hint = data.hint ? ` ${data.hint}` : '';
+                this.showNotification((data.error || 'Kunde inte hämta signerat dokument.') + hint, 'error');
             }
         } catch (e) {
             this.showNotification(`Fel: ${e.message}`, 'error');
