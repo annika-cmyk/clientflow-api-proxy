@@ -7948,11 +7948,12 @@ class CustomerCardManager {
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
         if (!content) return;
-        const categoryOrder = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'];
+        const categoryOrder = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
         const categoryIcons = {
             riskbedomning: 'fa-clipboard-check',
             arsredovisning: 'fa-file-invoice',
             uppdragsavtal: 'fa-file-signature',
+            kyc: 'fa-id-card',
             bolagsverket_skatteverket: 'fa-landmark',
             ovrigt: 'fa-folder-open'
         };
@@ -8011,6 +8012,7 @@ class CustomerCardManager {
             riskbedomning: 'Dokumentation riskbedömning',
             arsredovisning: 'Årsredovisningar',
             uppdragsavtal: 'Uppdragsavtal',
+            kyc: 'KYC-formulär',
             bolagsverket_skatteverket: 'Bolagsverket och Skatteverket',
             ovrigt: 'Övrigt'
         };

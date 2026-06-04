@@ -3410,6 +3410,78 @@ async function uploadAttachmentToAirtable(airtableToken, baseId, recordId, fileB
   return false;
 }
 
+const KUNDDATA_TABLE_DOCS = 'tblOIuLQS2DqmOQWe';
+
+/** Sparar PDF på kundens Dokumentation-flik (fält + kategori-metadata). */
+async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, fileBuffer, filename, category, options = {}) {
+  const contentType = options.contentType || 'application/pdf';
+  const customCategory = (options.customCategory || '').trim();
+  const baseUrl = options.baseUrl || null;
+
+  let saved = await uploadAttachmentToAirtableField(
+    airtableToken, baseId, customerId, fileBuffer, filename, contentType, KUNDDATA_TABLE_DOCS, 'Dokumentation'
+  );
+  if (!saved) {
+    saved = await uploadAttachmentToAirtable(
+      airtableToken, baseId, customerId, fileBuffer, filename, contentType, KUNDDATA_TABLE_DOCS
+    );
+  }
+
+  if (!saved && baseUrl) {
+    const fileUrl = await saveFileLocally(fileBuffer, filename, contentType, baseUrl);
+    if (fileUrl) {
+      try {
+        const custRes = await axios.get(
+          `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+          { headers: { Authorization: `Bearer ${airtableToken}` } }
+        );
+        const f = custRes.data.fields || {};
+        for (const fieldName of ['Dokumentation', 'Attachments']) {
+          try {
+            const existing = f[fieldName] || [];
+            const arr = Array.isArray(existing) ? [...existing] : [];
+            arr.push({ url: fileUrl, filename });
+            await axios.patch(
+              `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+              { fields: { [fieldName]: arr } },
+              { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' } }
+            );
+            saved = true;
+            console.log('✅ PDF sparad i fält:', fieldName);
+            break;
+          } catch (e) {
+            if (e.response?.status === 422) continue;
+          }
+        }
+      } catch (_) { /* ignore */ }
+    }
+  }
+
+  if (saved && category) {
+    try {
+      const custRes = await axios.get(
+        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+        { headers: { Authorization: `Bearer ${airtableToken}` } }
+      );
+      const f = custRes.data.fields || {};
+      let kategorier = [];
+      const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
+      if (raw) kategorier = JSON.parse(raw);
+      if (!Array.isArray(kategorier)) kategorier = [];
+      kategorier.push({ filename, category, customCategory });
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+        { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (e) {
+      console.warn('⚠️ Kunde inte spara Dokumentation Kategorier:', e.message);
+    }
+  }
+
+  return saved;
+}
+
 // Funktion för att spara fil lokalt och returnera URL
 // baseUrlOverride: om req.get('host') används, gör URL:en åtkomlig för Airtable vid ngrok/tunnel
 async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverride) {
@@ -5087,7 +5159,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const meta = dokumentationKategorier[i] || {};
       const cat = (meta.category || '').trim() || (meta.kategori || '').trim();
       const customCat = (meta.customCategory || meta.customKategori || '').trim();
-      const category = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'].includes(cat) ? cat : 'ovrigt';
+      const category = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'].includes(cat) ? cat : 'ovrigt';
       allItems.push({ ...a, _typ: 'dokumentation', _sourceField: 'Dokumentation', _sourceIndex: i, _category: category, _customCategory: customCat });
     });
 
@@ -5095,6 +5167,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       riskbedomning: 'Dokumentation riskbedömning',
       arsredovisning: 'Årsredovisningar',
       uppdragsavtal: 'Uppdragsavtal',
+      kyc: 'KYC-formulär',
       bolagsverket_skatteverket: 'Bolagsverket och Skatteverket',
       ovrigt: 'Övrigt'
     };
@@ -5205,7 +5278,7 @@ app.delete('/api/documents', authenticateToken, async (req, res) => {
   }
 });
 
-const DOCUMENT_CATEGORIES = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'];
+const DOCUMENT_CATEGORIES = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
 
 // POST /api/documents/upload – Ladda upp dokument med kategori (body: customerId, file [base64], filename, category, customCategory?)
 app.post('/api/documents/upload', authenticateToken, async (req, res) => {
@@ -11442,11 +11515,21 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
     const safeNamn = (kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
     const docFilename = `${safeNamn}-KYC-signerat-${datum}.pdf`;
 
-    let savedToDocs = await uploadAttachmentToAirtable(
-      airtableAccessToken, baseId, customerId, signedPdfBuffer, docFilename, 'application/pdf', KUNDDATA_TABLE_KYC
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host');
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL || (host ? `${protocol}://${host}` : null);
+
+    const savedToDocs = await savePdfToKundDokumentationTab(
+      airtableAccessToken,
+      baseId,
+      customerId,
+      signedPdfBuffer,
+      docFilename,
+      'kyc',
+      { baseUrl: publicBaseUrl, customCategory: 'KYC-formulär (signerat)' }
     );
     if (!savedToDocs) {
-      console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation via Content API');
+      console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation');
     }
 
     // Uppdatera KYC-status till Signerat
