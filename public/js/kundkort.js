@@ -2935,6 +2935,9 @@ class CustomerCardManager {
                             <div class="uppdrag-riskbox-title">Inga åtgärder hittades i kundens riskbedömning</div>
                         </div>`;
 
+        const ptlUnderlagRaw = (f['PTL Underlag'] || '').toString().trim();
+        const ptlUnderlagJson = this._esc(ptlUnderlagRaw || '[]');
+
         const ptlSectionHtml = hasRiskAtgarder ? `
                         <div class="uppdrag-block">
                             <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
@@ -2942,7 +2945,7 @@ class CustomerCardManager {
                             <div class="uppdrag-actions" style="margin-top:0.5rem;">
                                 <button type="button" class="btn btn-secondary btn-sm" data-action="upload-ptl"><i class="fas fa-upload"></i> Ladda upp underlag</button>
                             </div>
-                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${this._esc(ptlUnderlagRaw || '[]')}</textarea>
+                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${ptlUnderlagJson}</textarea>
                             <div class="uppdrag-ptl-files" data-ptl-files></div>
                             <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
                         </div>
@@ -2956,8 +2959,6 @@ class CustomerCardManager {
         ` : '';
 
         const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
-        const ptlUnderlagRaw = (f['PTL Underlag'] || '').toString().trim();
-        const ptlUnderlagJson = this._esc(ptlUnderlagRaw || '[]');
 
         const isDone = this._isUppdragDoneForPeriod(f);
         const doneBtnClass = isDone ? 'uppdrag-done-btn is-done' : 'uppdrag-done-btn';
