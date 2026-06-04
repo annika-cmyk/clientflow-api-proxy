@@ -5671,7 +5671,7 @@ async function ensureSamarbeteArkiveradField(airtableToken, baseId, tableId) {
  * Kräver SMTP i .env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (t.ex. "ClientFlow <underlag@clientflow.se>").
  */
 async function sendSamarbeteInviteEmail(options) {
-  const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage, deadlineDate } = options;
+  const { toEmail, toName, senderName, senderEmail, senderByra, senderLogoUrl, respondUrl, title, customerMessage, deadlineDate, isUpdate } = options;
   const host = (process.env.SMTP_HOST || '').trim();
   const user = (process.env.SMTP_USER || '').trim();
   const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
@@ -5694,9 +5694,17 @@ async function sendSamarbeteInviteEmail(options) {
   const safeToName = escapeHtml(String(toName || 'Kund'));
   const safeSenderName = escapeHtml(String(senderName || 'Vi'));
   const safeSenderByra = escapeHtml(String(senderByra || '').trim());
-  const senderLine = safeSenderByra
-    ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag eller besvara frågor via ClientFlow.`
-    : `${safeSenderName} har bett dig lämna underlag eller besvara frågor via ClientFlow.`;
+  const senderLine = isUpdate
+    ? (safeSenderByra
+        ? `${safeSenderName} på ${safeSenderByra} har uppdaterat en underlagsförfrågan till dig i ClientFlow. Du använder samma länk som tidigare – dina eventuella svar finns kvar.`
+        : `${safeSenderName} har uppdaterat en underlagsförfrågan till dig i ClientFlow. Du använder samma länk som tidigare – dina eventuella svar finns kvar.`)
+    : (safeSenderByra
+        ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag eller besvara frågor via ClientFlow.`
+        : `${safeSenderName} har bett dig lämna underlag eller besvara frågor via ClientFlow.`);
+  const updateNoticeHtml = isUpdate
+    ? `<p style="margin:0 0 16px 0; font-size:1rem; line-height:1.5; color:#0f172a; font-weight:600;">Din underlagsförfrågan har uppdaterats.</p>`
+    : '';
+  const ctaLabel = isUpdate ? 'Öppna länk och se uppdateringen' : 'Öppna länk och lämna underlag';
   const rawName = String(senderName || 'Vi').trim();
   const rawByra = String(senderByra || '').trim();
   const subjectLine = rawByra ? `${rawName}, ${rawByra}` : rawName;
@@ -5741,6 +5749,7 @@ async function sendSamarbeteInviteEmail(options) {
           <tr>
             <td style="padding:28px;">
               <p style="margin:0 0 16px 0; font-size:1rem; line-height:1.5; color:#334155;">Hej ${safeToName},</p>
+              ${updateNoticeHtml}
               <p style="margin:0 0 20px 0; font-size:1rem; line-height:1.5; color:#475569;">${senderLine}</p>
               ${customerMessageHtml}
               ${deadlineHtml}
@@ -5748,7 +5757,7 @@ async function sendSamarbeteInviteEmail(options) {
               <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
                 <tr>
                   <td style="border-radius:8px; background:#6366f1;">
-                    <a href="${respondUrl}" style="display:inline-block; padding:14px 28px; font-size:1rem; font-weight:600; color:#fff; text-decoration:none;">Öppna länk och lämna underlag</a>
+                    <a href="${respondUrl}" style="display:inline-block; padding:14px 28px; font-size:1rem; font-weight:600; color:#fff; text-decoration:none;">${ctaLabel}</a>
                   </td>
                 </tr>
               </table>
@@ -5781,15 +5790,20 @@ async function sendSamarbeteInviteEmail(options) {
       transporterOpts.requireTLS = true;
     }
     const transporter = nodemailer.createTransport(transporterOpts);
-    const textSenderLine = safeSenderByra
-      ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag via ClientFlow.`
-      : `${safeSenderName} har bett dig lämna underlag via ClientFlow.`;
+    const textSenderLine = isUpdate
+      ? (safeSenderByra
+          ? `${safeSenderName} på ${safeSenderByra} har uppdaterat en underlagsförfrågan till dig via ClientFlow. Du använder samma länk som tidigare – dina eventuella svar finns kvar.`
+          : `${safeSenderName} har uppdaterat en underlagsförfrågan till dig via ClientFlow. Du använder samma länk som tidigare – dina eventuella svar finns kvar.`)
+      : (safeSenderByra
+          ? `${safeSenderName} på ${safeSenderByra} har bett dig lämna underlag via ClientFlow.`
+          : `${safeSenderName} har bett dig lämna underlag via ClientFlow.`);
+    const textIntro = isUpdate ? 'Din underlagsförfrågan har uppdaterats.\n\n' : '';
     await transporter.sendMail({
       from,
       to: toEmail,
       replyTo: senderEmail || undefined,
-      subject: `Lämna underlag – från ${subjectLine}`,
-      text: `Hej ${safeToName},\n\n${textSenderLine}\n${deadlineStr ? `\nDeadline: ${deadlineStr}\n` : '\n'}\nÖppna denna länk för att lämna underlag eller besvara frågor:\n${respondUrl}\n\nMed vänliga hälsningar,\nClientFlow`,
+      subject: isUpdate ? `Din underlagsförfrågan har uppdaterats – från ${subjectLine}` : `Lämna underlag – från ${subjectLine}`,
+      text: `Hej ${safeToName},\n\n${textIntro}${textSenderLine}\n${deadlineStr ? `\nDeadline: ${deadlineStr}\n` : '\n'}\nÖppna denna länk för att lämna underlag eller besvara frågor:\n${respondUrl}\n\nMed vänliga hälsningar,\nClientFlow`,
       html
     });
     return { sent: true };
@@ -7684,6 +7698,192 @@ app.post('/api/samarbete/requests/:requestId/send', authenticateToken, async (re
     const msg = error.response?.data?.error?.message || error.message;
     console.error('POST /api/samarbete/requests/:requestId/send:', msg);
     res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// PUT /api/samarbete/requests/:requestId/update – uppdatera en redan skickad förfrågan (frågor/deadline)
+// och meddela kunden via mejl. Samma token/länk behålls och redan inlämnade svar bevaras.
+// Body: { title (radseparerade frågor), deadline?, customerMessage?, answerMapping?: (number|null)[], notify?: boolean }
+//  - answerMapping[nyIndex] = ursprungligt radindex (eller null för en ny fråga) så att svaren förblir
+//    rättinriktade mot frågorna även när frågor läggs till, tas bort eller flyttas.
+app.put('/api/samarbete/requests/:requestId/update', authenticateToken, async (req, res) => {
+  try {
+    const requestId = (req.params.requestId || '').trim();
+    if (!requestId) return res.status(400).json({ error: 'requestId krävs' });
+    const { title, deadline, customerMessage, answerMapping, notify } = req.body || {};
+    if (title == null || !String(title).trim()) return res.status(400).json({ error: 'title krävs' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Tabellen Samarbete hittades inte' });
+
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = recRes.data;
+    const fields = record.fields || {};
+    const customerId = fields['Kund ID'] || (fields['Kund'] && fields['Kund'][0]);
+    if (!customerId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+
+    // Avslutade/stängda förfrågningar är inte redigerbara – återöppna dem först.
+    if (fields['Stängd']) {
+      return res.status(409).json({ error: 'Förfrågan är avslutad och kan inte uppdateras. Återöppna den först om du vill ändra den.' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const cf = custRes.data.fields || {};
+    const custByraId = (cf['Byrå ID'] || cf.Byrå || '').toString();
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== String(userData.byraId || '').trim()) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const parseDeadlineDateOnly = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    };
+    const deadlineProvided = (deadline !== undefined);
+    const deadlineDate = parseDeadlineDateOnly(deadline);
+
+    const newTitle = String(title).trim();
+    // Samma parsning som kundformuläret (samarbete-svar.html) använder för att indexera svar mot frågor.
+    const parseTitleLines = (t) => String(t || '')
+      .split('\n')
+      .map(s => s.replace(/^\d+\.\s*/, '').trim())
+      .filter(Boolean);
+    const newLines = parseTitleLines(newTitle);
+
+    let existingAnswers = [];
+    const rawAns = (fields['Svar text'] || '').toString().trim();
+    if (rawAns.startsWith('[')) {
+      try { existingAnswers = JSON.parse(rawAns); } catch (_) { existingAnswers = []; }
+    }
+    const hadStructuredAnswers = Array.isArray(existingAnswers) && existingAnswers.length > 0;
+
+    // Bygg om svaren så att de följer med rätt fråga.
+    let newAnswers = null;
+    if (Array.isArray(answerMapping)) {
+      newAnswers = newLines.map((_, idx) => {
+        const orig = answerMapping[idx];
+        if (typeof orig === 'number' && orig >= 0 && existingAnswers[orig]) return existingAnswers[orig];
+        return { text: '', filename: null };
+      });
+    } else if (hadStructuredAnswers) {
+      // Ingen explicit mappning: bevara positionellt (bäst-möjligt), trimma/fyll till ny längd.
+      newAnswers = newLines.map((_, idx) => existingAnswers[idx] || { text: '', filename: null });
+    }
+
+    // Räkna ut status utifrån de (om-mappade) svaren och vilka punkter som kräver fil.
+    const computeUpdatedStatus = (answersArray) => {
+      const items = [];
+      const fileReq = [];
+      newTitle.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean).forEach((line) => {
+        let r = /\[fil obligatorisk\]\s*$/i.test(line);
+        if (r) line = line.replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+        items.push(line);
+        fileReq.push(r);
+      });
+      const total = items.length;
+      if (!total) return null;
+      for (let i = 0; i < total; i++) {
+        const a = (answersArray && answersArray[i]) || {};
+        const hasText = a.text && String(a.text).trim().length > 0;
+        const hasFile = !!a.filename;
+        if (!hasText && !hasFile) return 'Väntar';
+        if (fileReq[i] && !hasFile) return 'Väntar';
+      }
+      return 'Besvarad';
+    };
+
+    const updateFields = { 'Titel': newTitle };
+    if (deadlineProvided) updateFields['Deadline'] = deadlineDate || null;
+    if (customerMessage != null) updateFields['Meddelande'] = String(customerMessage).trim().slice(0, 100000);
+
+    // Uppdatera bara svar/status om det fanns strukturerade svar eller om en mappning skickades.
+    // Annars lämnas äldre fri-text-svar och status orörda.
+    if (newAnswers) {
+      updateFields['Svar text'] = JSON.stringify(newAnswers);
+      const st = computeUpdatedStatus(newAnswers);
+      if (st) {
+        updateFields['Status'] = st;
+        updateFields['Besvarad'] = st === 'Besvarad'
+          ? (fields['Besvarad'] || new Date().toISOString().slice(0, 19).replace('T', ' '))
+          : null;
+      }
+    }
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}/${requestId}`,
+      { fields: updateFields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    // Meddela kunden att förfrågan uppdaterats (samma länk/token).
+    let emailSent = false;
+    let emailError = null;
+    const toEmail = (fields['Mottagare e-post'] || '').toString().trim();
+    const token = (fields['Token'] || '').toString().trim();
+    const wantNotify = notify !== false;
+    if (wantNotify && toEmail && toEmail.includes('@') && token) {
+      const reqHost = (req.get('host') || '').toString().trim();
+      const inferredBase = req.protocol + '://' + (reqHost || 'localhost:3001');
+      const defaultPublicBase = (reqHost.includes('localhost') || reqHost.includes('127.0.0.1')) ? inferredBase : 'https://www.app.clientflow.se';
+      const publicBaseUrl = (process.env.PUBLIC_BASE_URL || '').toString().trim() || defaultPublicBase;
+      const respondUrl = `${publicBaseUrl}/samarbete-svar.html?token=${encodeURIComponent(token)}`;
+
+      const senderName = (userData.name || req.user.email || '').toString().trim() || 'Vi';
+      const senderByra = (userData.byra || '').toString().trim() || null;
+      const logoRaw = userData.logo;
+      const senderLogoUrl = Array.isArray(logoRaw) && logoRaw.length > 0 && logoRaw[0].url
+        ? logoRaw[0].url
+        : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
+
+      const result = await sendSamarbeteInviteEmail({
+        toEmail,
+        toName: (fields['Mottagare namn'] || '').toString().trim() || 'Kund',
+        senderName,
+        senderEmail: (req.user && req.user.email) ? String(req.user.email).trim() : undefined,
+        senderByra: senderByra || undefined,
+        senderLogoUrl: senderLogoUrl || undefined,
+        respondUrl,
+        title: newTitle,
+        customerMessage: (customerMessage != null && String(customerMessage).trim())
+          ? String(customerMessage).trim()
+          : ((fields['Meddelande'] || '').toString().trim() || undefined),
+        deadlineDate: deadlineProvided ? (deadlineDate || undefined) : (fields['Deadline'] || undefined),
+        isUpdate: true
+      });
+      emailSent = result.sent;
+      emailError = result.error || null;
+    }
+
+    res.json({
+      success: true,
+      emailSent,
+      emailError: emailError || undefined,
+      message: emailSent
+        ? `Förfrågan uppdaterad och ett mejl har skickats till ${toEmail}.`
+        : 'Förfrågan uppdaterad.'
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('PUT /api/samarbete/requests/:requestId/update:', msg);
+    res.status(status === 404 ? 404 : status).json({ error: msg });
   }
 });
 
