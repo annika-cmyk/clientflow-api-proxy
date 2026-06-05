@@ -7939,7 +7939,7 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         omsattning: fields['Omsättning'] ?? '',
         antalKundforetag: fields['Antal kundföretag'] ?? '',
         logga: fields['Logga'] ?? '',
-        bransch: fields['Bransch'] ?? fields['Typ av byrå'] ?? '',
+        bransch: fields['Typ av byrå'] ?? '',
         defaultUppsagningstid: fields['Default uppsägningstid'] ?? fields['Default uppsagningstid'] ?? '',
         defaultFakturaperiod: fields['Default faktureringsperiod'] ?? fields['Default faktureringsperiod'] ?? fields['Default fakturaperiod'] ?? '',
         defaultBetalningsvillkor: fields['Default betalningsvillkor'] ?? fields['Default betalningsvillkor (dagar)'] ?? '',
@@ -7957,7 +7957,7 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
   }
 });
 
-// PUT /api/byra/info – Uppdatera byråinfo (Antal anställda, Omsättning, Antal kundföretag, Logga, Bransch)
+// PUT /api/byra/info – Uppdatera byråinfo (Antal anställda, Omsättning, Antal kundföretag, Logga, Typ av byrå)
 app.put('/api/byra/info', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
@@ -7982,7 +7982,7 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.omsattning !== undefined) fields['Omsättning'] = body.omsattning;
     if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
     if (body.logga !== undefined) fields['Logga'] = body.logga;
-    if (body.bransch !== undefined) fields['Bransch'] = body.bransch;
+    if (body.bransch !== undefined) fields['Typ av byrå'] = body.bransch;
     if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = toNumberOrNull(body.defaultUppsagningstid);
     if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = body.defaultFakturaperiod;
     if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = toNumberOrNull(body.defaultBetalningsvillkor);
