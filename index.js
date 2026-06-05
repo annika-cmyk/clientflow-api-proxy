@@ -7999,6 +7999,57 @@ function formatByraProfilPromptBlock(profil) {
   ].join('\n');
 }
 
+function normalizeClientByraProfil(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw.fields && typeof raw.fields === 'object' ? { ...raw, ...raw.fields } : raw;
+  const profil = {
+    antalKunder: p.antalKunder ?? '',
+    vanligasteBolagsformer: p.vanligasteBolagsformer ?? '',
+    branscherKundstock: p.branscherKundstock ?? p.branscher ?? '',
+    andelInternationellHandel: p.andelInternationellHandel ?? p.andelUtland ?? '',
+    andelKontantintensiva: p.andelKontantintensiva ?? p.andelKontant ?? '',
+    leveranssatt: p.leveranssatt ?? '',
+    geografiskMarknad: p.geografiskMarknad ?? p.geografi ?? '',
+    antalAnstallda: p.antalAnstallda ?? '',
+    typAvByra: p.typAvByra ?? p.bransch ?? ''
+  };
+  const hasValue = Object.values(profil).some((v) => v !== '' && v != null);
+  return hasValue ? profil : null;
+}
+
+function formatByraProfilUserMessageBlock(profil) {
+  const p = profil || {};
+  const fmtPct = (v) => {
+    if (v === '' || v == null) return '–';
+    const n = Number(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? `${n}%` : String(v);
+  };
+  const fmtNum = (v) => (v === '' || v == null ? '–' : String(v));
+  const lines = [
+    'Byråns profil:',
+    `- Antal kunder: ${fmtNum(p.antalKunder)}`,
+    `- Vanligaste bolagsformer: ${p.vanligasteBolagsformer || '–'}`,
+    `- Branscher i kundstocken: ${p.branscherKundstock || '–'}`,
+    `- Andel kunder med internationell handel: ${fmtPct(p.andelInternationellHandel)}`,
+    `- Andel kontantintensiva kunder: ${fmtPct(p.andelKontantintensiva)}`,
+    `- Tjänster erbjuds via: ${p.leveranssatt || '–'}`,
+    `- Geografisk marknad: ${p.geografiskMarknad || '–'}`
+  ];
+  if (p.typAvByra) lines.push(`- Typ av byrå: ${p.typAvByra}`);
+  if (p.antalAnstallda !== '' && p.antalAnstallda != null) lines.push(`- Antal anställda: ${fmtNum(p.antalAnstallda)}`);
+  return lines.join('\n');
+}
+
+async function resolveByraProfilForAiRequest(req) {
+  const fromClient = normalizeClientByraProfil(req.body?.byraProfil ?? req.body?.byraProfile);
+  if (fromClient) return fromClient;
+  try {
+    const profilResult = await getByraProfilForRequest(req);
+    if (!profilResult.error && profilResult.profil) return profilResult.profil;
+  } catch (_) { /* profil är valfritt underlag */ }
+  return null;
+}
+
 async function getByraProfilForRequest(req) {
   const result = await getByraerRecordForUser(req);
   if (result.error) return result;
@@ -15186,31 +15237,27 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const namn = (req.body?.namn || '').toString().trim();
   if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
-  const tjanstetyp = (req.body?.tjanstetyp || '').toString().trim();
   const befintligt = req.body?.befintligt || {};
-
-  const befintligtText = (() => {
-    try {
-      const parts = [];
-      if (befintligt.tjanstebeskrivning) parts.push(`Tjänstebeskrivning: ${befintligt.tjanstebeskrivning}`);
-      if (befintligt.riskniva) parts.push(`Risknivå: ${befintligt.riskniva}`);
-      return parts.length ? parts.join('\n') : '';
-    } catch (_) { return ''; }
-  })();
 
   const riskniva = (befintligt.riskniva || '').toString().trim() || 'Medel';
 
-  let byraProfilBlock = '';
+  let byraProfil = null;
   try {
-    const profilResult = await getByraProfilForRequest(req);
-    if (!profilResult.error && profilResult.profil) {
-      byraProfilBlock = formatByraProfilPromptBlock(profilResult.profil) + '\n\n';
-    }
+    byraProfil = await resolveByraProfilForAiRequest(req);
   } catch (_) { /* profil är valfritt underlag */ }
 
-  const prompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
+  const byraProfilUserBlock = byraProfil
+    ? formatByraProfilUserMessageBlock(byraProfil)
+    : 'Byråns profil:\n- (Profil saknas – kalibrera utifrån generella antaganden för svenska redovisningsbyråer)';
 
-Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn och risknivå.
+  const befintligBeskrivning = (befintligt.tjanstebeskrivning || '').toString().trim();
+  const befintligtBlock = befintligBeskrivning
+    ? `\nBefintlig tjänstebeskrivning (kan förbättras):\n${befintligBeskrivning}`
+    : '';
+
+  const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
+
+Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, risknivå och byråns faktiska verksamhetsprofil.
 
 REGLER:
 - Håll dig strikt till tjänstens domän
@@ -15218,9 +15265,20 @@ REGLER:
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
 - Om tjänsten är av redovisningskaraktär: fokusera på avstämningar, kontroller och dokumentationskrav kopplade till just den tjänsten
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): fokusera på identitetskontroll, riskbedömning och dokumentation
-- Hot ska grundas på kända tillvägagångssätt från myndigheter och organisationer — ange alltid källan för varje hot
+- Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot
 
-KÄLLOR ATT UTGÅ FRÅN (använd de som är relevanta per hot):
+BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN:
+Använd byråns profil för att kalibrera den sammanvägda risknivån.
+Exempel på hur profilen påverkar:
+- Låg andel internationella kunder → minska risken för hot kopplade till gränsöverskridande transaktioner och utlandsbetalningar
+- Hög andel kontantintensiva kunder → öka risken för kontantrelaterade hot
+- Tjänster erbjuds på distans → öka risken kopplad till leveranssätt
+- Kundstock med enkel bolagsstruktur → minska risken för komplexa ägarstrukturrelaterade hot
+- Specifika branscher i kundstocken → lyft fram branschspecifika hot om de är relevanta
+
+Motivera alltid i beskrivningen hur byråprofilen påverkar den sammanvägda riskbedömningen för just denna tjänst.
+
+KÄLLOR ATT UTGÅ FRÅN:
 - Polismyndigheten / Finanspolisen (polisen.se)
 - Samordningsfunktionen mot penningtvätt och finansiering av terrorism
 - Ekobrottsmyndigheten (ekobrottsmyndigheten.se)
@@ -15231,24 +15289,24 @@ KÄLLOR ATT UTGÅ FRÅN (använd de som är relevanta per hot):
 - Brottsförebyggande rådet, Brå (bra.se)
 - Säkerhetspolisen, Säpo (sakerhetspolisen.se)
 
-${byraProfilBlock}TJÄNST: ${namn}
-RISKNIVÅ: ${riskniva} (Låg / Medel / Hög — högre risknivå = fler och striktare kontroller)
-
-Väg in BYRÅPROFIL ovan när du kalibrerar risknivåer, hot, sårbarheter och åtgärder (t.ex. hög andel internationell handel eller kontantintensiva kunder kan motivera striktare bedömning).
-
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-3 meningar om vad tjänsten innebär, byråns roll och varför den är relevant ur ett AML-perspektiv.",
-  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "Konkret beskrivning av hotet kopplat till just denna tjänst.", "kalla": "Källans namn, t.ex. Finanspolisen eller FATF" } ],
-  "sarbarheter": [ { "kategori": "Verksamhet/Kunder/Produkter/Leveranskanaler/Geografi", "titel": "Kort titel, max 5 ord", "beskrivning": "Konkret sårbarhet kopplad till tjänsten och kategorin." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Konkret åtgärd byrån ska vidta för denna tjänst." } ]
+  "beskrivning": "2-3 meningar om tjänsten och byråns roll. Inkludera en mening om hur byråns profil påverkar den sammanvägda risknivån.",
+  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "..." } ],
+  "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]
 }
 
-ANTAL (anpassa efter risknivå):
+ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 - hot: 2 (Låg), 3 (Medel), 4 (Hög)
 - sarbarheter: 2 (Låg), 2 (Medel), 3 (Hög)
 - atgarder: 3 (Låg), 4 (Medel), 5 (Hög)`;
+
+  const userPrompt = `Tjänst: ${namn}
+Risknivå: ${riskniva}
+
+${byraProfilUserBlock}${befintligtBlock}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -15304,8 +15362,6 @@ ANTAL (anpassa efter risknivå):
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
 
   try {
-    const assistantInstructions =
-      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
     const riskVectorStoreId =
       (process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
       || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
@@ -15313,9 +15369,9 @@ ANTAL (anpassa efter risknivå):
 
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
-      prompt,
+      userPrompt,
       {
-        instructions: assistantInstructions,
+        instructions: systemPrompt,
         vectorStoreId: riskVectorStoreId || undefined,
         maxWaitMs: 180000,
         pollMs: 1500,
