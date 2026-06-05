@@ -1,0 +1,111 @@
+/* =====================================================================
+   ClientFlow – NY färgskala (petrol, sval, ägd)
+   ---------------------------------------------------------------------
+   DROP-IN: ersätt ditt nuvarande :root-block (rad ~4–31 i styles.css)
+   med detta. Variabel-NAMNEN är oförändrade, så inget i appen går sönder
+   – bara värdena byts, vilket omfärgar allt som redan använder var(--...).
+
+   Efter detta: se de 4 manuella stegen längst ned (bakgrund, typsnitt,
+   gradient-knappar och hårdkodade hex). De ligger utanför :root.
+   ===================================================================== */
+:root {
+  --container-max: 1500px;
+
+  /* --- Text --- */
+  --text:        #5a626d;   /* var #374151  – sekundär/brödtext, lite svalare */
+  --title-text:  #15181d;   /* var #1e293b  – rubriker, högre kontrast */
+
+  /* --- Knappar: SOLID petrol istället för lila gradient --- */
+  --btn-bg:        #13505c;          /* var linear-gradient(...#667eea...#764ba2) */
+  --btn-bg-hover:  #0d3a43;          /* var #5a67d8 */
+  --btn-text:      #ffffff;
+  --btn-radius:    10px;             /* var 12px – aning stramare */
+
+  /* --- Typsnitt: Schibsted Grotesk (skandinavisk grotesk) --- */
+  --title-font: "Schibsted Grotesk", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --body-font:  "Schibsted Grotesk", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --title-weight: 700;               /* var 600 */
+  --body-weight:  400;
+
+  /* --- Accent (petrol – blå-lutande så den ej krockar med grön/röd) --- */
+  --accent:        #13505c;          /* var #667eea */
+  --accent-dark:   #0d3a43;          /* var #764ba2 */
+  --accent-light:  #bcd6da;          /* var #a5b4fc – ljus petrol */
+  --muted:         #e3eef0;          /* var #eef2ff – accent-tint (aktiva ytor) */
+  --muted-alt:     #d3e3e6;          /* var #e0e7ff */
+  --border:        #dcdfe5;          /* var #c7d2fe – neutral sval kant (ej lila) */
+
+  --radius:     12px;
+  --radius-xl:  16px;
+
+  --sidebar-bg: #ffffff;
+  --card-bg:    #ffffff;
+  --card-shadow: 0 1px 2px rgba(21,24,29,.04), 0 8px 28px rgba(21,24,29,.06); /* var lila skugga */
+
+  /* --- Status: ENBART för sin betydelse --- */
+  --success: #1f8a4c;   /* klar/godkänd */
+  --warning: #b07414;   /* ofullständig / behöver åtgärd  ← använd denna för "ej gjort", inte error */
+  --error:   #c23b2e;   /* verkligt fel / hög risk */
+
+  /* --- NYA hjälpvariabler (för uppstädning av hårdkodade hex) --- */
+  --app-bg:      #f5f6f8;   /* sval sidbakgrund (ersätter lavendel #f5f3ff) */
+  --panel-2:     #fafbfc;   /* nästlad yta */
+  --ink-3:       #8b929d;   /* ikoner i vila, tertiär text */
+  --label:       #9aa1ab;   /* versala fältetiketter / gruppnamn */
+  --line:        #e8eaee;   /* hårfin linje */
+  --success-tint:#e7f3ec;
+  --warning-tint:#f8eed7;
+  --error-tint:  #fbe9e7;
+  --accent-tint: #e3eef0;   /* = --muted, alias för tydlighet */
+
+  /* --- VARM kundyta: sätt klassen .cf-warm på formulärets wrapper --- */
+}
+
+/* Varm temperatur för kundvända ytor (underlags-formuläret).
+   Återanvänder accent/status ovan, byter bara neutraler + display-typsnitt. */
+.cf-warm {
+  --app-bg:     #f4efe6;
+  --card-bg:    #fffdf8;
+  --panel-2:    #fbf8f1;
+  --text:       #6b6456;
+  --title-text: #1c1b17;
+  --border:     #e4ddce;
+  --line:       #e4ddce;
+  --title-font: "Fraunces", Georgia, serif;   /* serif endast på stora varma rubriker */
+}
+
+
+/* =====================================================================
+   4 MANUELLA STEG (utanför :root)
+   ===================================================================== */
+
+/* STEG A — Sval bakgrund istället för lavendel.
+   I styles.css rad ~33 & ~35 står background: #f5f3ff hårdkodat. Byt till: */
+/*
+html { scroll-behavior: smooth; background: var(--app-bg); }
+body { ... background: var(--app-bg); ... }
+*/
+
+/* STEG B — Ladda Schibsted Grotesk (+ Fraunces om varm yta används).
+   Lägg i <head> där Inter laddas idag, ELLER överst i CSS:
+*/
+/*
+@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap');
+*/
+/* (Vite-alternativ: npm i @fontsource/schibsted-grotesk och importera vikterna i entry.) */
+
+/* STEG C — AI-element använder hårdkodad lila gradient. Byt till petrol.
+   Gäller .btn-ai (rad ~11269) och .ai-suggest-bar (rad ~11244): */
+/*
+.btn-ai        { background: var(--accent); }            // var linear-gradient(135deg,#667eea,#764ba2)
+.btn-ai:hover  { background: var(--accent-dark); transform: translateY(-1px); }
+.ai-suggest-bar{ background: var(--accent-tint); border-color: var(--accent-light); }
+.btn-add-row   { border-color: var(--accent-light); background: var(--accent-tint); color: var(--accent); }
+*/
+
+/* STEG D — Åtgärdslistan ska inte vara en grön vägg (rad ~11183).
+   Gör raderna neutrala med en liten grön bock istället: */
+/*
+.action-item { background: var(--card-bg); border: 1px solid var(--line); }
+.action-icon { color: var(--success); }
+*/
