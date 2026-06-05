@@ -4414,6 +4414,41 @@ body.sidebar-collapsed .logout-btn {
     gap: 1.5rem;
     margin-bottom: 1rem;
 }
+
+.byra-profil-sektion {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.byra-profil-rubrik {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.input-with-suffix {
+    display: flex;
+    align-items: stretch;
+}
+
+.input-with-suffix .form-input {
+    flex: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.input-with-suffix .input-suffix {
+    display: flex;
+    align-items: center;
+    padding: 0 0.75rem;
+    background: var(--surface-muted, #f1f5f9);
+    border: 1px solid var(--border-color, #cbd5e1);
+    border-left: 0;
+    border-radius: 0 6px 6px 0;
+    color: var(--text-muted, #64748b);
+    font-size: 0.9rem;
+}
 .byra-logga-preview {
     width: 120px;
     height: 60px;

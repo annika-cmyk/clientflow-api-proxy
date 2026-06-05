@@ -164,6 +164,20 @@ class ByraAnvandareManager {
       if (omsattning) omsattning.value = f.omsattning ?? '';
       const antalKundforetag = document.getElementById('byra-antal-kundforetag');
       if (antalKundforetag) antalKundforetag.value = f.antalKundforetag ?? '';
+      const antalKunder = document.getElementById('byra-antal-kunder');
+      if (antalKunder) antalKunder.value = f.antalKunder ?? '';
+      const bolagsformer = document.getElementById('byra-bolagsformer');
+      if (bolagsformer) bolagsformer.value = f.vanligasteBolagsformer ?? '';
+      const branscherKundstock = document.getElementById('byra-branscher-kundstock');
+      if (branscherKundstock) branscherKundstock.value = f.branscherKundstock ?? '';
+      const andelUtland = document.getElementById('byra-andel-utland');
+      if (andelUtland) andelUtland.value = f.andelInternationellHandel ?? '';
+      const andelKontant = document.getElementById('byra-andel-kontant');
+      if (andelKontant) andelKontant.value = f.andelKontantintensiva ?? '';
+      const leveranssatt = document.getElementById('byra-leveranssatt');
+      if (leveranssatt) leveranssatt.value = f.leveranssatt ?? '';
+      const geografi = document.getElementById('byra-geografi');
+      if (geografi) geografi.value = f.geografiskMarknad ?? '';
       const defUpps = document.getElementById('byra-default-uppsagningstid');
       if (defUpps) defUpps.value = f.defaultUppsagningstid ?? '';
       const defFaktura = document.getElementById('byra-default-fakturaperiod');
@@ -439,15 +453,45 @@ class ByraAnvandareManager {
     }
   }
 
+  validateByraProfilFields() {
+    const antalKunderRaw = (document.getElementById('byra-antal-kunder')?.value ?? '').toString().trim();
+    if (antalKunderRaw !== '') {
+      const n = Number(antalKunderRaw);
+      if (!Number.isFinite(n) || n < 0) return 'Antal kunder måste vara 0 eller högre.';
+    }
+    const checkPercent = (id, label) => {
+      const raw = (document.getElementById(id)?.value ?? '').toString().trim();
+      if (raw === '') return '';
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 100) return `${label} måste vara mellan 0 och 100.`;
+      return '';
+    };
+    return checkPercent('byra-andel-utland', 'Andel internationell handel')
+      || checkPercent('byra-andel-kontant', 'Andel kontantintensiva kunder')
+      || '';
+  }
+
   async saveByraInfo() {
     const statusEl = document.getElementById('byra-spara-status');
     if (statusEl) statusEl.textContent = 'Sparar...';
+    const validationError = this.validateByraProfilFields();
+    if (validationError) {
+      if (statusEl) statusEl.textContent = validationError;
+      return;
+    }
     try {
       const body = {
         antalAnstallda: document.getElementById('byra-antal-anstallda')?.value ?? '',
         omsattning: document.getElementById('byra-omsattning')?.value ?? '',
         antalKundforetag: document.getElementById('byra-antal-kundforetag')?.value ?? '',
-        bransch: document.getElementById('byra-bransch')?.value ?? ''
+        bransch: document.getElementById('byra-bransch')?.value ?? '',
+        antalKunder: document.getElementById('byra-antal-kunder')?.value ?? '',
+        vanligasteBolagsformer: document.getElementById('byra-bolagsformer')?.value ?? '',
+        branscherKundstock: document.getElementById('byra-branscher-kundstock')?.value ?? '',
+        andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
+        andelKontantintensiva: document.getElementById('byra-andel-kontant')?.value ?? '',
+        leveranssatt: document.getElementById('byra-leveranssatt')?.value ?? '',
+        geografiskMarknad: document.getElementById('byra-geografi')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       if (!res.ok) {
