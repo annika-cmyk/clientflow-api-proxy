@@ -11318,74 +11318,122 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .btn-ai.loading i { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Dynamiska rader i modalen */
-.dyn-list { display: flex; flex-direction: column; gap: 0.55rem; }
-.dyn-row {
+/* Dynamiska rader i modalen – 3-dels kortlayout */
+.dyn-list { display: flex; flex-direction: column; gap: 0.65rem; }
+
+.dyn-row.dyn-card {
     display: flex;
-    align-items: flex-start;
-    gap: 0.55rem;
-    background: #f8fafc;
-    border: 1px solid #eef2f7;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--line, #e8eaee);
     border-radius: 10px;
-    padding: 0.55rem 0.65rem;
 }
-.dyn-row .dyn-fields { flex: 1; display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+
+.dyn-row-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.65rem;
+    background: var(--panel-2, #fafbfc);
+    border-bottom: 1px solid var(--line, #e8eaee);
+}
+
+.dyn-drag {
+    color: var(--ink-3, #8b929d);
+    cursor: grab;
+    font-size: 0.85rem;
+    line-height: 1;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.dyn-header-spacer { flex: 1; min-width: 0; }
+
+.dyn-header-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--label, #9aa1ab);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
 .dyn-row .dyn-typ,
 .dyn-row .dyn-kategori {
     flex-shrink: 0;
-    align-self: flex-start;
     font-size: 0.8rem;
-    padding: 0.35rem 0.4rem;
+    padding: 0.35rem 0.5rem;
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #fff;
 }
+
+.dyn-row .dyn-typ { min-width: 72px; }
 .dyn-row .dyn-kategori { min-width: 120px; }
-.dyn-row .dyn-titel,
-.dyn-row .dyn-besk {
+
+.dyn-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.55rem 0.65rem;
+}
+
+.dyn-row-body .dyn-titel,
+.dyn-row-body .dyn-besk {
     width: 100%;
+    box-sizing: border-box;
     font-size: 0.85rem;
-    padding: 0.4rem 0.55rem;
+    padding: 0.45rem 0.55rem;
     border: 1px solid #d7dee8;
     border-radius: 8px;
     background: #fff;
     font-family: inherit;
 }
-.dyn-row .dyn-besk { resize: vertical; }
-/* Diskret källrad längst ned i hot-kortet (källhänvisning + ev. länk) */
-.dyn-row .dyn-kalla-row {
+
+.dyn-row-body .dyn-titel { font-weight: 600; }
+.dyn-row-body .dyn-besk { resize: vertical; min-height: 4.5rem; }
+
+/* Diskret källrad längst ned i hot-kortet */
+.dyn-card .dyn-kalla-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    border-top: 0.5px solid var(--line);
-    padding-top: 6px;
-    margin-top: 2px;
+    border-top: 0.5px solid var(--line, #e8eaee);
+    padding: 6px 12px;
+    background: var(--card-bg, #fff);
 }
-.dyn-row .dyn-kalla-icon {
+
+.dyn-card .dyn-kalla-icon {
     font-size: 14px;
-    color: var(--ink-3);
+    color: var(--ink-3, #8b929d);
     flex-shrink: 0;
 }
-.dyn-row .dyn-kalla {
+
+.dyn-card .dyn-kalla {
     flex: 1;
     min-width: 0;
     border: none;
     background: transparent;
     font-size: 12px;
-    color: var(--text);
+    color: var(--text, #5a626d);
     font-family: inherit;
     padding: 2px 0;
 }
-.dyn-row .dyn-kalla:focus { outline: none; }
-.dyn-row .dyn-kalla-link {
+
+.dyn-card .dyn-kalla:focus { outline: none; }
+
+.dyn-card .dyn-kalla-link {
     flex-shrink: 0;
     font-size: 11px;
     white-space: nowrap;
-    color: var(--accent);
+    color: var(--accent, #13505c);
     text-decoration: none;
 }
-.dyn-row .dyn-kalla-link:hover { text-decoration: underline; }
-.dyn-remove {
+
+.dyn-card .dyn-kalla-link:hover { text-decoration: underline; }
+
+.dyn-row-header .dyn-remove {
     flex-shrink: 0;
     width: 28px;
     height: 28px;
@@ -11399,4 +11447,5 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: center;
     transition: background 0.2s ease;
 }
-.dyn-remove:hover { background: #fecaca; }
+
+.dyn-row-header .dyn-remove:hover { background: #fecaca; }
