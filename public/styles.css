@@ -54,6 +54,19 @@
   --accent-tint: #e3eef0;   /* = --muted, alias för tydlighet */
 }
 
+/* Varm temperatur för kundvända ytor (underlags-formuläret).
+   Återanvänder accent/status ovan, byter bara neutraler + display-typsnitt. */
+.cf-warm {
+  --app-bg:     #f4efe6;
+  --card-bg:    #fffdf8;
+  --panel-2:    #fbf8f1;
+  --text:       #6b6456;
+  --title-text: #1c1b17;
+  --border:     #e4ddce;
+  --line:       #e4ddce;
+  --title-font: "Fraunces", Georgia, serif;
+}
+
 html { scroll-behavior: smooth; background: var(--app-bg); }
 body {
   margin: 0; color: var(--text); background: var(--app-bg);
@@ -316,7 +329,7 @@ body.sidebar-collapsed .logout-btn {
     background: var(--muted-alt);
     border-color: var(--accent);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    box-shadow: 0 4px 12px var(--accent-tint);
 }
 
 .sidebar-nav {
@@ -702,12 +715,12 @@ body.sidebar-collapsed .logout-btn {
     background: var(--btn-bg);
     color: var(--btn-text);
     border: none;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.35);
+    box-shadow: 0 2px 8px var(--accent-tint);
 }
 .btn-primary:hover {
     background: var(--btn-bg-hover);
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.45);
+    box-shadow: 0 4px 16px var(--accent-tint);
 }
 .btn-ghost { 
     background: transparent; 
@@ -809,7 +822,7 @@ body.sidebar-collapsed .logout-btn {
 .form-group input:focus, .form-group select:focus, .form-group textarea:focus { 
     outline: none; 
     border-color: var(--accent); 
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .form-help { 
     display: block; 
@@ -923,9 +936,9 @@ body.sidebar-collapsed .logout-btn {
     border-color: rgba(239, 68, 68, 0.2); 
 }
 .message.info { 
-    background: rgba(102, 126, 234, 0.1); 
+    background: var(--accent-tint); 
     color: var(--accent); 
-    border-color: rgba(102, 126, 234, 0.2); 
+    border-color: var(--accent-light); 
 }
 
 /* Mock Notice */
@@ -1418,7 +1431,7 @@ body.sidebar-collapsed .logout-btn {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    color: #64748b;
+    color: var(--text);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
@@ -1490,7 +1503,7 @@ body.sidebar-collapsed .logout-btn {
     height: 1.25rem;
     padding: 0 0.25rem;
     border-radius: 999px;
-    background: var(--accent, #667eea);
+    background: var(--accent);
     color: #fff;
     font-size: 0.7rem;
     font-weight: 700;
@@ -1572,7 +1585,7 @@ body.sidebar-collapsed .logout-btn {
 .kundkort-extern-option-card {
     margin-bottom: 1rem;
     padding: 0.85rem 1rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 10px;
     background: #f8fafc;
 }
@@ -1593,13 +1606,13 @@ body.sidebar-collapsed .logout-btn {
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-    accent-color: var(--accent, #667eea);
+    accent-color: var(--accent);
 }
 
 .kundkort-extern-option-hint {
     margin: 0.45rem 0 0 1.6rem;
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--text);
     line-height: 1.4;
 }
 
@@ -1625,7 +1638,7 @@ body.sidebar-collapsed .logout-btn {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
-    color: #64748b;
+    color: var(--text);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
@@ -1690,7 +1703,7 @@ body.sidebar-collapsed .logout-btn {
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.75rem 0.85rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     background: #fff;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -1706,7 +1719,7 @@ body.sidebar-collapsed .logout-btn {
     width: 34px;
     height: 34px;
     border-radius: 10px;
-    background: #f1f5f9;
+    background: var(--line);
     color: #475569;
     display: flex;
     align-items: center;
@@ -1745,7 +1758,7 @@ body.sidebar-collapsed .logout-btn {
 }
 .byra-anvandare-tabs #uppdragsbrev .byra-bilaga-sub {
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1816,7 +1829,7 @@ body.sidebar-collapsed .logout-btn {
     color: #475569;
 }
 .byra-prislista-row {
-    border-bottom: 1px solid #eef2f7;
+    border-bottom: 1px solid var(--line);
 }
 .byra-prislista-row:last-child {
     border-bottom: none;
@@ -1831,7 +1844,7 @@ body.sidebar-collapsed .logout-btn {
     border-radius: 8px;
     border: 1px solid #dde3ec;
     background: #fff;
-    color: #64748b;
+    color: var(--text);
     cursor: pointer;
 }
 .byra-prislista-eye {
@@ -1840,18 +1853,18 @@ body.sidebar-collapsed .logout-btn {
     border-radius: 8px;
     border: 1px solid #dde3ec;
     background: #fff;
-    color: #64748b;
+    color: var(--text);
     cursor: pointer;
 }
 .byra-prislista-eye.is-hidden {
-    color: #94a3b8;
-    border-color: #e2e8f0;
+    color: var(--ink-3);
+    border-color: var(--line);
 }
 .byra-prislista-eye:hover {
     background: #f8fafc;
 }
 .byra-prislista-remove:hover {
-    color: #dc2626;
+    color: var(--error);
     border-color: #fecaca;
     background: #fff5f5;
 }
@@ -2070,12 +2083,12 @@ body.sidebar-collapsed .logout-btn {
     margin: 0 0 0.25rem;
     font-size: 1.25rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--title-text);
 }
 
 .lead-orgnr {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
     font-weight: 500;
 }
 
@@ -2111,13 +2124,13 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-bottom: 0.3rem;
 }
 
 .lead-field span {
     font-size: 0.92rem;
-    color: #1e293b;
+    color: var(--title-text);
     font-weight: 500;
 }
 
@@ -2132,7 +2145,7 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-bottom: 0.6rem;
 }
 
@@ -2173,17 +2186,17 @@ body.sidebar-collapsed .logout-btn {
 .lead-role-name {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
 }
 
 .lead-role-title {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 .lead-empty {
     font-size: 0.88rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     font-style: italic;
 }
 
@@ -2194,9 +2207,9 @@ body.sidebar-collapsed .logout-btn {
 }
 .lead-namn-item {
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--title-text);
     padding: 0.2rem 0.5rem;
-    background: #f1f5f9;
+    background: var(--line);
     border-radius: 6px;
 }
 .lead-avveckling {
@@ -2217,17 +2230,17 @@ body.sidebar-collapsed .logout-btn {
 }
 .lead-ar-period {
     font-weight: 500;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .lead-ar-typ {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 /* Dashboard – samma rubrikstil som övriga sidor (KUNDLISTA m.fl.) */
 .dashboard-subtitle {
     font-size: 0.95rem;
-    color: #64748b;
+    color: var(--text);
     margin: 0.35rem 0 0;
 }
 
@@ -2292,7 +2305,7 @@ body.sidebar-collapsed .logout-btn {
     margin: 0 0 0.35rem 0;
     font-size: 1.25rem;
     font-weight: 700;
-    color: var(--title-text, #1e293b);
+    color: var(--title-text);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -2344,7 +2357,7 @@ body.sidebar-collapsed .logout-btn {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
-    box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 14px var(--accent-tint);
 }
 .kom-igang-arrow-btn.hidden {
     opacity: 0;
@@ -2388,7 +2401,7 @@ body.sidebar-collapsed .logout-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
     color: #fff;
     font-weight: 700;
     font-size: 0.95rem;
@@ -2403,7 +2416,7 @@ body.sidebar-collapsed .logout-btn {
     margin: 0 0 0.5rem 0;
     font-size: 1rem;
     font-weight: 600;
-    color: var(--title-text, #1e293b);
+    color: var(--title-text);
 }
 .kom-igang-step-content p {
     margin: 0;
@@ -2451,7 +2464,7 @@ body.sidebar-collapsed .logout-btn {
     flex-shrink: 0;
 }
 .kom-igang-checklist label:has(input:checked) {
-    color: #64748b;
+    color: var(--text);
     text-decoration: line-through;
 }
 .kom-igang-ext-link {
@@ -2577,7 +2590,7 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.25rem;
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-left: 0.5rem;
 }
 .kom-igang-step:not(.kom-igang-step--minimerad) .kom-igang-expand-hint {
@@ -2592,12 +2605,12 @@ body.sidebar-collapsed .logout-btn {
     border-radius: var(--radius);
     border: 1px solid rgba(167, 139, 250, 0.2);
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(102, 126, 234, 0.06);
+    box-shadow: 0 1px 3px var(--accent-tint);
     transition: box-shadow 0.2s, border-color 0.2s;
 }
 .dashboard-card:hover {
     border-color: rgba(167, 139, 250, 0.35);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.08);
+    box-shadow: 0 4px 12px var(--accent-tint);
 }
 .dashboard-card-header {
     display: flex;
@@ -2623,7 +2636,7 @@ body.sidebar-collapsed .logout-btn {
 }
 .dashboard-card-count {
     font-weight: 500;
-    color: #64748b;
+    color: var(--text);
     margin-left: 0.25rem;
     font-size: 0.8125rem;
 }
@@ -2633,7 +2646,7 @@ body.sidebar-collapsed .logout-btn {
 .dashboard-card-desc {
     margin: 0 0 0.75rem;
     font-size: 0.8125rem;
-    color: #64748b;
+    color: var(--text);
     line-height: 1.45;
 }
 .dashboard-search-form {
@@ -2643,15 +2656,15 @@ body.sidebar-collapsed .logout-btn {
 }
 .dashboard-search-form small {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-top: 0.25rem;
 }
 .dashboard-card-header .btn-ghost {
-    color: #64748b;
+    color: var(--text);
 }
 .dashboard-card-header .btn-ghost:hover {
     color: #475569;
-    background: #e2e8f0;
+    background: var(--line);
 }
 
 /* Infällbara kort */
@@ -2668,7 +2681,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.5rem;
 }
 .dashboard-collapse-icon {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.75rem;
     transition: transform 0.2s ease;
 }
@@ -2703,14 +2716,14 @@ body.sidebar-collapsed .logout-btn {
     flex: 1;
     min-width: 160px;
     padding: 0.6rem 0.85rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     font-size: 0.9rem;
 }
 .dashboard-search-row input:focus {
     outline: none;
-    border-color: var(--accent, #667eea);
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-tint);
 }
 .dashboard-search-row input.valid { border-color: #10b981; }
 .dashboard-search-row input.invalid { border-color: #ef4444; }
@@ -2741,7 +2754,7 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.65rem;
     padding: 0.5rem 0.85rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
     text-decoration: none;
     color: inherit;
     transition: background 0.15s;
@@ -2773,7 +2786,7 @@ body.sidebar-collapsed .logout-btn {
 .dashboard-row-link .kundlista-row-meta {
     flex-shrink: 0;
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
 }
 .dashboard-row-link .kundlista-row-icon {
     flex-shrink: 0;
@@ -2820,11 +2833,11 @@ body.sidebar-collapsed .logout-btn {
 .my-task-row .my-task-meta {
     flex-shrink: 0;
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
     white-space: nowrap;
 }
 .my-task-akut {
-    color: #dc2626;
+    color: var(--error);
     flex-shrink: 0;
     margin-right: 0.4rem;
 }
@@ -2848,11 +2861,11 @@ body.sidebar-collapsed .logout-btn {
 }
 .avvikelse-dash-kund i {
     margin-right: 0.35rem;
-    color: var(--accent, #667eea);
+    color: var(--accent);
     opacity: 0.8;
 }
 .avvikelse-dash-typ { color: #475569; font-size: 0.85rem; white-space: nowrap; }
-.avvikelse-dash-datum { color: #94a3b8; font-size: 0.8rem; white-space: nowrap; }
+.avvikelse-dash-datum { color: var(--ink-3); font-size: 0.8rem; white-space: nowrap; }
 .avvikelse-dash-status { flex-shrink: 0; white-space: nowrap; font-size: 0.75rem; }
 .avvikelse-dashboard-row .kundlista-row-arrow { margin-left: 0; }
 @media (max-width: 700px) {
@@ -2869,7 +2882,7 @@ body.sidebar-collapsed .logout-btn {
 .kundlista-empty {
     padding: 2rem 1.35rem;
     text-align: center;
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 .kundlista-empty i {
     display: block;
@@ -2885,7 +2898,7 @@ body.sidebar-collapsed .logout-btn {
 .kundlista-loading {
     padding: 2rem;
     text-align: center;
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 .kundlista-loading i { margin-right: 0.5rem; }
 .kundlista-loading p { margin: 0.5rem 0 0; font-size: 0.9rem; }
@@ -3577,7 +3590,7 @@ body.sidebar-collapsed .logout-btn {
 }
 .dashboard-status-inline .status-header.dashboard-card-header {
     padding: 1rem 1.35rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
 }
 .dashboard-status-inline .status-header h3 {
     margin: 0;
@@ -3588,7 +3601,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.5rem;
 }
 .dashboard-status-inline .status-header h3 i {
-    color: var(--accent, #667eea);
+    color: var(--accent);
 }
 .dashboard-status-inline .status-grid {
     padding: 1rem 1.35rem;
@@ -3758,19 +3771,19 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.75rem;
     margin-bottom: 1rem;
-    color: #dc2626;
+    color: var(--error);
 }
 
 .error-header i {
     font-size: 1.5rem;
-    color: #dc2626;
+    color: var(--error);
 }
 
 .error-header h3 {
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #dc2626;
+    color: var(--error);
 }
 
 .error-content {
@@ -3779,7 +3792,7 @@ body.sidebar-collapsed .logout-btn {
 
 .error-content p {
     margin: 0 0 1rem 0;
-    color: #374151;
+    color: var(--text);
     font-size: 1rem;
     line-height: 1.5;
 }
@@ -3796,7 +3809,7 @@ body.sidebar-collapsed .logout-btn {
     margin: 0 0 0.5rem 0;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--text);
 }
 
 .error-details pre {
@@ -4063,7 +4076,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .risk-level.risk-medium {
-    background: rgba(102, 126, 234, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
 }
 
@@ -4469,7 +4482,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .byrarutiner-format-toolbar button:hover {
-    background: #f1f5f9;
+    background: var(--line);
     color: var(--accent);
 }
 
@@ -4482,7 +4495,7 @@ body.sidebar-collapsed .logout-btn {
     margin-top: 0.5rem;
     padding: 1rem;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 4px;
     font-size: 0.95rem;
     line-height: 1.6;
@@ -4540,8 +4553,8 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .byra-card-view {
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    background: var(--line);
+    border: 1px solid var(--line);
     border-radius: 6px;
     padding: 1rem 3rem 1rem 1rem;
     min-height: 60px;
@@ -4589,7 +4602,7 @@ body.sidebar-collapsed .logout-btn {
 .byra-card-view:empty::before,
 .byra-card-value:empty::before {
     content: '?';
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 
 .byra-card-actions {
@@ -4610,7 +4623,7 @@ body.sidebar-collapsed .logout-btn {
     width: 32px;
     height: 32px;
     border: none;
-    background: rgba(102, 126, 234, 0.15);
+    background: var(--accent-tint);
     color: var(--accent);
     border-radius: 6px;
     cursor: pointer;
@@ -4621,7 +4634,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .byra-card-edit-btn:hover {
-    background: rgba(102, 126, 234, 0.25);
+    background: var(--accent-tint);
 }
 
 .byra-card-edit {
@@ -4638,7 +4651,7 @@ body.sidebar-collapsed .logout-btn {
 
 .byrarutiner-format-toolbar .format-tip {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-left: 0.5rem;
 }
 
@@ -4648,7 +4661,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .byrarutiner-section .section-desc {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.9rem;
     margin: 0 0 1rem 0;
 }
@@ -4792,7 +4805,7 @@ body.sidebar-collapsed .logout-btn {
     margin-top: 1rem;
     padding: 0.85rem 1rem;
     background: #f8fafc;
-    border-left: 3px solid var(--accent, #667eea);
+    border-left: 3px solid var(--accent);
     border-radius: 0 6px 6px 0;
     font-size: 0.9rem;
     color: #475569;
@@ -4806,31 +4819,31 @@ body.sidebar-collapsed .logout-btn {
 .kundkort-company-name {
     font-size: 1.6rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
     margin: 0.5rem 0 0.2rem 0;
 }
 
 .kundkort-orgnr {
     font-size: 0.95rem;
-    color: #64748b;
+    color: var(--text);
     margin: 0;
 }
 
 /* ?? ?vrig KYC ????????????????????????????????????????? */
 .kyc-layout { display: flex; flex-direction: column; gap: 1rem; }
-.kyc-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.1rem 1.25rem; }
-.kyc-section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
-.kyc-row { display: flex; align-items: baseline; gap: 0.75rem; padding: 0.45rem 0; border-bottom: 1px solid #f1f5f9; }
+.kyc-section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.25rem; }
+.kyc-section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text); margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
+.kyc-row { display: flex; align-items: baseline; gap: 0.75rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
 .kyc-row:last-child { border-bottom: none; }
 .kyc-row--chips { align-items: flex-start; }
-.kyc-row-label { font-size: 0.8rem; font-weight: 600; color: #94a3b8; min-width: 200px; display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
-.kyc-row-value { font-size: 0.88rem; color: #1e293b; }
+.kyc-row-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-3); min-width: 200px; display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+.kyc-row-value { font-size: 0.88rem; color: var(--title-text); }
 .kyc-chips-wrap { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .kyc-chip { font-size: 0.78rem; padding: 0.2rem 0.6rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 20px; font-weight: 500; }
-.kyc-richtext-row { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0; border-bottom: 1px solid #f1f5f9; }
+.kyc-richtext-row { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .kyc-richtext-row:last-child { border-bottom: none; }
 .kyc-richtext-row--warn .kyc-richtext { background: #fef9c3; border-color: #fde68a; color: #92400e; }
-.kyc-richtext { font-size: 0.87rem; color: #374151; line-height: 1.6; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.65rem 0.85rem; white-space: pre-wrap; }
+.kyc-richtext { font-size: 0.87rem; color: var(--text); line-height: 1.6; background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 0.65rem 0.85rem; white-space: pre-wrap; }
 
 .kyc-section-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; }
 .kyc-section-title-row .kyc-section-title { margin-bottom: 0; }
@@ -4839,7 +4852,7 @@ body.sidebar-collapsed .logout-btn {
 .riskf-chip--highrisk { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 .riskf-chip--high { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .riskf-checkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.4rem; margin-bottom: 0.5rem; }
-.riskf-check-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: background 0.12s; user-select: none; font-size: 0.83rem; color: #374151; }
+.riskf-check-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background 0.12s; user-select: none; font-size: 0.83rem; color: var(--text); }
 .riskf-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
 .riskf-check-item input[type="checkbox"] { display: none; }
 .riskf-check-item input:checked ~ .tjanst-check-box { background: #6366f1; border-color: #6366f1; }
@@ -4848,9 +4861,9 @@ body.sidebar-collapsed .logout-btn {
 /* Pencil edit icon button */
 .btn-icon-edit {
     background: none;
-    border: 1.5px solid #e2e8f0;
+    border: 1.5px solid var(--line);
     border-radius: 7px;
-    color: #94a3b8;
+    color: var(--ink-3);
     width: 30px;
     height: 30px;
     display: inline-flex;
@@ -4890,31 +4903,31 @@ body.sidebar-collapsed .logout-btn {
 .risker-selector-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
 .risker-selector-count { font-size: 0.8rem; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 0.25rem 0.65rem; border-radius: 20px; }
 .risker-grupp { margin-bottom: 1rem; }
-.risker-grupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 0.5rem; }
-.risker-vald-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 0.4rem; }
+.risker-grupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-bottom: 0.5rem; }
+.risker-vald-item { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 0.4rem; }
 .risker-vald-top { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
-.risker-vald-namn { font-size: 0.88rem; font-weight: 600; color: #1e293b; }
-.tjanst-collapsible-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; }
-.tjanst-collapsible-item:hover { background: #f1f5f9; }
+.risker-vald-namn { font-size: 0.88rem; font-weight: 600; color: var(--title-text); }
+.tjanst-collapsible-item { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; }
+.tjanst-collapsible-item:hover { background: var(--line); }
 .tjanst-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.tjanst-chevron { font-size: 0.75rem; color: #94a3b8; transition: transform 0.2s; flex-shrink: 0; }
-.tjanst-collapsible-body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0; }
-.risker-vald-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b; margin-top: 0.9rem; margin-bottom: 0.45rem; padding-bottom: 0.25rem; border-bottom: 1px solid #e2e8f0; }
+.tjanst-chevron { font-size: 0.75rem; color: var(--ink-3); transition: transform 0.2s; flex-shrink: 0; }
+.tjanst-collapsible-body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+.risker-vald-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); margin-top: 0.9rem; margin-bottom: 0.45rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--line); }
 .risker-vald-item .risker-vald-section-label:first-child { margin-top: 0; }
 .risker-vald-desc { font-size: 0.82rem; color: #475569; line-height: 1.6; margin-top: 0; white-space: pre-wrap; }
-.risker-vald-atgard { font-size: 0.8rem; color: #64748b; display: flex; gap: 0.35rem; align-items: flex-start; margin-top: 0.2rem; }
+.risker-vald-atgard { font-size: 0.8rem; color: var(--text); display: flex; gap: 0.35rem; align-items: flex-start; margin-top: 0.2rem; }
 .risker-vald-atgard i { margin-top: 0.15rem; color: #10b981; flex-shrink: 0; }
 .risker-checkgrupp { margin-bottom: 1rem; }
-.risker-checkgrupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid #f1f5f9; }
-.risker-check-item { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.75rem; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; margin-bottom: 0.4rem; transition: background 0.12s; user-select: none; }
+.risker-checkgrupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text); margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
+.risker-check-item { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; margin-bottom: 0.4rem; transition: background 0.12s; user-select: none; }
 .risker-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
 .risker-check-item input[type="checkbox"] { display: none; }
 .risker-check-item input:checked ~ .tjanst-check-box { background: #6366f1; border-color: #6366f1; }
 .risker-check-item input:checked ~ .tjanst-check-box::after { display: block; }
 .risker-check-label { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; }
 .risker-check-top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.risker-check-namn { font-size: 0.88rem; font-weight: 600; color: #1e293b; }
-.risker-check-desc { font-size: 0.8rem; color: #64748b; line-height: 1.5; white-space: pre-wrap; }
+.risker-check-namn { font-size: 0.88rem; font-weight: 600; color: var(--title-text); }
+.risker-check-desc { font-size: 0.8rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
 
 /* Risk-pill (kompakt badge) */
 .risk-pill {
@@ -4945,7 +4958,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.75rem;
     padding: 1.25rem 1.5rem;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
 }
 
@@ -4960,7 +4973,7 @@ body.sidebar-collapsed .logout-btn {
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 .rb-summary-meta span {
@@ -4974,7 +4987,7 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 
 .rb-risk-badge {
@@ -5007,7 +5020,7 @@ body.sidebar-collapsed .logout-btn {
 
 .rb-section {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 1.1rem 1.25rem;
 }
@@ -5019,13 +5032,13 @@ body.sidebar-collapsed .logout-btn {
     letter-spacing: 0.06em;
 }
 .rb-section-title i {
-    color: var(--accent, #667eea);
+    color: var(--accent);
     margin-right: 0.35rem;
 }
 
 .rb-text {
     font-size: 0.9rem;
-    color: #374151;
+    color: var(--text);
     line-height: 1.6;
     margin: 0;
     white-space: pre-wrap;
@@ -5033,7 +5046,7 @@ body.sidebar-collapsed .logout-btn {
 
 .rb-comment {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
     font-style: italic;
     margin: 0.75rem 0 0 0;
     padding: 0.6rem 0.75rem;
@@ -5064,11 +5077,11 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .rb-factor-label--neg {
-    color: #dc2626;
+    color: var(--error);
 }
 
 .rb-factor-label--pos {
-    color: #16a34a;
+    color: var(--success);
 }
 
 .rb-chips {
@@ -5111,7 +5124,7 @@ body.sidebar-collapsed .logout-btn {
 .rb-value {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
 }
 
 .rb-pep-badge {
@@ -5133,8 +5146,8 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .rb-pep-badge--unknown {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--line);
+    color: var(--text);
 }
 
 .rb-link {
@@ -5163,7 +5176,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.9rem;
     padding: 0.75rem 1rem;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 10px;
 }
 
@@ -5189,18 +5202,18 @@ body.sidebar-collapsed .logout-btn {
 .roller-namn {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
 }
 
 .roller-roll {
     font-size: 0.78rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 /* ?? Tj?nster-block ??????????????????????????????????? */
 .tjanster-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 1.5rem;
 }
@@ -5215,7 +5228,7 @@ body.sidebar-collapsed .logout-btn {
 .tjanster-header h4 {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--text);
     margin: 0;
     display: flex;
     align-items: center;
@@ -5266,8 +5279,8 @@ body.sidebar-collapsed .logout-btn {
 
 .tjanst-chip--inactive {
     background: #f8fafc;
-    color: #94a3b8;
-    border: 1px solid #e2e8f0;
+    color: var(--ink-3);
+    border: 1px solid var(--line);
 }
 
 .tjanst-chip--highrisk.tjanst-chip--active {
@@ -5299,12 +5312,12 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #16a34a;
+    color: var(--success);
     margin: 0 0 0.5rem 0;
 }
 
 .tjanster-section-label--inactive {
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-top: 1.1rem;
 }
 
@@ -5314,7 +5327,7 @@ body.sidebar-collapsed .logout-btn {
 
 .tjanster-empty-msg {
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     font-style: italic;
     margin: 0 0 1rem 0;
 }
@@ -5322,7 +5335,7 @@ body.sidebar-collapsed .logout-btn {
 /* Redigeringsl?ge ? checkboxar */
 .tjanster-edit-hint {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
     margin-bottom: 1rem;
 }
 
@@ -5338,7 +5351,7 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.6rem;
     padding: 0.6rem 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     cursor: pointer;
     transition: background 0.12s, border-color 0.12s;
@@ -5364,7 +5377,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .tjanst-check-item input:checked + .tjanst-check-box + .tjanst-check-label {
-    color: #1e293b;
+    color: var(--title-text);
     font-weight: 500;
 }
 
@@ -5415,7 +5428,7 @@ body.sidebar-collapsed .logout-btn {
     display: flex;
     gap: 0.6rem;
     padding-top: 0.5rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--line);
 }
 
 /* ?? Collapsible info-card ??????????????????????????????? */
@@ -5460,7 +5473,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.6rem;
     font-weight: 600;
     font-size: 0.925rem;
-    color: var(--title-text, #1e293b);
+    color: var(--title-text);
 }
 
 .collapsible-title i {
@@ -5517,7 +5530,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .collapsible-chevron {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.8rem;
     transition: transform 0.22s ease;
     transform: rotate(0deg);
@@ -5532,9 +5545,9 @@ body.sidebar-collapsed .logout-btn {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #fff;
-    color: #94a3b8;
+    color: var(--ink-3);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5546,13 +5559,13 @@ body.sidebar-collapsed .logout-btn {
     z-index: 2;
 }
 .card-edit-fab:hover {
-    background: #f1f5f9;
-    color: #1e293b;
+    background: var(--line);
+    color: var(--title-text);
     box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .card-edit-fab.is-active {
     background: #fee2e2;
-    color: #dc2626;
+    color: var(--error);
     border-color: #fca5a5;
 }
 /* FAB-penna: collapsible-body m?ste vara position:relative */
@@ -5565,7 +5578,7 @@ body.sidebar-collapsed .logout-btn {
 .uppdrag-antas-section {
     margin-top: 1rem;
     padding-top: 0.85rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 .uppdrag-antas-row {
     display: flex;
@@ -5579,7 +5592,7 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.55rem;
     cursor: pointer;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
     user-select: none;
 }
 .uppdrag-antas-label input[type="checkbox"] {
@@ -5589,7 +5602,7 @@ body.sidebar-collapsed .logout-btn {
     width: 20px;
     height: 20px;
     border-radius: 5px;
-    border: 2px solid #64748b;
+    border: 2px solid var(--text);
     background: #fff;
     display: flex;
     align-items: center;
@@ -5598,8 +5611,8 @@ body.sidebar-collapsed .logout-btn {
     flex-shrink: 0;
 }
 .uppdrag-antas-label input[type="checkbox"]:checked + .uppdrag-antas-check-box {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: var(--success);
+    border-color: var(--success);
 }
 .uppdrag-antas-label input[type="checkbox"]:checked + .uppdrag-antas-check-box::after {
     content: '';
@@ -5617,7 +5630,7 @@ body.sidebar-collapsed .logout-btn {
 }
 .uppdrag-antas-datum {
     font-size: 0.82rem;
-    color: #16a34a;
+    color: var(--success);
     font-weight: 500;
     display: flex;
     align-items: center;
@@ -5626,7 +5639,7 @@ body.sidebar-collapsed .logout-btn {
 .uppdrag-antas-hint {
     margin-top: 0.45rem;
     font-size: 0.78rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     display: flex;
     align-items: center;
     gap: 0.35rem;
@@ -5661,15 +5674,15 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.4rem;
     padding: 0.4rem 1rem;
     border-radius: 20px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid var(--line);
     background: #f8fafc;
-    color: #64748b;
+    color: var(--text);
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
 }
-.ai-rb-niva-btn:hover { background: #f1f5f9; }
+.ai-rb-niva-btn:hover { background: var(--line); }
 .ai-rb-niva-btn.is-active.is-lag  { background: #dcfce7; border-color: #16a34a; color: #15803d; }
 .ai-rb-niva-btn.is-active.is-medel { background: #fef9c3; border-color: #ca8a04; color: #a16207; }
 .ai-rb-niva-btn.is-active.is-hog  { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
@@ -5765,13 +5778,13 @@ body.sidebar-collapsed .logout-btn {
     padding: 0.6rem 0.85rem;
     background: #f8fafc;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
 }
 .document-list-item:hover {
-    background: #f1f5f9;
+    background: var(--line);
 }
 .document-list-icon {
-    color: #dc2626;
+    color: var(--error);
     font-size: 1rem;
     flex-shrink: 0;
 }
@@ -5783,12 +5796,12 @@ body.sidebar-collapsed .logout-btn {
     display: block;
     font-weight: 500;
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .document-list-meta {
     display: block;
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text);
     margin-top: 0.15rem;
 }
 .document-list-buttons {
@@ -5804,7 +5817,7 @@ body.sidebar-collapsed .logout-btn {
 .document-list-item .document-delete-btn {
     padding: 0.35rem 0.5rem;
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 .document-list-item .document-delete-btn:hover {
     color: #ef4444;
@@ -5840,13 +5853,13 @@ body.sidebar-collapsed .logout-btn {
     color: #334155;
     margin: 0 0 0.5rem 0;
     padding-bottom: 0.35rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--line);
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 .documentation-category-title i {
-    color: #64748b;
+    color: var(--text);
 }
 .dokumentation-page-header {
     display: flex;
@@ -5858,11 +5871,11 @@ body.sidebar-collapsed .logout-btn {
 .dokumentation-page-header .risk-header-content { flex: 1; min-width: 12rem; }
 .dokumentation-page-desc { margin: 0.35rem 0 0; max-width: 36rem; }
 .dokumentation-header-actions { flex-shrink: 0; }
-.dokumentation-export-history { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0; }
+.dokumentation-export-history { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
 .dokumentation-section { margin-bottom: 2rem; }
 .dokumentation-riskbedomning-view {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 1.25rem;
 }
@@ -5902,7 +5915,7 @@ body.sidebar-collapsed .logout-btn {
 .document-list-actions {
     margin-top: 1rem;
     padding-top: 0.75rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 /* Samarbete-fliken – sektioner för mindre rörighet */
@@ -5912,7 +5925,7 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-bottom: 0.35rem;
 }
 .samarbete-block {
@@ -5935,7 +5948,7 @@ body.sidebar-collapsed .logout-btn {
     max-width: 100%;
     padding: 0.5rem 0.75rem;
     font-size: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 6px;
     background: #f8fafc;
     overflow: hidden;
@@ -5951,13 +5964,13 @@ body.sidebar-collapsed .logout-btn {
 }
 .samarbete-status-vantar { background: #fef3c7; color: #92400e; }
 .samarbete-status-besvarad { background: #d1fae5; color: #065f46; }
-.samarbete-meta { font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem; }
+.samarbete-meta { font-size: 0.85rem; color: var(--text); margin-bottom: 0.25rem; }
 .samarbete-email { margin-left: 0.35rem; }
 .samarbete-date { margin-bottom: 0.5rem; }
 .samarbete-body { margin-top: 0.5rem; }
 .samarbete-response-text { white-space: pre-wrap; margin: 0 0 0.5rem 0; color: #334155; }
-.samarbete-no-response { color: #94a3b8; font-style: italic; }
-.samarbete-modal-hint { color: #64748b; font-size: 0.9rem; margin-bottom: 1rem; }
+.samarbete-no-response { color: var(--ink-3); font-style: italic; }
+.samarbete-modal-hint { color: var(--text); font-size: 0.9rem; margin-bottom: 1rem; }
 .samarbete-setup-status { margin-top: 0.75rem; font-size: 0.9rem; }
 .samarbete-item-row { display: flex; gap: 0.5rem; align-items: stretch; margin-bottom: 0.5rem; }
 .samarbete-item-row .form-control { flex: 1; min-width: 0; }
@@ -5970,7 +5983,7 @@ body.sidebar-collapsed .logout-btn {
     cursor: pointer;
     user-select: none;
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--ink-3);
     transition: color 0.15s, background 0.15s;
     box-sizing: border-box;
     align-self: stretch;
@@ -5978,7 +5991,7 @@ body.sidebar-collapsed .logout-btn {
 }
 .samarbete-file-req-wrap .samarbete-file-req-icon { display: flex; align-items: center; justify-content: center; }
 .samarbete-item-row .samarbete-item-remove { align-self: center; }
-.samarbete-file-req-wrap:hover { color: #64748b; background: #f1f5f9; }
+.samarbete-file-req-wrap:hover { color: var(--text); background: var(--line); }
 .samarbete-file-req-wrap .samarbete-file-required-input {
     position: absolute;
     width: 1px;
@@ -5987,16 +6000,16 @@ body.sidebar-collapsed .logout-btn {
     pointer-events: none;
 }
 .samarbete-file-req-icon { font-size: 1rem; }
-.samarbete-file-req-wrap.is-checked .samarbete-file-req-icon { color: #dc2626; }
+.samarbete-file-req-wrap.is-checked .samarbete-file-req-icon { color: var(--error); }
 .samarbete-file-req-wrap.is-checked:hover { color: #b91c1c; background: #fef2f2; }
-.samarbete-item-remove { color: #94a3b8; }
-.samarbete-item-remove:hover { color: #dc2626; }
-.btn-outline-danger { color: #dc2626; border: 1px solid #fecaca; }
+.samarbete-item-remove { color: var(--ink-3); }
+.samarbete-item-remove:hover { color: var(--error); }
+.btn-outline-danger { color: var(--error); border: 1px solid #fecaca; }
 .btn-outline-danger:hover { background: #fef2f2; color: #b91c1c; }
-.samarbete-closed-badge { font-size: 0.85rem; color: #64748b; }
+.samarbete-closed-badge { font-size: 0.85rem; color: var(--text); }
 
 .samarbete-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.samarbete-list-item { padding: 1rem; background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; }
+.samarbete-list-item { padding: 1rem; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
 
 /* Collapsible: rubrik fäller in/ut innehåll */
 .samarbete-item-head--toggle {
@@ -6016,7 +6029,7 @@ body.sidebar-collapsed .logout-btn {
     margin-left: auto;
     flex-shrink: 0;
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text);
     transition: transform 0.2s ease;
 }
 .samarbete-list-item.collapsed .samarbete-item-chevron { transform: rotate(-90deg); }
@@ -6025,16 +6038,16 @@ body.sidebar-collapsed .logout-btn {
 .samarbete-list-item.collapsed .samarbete-item-collapse { display: none; }
 
 .samarbete-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
-.samarbete-item-title { font-weight: 600; color: #1e293b; }
-.samarbete-item-date { font-size: 0.8rem; color: #64748b; }
+.samarbete-item-title { font-weight: 600; color: var(--title-text); }
+.samarbete-item-date { font-size: 0.8rem; color: var(--text); }
 .samarbete-item-full-title { font-size: 0.85rem; color: #475569; white-space: pre-wrap; margin-top: 0.25rem; margin-bottom: 0.25rem; }
 .samarbete-item-collapse .samarbete-meta { margin-top: 0; }
 .samarbete-item-body { margin-top: 0.5rem; }
 .samarbete-item-body.samarbete-response-block .samarbete-block--questions .samarbete-response-list { margin-top: 0.25rem; }
 .samarbete-item-body.samarbete-response-block .samarbete-block--questions .samarbete-section-label { margin-bottom: 0.35rem; }
-.samarbete-item-actions { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.samarbete-item-actions { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .samarbete-response-block { margin-top: 0.5rem; }
-.samarbete-per-item-response { margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e2e8f0; }
+.samarbete-per-item-response { margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--line); }
 .samarbete-per-item-response:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .samarbete-item-head--meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
 .samarbete-item-head-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; flex: 1; min-width: 0; }
@@ -6042,26 +6055,26 @@ body.sidebar-collapsed .logout-btn {
 .samarbete-item-meta-line { color: #475569; font-size: 0.875rem; }
 .samarbete-item-meta-line i { margin-right: 0.25rem; opacity: 0.85; }
 .samarbete-response-list { list-style: none; margin: 0; padding: 0; }
-.samarbete-response-list li { margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+.samarbete-response-list li { margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--line); }
 .samarbete-response-list li:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .samarbete-link-input-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 .samarbete-qa-table { margin-top: 0.25rem; font-size: 0.875rem; }
-.samarbete-qa-header { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #e2e8f0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em; color: #64748b; }
+.samarbete-qa-header { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: center; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--line); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 .samarbete-qa-col-q { }
 .samarbete-qa-col-a { }
-.samarbete-response-list--cols .samarbete-response-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e2e8f0; }
+.samarbete-response-list--cols .samarbete-response-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--line); }
 .samarbete-response-list--cols .samarbete-response-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .samarbete-response-q { font-size: 0.9em; font-weight: 600; color: #334155; display: block; margin-bottom: 0.2rem; }
 .samarbete-response-a { font-size: 0.9em; color: #475569; display: block; }
 .samarbete-file-link { color: #6366f1; text-decoration: none; font-size: 0.9rem; }
 .samarbete-file-link:hover { text-decoration: underline; }
 .samarbete-extra-files { margin-top: 0.5rem; }
-.samarbete-empty { color: #94a3b8; font-style: italic; margin: 0; }
+.samarbete-empty { color: var(--ink-3); font-style: italic; margin: 0; }
 
 /* ?? Kunduppgifter-block ??????????????????????????????? */
 .kunduppgifter-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 1.5rem;
     margin-top: 1.25rem;
@@ -6077,7 +6090,7 @@ body.sidebar-collapsed .logout-btn {
 .kunduppgifter-header h4 {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #374151;
+    color: var(--text);
     margin: 0;
     display: flex;
     align-items: center;
@@ -6112,7 +6125,7 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #94a3b8;
+    color: var(--ink-3);
     min-width: 160px;
     display: flex;
     align-items: center;
@@ -6122,7 +6135,7 @@ body.sidebar-collapsed .logout-btn {
 
 .kunduppgifter-value {
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--title-text);
     white-space: pre-wrap;
 }
 
@@ -6144,7 +6157,7 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #64748b;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.35rem;
@@ -6157,7 +6170,7 @@ body.sidebar-collapsed .logout-btn {
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #f8fafc;
-    color: #1e293b;
+    color: var(--title-text);
     transition: border-color 0.15s, box-shadow 0.15s;
     box-sizing: border-box;
     font-family: inherit;
@@ -6205,7 +6218,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #f8fafc;
-    color: #374151;
+    color: var(--text);
     cursor: pointer;
     line-height: 1.4;
     transition: background 0.15s, border-color 0.15s;
@@ -6224,7 +6237,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #f8fafc;
-    color: #1e293b;
+    color: var(--title-text);
     line-height: 1.6;
     outline: none;
     box-sizing: border-box;
@@ -6237,7 +6250,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .kunduppgifter-richtext:empty:before {
     content: attr(data-placeholder);
-    color: #94a3b8;
+    color: var(--ink-3);
     pointer-events: none;
 }
 .kunduppgifter-richtext ul {
@@ -6274,7 +6287,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .btn-ghost {
     background: transparent;
     border: 1px solid #cbd5e1;
-    color: #64748b;
+    color: var(--text);
     padding: 0.4rem 0.9rem;
     border-radius: 8px;
     font-size: 0.85rem;
@@ -6283,7 +6296,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .btn-ghost:hover {
-    background: #f1f5f9;
+    background: var(--line);
 }
 
 .risk-header h1 {
@@ -6401,7 +6414,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .risk-level-badge.risk-medium {
-    background: rgba(102, 126, 234, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
 }
 
@@ -6420,7 +6433,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 32px;
     height: 32px;
     border: none;
-    background: rgba(102, 126, 234, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
     border-radius: 50%;
     display: flex;
@@ -7272,7 +7285,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 /* Customer Header */
 .kund-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
     color: white;
     padding: 3rem 0;
     margin-bottom: 2rem;
@@ -7467,7 +7480,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
-    color: #64748b;
+    color: var(--text);
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -7537,7 +7550,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.75rem;
     padding-bottom: 1rem;
-    border-bottom: 2px solid #f1f5f9;
+    border-bottom: 2px solid var(--line);
     font-family: 'Inter', sans-serif;
 }
 
@@ -7562,14 +7575,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 1.25rem;
     background: #f8fafc;
     border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     visibility: visible !important;
     opacity: 1 !important;
     transition: all 0.2s ease;
 }
 
 .customer-details-section .info-item:hover {
-    background: #f1f5f9;
+    background: var(--line);
     border-color: #cbd5e1;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -7581,7 +7594,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .customer-details-section .info-item label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
@@ -7591,7 +7604,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .customer-details-section .info-item span,
 .customer-details-section .info-item p {
     font-size: 1rem;
-    color: #1e293b;
+    color: var(--title-text);
     font-weight: 500;
     margin: 0;
     font-family: 'Inter', sans-serif;
@@ -7613,7 +7626,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 1.5rem;
     background: #f8fafc;
     border-radius: 8px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
 }
 
 .customer-details-section .services-section h4 {
@@ -7648,12 +7661,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.875rem 1rem;
     background: #ffffff;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     transition: all 0.2s ease;
 }
 
 .customer-details-section .service-item:hover {
-    background: #f1f5f9;
+    background: var(--line);
     border-color: #cbd5e1;
     transform: translateX(4px);
 }
@@ -7701,7 +7714,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* Notes/Anteckningar styling */
 .customer-details-section .note-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     margin-bottom: 0.5rem;
     transition: all 0.2s ease;
@@ -7770,7 +7783,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.35rem;
     padding: 0.25rem 0.5rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 999px;
     background: #f8fafc;
     font-size: 0.82rem;
@@ -7778,7 +7791,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdrag-meta-chip i {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.85em;
 }
 
@@ -7787,9 +7800,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 34px;
     height: 34px;
     border-radius: 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #fff;
-    color: #64748b;
+    color: var(--text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -7808,9 +7821,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 34px;
     height: 34px;
     border-radius: 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #ffffff;
-    color: #94a3b8;
+    color: var(--ink-3);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -7827,7 +7840,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-done-btn.is-done {
     border-color: #bbf7d0;
     background: #f0fdf4;
-    color: #16a34a;
+    color: var(--success);
 }
 .uppdrag-done-btn.is-done:hover {
     background: #dcfce7;
@@ -7865,7 +7878,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdrag-startdatum-label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.02em;
@@ -7884,7 +7897,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdrag-view-field {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #ffffff;
     border-radius: 12px;
     padding: 0.75rem 0.85rem;
@@ -7908,12 +7921,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .samarbete-list-item.samarbete-list-item--plain + .samarbete-list-item.samarbete-list-item--plain {
     padding-top: 0.65rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 .uppdrag-view-label {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
     font-weight: 600;
     margin-bottom: 0.35rem;
     text-transform: uppercase;
@@ -7955,7 +7968,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdrag-prev-notes {
     margin-top: 0.6rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
     padding-top: 0.6rem;
 }
 
@@ -7973,7 +7986,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdrag-prev-note {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 0.65rem 0.75rem;
 }
@@ -8048,7 +8061,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-riskbox {
     margin-top: 0.85rem;
     padding: 0.85rem 0.95rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     background: #f8fafc;
 }
@@ -8072,7 +8085,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-riskbox-items {
     margin-top: 0.6rem;
     padding-top: 0.6rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 .uppdrag-riskbox-items.is-disabled {
@@ -8082,7 +8095,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-deklaration-rows {
     margin-top: 0.6rem;
     padding: 0.85rem 0.95rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     background: #ffffff;
 }
@@ -8220,7 +8233,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--text);
     margin-bottom: 0.35rem;
     font-weight: 700;
 }
@@ -8254,7 +8267,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--text);
     background: #ffffff;
 }
 
@@ -8274,7 +8287,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-radius: 10px;
     border: 1px solid var(--border);
     background: var(--card-bg);
-    color: #94a3b8;
+    color: var(--ink-3);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -8311,7 +8324,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     height: 22px;
     padding: 0 0.45rem;
     border-radius: 999px;
-    background: rgba(102, 126, 234, 0.12);
+    background: var(--accent-tint);
     color: var(--accent);
     font-weight: 800;
     font-size: 0.85rem;
@@ -8332,7 +8345,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     max-width: 320px;
     padding: 0.65rem 0.75rem;
     border-radius: 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #fff;
     color: #0f172a;
     box-shadow: 0 12px 34px rgba(2, 6, 23, 0.12);
@@ -8355,7 +8368,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     max-width: 320px;
     padding: 0.65rem 0.75rem;
     border-radius: 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #fff;
     color: #0f172a;
     box-shadow: 0 12px 34px rgba(2, 6, 23, 0.12);
@@ -8408,13 +8421,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdragboard-status-msg {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
     white-space: nowrap;
 }
 
 .uppdragboard-arrow {
     text-align: right;
-    color: #94a3b8;
+    color: var(--ink-3);
     width: 40px;
 }
 
@@ -8424,7 +8437,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-radius: 10px;
     border: 1px solid var(--border);
     background: var(--card-bg);
-    color: #64748b;
+    color: var(--text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -8459,8 +8472,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdragboard-row.is-open .uppdragboard-expandbtn,
 .uppdragboard-row.is-open .uppdragboard-donebtn {
-    border-color: rgba(102, 126, 234, 0.45);
-    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.15);
+    border-color: var(--accent-light);
+    box-shadow: 0 2px 10px var(--accent-tint);
 }
 
 /* Detaljraden under aktivt kort: matcha accent + lite mer luft */
@@ -8533,7 +8546,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdragboard-empty {
-    color: #94a3b8;
+    color: var(--ink-3);
     padding: 1rem 0.9rem;
     font-size: 0.95rem;
 }
@@ -8556,7 +8569,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdrag-muted {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.85rem;
 }
 
@@ -8577,7 +8590,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdrag-history-item {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 0.75rem 0.85rem;
 }
@@ -8633,7 +8646,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.35rem;
     padding: 0.35rem 0.6rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 999px;
     background: #ffffff;
     color: #0f172a;
@@ -8645,7 +8658,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .uppdrag-setup-hint {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.9rem;
 }
 
@@ -8662,7 +8675,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .avvikelser-lista .note-card,
 .avvikelser-lista .avvikelse-list-item {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     margin-bottom: 0.75rem;
     padding: 1rem 1.25rem;
@@ -8690,7 +8703,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #475569;
 }
 .avvikelser-lista .avvikelse-datum {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.9rem;
 }
 .avvikelser-lista .avvikelse-status {
@@ -8704,7 +8717,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* Avvikelse-kort på kundkortet */
 .avvikelse-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 10px;
     margin-bottom: 1rem;
     overflow: hidden;
@@ -8739,7 +8752,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     margin: 0;
     font-size: 1.05rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
 }
 
 .avvikelse-status-badge {
@@ -8756,11 +8769,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 1rem;
     padding: 0 1.25rem 1rem;
     font-size: 0.875rem;
-    color: #64748b;
+    color: var(--text);
 }
 .avvikelse-card-meta i {
     margin-right: 0.35rem;
-    color: #94a3b8;
+    color: var(--ink-3);
 }
 
 .avvikelse-beskrivning {
@@ -8768,13 +8781,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 1rem 1.25rem;
     background: #f8fafc;
     border-radius: 8px;
-    border: 1px solid #f1f5f9;
+    border: 1px solid var(--line);
 }
 .avvikelse-section-label {
     margin: 0 0 0.5rem 0;
     font-size: 0.8rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
@@ -8802,7 +8815,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: flex;
     justify-content: flex-end;
     padding: 0.75rem 1.25rem 1rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--line);
     background: #fafbfc;
 }
 .btn-avvikelse-edit {
@@ -8811,7 +8824,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 500;
     color: #475569;
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -8820,7 +8833,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 0.4rem;
 }
 .btn-avvikelse-edit:hover {
-    background: #f1f5f9;
+    background: var(--line);
     border-color: #cbd5e1;
     color: #334155;
 }
@@ -8852,7 +8865,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-chevron {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.75rem;
     transition: transform 0.2s ease;
     flex-shrink: 0;
@@ -8869,7 +8882,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-date {
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.82rem;
     white-space: nowrap;
 }
@@ -8890,14 +8903,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: none;
     padding: 0.3rem 0.4rem;
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--ink-3);
     cursor: pointer;
     font-size: 0.8rem;
     transition: background 0.15s, color 0.15s;
 }
 
 .customer-details-section .btn-icon-note:hover {
-    background: #f1f5f9;
+    background: var(--line);
     color: var(--accent);
 }
 
@@ -8909,17 +8922,17 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* Expanderat inneh?ll */
 .customer-details-section .note-details {
     padding: 0 1.25rem 1.25rem 2.5rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--line);
 }
 
 .customer-details-section .note-person {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.85rem;
     margin: 0.5rem 0 0.25rem;
 }
 
 .customer-details-section .note-content p {
-    color: #374151;
+    color: var(--text);
     line-height: 1.6;
     margin: 0.25rem 0 0;
     white-space: pre-wrap;
@@ -8931,7 +8944,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: flex-start;
     margin-bottom: 1rem;
     padding-bottom: 1rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
 }
 
 .customer-details-section .note-header h4 {
@@ -8944,7 +8957,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-date {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.875rem;
     font-weight: 500;
     white-space: nowrap;
@@ -8981,14 +8994,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-meta-item strong {
-    color: #1e293b;
+    color: var(--title-text);
     font-weight: 600;
 }
 
 .customer-details-section .note-company {
     margin-bottom: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background: #f1f5f9;
+    background: var(--line);
     border-radius: 6px;
     color: #475569;
     font-size: 0.875rem;
@@ -8996,7 +9009,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-company strong {
-    color: #1e293b;
+    color: var(--title-text);
     font-weight: 600;
 }
 
@@ -9005,7 +9018,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 1rem;
     background: #f8fafc;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
 }
 
 .customer-details-section .note-todo-section h5 {
@@ -9034,7 +9047,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .customer-details-section .note-todo-inline .todo-item {
     background: transparent;
     border: none;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
     border-radius: 0;
     padding: 0.5rem 0;
 }
@@ -9056,7 +9069,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.75rem;
     background: #ffffff;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
 }
 
 .customer-details-section .todo-status {
@@ -9075,12 +9088,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-size: 0.8rem;
     padding: 0.2rem 0.4rem;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     background: #fff;
 }
 .customer-details-section .todo-text {
     flex: 1;
-    color: #1e293b;
+    color: var(--title-text);
     line-height: 1.5;
 }
 
@@ -9089,7 +9102,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 1rem;
     background: #f8fafc;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
 }
 
 .customer-details-section .note-attachments h5 {
@@ -9119,12 +9132,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.75rem;
     background: #ffffff;
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     transition: all 0.2s ease;
 }
 
 .customer-details-section .attachment-item:hover {
-    background: #f1f5f9;
+    background: var(--line);
     border-color: #cbd5e1;
 }
 
@@ -9154,18 +9167,18 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .attachment-link:hover {
-    color: #667eea;
+    color: var(--accent);
     text-decoration: underline;
 }
 
 .customer-details-section .attachment-size {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 .customer-details-section .note-content {
     margin-bottom: 1rem;
-    color: #1e293b;
+    color: var(--title-text);
     line-height: 1.6;
     font-size: 0.95rem;
 }
@@ -9181,11 +9194,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: space-between;
     align-items: center;
     padding-top: 1rem;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--line);
 }
 
 .customer-details-section .note-author {
-    color: #64748b;
+    color: var(--text);
     font-size: 0.875rem;
     font-weight: 500;
 }
@@ -9203,13 +9216,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .note-actions .btn-secondary {
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    background: var(--line);
+    border: 1px solid var(--line);
     color: #475569;
 }
 
 .customer-details-section .note-actions .btn-secondary:hover {
-    background: #e2e8f0;
+    background: var(--line);
     border-color: #cbd5e1;
 }
 
@@ -9230,7 +9243,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
-    border-bottom: 2px solid #f1f5f9;
+    border-bottom: 2px solid var(--line);
     background: transparent;
     padding-left: 0;
     padding-right: 0;
@@ -9262,9 +9275,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .customer-details-section .card-header .btn-primary:hover {
-    background: #667eea;
+    background: var(--accent);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 4px var(--accent-tint);
 }
 
 .customer-details-section #notes-content {
@@ -9277,7 +9290,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     justify-content: center;
     padding: 3rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 .customer-details-section .loading-spinner i {
@@ -9289,7 +9302,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .customer-details-section .loading-spinner p {
     margin: 0;
     font-size: 1rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 /* Todo input fields in modal */
@@ -9303,7 +9316,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .todo-section-info .form-help-text {
     margin: 0;
-    color: #64748b;
+    color: var(--text);
     font-size: 0.875rem;
     line-height: 1.5;
 }
@@ -9318,7 +9331,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .todo-input-item {
     padding: 1.25rem;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     transition: all 0.2s ease;
 }
@@ -9334,7 +9347,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--line);
 }
 
 .todo-item-number {
@@ -9384,7 +9397,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .todo-input-textarea {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 6px;
     font-size: 0.95rem;
     font-family: inherit;
@@ -9396,13 +9409,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .todo-input-textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .todo-status-select {
     width: 100%;
     padding: 0.75rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 6px;
     font-size: 0.95rem;
     background: #ffffff;
@@ -9412,7 +9425,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .todo-status-select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 /* Responsive for todo inputs */
@@ -9537,7 +9550,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .kyc-card .tab-pane-content .info-item textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 /* Roles Table Styling */
@@ -9680,7 +9693,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .role-form .form-group select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .role-form-actions {
@@ -9700,7 +9713,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 1.5rem;
     padding: 2rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
     border-radius: var(--radius-xl);
     color: white;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -9860,7 +9873,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .info-item textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 .info-item label {
@@ -9922,7 +9935,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .radio-option input[type="radio"]:checked + .radio-label {
     border-color: var(--accent);
-    background: rgba(102, 126, 234, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
 }
 
@@ -9960,7 +9973,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .checkbox-option:hover {
-    background: rgba(102, 126, 234, 0.05);
+    background: var(--accent-tint);
 }
 
 .checkbox-option input[type="checkbox"] {
@@ -9994,7 +10007,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .additional-notes textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 /* Message Styles */
@@ -10025,7 +10038,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 .message-info {
-    background: rgba(102, 126, 234, 0.1);
+    background: var(--accent-tint);
     border-left-color: var(--accent);
     color: var(--accent);
 }
@@ -10153,7 +10166,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdrag-section {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 1.4rem 1.6rem;
     margin-bottom: 1.2rem;
@@ -10184,7 +10197,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdrag-section--card .uppdrag-section-chevron {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     transition: transform 0.2s ease;
     flex-shrink: 0;
 }
@@ -10195,7 +10208,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-section-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
     margin: 0;
     display: flex;
     align-items: center;
@@ -10204,7 +10217,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .uppdrag-hint {
     font-size: 0.82rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin: -0.5rem 0 0.8rem;
 }
 
@@ -10226,7 +10239,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-field label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -10237,7 +10250,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #f8fafc;
-    color: #1e293b;
+    color: var(--title-text);
     width: 100%;
     box-sizing: border-box;
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -10249,8 +10262,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     background: #fff;
 }
 .uppdrag-input--readonly {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--line);
+    color: var(--text);
     cursor: default;
 }
 .uppdrag-textarea {
@@ -10270,7 +10283,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 0.6rem;
     cursor: pointer;
     font-size: 0.9rem;
-    color: #374151;
+    color: var(--text);
     line-height: 1.45;
 }
 .uppdrag-check input[type="checkbox"] {
@@ -10288,7 +10301,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 1rem;
     padding: 1.5rem 0 0;
     margin-top: 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
     flex-wrap: wrap;
 }
 
@@ -10334,7 +10347,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* Avtalshuvud */
 .uppdrag-doc-header {
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 1.5rem 1.75rem;
     margin-bottom: 1.5rem;
@@ -10345,25 +10358,25 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-doc-byra-namn {
     font-weight: 700;
     font-size: 1rem;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .uppdrag-doc-byra-orgnr,
 .uppdrag-doc-byra-kontakt {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
 }
 .uppdrag-doc-titel {
     font-size: 1.5rem;
     font-weight: 800;
     letter-spacing: 0.08em;
-    color: #1e293b;
+    color: var(--title-text);
     margin-top: 0.5rem;
 }
 .uppdrag-doc-v\00E4lkommen {
     font-size: 0.9rem;
     color: #475569;
     font-style: italic;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
     padding-top: 0.75rem;
     margin-top: 0.25rem;
 }
@@ -10377,7 +10390,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdrag-part {
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 0.8rem 1rem;
 }
@@ -10386,17 +10399,17 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #94a3b8;
+    color: var(--ink-3);
     margin-bottom: 0.3rem;
 }
 .uppdrag-part-value {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .uppdrag-part-sub {
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--text);
 }
 
 /* Tj?nstelista i avtalet (visningsl?ge, l?st fr?n ?vrig KYC) */
@@ -10410,7 +10423,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.5rem;
     font-size: 0.88rem;
-    color: #1e293b;
+    color: var(--title-text);
     padding: 0.3rem 0;
 }
 
@@ -10444,13 +10457,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-bilaga-text {
     display: none;
     background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 1.2rem 1.4rem;
     margin: 0.5rem 0 1rem;
     font-size: 0.87rem;
     line-height: 1.7;
-    color: #374151;
+    color: var(--text);
     max-height: 400px;
     overflow-y: auto;
 }
@@ -10459,7 +10472,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-bilaga-text h5 {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #1e293b;
+    color: var(--title-text);
     margin: 1rem 0 0.3rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -10497,7 +10510,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     justify-content: space-between;
     padding: 1.25rem 1.5rem 1rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--line);
 }
 .modal-box .modal-header h3 {
     margin: 0;
@@ -10518,7 +10531,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: flex-end;
     gap: 0.5rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 /* =====================================================
@@ -10551,7 +10564,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .roller-person-name {
     font-weight: 600;
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .roller-person-name i { color: var(--accent); margin-right: 0.35rem; }
 .roller-person-meta {
@@ -10562,7 +10575,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .roller-person-roll {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
     font-weight: 500;
 }
 .form-group-roller {
@@ -10677,7 +10690,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    border: 2px solid #e2e8f0;
+    border: 2px solid var(--line);
     border-radius: 10px;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
@@ -10704,11 +10717,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .inleed-person-name {
     font-weight: 600;
     font-size: 0.9rem;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .inleed-person-roll {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text);
 }
 .inleed-person-contact {
     font-size: 0.8rem;
@@ -10726,7 +10739,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 0.3rem;
 }
 .inleed-manual-form { margin-top: 0; }
-.inleed-manual-collapsed .form-group label { font-size: 0.82rem; color: #64748b; }
+.inleed-manual-collapsed .form-group label { font-size: 0.82rem; color: var(--text); }
 
 /* =====================================================
    Kundlista ? ny enkel listlayout
@@ -10750,29 +10763,29 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.6rem;
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 10px;
     padding: 0.55rem 1rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
-.kundlista-search i { color: #94a3b8; font-size: 0.9rem; }
+.kundlista-search i { color: var(--ink-3); font-size: 0.9rem; }
 .kundlista-search input {
     border: none;
     outline: none;
     width: 100%;
     font-size: 0.95rem;
     background: transparent;
-    color: #1e293b;
+    color: var(--title-text);
 }
 .kundlista-count {
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
     white-space: nowrap;
 }
 .kundlista-table {
     background: #fff;
     border-radius: 12px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     overflow: hidden;
     box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
@@ -10781,7 +10794,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 1rem;
     padding: 0.85rem 1.25rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
     cursor: pointer;
     transition: background 0.12s;
 }
@@ -10815,7 +10828,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .kundlista-row-namn {
     font-weight: 500;
     font-size: 0.95rem;
-    color: #1e293b;
+    color: var(--title-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -10828,14 +10841,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .kundlista-orgnr {
     font-size: 0.8rem;
-    color: #64748b;
-    background: #f1f5f9;
+    color: var(--text);
+    background: var(--line);
     padding: 2px 8px;
     border-radius: 20px;
 }
 .kundlista-bolagsform {
     font-size: 0.78rem;
-    color: #64748b;
+    color: var(--text);
 }
 .kundlista-row-arrow {
     color: #cbd5e1;
@@ -10850,7 +10863,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     gap: 0.75rem;
     padding: 3rem 1rem;
-    color: #94a3b8;
+    color: var(--ink-3);
     font-size: 0.95rem;
 }
 .kundlista-loading i,
@@ -10934,7 +10947,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+    background: linear-gradient(135deg, var(--text) 0%, #475569 100%);
     color: #fff;
 }
 .ai-chat-panel__header-annika {
@@ -11003,9 +11016,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.75rem 1.25rem;
     margin: 0;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--text);
     background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--line);
 }
 .ai-chat-panel__messages {
     flex: 1;
@@ -11039,7 +11052,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     height: 32px;
     min-width: 32px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
     color: #fff;
     font-weight: 700;
     font-size: 0.9rem;
@@ -11052,17 +11065,17 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ai-chat-msg__label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #64748b;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.35rem;
 }
-.ai-chat-msg__label .fas { color: #667eea; }
+.ai-chat-msg__label .fas { color: var(--accent); }
 .ai-chat-msg--user .ai-chat-msg__label .fas { color: #10b981; }
 .ai-chat-msg__text {
     font-size: 0.9rem;
     line-height: 1.5;
-    color: var(--text, #1e293b);
+    color: var(--text, var(--title-text));
 }
 .ai-chat-msg--user .ai-chat-msg__inner { align-items: flex-end; }
 .ai-chat-msg--user .ai-chat-msg__text {
@@ -11076,13 +11089,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: flex;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
     background: #fff;
 }
 .ai-chat-panel__input {
     flex: 1;
     resize: none;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     font-size: 0.9rem;
@@ -11091,8 +11104,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .ai-chat-panel__input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-tint);
 }
 .ai-chat-panel__send {
     flex-shrink: 0;
@@ -11100,7 +11113,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     height: 44px;
     border: none;
     border-radius: 8px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
     color: #fff;
     cursor: pointer;
     display: flex;
@@ -11113,54 +11126,54 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 /* Statistik f?r riskbed?mning */
 .risk-header-sub { margin: 0; font-size: 1rem; opacity: 0.85; }
-.statistik-error { color: #dc2626; margin-bottom: 1rem; }
+.statistik-error { color: var(--error); margin-bottom: 1rem; }
 .statistik-loading { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; color: var(--text); }
 .stats-cards-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-.stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
-.stat-card .stat-icon { width: 44px; height: 44px; border-radius: 10px; background: rgba(102, 126, 234, 0.12); color: var(--accent, #667eea); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
-.stat-card .stat-content h3 { margin: 0 0 0.35rem 0; font-size: 0.8rem; font-weight: 600; color: #64748b; }
-.stat-card .stat-number { font-size: 1.75rem; font-weight: 700; color: #1e293b; }
-.stat-card .stat-number--low { color: #16a34a; }
-.stat-card .stat-number--medium { color: #d97706; }
-.stat-card .stat-number--high { color: #dc2626; }
+.stat-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
+.stat-card .stat-icon { width: 44px; height: 44px; border-radius: 10px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+.stat-card .stat-content h3 { margin: 0 0 0.35rem 0; font-size: 0.8rem; font-weight: 600; color: var(--text); }
+.stat-card .stat-number { font-size: 1.75rem; font-weight: 700; color: var(--title-text); }
+.stat-card .stat-number--low { color: var(--success); }
+.stat-card .stat-number--medium { color: var(--warning); }
+.stat-card .stat-number--high { color: var(--error); }
 .stat-card-clickable { cursor: pointer; transition: box-shadow 0.2s, background 0.2s; }
 .stat-card-clickable:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: #fafafa; }
 .statistik-riskfaktorer-kort { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1rem; }
-.statistik-riskfaktor-kort { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
-.statistik-riskfaktor-kort h4 { margin: 0 0 0.5rem 0; font-size: 1rem; color: #1e293b; display: flex; align-items: center; gap: 0.5rem; }
-.statistik-riskfaktor-kort h4 i { color: var(--accent, #667eea); }
-.statistik-riskfaktor-kort .riskfaktor-kort-antal { font-size: 0.9rem; color: #64748b; margin-bottom: 0.75rem; padding: 0.35rem 0; }
+.statistik-riskfaktor-kort { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
+.statistik-riskfaktor-kort h4 { margin: 0 0 0.5rem 0; font-size: 1rem; color: var(--title-text); display: flex; align-items: center; gap: 0.5rem; }
+.statistik-riskfaktor-kort h4 i { color: var(--accent); }
+.statistik-riskfaktor-kort .riskfaktor-kort-antal { font-size: 0.9rem; color: var(--text); margin-bottom: 0.75rem; padding: 0.35rem 0; }
 .statistik-riskfaktor-kort .riskfaktor-kort-antal.stat-list-row-clickable { border-radius: 6px; padding: 0.5rem 0.75rem; }
 .statistik-riskfaktor-kort .stat-list { margin-top: 0; }
 .statistik-sections { display: grid; gap: 1.5rem; }
-.statistik-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; }
-.statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: #1e293b; }
-.statistik-section h3 i { color: var(--accent, #667eea); }
-.statistik-section-desc { margin: 0 0 1rem 0; font-size: 0.9rem; color: #64748b; }
+.statistik-section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
+.statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--title-text); }
+.statistik-section h3 i { color: var(--accent); }
+.statistik-section-desc { margin: 0 0 1rem 0; font-size: 0.9rem; color: var(--text); }
 .stat-list { display: flex; flex-direction: column; gap: 0.35rem; }
-.stat-list-empty { margin: 0; font-size: 0.9rem; color: #94a3b8; }
+.stat-list-empty { margin: 0; font-size: 0.9rem; color: var(--ink-3); }
 .stat-list-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #f8fafc; border-radius: 8px; font-size: 0.9rem; }
 .stat-list-row-clickable { cursor: pointer; transition: background 0.15s; }
-.stat-list-row-clickable:hover { background: #e2e8f0; }
+.stat-list-row-clickable:hover { background: var(--line); }
 .stat-list-namn { font-weight: 500; color: #334155; }
-.stat-list-antal { font-weight: 600; color: var(--accent, #667eea); }
-.statistik-error { color: #dc2626; margin-bottom: 1rem; }
+.stat-list-antal { font-weight: 600; color: var(--accent); }
+.statistik-error { color: var(--error); margin-bottom: 1rem; }
 
 /* Modal f?r kundlista i statistik */
 .statistik-kunder-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .statistik-kunder-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); max-width: 480px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
-.statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-.statistik-kunder-modal-header h4 { margin: 0; font-size: 1.1rem; color: #1e293b; }
-.statistik-kunder-modal-close { background: none; border: none; font-size: 1.25rem; color: #64748b; cursor: pointer; padding: 0.25rem; line-height: 1; }
-.statistik-kunder-modal-close:hover { color: #1e293b; }
+.statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.statistik-kunder-modal-header h4 { margin: 0; font-size: 1.1rem; color: var(--title-text); }
+.statistik-kunder-modal-close { background: none; border: none; font-size: 1.25rem; color: var(--text); cursor: pointer; padding: 0.25rem; line-height: 1; }
+.statistik-kunder-modal-close:hover { color: var(--title-text); }
 .statistik-kunder-modal-body { padding: 1rem 1.25rem; overflow-y: auto; }
 .statistik-kunder-lista { list-style: none; margin: 0; padding: 0; }
 .statistik-kunder-lista li { margin: 0 0 0.35rem 0; }
-.statistik-kunder-lista a { display: block; padding: 0.5rem 0.75rem; border-radius: 8px; color: var(--accent, #667eea); text-decoration: none; font-size: 0.95rem; transition: background 0.15s; }
-.statistik-kunder-lista a:hover { background: #f1f5f9; text-decoration: underline; }
-.statistik-kunder-modal-loading { color: #64748b; padding: 1rem; }
-.statistik-kunder-modal-empty { color: #94a3b8; padding: 1rem; }
-.statistik-kunder-modal-error { color: #dc2626; padding: 1rem; }
+.statistik-kunder-lista a { display: block; padding: 0.5rem 0.75rem; border-radius: 8px; color: var(--accent); text-decoration: none; font-size: 0.95rem; transition: background 0.15s; }
+.statistik-kunder-lista a:hover { background: var(--line); text-decoration: underline; }
+.statistik-kunder-modal-loading { color: var(--text); padding: 1rem; }
+.statistik-kunder-modal-empty { color: var(--ink-3); padding: 1rem; }
+.statistik-kunder-modal-error { color: var(--error); padding: 1rem; }
 
 /* =====================================================================
    Byråns tjänster – kortsektioner (hot, sårbarheter, åtgärder)
@@ -11195,13 +11208,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     align-items: flex-start;
     gap: 0.6rem;
     padding: 0.55rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
 }
 .threat-row:last-child { border-bottom: none; }
 .threat-row .tag { flex-shrink: 0; margin-top: 2px; }
 .threat-body { flex: 1; }
 .threat-title { font-size: 0.9rem; font-weight: 600; color: var(--title-text); margin-bottom: 0.1rem; }
-.threat-desc { font-size: 0.85rem; color: #64748b; line-height: 1.5; }
+.threat-desc { font-size: 0.85rem; color: var(--text); line-height: 1.5; }
 
 /* Sårbarheter (2-kolumnsgrid) */
 .vuln-grid {
@@ -11211,13 +11224,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .vuln-item {
     background: #f8fafc;
-    border: 1px solid #eef2f7;
+    border: 1px solid var(--line);
     border-radius: 10px;
     padding: 0.6rem 0.75rem;
 }
 .vuln-item .tags-row { margin-bottom: 0.4rem; }
 .vuln-item-title { font-size: 0.85rem; font-weight: 600; color: var(--title-text); margin-bottom: 0.15rem; }
-.vuln-item-desc { font-size: 0.8rem; color: #64748b; line-height: 1.45; }
+.vuln-item-desc { font-size: 0.8rem; color: var(--text); line-height: 1.45; }
 
 /* Tjänstespecifika åtgärder */
 .action-list { display: flex; flex-direction: column; gap: 0.45rem; }
@@ -11231,7 +11244,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.55rem 0.75rem;
 }
 .action-icon { color: var(--success); font-size: 0.85rem; margin-top: 3px; flex-shrink: 0; }
-.action-text { font-size: 0.86rem; color: #374151; line-height: 1.5; }
+.action-text { font-size: 0.86rem; color: var(--text); line-height: 1.5; }
 .action-text strong { color: var(--title-text); }
 
 @media (max-width: 640px) {
@@ -11440,7 +11453,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: none;
     border-radius: 8px;
     background: #fee2e2;
-    color: #dc2626;
+    color: var(--error);
     cursor: pointer;
     display: flex;
     align-items: center;

@@ -1,34 +1,33 @@
 <!DOCTYPE html>
-<html lang="sv" style="color-scheme: light only;">
+<html lang="sv" class="cf-warm" style="color-scheme: light only;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
-    <meta name="theme-color" content="#f0f4ff">
+    <meta name="theme-color" content="#f4efe6">
     <title>ClientFlow – Lämna underlag</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
     <style>
       :root{
         color-scheme: light only;
-        --bg-page:#f0f4ff;
-        --bg-page-end:#e8eeff;
-        --card:#ffffff;
-        --ink:#1e293b;
-        --heading:#334155;
-        --ink-soft:#64748b;
-        --ink-faint:#94a3b8;
-        --line:#e2e8f0;
-        --line-strong:#cbd5e1;
-        --accent:#6366f1;
-        --accent-hover:#4f46e5;
-        --accent-deep:#4338ca;
-        --accent-tint:#eef2ff;
-        --accent-soft:#c7d2fe;
-        --done-bg:#f0fdf4;
-        --done-border:#bbf7d0;
-        --done-text:#16a34a;
-        --done-deep:#15803d;
+        /* Neutraler via delade tokens (överstyrs av .cf-warm på html) */
+        --bg-page: var(--app-bg);
+        --bg-page-end: var(--panel-2);
+        --card: var(--card-bg);
+        --ink: var(--title-text);
+        --heading: var(--title-text);
+        --ink-soft: var(--text);
+        --ink-faint: var(--ink-3);
+        --line-strong: var(--border);
+        /* Accent/status ärvs från styles.css — ej omdefinierade här */
+        --accent-hover: var(--accent-dark);
+        --accent-deep: var(--accent-dark);
+        --accent-soft: var(--accent-light);
+        --done-bg: var(--success-tint);
+        --done-border: var(--success-tint);
+        --done-text: var(--success);
+        --done-deep: var(--success);
         --radius:14px;
         --shadow-card:0 4px 20px rgba(0,0,0,.08);
         --shadow-soft:0 1px 2px rgba(0,0,0,.04);
@@ -39,7 +38,7 @@
       html{color-scheme:light only;background-color:var(--bg-page);}
 
       body{
-        font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+        font-family:var(--body-font),-apple-system,BlinkMacSystemFont,sans-serif;
         color:var(--ink);
         background:linear-gradient(135deg,var(--bg-page) 0%,var(--bg-page-end) 100%);
         background-color:var(--bg-page);
@@ -79,7 +78,7 @@
         text-align:center;
         color:var(--ink-soft);
       }
-      .state-card h1{font-size:1.2rem;color:var(--heading);margin-bottom:.5rem}
+      .state-card h1{font-family:var(--title-font);font-size:1.2rem;color:var(--heading);margin-bottom:.5rem}
       .state-card .spin{
         width:26px;height:26px;border-radius:50%;
         border:3px solid var(--accent-soft);border-top-color:var(--accent);
@@ -103,6 +102,7 @@
         background:var(--accent);
       }
       .head h1{
+        font-family:var(--title-font);
         font-weight:700;
         font-size:1.6rem;
         letter-spacing:-.01em;
