@@ -7881,6 +7881,46 @@ async function getByraerRecordForUser(req) {
   return { record: airtableRes.data.records[0], byraId, userData };
 }
 
+// BYRÅNS PROFIL – kalibreringsfält (lagras i Airtable-tabellen "Byråer")
+function mapByraProfilFromAirtable(fields) {
+  const f = fields || {};
+  return {
+    antalKunder: f['Antal kunder'] ?? '',
+    vanligasteBolagsformer: f['Vanligaste bolagsformer'] ?? '',
+    branscherKundstock: f['Branscher i kundstocken'] ?? '',
+    andelInternationellHandel: f['Andel kunder med internationell handel'] ?? f['Andel internationell handel'] ?? '',
+    andelKontantintensiva: f['Andel kontantintensiva kunder'] ?? '',
+    leveranssatt: f['Leveranssätt'] ?? f['Leveranssatt'] ?? '',
+    geografiskMarknad: f['Geografisk marknad'] ?? ''
+  };
+}
+
+function formatByraProfilPromptBlock(profil) {
+  const p = profil || {};
+  const fmtPct = (v) => {
+    if (v === '' || v == null) return '–';
+    const n = Number(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? `${n}%` : String(v);
+  };
+  const fmtNum = (v) => (v === '' || v == null ? '–' : String(v));
+  return [
+    'BYRÅPROFIL (för kalibrering av risknivåer):',
+    `- Antal kunder: ${fmtNum(p.antalKunder)}`,
+    `- Vanligaste bolagsformer: ${p.vanligasteBolagsformer || '–'}`,
+    `- Branscher i kundstocken: ${p.branscherKundstock || '–'}`,
+    `- Andel kunder med internationell handel: ${fmtPct(p.andelInternationellHandel)}`,
+    `- Andel kontantintensiva kunder: ${fmtPct(p.andelKontantintensiva)}`,
+    `- Tjänster erbjuds via: ${p.leveranssatt || '–'}`,
+    `- Geografisk marknad: ${p.geografiskMarknad || '–'}`
+  ].join('\n');
+}
+
+async function getByraProfilForRequest(req) {
+  const result = await getByraerRecordForUser(req);
+  if (result.error) return result;
+  return { ...result, profil: mapByraProfilFromAirtable(result.record.fields) };
+}
+
 // GET /api/byra/info – Hämta byråinfo (samma data som Allmän riskbedömning använder)
 app.get('/api/byra/info', authenticateToken, async (req, res) => {
   try {
@@ -7905,7 +7945,8 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
         defaultBetalningsvillkor: fields['Default betalningsvillkor'] ?? fields['Default betalningsvillkor (dagar)'] ?? '',
         tjanstepriserJson: typeof prislistaJson === 'string' ? prislistaJson : JSON.stringify(prislistaJson),
         fritexttjansterJson: typeof fritextJson === 'string' ? fritextJson : JSON.stringify(fritextJson),
-        uppdragsbrevInformationstext: fields['Uppdragsbrev informationstext'] ?? ''
+        uppdragsbrevInformationstext: fields['Uppdragsbrev informationstext'] ?? '',
+        ...mapByraProfilFromAirtable(fields)
       },
       raw: fields
     });
@@ -7948,6 +7989,31 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (body.uppdragsbrevInformationstext !== undefined) fields['Uppdragsbrev informationstext'] = body.uppdragsbrevInformationstext;
+    const toPercentOrNull = (v, label) => {
+      const n = toNumberOrNull(v);
+      if (n == null) return v === '' || v == null ? null : { error: `${label} måste vara ett tal mellan 0 och 100` };
+      if (n < 0 || n > 100) return { error: `${label} måste vara mellan 0 och 100` };
+      return n;
+    };
+    if (body.antalKunder !== undefined) {
+      const n = toNumberOrNull(body.antalKunder);
+      if (n != null && n < 0) return res.status(400).json({ error: 'Antal kunder måste vara 0 eller högre' });
+      fields['Antal kunder'] = n;
+    }
+    if (body.vanligasteBolagsformer !== undefined) fields['Vanligaste bolagsformer'] = body.vanligasteBolagsformer;
+    if (body.branscherKundstock !== undefined) fields['Branscher i kundstocken'] = body.branscherKundstock;
+    if (body.andelInternationellHandel !== undefined) {
+      const pct = toPercentOrNull(body.andelInternationellHandel, 'Andel internationell handel');
+      if (pct && typeof pct === 'object' && pct.error) return res.status(400).json({ error: pct.error });
+      fields['Andel kunder med internationell handel'] = pct;
+    }
+    if (body.andelKontantintensiva !== undefined) {
+      const pct = toPercentOrNull(body.andelKontantintensiva, 'Andel kontantintensiva kunder');
+      if (pct && typeof pct === 'object' && pct.error) return res.status(400).json({ error: pct.error });
+      fields['Andel kontantintensiva kunder'] = pct;
+    }
+    if (body.leveranssatt !== undefined) fields['Leveranssätt'] = body.leveranssatt;
+    if (body.geografiskMarknad !== undefined) fields['Geografisk marknad'] = body.geografiskMarknad;
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
     }
@@ -7977,6 +8043,13 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
       if (String(msg).toLowerCase().includes('unknown field name') && body.uppdragsbrevInformationstext !== undefined) {
         return res.status(400).json({
           error: 'Fältet "Uppdragsbrev informationstext" saknas i Airtable-tabellen "Byråer". Skapa ett fält av typen "Long text" med det namnet.',
+          details: msg
+        });
+      }
+      const profilFieldKeys = ['antalKunder', 'vanligasteBolagsformer', 'branscherKundstock', 'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad'];
+      if (String(msg).toLowerCase().includes('unknown field name') && profilFieldKeys.some(k => body[k] !== undefined)) {
+        return res.status(400).json({
+          error: 'BYRÅNS PROFIL-fält saknas i Airtable-tabellen "Byråer". Skapa fälten manuellt eller via POST /api/setup/airtable-byra-profil-fields (kräver schema-token).',
           details: msg
         });
       }
@@ -8405,6 +8478,81 @@ app.post('/api/setup/airtable-byra-priser-fields', authenticateToken, async (req
       });
     }
     return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera tabellen Byråer' });
+  }
+});
+
+// POST /api/setup/airtable-byra-profil-fields – BYRÅNS PROFIL-fält i tabellen "Byråer" (auth)
+// Kräver Personal Access Token med schema.bases:read och schema.bases:write.
+app.post('/api/setup/airtable-byra-profil-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      timeout: 15000
+    });
+    const tables = metaRes.data?.tables || [];
+    const byraTable = tables.find(t => {
+      const n = (t.name || '').trim().toLowerCase();
+      return n === 'byråer' || n === 'byraer' || n === 'byråns profil' || n === 'byrans profil';
+    });
+    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" (BYRÅNS PROFIL) hittades inte i basen.' });
+
+    const required = [
+      { name: 'Antal kunder', type: 'number', description: 'Antal kunder i byråns kundstock (för riskkalibrering)' },
+      { name: 'Vanligaste bolagsformer', type: 'multilineText', description: 'Vanligaste bolagsformer i kundstocken' },
+      { name: 'Branscher i kundstocken', type: 'multilineText', description: 'Branscher som förekommer i kundstocken' },
+      { name: 'Andel kunder med internationell handel', type: 'number', description: 'Andel kunder med internationell handel (0–100 %)' },
+      { name: 'Andel kontantintensiva kunder', type: 'number', description: 'Andel kontantintensiva kunder (0–100 %)' },
+      { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur tjänster erbjuds', options: { choices: [{ name: 'På plats' }, { name: 'Distans' }, { name: 'Blandat' }] } },
+      { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' }
+    ];
+
+    const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+    const toCreate = required.filter(f => !existingNames.includes((f.name || '').trim()));
+    const created = [];
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+
+    for (const field of toCreate) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('Kunde inte skapa BYRÅNS PROFIL-fält', field.name, msg);
+      }
+    }
+
+    const skipped = required.length - toCreate.length;
+    return res.json({
+      success: true,
+      message: created.length
+        ? `${created.length} BYRÅNS PROFIL-fält lades till i "${byraTable.name}". ${skipped} fanns redan.`
+        : `Alla ${required.length} BYRÅNS PROFIL-fält finns redan i tabellen ${byraTable.name}.`,
+      table: byraTable.name,
+      created,
+      alreadyExisted: skipped
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data || {};
+    const msg = (data.error && data.error.message) || data.message || err.message;
+    console.error('Setup BYRÅNS PROFIL-fält:', status, msg);
+    if (status === 403 || status === 401) {
+      return res.status(status).json({
+        success: false,
+        error: 'Token saknar behörighet. Använd en Airtable Personal Access Token med scope schema.bases:read och schema.bases:write.',
+        details: msg
+      });
+    }
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte uppdatera BYRÅNS PROFIL-fält' });
   }
 });
 
@@ -14985,6 +15133,14 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const riskniva = (befintligt.riskniva || '').toString().trim() || 'Medel';
 
+  let byraProfilBlock = '';
+  try {
+    const profilResult = await getByraProfilForRequest(req);
+    if (!profilResult.error && profilResult.profil) {
+      byraProfilBlock = formatByraProfilPromptBlock(profilResult.profil) + '\n\n';
+    }
+  } catch (_) { /* profil är valfritt underlag */ }
+
   const prompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
 Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn och risknivå.
@@ -15008,8 +15164,10 @@ KÄLLOR ATT UTGÅ FRÅN (använd de som är relevanta per hot):
 - Brottsförebyggande rådet, Brå (bra.se)
 - Säkerhetspolisen, Säpo (sakerhetspolisen.se)
 
-TJÄNST: ${namn}
+${byraProfilBlock}TJÄNST: ${namn}
 RISKNIVÅ: ${riskniva} (Låg / Medel / Hög — högre risknivå = fler och striktare kontroller)
+
+Väg in BYRÅPROFIL ovan när du kalibrerar risknivåer, hot, sårbarheter och åtgärder (t.ex. hög andel internationell handel eller kontantintensiva kunder kan motivera striktare bedömning).
 
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -15130,6 +15288,111 @@ ANTAL (anpassa efter risknivå):
   }
 });
 
+// POST /api/ai-ovriga-riskfaktor
+// Genererar AI-förslag för en övrig riskfaktor (beskrivning, riskbedömning, åtgärd)
+app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
+
+  const riskfaktor = (req.body?.riskfaktor || req.body?.namn || '').toString().trim();
+  const typ = (req.body?.typ || req.body?.risktyp || '').toString().trim();
+  if (!riskfaktor) return res.status(400).json({ error: 'Riskfaktorn (riskfaktor) saknas.' });
+
+  let byraProfilBlock = '';
+  try {
+    const profilResult = await getByraProfilForRequest(req);
+    if (!profilResult.error && profilResult.profil) {
+      byraProfilBlock = formatByraProfilPromptBlock(profilResult.profil) + '\n\n';
+    }
+  } catch (_) { /* profil är valfritt underlag */ }
+
+  const befintligt = req.body?.befintligt || {};
+  const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
+
+Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
+
+${byraProfilBlock}TYP AV RISKFAKTOR: ${typ || '–'}
+RISKFAKTOR: ${riskfaktor}
+${befintligt.beskrivning ? `Befintlig beskrivning: ${befintligt.beskrivning}` : ''}
+${befintligt.riskbedomning ? `Befintlig riskbedömning: ${befintligt.riskbedomning}` : ''}
+
+Väg in BYRÅPROFIL ovan när du kalibrerar risknivå och åtgärder.
+
+Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
+
+{
+  "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån.",
+  "riskbedomning": "Låg, Medel eller Förhöjd",
+  "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."
+}`;
+
+  const extractFirstJsonObject = (text) => {
+    if (!text) return null;
+    const start = text.indexOf('{');
+    if (start === -1) return null;
+    let depth = 0;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return null;
+  };
+  const stripCodeFences = (text) => {
+    if (!text) return '';
+    let t = String(text).replace(/^\uFEFF/, '').trim();
+    if (/^```/m.test(t)) {
+      t = t.replace(/```[a-zA-Z0-9_-]*\s*/g, '```');
+      t = t.replace(/^```/g, '').replace(/```$/g, '').trim();
+    }
+    return t.trim();
+  };
+  const parseAssistantJson = (rawText) => {
+    const cleaned = stripCodeFences(rawText);
+    const candidate = extractFirstJsonObject(cleaned) || extractFirstJsonObject(rawText) || cleaned || rawText || '';
+    return JSON.parse(candidate);
+  };
+  const normRiskfaktorNiva = (v) => {
+    const t = (v || '').toString().trim().toLowerCase();
+    if (t.startsWith('förhöjd') || t.startsWith('forhojd') || t === 'hog' || t === 'hög') return 'Förhöjd';
+    if (t.startsWith('låg') || t.startsWith('lag') || t === 'low') return 'Låg';
+    return 'Medel';
+  };
+
+  try {
+    const aiText = await runOpenAIAssistantRunWithRetry(
+      openaiKey,
+      prompt,
+      {
+        instructions: 'Du är en AML/KYC-specialist. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.',
+        maxWaitMs: 120000,
+        pollMs: 1500,
+        debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
+      },
+      { maxAttempts: 3 }
+    );
+    const result = parseAssistantJson(aiText);
+    if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+    res.json({
+      beskrivning: (result.beskrivning || '').toString().trim(),
+      riskbedomning: normRiskfaktorNiva(result.riskbedomning || result.riskniva),
+      atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
+    console.error('❌ AI-övriga-riskfaktor fel:', status, msg);
+    if (status === 429) {
+      return res.status(429).json({ error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.' });
+    }
+    res.status(status).json({ error: 'Kunde inte generera AI-förslag: ' + msg });
+  }
+});
+
 // POST /api/ai-vardering-risk-byra
 // Genererar AI-förslag för stycket "5. Värdering av sammantagen risk" utifrån statistik, identifierade risker och tjänster
 app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
@@ -15179,11 +15442,15 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
         ).join('\n')
       : 'Inga tjänster med riskanalyser.';
 
+    const byraProfilBlock = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
+
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "8. Värdering av sammantagen risk" i en allmän riskbedömning (PVML, Penningtvättslagen).
 Baserat på statistik, identifierade risker och sårbarheter samt tjänsteanalyser ska du sammanfatta byråns sammantagna risknivå och motivera den. Följ Länsstyrelsens vägledning och råd (t.ex. "Ett riskbaserat förhållningssätt").
 Skriv på svenska. Var professionell och konkret. Ge en tydlig slutsats om den sammantagna risken (t.ex. normal, förhöjd, betydande) och motivera utifrån underlagen.`;
 
     const userPrompt = `Skriv stycket "8. Värdering av sammantagen risk" för byråns allmänna riskbedömning.
+
+${byraProfilBlock}
 
 ${statistikText}
 
@@ -15340,6 +15607,8 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
         ).join('\n')
       : 'Inga tjänster hittades.';
 
+    const byraProfilBlock = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
+
     const formatExample = `FORMAT – Enligt penningtvättslagen och Länsstyrelsens vägledning MÅSTE en godkänd allmän riskbedömning analysera hot och sårbarheter utifrån fyra obligatoriska huvudområden (plus ett femte valfritt). Du ska skriva ALLA:
 
 1) PRODUKTER OCH TJÄNSTER – Skriv för varje tjänst en sektion med rubriken "Tjänst: [namn]"
@@ -15401,6 +15670,8 @@ OTROLIGT VIKTIGT: Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor nedan. 
 ${formatExample}
 
 ---
+${byraProfilBlock}
+
 ${allaTjansterLista}
 ${allaRiskfaktorerText}
 
@@ -15522,6 +15793,8 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
       ? tjanster.map(t => t.namn).join(', ')
       : 'Inga tjänster registrerade';
 
+    const byraProfilBlock = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
+
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "2. Beskrivning av Byråns verksamhet" i en allmän riskbedömning (PVML, Penningtvättslagen).
 
 Beskriv byråns verksamhet utifrån underlagen: vilka tjänster ni erbjuder, vilken typ av kunder ni har, byråns storlek (antal anställda, omsättning, antal kundföretag) och hur verksamheten bedrivs. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell, konkret och kortfattad. Text ska kunna användas direkt i riskbedömningen.`;
@@ -15529,6 +15802,8 @@ Beskriv byråns verksamhet utifrån underlagen: vilka tjänster ni erbjuder, vil
     const userPrompt = `Skriv stycket "2. Beskrivning av Byråns verksamhet" för byråns allmänna riskbedömning.
 
 UNDERLAG:
+${byraProfilBlock}
+
 ${statistikText}
 
 Tjänster byrån erbjuder: ${tjansterLista}

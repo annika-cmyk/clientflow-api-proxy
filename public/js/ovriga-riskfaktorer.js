@@ -203,6 +203,11 @@ class RiskFactorsManager {
         document.getElementById('add-risk-form').addEventListener('submit', (e) => this.handleAddRisk(e));
         document.getElementById('edit-risk-form').addEventListener('submit', (e) => this.handleEditRisk(e));
 
+        const addAiBtn = document.getElementById('add-ai-suggest-btn');
+        if (addAiBtn) addAiBtn.addEventListener('click', () => this.generateAiSuggestion('add'));
+        const editAiBtn = document.getElementById('edit-ai-suggest-btn');
+        if (editAiBtn) editAiBtn.addEventListener('click', () => this.generateAiSuggestion('edit'));
+
         // Modal controls
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
@@ -576,6 +581,59 @@ class RiskFactorsManager {
 
         document.getElementById('high-risk-count').textContent = highRiskCount;
         document.getElementById('completed-count').textContent = completedCount;
+    }
+
+    async generateAiSuggestion(mode) {
+        const isEdit = mode === 'edit';
+        const prefix = isEdit ? 'edit-' : '';
+        const riskfaktor = (document.getElementById(`${prefix}risk-factor`)?.value || '').trim();
+        const typ = (document.getElementById(`${prefix}risk-type`)?.value || '').trim();
+        if (!riskfaktor) {
+            this.showNotification('Ange riskfaktorn först.', 'error');
+            document.getElementById(`${prefix}risk-factor`)?.focus();
+            return;
+        }
+
+        const btn = document.getElementById(isEdit ? 'edit-ai-suggest-btn' : 'add-ai-suggest-btn');
+        const label = btn?.querySelector('.ai-btn-label');
+        const originalLabel = label ? label.textContent : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('loading');
+            if (label) label.textContent = 'Genererar…';
+        }
+
+        try {
+            const befintligt = {
+                beskrivning: document.getElementById(`${prefix}description`)?.value?.trim() || '',
+                riskbedomning: document.getElementById(`${prefix}risk-assessment`)?.value || ''
+            };
+            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            const response = await fetch(`${window.apiConfig.baseUrl}/api/ai-ovriga-riskfaktor`, {
+                method: 'POST',
+                ...opts,
+                headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+                body: JSON.stringify({ riskfaktor, typ, befintligt })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
+            if (data.riskbedomning) document.getElementById(`${prefix}risk-assessment`).value = data.riskbedomning;
+            if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
+            this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
+        } catch (error) {
+            console.error('AI-förslag fel:', error);
+            this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+                if (label) label.textContent = originalLabel || 'Generera AI-förslag';
+            }
+        }
     }
 
     openAddModal() {
