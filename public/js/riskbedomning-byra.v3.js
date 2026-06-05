@@ -538,6 +538,7 @@ class RiskAssessmentManager {
         const typ = ((data.typ ?? data.type) || '').toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
+        const kalla = data.kalla ?? data.källa ?? data.source ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-hot';
         row.innerHTML = `
@@ -548,11 +549,35 @@ class RiskAssessmentManager {
             <div class="dyn-fields">
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <textarea class="dyn-besk" rows="2" placeholder="Tillvägagångssätt">${this.esc(beskrivning)}</textarea>
+                <div class="dyn-kalla-row">
+                    <i class="fas fa-link dyn-kalla-icon" aria-hidden="true"></i>
+                    <input type="text" class="dyn-kalla" placeholder="Källa, t.ex. Finanspolisen eller FATF" value="${this.esc(kalla)}">
+                    <a class="dyn-kalla-link" target="_blank" rel="noopener" style="display:none;">Öppna källa ↗</a>
+                </div>
             </div>
             <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
         `;
         row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        const kallaInput = row.querySelector('.dyn-kalla');
+        const kallaLink = row.querySelector('.dyn-kalla-link');
+        const syncKallaLink = () => {
+            const val = kallaInput.value.trim();
+            if (this.isKallaUrl(val)) {
+                kallaLink.href = val;
+                kallaLink.style.display = '';
+            } else {
+                kallaLink.removeAttribute('href');
+                kallaLink.style.display = 'none';
+            }
+        };
+        kallaInput.addEventListener('input', syncKallaLink);
+        syncKallaLink();
         list.appendChild(row);
+    }
+
+    // Källa räknas som länk endast om värdet börjar med http(s).
+    isKallaUrl(value) {
+        return /^https?:\/\//i.test((value || '').toString().trim());
     }
 
     addSarbarhetRow(data = {}) {
@@ -599,8 +624,9 @@ class RiskAssessmentManager {
         return [...document.querySelectorAll('#hot-list .dyn-row')].map(row => ({
             typ: row.querySelector('.dyn-typ')?.value || 'PT',
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
-        })).filter(h => h.titel || h.beskrivning);
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+            kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
+        })).filter(h => h.titel || h.beskrivning || h.kalla);
     }
 
     collectSarbarhet() {

@@ -11339,6 +11339,39 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-family: inherit;
 }
 .dyn-row .dyn-besk { resize: vertical; }
+/* Diskret källrad längst ned i hot-kortet (källhänvisning + ev. länk) */
+.dyn-row .dyn-kalla-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-top: 0.5px solid var(--line);
+    padding-top: 6px;
+    margin-top: 2px;
+}
+.dyn-row .dyn-kalla-icon {
+    font-size: 14px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+}
+.dyn-row .dyn-kalla {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text);
+    font-family: inherit;
+    padding: 2px 0;
+}
+.dyn-row .dyn-kalla:focus { outline: none; }
+.dyn-row .dyn-kalla-link {
+    flex-shrink: 0;
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--accent);
+    text-decoration: none;
+}
+.dyn-row .dyn-kalla-link:hover { text-decoration: underline; }
 .dyn-remove {
     flex-shrink: 0;
     width: 28px;

@@ -14993,7 +14993,7 @@ Analysera hur just denna tjänst kan utnyttjas för penningtvätt (PT) eller ter
 
 KRAV PÅ INNEHÅLLET:
 - "tjanstebeskrivning": 2–4 meningar som beskriver vad tjänsten innebär i praktiken och varför den ger byrån insyn/exponering. Saklig svenska, inga UI-termer.
-- "hot": 2–4 konkreta hot. Varje hot har "typ" som är antingen "PT" (penningtvätt) eller "TF" (terrorfinansiering), en kort "titel" (3–6 ord) och en "beskrivning" (1–2 meningar om tillvägagångssättet).
+- "hot": 2–4 konkreta hot. Varje hot har "typ" som är antingen "PT" (penningtvätt) eller "TF" (terrorfinansiering), en kort "titel" (3–6 ord), en "beskrivning" (1–2 meningar om tillvägagångssättet) och en "kalla" (relevant källhänvisning, t.ex. "Finanspolisen", "FATF" eller en URL som börjar med http).
 - "sarbarheter": 2–4 sårbarheter/riskfaktorer. Varje har "kategori" som är EXAKT en av: "Kunder", "Distribution", "Geografi", "Verksamhet". "titel" (2–5 ord) och "beskrivning" (1 mening).
 - "atgarder": 3–5 tjänstespecifika åtgärder. Varje har en "titel" (2–6 ord) och en "beskrivning" som anger VAD som kontrolleras och VAD som dokumenteras. Proportionerligt för en redovisningsbyrå – inte "polisarbete" eller löpande realtidsövervakning.
 - "riskniva": EXAKT en av "Låg", "Medel" eller "Hög" – byråns sammanvägda inneboende risknivå för tjänsten.
@@ -15004,7 +15004,7 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
 {
   "tjanstebeskrivning": "…",
   "riskniva": "Låg" | "Medel" | "Hög",
-  "hot": [ { "typ": "PT" | "TF", "titel": "…", "beskrivning": "…" } ],
+  "hot": [ { "typ": "PT" | "TF", "titel": "…", "beskrivning": "…", "kalla": "…" } ],
   "sarbarheter": [ { "kategori": "Kunder" | "Distribution" | "Geografi" | "Verksamhet", "titel": "…", "beskrivning": "…" } ],
   "atgarder": [ { "titel": "…", "beskrivning": "…" } ]
 }`;
@@ -15078,7 +15078,7 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
 
     const hot = Array.isArray(result.hot) ? result.hot
-      .map(h => ({ typ: normHotTyp(h?.typ), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning) }))
+      .map(h => ({ typ: normHotTyp(h?.typ), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
       .filter(h => h.titel || h.beskrivning) : [];
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
