@@ -8201,6 +8201,15 @@ class CustomerCardManager {
         };
         const copyLinkBtn = (req) => `<button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.copySamarbeteLink('${this.escapeDocHtml(req.id)}')" title="Kopiera länk till kundformulär"><i class="fas fa-link"></i> Kopiera länk</button>`;
         const resendEmailBtn = (req) => `<button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.resendSamarbeteEmail('${this.escapeDocHtml(req.id)}')" title="Skicka mejlet igen"><i class="fas fa-envelope"></i> Skicka mejl igen</button>`;
+        const updateRequestBtn = (req) => `<button type="button" class="btn btn-secondary btn-sm" onclick='customerCardManager.openEditSamarbeteModal(${JSON.stringify({
+            id: req.id,
+            title: req.title || '',
+            deadline: req.deadline || '',
+            recipientName: req.recipientName || '',
+            recipientEmail: req.recipientEmail || '',
+            customerMessage: req.customerMessage || '',
+            responseText: req.responseText || ''
+        }).replace(/'/g, "\\'")})' title="Lägg till/ändra frågor och meddela kunden"><i class="fas fa-pen"></i> Uppdatera</button>`;
         const uppdragBadge = (req) => {
             if (!(req && req.fromUppdrag)) return '';
             const typ = (req.uppdragTyp || '').toString().trim();
@@ -8267,6 +8276,7 @@ class CustomerCardManager {
                             ${titleLines.length > 0 ? `<div class="samarbete-block samarbete-block--questions">${questionsHtml}</div>` : ''}
                         </div>
                         <div class="samarbete-item-actions">
+                            ${updateRequestBtn(req)}
                             ${resendEmailBtn(req)}
                             <button type="button" class="btn btn-primary btn-sm" data-request-id="${this.escapeDocHtml(req.id)}" onclick="customerCardManager.archiveSamarbeteRequest('${this.escapeDocHtml(req.id)}')" title="Arkivera förfrågan"><i class="fas fa-archive"></i> Arkivera</button>
                             ${copyLinkBtn(req)}
@@ -8325,7 +8335,7 @@ class CustomerCardManager {
                             <div class="samarbete-block samarbete-block--questions">${responseHtml}</div>
                         </div>
                         <div class="samarbete-item-actions">
-                            ${req.closed ? '<span class="samarbete-closed-badge"><i class="fas fa-lock"></i> Stängd</span>' : ''}
+                            ${req.closed ? '<span class="samarbete-closed-badge"><i class="fas fa-lock"></i> Stängd</span>' : updateRequestBtn(req)}
                             <button type="button" class="btn btn-primary btn-sm" data-request-id="${this.escapeDocHtml(req.id)}" onclick="customerCardManager.archiveSamarbeteRequest('${this.escapeDocHtml(req.id)}')" title="Arkivera förfrågan"><i class="fas fa-archive"></i> Arkivera</button>
                         </div>
                     </div>
@@ -8931,6 +8941,176 @@ class CustomerCardManager {
         } catch (e) {
             this.showNotification(e.message || 'Kunde inte skicka utkast', 'error');
         }
+    }
+
+    openEditSamarbeteModal(reqJson) {
+        const req = (reqJson && typeof reqJson === 'object') ? reqJson : null;
+        if (!req || !req.id) return;
+        const existing = document.getElementById('samarbete-edit-modal');
+        if (existing) existing.remove();
+
+        // Parsa befintliga frågor på samma sätt som kundformuläret indexerar svar.
+        const titleFull = ((req.title || '') + '').trim();
+        const rawLines = titleFull
+            ? titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
+            : [];
+        const parsed = rawLines.map((line) => {
+            const fileRequired = / \[fil obligatorisk\]/i.test(line) || /\[fil obligatorisk\]\s*$/i.test(line);
+            const text = line.replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+            return { text, fileRequired };
+        });
+
+        // Vilka ursprungliga punkter har redan ett svar (för att varna innan man tar bort dem).
+        let answeredFlags = [];
+        try {
+            const raw = (req.responseText || '').toString().trim();
+            if (raw.startsWith('[')) {
+                const arr = JSON.parse(raw);
+                if (Array.isArray(arr)) {
+                    answeredFlags = arr.map(a => !!(a && ((a.text && String(a.text).trim()) || (a.filename && String(a.filename).trim()))));
+                }
+            }
+        } catch (_) { answeredFlags = []; }
+
+        const rowHtml = (idx, text, fileRequired, origIndex, answered) => {
+            const checkedAttr = fileRequired ? ' checked' : '';
+            const checkedCls = fileRequired ? ' is-checked' : '';
+            const answeredBadge = answered
+                ? '<span class="badge badge-info" style="flex-shrink:0; background:#dcfce7; color:#166534; border:1px solid #bbf7d0; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.7rem;" title="Kunden har redan svarat på denna punkt"><i class="fas fa-check"></i> Besvarad</span>'
+                : '';
+            return `<div class="samarbete-item-row" data-orig-index="${origIndex === null ? '' : origIndex}">`
+                + `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. kontoutdrag 2025 eller en längre fråga" data-item="${idx}" value="${this.escapeDocHtml(text || '')}">`
+                + `<label class="samarbete-file-req-wrap${checkedCls}" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${idx}"${checkedAttr}><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label>`
+                + answeredBadge
+                + `<button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`
+                + `</div>`;
+        };
+
+        const initialRows = (parsed.length ? parsed : [{ text: '', fileRequired: false }])
+            .map((p, idx) => rowHtml(idx, p.text, p.fileRequired, parsed.length ? idx : null, !!answeredFlags[idx]))
+            .join('');
+
+        const wrap = document.createElement('div');
+        wrap.id = 'samarbete-edit-modal';
+        wrap.className = 'modal-overlay';
+        wrap.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-pen"></i> Uppdatera förfrågan</h3>
+                    <button class="modal-close" onclick="document.getElementById('samarbete-edit-modal').remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="samarbete-edit-id" value="${this.escapeDocHtml(req.id)}">
+                    <p class="samarbete-modal-hint">Lägg till, ändra eller ta bort frågor. Samma länk behålls och kundens redan inlämnade svar följer med. Ett mejl skickas till ${this.escapeDocHtml(req.recipientName || 'kunden')} om att förfrågan uppdaterats.</p>
+                    <div class="form-group">
+                        <label>Begärt underlag *</label>
+                        <div id="samarbete-edit-items-wrap">${initialRows}</div>
+                        <button type="button" class="btn btn-ghost btn-sm" id="samarbete-edit-add-item" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Lägg till fler frågor</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="samarbete-edit-message">Meddelande till kunden <span style="color:#64748b; font-weight:400;">(visas i mejlet, valfritt)</span></label>
+                        <textarea id="samarbete-edit-message" class="form-control" rows="2" placeholder="t.ex. Jag har lagt till en fråga om reseräkningar">${this.escapeDocHtml(req.customerMessage || '')}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="samarbete-edit-deadline">Deadline <span style="color:#64748b; font-weight:400;">(valfri)</span></label>
+                        <input type="date" id="samarbete-edit-deadline" class="form-control" value="${this.escapeDocHtml((req.deadline || '').toString().slice(0, 10))}" />
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-ghost" onclick="document.getElementById('samarbete-edit-modal').remove()">Avbryt</button>
+                        <button type="button" class="btn btn-primary" id="samarbete-edit-submit" onclick="customerCardManager.submitEditSamarbete('${this.escapeDocHtml(req.id)}')">
+                            <i class="fas fa-paper-plane"></i> Uppdatera & meddela kund
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(wrap);
+
+        const wrapEl = document.getElementById('samarbete-edit-items-wrap');
+        const addBtn = document.getElementById('samarbete-edit-add-item');
+        const self = this;
+        if (addBtn && wrapEl) {
+            addBtn.addEventListener('click', () => {
+                const n = wrapEl.querySelectorAll('.samarbete-item-row').length;
+                const tmp = document.createElement('div');
+                tmp.innerHTML = self.openEditSamarbeteRowHtml(n);
+                const row = tmp.firstElementChild;
+                wrapEl.appendChild(row);
+            });
+            wrapEl.addEventListener('click', (e) => {
+                const rm = e.target.closest('.samarbete-item-remove');
+                if (rm && rm.closest('.samarbete-item-row')) rm.closest('.samarbete-item-row').remove();
+            });
+            wrapEl.addEventListener('change', (e) => {
+                const chk = e.target.closest('.samarbete-file-required-input');
+                if (chk) {
+                    const w = chk.closest('.samarbete-file-req-wrap');
+                    if (w) {
+                        w.classList.toggle('is-checked', chk.checked);
+                        w.title = chk.checked ? 'Fil krävs – klicka för att ta bort kravet' : 'Klicka för att kräva fil från kunden';
+                    }
+                }
+            });
+        }
+    }
+
+    openEditSamarbeteRowHtml(n) {
+        return `<div class="samarbete-item-row" data-orig-index=""><input type="text" class="form-control samarbete-item-input" placeholder="t.ex. ytterligare underlag eller fråga" data-item="${n}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${n}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button></div>`;
+    }
+
+    async submitEditSamarbete(requestId) {
+        const rows = document.querySelectorAll('#samarbete-edit-items-wrap .samarbete-item-row');
+        const btn = document.getElementById('samarbete-edit-submit');
+        const items = [];
+        rows.forEach((row) => {
+            const inp = row.querySelector('.samarbete-item-input');
+            const chk = row.querySelector('.samarbete-file-required');
+            const text = (inp && inp.value) ? inp.value.trim() : '';
+            if (!text) return;
+            const origRaw = row.getAttribute('data-orig-index');
+            const origIndex = (origRaw === null || origRaw === '') ? null : parseInt(origRaw, 10);
+            items.push({ text, fileRequired: !!(chk && chk.checked), origIndex: Number.isNaN(origIndex) ? null : origIndex });
+        });
+        if (items.length === 0) {
+            this.showNotification('Lägg till minst en fråga eller underlagsbegäran.', 'error');
+            return;
+        }
+        const title = items.length === 1
+            ? (items[0].text + (items[0].fileRequired ? ' [fil obligatorisk]' : ''))
+            : items.map((it, i) => `${i + 1}. ${it.text}${it.fileRequired ? ' [fil obligatorisk]' : ''}`).join('\n');
+        // Svaren indexeras mot frågorna i samma ordning, så answerMapping följer items-ordningen.
+        const answerMapping = items.map(it => (it.origIndex === null ? null : it.origIndex));
+        const messageEl = document.getElementById('samarbete-edit-message');
+        const customerMessage = (messageEl && messageEl.value) ? messageEl.value.trim() : '';
+        const deadlineEl = document.getElementById('samarbete-edit-deadline');
+        const deadline = (deadlineEl && deadlineEl.value) ? deadlineEl.value : '';
+
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uppdaterar...'; }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const payload = {
+                title,
+                deadline,
+                customerMessage: customerMessage || undefined,
+                answerMapping,
+                notify: true
+            };
+            const res = await fetch(`${baseUrl}/api/samarbete/requests/${encodeURIComponent(requestId)}/update`, {
+                method: 'PUT',
+                ...getAuthOptsKundkort(),
+                headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Kunde inte uppdatera förfrågan');
+            const modal = document.getElementById('samarbete-edit-modal');
+            if (modal) modal.remove();
+            this.showNotification(data.message || 'Förfrågan uppdaterad.', 'success');
+            if (data.emailError) this.showNotification('Mejlet kunde inte skickas: ' + data.emailError, 'error');
+            this.loadSamarbete();
+        } catch (e) {
+            this.showNotification(e.message || 'Kunde inte uppdatera förfrågan', 'error');
+        }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Uppdatera & meddela kund'; }
     }
 
     showStatusValModal() {
