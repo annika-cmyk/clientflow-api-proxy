@@ -14983,31 +14983,47 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
     } catch (_) { return ''; }
   })();
 
-  const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
-Gör en strukturerad riskbedömning av EN av byråns tjänster enligt penningtvättslagen (PVML).
-Tjänsten beskriver något byrån UTFÖR åt sina kunder (t.ex. löpande bokföring, lönehantering, bokslut, ROT/RUT-hantering).
+  const riskniva = (befintligt.riskniva || '').toString().trim() || 'Medel';
 
-TJÄNST ATT ANALYSERA: "${namn}"${tjanstetyp ? `\nTjänstetyp/kategori: ${tjanstetyp}` : ''}
-${befintligtText ? `\nBEFINTLIGT INNEHÅLL (förfina/uppdatera istället för att skriva om från noll om det fortfarande stämmer):\n${befintligtText}\n` : ''}
-Analysera hur just denna tjänst kan utnyttjas för penningtvätt (PT) eller terrorfinansiering (TF), vilka sårbarheter som finns och vilka konkreta åtgärder byrån bör vidta.
+  const prompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
-KRAV PÅ INNEHÅLLET:
-- "tjanstebeskrivning": 2–4 meningar som beskriver vad tjänsten innebär i praktiken och varför den ger byrån insyn/exponering. Saklig svenska, inga UI-termer.
-- "hot": 2–4 konkreta hot. Varje hot har "typ" som är antingen "PT" (penningtvätt) eller "TF" (terrorfinansiering), en kort "titel" (3–6 ord), en "beskrivning" (1–2 meningar om tillvägagångssättet) och en "kalla" (relevant källhänvisning, t.ex. "Finanspolisen", "FATF" eller en URL som börjar med http).
-- "sarbarheter": 2–4 sårbarheter/riskfaktorer. Varje har "kategori" som är EXAKT en av: "Kunder", "Distribution", "Geografi", "Verksamhet". "titel" (2–5 ord) och "beskrivning" (1 mening).
-- "atgarder": 3–5 tjänstespecifika åtgärder. Varje har en "titel" (2–6 ord) och en "beskrivning" som anger VAD som kontrolleras och VAD som dokumenteras. Proportionerligt för en redovisningsbyrå – inte "polisarbete" eller löpande realtidsövervakning.
-- "riskniva": EXAKT en av "Låg", "Medel" eller "Hög" – byråns sammanvägda inneboende risknivå för tjänsten.
+Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn och risknivå.
 
-Skriv konkret och verklighetstroget för svensk redovisningsbransch. Hitta inte på orimliga detaljer.
+REGLER:
+- Håll dig strikt till tjänstens domän
+- Blanda INTE in KYC, verkliga huvudmän eller penningtvättskontroller om tjänsten inte handlar om det
+- Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
+- Om tjänsten är av redovisningskaraktär: fokusera på avstämningar, kontroller och dokumentationskrav kopplade till just den tjänsten
+- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): fokusera på identitetskontroll, riskbedömning och dokumentation
+- Hot ska grundas på kända tillvägagångssätt från myndigheter och organisationer — ange alltid källan för varje hot
 
-Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
+KÄLLOR ATT UTGÅ FRÅN (använd de som är relevanta per hot):
+- Polismyndigheten / Finanspolisen (polisen.se)
+- Samordningsfunktionen mot penningtvätt och finansiering av terrorism
+- Ekobrottsmyndigheten (ekobrottsmyndigheten.se)
+- Skatteverket (skatteverket.se)
+- FATF — Financial Action Task Force (fatf-gafi.org)
+- Europol (europol.europa.eu)
+- EU-kommissionen (commission.europa.eu)
+- Brottsförebyggande rådet, Brå (bra.se)
+- Säkerhetspolisen, Säpo (sakerhetspolisen.se)
+
+TJÄNST: ${namn}
+RISKNIVÅ: ${riskniva} (Låg / Medel / Hög — högre risknivå = fler och striktare kontroller)
+
+Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
+
 {
-  "tjanstebeskrivning": "…",
-  "riskniva": "Låg" | "Medel" | "Hög",
-  "hot": [ { "typ": "PT" | "TF", "titel": "…", "beskrivning": "…", "kalla": "…" } ],
-  "sarbarheter": [ { "kategori": "Kunder" | "Distribution" | "Geografi" | "Verksamhet", "titel": "…", "beskrivning": "…" } ],
-  "atgarder": [ { "titel": "…", "beskrivning": "…" } ]
-}`;
+  "beskrivning": "2-3 meningar om vad tjänsten innebär, byråns roll och varför den är relevant ur ett AML-perspektiv.",
+  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "Konkret beskrivning av hotet kopplat till just denna tjänst.", "kalla": "Källans namn, t.ex. Finanspolisen eller FATF" } ],
+  "sarbarheter": [ { "kategori": "Verksamhet/Kunder/Produkter/Leveranskanaler/Geografi", "titel": "Kort titel, max 5 ord", "beskrivning": "Konkret sårbarhet kopplad till tjänsten och kategorin." } ],
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Konkret åtgärd byrån ska vidta för denna tjänst." } ]
+}
+
+ANTAL (anpassa efter risknivå):
+- hot: 2 (Låg), 3 (Medel), 4 (Hög)
+- sarbarheter: 2 (Låg), 2 (Medel), 3 (Hög)
+- atgarder: 3 (Låg), 4 (Medel), 5 (Hög)`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -15047,8 +15063,17 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
   };
   const normHotTyp = (v) => ((v || '').toString().trim().toUpperCase() === 'TF' ? 'TF' : 'PT');
   const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
+  // Frontend-dropdownen har 4 kategorier. Prompten kan föreslå fler (t.ex.
+  // "Leveranskanaler", "Produkter") – mappa dem till närmaste giltiga kategori.
+  const KATEGORI_ALIAS = {
+    'leveranskanaler': 'Distribution',
+    'leveranskanal': 'Distribution',
+    'produkter': 'Verksamhet',
+    'produkt': 'Verksamhet'
+  };
   const normKategori = (v) => {
     const t = (v || '').toString().trim().toLowerCase();
+    if (KATEGORI_ALIAS[t]) return KATEGORI_ALIAS[t];
     return KATEGORIER.find(k => k.toLowerCase() === t) || 'Verksamhet';
   };
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
@@ -15084,12 +15109,12 @@ Svara EXAKT i detta JSON-format (inget annat, ingen text utanför JSON):
       .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
       .filter(s => s.titel || s.beskrivning) : [];
     const atgarder = Array.isArray(result.atgarder) ? result.atgarder
-      .map(a => ({ titel: cleanStr(a?.titel), beskrivning: cleanStr(a?.beskrivning) }))
+      .map(a => ({ titel: cleanStr(a?.titel ?? a?.namn), beskrivning: cleanStr(a?.beskrivning) }))
       .filter(a => a.titel || a.beskrivning) : [];
 
     res.json({
-      tjanstebeskrivning: cleanStr(result.tjanstebeskrivning),
-      riskniva: normRisk(result.riskniva),
+      tjanstebeskrivning: cleanStr(result.beskrivning ?? result.tjanstebeskrivning),
+      riskniva: normRisk(result.riskniva || riskniva),
       hot,
       sarbarheter,
       atgarder
