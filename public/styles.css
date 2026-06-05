@@ -1,38 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap');
+
 /* =====================================
-   ClientFlow – Lila färgskala (matchar inloggningssidan)
+   ClientFlow – Petrol färgskala (sval, ägd)
    ===================================== */
 :root {
   --container-max: 1500px;
 
-  --text: #374151;
-  --title-text: #1e293b;
-  --btn-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --btn-bg-hover: #5a67d8;
-  --btn-text: #ffffff;
-  --btn-radius: 12px;
-  --title-font: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  --body-font: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  --title-weight: 600;
-  --body-weight: 400;
-  --accent: #667eea;
-  --accent-dark: #764ba2;
-  --accent-light: #a5b4fc;
-  --muted: #eef2ff;
-  --muted-alt: #e0e7ff;
-  --border: #c7d2fe;
-  --radius: 12px;
-  --radius-xl: 16px;
+  /* --- Text --- */
+  --text:        #5a626d;   /* var #374151  – sekundär/brödtext, lite svalare */
+  --title-text:  #15181d;   /* var #1e293b  – rubriker, högre kontrast */
+
+  /* --- Knappar: SOLID petrol istället för lila gradient --- */
+  --btn-bg:        #13505c;          /* var linear-gradient(...#667eea...#764ba2) */
+  --btn-bg-hover:  #0d3a43;          /* var #5a67d8 */
+  --btn-text:      #ffffff;
+  --btn-radius:    10px;             /* var 12px – aning stramare */
+
+  /* --- Typsnitt: Schibsted Grotesk (skandinavisk grotesk) --- */
+  --title-font: "Schibsted Grotesk", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --body-font:  "Schibsted Grotesk", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --title-weight: 700;               /* var 600 */
+  --body-weight:  400;
+
+  /* --- Accent (petrol – blå-lutande så den ej krockar med grön/röd) --- */
+  --accent:        #13505c;          /* var #667eea */
+  --accent-dark:   #0d3a43;          /* var #764ba2 */
+  --accent-light:  #bcd6da;          /* var #a5b4fc – ljus petrol */
+  --muted:         #e3eef0;          /* var #eef2ff – accent-tint (aktiva ytor) */
+  --muted-alt:     #d3e3e6;          /* var #e0e7ff */
+  --border:        #dcdfe5;          /* var #c7d2fe – neutral sval kant (ej lila) */
+
+  --radius:     12px;
+  --radius-xl:  16px;
+
   --sidebar-bg: #ffffff;
-  --card-bg: #ffffff;
-  --card-shadow: 0 4px 20px rgba(102, 126, 234, 0.08);
-  --success: #16a34a;
-  --warning: #d97706;
-  --error: #dc2626;
+  --card-bg:    #ffffff;
+  --card-shadow: 0 1px 2px rgba(21,24,29,.04), 0 8px 28px rgba(21,24,29,.06); /* var lila skugga */
+
+  /* --- Status: ENBART för sin betydelse --- */
+  --success: #1f8a4c;   /* klar/godkänd */
+  --warning: #b07414;   /* ofullständig / behöver åtgärd  ← använd denna för "ej gjort", inte error */
+  --error:   #c23b2e;   /* verkligt fel / hög risk */
+
+  /* --- NYA hjälpvariabler (för uppstädning av hårdkodade hex) --- */
+  --app-bg:      #f5f6f8;   /* sval sidbakgrund (ersätter lavendel #f5f3ff) */
+  --panel-2:     #fafbfc;   /* nästlad yta */
+  --ink-3:       #8b929d;   /* ikoner i vila, tertiär text */
+  --label:       #9aa1ab;   /* versala fältetiketter / gruppnamn */
+  --line:        #e8eaee;   /* hårfin linje */
+  --success-tint:#e7f3ec;
+  --warning-tint:#f8eed7;
+  --error-tint:  #fbe9e7;
+  --accent-tint: #e3eef0;   /* = --muted, alias för tydlighet */
 }
 
-html { scroll-behavior: smooth; background: #f5f3ff; }
+html { scroll-behavior: smooth; background: var(--app-bg); }
 body {
-  margin: 0; color: var(--text); background: #f5f3ff;
+  margin: 0; color: var(--text); background: var(--app-bg);
   font-family: var(--body-font); font-weight: var(--body-weight);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   min-height: 100dvh; overflow-x: hidden;
@@ -1429,7 +1453,11 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status--warn {
-    color: #ef4444;
+    color: var(--error);
+}
+
+.customer-details-section .tab-status--incomplete {
+    color: var(--warning);
 }
 
 .customer-details-section .tab-status--ok {
@@ -1468,7 +1496,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status--bubble-red {
-    background: #ef4444;
+    background: var(--warning);
 }
 
 .customer-details-section .tab-status--bubble-yellow {
@@ -1510,7 +1538,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status-bubble--red {
-    background: #ef4444;
+    background: var(--warning);
 }
 
 .customer-details-section .tab-status-bubble--yellow {
@@ -5638,8 +5666,8 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem;
-    background: #f5f3ff;
-    border: 1px dashed #c4b5fd;
+    background: var(--accent-tint);
+    border: 1px dashed var(--accent-light);
     border-radius: 8px;
     flex-wrap: wrap;
 }
@@ -5648,7 +5676,7 @@ body.sidebar-collapsed .logout-btn {
     align-items: center;
     gap: 0.4rem;
     padding: 0.45rem 1rem;
-    background: #6366f1;
+    background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 6px;
@@ -5658,7 +5686,7 @@ body.sidebar-collapsed .logout-btn {
     transition: background 0.15s;
     white-space: nowrap;
 }
-.btn-ai-suggest:hover { background: #4f46e5; }
+.btn-ai-suggest:hover { background: var(--accent-dark); }
 .btn-ai-suggest:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* AI "tänker"-indikator – visuell overlay när AI arbetar */
@@ -10761,8 +10789,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #10b981;
 }
 .kundlista-row-icon--warn {
-    background: #fef2f2;
-    color: #ef4444;
+    background: var(--warning-tint);
+    color: var(--warning);
 }
 .kundlista-row-name {
     display: flex;
@@ -11226,8 +11254,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 600;
     padding: 0.3rem 0.7rem;
     border-radius: 8px;
-    border: 1px solid rgba(102, 126, 234, 0.3);
-    background: rgba(102, 126, 234, 0.08);
+    border: 1px solid var(--accent-light);
+    background: var(--accent-tint);
     color: var(--accent);
     cursor: pointer;
     transition: all 0.2s ease;
@@ -11241,8 +11269,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: space-between;
     gap: 0.75rem;
     flex-wrap: wrap;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.08), rgba(118, 75, 162, 0.08));
-    border: 1px solid rgba(102, 126, 234, 0.2);
+    background: var(--accent-tint);
+    border: 1px solid var(--accent-light);
     border-radius: 10px;
     padding: 0.65rem 0.85rem;
     margin-bottom: 1rem;
@@ -11266,13 +11294,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.45rem 0.95rem;
     border-radius: 10px;
     border: none;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: var(--accent);
     color: #fff;
     cursor: pointer;
     white-space: nowrap;
-    transition: transform 0.15s ease, opacity 0.2s ease;
+    transition: background 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
 }
-.btn-ai:hover { transform: translateY(-1px); }
+.btn-ai:hover { background: var(--accent-dark); transform: translateY(-1px); }
 .btn-ai:disabled { opacity: 0.7; cursor: progress; }
 .btn-ai.loading i { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

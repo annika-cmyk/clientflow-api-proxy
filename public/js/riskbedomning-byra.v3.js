@@ -535,16 +535,19 @@ class RiskAssessmentManager {
     addHotRow(data = {}) {
         const list = document.getElementById('hot-list');
         if (!list) return;
+        const typ = ((data.typ ?? data.type) || '').toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
+        const titel = data.titel ?? data.title ?? '';
+        const beskrivning = data.beskrivning ?? data.description ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-hot';
         row.innerHTML = `
             <select class="dyn-typ">
-                <option value="PT" ${data.typ === 'TF' ? '' : 'selected'}>PT</option>
-                <option value="TF" ${data.typ === 'TF' ? 'selected' : ''}>TF</option>
+                <option value="PT" ${typ === 'TF' ? '' : 'selected'}>PT</option>
+                <option value="TF" ${typ === 'TF' ? 'selected' : ''}>TF</option>
             </select>
             <div class="dyn-fields">
-                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(data.titel || '')}">
-                <textarea class="dyn-besk" rows="2" placeholder="Tillvägagångssätt">${this.esc(data.beskrivning || '')}</textarea>
+                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
+                <textarea class="dyn-besk" rows="2" placeholder="Tillvägagångssätt">${this.esc(beskrivning)}</textarea>
             </div>
             <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
         `;
@@ -556,14 +559,17 @@ class RiskAssessmentManager {
         const list = document.getElementById('sarbarhet-list');
         if (!list) return;
         const kategorier = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
-        const opts = kategorier.map(k => `<option value="${k}" ${data.kategori === k ? 'selected' : ''}>${k}</option>`).join('');
+        const kategori = data.kategori ?? data.category ?? '';
+        const titel = data.titel ?? data.title ?? '';
+        const beskrivning = data.beskrivning ?? data.description ?? '';
+        const opts = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet';
         row.innerHTML = `
             <select class="dyn-kategori">${opts}</select>
             <div class="dyn-fields">
-                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(data.titel || '')}">
-                <textarea class="dyn-besk" rows="2" placeholder="Beskrivning">${this.esc(data.beskrivning || '')}</textarea>
+                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
+                <textarea class="dyn-besk" rows="2" placeholder="Beskrivning">${this.esc(beskrivning)}</textarea>
             </div>
             <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
         `;
@@ -574,12 +580,14 @@ class RiskAssessmentManager {
     addAtgardRow(data = {}) {
         const list = document.getElementById('atgard-list');
         if (!list) return;
+        const titel = data.titel ?? data.title ?? '';
+        const beskrivning = data.beskrivning ?? data.description ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-atgard';
         row.innerHTML = `
             <div class="dyn-fields">
-                <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(data.titel || '')}">
-                <textarea class="dyn-besk" rows="2" placeholder="Vad kontrolleras och dokumenteras?">${this.esc(data.beskrivning || '')}</textarea>
+                <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
+                <textarea class="dyn-besk" rows="2" placeholder="Vad kontrolleras och dokumenteras?">${this.esc(beskrivning)}</textarea>
             </div>
             <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
         `;
@@ -838,5 +846,6 @@ function closeModal(modalId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.info('[ClientFlow] riskbedomning-byra v3 laddad – formuläret visar titel + beskrivning för hot/sårbarheter/åtgärder.');
     window.riskManager = new RiskAssessmentManager();
 });
