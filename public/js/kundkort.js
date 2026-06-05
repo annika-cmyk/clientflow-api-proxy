@@ -673,7 +673,7 @@ class CustomerCardManager {
                 'Företagsinformation klarmarkerad');
         } else {
             this._setTabStatus('foretagsinformation',
-                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
                 'Företagsinformation ej klarmarkerad');
         }
 
@@ -683,7 +683,7 @@ class CustomerCardManager {
                 'Riskbedömning klarmarkerad');
         } else {
             this._setTabStatus('ovrigkyc',
-                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
                 'Riskbedömning ej klarmarkerad');
         }
 
@@ -693,7 +693,7 @@ class CustomerCardManager {
                 'KYC-formulär klarmarkerat');
         } else {
             this._setTabStatus('kycformular',
-                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
                 'KYC-formulär ej klarmarkerat');
         }
 
@@ -704,7 +704,7 @@ class CustomerCardManager {
                 'Uppdragsavtal klarmarkerat');
         } else {
             this._setTabStatus('uppdragsavtal',
-                '<i class="fas fa-exclamation-circle tab-status--warn" aria-hidden="true"></i>',
+                '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
                 'Uppdragsavtal ej klarmarkerat');
         }
     }
