@@ -494,11 +494,9 @@ class ByraAnvandareManager {
         geografiskMarknad: document.getElementById('byra-geografi')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || res.statusText);
-      }
-      if (statusEl) statusEl.textContent = 'Sparat.';
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || res.statusText);
+      if (statusEl) statusEl.textContent = j.warning ? ('Sparat med varning: ' + j.warning) : 'Sparat.';
       setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
     } catch (err) {
       console.error('saveByraInfo:', err);

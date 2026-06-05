@@ -7882,6 +7882,90 @@ async function getByraerRecordForUser(req) {
 }
 
 // BYRÅNS PROFIL – kalibreringsfält (lagras i Airtable-tabellen "Byråer")
+const BYRA_PROFIL_REQUIRED_FIELDS = [
+  { name: 'Antal kunder', type: 'number', description: 'Antal kunder i byråns kundstock (för riskkalibrering)', options: { precision: 0 } },
+  { name: 'Vanligaste bolagsformer', type: 'multilineText', description: 'Vanligaste bolagsformer i kundstocken' },
+  { name: 'Branscher i kundstocken', type: 'multilineText', description: 'Branscher som förekommer i kundstocken' },
+  { name: 'Andel kunder med internationell handel', type: 'number', description: 'Andel kunder med internationell handel (0–100 %)', options: { precision: 0 } },
+  { name: 'Andel kontantintensiva kunder', type: 'number', description: 'Andel kontantintensiva kunder (0–100 %)', options: { precision: 0 } },
+  { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur tjänster erbjuds', options: { choices: [{ name: 'På plats' }, { name: 'Distans' }, { name: 'Blandat' }] } },
+  { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' }
+];
+const BYRA_PROFIL_AIRTABLE_NAMES = new Set(BYRA_PROFIL_REQUIRED_FIELDS.map(f => f.name));
+
+async function getByraerTableMeta(airtableToken, baseId) {
+  const forcedId = (process.env.BYRAER_TABLE_ID || '').trim();
+  try {
+    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const tables = res.data?.tables || [];
+    if (forcedId) {
+      const byId = tables.find(t => (t.id || '').trim() === forcedId);
+      if (byId) return byId;
+    }
+    return tables.find(t => {
+      const n = (t.name || '').trim().toLowerCase();
+      return n === 'byråer' || n === 'byraer' || n === 'byråns profil' || n === 'byrans profil';
+    }) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function ensureByraProfilAirtableFields(airtableToken, baseId) {
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { created: [], table: null };
+  const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+  const missing = BYRA_PROFIL_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
+  const created = [];
+  if (!missing.length) return { created, table: byraTable };
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+  for (const field of missing) {
+    try {
+      const body = { name: field.name, type: field.type };
+      if (field.description) body.description = field.description;
+      if (field.options) body.options = field.options;
+      // eslint-disable-next-line no-await-in-loop
+      await axios.post(createUrl, body, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      created.push(field.name);
+    } catch (_) {}
+  }
+  return { created, table: byraTable };
+}
+
+async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) {
+  const patchUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}/${recordId}`;
+  let remaining = { ...fields };
+  const skippedProfilFields = [];
+  while (Object.keys(remaining).length > 0) {
+    try {
+      await axios.patch(patchUrl, { fields: remaining }, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }
+      });
+      return { skippedProfilFields };
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || '';
+      if (String(msg).toLowerCase().includes('unknown field name')) {
+        const match = String(msg).match(/unknown field name[:\s]*["']?([^"']+)["']?/i);
+        const badName = match?.[1]?.trim();
+        if (badName && BYRA_PROFIL_AIRTABLE_NAMES.has(badName) && Object.prototype.hasOwnProperty.call(remaining, badName)) {
+          skippedProfilFields.push(badName);
+          delete remaining[badName];
+          continue;
+        }
+      }
+      throw e;
+    }
+  }
+  if (skippedProfilFields.length) return { skippedProfilFields };
+  throw new Error('Inga fält kunde sparas till Airtable');
+}
+
 function mapByraProfilFromAirtable(fields) {
   const f = fields || {};
   return {
@@ -8019,12 +8103,14 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     }
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const BYRAER_TABLE = 'Byråer';
-    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
+    const profilFieldKeys = ['antalKunder', 'vanligasteBolagsformer', 'branscherKundstock', 'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad'];
+    if (profilFieldKeys.some(k => body[k] !== undefined)) {
+      await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId);
+    }
+    let skippedProfilFields = [];
     try {
-      await axios.patch(patchUrl, { fields }, {
-        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
-      });
+      const patchResult = await patchByraerRecordFields(airtableAccessToken, airtableBaseId, recordId, fields);
+      skippedProfilFields = patchResult.skippedProfilFields || [];
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || 'Kunde inte uppdatera byråinfo';
       // Vanligt fel när fälten inte finns i tabellen Byråer
@@ -8046,16 +8132,13 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
           details: msg
         });
       }
-      const profilFieldKeys = ['antalKunder', 'vanligasteBolagsformer', 'branscherKundstock', 'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad'];
-      if (String(msg).toLowerCase().includes('unknown field name') && profilFieldKeys.some(k => body[k] !== undefined)) {
-        return res.status(400).json({
-          error: 'BYRÅNS PROFIL-fält saknas i Airtable-tabellen "Byråer". Skapa fälten manuellt eller via POST /api/setup/airtable-byra-profil-fields (kräver schema-token).',
-          details: msg
-        });
-      }
       throw e;
     }
-    res.json({ success: true, id: recordId });
+    const response = { success: true, id: recordId };
+    if (skippedProfilFields.length) {
+      response.warning = `Vissa BYRÅNS PROFIL-fält saknas i Airtable och sparades inte: ${skippedProfilFields.join(', ')}. Övriga fält sparades.`;
+    }
+    res.json(response);
   } catch (error) {
     console.error('❌ PUT /api/byra/info:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -8318,9 +8401,9 @@ app.post('/api/setup/airtable-byra-avtalsdefaults-fields', authenticateToken, as
     if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
 
     const required = [
-      { name: 'Default uppsägningstid', type: 'number', description: 'Default uppsägningstid i månader för nya uppdragsavtal' },
+      { name: 'Default uppsägningstid', type: 'number', description: 'Default uppsägningstid i månader för nya uppdragsavtal', options: { precision: 0 } },
       { name: 'Default faktureringsperiod', type: 'singleSelect', description: 'Default faktureringsperiod för nya uppdragsavtal', options: { choices: [{ name: 'Månadsvis' }, { name: 'Kvartalsvis' }, { name: 'Halvårsvis' }, { name: 'Årsvis' }, { name: 'Löpande' }] } },
-      { name: 'Default betalningsvillkor', type: 'number', description: 'Default betalningsvillkor i dagar för nya uppdragsavtal' }
+      { name: 'Default betalningsvillkor', type: 'number', description: 'Default betalningsvillkor i dagar för nya uppdragsavtal', options: { precision: 0 } }
     ];
 
     const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
@@ -8488,26 +8571,10 @@ app.post('/api/setup/airtable-byra-profil-fields', authenticateToken, async (req
   const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
   try {
-    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
-      headers: { Authorization: `Bearer ${airtableAccessToken}` },
-      timeout: 15000
-    });
-    const tables = metaRes.data?.tables || [];
-    const byraTable = tables.find(t => {
-      const n = (t.name || '').trim().toLowerCase();
-      return n === 'byråer' || n === 'byraer' || n === 'byråns profil' || n === 'byrans profil';
-    });
+    const byraTable = await getByraerTableMeta(airtableAccessToken, baseId);
     if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" (BYRÅNS PROFIL) hittades inte i basen.' });
 
-    const required = [
-      { name: 'Antal kunder', type: 'number', description: 'Antal kunder i byråns kundstock (för riskkalibrering)' },
-      { name: 'Vanligaste bolagsformer', type: 'multilineText', description: 'Vanligaste bolagsformer i kundstocken' },
-      { name: 'Branscher i kundstocken', type: 'multilineText', description: 'Branscher som förekommer i kundstocken' },
-      { name: 'Andel kunder med internationell handel', type: 'number', description: 'Andel kunder med internationell handel (0–100 %)' },
-      { name: 'Andel kontantintensiva kunder', type: 'number', description: 'Andel kontantintensiva kunder (0–100 %)' },
-      { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur tjänster erbjuds', options: { choices: [{ name: 'På plats' }, { name: 'Distans' }, { name: 'Blandat' }] } },
-      { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' }
-    ];
+    const required = BYRA_PROFIL_REQUIRED_FIELDS;
 
     const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
     const toCreate = required.filter(f => !existingNames.includes((f.name || '').trim()));
