@@ -1453,7 +1453,11 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status--warn {
-    color: #ef4444;
+    color: var(--error);
+}
+
+.customer-details-section .tab-status--incomplete {
+    color: var(--warning);
 }
 
 .customer-details-section .tab-status--ok {
@@ -1492,7 +1496,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status--bubble-red {
-    background: #ef4444;
+    background: var(--warning);
 }
 
 .customer-details-section .tab-status--bubble-yellow {
@@ -1534,7 +1538,7 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status-bubble--red {
-    background: #ef4444;
+    background: var(--warning);
 }
 
 .customer-details-section .tab-status-bubble--yellow {
@@ -10785,8 +10789,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #10b981;
 }
 .kundlista-row-icon--warn {
-    background: #fef2f2;
-    color: #ef4444;
+    background: var(--warning-tint);
+    color: var(--warning);
 }
 .kundlista-row-name {
     display: flex;

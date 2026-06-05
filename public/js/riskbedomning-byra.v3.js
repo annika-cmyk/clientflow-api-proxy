@@ -846,5 +846,6 @@ function closeModal(modalId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.info('[ClientFlow] riskbedomning-byra v3 laddad – formuläret visar titel + beskrivning för hot/sårbarheter/åtgärder.');
     window.riskManager = new RiskAssessmentManager();
 });

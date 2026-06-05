@@ -104,7 +104,18 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
  
  // Serve static frontend
- app.use(express.static(path.join(__dirname, 'public')));
+ // Force HTML/JS/CSS to always revalidate (via ETag) so updated frontend code
+ // is picked up immediately instead of a stale cached copy lingering in the
+ // browser or an intermediate CDN/proxy.
+ app.use(express.static(path.join(__dirname, 'public'), {
+   etag: true,
+   lastModified: true,
+   setHeaders: (res, filePath) => {
+     if (/\.(html|js|css)$/i.test(filePath)) {
+       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+     }
+   }
+ }));
 
 // Root endpoint for Render
 app.get('/', (req, res) => {
