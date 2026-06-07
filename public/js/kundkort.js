@@ -412,6 +412,8 @@ class CustomerCardManager {
                                           fields['Org.nr'] || 
                                           'Org.nr saknas';
         }
+
+        this._renderKundstatus(fields);
         
         // Update customer type badge
         const typeBadge = document.getElementById('customer-type');
@@ -425,6 +427,66 @@ class CustomerCardManager {
         }
         
         console.log('✅ Customer info displayed');
+    }
+
+    _normalizeKundstatus(raw) {
+        const v = (raw == null ? '' : String(raw)).trim().toLowerCase();
+        if (v === 'lead') return 'Lead';
+        if (v === 'avslutad' || v === 'avslutat') return 'Avslutad';
+        return 'Pågående kund';
+    }
+
+    _renderKundstatus(fields) {
+        const headerContent = document.querySelector('.risk-header-content');
+        if (!headerContent) return;
+
+        const current = this._normalizeKundstatus(fields.Kundstatus);
+        const values = ['Lead', 'Pågående kund', 'Avslutad'];
+        const slug = current === 'Lead' ? 'lead' : (current === 'Avslutad' ? 'avslutad' : 'pagaende');
+
+        let wrap = document.getElementById('kundstatus-control');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'kundstatus-control';
+            wrap.className = 'kundstatus-control';
+            headerContent.appendChild(wrap);
+        }
+        wrap.className = `kundstatus-control kundstatus-control--${slug}`;
+        wrap.innerHTML = `
+            <label for="kundstatus-select"><i class="fas fa-user-tag"></i> Status</label>
+            <select id="kundstatus-select" onchange="customerCardManager.setKundstatus(this.value)">
+                ${values.map(v => `<option value="${v}" ${v === current ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>`;
+    }
+
+    async setKundstatus(value) {
+        const status = this._normalizeKundstatus(value);
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const opts = (typeof getAuthOptsKundkort === 'function')
+                ? getAuthOptsKundkort()
+                : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                ...opts,
+                body: JSON.stringify({ fields: { 'Kundstatus': status } })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            if (this.customerData) {
+                this.customerData.fields = this.customerData.fields || {};
+                this.customerData.fields['Kundstatus'] = status;
+            }
+            this._renderKundstatus(this.customerData?.fields || {});
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(`Status uppdaterad till "${status}"`, 'success');
+            }
+        } catch (e) {
+            console.error('❌ Kunde inte uppdatera kundstatus:', e);
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Kunde inte uppdatera status: ' + (e.message || 'fel'), 'error');
+            }
+        }
     }
 
     _ensureTabStatusElements() {
@@ -9178,6 +9240,7 @@ class CustomerCardManager {
                                 <select id="note-type" name="typAvAnteckning" required>
                                     <option value="">Välj typ...</option>
                                     <option value="Nykundsmöte">Nykundsmöte</option>
+                                    <option value="Mötesanteckningar">Mötesanteckningar</option>
                                     <option value="Övrig anteckning">Övrig anteckning</option>
                                     <option value="Bokslutsgenomgång">Bokslutsgenomgång</option>
                                     <option value="Arbetsanteckningar">Arbetsanteckningar</option>
@@ -9423,7 +9486,7 @@ class CustomerCardManager {
         const orgnr = this.customerData?.fields?.['Orgnr'] || '';
         const companyName = this.customerData?.fields?.['Namn'] || '';
 
-        const typOptions = ['Nykundsmöte', 'Övrig anteckning', 'Bokslutsgenomgång', 'Arbetsanteckningar', 'Emailkonversation'];
+        const typOptions = ['Nykundsmöte', 'Mötesanteckningar', 'Övrig anteckning', 'Bokslutsgenomgång', 'Arbetsanteckningar', 'Emailkonversation'];
         const currentTyp = Array.isArray(fields['Typ av anteckning']) ? fields['Typ av anteckning'][0] : '';
         const typOptionsHTML = typOptions.map(t =>
             `<option value="${t}" ${currentTyp === t ? 'selected' : ''}>${t}</option>`

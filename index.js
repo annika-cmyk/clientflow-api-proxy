@@ -1315,6 +1315,65 @@ app.post('/api/setup/airtable-kyc-formular-field', authenticateToken, async (req
   }
 });
 
+// Kundstatus (Lead / Pågående kund / Avslutad) – fältnamn och tillåtna värden
+const KUNDSTATUS_FIELD_NAME = 'Kundstatus';
+const KUNDSTATUS_VALUES = ['Lead', 'Pågående kund', 'Avslutad'];
+let kundstatusFieldEnsured = false;
+
+// Skapar single-select-fältet "Kundstatus" i KUNDDATA om det saknas (idempotent).
+// Returnerar true om fältet finns/skapades, annars false (t.ex. om token saknar schema-rättigheter).
+async function ensureKundstatusField(airtableToken, baseId) {
+  if (kundstatusFieldEnsured) return true;
+  const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+  if (!airtableToken) return false;
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const tables = metaRes.data?.tables || [];
+    const kundTable = tables.find(t => t.id === KUNDDATA_TABLE_ID);
+    if (!kundTable) return false;
+    const hasField = (kundTable.fields || []).some(f => (f.name || '') === KUNDSTATUS_FIELD_NAME);
+    if (hasField) {
+      kundstatusFieldEnsured = true;
+      return true;
+    }
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${KUNDDATA_TABLE_ID}/fields`,
+      {
+        name: KUNDSTATUS_FIELD_NAME,
+        type: 'singleSelect',
+        options: { choices: KUNDSTATUS_VALUES.map(name => ({ name })) }
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    kundstatusFieldEnsured = true;
+    console.log(`✅ Fältet "${KUNDSTATUS_FIELD_NAME}" skapades i KUNDDATA-tabellen.`);
+    return true;
+  } catch (err) {
+    console.warn('ensureKundstatusField:', err.response?.data?.error?.message || err.message);
+    return false;
+  }
+}
+
+// POST /api/setup/airtable-kundstatus-field – Skapa single-select-fältet "Kundstatus" i KUNDDATA
+app.post('/api/setup/airtable-kundstatus-field', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+  const ok = await ensureKundstatusField(airtableAccessToken, baseId);
+  if (ok) {
+    return res.json({ success: true, message: `Fältet "${KUNDSTATUS_FIELD_NAME}" finns nu i KUNDDATA-tabellen.` });
+  }
+  return res.status(500).json({
+    success: false,
+    error: `Kunde inte skapa fältet "${KUNDSTATUS_FIELD_NAME}". Kontrollera att Airtable-token har schema.bases:write.`
+  });
+});
+
 // Bolagsverket test endpoint
 app.get('/api/bolagsverket/test', (req, res) => {
   res.json({
@@ -2488,7 +2547,9 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
             )?.[2]?.dokumentId || '',
             'Senaste årsredovisning fil': nedladdadeDokument.senasteArsredovisning || '',
             'Fg årsredovisning fil': nedladdadeDokument.fgArsredovisning || '',
-            'Ffg årsredovisning fil': nedladdadeDokument.ffgArsredovisning || ''
+            'Ffg årsredovisning fil': nedladdadeDokument.ffgArsredovisning || '',
+            // Nya företag som sparas in läggs upp som "Lead" tills de blir aktiva kunder
+            'Kundstatus': 'Lead'
           }
         };
 
@@ -2763,17 +2824,37 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
 
     if (!recordId) {
       const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
+      // Säkerställ att Kundstatus-fältet finns innan vi skickar med det
+      try { await ensureKundstatusField(airtableAccessToken, airtableBaseId); } catch (_) {}
       try {
         console.log('📤 Sparar till Airtable KUNDDATA:', createUrl);
-        const airtableResponse = await axios.post(createUrl, {
-          records: [{ fields: airtableData.fields }]
-        }, {
-          headers: {
-            'Authorization': `Bearer ${airtableAccessToken}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 15000
-        });
+        let airtableResponse;
+        try {
+          airtableResponse = await axios.post(createUrl, {
+            records: [{ fields: airtableData.fields }]
+          }, {
+            headers: {
+              'Authorization': `Bearer ${airtableAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 15000
+          });
+        } catch (err) {
+          // Om Kundstatus-fältet inte finns i basen – spara ändå utan det
+          const m = err.response?.data?.error?.message || '';
+          if (err.response?.status === 422 && /Kundstatus|UNKNOWN_FIELD_NAME/i.test(m) && airtableData.fields['Kundstatus']) {
+            console.warn('⚠️ Kundstatus-fältet saknas i Airtable – sparar utan det.');
+            delete airtableData.fields['Kundstatus'];
+            airtableResponse = await axios.post(createUrl, {
+              records: [{ fields: airtableData.fields }]
+            }, {
+              headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+              timeout: 15000
+            });
+          } else {
+            throw err;
+          }
+        }
         recordId = airtableResponse.data.records?.[0]?.id;
         if (!recordId) {
           console.error('❌ Airtable svarade utan record-id:', airtableResponse.data);
@@ -7706,6 +7787,11 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Fält saknas i request body' });
     }
 
+    // Nya företag läggs upp som "Lead" om inget annat anges
+    if (!fields['Kundstatus']) {
+      fields['Kundstatus'] = 'Lead';
+    }
+
     const orgnrRaw = (fields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
     const byraId = (fields['Byrå ID'] != null ? fields['Byrå ID'] : fields['ByraID'] || fields['Byra_ID'] || '').toString().trim();
     const byraIdClean = byraId.replace(/,/g, '').trim();
@@ -7774,10 +7860,26 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
     }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-    const airtableRes = await axios.post(url,
-      { fields },
-      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
+    try { await ensureKundstatusField(airtableAccessToken, airtableBaseId); } catch (_) {}
+    let airtableRes;
+    try {
+      airtableRes = await axios.post(url,
+        { fields },
+        { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (err) {
+      const m = err.response?.data?.error?.message || '';
+      if (err.response?.status === 422 && /Kundstatus|UNKNOWN_FIELD_NAME/i.test(m) && fields['Kundstatus']) {
+        console.warn('⚠️ Kundstatus-fältet saknas i Airtable – skapar kund utan det.');
+        delete fields['Kundstatus'];
+        airtableRes = await axios.post(url,
+          { fields },
+          { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        throw err;
+      }
+    }
     console.log('✅ Kund skapad i Airtable KUNDDATA:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
 
@@ -10893,7 +10995,8 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
     console.log('📋 Fält som skickas till Airtable:', JSON.stringify(cleanedFields, null, 2));
     
     const response = await axios.post(url, {
-      fields: cleanedFields
+      fields: cleanedFields,
+      typecast: true
     }, {
       headers: {
         'Authorization': `Bearer ${airtableAccessToken}`,
@@ -10991,7 +11094,7 @@ app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
 
     const response = await axios.patch(
       `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`,
-      { fields: airtableFields },
+      { fields: airtableFields, typecast: true },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
@@ -11127,6 +11230,13 @@ const server = app.listen(PORT, () => {
   console.log(`   • Create: POST http://localhost:${PORT}/api/risk-factors`);
   console.log(`   • Update: PUT http://localhost:${PORT}/api/risk-factors/:id`);
   console.log(`   • Delete: DELETE http://localhost:${PORT}/api/risk-factors/:id`);
+
+  // Säkerställ att Kundstatus-fältet finns i KUNDDATA (Lead/Pågående kund/Avslutad)
+  try {
+    const _tok = process.env.AIRTABLE_ACCESS_TOKEN;
+    const _base = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (_tok) ensureKundstatusField(_tok, _base).catch(() => {});
+  } catch (_) {}
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`❌ Port ${PORT} är redan i bruk!`);

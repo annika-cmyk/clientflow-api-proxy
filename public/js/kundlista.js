@@ -5,7 +5,24 @@ class CustomerManager {
         this.filteredCustomers = [];
         this.avtalStatusMap = {};
         this.lastQuery = '';
+        // Lead och Pågående kund visas som standard, Avslutad döljs tills filtret väljs
+        this.activeStatuses = new Set(['Lead', 'Pågående kund']);
         this.init();
+    }
+
+    // Normalisera Kundstatus från Airtable till ett av de tre kända värdena.
+    // Saknat värde behandlas som "Pågående kund" så befintliga kunder syns som standard.
+    normalizeStatus(raw) {
+        const v = (raw == null ? '' : String(raw)).trim().toLowerCase();
+        if (v === 'lead') return 'Lead';
+        if (v === 'avslutad' || v === 'avslutat') return 'Avslutad';
+        return 'Pågående kund';
+    }
+
+    statusSlug(status) {
+        if (status === 'Lead') return 'lead';
+        if (status === 'Avslutad') return 'avslutad';
+        return 'pagaende';
     }
 
     init() {
@@ -21,19 +38,41 @@ class CustomerManager {
         }
 
         document.getElementById('search-filter').addEventListener('input', (e) => {
-            const rawQ = (e.target.value || '').toString();
-            this.lastQuery = rawQ;
-            const q = rawQ.toLowerCase();
-            this.filteredCustomers = this.customers.filter(c => {
-                const name = (c.namn || '').toLowerCase();
-                const org = (c.organisationsnummer || '').toLowerCase();
-                const kontakt = (c.kontaktpersoner || '').toLowerCase();
-                return name.includes(q) || org.includes(q) || kontakt.includes(q);
-            });
-            this.render();
+            this.lastQuery = (e.target.value || '').toString();
+            this.applyFilters();
         });
 
+        const statusFilter = document.getElementById('status-filter');
+        if (statusFilter) {
+            statusFilter.addEventListener('click', (e) => {
+                const pill = e.target.closest('.status-pill');
+                if (!pill) return;
+                const status = pill.dataset.status;
+                if (this.activeStatuses.has(status)) {
+                    this.activeStatuses.delete(status);
+                    pill.classList.remove('is-active');
+                } else {
+                    this.activeStatuses.add(status);
+                    pill.classList.add('is-active');
+                }
+                this.applyFilters();
+            });
+        }
+
         window.addEventListener('clientflow:authReady', () => this.loadCustomers());
+    }
+
+    applyFilters() {
+        const q = (this.lastQuery || '').toLowerCase();
+        this.filteredCustomers = this.customers.filter(c => {
+            if (!this.activeStatuses.has(c.kundstatus)) return false;
+            if (!q) return true;
+            const name = (c.namn || '').toLowerCase();
+            const org = (c.organisationsnummer || '').toLowerCase();
+            const kontakt = (c.kontaktpersoner || '').toLowerCase();
+            return name.includes(q) || org.includes(q) || kontakt.includes(q);
+        });
+        this.render();
     }
 
     async loadCustomers() {
@@ -98,12 +137,12 @@ class CustomerManager {
                     organisationsnummer: f.Orgnr || f.Organisationsnummer || '',
                     bolagsform: f.Bolagsform || '',
                     kontaktpersoner,
+                    kundstatus: this.normalizeStatus(f.Kundstatus),
                     complianceKlar
                 };
             }).sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
 
-            this.filteredCustomers = [...this.customers];
-            this.render();
+            this.applyFilters();
 
         } catch (error) {
             console.error('Fel vid laddning av kunder:', error);
@@ -152,6 +191,7 @@ class CustomerManager {
                         <div class="kundlista-row-meta">
                             ${c.organisationsnummer ? `<span class="kundlista-orgnr">${c.organisationsnummer}</span>` : ''}
                             ${c.bolagsform ? `<span class="kundlista-bolagsform">${c.bolagsform}</span>` : ''}
+                            <span class="kundlista-status kundlista-status--${this.statusSlug(c.kundstatus)}">${c.kundstatus}</span>
                         </div>
                         <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
                     </div>
