@@ -10893,7 +10893,8 @@ app.post('/api/notes', authenticateToken, async (req, res) => {
     console.log('📋 Fält som skickas till Airtable:', JSON.stringify(cleanedFields, null, 2));
     
     const response = await axios.post(url, {
-      fields: cleanedFields
+      fields: cleanedFields,
+      typecast: true
     }, {
       headers: {
         'Authorization': `Bearer ${airtableAccessToken}`,
@@ -10991,7 +10992,7 @@ app.patch('/api/notes/:id', authenticateToken, async (req, res) => {
 
     const response = await axios.patch(
       `https://api.airtable.com/v0/${airtableBaseId}/${NOTES_TABLE}/${id}`,
-      { fields: airtableFields },
+      { fields: airtableFields, typecast: true },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 

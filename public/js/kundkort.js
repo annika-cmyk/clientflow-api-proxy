@@ -9178,6 +9178,7 @@ class CustomerCardManager {
                                 <select id="note-type" name="typAvAnteckning" required>
                                     <option value="">Välj typ...</option>
                                     <option value="Nykundsmöte">Nykundsmöte</option>
+                                    <option value="Mötesanteckning">Mötesanteckning</option>
                                     <option value="Övrig anteckning">Övrig anteckning</option>
                                     <option value="Bokslutsgenomgång">Bokslutsgenomgång</option>
                                     <option value="Arbetsanteckningar">Arbetsanteckningar</option>
@@ -9423,7 +9424,7 @@ class CustomerCardManager {
         const orgnr = this.customerData?.fields?.['Orgnr'] || '';
         const companyName = this.customerData?.fields?.['Namn'] || '';
 
-        const typOptions = ['Nykundsmöte', 'Övrig anteckning', 'Bokslutsgenomgång', 'Arbetsanteckningar', 'Emailkonversation'];
+        const typOptions = ['Nykundsmöte', 'Mötesanteckning', 'Övrig anteckning', 'Bokslutsgenomgång', 'Arbetsanteckningar', 'Emailkonversation'];
         const currentTyp = Array.isArray(fields['Typ av anteckning']) ? fields['Typ av anteckning'][0] : '';
         const typOptionsHTML = typOptions.map(t =>
             `<option value="${t}" ${currentTyp === t ? 'selected' : ''}>${t}</option>`
