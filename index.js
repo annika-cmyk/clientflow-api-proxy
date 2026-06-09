@@ -6245,12 +6245,26 @@ app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
         return res.json({ responses: [] });
     }
 
-    let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500&fields[]=Namn&fields[]=Företagsnamn`;
+    let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500`;
     if (filterFormula) kundUrl += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
-    const kundRes = await axios.get(kundUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 });
+    const airtableHeaders = { Authorization: `Bearer ${airtableAccessToken}` };
+    let kundRes;
+    try {
+      kundRes = await axios.get(kundUrl, { headers: airtableHeaders, timeout: 15000 });
+    } catch (kundErr) {
+      const kundMsg = kundErr.response?.data?.error?.message || kundErr.message || '';
+      if (kundErr.response?.status === 422 && /Unknown field name/i.test(String(kundMsg))) {
+        let fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500&fields[]=Namn`;
+        if (filterFormula) fallbackUrl += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
+        kundRes = await axios.get(fallbackUrl, { headers: airtableHeaders, timeout: 15000 });
+      } else {
+        throw kundErr;
+      }
+    }
     const customerMap = {};
     for (const r of kundRes.data.records || []) {
-      customerMap[r.id] = r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas';
+      const f = r.fields || {};
+      customerMap[r.id] = f.Namn || f['Företagsnamn'] || f.Foretagsnamn || 'Namn saknas';
     }
     const customerIds = new Set(Object.keys(customerMap));
     if (!customerIds.size) return res.json({ responses: [] });
@@ -6263,7 +6277,7 @@ app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
     do {
       let url = `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?pageSize=100`;
       if (offset) url += `&offset=${offset}`;
-      const listRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      const listRes = await axios.get(url, { headers: airtableHeaders, timeout: 20000 });
       allRecords.push(...(listRes.data.records || []));
       offset = listRes.data.offset;
     } while (offset);

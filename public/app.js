@@ -763,7 +763,11 @@ class ClientFlowApp {
 
         try {
             const response = await fetch(`${this.baseUrl}/api/samarbete/new-responses`, { method: 'GET', ...opts });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const errHint = await response.text().catch(() => '');
+                console.error('Nyinkomna svar API-fel:', response.status, errHint ? errHint.slice(0, 200) : '');
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             const items = data.responses || [];
             this.updateDashboardCount('samarbete-svar', items.length);
