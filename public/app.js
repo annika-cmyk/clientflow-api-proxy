@@ -28,8 +28,11 @@ class ClientFlowApp {
             window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
         }
         if (document.getElementById('samarbete-svar-list')) {
-            this.loadSamarbeteNewResponses();
-            window.addEventListener('clientflow:authReady', () => this.loadSamarbeteNewResponses());
+            const loadSamarbeteSvar = () => this.loadSamarbeteNewResponses();
+            if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) {
+                loadSamarbeteSvar();
+            }
+            window.addEventListener('clientflow:authReady', loadSamarbeteSvar);
         }
         if (document.getElementById('uppdragsavtal-list')) {
             this.loadUppdragsavtalList();
@@ -753,19 +756,13 @@ class ClientFlowApp {
 
         const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
         if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
-            this.updateDashboardCount('samarbete-svar', null);
-            container.innerHTML = `
-                <div class="kundlista-empty">
-                    <i class="fas fa-lock"></i>
-                    <p>Du måste logga in för att se nya svar.</p>
-                </div>`;
             return;
         }
 
         container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/samarbete/new-responses`, opts);
+            const response = await fetch(`${this.baseUrl}/api/samarbete/new-responses`, { method: 'GET', ...opts });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const items = data.responses || [];
