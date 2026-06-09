@@ -209,6 +209,10 @@
     const dl = toDateStr(deadlineIso);
     if (!dl) return '';
     const mode = getModeForUppdrag(typ, freq);
+    if (typ === 'Momsredovisning' && window.MomsPeriod && MomsPeriod.isQuarterlyFreq(freq)) {
+      const pk = MomsPeriod.periodKeyFromDeadlineYm(dl.slice(0, 7), freq);
+      if (pk) return pk;
+    }
     if (mode === 'quarter') return quarterKeyForMonth(dl.slice(0, 7));
     if (mode === 'year') return yearKeyForMonth(dl.slice(0, 7));
     if (isLoneTyp(typ) && window.LonePeriod) {
@@ -280,8 +284,11 @@
       if (!dl) return;
       const pk = String(periodKey || '').trim() || periodKeyFromDeadline(dl, typ, freq);
       const st = toDateStr(startIso) || startIsoForRun(pk, dl, typ, freq, f);
+      const momsFreq = (typ === 'Momsredovisning' && window.MomsPeriod)
+        ? MomsPeriod.inferFreq(freq, pk, null)
+        : freq;
       const label = (typ === 'Momsredovisning' && window.MomsPeriod)
-        ? MomsPeriod.displayLabel(pk, freq)
+        ? MomsPeriod.runTitle(pk, momsFreq, dl.slice(0, 7))
         : (String(periodLabel || '').trim()
           || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : ''));
       const key = `${r.id}:${pk}`;
@@ -348,6 +355,7 @@
 
   function expandRunsToMonthInstances(runs) {
     const inst = [];
+    const todayIso = new Date().toISOString().slice(0, 10);
     for (const run of runs || []) {
       const startYm = toDateStr(run.startDate)?.slice(0, 7);
       const endYm = toDateStr(run.deadline)?.slice(0, 7);
@@ -359,6 +367,19 @@
         if (cursor > end) break;
         if (cursor >= monthMin) {
           const mk = monthKey(cursor);
+          if (run.typ === 'Momsredovisning' && window.MomsPeriod) {
+            const freq = String(run?.record?.fields?.['Frekvens'] || '').trim();
+            const visible = MomsPeriod.runVisibleInBoardMonth({
+              PeriodKey: run.periodKey,
+              Deadline: run.deadline,
+              Frekvens: freq,
+              Status: runStatusFromHistory(run?.record?.fields || {}, run.periodKey)
+            }, mk, todayIso);
+            if (!visible) {
+              cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+              continue;
+            }
+          }
           inst.push({
             ...run,
             month: mk,
@@ -625,8 +646,8 @@
         : (modeForPrefill === 'year')
           ? yearKeyForMonth(x.month)
           : x.month);
-      const runName = (x.typ === 'Momsredovisning' && window.MomsPeriod && periodKey)
-        ? MomsPeriod.displayLabel(periodKey, freq)
+      const runName = (x.typ === 'Momsredovisning' && window.MomsPeriod)
+        ? MomsPeriod.runTitle(periodKey, MomsPeriod.inferFreq(freq, periodKey, null), x.month)
         : String(x.periodLabel || '').trim();
       const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning') && runName;
       const runCell = (viewMode === 'open')

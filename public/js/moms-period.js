@@ -92,6 +92,77 @@
         return 'Momsredovisning';
     }
 
+    /** Arbetsfönster (YYYY-MM) för en momsperiod: från månaden efter periodens slut t.o.m. deadline-månad. */
+    function workWindowYm(periodKey, freq) {
+        const startIso = startIsoFromPeriodKey(periodKey, freq);
+        const deadlineIso = deadlineIsoFromPeriodKey(periodKey, freq);
+        if (!startIso || !deadlineIso) return null;
+        return {
+            startYm: startIso.slice(0, 7),
+            deadlineYm: deadlineIso.slice(0, 7)
+        };
+    }
+
+    /** Kvartalsmoms: periodnyckel från deadline-månad (månaden efter kvartalets slut). */
+    function periodKeyFromDeadlineYm(deadlineYm, freq) {
+        const f = String(freq || '').toLowerCase();
+        if (!f.includes('kvartal')) return '';
+        const p = parseYm(deadlineYm);
+        if (!p) return '';
+        if (p.month === 1) return `${p.year - 1}-Q4`;
+        const quarter = Math.ceil((p.month - 1) / 3);
+        return quarter >= 1 && quarter <= 4 ? `${p.year}-Q${quarter}` : '';
+    }
+
+    /**
+     * Periodnyckel som är öppen i vald brädemånad.
+     * Kvartal: moms Q2 (apr–jun) syns i juli–deadline, inte under Q2.
+     * Månad: perioden är månaden före arbetsfönstret (t.ex. jan-moms i februari).
+     */
+    function defaultPeriodKeyForBoard(boardYm, freq) {
+        const ym = String(boardYm || '').trim();
+        const f = String(freq || '').toLowerCase();
+        if (!/^\d{4}-\d{2}$/.test(ym)) return '';
+        const y = Number(ym.slice(0, 4));
+        if (!y) return '';
+        if (f.includes('kvartal')) {
+            for (const qy of [y - 1, y, y + 1]) {
+                for (let q = 1; q <= 4; q++) {
+                    const pk = `${qy}-Q${q}`;
+                    const win = workWindowYm(pk, freq);
+                    if (win && ym >= win.startYm && ym <= win.deadlineYm) return pk;
+                }
+            }
+            return '';
+        }
+        if (f.includes('år')) return String(y);
+        return monthAdd(ym, -1) || ym;
+    }
+
+    /** Visningsnamn för moms-körning; faller tillbaka till aktiv period i brädemånad vid ogiltig PeriodKey. */
+    function runTitle(periodKey, freq, boardYm) {
+        const pk = String(periodKey || '').trim();
+        if (pk) {
+            const computed = displayLabel(pk, freq);
+            if (computed !== 'Momsredovisning') return computed;
+        }
+        const defaultKey = defaultPeriodKeyForBoard(boardYm, freq);
+        return defaultKey ? displayLabel(defaultKey, freq) : 'Momsredovisning';
+    }
+
+    function inferFreq(freqRaw, periodKey, runRecords) {
+        const f = String(freqRaw || '').trim();
+        if (f && f !== '—') return f;
+        const runs = Array.isArray(runRecords) ? runRecords : [];
+        const rr = runs.find((r) => String(r?.fields?.['Typ'] || '').trim() === 'Momsredovisning');
+        const rf = String(rr?.fields?.['Frekvens'] || '').trim();
+        if (rf) return rf;
+        const pk = String(periodKey || '').trim();
+        if (/^\d{4}-Q[1-4]$/i.test(pk)) return 'Varje kvartal';
+        // YYYY-MM utan sparad frekvens är tvetydigt (brädans kalendermånad) — anta kvartalsmoms.
+        return 'Varje kvartal';
+    }
+
     function currentQuarterFromYm(yyyyMm) {
         const p = parseYm(yyyyMm);
         if (!p) return null;
@@ -197,18 +268,19 @@
         return opts;
     }
 
-    /** Visa körning i vald kalendermånad (bräda): öppna perioder + försenade. */
+    /** Visa körning i vald kalendermånad (bräda): från månaden efter momsperiod t.o.m. deadline, plus försenade. */
     function runVisibleInBoardMonth(runFields, boardYm, todayIso) {
         const status = String(runFields?.Status || '').trim();
         if (status === 'Klar') return false;
         const pk = String(runFields?.PeriodKey || '').trim();
         const deadline = String(runFields?.Deadline || '').trim().slice(0, 10);
         const freq = runFields?.Frekvens || 'Varje månad';
-        const startIso = startIsoFromPeriodKey(pk, freq);
-        if (!pk || !boardYm || !startIso) return false;
-        const startYm = startIso.slice(0, 7);
-        const deadlineYm = deadline ? deadline.slice(0, 7) : startYm;
-        if (boardYm >= startYm && boardYm <= deadlineYm) return true;
+        if (!pk || !boardYm) return false;
+        const win = workWindowYm(pk, freq);
+        if (!win) return false;
+        const { startYm, deadlineYm } = win;
+        const effectiveDeadlineYm = deadline ? deadline.slice(0, 7) : deadlineYm;
+        if (boardYm >= startYm && boardYm <= effectiveDeadlineYm) return true;
         if (todayIso && deadline && todayIso > deadline && boardYm >= startYm) return true;
         return false;
     }
@@ -222,6 +294,11 @@
         startIsoFromPeriodKey,
         deadlineIsoFromPeriodKey,
         displayLabel,
+        workWindowYm,
+        periodKeyFromDeadlineYm,
+        defaultPeriodKeyForBoard,
+        runTitle,
+        inferFreq,
         runMeta,
         isMonthlyFreq,
         isQuarterlyFreq,

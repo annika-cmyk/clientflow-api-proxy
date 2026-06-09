@@ -422,6 +422,50 @@
 
     const baseUrl = getBaseUrl();
 
+    const MAX_FILE_BYTES = 15 * 1024 * 1024;
+    const ACCEPTED_EXT = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.heic', '.webp', '.tif', '.tiff', '.csv'];
+    const ACCEPT_ATTR = ACCEPTED_EXT.join(',');
+
+    function fileExt(name){
+      var i = String(name || '').lastIndexOf('.');
+      return i >= 0 ? String(name).slice(i).toLowerCase() : '';
+    }
+    function formatFileSizeMB(bytes){
+      return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',');
+    }
+    function validateFile(f){
+      if (f.size > MAX_FILE_BYTES) {
+        return 'Filen är ' + formatFileSizeMB(f.size) + ' MB, max 15 MB';
+      }
+      var ext = fileExt(f.name);
+      if (ext && ACCEPTED_EXT.indexOf(ext) === -1) {
+        return 'Filformatet stöds inte (' + ext + '). Tillåtna format: PDF, Word, Excel, bilder, CSV m.m.';
+      }
+      return null;
+    }
+    function hasVerifiedExistingFile(ea, attachments){
+      if (!ea || !ea.filename) return false;
+      if (ea.attachmentUrl || ea.attachmentId) return true;
+      var fn = String(ea.filename).trim().toLowerCase();
+      if (!fn || !attachments || !attachments.length) return false;
+      return attachments.some(function(a){
+        return String(a.filename || '').trim().toLowerCase() === fn;
+      });
+    }
+    function parseRespondResponse(r){
+      return r.text().then(function(text){
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (_) {}
+        var msg = (data && data.error) ? data.error : null;
+        if (r.status === 413) throw new Error('Filen är för stor (max 15 MB)');
+        if (r.status === 502) throw new Error(msg || 'Kunde inte ladda upp filen – prova igen');
+        if (r.status === 400) throw new Error(msg || 'Ogiltig begäran');
+        if (!r.ok) throw new Error(msg || 'Kunde inte spara. Försök igen.');
+        if (!data) throw new Error('Nätverksfel – prova igen');
+        return data;
+      });
+    }
+
     // per fråga: { done, text, files:[File], existingFilename }
     let state = [];
     let items = [];
@@ -450,13 +494,16 @@
       });
 
       var existing = data.existingAnswers || [];
+      var attachments = data.existingAttachments || [];
 
       state = items.map(function(_, i){
+        var ea = existing[i];
+        var verifiedFile = hasVerifiedExistingFile(ea, attachments);
         return {
-          done: !!(existing[i] && (existing[i].text || existing[i].filename)),
-          text: (existing[i] && existing[i].text) ? existing[i].text : '',
+          done: !!(ea && ((ea.text && String(ea.text).trim()) || verifiedFile)),
+          text: (ea && ea.text) ? ea.text : '',
           files: [],
-          existingFilename: (existing[i] && existing[i].filename) ? existing[i].filename : ''
+          existingFilename: verifiedFile ? ea.filename : ''
         };
       });
 
@@ -507,8 +554,8 @@
               '<textarea placeholder="Din kommentar (valfritt)"></textarea>' +
               '<div class="drop" data-drop>' +
                 I.up +
-                '<div>Dra hit en fil eller <b>bläddra</b> – PDF, bild eller Excel' + (fileRequired[i] ? ' <b style="color:#dc2626">*</b>' : '') + '</div>' +
-                '<input type="file" multiple hidden data-file accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg">' +
+                '<div>Dra hit en fil eller <b>bläddra</b> – PDF, bild, Excel eller CSV' + (fileRequired[i] ? ' <b style="color:#dc2626">*</b>' : '') + '</div>' +
+                '<input type="file" multiple hidden data-file accept="' + ACCEPT_ATTR + '">' +
               '</div>' +
               '<div class="files" data-files></div>' +
               '<div class="actions">' +
@@ -548,8 +595,17 @@
           });
         }
         function addFiles(fl){
-          Array.prototype.slice.call(fl).forEach(function(f){ st.files.push(f); });
+          var rejected = [];
+          Array.prototype.slice.call(fl).forEach(function(f){
+            var err = validateFile(f);
+            if (err) rejected.push(f.name + ': ' + err);
+            else st.files.push(f);
+          });
           renderFiles();
+          if (rejected.length) {
+            errEl.textContent = rejected.join(' ');
+            errEl.style.display = 'block';
+          }
         }
         renderFiles();
 
@@ -590,12 +646,24 @@
             return;
           }
 
+          var fileErrors = [];
+          st.files.forEach(function(f){
+            var fe = validateFile(f);
+            if (fe) fileErrors.push(f.name + ': ' + fe);
+          });
+          if (fileErrors.length) {
+            errEl.textContent = fileErrors.join(' ');
+            errEl.style.display = 'block';
+            return;
+          }
+
           submit.disabled = true;
           var origHtml = submit.innerHTML;
           submit.innerHTML = I.spin + 'Skickar...';
 
           var payload = { token: token, answerIndex: i, text: (st.text || '').trim(), files: [] };
           var filesForUpload = st.files.slice();
+          var hadNewFiles = filesForUpload.length > 0;
 
           Promise.all(filesForUpload.map(readFileAsBase64))
             .then(function(results){
@@ -606,10 +674,17 @@
                 body: JSON.stringify(payload)
               });
             })
-            .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'Kunde inte spara'); return d; }); })
-            .then(function(){
+            .then(parseRespondResponse)
+            .then(function(data){
+              if (hadNewFiles && !data.attachmentUrl) {
+                throw new Error('Filuppladdningen misslyckades – prova igen.');
+              }
               st.done = true;
-              if (filesForUpload.length) st.existingFilename = filesForUpload[filesForUpload.length - 1].name;
+              if (hadNewFiles) {
+                st.existingFilename = data.filename || filesForUpload[filesForUpload.length - 1].name;
+                st.files = [];
+                renderFiles();
+              }
               el.classList.add('done');
               numEl.innerHTML = I.check;
               pill.className = 'pill done';
@@ -620,7 +695,9 @@
               updateProgress();
             })
             .catch(function(err){
-              errEl.textContent = err.message || 'Kunde inte spara. Försök igen.';
+              var msg = err.message || 'Kunde inte spara. Försök igen.';
+              if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = 'Nätverksfel – prova igen';
+              errEl.textContent = msg;
               errEl.style.display = 'block';
             })
             .then(function(){ submit.disabled = false; if (!st.done) submit.innerHTML = origHtml; });

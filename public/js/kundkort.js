@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v14.4', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.4', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -1365,29 +1365,32 @@ class CustomerCardManager {
                     return;
                 }
                 const f = rec.fields || {};
-                const freq = (f['Frekvens'] || '').toString().trim() || '—';
+                const freqRaw = (f['Frekvens'] || '').toString().trim();
+                const freq = freqRaw || '—';
                 const modeForPrefillDefault = getModeForUppdrag(t, freq);
-                const defaultPeriodKey = (modeForPrefillDefault === 'quarter')
+                let defaultPeriodKey = (modeForPrefillDefault === 'quarter')
                     ? quarterKeyForMonth(mk)
                     : (modeForPrefillDefault === 'year')
                         ? yearKeyForMonth(mk)
                         : mk;
 
-                if (t === 'Momsredovisning' && window.MomsPeriod && (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq))) {
-                    const momsRunTitle = (periodKey) => {
-                        const pk = String(periodKey || '').trim();
-                        if (!pk) return MomsPeriod.displayLabel(defaultPeriodKey, freq);
-                        const computed = MomsPeriod.displayLabel(pk, freq);
-                        return computed !== 'Momsredovisning' ? computed : MomsPeriod.displayLabel(defaultPeriodKey, freq);
-                    };
+                if (t === 'Momsredovisning' && window.MomsPeriod) {
+                    const momsFreq = MomsPeriod.inferFreq(freq, defaultPeriodKey, runRecords);
+                    const momsDefaultPeriodKey = MomsPeriod.defaultPeriodKeyForBoard(mk, momsFreq) || defaultPeriodKey;
+                    defaultPeriodKey = momsDefaultPeriodKey;
+                    if (MomsPeriod.isMonthlyFreq(momsFreq) || MomsPeriod.isQuarterlyFreq(momsFreq)) {
+                    const momsRunTitle = (periodKey) => MomsPeriod.runTitle(periodKey, momsFreq, mk);
                     let visible = (Array.isArray(runRecords) ? runRecords : [])
                         .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === 'Momsredovisning')
                         .filter((rr) => MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     if (!visible.length) {
+                        let pk = MomsPeriod.defaultPeriodKeyForBoard(mk, momsFreq);
+                        if (!pk) {
+                            return;
+                        }
                         const instMap = instByTypeMonth.get(t) || new Map();
                         const instDl = instMap.get(mk) || '';
-                        let pk = defaultPeriodKey;
                         let runRec = runByTypPeriod.get(`${t}|||${pk}`) || null;
                         if (instDl) {
                             const byDeadline = (Array.isArray(runRecords) ? runRecords : []).find((rr) => {
@@ -1401,7 +1404,7 @@ class CustomerCardManager {
                             }
                         }
                         rowContexts.push({
-                            t, rec, f, freq,
+                            t, rec, f, freq: momsFreq,
                             boardKey: `${t}|||${pk}`,
                             displayTitle: momsRunTitle(pk),
                             instDeadline: instDl,
@@ -1412,7 +1415,7 @@ class CustomerCardManager {
                         visible.forEach((rr) => {
                             const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
                             rowContexts.push({
-                                t, rec, f, freq,
+                                t, rec, f, freq: momsFreq,
                                 boardKey: `${t}|||${pk}`,
                                 displayTitle: momsRunTitle(pk),
                                 instDeadline: String(rr?.fields?.['Deadline'] || '').trim(),
@@ -1422,6 +1425,7 @@ class CustomerCardManager {
                         });
                     }
                     return;
+                    }
                 }
 
                 const instMap = instByTypeMonth.get(t) || new Map();
@@ -1436,9 +1440,11 @@ class CustomerCardManager {
                 rowContexts.push({
                     t, rec, f, freq,
                     boardKey: t,
-                    displayTitle: (isLoneTyp(t) && window.LonePeriod && prefillPeriodKey)
-                        ? (LonePeriod.displayLabel(prefillPeriodKey, t) || LonePeriod.typDisplayLabel(t))
-                        : (window.LonePeriod ? LonePeriod.typDisplayLabel(t) : t),
+                    displayTitle: (t === 'Momsredovisning' && window.MomsPeriod)
+                        ? MomsPeriod.runTitle(prefillPeriodKey || defaultPeriodKey, MomsPeriod.inferFreq(freq, prefillPeriodKey || defaultPeriodKey, runRecords), mk)
+                        : ((isLoneTyp(t) && window.LonePeriod && prefillPeriodKey)
+                            ? (LonePeriod.displayLabel(prefillPeriodKey, t) || LonePeriod.typDisplayLabel(t))
+                            : (window.LonePeriod ? LonePeriod.typDisplayLabel(t) : t)),
                     instDeadline,
                     prefillPeriodKey,
                     runRec: runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null
@@ -8413,6 +8419,10 @@ class CustomerCardManager {
             const text = this.formatSamarbeteAnswerText(textRaw, linkFn);
             if (text) parts.push(escape(text));
             if (att && linkFn) parts.push(linkFn(att));
+            else if ((a.filename || a.attachmentFilename) && !att) {
+                const fn = escape(String(a.filename || a.attachmentFilename));
+                parts.push('<span class="samarbete-missing-file" title="Filen saknas i Airtable">⚠ ' + fn + ' (saknas)</span>');
+            }
             const svar = parts.length ? parts.join(' · ') : '—';
             html += `<li class="samarbete-response-row"><div class="samarbete-response-q">${escape(qShort)}${qShort.length >= qMaxLen ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
         });

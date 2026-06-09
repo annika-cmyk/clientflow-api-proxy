@@ -6912,6 +6912,43 @@ function momsDeadlineIsoFromPeriodKey(periodKey, freq) {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function momsWorkWindowYm(periodKey, freq) {
+  const startIso = momsStartIsoFromPeriodKey(periodKey, freq);
+  const deadlineIso = momsDeadlineIsoFromPeriodKey(periodKey, freq);
+  if (!startIso || !deadlineIso) return null;
+  return { startYm: startIso.slice(0, 7), deadlineYm: deadlineIso.slice(0, 7) };
+}
+
+function momsDefaultPeriodKeyForBoard(boardYm, freq) {
+  const ym = String(boardYm || '').trim();
+  const f = String(freq || '').toLowerCase();
+  if (!/^\d{4}-\d{2}$/.test(ym)) return '';
+  const y = Number(ym.slice(0, 4));
+  if (!y) return '';
+  if (f.includes('kvartal')) {
+    for (const qy of [y - 1, y, y + 1]) {
+      for (let q = 1; q <= 4; q++) {
+        const pk = `${qy}-Q${q}`;
+        const win = momsWorkWindowYm(pk, freq);
+        if (win && ym >= win.startYm && ym <= win.deadlineYm) return pk;
+      }
+    }
+    return '';
+  }
+  if (f.includes('år')) return String(y);
+  return monthAdd(ym, -1) || ym;
+}
+
+function momsPeriodKeyFromDeadlineYm(deadlineYm, freq) {
+  const f = String(freq || '').toLowerCase();
+  if (!f.includes('kvartal')) return '';
+  const p = momsParseYm(deadlineYm);
+  if (!p) return '';
+  if (p.month === 1) return `${p.year - 1}-Q4`;
+  const quarter = Math.ceil((p.month - 1) / 3);
+  return quarter >= 1 && quarter <= 4 ? `${p.year}-Q${quarter}` : '';
+}
+
 function momsDisplayLabel(periodKey, freq) {
   const f = String(freq || '').toLowerCase();
   if (f.includes('kvartal')) {
@@ -7185,7 +7222,7 @@ async function processUppdragUnderlagSchedule() {
     // Momsredovisning: SKV-deadlines + tydliga periodetiketter, 12 månader (eller 4 kvartal) framåt.
     if (typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'))) {
       let firstPk = momsInferFirstPeriod(f, freq);
-      if (!firstPk) firstPk = freqLow.includes('kvartal') ? `${todayYear}-Q${Math.ceil(parseInt(todayYm.slice(5, 7), 10) / 3)}` : todayYm;
+      if (!firstPk) firstPk = momsDefaultPeriodKeyForBoard(todayYm, freq) || todayYm;
       const momsRuns = momsRunsThroughHorizon(firstPk, freq, todayYm);
       for (const run of momsRuns) {
         // eslint-disable-next-line no-await-in-loop
@@ -7475,11 +7512,12 @@ app.post('/api/samarbete/respond', async (req, res) => {
       for (let i = 0; i < total; i++) {
         const a = answersArray[i] || {};
         const hasText = a.text && String(a.text).trim().length > 0;
-        const hasFile = !!a.filename;
-        if (!hasText && !hasFile) {
+        const hasFileLabel = !!a.filename;
+        const hasVerifiedFile = !!(a.filename && (a.attachmentUrl || a.attachmentId));
+        if (!hasText && !hasFileLabel) {
           return { status: 'Väntar', besvaradAt: null };
         }
-        if (fileReq[i] && !hasFile) {
+        if (fileReq[i] && !hasVerifiedFile) {
           return { status: 'Väntar', besvaradAt: null };
         }
       }
@@ -7494,17 +7532,10 @@ app.post('/api/samarbete/respond', async (req, res) => {
         try { existingAnswers = JSON.parse(raw); } catch (_) {}
       }
       while (existingAnswers.length <= answerIndex) existingAnswers.push({ text: '', filename: null });
-      const ex = existingAnswers[answerIndex];
-      const partText = (req.body.text != null) ? String(req.body.text).trim().slice(0, 50000) : (ex && ex.text) || '';
-      // Stöd för flera filer: files: [{ filename, file }]
-      const filesPayload = Array.isArray(req.body.files) ? req.body.files : [];
-      const primaryFilename = (filesPayload[0] && filesPayload[0].filename && String(filesPayload[0].filename).trim())
-        ? String(filesPayload[0].filename).slice(0, 255)
-        : (req.body.filename && String(req.body.filename).trim())
-          ? String(req.body.filename).slice(0, 255)
-          : (ex && ex.filename) || null;
-      existingAnswers[answerIndex] = { text: partText, filename: primaryFilename };
+      const ex = existingAnswers[answerIndex] || { text: '', filename: null };
+      const partText = (req.body.text != null) ? String(req.body.text).trim().slice(0, 50000) : (ex.text || '');
 
+      const filesPayload = Array.isArray(req.body.files) ? req.body.files : [];
       const filesToUpload = filesPayload.length
         ? filesPayload
         : (req.body.file && req.body.filename
@@ -7512,26 +7543,41 @@ app.post('/api/samarbete/respond', async (req, res) => {
             : []);
 
       let primaryUploadMeta = null;
-      for (const f of filesToUpload) {
-        if (!f || typeof f.file !== 'string' || !f.filename) continue;
-        let buffer;
-        try { buffer = Buffer.from(f.file, 'base64'); } catch (e) {
+      let uploadedFilename = null;
+      if (filesToUpload.length > 0) {
+        const validFiles = filesToUpload.filter(f => f && typeof f.file === 'string' && f.filename);
+        if (validFiles.length === 0) {
           return res.status(400).json({ error: 'Ogiltig fil' });
         }
-        if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
-        const fname = String(f.filename);
-        const contentType = fname.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
-        const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, fname, contentType, tableId, 'Svar bifogad fil');
-        if (!uploadedAtt) return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable.' });
-        if (!primaryUploadMeta) primaryUploadMeta = uploadedAtt;
+        for (const f of validFiles) {
+          let buffer;
+          try { buffer = Buffer.from(f.file, 'base64'); } catch (e) {
+            return res.status(400).json({ error: 'Ogiltig fil' });
+          }
+          if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: 'Filen får max vara 15 MB' });
+          const fname = String(f.filename);
+          const contentType = fname.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
+          const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, fname, contentType, tableId, 'Svar bifogad fil');
+          if (!uploadedAtt) return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable.' });
+          if (!primaryUploadMeta) {
+            primaryUploadMeta = uploadedAtt;
+            uploadedFilename = fname.slice(0, 255);
+          }
+        }
+      }
+
+      const newAnswer = { text: partText, filename: ex.filename || null };
+      if (ex.attachmentId || ex.attachmentUrl) {
+        newAnswer.attachmentId = ex.attachmentId || null;
+        newAnswer.attachmentUrl = ex.attachmentUrl || null;
       }
       if (primaryUploadMeta) {
-        existingAnswers[answerIndex] = {
-          ...existingAnswers[answerIndex],
-          attachmentId: primaryUploadMeta.id || null,
-          attachmentUrl: primaryUploadMeta.url || null
-        };
+        newAnswer.filename = uploadedFilename;
+        newAnswer.attachmentId = primaryUploadMeta.id || null;
+        newAnswer.attachmentUrl = primaryUploadMeta.url || null;
       }
+      existingAnswers[answerIndex] = newAnswer;
+
       svarText = JSON.stringify(existingAnswers);
       const statusInfo = computeStatus(existingAnswers);
       const updateFields = {
@@ -7544,7 +7590,12 @@ app.post('/api/samarbete/respond', async (req, res) => {
         { fields: updateFields },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       );
-      return res.json({ success: true, message: 'Sparat.' });
+      const resp = { success: true, message: 'Sparat.' };
+      if (primaryUploadMeta) {
+        resp.filename = uploadedFilename;
+        resp.attachmentUrl = primaryUploadMeta.url || null;
+      }
+      return res.json(resp);
     }
 
     const hasMultiple = Array.isArray(answersArr) && answersArr.length > 0;
@@ -7558,30 +7609,37 @@ app.post('/api/samarbete/respond', async (req, res) => {
       const maxLen = Math.max(existingAnswers.length, answersArr.length);
       const merged = [];
       for (let i = 0; i < maxLen; i++) {
-        const ex = existingAnswers[i];
+        const ex = existingAnswers[i] || {};
         const a = answersArr[i];
-        const text = (a && (a.text != null)) ? String(a.text).trim().slice(0, 50000) : (ex && (ex.text != null) ? String(ex.text).trim().slice(0, 50000) : '');
-        const filename = (a && a.filename) ? String(a.filename).slice(0, 255) : (ex && ex.filename) ? String(ex.filename).slice(0, 255) : null;
-        merged.push({ text, filename });
+        const text = (a && (a.text != null)) ? String(a.text).trim().slice(0, 50000) : (ex.text != null ? String(ex.text).trim().slice(0, 50000) : '');
+        merged.push({
+          text,
+          filename: ex.filename || null,
+          attachmentId: ex.attachmentId || null,
+          attachmentUrl: ex.attachmentUrl || null
+        });
       }
       for (let i = 0; i < answersArr.length; i++) {
         const a = answersArr[i];
         if (a && a.file && typeof a.file === 'string' && a.filename) {
           let buffer;
-          try { buffer = Buffer.from(a.file, 'base64'); } catch (e) { continue; }
-          if (buffer.length <= 15 * 1024 * 1024) {
-            const contentType = (String(a.filename).toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
-            const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, a.filename, contentType, tableId, 'Svar bifogad fil');
-            if (!uploadedAtt) {
-              return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable. Kontrollera att fältet \"Svar bifogad fil\" finns och är av typen bilaga (attachments).' });
-            }
-            merged[i] = {
-              ...merged[i],
-              filename: String(a.filename).slice(0, 255),
-              attachmentId: uploadedAtt.id || null,
-              attachmentUrl: uploadedAtt.url || null
-            };
+          try { buffer = Buffer.from(a.file, 'base64'); } catch (e) {
+            return res.status(400).json({ error: 'Ogiltig fil' });
           }
+          if (buffer.length > 15 * 1024 * 1024) {
+            return res.status(400).json({ error: 'Filen får max vara 15 MB' });
+          }
+          const contentType = (String(a.filename).toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+          const uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(airtableAccessToken, airtableBaseId, record.id, buffer, a.filename, contentType, tableId, 'Svar bifogad fil');
+          if (!uploadedAtt) {
+            return res.status(502).json({ error: 'Kunde inte ladda upp filen till Airtable. Kontrollera att fältet \"Svar bifogad fil\" finns och är av typen bilaga (attachments).' });
+          }
+          merged[i] = {
+            ...merged[i],
+            filename: String(a.filename).slice(0, 255),
+            attachmentId: uploadedAtt.id || null,
+            attachmentUrl: uploadedAtt.url || null
+          };
         }
       }
       svarText = JSON.stringify(merged);
