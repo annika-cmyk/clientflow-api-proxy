@@ -40,7 +40,8 @@
   let activeType = 'Löneuppdrag';
   let monthCursor = new Date(); // current month
   let viewMode = 'deadline'; // 'deadline' | 'open'
-  let statusFilter = 'ej-klara'; // 'ej-klara' | 'klara'
+  let showKlara = false;
+  let showEjKlara = true;
   let handlerFilter = '';
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const monthMax = new Date(monthStart.getFullYear(), monthStart.getMonth() + 11, 1);
@@ -186,8 +187,12 @@
   }
 
   function matchesStatusFilter(x) {
+    if (!showKlara && !showEjKlara) return true;
+    if (showKlara && showEjKlara) return true;
     const isKlar = runStatusForInstance(x) === 'Klar';
-    return statusFilter === 'klara' ? isKlar : !isKlar;
+    if (showKlara) return isKlar;
+    if (showEjKlara) return !isKlar;
+    return true;
   }
 
   function runStatusOptionsHtml(selected) {
@@ -270,10 +275,15 @@
     render();
   }
 
-  function setStatusFilter(next) {
-    statusFilter = next === 'klara' ? 'klara' : 'ej-klara';
-    if (els.statusKlara) els.statusKlara.classList.toggle('is-active', statusFilter === 'klara');
-    if (els.statusEjKlara) els.statusEjKlara.classList.toggle('is-active', statusFilter === 'ej-klara');
+  function syncStatusFilterUi() {
+    if (els.statusKlara) els.statusKlara.classList.toggle('is-active', showKlara);
+    if (els.statusEjKlara) els.statusEjKlara.classList.toggle('is-active', showEjKlara);
+  }
+
+  function toggleStatusFilter(which) {
+    if (which === 'klara') showKlara = !showKlara;
+    else showEjKlara = !showEjKlara;
+    syncStatusFilterUi();
     render();
   }
 
@@ -426,7 +436,6 @@
           .filter(x => String(x?.typ || '') === activeType)
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
-          .filter(x => !isDoneForPeriod(x.record?.fields || {}, x.deadline))
           .filter(x => matchesStatusFilter(x))
           .sort((a, b) => String(a.deadline || '').localeCompare(String(b.deadline || '')))
       : instances
@@ -789,8 +798,8 @@
   if (els.search) els.search.addEventListener('input', () => { q = els.search.value || ''; render(); });
   if (els.viewDeadline) els.viewDeadline.addEventListener('click', () => setViewMode('deadline'));
   if (els.viewOpen) els.viewOpen.addEventListener('click', () => setViewMode('open'));
-  if (els.statusKlara) els.statusKlara.addEventListener('click', () => setStatusFilter('klara'));
-  if (els.statusEjKlara) els.statusEjKlara.addEventListener('click', () => setStatusFilter('ej-klara'));
+  if (els.statusKlara) els.statusKlara.addEventListener('click', () => toggleStatusFilter('klara'));
+  if (els.statusEjKlara) els.statusEjKlara.addEventListener('click', () => toggleStatusFilter('ej-klara'));
 
   if (els.prev) els.prev.addEventListener('click', () => {
     const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
@@ -850,7 +859,7 @@
 
   window.addEventListener('clientflow:authReady', () => load());
   monthCursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
-  setStatusFilter('ej-klara');
+  syncStatusFilterUi();
   setViewMode('deadline');
   activeType = 'Löneuppdrag';
   if (els.typeTabs && els.typeTabs.length) {
