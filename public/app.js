@@ -27,6 +27,10 @@ class ClientFlowApp {
             this.loadMyTasks();
             window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
         }
+        if (document.getElementById('samarbete-svar-list')) {
+            this.loadSamarbeteNewResponses();
+            window.addEventListener('clientflow:authReady', () => this.loadSamarbeteNewResponses());
+        }
         if (document.getElementById('uppdragsavtal-list')) {
             this.loadUppdragsavtalList();
             window.addEventListener('clientflow:authReady', () => this.loadUppdragsavtalList());
@@ -100,6 +104,10 @@ class ClientFlowApp {
         const refreshMyTasks = document.getElementById('refresh-my-tasks');
         if (refreshMyTasks) {
             refreshMyTasks.addEventListener('click', () => this.loadMyTasks());
+        }
+        const refreshSamarbeteSvar = document.getElementById('refresh-samarbete-svar');
+        if (refreshSamarbeteSvar) {
+            refreshSamarbeteSvar.addEventListener('click', () => this.loadSamarbeteNewResponses());
         }
         const refreshUppdragsavtal = document.getElementById('refresh-uppdragsavtal');
         if (refreshUppdragsavtal) {
@@ -735,6 +743,74 @@ class ClientFlowApp {
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
                     <p>Kunde inte ladda avvikelser. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadSamarbeteNewResponses() {
+        const container = document.getElementById('samarbete-svar-list');
+        if (!container) return;
+
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('samarbete-svar', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se nya svar.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+
+        try {
+            const response = await fetch(`${this.baseUrl}/api/samarbete/new-responses`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const items = data.responses || [];
+            this.updateDashboardCount('samarbete-svar', items.length);
+
+            if (items.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga nya svar från kunder.</p>
+                    </div>`;
+                return;
+            }
+
+            const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+            const statusLabels = { besvarad: 'Besvarad', delvis: 'Delvis besvarad' };
+            const statusColors = { besvarad: '#10b981', delvis: '#f59e0b' };
+
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${items.map(item => {
+                        const label = statusLabels[item.responseType] || 'Svar';
+                        const color = statusColors[item.responseType] || '#6366f1';
+                        const dateStr = fmtDate(item.answeredAt || item.createdAt);
+                        const metaParts = [
+                            item.recipientName ? this.escapeHtml(item.recipientName) : '',
+                            item.title ? this.escapeHtml(item.title.length > 50 ? item.title.slice(0, 47) + '...' : item.title) : '',
+                            dateStr ? this.escapeHtml(dateStr) : ''
+                        ].filter(Boolean);
+                        return `
+                        <a href="kundkort.html?id=${item.customerId}#samarbete" class="dashboard-row-link avvikelse-dashboard-row">
+                            <span class="avvikelse-dash-kund"><i class="fas fa-building"></i> ${this.escapeHtml(item.customerName)}</span>
+                            <span class="avvikelse-dash-typ">${metaParts.join(' · ')}</span>
+                            <span class="avvikelse-dash-status" style="background:${color}20;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;">${this.escapeHtml(label)}</span>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>`;
+                    }).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av nya svar på förfrågningar:', error);
+            this.updateDashboardCount('samarbete-svar', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda nya svar. Kontrollera anslutningen.</p>
                 </div>`;
         }
     }
