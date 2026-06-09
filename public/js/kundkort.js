@@ -1374,19 +1374,39 @@ class CustomerCardManager {
                         : mk;
 
                 if (t === 'Momsredovisning' && window.MomsPeriod && (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq))) {
+                    const momsRunTitle = (periodKey) => {
+                        const pk = String(periodKey || '').trim();
+                        if (!pk) return MomsPeriod.displayLabel(defaultPeriodKey, freq);
+                        const computed = MomsPeriod.displayLabel(pk, freq);
+                        return computed !== 'Momsredovisning' ? computed : MomsPeriod.displayLabel(defaultPeriodKey, freq);
+                    };
                     let visible = (Array.isArray(runRecords) ? runRecords : [])
                         .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === 'Momsredovisning')
                         .filter((rr) => MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     if (!visible.length) {
                         const instMap = instByTypeMonth.get(t) || new Map();
+                        const instDl = instMap.get(mk) || '';
+                        let pk = defaultPeriodKey;
+                        let runRec = runByTypPeriod.get(`${t}|||${pk}`) || null;
+                        if (instDl) {
+                            const byDeadline = (Array.isArray(runRecords) ? runRecords : []).find((rr) => {
+                                const dl = String(rr?.fields?.['Deadline'] || '').trim().slice(0, 10);
+                                return dl === instDl.slice(0, 10)
+                                    && String(rr?.fields?.['Typ'] || '').trim() === 'Momsredovisning';
+                            });
+                            if (byDeadline) {
+                                runRec = byDeadline;
+                                pk = String(byDeadline?.fields?.['PeriodKey'] || '').trim() || pk;
+                            }
+                        }
                         rowContexts.push({
                             t, rec, f, freq,
-                            boardKey: t,
-                            displayTitle: t,
-                            instDeadline: instMap.get(mk) || '',
-                            prefillPeriodKey: defaultPeriodKey,
-                            runRec: runByTypPeriod.get(`${t}|||${defaultPeriodKey}`) || null
+                            boardKey: `${t}|||${pk}`,
+                            displayTitle: momsRunTitle(pk),
+                            instDeadline: instDl,
+                            prefillPeriodKey: pk,
+                            runRec
                         });
                     } else {
                         visible.forEach((rr) => {
@@ -1394,7 +1414,7 @@ class CustomerCardManager {
                             rowContexts.push({
                                 t, rec, f, freq,
                                 boardKey: `${t}|||${pk}`,
-                                displayTitle: String(rr?.fields?.['Period Label'] || '').trim() || MomsPeriod.displayLabel(pk, freq),
+                                displayTitle: momsRunTitle(pk),
                                 instDeadline: String(rr?.fields?.['Deadline'] || '').trim(),
                                 prefillPeriodKey: pk,
                                 runRec: rr

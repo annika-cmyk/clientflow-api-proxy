@@ -280,9 +280,10 @@
       if (!dl) return;
       const pk = String(periodKey || '').trim() || periodKeyFromDeadline(dl, typ, freq);
       const st = toDateStr(startIso) || startIsoForRun(pk, dl, typ, freq, f);
-      const label = String(periodLabel || '').trim()
-        || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : '')
-        || (typ === 'Momsredovisning' && window.MomsPeriod ? MomsPeriod.displayLabel(pk, freq) : '');
+      const label = (typ === 'Momsredovisning' && window.MomsPeriod)
+        ? MomsPeriod.displayLabel(pk, freq)
+        : (String(periodLabel || '').trim()
+          || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : ''));
       const key = `${r.id}:${pk}`;
       if (!runs.has(key)) {
         runs.set(key, { record: r, typ, deadline: dl, startDate: st, periodKey: pk, periodLabel: label, key });
@@ -624,8 +625,9 @@
         : (modeForPrefill === 'year')
           ? yearKeyForMonth(x.month)
           : x.month);
-      const runName = String(x.periodLabel || '').trim()
-        || (x.typ === 'Momsredovisning' && window.MomsPeriod ? MomsPeriod.displayLabel(periodKey, freq) : '');
+      const runName = (x.typ === 'Momsredovisning' && window.MomsPeriod && periodKey)
+        ? MomsPeriod.displayLabel(periodKey, freq)
+        : String(x.periodLabel || '').trim();
       const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning') && runName;
       const runCell = (viewMode === 'open')
         ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
