@@ -6181,6 +6181,133 @@ app.get('/api/samarbete/requests', authenticateToken, async (req, res) => {
   }
 });
 
+function classifyIncomingSamarbeteResponse(fields) {
+  const status = (fields['Status'] || 'Väntar').toString();
+  if (status === 'Arkiverad' || status === 'Utkast') return null;
+  if (status === 'Besvarad') return 'besvarad';
+
+  const raw = (fields['Svar text'] || '').trim();
+  if (raw.startsWith('[')) {
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        const title = (fields['Titel'] || '').toString().trim();
+        const titleLines = title.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+        const total = titleLines.length || arr.length;
+        let answered = 0;
+        for (let i = 0; i < total; i++) {
+          const a = arr[i] || {};
+          if ((a.text && String(a.text).trim()) || a.filename) answered++;
+        }
+        if (answered > 0 && answered < total) return 'delvis';
+      }
+    } catch (_) {}
+  }
+
+  const att = fields['Svar bifogad fil'];
+  if (att && (Array.isArray(att) ? att.length > 0 : att)) return 'delvis';
+  return null;
+}
+
+// GET /api/samarbete/new-responses – Nyinkomna svar på kundförfrågningar för byrån (auth)
+app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    let filterFormula = '';
+    switch (userData.role) {
+      case 'ClientFlowAdmin':
+        break;
+      case 'Ledare':
+        if (userData.byraId) {
+          const num = parseInt(userData.byraId);
+          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
+        } else {
+          return res.json({ responses: [] });
+        }
+        break;
+      case 'Anställd':
+        if (!userData.id || !userData.byraId) return res.json({ responses: [] });
+        const _n1 = parseInt(userData.byraId);
+        const _byra1 = isNaN(_n1)
+          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
+          : `{Byrå ID}=${_n1}`;
+        const _uid1 = String(userData.id).replace(/"/g, '\\"');
+        const _u1 = `SEARCH("${_uid1}", {Användare}&"")`;
+        filterFormula = `AND(${_byra1},${_u1})`;
+        break;
+      default:
+        return res.json({ responses: [] });
+    }
+
+    let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500&fields[]=Namn&fields[]=Företagsnamn`;
+    if (filterFormula) kundUrl += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
+    const kundRes = await axios.get(kundUrl, { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 });
+    const customerMap = {};
+    for (const r of kundRes.data.records || []) {
+      customerMap[r.id] = r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas';
+    }
+    const customerIds = new Set(Object.keys(customerMap));
+    if (!customerIds.size) return res.json({ responses: [] });
+
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.json({ responses: [] });
+
+    const allRecords = [];
+    let offset;
+    do {
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?pageSize=100`;
+      if (offset) url += `&offset=${offset}`;
+      const listRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+      allRecords.push(...(listRes.data.records || []));
+      offset = listRes.data.offset;
+    } while (offset);
+
+    const stripTitle = (s) => (s || '').replace(/^\d+\.\s*/, '').replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+    const responses = [];
+    for (const r of allRecords) {
+      const fields = r.fields || {};
+      const customerId = fields['Kund ID'] || (Array.isArray(fields['Kund']) ? fields['Kund'][0] : null);
+      if (!customerId || !customerIds.has(customerId)) continue;
+
+      const responseType = classifyIncomingSamarbeteResponse(fields);
+      if (!responseType) continue;
+
+      const titleRaw = (fields['Titel'] || '').toString().trim();
+      const titleFirst = stripTitle(titleRaw.split('\n').find(Boolean) || 'Förfrågan');
+      responses.push({
+        id: r.id,
+        customerId,
+        customerName: customerMap[customerId] || 'Okänd kund',
+        recipientName: fields['Mottagare namn'] || '',
+        title: titleFirst,
+        status: fields['Status'] || 'Väntar',
+        responseType,
+        answeredAt: fields['Besvarad'] || null,
+        createdAt: r.createdTime || null,
+        fromUppdrag: !!fields['Skapad från uppdrag'] || !!fields['Uppdrag ID']
+      });
+    }
+
+    responses.sort((a, b) => {
+      const da = new Date(a.answeredAt || a.createdAt || 0).getTime();
+      const db = new Date(b.answeredAt || b.createdAt || 0).getTime();
+      return db - da;
+    });
+
+    res.json({ responses });
+  } catch (error) {
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('GET /api/samarbete/new-responses:', msg);
+    res.status(500).json({ error: msg, responses: [] });
+  }
+});
+
 // GET /api/samarbete/request/:token – Hämta förfrågan för kundsvar (publik, ingen auth)
 app.get('/api/samarbete/request/:token', async (req, res) => {
   try {

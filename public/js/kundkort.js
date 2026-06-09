@@ -358,7 +358,8 @@ class CustomerCardManager {
                 const hash = (window.location.hash || '').replace('#', '');
                 const shouldOpenAnteckningar = noteId || hash === 'anteckningar';
                 const shouldOpenAvvikelser = hash === 'avvikelser';
-                const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : 'foretagsinformation');
+                const shouldOpenSamarbete = hash === 'samarbete';
+                const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : (shouldOpenSamarbete ? 'samarbete' : 'foretagsinformation'));
                 this.switchToTab(initialTab);
                 this.loadTabContent(initialTab);
                 

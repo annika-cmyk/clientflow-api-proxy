@@ -183,6 +183,27 @@
                     </div>
                 </section>
 
+                <!-- Nyinkomna svar på förfrågningar -->
+                <section id="dashboard-samarbete-svar" class="dashboard-section">
+                    <div class="dashboard-card dashboard-card-collapsible collapsed">
+                        <div class="dashboard-card-header" data-toggle="collapse" aria-expanded="false" aria-controls="samarbete-svar-list">
+                            <h2><i class="fas fa-comment-dots"></i> Nyinkomna svar på förfrågningar<span class="dashboard-card-count" id="dashboard-count-samarbete-svar"></span></h2>
+                            <div class="dashboard-card-header-actions">
+                                <button type="button" id="refresh-samarbete-svar" class="btn btn-ghost btn-sm" title="Uppdatera" onclick="event.stopPropagation()">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <span class="dashboard-collapse-icon"><i class="fas fa-chevron-down"></i></span>
+                            </div>
+                        </div>
+                        <div id="samarbete-svar-list" class="dashboard-list dashboard-card-body-collapsible">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Kunder utan riskbedömning -->
                 <section id="dashboard-riskbedomning" class="dashboard-section">
                     <div class="dashboard-card dashboard-card-collapsible collapsed">
