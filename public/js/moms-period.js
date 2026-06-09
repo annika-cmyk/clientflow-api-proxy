@@ -85,14 +85,60 @@
         const f = String(freq || '').toLowerCase();
         if (f.includes('kvartal')) {
             const q = parseQuarterKey(periodKey);
-            if (q) return `Momsredovisning Q${q.quarter} ${q.year}`;
+            if (q) return `Moms Q${q.quarter}`;
         }
         const name = monthNameOnly(periodKey);
-        if (name) {
-            const y = (periodKey || '').slice(0, 4);
-            return `Momsredovisning ${name} ${y}`;
-        }
+        if (name) return `Momsperiod ${name}`;
         return 'Momsredovisning';
+    }
+
+    function currentQuarterFromYm(yyyyMm) {
+        const p = parseYm(yyyyMm);
+        if (!p) return null;
+        return { year: p.year, quarter: Math.ceil(p.month / 3) };
+    }
+
+    /** Första momsperiod från sparad nyckel eller startdatum (månaden/kvartalet före arbetsfönstret). */
+    function inferFirstPeriod(fields, freq) {
+        const stored = String(fields?.['Första period'] || fields?.forstaPeriod || '').trim();
+        if (stored) return stored;
+        const start = String(fields?.['Startdatum'] || fields?.startdatum || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return '';
+        const f = String(freq || '').toLowerCase();
+        if (f.includes('kvartal')) {
+            const q = currentQuarterFromYm(start.slice(0, 7));
+            if (!q) return '';
+            let qq = q.quarter - 1;
+            let yy = q.year;
+            if (qq <= 0) { qq = 4; yy -= 1; }
+            return `${yy}-Q${qq}`;
+        }
+        return monthAdd(start.slice(0, 7), -1) || '';
+    }
+
+    /** Rullande fönster: alla körningar t.o.m. deadline-månad = todayYm + 11 månader. */
+    function runsThroughHorizon(firstPeriodKey, freq, todayYm) {
+        const f = String(freq || '').toLowerCase();
+        const isQ = f.includes('kvartal');
+        const horizonYm = monthAdd(String(todayYm || '').slice(0, 7), 11);
+        if (!horizonYm || !firstPeriodKey) return [];
+        const runs = [];
+        let pk = firstPeriodKey;
+        for (let i = 0; i < 120; i++) {
+            if (!pk) break;
+            const meta = runMeta(pk, freq);
+            if (!meta.deadlineIso) break;
+            if (meta.deadlineIso.slice(0, 7) > horizonYm) break;
+            runs.push({
+                runIndex: i,
+                periodKey: pk,
+                periodLabel: meta.periodLabel,
+                startIso: meta.startIso,
+                deadlineIso: meta.deadlineIso
+            });
+            pk = isQ ? quarterAdd(pk, 1) : monthAdd(pk, 1);
+        }
+        return runs;
     }
 
     function runMeta(periodKey, freq) {
@@ -184,7 +230,10 @@
         quarterOptionsForYear,
         monthOptionsAroundNow,
         runVisibleInBoardMonth,
-        monthNameOnly
+        monthNameOnly,
+        currentQuarterFromYm,
+        inferFirstPeriod,
+        runsThroughHorizon
     };
 
     if (typeof module !== 'undefined' && module.exports) {

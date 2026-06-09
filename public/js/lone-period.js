@@ -71,7 +71,7 @@
         const name = monthNameOnly(payoutYm);
         if (!name) return 'Lönekörning';
         if (isInnevarande(typ)) return `Lön som ska utbetalas i ${name}`;
-        return `Lön som utbetals i ${name}`;
+        return `Lön som utbetalats i ${name}`;
     }
 
     /** En körning utifrån mall (första start/deadline) och månadsindex (0 = första körningen). */

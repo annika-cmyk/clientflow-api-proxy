@@ -1647,14 +1647,31 @@ class CustomerCardManager {
                             <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
                         </div>
 
-                        <div style="display:flex; justify-content:flex-end; margin-top:0.9rem;">
-                            <button type="button" class="btn btn-ghost btn-sm"
-                                title="Redigera uppdrag"
-                                aria-label="Redigera uppdrag"
-                                data-kund-action="edit-uppdrag"
-                                data-kund-edit-typ="${this._esc(t)}">
-                                <i class="fas fa-pen"></i>
-                            </button>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-top:0.9rem; flex-wrap:wrap;">
+                            ${(() => {
+                                const avslutasIso = toDateStr(f['Avslutas'] || '');
+                                return avslutasIso
+                                    ? `<div class="uppdrag-muted"><i class="fas fa-calendar-times"></i> Avslutas ${fmtLong(avslutasIso)}</div>`
+                                    : `<div></div>`;
+                            })()}
+                            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-secondary btn-sm"
+                                    title="Avsluta uppdrag"
+                                    aria-label="Avsluta uppdrag"
+                                    data-kund-action="end-uppdrag"
+                                    data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
+                                    data-kund-edit-typ="${this._esc(t)}"
+                                    data-kund-avslutas="${this._esc(toDateStr(f['Avslutas'] || ''))}">
+                                    <i class="fas fa-stop-circle"></i> Avsluta uppdrag
+                                </button>
+                                <button type="button" class="btn btn-ghost btn-sm"
+                                    title="Redigera uppdrag"
+                                    aria-label="Redigera uppdrag"
+                                    data-kund-action="edit-uppdrag"
+                                    data-kund-edit-typ="${this._esc(t)}">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1871,6 +1888,17 @@ class CustomerCardManager {
                     const uppdragPeriod = begarBtn.getAttribute('data-kund-uppdrag-period') || '';
                     const uppdragskorningId = begarBtn.getAttribute('data-kund-korning-id') || '';
                     this.openBegarUnderlagModal(null, { uppdragId, uppdragTyp, uppdragPeriod, uppdragskorningId });
+                    return;
+                }
+
+                // Avsluta uppdrag via modal
+                const endBtn = e.target.closest('[data-kund-action="end-uppdrag"]');
+                if (endBtn) {
+                    e.preventDefault();
+                    const uppdragId = endBtn.getAttribute('data-kund-uppdrag-id') || '';
+                    const typ = endBtn.getAttribute('data-kund-edit-typ') || '';
+                    const existingEnd = endBtn.getAttribute('data-kund-avslutas') || '';
+                    this._showEndUppdragModal(uppdragId, typ, existingEnd);
                     return;
                 }
 
@@ -2609,6 +2637,99 @@ class CustomerCardManager {
         });
     }
 
+    _stockholmTodayIso() {
+        try {
+            const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+            const y = parts.find(p => p.type === 'year')?.value;
+            const mo = parts.find(p => p.type === 'month')?.value;
+            const da = parts.find(p => p.type === 'day')?.value;
+            if (y && mo && da) return `${y}-${mo}-${da}`;
+        } catch (_) {}
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    _showEndUppdragModal(uppdragId, typ, existingEndDate = '') {
+        const existing = document.getElementById('uppdrag-end-modal');
+        if (existing) existing.remove();
+
+        const todayIso = this._stockholmTodayIso();
+        const existingIso = /^\d{4}-\d{2}-\d{2}$/.test(String(existingEndDate || '').slice(0, 10))
+            ? String(existingEndDate).slice(0, 10)
+            : '';
+        const defaultDate = (existingIso && existingIso >= todayIso) ? existingIso : todayIso;
+        const existingInfo = existingIso
+            ? `<div class="uppdrag-muted" style="margin-bottom:0.75rem;"><i class="fas fa-info-circle"></i> Nuvarande avslutningsdatum: <strong>${this._esc(existingIso)}</strong>. Välj nytt datum om du vill ändra.</div>`
+            : '';
+
+        const modal = document.createElement('div');
+        modal.id = 'uppdrag-end-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:520px; width:96vw;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-stop-circle"></i> Avsluta uppdrag: ${this._esc(typ)}</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-end-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="uppdrag-setup-desc" style="margin-top:0;">
+                        Välj datum då uppdraget ska avslutas. Inga nya uppdragskörningar skapas efter detta datum och befintliga körningar efter datumet tas bort.
+                    </div>
+                    ${existingInfo}
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label for="uppdrag-end-date">Avslutas</label>
+                        <input type="date" id="uppdrag-end-date" class="kunduppgifter-input" min="${this._esc(todayIso)}" value="${this._esc(defaultDate)}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('uppdrag-end-modal')?.remove()">Avbryt</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="uppdrag-end-confirm"><i class="fas fa-save"></i> Spara avslutningsdatum</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('uppdrag-end-confirm').addEventListener('click', async () => {
+            const btn = document.getElementById('uppdrag-end-confirm');
+            const endDate = (document.getElementById('uppdrag-end-date')?.value || '').trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+                this.showNotification('Välj ett giltigt avslutningsdatum.', 'error');
+                return;
+            }
+            if (endDate < todayIso) {
+                this.showNotification('Avslutningsdatum måste vara idag eller i framtiden.', 'error');
+                return;
+            }
+            try {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+                }
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const res = await fetch(`${baseUrl}/api/uppdrag/end`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                    body: JSON.stringify({ uppdragId, endDate })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                document.getElementById('uppdrag-end-modal')?.remove();
+                const deleted = Number(data.deletedRuns || 0);
+                const msg = deleted > 0
+                    ? `Uppdrag avslutas ${endDate}. ${deleted} körning(ar) togs bort.`
+                    : `Uppdrag avslutas ${endDate}.`;
+                this.showNotification(msg, 'success');
+                this.loadUppdrag();
+            } catch (e) {
+                this.showNotification('Kunde inte avsluta uppdrag: ' + (e.message || 'fel'), 'error');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-save"></i> Spara avslutningsdatum';
+                }
+            }
+        });
+    }
+
     async _saveUppdragPtlUnderlagOnly(typ, uploadedItems) {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const customerId = this.customerId || this.currentCustomerId;
@@ -2826,8 +2947,10 @@ class CustomerCardManager {
             if (startEl) startEl.value = meta.startIso || '';
             if (deadlineEl) deadlineEl.value = meta.deadlineIso || '';
             if (momsPreviewText) {
+                const nextPk = MomsPeriod.isQuarterlyFreq(freq) ? MomsPeriod.quarterAdd(pk, 1) : MomsPeriod.monthAdd(pk, 1);
+                const nextMeta = nextPk ? MomsPeriod.runMeta(nextPk, freq) : null;
                 momsPreviewText.textContent = meta.periodLabel
-                    ? `${meta.periodLabel} · start ${meta.startIso || '—'} · klart senast ${meta.deadlineIso || '—'}`
+                    ? `${meta.periodLabel} (${meta.startIso || '—'} → ${meta.deadlineIso || '—'})` + (nextMeta ? ` · nästa: ${nextMeta.periodLabel}` : '')
                     : '—';
             }
         };

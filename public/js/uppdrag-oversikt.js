@@ -275,7 +275,8 @@
       const pk = String(periodKey || '').trim() || periodKeyFromDeadline(dl, typ, freq);
       const st = toDateStr(startIso) || startIsoForRun(pk, dl, typ, freq, f);
       const label = String(periodLabel || '').trim()
-        || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : '');
+        || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : '')
+        || (typ === 'Momsredovisning' && window.MomsPeriod ? MomsPeriod.displayLabel(pk, freq) : '');
       const key = `${r.id}:${pk}`;
       if (!runs.has(key)) {
         runs.set(key, { record: r, typ, deadline: dl, startDate: st, periodKey: pk, periodLabel: label, key });
@@ -303,6 +304,19 @@
         addRun(run.periodKey, run.deadlineIso, run.startIso, run.periodLabel);
       });
       return Array.from(runs.values());
+    }
+
+    if (typ === 'Momsredovisning' && window.MomsPeriod
+      && (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq))) {
+      const firstPk = MomsPeriod.inferFirstPeriod(f, freq);
+      if (firstPk) {
+        const todayYm = monthKey(monthStart);
+        const momsRuns = MomsPeriod.runsThroughHorizon(firstPk, freq, todayYm);
+        momsRuns.forEach((run) => {
+          addRun(run.periodKey, run.deadlineIso, run.startIso, run.periodLabel);
+        });
+        return Array.from(runs.values());
+      }
     }
 
     const step = monthsStepFromFreq(freq);
@@ -570,7 +584,7 @@
       ? 'Deadline'
       : (activeType === LONE_TAB
         ? 'Lönekörning'
-        : (activeType === 'Momsredovisning' ? 'Moms' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration')));
+        : (activeType === 'Momsredovisning' ? 'Momsperiod' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration')));
     if (els.colRun) els.colRun.textContent = runLabel;
 
     const instances = (viewMode === 'open') ? buildOpenInstances(allRecords) : buildInstances(allRecords);
@@ -597,13 +611,6 @@
       const link = kundId ? `kundkort.html?id=${encodeURIComponent(kundId)}` : '';
 
       const done = isDoneForPeriod(f, x.deadline) ? 1 : 0;
-      const loneName = String(x.periodLabel || '').trim();
-      const runCell = (viewMode === 'open')
-        ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
-        : (isLoneTyp(x.typ) && loneName)
-          ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(loneName)}</span>`
-          : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
-
       const freq = String(f['Frekvens'] || '').trim();
       const modeForPrefill = getModeForUppdrag(activeType, freq);
       const periodKey = x.periodKey || ((modeForPrefill === 'quarter')
@@ -611,6 +618,14 @@
         : (modeForPrefill === 'year')
           ? yearKeyForMonth(x.month)
           : x.month);
+      const runName = String(x.periodLabel || '').trim()
+        || (x.typ === 'Momsredovisning' && window.MomsPeriod ? MomsPeriod.displayLabel(periodKey, freq) : '');
+      const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning') && runName;
+      const runCell = (viewMode === 'open')
+        ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
+        : (showRunName)
+          ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(runName)}</span>`
+          : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
       const runStatus = runStatusFromHistory(f, periodKey) || 'Planerad';
       const statusCell = `
         <div class="uppdragboard-statuscell">
