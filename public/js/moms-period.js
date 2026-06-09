@@ -169,22 +169,28 @@
         return { year: p.year, quarter: Math.ceil(p.month / 3) };
     }
 
+    /** Periodnyckel från startdatum (YYYY-MM-DD): kvartalet som slutar månaden före start. */
+    function periodKeyFromStartIso(startIso, freq) {
+        const start = String(startIso || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return '';
+        const f = String(freq || '').toLowerCase();
+        if (f.includes('kvartal')) {
+            const p = parseYm(start.slice(0, 7));
+            if (!p) return '';
+            let m = p.month - 1;
+            let y = p.year;
+            if (m < 1) { m = 12; y -= 1; }
+            const quarter = Math.ceil(m / 3);
+            return `${y}-Q${quarter}`;
+        }
+        return monthAdd(start.slice(0, 7), -1) || '';
+    }
+
     /** Första momsperiod från sparad nyckel eller startdatum (månaden/kvartalet före arbetsfönstret). */
     function inferFirstPeriod(fields, freq) {
         const stored = String(fields?.['Första period'] || fields?.forstaPeriod || '').trim();
         if (stored) return stored;
-        const start = String(fields?.['Startdatum'] || fields?.startdatum || '').slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return '';
-        const f = String(freq || '').toLowerCase();
-        if (f.includes('kvartal')) {
-            const q = currentQuarterFromYm(start.slice(0, 7));
-            if (!q) return '';
-            let qq = q.quarter - 1;
-            let yy = q.year;
-            if (qq <= 0) { qq = 4; yy -= 1; }
-            return `${yy}-Q${qq}`;
-        }
-        return monthAdd(start.slice(0, 7), -1) || '';
+        return periodKeyFromStartIso(fields?.['Startdatum'] || fields?.startdatum || '', freq);
     }
 
     /** Rullande fönster: alla körningar t.o.m. deadline-månad = todayYm + 11 månader. */
@@ -309,6 +315,7 @@
         runVisibleInBoardMonth,
         monthNameOnly,
         currentQuarterFromYm,
+        periodKeyFromStartIso,
         inferFirstPeriod,
         runsThroughHorizon
     };

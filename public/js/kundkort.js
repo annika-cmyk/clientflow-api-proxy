@@ -1130,6 +1130,17 @@ class CustomerCardManager {
         // Viktigt: visa uppdraget när det är "öppet" (periodstart -> deadline-månad),
         // inte bara i deadline-månaden.
         const instByTypeMonth = new Map(); // typ -> Map(monthKey -> deadlineIso)
+        const addOpenMonthsToInstMap = (map, startYm, endYm, deadlineIso) => {
+            if (!startYm || !endYm || !deadlineIso) return;
+            let cursor = new Date(Number(startYm.slice(0, 4)), Number(startYm.slice(5, 7)) - 1, 1);
+            const end = new Date(Number(endYm.slice(0, 4)), Number(endYm.slice(5, 7)) - 1, 1);
+            for (let guard = 0; guard < 36; guard++) {
+                if (cursor > monthMax) break;
+                if (cursor > end) break;
+                if (cursor >= monthMin) map.set(monthKey(cursor), deadlineIso);
+                cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+            }
+        };
         // Primärt: använd Uppdragskörningar-tabellen om den finns (ger korrekt per-körning-koppling).
         // Fallback: använd Uppdrag-tabellen (gamla beteendet) om körningar saknas.
         const instanceSource = (runRecords && runRecords.length) ? runRecords : records;
@@ -1139,6 +1150,19 @@ class CustomerCardManager {
             if (!typ) continue;
             const deadline0 = toDateStr(f['Deadline'] || f['Nästa deadline'] || '');
             if (!deadline0) continue;
+            if (typ === 'Momsredovisning' && window.MomsPeriod) {
+                const momsFreq = MomsPeriod.inferFreq(f['Frekvens'], f['PeriodKey'], runRecords);
+                if (MomsPeriod.isMonthlyFreq(momsFreq) || MomsPeriod.isQuarterlyFreq(momsFreq)) {
+                    const pk = String(f['PeriodKey'] || '').trim() || MomsPeriod.inferFirstPeriod(f, momsFreq);
+                    const win = pk ? MomsPeriod.workWindowYm(pk, momsFreq) : null;
+                    if (win) {
+                        const map = instByTypeMonth.get(typ) || new Map();
+                        addOpenMonthsToInstMap(map, win.startYm, win.deadlineYm, deadline0);
+                        instByTypeMonth.set(typ, map);
+                        continue;
+                    }
+                }
+            }
             const step = monthsStepFromFreq(f['Frekvens']);
             const map = instByTypeMonth.get(typ) || new Map();
             if (step === 0) {
@@ -2513,13 +2537,12 @@ class CustomerCardManager {
                 return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             }
         }
-        if (typ === 'Momsredovisning') {
-            const ff = freq.toLowerCase();
-            if (ff.includes('kvartal')) {
-                const y = Number(mk.slice(0, 4));
-                const mo = Number(mk.slice(5, 7));
-                return mo ? `${y}-Q${Math.ceil(mo / 3)}` : mk;
+        if (typ === 'Momsredovisning' && window.MomsPeriod) {
+            const momsFreq = MomsPeriod.inferFreq(freq, '', this._uppdragRunRecords);
+            if (MomsPeriod.isQuarterlyFreq(momsFreq) || MomsPeriod.isMonthlyFreq(momsFreq)) {
+                return MomsPeriod.defaultPeriodKeyForBoard(mk, momsFreq) || mk;
             }
+            const ff = freq.toLowerCase();
             if (ff.includes('år')) return mk.slice(0, 4);
         }
         if (typ === 'Bokslut' || typ === 'Deklaration') return mk.slice(0, 4);

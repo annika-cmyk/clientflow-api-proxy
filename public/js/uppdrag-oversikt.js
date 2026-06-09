@@ -194,6 +194,12 @@
     if (x?.periodKey) return String(x.periodKey).trim();
     const f = x?.record?.fields || {};
     const freq = String(f['Frekvens'] || '').trim();
+    if (activeType === 'Momsredovisning' && window.MomsPeriod) {
+      const momsFreq = MomsPeriod.inferFreq(freq, '', null);
+      if (MomsPeriod.isQuarterlyFreq(momsFreq) || MomsPeriod.isMonthlyFreq(momsFreq)) {
+        return MomsPeriod.defaultPeriodKeyForBoard(x.month, momsFreq) || x.month;
+      }
+    }
     const modeForPrefill = getModeForUppdrag(activeType, freq);
     if (modeForPrefill === 'quarter') return quarterKeyForMonth(x.month);
     if (modeForPrefill === 'year') return yearKeyForMonth(x.month);

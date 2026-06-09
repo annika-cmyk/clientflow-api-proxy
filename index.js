@@ -6997,26 +6997,50 @@ function momsPeriodKeysAhead(firstPeriodKey, freq, count) {
   return keys;
 }
 
+function momsPeriodKeyFromStartIso(startIso, freq) {
+  const start = parseDateOnly(startIso || '');
+  if (!start) return null;
+  const f = String(freq || '').toLowerCase();
+  if (f.includes('kvartal')) {
+    const p = momsParseYm(start.slice(0, 7));
+    if (!p) return null;
+    let m = p.month - 1;
+    let y = p.year;
+    if (m < 1) { m = 12; y -= 1; }
+    const quarter = Math.ceil(m / 3);
+    return `${y}-Q${quarter}`;
+  }
+  return monthAdd(start.slice(0, 7), -1) || null;
+}
+
 function momsInferFirstPeriod(fields, freq) {
   const stored = String(fields['Första period'] || '').trim();
   if (stored) return stored;
-  const start = toIsoDate(fields['Startdatum'] || '');
-  if (start) {
-    const f = String(freq || '').toLowerCase();
-    if (f.includes('kvartal')) {
-      const ym = start.slice(0, 7);
-      const q = currentQuarterFromYm(ym);
-      if (q) {
-        let qq = q.quarter - 1;
-        let yy = q.year;
-        if (qq <= 0) { qq = 4; yy -= 1; }
-        return `${yy}-Q${qq}`;
-      }
-    }
-    const prev = monthAdd(start.slice(0, 7), -1);
-    if (prev) return prev;
+  return momsPeriodKeyFromStartIso(fields['Startdatum'] || '', freq);
+}
+
+function normalizeMomsUppdragFields(typ, fields) {
+  if (typ !== 'Momsredovisning' || !fields || typeof fields !== 'object') return fields;
+  const freq = String(fields['Frekvens'] || '').trim();
+  const freqLow = freq.toLowerCase();
+  if (!freqLow.includes('månad') && !freqLow.includes('kvartal')) return fields;
+
+  let firstPk = String(fields['Första period'] || '').trim();
+  if (!firstPk) {
+    firstPk = momsInferFirstPeriod(fields, freq) || '';
   }
-  return null;
+  if (!firstPk) {
+    const dlYm = parseDateOnly(fields['Nästa deadline'] || '')?.slice(0, 7) || '';
+    firstPk = momsPeriodKeyFromDeadlineYm(dlYm, freq) || '';
+  }
+  if (!firstPk) return fields;
+
+  fields['Första period'] = firstPk;
+  const startIso = momsStartIsoFromPeriodKey(firstPk, freq);
+  const deadlineIso = momsDeadlineIsoFromPeriodKey(firstPk, freq);
+  if (startIso) fields['Startdatum'] = startIso;
+  if (deadlineIso) fields['Nästa deadline'] = deadlineIso;
+  return fields;
 }
 
 async function sendSamarbeteDigestEmail({ toEmail, toName, senderByra, senderLogoUrl, items }) {
@@ -7178,13 +7202,13 @@ async function processUppdragUnderlagSchedule() {
     if (!uppdragRunsUrl) return;
 
     // Hämta existerande körningar för uppdraget
-    const existing = new Set();
+    const existing = new Map();
     try {
       const formula = encodeURIComponent(`{Uppdrag ID} = "${uppdragId.replace(/"/g, '\\"')}"`);
       const res = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
       (res.data.records || []).forEach(rr => {
         const key = String(rr?.fields?.['Run Key'] || '').trim();
-        if (key) existing.add(key);
+        if (key) existing.set(key, rr);
       });
     } catch (_) {}
 
@@ -7193,7 +7217,22 @@ async function processUppdragUnderlagSchedule() {
       if (avslutasIso && deadlineIso && deadlineIso > avslutasIso) return;
       if (avslutasIso && startIso && startIso > avslutasIso) return;
       const runKey = `${uppdragId}:${periodKey}`;
-      if (existing.has(runKey)) return;
+      const existingRun = existing.get(runKey);
+      if (existingRun) {
+        const expectedStart = toIsoDate(startIso || '');
+        const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
+        if (expectedStart && expectedStart !== currentStart && existingRun?.id) {
+          try {
+            await axios.patch(
+              `${uppdragRunsUrl}/${existingRun.id}`,
+              { fields: { 'Startdatum': expectedStart, 'Uppdaterad': nowIso } },
+              { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+            );
+            existingRun.fields = { ...(existingRun.fields || {}), Startdatum: expectedStart };
+          } catch (_) {}
+        }
+        return;
+      }
       try {
         const runFields = {
           'Run Key': runKey,
@@ -7215,7 +7254,7 @@ async function processUppdragUnderlagSchedule() {
           { fields: runFields },
           { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
         );
-        existing.add(runKey);
+        existing.set(runKey, { id: null, fields: { 'Run Key': runKey, Startdatum: startIso } });
       } catch (_) {}
     };
 
@@ -13297,6 +13336,8 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       normalizedFields['PTL Underlag'] = normalizedFields[ptlLegacyKey];
     }
     if (ptlLegacyKey) delete normalizedFields[ptlLegacyKey];
+
+    normalizeMomsUppdragFields(typ, normalizedFields);
 
     const fields = {
       'Kund ID': customerId,
