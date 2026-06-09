@@ -27,7 +27,9 @@
     colRun: document.getElementById('uppdragboard-col-run'),
     createBtn: document.getElementById('uppdragboard-create'),
     viewDeadline: document.getElementById('uppdrag-view-deadline'),
-    viewOpen: document.getElementById('uppdrag-view-open')
+    viewOpen: document.getElementById('uppdrag-view-open'),
+    statusKlara: document.getElementById('uppdrag-status-klara'),
+    statusEjKlara: document.getElementById('uppdrag-status-ej-klara')
   };
 
   const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
@@ -38,6 +40,7 @@
   let activeType = 'Löneuppdrag';
   let monthCursor = new Date(); // current month
   let viewMode = 'deadline'; // 'deadline' | 'open'
+  let statusFilter = 'ej-klara'; // 'ej-klara' | 'klara'
   let handlerFilter = '';
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const monthMax = new Date(monthStart.getFullYear(), monthStart.getMonth() + 11, 1);
@@ -168,6 +171,25 @@
     return hit ? String(hit.status || '').trim() : '';
   }
 
+  function periodKeyForInstance(x) {
+    const f = x?.record?.fields || {};
+    const freq = String(f['Frekvens'] || '').trim();
+    const modeForPrefill = getModeForUppdrag(activeType, freq);
+    if (modeForPrefill === 'quarter') return quarterKeyForMonth(x.month);
+    if (modeForPrefill === 'year') return yearKeyForMonth(x.month);
+    return x.month;
+  }
+
+  function runStatusForInstance(x) {
+    const f = x?.record?.fields || {};
+    return runStatusFromHistory(f, periodKeyForInstance(x)) || 'Planerad';
+  }
+
+  function matchesStatusFilter(x) {
+    const isKlar = runStatusForInstance(x) === 'Klar';
+    return statusFilter === 'klara' ? isKlar : !isKlar;
+  }
+
   function runStatusOptionsHtml(selected) {
     const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
     const sel = String(selected || '').trim();
@@ -245,6 +267,13 @@
     if (els.viewDeadline) els.viewDeadline.classList.toggle('is-active', viewMode === 'deadline');
     if (els.viewOpen) els.viewOpen.classList.toggle('is-active', viewMode === 'open');
 
+    render();
+  }
+
+  function setStatusFilter(next) {
+    statusFilter = next === 'klara' ? 'klara' : 'ej-klara';
+    if (els.statusKlara) els.statusKlara.classList.toggle('is-active', statusFilter === 'klara');
+    if (els.statusEjKlara) els.statusEjKlara.classList.toggle('is-active', statusFilter === 'ej-klara');
     render();
   }
 
@@ -398,11 +427,13 @@
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
           .filter(x => !isDoneForPeriod(x.record?.fields || {}, x.deadline))
+          .filter(x => matchesStatusFilter(x))
           .sort((a, b) => String(a.deadline || '').localeCompare(String(b.deadline || '')))
       : instances
           .filter(x => String(x?.typ || '') === activeType)
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
+          .filter(x => matchesStatusFilter(x))
           .sort((a, b) => sortByClient(a.record, b.record));
 
     const rowsHtml = filtered.map(x => {
@@ -758,6 +789,8 @@
   if (els.search) els.search.addEventListener('input', () => { q = els.search.value || ''; render(); });
   if (els.viewDeadline) els.viewDeadline.addEventListener('click', () => setViewMode('deadline'));
   if (els.viewOpen) els.viewOpen.addEventListener('click', () => setViewMode('open'));
+  if (els.statusKlara) els.statusKlara.addEventListener('click', () => setStatusFilter('klara'));
+  if (els.statusEjKlara) els.statusEjKlara.addEventListener('click', () => setStatusFilter('ej-klara'));
 
   if (els.prev) els.prev.addEventListener('click', () => {
     const next = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
@@ -817,6 +850,7 @@
 
   window.addEventListener('clientflow:authReady', () => load());
   monthCursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+  setStatusFilter('ej-klara');
   setViewMode('deadline');
   activeType = 'Löneuppdrag';
   if (els.typeTabs && els.typeTabs.length) {
