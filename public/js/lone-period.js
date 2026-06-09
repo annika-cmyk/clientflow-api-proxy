@@ -6,6 +6,7 @@
     const TYP_LEGACY = 'Löneuppdrag';
     const TYP_INNEVARANDE = 'Löneuppdrag innevarande';
     const TYP_EFTERHAND = 'Löneuppdrag efterhand';
+    const TYP_EFTERHAND_DISPLAY = 'Löneuppdrag i efterhand';
     const MONTHS_SV = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
 
     function pad2(n) {
@@ -65,6 +66,13 @@
     function isEfterhand(typ) {
         const t = String(typ || '').trim();
         return t === TYP_EFTERHAND || t === TYP_LEGACY;
+    }
+
+    /** Visningsnamn för uppdragstyp (Airtable-värde oförändrat). */
+    function typDisplayLabel(typ) {
+        const t = String(typ || '').trim();
+        if (t === TYP_EFTERHAND) return TYP_EFTERHAND_DISPLAY;
+        return t;
     }
 
     function displayLabel(payoutYm, typ) {
@@ -143,9 +151,11 @@
         TYP_LEGACY,
         TYP_INNEVARANDE,
         TYP_EFTERHAND,
+        TYP_EFTERHAND_DISPLAY,
         isLoneTyp,
         isInnevarande,
         isEfterhand,
+        typDisplayLabel,
         displayLabel,
         buildRun,
         runsThroughHorizon,

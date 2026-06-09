@@ -1417,8 +1417,8 @@ class CustomerCardManager {
                     t, rec, f, freq,
                     boardKey: t,
                     displayTitle: (isLoneTyp(t) && window.LonePeriod && prefillPeriodKey)
-                        ? (LonePeriod.displayLabel(prefillPeriodKey, t) || t)
-                        : t,
+                        ? (LonePeriod.displayLabel(prefillPeriodKey, t) || LonePeriod.typDisplayLabel(t))
+                        : (window.LonePeriod ? LonePeriod.typDisplayLabel(t) : t),
                     instDeadline,
                     prefillPeriodKey,
                     runRec: runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null
@@ -2537,7 +2537,7 @@ class CustomerCardManager {
         modal.innerHTML = `
             <div class="modal-box" style="max-width:720px; width:96vw; max-height:90vh;">
                 <div class="modal-header">
-                    <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${this._esc(typ)}</h3>
+                    <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${this._esc(this._uppdragTypLabel(typ))}</h3>
                     <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body" style="overflow:auto;">
@@ -2667,7 +2667,7 @@ class CustomerCardManager {
         modal.innerHTML = `
             <div class="modal-box" style="max-width:520px; width:96vw;">
                 <div class="modal-header">
-                    <h3><i class="fas fa-stop-circle"></i> Avsluta uppdrag: ${this._esc(typ)}</h3>
+                    <h3><i class="fas fa-stop-circle"></i> Avsluta uppdrag: ${this._esc(this._uppdragTypLabel(typ))}</h3>
                     <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-end-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body">
@@ -2801,7 +2801,10 @@ class CustomerCardManager {
             </label>`;
         }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
 
-        const typeOptionsHtml = missingTypes.map(t => `<option value="${this._esc(t)}">${this._esc(t)}</option>`).join('');
+        const typeOptionsHtml = missingTypes.map(t => {
+            const label = this._uppdragTypLabel(t);
+            return `<option value="${this._esc(t)}">${this._esc(label)}</option>`;
+        }).join('');
 
         modal.innerHTML = `
             <div class="modal-box" style="max-width:760px; width:96vw; max-height:90vh;">
@@ -3237,7 +3240,7 @@ class CustomerCardManager {
             <div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
                     <div class="uppdrag-header">
-                        <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(typ)}</span></div>
+                        <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(this._uppdragTypLabel(typ))}</span></div>
                         <div class="uppdrag-header-meta">
                             <span class="uppdrag-meta-chip"><i class="fas fa-redo"></i> <span data-uppdrag-meta="Frekvens">${headerFreq}</span></span>
                             <span class="uppdrag-meta-chip"><i class="fas fa-calendar-alt"></i> <span data-uppdrag-meta="Nästa deadline">${headerDeadline}</span></span>
@@ -4485,6 +4488,12 @@ class CustomerCardManager {
     _esc(str) {
         if (!str) return '';
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    _uppdragTypLabel(typ) {
+        return (window.LonePeriod && LonePeriod.typDisplayLabel)
+            ? LonePeriod.typDisplayLabel(typ)
+            : String(typ || '');
     }
 
     _kycStatusIcon(fältnamn, värde, iconClass) {
@@ -8481,7 +8490,7 @@ class CustomerCardManager {
             if (!(req && req.fromUppdrag)) return '';
             const typ = (req.uppdragTyp || '').toString().trim();
             const period = (req.uppdragPeriod || '').toString().trim();
-            const label = typ ? `Uppdrag: ${typ}` : 'Uppdrag';
+            const label = typ ? `Uppdrag: ${this._uppdragTypLabel(typ)}` : 'Uppdrag';
             const extra = period ? ` · ${period}` : '';
             return ` <span class="badge badge-info" style="margin-left:0.5rem; background:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; font-weight:700; font-size:0.75rem;"><i class="fas fa-briefcase"></i> ${this.escapeDocHtml(label + extra)}</span>`;
         };
@@ -8998,7 +9007,7 @@ class CustomerCardManager {
                 if (linkInfoWrap) linkInfoWrap.style.display = 'none';
                 return;
             }
-            if (linkInfo) linkInfo.textContent = [typ || 'Uppdrag', period ? '· ' + period : ''].filter(Boolean).join(' ');
+            if (linkInfo) linkInfo.textContent = [this._uppdragTypLabel(typ) || 'Uppdrag', period ? '· ' + period : ''].filter(Boolean).join(' ');
             if (linkInfoWrap) linkInfoWrap.style.display = '';
         };
 

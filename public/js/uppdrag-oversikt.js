@@ -39,6 +39,12 @@
     return !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
   }
 
+  function typDisplayLabel(typ) {
+    return (window.LonePeriod && LonePeriod.typDisplayLabel)
+      ? LonePeriod.typDisplayLabel(typ)
+      : String(typ || '');
+  }
+
   function matchesActiveType(typ) {
     const t = String(typ || '').trim();
     if (activeType === LONE_TAB) return isLoneTyp(t);
@@ -482,7 +488,7 @@
     modal.innerHTML = `
       <div class="modal-box" style="max-width:720px; width:96vw; max-height:90vh;">
         <div class="modal-header">
-          <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${esc(typ)}</h3>
+          <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${esc(typDisplayLabel(typ))}</h3>
           <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body" style="overflow:auto;">
