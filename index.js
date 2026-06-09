@@ -6734,6 +6734,100 @@ function monthLabelSv(yyyyMm) {
   return d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' });
 }
 
+const LONE_TYP_LEGACY = 'Löneuppdrag';
+const LONE_TYP_INNEVARANDE = 'Löneuppdrag innevarande';
+const LONE_TYP_EFTERHAND = 'Löneuppdrag efterhand';
+const LONE_MONTHS_SV = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+const UPPDRAG_TYP_CHOICES = [
+  { name: LONE_TYP_LEGACY },
+  { name: LONE_TYP_INNEVARANDE },
+  { name: LONE_TYP_EFTERHAND },
+  { name: 'Momsredovisning' },
+  { name: 'Bokslut' },
+  { name: 'Deklaration' }
+];
+
+function isLoneUppdragTyp(typ) {
+  const t = String(typ || '').trim();
+  return t === LONE_TYP_LEGACY || t === LONE_TYP_INNEVARANDE || t === LONE_TYP_EFTERHAND;
+}
+
+function isLoneInnevarandeTyp(typ) {
+  return String(typ || '').trim() === LONE_TYP_INNEVARANDE;
+}
+
+function loneDayFromIso(iso, fallback) {
+  const d = parseInt(String(iso || '').slice(8, 10), 10);
+  return (Number.isFinite(d) && d >= 1 && d <= 28) ? d : (fallback || 15);
+}
+
+function loneIsoWithDay(ym, day) {
+  const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const last = new Date(y, mo, 0).getDate();
+  const dd = Math.min(Math.max(1, day), Math.min(last, 28));
+  return `${y}-${String(mo).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+function loneMonthNameOnly(ym) {
+  const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  const mo = parseInt(m[2], 10);
+  return LONE_MONTHS_SV[mo - 1] || '';
+}
+
+function loneDisplayLabel(payoutYm, typ) {
+  const name = loneMonthNameOnly(payoutYm);
+  if (!name) return 'Lönekörning';
+  if (isLoneInnevarandeTyp(typ)) return `Lön som ska utbetalas i ${name}`;
+  return `Lön som utbetals i ${name}`;
+}
+
+function loneBuildRun(runIndex, templateStartIso, templateDeadlineIso, typ) {
+  const startTpl = String(templateStartIso || '').slice(0, 10);
+  const deadlineTpl = String(templateDeadlineIso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startTpl) || !/^\d{4}-\d{2}-\d{2}$/.test(deadlineTpl)) return null;
+  const anchorYm = startTpl.slice(0, 7);
+  const workYm = monthAdd(anchorYm, runIndex);
+  if (!workYm) return null;
+  const startIso = loneIsoWithDay(workYm, loneDayFromIso(startTpl, 1));
+  const deadlineIso = loneIsoWithDay(workYm, loneDayFromIso(deadlineTpl, 15));
+  const payoutYm = isLoneInnevarandeTyp(typ) ? workYm : monthAdd(workYm, -1);
+  if (!payoutYm) return null;
+  return {
+    runIndex,
+    periodKey: payoutYm,
+    periodLabel: loneDisplayLabel(payoutYm, typ),
+    startIso,
+    deadlineIso,
+    payoutYm,
+    workYm
+  };
+}
+
+function loneRunsThroughHorizon(templateStartIso, templateDeadlineIso, typ, todayYm) {
+  const horizonYm = monthAdd(String(todayYm || '').slice(0, 7), 11);
+  if (!horizonYm) return [];
+  const runs = [];
+  for (let i = 0; i < 120; i++) {
+    const run = loneBuildRun(i, templateStartIso, templateDeadlineIso, typ);
+    if (!run) break;
+    if (run.deadlineIso.slice(0, 7) > horizonYm) break;
+    runs.push(run);
+  }
+  return runs;
+}
+
+function lonePeriodKeyFromDeadline(deadlineIso, typ) {
+  const dl = String(deadlineIso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dl)) return '';
+  const workYm = dl.slice(0, 7);
+  if (isLoneInnevarandeTyp(typ)) return workYm;
+  return monthAdd(workYm, -1) || workYm;
+}
+
 function currentQuarterFromYm(yyyyMm) {
   const m = String(yyyyMm || '').match(/^(\d{4})-(\d{2})$/);
   if (!m) return null;
@@ -7032,28 +7126,28 @@ async function processUppdragUnderlagSchedule() {
     } catch (_) {}
 
     const nowIso = new Date().toISOString();
-    const createRun = async ({ periodKey, periodLabel, deadlineIso }) => {
+    const createRun = async ({ periodKey, periodLabel, deadlineIso, startIso }) => {
       const runKey = `${uppdragId}:${periodKey}`;
       if (existing.has(runKey)) return;
       try {
+        const runFields = {
+          'Run Key': runKey,
+          'Uppdrag ID': uppdragId,
+          'Kund ID': String(f['Kund ID'] || '').trim(),
+          'Byrå ID': String(f['Byrå ID'] || '').trim(),
+          'Typ': typ,
+          'Frekvens': freq,
+          'PeriodKey': periodKey,
+          'Period Label': periodLabel,
+          'Deadline': deadlineIso,
+          'Status': 'Planerad',
+          'Skapad': nowIso,
+          'Uppdaterad': nowIso
+        };
+        if (startIso) runFields['Startdatum'] = startIso;
         await axios.post(
           uppdragRunsUrl,
-          {
-            fields: {
-              'Run Key': runKey,
-              'Uppdrag ID': uppdragId,
-              'Kund ID': String(f['Kund ID'] || '').trim(),
-              'Byrå ID': String(f['Byrå ID'] || '').trim(),
-              'Typ': typ,
-              'Frekvens': freq,
-              'PeriodKey': periodKey,
-              'Period Label': periodLabel,
-              'Deadline': deadlineIso,
-              'Status': 'Planerad',
-              'Skapad': nowIso,
-              'Uppdaterad': nowIso
-            }
-          },
+          { fields: runFields },
           { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
         );
         existing.add(runKey);
@@ -7079,7 +7173,25 @@ async function processUppdragUnderlagSchedule() {
       return;
     }
 
-    // Övriga månadsuppdrag (t.ex. lön): 12 körningar från innevarande månad.
+    // Löneuppdrag (innevarande/efterhand/legacy): rullande 12 månader från mall start/deadline.
+    if (isLoneUppdragTyp(typ) && freqLow.includes('månad')) {
+      const templateStart = toIsoDate(f['Startdatum'] || '') || deadline0;
+      const templateDeadline = deadline0;
+      if (!templateStart || !templateDeadline) return;
+      const loneRuns = loneRunsThroughHorizon(templateStart, templateDeadline, typ, todayYm);
+      for (const run of loneRuns) {
+        // eslint-disable-next-line no-await-in-loop
+        await createRun({
+          periodKey: run.periodKey,
+          periodLabel: run.periodLabel,
+          deadlineIso: run.deadlineIso,
+          startIso: run.startIso
+        });
+      }
+      return;
+    }
+
+    // Övriga månadsuppdrag: 12 körningar från innevarande månad.
     if (freqLow.includes('månad')) {
       const day = parseInt(String(deadline0).slice(8, 10), 10);
       const dayClamped = (Number.isFinite(day) && day >= 1 && day <= 28) ? day : 15;
@@ -12271,7 +12383,7 @@ const UPPDRAG_RUNS_TABLE_NAME = 'Uppdragskörningar';
 const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA (rec...)' },
   { name: 'Byrå ID', type: 'singleLineText', description: 'Byrå-id för dataseparering' },
-  { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Löneuppdrag' }, { name: 'Momsredovisning' }, { name: 'Bokslut' }, { name: 'Deklaration' }] } },
+  { name: 'Typ', type: 'singleSelect', options: { choices: UPPDRAG_TYP_CHOICES } },
   { name: 'Namn', type: 'singleLineText', description: 'Valfritt namn på uppdraget' },
   { name: 'Frekvens', type: 'singleSelect', options: { choices: [{ name: 'Varje månad' }, { name: 'Varje kvartal' }, { name: 'Årsvis' }, { name: 'Årsvis med deklaration' }, { name: 'Engång' }] } },
   { name: 'Startdatum', type: 'date', description: 'Tidigast datum uppdraget ska börja synas i att-göra', options: { dateFormat: { name: 'iso' } } },
@@ -12311,8 +12423,9 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Uppdrag ID', type: 'singleLineText', description: 'Record-id för uppdraget i Uppdrag-tabellen (rec...)' },
   { name: 'Kund ID', type: 'singleLineText', description: 'Record-id för kunden i KUNDDATA (rec...)' },
   { name: 'Byrå ID', type: 'singleLineText', description: 'Byrå-id för dataseparering' },
-  { name: 'Typ', type: 'singleSelect', options: { choices: [{ name: 'Löneuppdrag' }, { name: 'Momsredovisning' }, { name: 'Bokslut' }, { name: 'Deklaration' }] } },
+  { name: 'Typ', type: 'singleSelect', options: { choices: UPPDRAG_TYP_CHOICES } },
   { name: 'Frekvens', type: 'singleLineText', description: 'Kopia för enklare filtrering/diagnostik' },
+  { name: 'Startdatum', type: 'date', description: 'Tidigast datum arbetet kan påbörjas för körningen', options: { dateFormat: { name: 'iso' } } },
   { name: 'PeriodKey', type: 'singleLineText', description: 'Periodnyckel, t.ex. 2026-04 eller 2026-Q2 eller 2026' },
   { name: 'Period Label', type: 'singleLineText', description: 'Visningsnamn för perioden (sv)' },
   { name: 'Anteckning', type: 'multilineText', description: 'Anteckning specifikt för denna uppdragskörning' },
@@ -12448,6 +12561,64 @@ async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId })
     return da.localeCompare(db);
   });
   return { records, tableId };
+}
+
+async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
+  try {
+    const t = tableMeta || await getUppdragTableMeta(airtableToken, baseId);
+    if (!t || !t.id) return { ok: false, reason: 'Tabell saknas' };
+    const typField = (t.fields || []).find(f => (f.name || '').trim() === 'Typ');
+    if (!typField || !typField.id) return { ok: false, reason: 'Fältet "Typ" saknas' };
+
+    const desired = UPPDRAG_TYP_CHOICES.map(c => c.name);
+    const current = (typField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false };
+
+    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
+    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+    await axios.patch(patchUrl, {
+      name: 'Typ',
+      type: 'singleSelect',
+      options: { choices }
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera typ-val' };
+  }
+}
+
+async function ensureUppdragRunsTypChoices(airtableToken, baseId, tableMeta) {
+  try {
+    const t = tableMeta || await getUppdragRunsTableMeta(airtableToken, baseId);
+    if (!t || !t.id) return { ok: false, reason: 'Tabell saknas' };
+    const typField = (t.fields || []).find(f => (f.name || '').trim() === 'Typ');
+    if (!typField || !typField.id) return { ok: false, reason: 'Fältet "Typ" saknas' };
+
+    const desired = UPPDRAG_TYP_CHOICES.map(c => c.name);
+    const current = (typField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false };
+
+    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
+    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+    await axios.patch(patchUrl, {
+      name: 'Typ',
+      type: 'singleSelect',
+      options: { choices }
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera typ-val' };
+  }
 }
 
 async function ensureUppdragRunsStatusChoices(airtableToken, baseId, tableMeta) {
@@ -12589,6 +12760,7 @@ app.post('/api/setup/airtable-uppdrag-runs-fields', authenticateToken, async (re
     const skipped = UPPDRAG_RUNS_REQUIRED_FIELDS.length - toCreate.length;
     // Best-effort: säkerställ att Status har rätt val
     const statusEnsure = await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId, t);
+    const typEnsure = await ensureUppdragRunsTypChoices(airtableAccessToken, baseId, t);
     return res.json({
       success: true,
       message: created.length
@@ -12596,7 +12768,8 @@ app.post('/api/setup/airtable-uppdrag-runs-fields', authenticateToken, async (re
         : `Alla ${UPPDRAG_RUNS_REQUIRED_FIELDS.length} fält finns redan i tabellen ${UPPDRAG_RUNS_TABLE_NAME}.`,
       created,
       alreadyExisted: skipped,
-      statusChoices: statusEnsure
+      statusChoices: statusEnsure,
+      typChoices: typEnsure
     });
   } catch (err) {
     const status = err.response?.status;
@@ -12659,13 +12832,15 @@ app.post('/api/setup/airtable-uppdrag-fields', authenticateToken, async (req, re
       }
     }
     const skipped = UPPDRAG_REQUIRED_FIELDS.length - toCreate.length;
+    const typEnsure = await ensureUppdragTypChoices(airtableAccessToken, baseId, t);
     return res.json({
       success: true,
       message: created.length
         ? `${created.length} fält lades till i ${UPPDRAG_TABLE_NAME}. ${skipped} fanns redan.`
         : `Alla ${UPPDRAG_REQUIRED_FIELDS.length} fält finns redan i tabellen ${UPPDRAG_TABLE_NAME}.`,
       created,
-      alreadyExisted: skipped
+      alreadyExisted: skipped,
+      typChoices: typEnsure
     });
   } catch (err) {
     const status = err.response?.status;
@@ -13056,12 +13231,12 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
 });
 
 // POST /api/uppdrag/complete – klarmarkera en körning för ett uppdrag och uppdatera nästa deadline
-// Body: { customerId, typ, note?, doneAt? }
+// Body: { customerId, typ, note?, doneAt?, periodKey? } – periodKey = visningsmånad (YYYY-MM m.fl.)
 app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
-    const { customerId, typ, note, doneAt } = req.body || {};
+    const { customerId, typ, note, doneAt, periodKey: periodKeyRaw } = req.body || {};
     if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
     const doneIso = (doneAt && /^\d{4}-\d{2}-\d{2}$/.test(String(doneAt))) ? String(doneAt) : new Date().toISOString().slice(0, 10);
 
@@ -13112,11 +13287,25 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       return 'month';
     };
     const mode = getModeForUppdrag(typ, freq);
-    const periodKey = (mode === 'quarter')
-      ? quarterKey(currentDeadline || doneIso)
-      : (mode === 'year')
-        ? yearKey(currentDeadline || doneIso)
-        : monthKey(currentDeadline || doneIso);
+    const clientPeriodKey = String(periodKeyRaw || '').trim();
+    const periodKeyFromDeadline = (() => {
+      const dl = toDateStr(currentDeadline || doneIso);
+      if (!dl) return '';
+      if (mode === 'quarter') return quarterKey(dl);
+      if (mode === 'year') return yearKey(dl);
+      if (isLoneUppdragTyp(typ)) {
+        return lonePeriodKeyFromDeadline(dl, typ) || monthKey(dl);
+      }
+      return monthKey(dl);
+    })();
+    const periodKeyValid = (pk) => {
+      if (!pk) return false;
+      if (mode === 'quarter') return /^\d{4}-Q[1-4]$/.test(pk);
+      if (mode === 'year') return /^\d{4}$/.test(pk);
+      return /^\d{4}-\d{2}$/.test(pk);
+    };
+    const periodKey = periodKeyValid(clientPeriodKey) ? clientPeriodKey : periodKeyFromDeadline;
+    const completedDeadline = toDateStr(currentDeadline) || doneIso;
 
     let history = [];
     try {
@@ -13125,13 +13314,17 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       if (!Array.isArray(history)) history = [];
     } catch (_) { history = []; }
 
-    history.unshift({
+    const prevIdx = history.findIndex(it => it && String(it.periodKey || '').trim() === periodKey);
+    const historyEntry = {
       doneAt: doneIso,
       ...(periodKey ? { periodKey } : {}),
+      ...(completedDeadline ? { deadline: completedDeadline } : {}),
       status: 'Klar',
       note: (note || '').toString().trim(),
       user: req.user?.email || ''
-    });
+    };
+    if (prevIdx >= 0) history[prevIdx] = { ...(history[prevIdx] || {}), ...historyEntry };
+    else history.unshift(historyEntry);
     history = history.slice(0, 200);
 
     const next = calcNextDeadline(currentDeadline, freq);

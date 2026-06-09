@@ -1057,7 +1057,8 @@ class CustomerCardManager {
             }
         });
 
-        const ALL_TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+        const ALL_TYPES = ['Löneuppdrag innevarande', 'Löneuppdrag efterhand', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+        const isLoneTyp = (typ) => !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
         const _recByType = new Map();
         records.forEach(r => { const t = (r.fields?.['Typ'] || '').toString().trim(); if (t) _recByType.set(t, r); });
         const byType = (typ) => _recByType.get(typ) || null;
@@ -1066,7 +1067,9 @@ class CustomerCardManager {
         // Används i Samarbete-modalen för att kunna koppla en förfrågan till ett uppdrag
         this._uppdragRecords = records.slice();
 
+        const legacyLone = byType('Löneuppdrag');
         const existingTypes = ALL_TYPES.filter(t => !!byType(t));
+        if (legacyLone && !existingTypes.includes('Löneuppdrag')) existingTypes.unshift('Löneuppdrag');
         const missingTypes = ALL_TYPES.filter(t => !byType(t));
 
         const addDisabled = missingTypes.length ? '' : 'disabled';
@@ -1224,7 +1227,7 @@ class CustomerCardManager {
                 ${boardHtml}
                 <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
                     ${existingTypes.length ? existingTypes.map(t => {
-                        if (t === 'Löneuppdrag') return this._renderUppdragKort('Löneuppdrag', 'fa-money-check-alt', byType('Löneuppdrag'), byraUsers, riskAtgarder);
+                        if (isLoneTyp(t)) return this._renderUppdragKort(t, 'fa-money-check-alt', byType(t), byraUsers, riskAtgarder);
                         if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
                         if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
                         if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
@@ -1403,15 +1406,28 @@ class CustomerCardManager {
 
                 const instMap = instByTypeMonth.get(t) || new Map();
                 const instDeadline = instMap.get(mk) || '';
+                let prefillPeriodKey = defaultPeriodKey;
+                if (isLoneTyp(t) && instDeadline && window.LonePeriod) {
+                    prefillPeriodKey = LonePeriod.periodKeyFromDeadline(instDeadline, t) || defaultPeriodKey;
+                } else if (t === 'Löneuppdrag' && instDeadline) {
+                    const prev = addMonthsIso(instDeadline, -1);
+                    prefillPeriodKey = prev ? prev.slice(0, 7) : defaultPeriodKey;
+                }
                 rowContexts.push({
                     t, rec, f, freq,
                     boardKey: t,
-                    displayTitle: t,
+                    displayTitle: (isLoneTyp(t) && window.LonePeriod && prefillPeriodKey)
+                        ? (LonePeriod.displayLabel(prefillPeriodKey, t) || t)
+                        : t,
                     instDeadline,
-                    prefillPeriodKey: defaultPeriodKey,
-                    runRec: runByTypPeriod.get(`${t}|||${defaultPeriodKey}`) || null
+                    prefillPeriodKey,
+                    runRec: runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null
                 });
             });
+
+            this._kundUppdragPeriodKeyByTyp = new Map(
+                rowContexts.map((ctx) => [ctx.t, String(ctx.prefillPeriodKey || '').trim()])
+            );
 
             const rows = rowContexts.map((ctx) => {
                 const t = ctx.t;
@@ -2423,6 +2439,39 @@ class CustomerCardManager {
         });
     }
 
+    _getUppdragPeriodKeyForComplete(typ) {
+        const pk = String(this._kundUppdragPeriodKeyByTyp?.get(typ) || '').trim();
+        if (pk) return pk;
+        const cursor = this._kundUppdragBoardMonth;
+        if (!cursor) return '';
+        const mk = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+        const rec = (this._uppdragRecords || []).find(r => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim());
+        const freq = String(rec?.fields?.['Frekvens'] || '').trim();
+        const deadline = String(rec?.fields?.['Nästa deadline'] || '').trim();
+        if (window.LonePeriod && LonePeriod.isLoneTyp(typ) && deadline) {
+            return LonePeriod.periodKeyFromDeadline(deadline, typ) || mk;
+        }
+        if (typ === 'Löneuppdrag' && deadline) {
+            const dl = String(deadline).slice(0, 10);
+            const m = dl.match(/^(\d{4})-(\d{2})-\d{2}$/);
+            if (m) {
+                const d = new Date(Number(m[1]), Number(m[2]) - 2, 1);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            }
+        }
+        if (typ === 'Momsredovisning') {
+            const ff = freq.toLowerCase();
+            if (ff.includes('kvartal')) {
+                const y = Number(mk.slice(0, 4));
+                const mo = Number(mk.slice(5, 7));
+                return mo ? `${y}-Q${Math.ceil(mo / 3)}` : mk;
+            }
+            if (ff.includes('år')) return mk.slice(0, 4);
+        }
+        if (typ === 'Bokslut' || typ === 'Deklaration') return mk.slice(0, 4);
+        return mk;
+    }
+
     _isUppdragDoneForPeriod(fields) {
         const doneAt = (fields?.['Senast utförd'] || '').toString().trim();
         const nextDeadline = (fields?.['Nästa deadline'] || '').toString().trim();
@@ -2552,7 +2601,8 @@ class CustomerCardManager {
                 }
 
                 document.getElementById('uppdrag-complete-modal')?.remove();
-                await this._completeUppdragFromCard(root, typ, { noteOverride: note });
+                const periodKey = this._getUppdragPeriodKeyForComplete(typ);
+                await this._completeUppdragFromCard(root, typ, { noteOverride: note, periodKey });
             } catch (e) {
                 this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
             }
@@ -2669,6 +2719,10 @@ class CustomerCardManager {
                             <label>Beräknat (SKV)</label>
                             <p class="uppdrag-muted" style="margin:0;" id="uppdrag-moms-preview-text">—</p>
                         </div>
+                        <div class="lead-field uppdrag-span-full" id="uppdrag-lone-preview-wrap" style="display:none;">
+                            <label>Första lönekörningar</label>
+                            <p class="uppdrag-muted" style="margin:0;" id="uppdrag-lone-preview-text">—</p>
+                        </div>
                         <div class="lead-field uppdrag-span-full">
                             <label>Rutin / instruktion</label>
                             <textarea class="kunduppgifter-input" rows="4" id="uppdrag-new-rutin" placeholder="Skriv rutin/instruktion..."></textarea>
@@ -2709,10 +2763,11 @@ class CustomerCardManager {
         const dekRowsEl = document.getElementById('uppdrag-dek-rows');
         const dekAddBtn = document.getElementById('uppdrag-dek-add');
 
+        const isLoneTypLocal = (typ) => !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
         const setFreqOptions = (typ) => {
             const choices = (typ === 'Momsredovisning')
                 ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
-                : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
+                : (isLoneTypLocal(typ) ? ['Varje månad'] : ['Årsvis', 'Engång']);
             freqEl.innerHTML = choices.map(c => `<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
         };
 
@@ -2747,6 +2802,8 @@ class CustomerCardManager {
         const deadlineWrap = document.getElementById('uppdrag-new-deadline-wrap');
         const momsPreviewWrap = document.getElementById('uppdrag-moms-preview-wrap');
         const momsPreviewText = document.getElementById('uppdrag-moms-preview-text');
+        const lonePreviewWrap = document.getElementById('uppdrag-lone-preview-wrap');
+        const lonePreviewText = document.getElementById('uppdrag-lone-preview-text');
         const startEl = document.getElementById('uppdrag-new-start');
         const deadlineEl = document.getElementById('uppdrag-new-deadline');
 
@@ -2775,19 +2832,43 @@ class CustomerCardManager {
             }
         };
 
+        const applyLonePreview = () => {
+            if (!window.LonePeriod || !lonePreviewText) return;
+            const t = typEl.value;
+            if (!isLoneTypLocal(t)) {
+                if (lonePreviewWrap) lonePreviewWrap.style.display = 'none';
+                return;
+            }
+            const st = startEl?.value || '';
+            const dl = deadlineEl?.value || '';
+            if (!st || !dl) {
+                lonePreviewText.textContent = '—';
+                return;
+            }
+            const first = LonePeriod.buildRun(0, st, dl, t);
+            const second = LonePeriod.buildRun(1, st, dl, t);
+            lonePreviewText.textContent = first
+                ? `${first.periodLabel} (${first.startIso} → ${first.deadlineIso})` + (second ? ` · nästa: ${second.periodLabel}` : '')
+                : '—';
+        };
+
         const syncExtra = () => {
             const t = typEl.value;
             setFreqOptions(t);
             declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
             const isMoms = t === 'Momsredovisning';
+            const isLone = isLoneTypLocal(t);
             if (momsWrap) momsWrap.style.display = isMoms ? 'block' : 'none';
             if (momsPreviewWrap) momsPreviewWrap.style.display = isMoms ? 'block' : 'none';
+            if (lonePreviewWrap) lonePreviewWrap.style.display = isLone ? 'block' : 'none';
             const manualDates = !isMoms;
             if (startWrap) startWrap.style.display = manualDates ? '' : 'none';
             if (deadlineWrap) deadlineWrap.style.display = manualDates ? '' : 'none';
             if (isMoms) {
                 fillMomsPeriodOptions();
                 applyMomsFromPeriod();
+            } else if (isLone) {
+                applyLonePreview();
             }
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
                 addDekRow({ typ: 'NE', text: '' });
@@ -2796,6 +2877,8 @@ class CustomerCardManager {
         typEl.addEventListener('change', syncExtra);
         freqEl.addEventListener('change', () => { if (typEl.value === 'Momsredovisning') { fillMomsPeriodOptions(); applyMomsFromPeriod(); } });
         if (momsPeriodEl) momsPeriodEl.addEventListener('change', applyMomsFromPeriod);
+        if (startEl) startEl.addEventListener('change', applyLonePreview);
+        if (deadlineEl) deadlineEl.addEventListener('change', applyLonePreview);
         syncExtra();
 
         if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NE', text: '' }));
@@ -2867,7 +2950,8 @@ class CustomerCardManager {
     _renderUppdragKort(typ, icon, record, byraUsers, riskAtgarder, extra = {}) {
         const f = record?.fields || {};
         const recId = record?.id || '';
-        const freq = f['Frekvens'] || (typ === 'Löneuppdrag' ? 'Varje månad' : '');
+        const isLoneKort = !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
+        const freq = f['Frekvens'] || (isLoneKort ? 'Varje månad' : '');
         const deadline = f['Nästa deadline'] || '';
         const startdatum = f['Startdatum'] || '';
         const ansvarig = f['Ansvarig'] || '';
@@ -2909,7 +2993,7 @@ class CustomerCardManager {
 
         const freqChoices = typ === 'Momsredovisning'
             ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
-            : (typ === 'Löneuppdrag' ? ['Varje månad'] : ['Årsvis', 'Engång']);
+            : (isLoneKort ? ['Varje månad'] : ['Årsvis', 'Engång']);
         const freqHtml = freqChoices.map(c => `<option value="${this._esc(c)}" ${String(c) === String(freq) ? 'selected' : ''}>${this._esc(c)}</option>`).join('');
 
         const lastUnderlagPeriod = (f['Senast underlagsutskick period'] || '').toString().trim();
@@ -3294,10 +3378,16 @@ class CustomerCardManager {
         }
 
             const note = (options.noteOverride != null) ? String(options.noteOverride) : (root.querySelector('[data-field="_note"]')?.value || '');
+            const periodKey = String(options.periodKey != null ? options.periodKey : this._getUppdragPeriodKeyForComplete(typ)).trim();
             const res = await fetch(`${baseUrl}/api/uppdrag/complete`, {
                 method: 'POST',
                 ...opts,
-                body: JSON.stringify({ customerId, typ, note })
+                body: JSON.stringify({
+                    customerId,
+                    typ,
+                    note,
+                    ...(periodKey ? { periodKey } : {})
+                })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

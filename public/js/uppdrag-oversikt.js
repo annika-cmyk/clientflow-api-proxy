@@ -33,6 +33,17 @@
   };
 
   const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+  const LONE_TAB = 'Löneuppdrag';
+
+  function isLoneTyp(typ) {
+    return !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
+  }
+
+  function matchesActiveType(typ) {
+    const t = String(typ || '').trim();
+    if (activeType === LONE_TAB) return isLoneTyp(t);
+    return t === activeType;
+  }
 
   let scope = 'byra'; // 'byra' | 'mine'
   let allRecords = [];
@@ -44,6 +55,7 @@
   let showEjKlara = true;
   let handlerFilter = '';
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const monthMin = new Date(monthStart.getFullYear(), monthStart.getMonth() - 12, 1);
   const monthMax = new Date(monthStart.getFullYear(), monthStart.getMonth() + 11, 1);
 
   function setVisible(el, show) { if (el) el.style.display = show ? '' : 'none'; }
@@ -173,12 +185,196 @@
   }
 
   function periodKeyForInstance(x) {
+    if (x?.periodKey) return String(x.periodKey).trim();
     const f = x?.record?.fields || {};
     const freq = String(f['Frekvens'] || '').trim();
     const modeForPrefill = getModeForUppdrag(activeType, freq);
     if (modeForPrefill === 'quarter') return quarterKeyForMonth(x.month);
     if (modeForPrefill === 'year') return yearKeyForMonth(x.month);
     return x.month;
+  }
+
+  function dayFromDeadlinePattern(refIso) {
+    const d = parseInt(String(refIso || '').slice(8, 10), 10);
+    return (Number.isFinite(d) && d >= 1 && d <= 28) ? d : 15;
+  }
+
+  function periodKeyFromDeadline(deadlineIso, typ, freq) {
+    const dl = toDateStr(deadlineIso);
+    if (!dl) return '';
+    const mode = getModeForUppdrag(typ, freq);
+    if (mode === 'quarter') return quarterKeyForMonth(dl.slice(0, 7));
+    if (mode === 'year') return yearKeyForMonth(dl.slice(0, 7));
+    if (isLoneTyp(typ) && window.LonePeriod) {
+      return LonePeriod.periodKeyFromDeadline(dl, typ) || dl.slice(0, 7);
+    }
+    return dl.slice(0, 7);
+  }
+
+  function deadlineIsoFromPeriodKey(periodKey, typ, freq, refDeadline) {
+    const pk = String(periodKey || '').trim();
+    if (!pk) return '';
+    const mode = getModeForUppdrag(typ, freq);
+    if (typ === 'Momsredovisning' && window.MomsPeriod) {
+      const dl = MomsPeriod.deadlineIsoFromPeriodKey(pk, freq);
+      if (dl) return dl;
+    }
+    if (mode === 'quarter') {
+      const m = pk.match(/^(\d{4})-Q([1-4])$/i);
+      if (m) {
+        const y = Number(m[1]);
+        const q = Number(m[2]);
+        const endMonth = q * 3;
+        const day = dayFromDeadlinePattern(refDeadline);
+        return `${y}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+    if (mode === 'year' && /^\d{4}$/.test(pk)) {
+      const day = dayFromDeadlinePattern(refDeadline);
+      const month = String(refDeadline || '').slice(5, 7);
+      const mm = /^\d{2}$/.test(month) ? month : '12';
+      return `${pk}-${mm}-${String(day).padStart(2, '0')}`;
+    }
+    if (/^\d{4}-\d{2}$/.test(pk)) {
+      const day = String(dayFromDeadlinePattern(refDeadline)).padStart(2, '0');
+      if (isLoneTyp(typ) && window.LonePeriod) {
+        const dl = LonePeriod.deadlineIsoFromPeriodKey(pk, typ, refDeadline);
+        if (dl) return dl;
+      }
+      return `${pk}-${day}`;
+    }
+    return toDateStr(refDeadline) || '';
+  }
+
+  function startIsoForRun(periodKey, deadlineIso, typ, freq, fields) {
+    const dl = toDateStr(deadlineIso);
+    if (!dl) return '';
+    if (typ === 'Momsredovisning' && window.MomsPeriod) {
+      const st = MomsPeriod.startIsoFromPeriodKey(String(periodKey || '').trim(), freq);
+      if (st) return st;
+    }
+    const step = monthsStepFromFreq(freq);
+    if (step === 0) {
+      const explicit = toDateStr(fields?.['Startdatum'] || '');
+      return explicit || dl;
+    }
+    return addMonthsIso(dl, -step) || toDateStr(fields?.['Startdatum'] || '') || dl;
+  }
+
+  function collectRunsForRecord(r) {
+    const f = r.fields || {};
+    const typ = String(f['Typ'] || '');
+    const freq = String(f['Frekvens'] || '');
+    const refDeadline = toDateStr(f['Nästa deadline'] || '');
+    const refStart = toDateStr(f['Startdatum'] || '');
+    const runs = new Map();
+
+    const addRun = (periodKey, deadlineIso, startIso, periodLabel) => {
+      const dl = toDateStr(deadlineIso);
+      if (!dl) return;
+      const pk = String(periodKey || '').trim() || periodKeyFromDeadline(dl, typ, freq);
+      const st = toDateStr(startIso) || startIsoForRun(pk, dl, typ, freq, f);
+      const label = String(periodLabel || '').trim()
+        || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : '');
+      const key = `${r.id}:${pk}`;
+      if (!runs.has(key)) {
+        runs.set(key, { record: r, typ, deadline: dl, startDate: st, periodKey: pk, periodLabel: label, key });
+      }
+    };
+
+    const hist = safeJson((f['Historik'] || '').toString().trim(), []);
+    if (Array.isArray(hist)) {
+      hist.forEach((h) => {
+        const pk = String(h?.periodKey || '').trim();
+        if (!pk) return;
+        const dl = toDateStr(h?.deadline) || deadlineIsoFromPeriodKey(pk, typ, freq, refDeadline);
+        const st = (isLoneTyp(typ) && window.LonePeriod)
+          ? LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || refDeadline)
+          : '';
+        addRun(pk, dl, st, '');
+      });
+    }
+
+    if (isLoneTyp(typ) && window.LonePeriod && refDeadline) {
+      const templateStart = refStart || refDeadline;
+      const todayYm = monthKey(monthStart);
+      const loneRuns = LonePeriod.runsThroughHorizon(templateStart, refDeadline, typ, todayYm);
+      loneRuns.forEach((run) => {
+        addRun(run.periodKey, run.deadlineIso, run.startIso, run.periodLabel);
+      });
+      return Array.from(runs.values());
+    }
+
+    const step = monthsStepFromFreq(freq);
+    if (step === 0) {
+      if (refDeadline) addRun(refDeadline.slice(0, 7), refDeadline);
+      return Array.from(runs.values());
+    }
+    if (!refDeadline) return Array.from(runs.values());
+
+    let d = refDeadline;
+    for (let guard = 0; guard < 60; guard++) {
+      if (!d) break;
+      const dlMonth = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, 1);
+      if (dlMonth > monthMax) break;
+      addRun(periodKeyFromDeadline(d, typ, freq), d);
+      d = addMonthsIso(d, step);
+      if (!d) break;
+    }
+
+    return Array.from(runs.values());
+  }
+
+  function expandRunsToMonthInstances(runs) {
+    const inst = [];
+    for (const run of runs || []) {
+      const startYm = toDateStr(run.startDate)?.slice(0, 7);
+      const endYm = toDateStr(run.deadline)?.slice(0, 7);
+      if (!startYm || !endYm) continue;
+      let cursor = new Date(Number(startYm.slice(0, 4)), Number(startYm.slice(5, 7)) - 1, 1);
+      const end = new Date(Number(endYm.slice(0, 4)), Number(endYm.slice(5, 7)) - 1, 1);
+      for (let guard = 0; guard < 36; guard++) {
+        if (cursor > monthMax) break;
+        if (cursor > end) break;
+        if (cursor >= monthMin) {
+          const mk = monthKey(cursor);
+          inst.push({
+            ...run,
+            month: mk,
+            key: `${run.key}:${mk}`
+          });
+        }
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      }
+    }
+    return inst;
+  }
+
+  function dedupeInstancesByClientMonth(instances) {
+    const best = new Map();
+    for (const x of instances || []) {
+      const kid = String(x?.record?.id || '');
+      const mk = String(x?.month || '');
+      if (!kid || !mk) continue;
+      const mapKey = `${kid}:${mk}`;
+      const prev = best.get(mapKey);
+      if (!prev) {
+        best.set(mapKey, x);
+        continue;
+      }
+      const xPk = String(x?.periodKey || '');
+      const prevPk = String(prev?.periodKey || '');
+      if (xPk === mk && prevPk !== mk) best.set(mapKey, x);
+    }
+    return Array.from(best.values());
+  }
+
+  function buildMonthInstances(records) {
+    const inst = [];
+    for (const r of records || []) {
+      inst.push(...expandRunsToMonthInstances(collectRunsForRecord(r)));
+    }
+    return dedupeInstancesByClientMonth(inst);
   }
 
   function runStatusForInstance(x) {
@@ -202,69 +398,11 @@
   }
 
   function buildInstances(records) {
-    const inst = [];
-    for (const r of records || []) {
-      const f = r.fields || {};
-      const typ = String(f['Typ'] || '');
-      const deadline0 = toDateStr(f['Nästa deadline'] || '');
-      if (!deadline0) continue;
-      const step = monthsStepFromFreq(f['Frekvens']);
-      if (step === 0) {
-        // Engång
-        inst.push({ record: r, typ, deadline: deadline0, month: deadline0.slice(0, 7), key: `${r.id}:${deadline0}` });
-        continue;
-      }
-      // skapa upp till 12 månader framåt (från nu), genom att gå från nästa deadline och framåt
-      let d = deadline0;
-      for (let guard = 0; guard < 60; guard++) {
-        const mk = d.slice(0, 7);
-        const cursor = new Date(Number(mk.slice(0, 4)), Number(mk.slice(5, 7)) - 1, 1);
-        if (cursor > monthMax) break;
-        if (cursor >= monthStart) {
-          inst.push({ record: r, typ, deadline: d, month: mk, key: `${r.id}:${d}` });
-        }
-        d = addMonthsIso(d, step);
-        if (!d) break;
-      }
-    }
-    return inst;
+    return buildMonthInstances(records);
   }
 
   function buildOpenInstances(records) {
-    const inst = [];
-    for (const r of records || []) {
-      const f = r.fields || {};
-      const typ = String(f['Typ'] || '');
-      const deadline0 = toDateStr(f['Nästa deadline'] || '');
-      if (!deadline0) continue;
-      const step = monthsStepFromFreq(f['Frekvens']);
-
-      // Beräkna "öppen från" (periodstart) till deadline. Uppdraget ska visas i varje månad inom spannet.
-      // Ex: Månad = öppen från förra månaden fram till deadline-månaden.
-      const deadlineMonth = deadline0.slice(0, 7);
-      let startIso = deadline0;
-      if (step > 0) startIso = addMonthsIso(deadline0, -step);
-
-      const startMonth = toDateStr(startIso) ? startIso.slice(0, 7) : deadlineMonth;
-      let cursor = new Date(Number(startMonth.slice(0, 4)), Number(startMonth.slice(5, 7)) - 1, 1);
-      const end = new Date(Number(deadlineMonth.slice(0, 4)), Number(deadlineMonth.slice(5, 7)) - 1, 1);
-
-      // Engång: visa från innevarande månad fram till deadline (så man ser den "öppen" innan deadline)
-      if (step === 0) {
-        cursor = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
-      }
-
-      for (let guard = 0; guard < 36; guard++) {
-        if (cursor > monthMax) break;
-        if (cursor > end) break;
-        if (cursor >= monthStart) {
-          const mk = monthKey(cursor);
-          inst.push({ record: r, typ, deadline: deadline0, month: mk, key: `${r.id}:${deadline0}:${mk}` });
-        }
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-      }
-    }
-    return inst;
+    return buildMonthInstances(records);
   }
 
   function setViewMode(next) {
@@ -318,7 +456,7 @@
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  function showCompleteModal({ customerId, typ, fields }) {
+  function showCompleteModal({ customerId, typ, fields, periodKey }) {
     const existing = document.getElementById('uppdrag-complete-modal');
     if (existing) existing.remove();
 
@@ -409,7 +547,12 @@
         const res = await fetch(`${baseUrl}/api/uppdrag/complete`, {
           method: 'POST',
           ...getAuthOpts(),
-          body: JSON.stringify({ customerId, typ, note })
+          body: JSON.stringify({
+            customerId,
+            typ,
+            note,
+            ...(periodKey ? { periodKey: String(periodKey).trim() } : {})
+          })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -425,7 +568,7 @@
   function render() {
     const runLabel = (viewMode === 'open')
       ? 'Deadline'
-      : (activeType === 'Löneuppdrag'
+      : (activeType === LONE_TAB
         ? 'Lönekörning'
         : (activeType === 'Momsredovisning' ? 'Moms' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration')));
     if (els.colRun) els.colRun.textContent = runLabel;
@@ -433,13 +576,13 @@
     const instances = (viewMode === 'open') ? buildOpenInstances(allRecords) : buildInstances(allRecords);
     const filtered = (viewMode === 'open')
       ? instances
-          .filter(x => String(x?.typ || '') === activeType)
+          .filter(x => matchesActiveType(x?.typ))
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
           .filter(x => matchesStatusFilter(x))
           .sort((a, b) => String(a.deadline || '').localeCompare(String(b.deadline || '')))
       : instances
-          .filter(x => String(x?.typ || '') === activeType)
+          .filter(x => matchesActiveType(x?.typ))
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
           .filter(x => matchesStatusFilter(x))
@@ -454,17 +597,20 @@
       const link = kundId ? `kundkort.html?id=${encodeURIComponent(kundId)}` : '';
 
       const done = isDoneForPeriod(f, x.deadline) ? 1 : 0;
+      const loneName = String(x.periodLabel || '').trim();
       const runCell = (viewMode === 'open')
         ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
-        : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
+        : (isLoneTyp(x.typ) && loneName)
+          ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(loneName)}</span>`
+          : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
 
       const freq = String(f['Frekvens'] || '').trim();
       const modeForPrefill = getModeForUppdrag(activeType, freq);
-      const periodKey = (modeForPrefill === 'quarter')
+      const periodKey = x.periodKey || ((modeForPrefill === 'quarter')
         ? quarterKeyForMonth(x.month)
         : (modeForPrefill === 'year')
           ? yearKeyForMonth(x.month)
-          : x.month;
+          : x.month);
       const runStatus = runStatusFromHistory(f, periodKey) || 'Planerad';
       const statusCell = `
         <div class="uppdragboard-statuscell">
@@ -473,7 +619,7 @@
             title="Ändra status"
             data-action="set-run-status"
             data-customer-id="${esc(kundId)}"
-            data-typ="${esc(activeType)}"
+            data-typ="${esc(String(x.typ || activeType))}"
             data-periodkey="${esc(periodKey)}"
           >
             ${runStatusOptionsHtml(runStatus)}
@@ -515,14 +661,14 @@
         : ``;
 
       return `
-        <tr class="uppdragboard-row" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}">
+        <tr class="uppdragboard-row" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}">
           <td class="uppdragboard-client">
             ${link ? `<a class="uppdragboard-link" href="${esc(link)}">${esc(kundLabel)}</a>` : esc(kundLabel)}
           </td>
           <td>${runCell}</td>
           <td>${statusCell}</td>
           <td>
-            <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" title="Klarmarkera">
+            <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" title="Klarmarkera">
               <i class="fas fa-check"></i>
             </button>
           </td>
@@ -604,8 +750,11 @@
         e.preventDefault();
         e.stopPropagation();
         const customerId = row.getAttribute('data-customer-id') || '';
-        const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(activeType));
-        showCompleteModal({ customerId, typ: activeType, fields: rec?.fields || {} });
+        const doneBtn = row.querySelector('[data-action="done"]');
+        const periodKey = doneBtn?.getAttribute('data-period-key') || '';
+        const rowTyp = doneBtn?.getAttribute('data-typ') || row.getAttribute('data-typ') || activeType;
+        const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(rowTyp));
+        showCompleteModal({ customerId, typ: rowTyp, fields: rec?.fields || {}, periodKey });
       });
     });
 
