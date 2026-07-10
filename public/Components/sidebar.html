@@ -12,6 +12,23 @@
     </div>
     
     <nav class="sidebar-nav">
+        <div class="sidebar-search sidebar-collapse-hide" id="sidebar-customer-search">
+            <div class="sidebar-search-field">
+                <i class="fas fa-search" aria-hidden="true"></i>
+                <input
+                    type="search"
+                    id="sidebar-search-input"
+                    placeholder="Sök företag, org.nr eller kontakt"
+                    autocomplete="off"
+                    aria-label="Sök kund"
+                    aria-autocomplete="list"
+                    aria-controls="sidebar-search-results"
+                    aria-expanded="false"
+                >
+            </div>
+            <div class="sidebar-search-results" id="sidebar-search-results" role="listbox" hidden></div>
+        </div>
+
         <div class="nav-section" data-section="hantering">
             <button type="button" class="nav-section-header" aria-expanded="true" title="Klicka för att fälla in/ut">
                 <i class="fas fa-cogs"></i>

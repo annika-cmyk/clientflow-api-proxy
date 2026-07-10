@@ -80,6 +80,8 @@ class ComponentLoader {
             });
         }
 
+        this.initSidebarSearch(element);
+
         // Fäll in/ut menyposter under rubriker
         const storageKey = 'clientflow-nav-sections-collapsed';
         element.querySelectorAll('.nav-section').forEach(section => {
@@ -106,6 +108,27 @@ class ComponentLoader {
                 } catch (e) { /* ignore */ }
             });
         });
+    }
+
+    initSidebarSearch(element) {
+        const runInit = () => {
+            if (typeof window.initSidebarCustomerSearch === 'function') {
+                window.initSidebarCustomerSearch(element);
+            }
+        };
+
+        if (typeof window.initSidebarCustomerSearch === 'function') {
+            runInit();
+            return;
+        }
+
+        if (!document.querySelector('script[src*="sidebar-search.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'js/sidebar-search.js?v=1.0';
+            script.async = false;
+            script.onload = runInit;
+            document.body.appendChild(script);
+        }
     }
 
     // Update active page without reloading the entire sidebar
