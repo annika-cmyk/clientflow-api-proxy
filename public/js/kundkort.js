@@ -964,6 +964,14 @@ class CustomerCardManager {
             this.showNotification(`${successLabel}, men körningar kunde inte skapas: ${re.errors[0].message}`, 'error');
             return;
         }
+        if ((re.deduped || 0) > 0 && (re.created || 0) > 0) {
+            this.showNotification(`${successLabel} – ${re.created} körning(ar) skapade, ${re.deduped} dubblett(er) borttagna ✅`, 'success');
+            return;
+        }
+        if ((re.deduped || 0) > 0) {
+            this.showNotification(`${successLabel} – ${re.deduped} dubblett(er) borttagna ✅`, 'success');
+            return;
+        }
         if ((re.created || 0) > 0) {
             this.showNotification(`${successLabel} – ${re.created} körning(ar) skapade ✅`, 'success');
             return;
@@ -1464,6 +1472,25 @@ class CustomerCardManager {
                 const sel = String(selected || '').trim();
                 return opts.map(o => `<option value="${this._esc(o)}" ${o === sel ? 'selected' : ''}>${this._esc(o)}</option>`).join('');
             };
+            const dedupeRunsByPeriodKey = (runs, typ, visibleFn) => {
+                const best = new Map();
+                (Array.isArray(runs) ? runs : []).forEach((rr) => {
+                    if (String(rr?.fields?.['Typ'] || '').trim() !== typ) return;
+                    if (visibleFn && !visibleFn(rr)) return;
+                    const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
+                    if (!pk) return;
+                    const prev = best.get(pk);
+                    if (!prev) {
+                        best.set(pk, rr);
+                        return;
+                    }
+                    const prevKey = String(prev?.fields?.['Run Key'] || '').trim();
+                    const curKey = String(rr?.fields?.['Run Key'] || '').trim();
+                    if (!prevKey && curKey) best.set(pk, rr);
+                });
+                return Array.from(best.values());
+            };
+
             const rowContexts = [];
             existingTypes.forEach((t) => {
                 const rec = byType(t);
@@ -1487,9 +1514,8 @@ class CustomerCardManager {
                     defaultPeriodKey = momsDefaultPeriodKey;
                     if (MomsPeriod.isMonthlyFreq(momsFreq) || MomsPeriod.isQuarterlyFreq(momsFreq)) {
                     const momsRunTitle = (periodKey) => MomsPeriod.runTitle(periodKey, momsFreq, mk);
-                    let visible = (Array.isArray(runRecords) ? runRecords : [])
-                        .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === 'Momsredovisning')
-                        .filter((rr) => MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                    let visible = dedupeRunsByPeriodKey(runRecords, 'Momsredovisning', (rr) =>
+                        MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     if (!visible.length) {
                         let pk = MomsPeriod.defaultPeriodKeyForBoard(mk, momsFreq);
@@ -1536,9 +1562,8 @@ class CustomerCardManager {
                 }
 
                 if (isLoneTyp(t) && window.LonePeriod && Array.isArray(runRecords) && runRecords.length) {
-                    const visible = runRecords
-                        .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === t)
-                        .filter((rr) => LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                    const visible = dedupeRunsByPeriodKey(runRecords, t, (rr) =>
+                        LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     visible.forEach((rr) => {
                         const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
@@ -2014,7 +2039,12 @@ class CustomerCardManager {
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                     const n = Number(data.totalCreated || 0);
-                    this.showNotification(n > 0 ? `${n} körning(ar) skapade ✅` : 'Körningar är redan uppdaterade', n > 0 ? 'success' : 'info');
+                    const d = Number(data.totalDeduped || 0);
+                    let msg = 'Körningar är redan uppdaterade';
+                    if (n > 0 && d > 0) msg = `${n} körning(ar) skapade, ${d} dubblett(er) borttagna ✅`;
+                    else if (n > 0) msg = `${n} körning(ar) skapade ✅`;
+                    else if (d > 0) msg = `${d} dubblett(er) borttagna ✅`;
+                    this.showNotification(msg, (n > 0 || d > 0) ? 'success' : 'info');
                     this.loadUppdrag();
                 } catch (e) {
                     this.showNotification('Kunde inte generera körningar: ' + (e.message || 'fel'), 'error');
