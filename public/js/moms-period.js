@@ -276,8 +276,6 @@
 
     /** Visa körning i vald kalendermånad (bräda): från månaden efter momsperiod t.o.m. deadline, plus försenade. */
     function runVisibleInBoardMonth(runFields, boardYm, todayIso) {
-        const status = String(runFields?.Status || '').trim();
-        if (status === 'Klar') return false;
         const pk = String(runFields?.PeriodKey || '').trim();
         const deadline = String(runFields?.Deadline || '').trim().slice(0, 10);
         const freq = runFields?.Frekvens || 'Varje månad';

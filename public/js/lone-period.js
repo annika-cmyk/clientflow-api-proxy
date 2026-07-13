@@ -149,8 +149,6 @@
 
     /** Visa körning i vald kalendermånad: endast under öppen period (startdatum → deadline). */
     function runVisibleInBoardMonth(runFields, boardYm, _todayIso) {
-        const status = String(runFields?.Status || '').trim();
-        if (status === 'Klar') return false;
         const start = toDateStr(runFields?.Startdatum || '');
         const deadline = toDateStr(runFields?.Deadline || '');
         if (!boardYm) return false;

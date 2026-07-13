@@ -8519,6 +8519,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: var(--success);
 }
 
+.uppdragboard-row.is-done td {
+    opacity: 0.72;
+}
+
+.uppdragboard-row.is-done .uppdragboard-link {
+    color: var(--success);
+}
+
 .uppdrag-run-status-select {
     min-width: 180px;
     max-width: 260px;
