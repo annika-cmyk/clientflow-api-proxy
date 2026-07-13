@@ -939,6 +939,38 @@ class CustomerCardManager {
         return out;
     }
 
+    _notifyUppdragRunsEnsure(runsEnsure, successLabel = 'Uppdrag sparat') {
+        const re = runsEnsure || null;
+        if (!re) {
+            this.showNotification(successLabel, 'success');
+            return;
+        }
+        const reasons = {
+            runs_table_missing: 'Tabellen Uppdragskörningar saknas i Airtable – inga körningar kunde skapas.',
+            missing_deadline: 'Deadline saknas – inga körningar kunde skapas.',
+            missing_lone_template_dates: 'Startdatum eller deadline saknas – inga körningar kunde skapas.',
+            missing_typ: 'Uppdragstyp saknas – inga körningar kunde skapas.',
+            not_active: 'Uppdraget är inte aktivt – inga körningar skapades.'
+        };
+        if (re.skipped && reasons[re.reason]) {
+            this.showNotification(`${successLabel}, men ${reasons[re.reason]}`, 'warning');
+            return;
+        }
+        if (re.skipped && re.message) {
+            this.showNotification(`${successLabel}, men körningar kunde inte skapas: ${re.message}`, 'warning');
+            return;
+        }
+        if (Array.isArray(re.errors) && re.errors.length && (re.created || 0) === 0) {
+            this.showNotification(`${successLabel}, men körningar kunde inte skapas: ${re.errors[0].message}`, 'error');
+            return;
+        }
+        if ((re.created || 0) > 0) {
+            this.showNotification(`${successLabel} – ${re.created} körning(ar) skapade ✅`, 'success');
+            return;
+        }
+        this.showNotification(successLabel, 'success');
+    }
+
     async loadUppdragDataAndRender() {
         console.log('[UppdragBoard] loadUppdragDataAndRender anropad', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
         const container = document.getElementById('uppdrag-content');
@@ -3157,7 +3189,8 @@ class CustomerCardManager {
                 if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
                 document.getElementById('uppdrag-setup-modal')?.remove();
-                this.showNotification('Uppdrag skapat', 'success');
+                if (data.warning) this.showNotification(data.warning, 'warning');
+                this._notifyUppdragRunsEnsure(data.runsEnsure, 'Uppdrag skapat');
                 this.loadUppdrag();
             } catch (e) {
                 this.showNotification(e.message || 'Kunde inte skapa uppdrag', 'error');
@@ -3561,7 +3594,7 @@ class CustomerCardManager {
             if (data.warning) {
                 this.showNotification(String(data.warning), 'error');
             } else {
-                this.showNotification('Uppdrag sparat', 'success');
+                this._notifyUppdragRunsEnsure(data.runsEnsure, 'Uppdrag sparat');
             }
             this._syncUppdragHeaderMeta(root);
             // Re-render för att visa att kortet nu är "sparat i Airtable" + ev andra fält
