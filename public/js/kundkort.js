@@ -1245,9 +1245,28 @@ class CustomerCardManager {
             </div>
         ` : '';
 
+        const runsEnsureHtml = (!runsData.tableMissing && records.length > 0 && runRecords.length === 0) ? `
+            <div class="collapsible-card uppdrag-setup-card" style="margin-bottom:1rem;">
+                <div class="collapsible-header" style="cursor:default;">
+                    <div class="collapsible-title"><i class="fas fa-sync-alt"></i><span>Generera uppdragskörningar</span></div>
+                </div>
+                <div class="collapsible-body">
+                    <div class="uppdrag-setup-desc">
+                        Uppdrag finns men inga körningar har skapats i Airtable ännu. Det kan bero på att nya uppdragstyper (t.ex. löneuppdrag innevarande/efterhand) saknades i tabellen när uppdraget lades upp.
+                    </div>
+                    <div class="uppdrag-actions" style="margin-top:0.75rem;">
+                        <button type="button" class="btn btn-primary" id="uppdrag-ensure-runs-btn">
+                            <i class="fas fa-play"></i> Generera körningar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+
         container.innerHTML = `
             <div class="uppdrag-tab">
                 ${runsSetupHtml}
+                ${runsEnsureHtml}
                 ${boardHtml}
                 <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
                     ${existingTypes.length ? existingTypes.map(t => {
@@ -1806,6 +1825,30 @@ class CustomerCardManager {
                     this.showNotification('Kunde inte skapa tabellen: ' + (e.message || 'fel'), 'error');
                     installRunsBtn.disabled = false;
                     installRunsBtn.innerHTML = '<i class="fas fa-magic"></i> Skapa Uppdragskörningar';
+                }
+            });
+        }
+
+        const ensureRunsBtn = document.getElementById('uppdrag-ensure-runs-btn');
+        if (ensureRunsBtn) {
+            ensureRunsBtn.addEventListener('click', async () => {
+                try {
+                    ensureRunsBtn.disabled = true;
+                    ensureRunsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar...';
+                    const res = await fetch(`${baseUrl}/api/uppdrag/ensure-runs`, {
+                        method: 'POST',
+                        ...opts,
+                        body: JSON.stringify({ customerId })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                    const n = Number(data.totalCreated || 0);
+                    this.showNotification(n > 0 ? `${n} körning(ar) skapade ✅` : 'Körningar är redan uppdaterade', n > 0 ? 'success' : 'info');
+                    this.loadUppdrag();
+                } catch (e) {
+                    this.showNotification('Kunde inte generera körningar: ' + (e.message || 'fel'), 'error');
+                    ensureRunsBtn.disabled = false;
+                    ensureRunsBtn.innerHTML = '<i class="fas fa-play"></i> Generera körningar';
                 }
             });
         }
