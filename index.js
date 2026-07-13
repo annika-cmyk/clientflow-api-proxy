@@ -7110,6 +7110,64 @@ async function ensureUppdragRunsSchema(airtableAccessToken, baseId) {
   } catch (_) {}
 }
 
+function uppdragRunCompositeKey(uppdragId, periodKey) {
+  return `${String(uppdragId || '').trim()}:${String(periodKey || '').trim()}`;
+}
+
+function pickBestUppdragRunRecord(records, expectedRunKey) {
+  const list = Array.isArray(records) ? records.slice() : [];
+  if (!list.length) return null;
+  list.sort((a, b) => {
+    const aKey = String(a?.fields?.['Run Key'] || '').trim();
+    const bKey = String(b?.fields?.['Run Key'] || '').trim();
+    if (expectedRunKey) {
+      if (aKey === expectedRunKey && bKey !== expectedRunKey) return -1;
+      if (bKey === expectedRunKey && aKey !== expectedRunKey) return 1;
+    }
+    if (aKey && !bKey) return -1;
+    if (!aKey && bKey) return 1;
+    const aSk = String(a?.fields?.['Skapad'] || '');
+    const bSk = String(b?.fields?.['Skapad'] || '');
+    return aSk.localeCompare(bSk);
+  });
+  return list[0];
+}
+
+async function dedupeAndIndexUppdragRuns(runList, uppdragId, uppdragRunsUrl, airtableAccessToken) {
+  const groups = new Map();
+  for (const rr of runList || []) {
+    const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
+    if (!pk) continue;
+    const composite = uppdragRunCompositeKey(uppdragId, pk);
+    const arr = groups.get(composite) || [];
+    arr.push(rr);
+    groups.set(composite, arr);
+  }
+
+  const existing = new Map();
+  let deleted = 0;
+  const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+  for (const [composite, arr] of groups) {
+    const keep = pickBestUppdragRunRecord(arr, composite);
+    if (!keep) continue;
+    existing.set(composite, keep);
+    const keepKey = String(keep?.fields?.['Run Key'] || '').trim();
+    if (keepKey) existing.set(keepKey, keep);
+    for (const rr of arr) {
+      if (!rr?.id || rr.id === keep.id) continue;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await axios.delete(`${uppdragRunsUrl}/${rr.id}`, { headers });
+        deleted += 1;
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn(`dedupeUppdragRuns: kunde inte ta bort dubblett ${rr.id}:`, msg);
+      }
+    }
+  }
+  return { existing, deleted };
+}
+
 async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
   const {
     airtableAccessToken,
@@ -7139,13 +7197,13 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
 
   if (!uppdragRunsUrl) return { created: 0, skipped: true, reason: 'runs_table_missing' };
 
-  const existing = new Map();
+  let existing = new Map();
+  let deduped = 0;
   try {
     const runList = await fetchRunsForUppdragId(uppdragRunsUrl, uppdragId, airtableAccessToken);
-    runList.forEach(rr => {
-      const key = String(rr?.fields?.['Run Key'] || '').trim();
-      if (key) existing.set(key, rr);
-    });
+    const indexed = await dedupeAndIndexUppdragRuns(runList, uppdragId, uppdragRunsUrl, airtableAccessToken);
+    existing = indexed.existing;
+    deduped = indexed.deleted;
   } catch (_) {}
 
   const grundRutin = String(f['Rutin'] || '').trim();
@@ -7161,6 +7219,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       const expectedStart = toIsoDate(startIso || '');
       const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
       const patchFields = {};
+      if (!String(existingRun?.fields?.['Run Key'] || '').trim()) patchFields['Run Key'] = runKey;
       if (expectedStart && expectedStart !== currentStart) patchFields['Startdatum'] = expectedStart;
       const runRutin = String(existingRun?.fields?.['Rutin'] || '').trim();
       const forward = isForwardUppdragRun(existingRun?.fields || {}, todayIso);
@@ -7229,7 +7288,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         startIso: run.startIso
       });
     }
-    return { created, skipped: false, errors };
+    return { created, deduped, skipped: false, errors };
   }
 
   if (isLoneUppdragTyp(typ) && freqLow.includes('månad')) {
@@ -7246,7 +7305,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         startIso: run.startIso
       });
     }
-    return { created, skipped: false, errors };
+    return { created, deduped, skipped: false, errors };
   }
 
   if (freqLow.includes('månad')) {
@@ -7260,7 +7319,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       // eslint-disable-next-line no-await-in-loop
       await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
     }
-    return { created, skipped: false, errors };
+    return { created, deduped, skipped: false, errors };
   }
 
   let cur = deadline0;
@@ -7283,7 +7342,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
     await createRun({ periodKey, periodLabel, deadlineIso: cur });
     cur = calcNextDeadline(cur, freq) || '';
   }
-  return { created, skipped: false, errors };
+  return { created, deduped, skipped: false, errors };
 }
 
 async function buildEnsureRunsContext(airtableAccessToken, baseId) {
@@ -13381,11 +13440,13 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
 
     const results = [];
     let totalCreated = 0;
+    let totalDeduped = 0;
     for (const rec of records) {
       // eslint-disable-next-line no-await-in-loop
       const r = await ensureRunsForUppdragRecord(rec, airtableAccessToken, airtableBaseId);
       results.push({ uppdragId: rec.id, typ: rec?.fields?.['Typ'] || '', ...r });
       totalCreated += Number(r?.created || 0);
+      totalDeduped += Number(r?.deduped || 0);
     }
 
     return res.json({
@@ -13393,6 +13454,7 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
       customerId: customerId || null,
       processed: results.length,
       totalCreated,
+      totalDeduped,
       results
     });
   } catch (error) {
