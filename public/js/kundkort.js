@@ -1976,8 +1976,10 @@ class CustomerCardManager {
                     )
                     : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
 
+                const isKlar = runStatus === 'Klar';
+
                 return `
-                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}">
+                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''} ${isKlar ? 'is-done' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}">
                     <td>
                         <div class="uppdragboard-client">
                             <span class="uppdragboard-link">${this._esc(displayTitle)}</span>
