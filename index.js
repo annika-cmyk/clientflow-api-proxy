@@ -7151,6 +7151,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
 
   const nowIso = new Date().toISOString();
   let created = 0;
+  const errors = [];
   const createRun = async ({ periodKey, periodLabel, deadlineIso, startIso }) => {
     if (avslutasIso && deadlineIso && deadlineIso > avslutasIso) return;
     if (avslutasIso && startIso && startIso > avslutasIso) return;
@@ -7190,15 +7191,16 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         'Uppdaterad': nowIso
       };
       if (startIso) runFields['Startdatum'] = startIso;
-      await axios.post(
+      await airtablePostRecordWithFieldFallback(
         uppdragRunsUrl,
-        { fields: runFields },
-        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        runFields,
+        { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
       );
       existing.set(runKey, { id: null, fields: { 'Run Key': runKey, Startdatum: startIso } });
       created += 1;
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message;
+      errors.push({ runKey, typ, message: msg });
       console.warn(`ensureRunsAheadForUppdrag: kunde inte skapa körning ${runKey} (${typ}):`, msg);
     }
   };
@@ -7216,7 +7218,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         startIso: run.startIso
       });
     }
-    return { created, skipped: false };
+    return { created, skipped: false, errors };
   }
 
   if (isLoneUppdragTyp(typ) && freqLow.includes('månad')) {
@@ -7233,7 +7235,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         startIso: run.startIso
       });
     }
-    return { created, skipped: false };
+    return { created, skipped: false, errors };
   }
 
   if (freqLow.includes('månad')) {
@@ -7247,7 +7249,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       // eslint-disable-next-line no-await-in-loop
       await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
     }
-    return { created, skipped: false };
+    return { created, skipped: false, errors };
   }
 
   let cur = deadline0;
@@ -7270,7 +7272,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
     await createRun({ periodKey, periodLabel, deadlineIso: cur });
     cur = calcNextDeadline(cur, freq) || '';
   }
-  return { created, skipped: false };
+  return { created, skipped: false, errors };
 }
 
 async function buildEnsureRunsContext(airtableAccessToken, baseId) {
@@ -12653,8 +12655,70 @@ async function getUppdragRunsTableMeta(airtableToken, baseId) {
 }
 
 async function resolveUppdragRunsTableId(airtableToken, baseId) {
+  const forcedId = (process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || '').trim();
+  if (forcedId) return forcedId;
+
   const meta = await getUppdragRunsTableMeta(airtableToken, baseId);
-  return meta?.id || null;
+  if (meta?.id) return meta.id;
+
+  // Meta API kräver schema.bases:read – fall tillbaka till tabellnamn via data-API.
+  const tableRef = encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
+  try {
+    await axios.get(`https://api.airtable.com/v0/${baseId}/${tableRef}?maxRecords=1`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    return tableRef;
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message || '';
+    console.warn(`resolveUppdragRunsTableId: kunde inte nå "${UPPDRAG_RUNS_TABLE_NAME}":`, msg);
+    return null;
+  }
+}
+
+function mergeUppdragRecordFields(record, intendedFields = {}) {
+  return {
+    ...(record || {}),
+    fields: { ...(intendedFields || {}), ...(record?.fields || {}) }
+  };
+}
+
+async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetries = 12) {
+  const payload = { ...(fields || {}) };
+  const dropped = [];
+  let lastErr = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await axios.post(url, { fields: payload }, { headers });
+      return { record: res.data, dropped };
+    } catch (e) {
+      lastErr = e;
+      const msg = e.response?.data?.error?.message || e.message || '';
+      const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+      if (unknown?.[1] && Object.prototype.hasOwnProperty.call(payload, unknown[1])) {
+        delete payload[unknown[1]];
+        dropped.push(unknown[1]);
+        continue;
+      }
+      if (/INVALID_(?:CELL|MULTIPLE)_VALUE/i.test(msg) || /Cannot parse value for field/i.test(msg)) {
+        if (Object.prototype.hasOwnProperty.call(payload, 'Typ')) {
+          delete payload.Typ;
+          dropped.push('Typ');
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'Status')) {
+          delete payload.Status;
+          dropped.push('Status');
+          continue;
+        }
+      }
+      break;
+    }
+  }
+  const msg = lastErr?.response?.data?.error?.message || lastErr?.message || 'Okänt fel';
+  const err = new Error(msg);
+  err.response = lastErr?.response;
+  throw err;
 }
 
 async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId }) {
@@ -13492,9 +13556,14 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       if (warning) delete record.__clientflow_warning;
       let runsEnsure = null;
       try {
-        runsEnsure = await ensureRunsForUppdragRecord(record, airtableAccessToken, airtableBaseId);
+        runsEnsure = await ensureRunsForUppdragRecord(
+          mergeUppdragRecordFields(record, fields),
+          airtableAccessToken,
+          airtableBaseId
+        );
       } catch (e) {
         console.warn('ensure runs after uppdrag update:', e.message);
+        runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
       }
       return res.json({ record, updated: true, warning, runsEnsure });
     }
@@ -13513,9 +13582,14 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     if (warning) delete record.__clientflow_warning;
     let runsEnsure = null;
     try {
-      runsEnsure = await ensureRunsForUppdragRecord(record, airtableAccessToken, airtableBaseId);
+      runsEnsure = await ensureRunsForUppdragRecord(
+        mergeUppdragRecordFields(record, fields),
+        airtableAccessToken,
+        airtableBaseId
+      );
     } catch (e) {
       console.warn('ensure runs after uppdrag create:', e.message);
+      runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
     }
     return res.json({ record, created: true, warning, runsEnsure });
   } catch (error) {
