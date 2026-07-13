@@ -7097,15 +7097,212 @@ async function sendSamarbeteDigestEmail({ toEmail, toName, senderByra, senderLog
   }
 }
 
+function toIsoDateOnly(v) {
+  const s = String(v || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
+async function ensureUppdragRunsSchema(airtableAccessToken, baseId) {
+  try {
+    await ensureUppdragTypChoices(airtableAccessToken, baseId);
+    await ensureUppdragRunsTypChoices(airtableAccessToken, baseId);
+    await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId);
+  } catch (_) {}
+}
+
+async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
+  const {
+    airtableAccessToken,
+    airtableBaseId,
+    todayIso,
+    todayYm,
+    uppdragRunsUrl
+  } = ctx || {};
+  const toIsoDate = toIsoDateOnly;
+  const r = uppdragRec;
+  const f = r?.fields || {};
+  const uppdragId = String(r?.id || '').trim();
+  if (!uppdragId) return { created: 0, skipped: true, reason: 'missing_id' };
+  if ((f['Status'] || 'Aktiv') !== 'Aktiv') return { created: 0, skipped: true, reason: 'not_active' };
+  const typ = String(f['Typ'] || '').trim();
+  if (!typ) return { created: 0, skipped: true, reason: 'missing_typ' };
+  const freq = String(f['Frekvens'] || '').trim();
+  const deadline0 = toIsoDate(f['Nästa deadline'] || '');
+  const freqLow = freq.toLowerCase();
+  const isMomsSched = typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'));
+  if (!deadline0 && !isMomsSched) return { created: 0, skipped: true, reason: 'missing_deadline' };
+
+  const avslutasIso = toIsoDate(f['Avslutas'] || '');
+  let horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
+  if (avslutasIso && avslutasIso < horizonEnd) horizonEnd = avslutasIso;
+  const horizonYm = horizonEnd.slice(0, 7);
+
+  if (!uppdragRunsUrl) return { created: 0, skipped: true, reason: 'runs_table_missing' };
+
+  const existing = new Map();
+  try {
+    const formula = encodeURIComponent(`{Uppdrag ID} = "${uppdragId.replace(/"/g, '\\"')}"`);
+    const res = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    (res.data.records || []).forEach(rr => {
+      const key = String(rr?.fields?.['Run Key'] || '').trim();
+      if (key) existing.set(key, rr);
+    });
+  } catch (_) {}
+
+  const nowIso = new Date().toISOString();
+  let created = 0;
+  const createRun = async ({ periodKey, periodLabel, deadlineIso, startIso }) => {
+    if (avslutasIso && deadlineIso && deadlineIso > avslutasIso) return;
+    if (avslutasIso && startIso && startIso > avslutasIso) return;
+    const runKey = `${uppdragId}:${periodKey}`;
+    const existingRun = existing.get(runKey);
+    if (existingRun) {
+      const expectedStart = toIsoDate(startIso || '');
+      const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
+      if (expectedStart && expectedStart !== currentStart && existingRun?.id) {
+        try {
+          await axios.patch(
+            `${uppdragRunsUrl}/${existingRun.id}`,
+            { fields: { 'Startdatum': expectedStart, 'Uppdaterad': nowIso } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+          existingRun.fields = { ...(existingRun.fields || {}), Startdatum: expectedStart };
+        } catch (e) {
+          const msg = e.response?.data?.error?.message || e.message;
+          console.warn(`ensureRunsAheadForUppdrag: kunde inte uppdatera startdatum för ${runKey}:`, msg);
+        }
+      }
+      return;
+    }
+    try {
+      const runFields = {
+        'Run Key': runKey,
+        'Uppdrag ID': uppdragId,
+        'Kund ID': String(f['Kund ID'] || '').trim(),
+        'Byrå ID': String(f['Byrå ID'] || '').trim(),
+        'Typ': typ,
+        'Frekvens': freq,
+        'PeriodKey': periodKey,
+        'Period Label': periodLabel,
+        'Deadline': deadlineIso,
+        'Status': 'Planerad',
+        'Skapad': nowIso,
+        'Uppdaterad': nowIso
+      };
+      if (startIso) runFields['Startdatum'] = startIso;
+      await axios.post(
+        uppdragRunsUrl,
+        { fields: runFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      existing.set(runKey, { id: null, fields: { 'Run Key': runKey, Startdatum: startIso } });
+      created += 1;
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message;
+      console.warn(`ensureRunsAheadForUppdrag: kunde inte skapa körning ${runKey} (${typ}):`, msg);
+    }
+  };
+
+  if (typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'))) {
+    let firstPk = momsInferFirstPeriod(f, freq);
+    if (!firstPk) firstPk = momsDefaultPeriodKeyForBoard(todayYm, freq) || todayYm;
+    const momsRuns = momsRunsThroughHorizon(firstPk, freq, todayYm);
+    for (const run of momsRuns) {
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({
+        periodKey: run.periodKey,
+        periodLabel: run.periodLabel,
+        deadlineIso: run.deadlineIso,
+        startIso: run.startIso
+      });
+    }
+    return { created, skipped: false };
+  }
+
+  if (isLoneUppdragTyp(typ) && freqLow.includes('månad')) {
+    const templateStart = toIsoDate(f['Startdatum'] || '') || deadline0;
+    const templateDeadline = deadline0;
+    if (!templateStart || !templateDeadline) return { created: 0, skipped: true, reason: 'missing_lone_template_dates' };
+    const loneRuns = loneRunsThroughHorizon(templateStart, templateDeadline, typ, todayYm);
+    for (const run of loneRuns) {
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({
+        periodKey: run.periodKey,
+        periodLabel: run.periodLabel,
+        deadlineIso: run.deadlineIso,
+        startIso: run.startIso
+      });
+    }
+    return { created, skipped: false };
+  }
+
+  if (freqLow.includes('månad')) {
+    const day = parseInt(String(deadline0).slice(8, 10), 10);
+    const dayClamped = (Number.isFinite(day) && day >= 1 && day <= 28) ? day : 15;
+    for (let i = 0; i < 12; i++) {
+      const ym = monthAdd(todayYm, i);
+      if (!ym) continue;
+      if (ym > horizonYm) break;
+      const deadlineIso = `${ym}-${String(dayClamped).padStart(2, '0')}`;
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
+    }
+    return { created, skipped: false };
+  }
+
+  let cur = deadline0;
+  for (let guard = 0; guard < 40; guard++) {
+    if (!cur) break;
+    if (cur > horizonEnd) break;
+
+    let periodKey = cur.slice(0, 7);
+    let periodLabel = monthLabelSv(periodKey);
+    if (freqLow.includes('kvartal')) {
+      const q = currentQuarterFromYm(periodKey);
+      periodKey = q ? `${q.year}-Q${q.quarter}` : periodKey;
+      periodLabel = quarterLabelSv(periodKey) || periodLabel;
+    } else if (freqLow.includes('årsvis') || freqLow.includes('år')) {
+      periodKey = cur.slice(0, 4);
+      periodLabel = periodKey;
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    await createRun({ periodKey, periodLabel, deadlineIso: cur });
+    cur = calcNextDeadline(cur, freq) || '';
+  }
+  return { created, skipped: false };
+}
+
+async function buildEnsureRunsContext(airtableAccessToken, baseId) {
+  const todayIso = stockholmDateStr(new Date());
+  const todayYm = todayIso.slice(0, 7);
+  const uppdragRunsTableId = await resolveUppdragRunsTableId(airtableAccessToken, baseId);
+  const uppdragRunsUrl = uppdragRunsTableId
+    ? `https://api.airtable.com/v0/${baseId}/${uppdragRunsTableId}`
+    : null;
+  return { todayIso, todayYm, uppdragRunsUrl, uppdragRunsTableId };
+}
+
+async function ensureRunsForUppdragRecord(record, airtableAccessToken, baseId) {
+  if (!record?.id) return { created: 0, skipped: true, reason: 'missing_record' };
+  await ensureUppdragRunsSchema(airtableAccessToken, baseId);
+  const ctx = await buildEnsureRunsContext(airtableAccessToken, baseId);
+  if (!ctx.uppdragRunsUrl) return { created: 0, skipped: true, reason: 'runs_table_missing' };
+  return ensureRunsAheadForUppdrag(record, {
+    airtableAccessToken,
+    airtableBaseId: baseId,
+    todayIso: ctx.todayIso,
+    todayYm: ctx.todayYm,
+    uppdragRunsUrl: ctx.uppdragRunsUrl
+  });
+}
+
 async function processUppdragUnderlagSchedule() {
   const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
   const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return;
 
-  const toIsoDate = (v) => {
-    const s = String(v || '').slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
-  };
+  const toIsoDate = toIsoDateOnly;
 
   // Försök säkerställa att Uppdrag-tabellen har fälten (kräver schema-token). Körs tyst.
   try {
@@ -7149,6 +7346,8 @@ async function processUppdragUnderlagSchedule() {
     }
   } catch (_) {}
 
+  await ensureUppdragRunsSchema(airtableAccessToken, airtableBaseId);
+
   const todayIso = stockholmDateStr(new Date()); // YYYY-MM-DD
   const todayDay = parseInt(todayIso.slice(8, 10), 10);
   const todayYm = todayIso.slice(0, 7);
@@ -7178,163 +7377,17 @@ async function processUppdragUnderlagSchedule() {
   let uppdragRecords = [];
   try { uppdragRecords = await fetchActive(); } catch (_) { uppdragRecords = await fetchAll(); }
 
-  // Säkerställ att körningar finns 12 månader framåt (per uppdrag och frekvens).
-  // Körs innan vi skapar dagens auto-underlag så att vi alltid kan koppla till en körning.
-  const ensureRunsAheadForUppdrag = async (uppdragRec) => {
-    const r = uppdragRec;
-    const f = r?.fields || {};
-    const uppdragId = String(r?.id || '').trim();
-    if (!uppdragId) return;
-    if ((f['Status'] || 'Aktiv') !== 'Aktiv') return;
-    const typ = String(f['Typ'] || '').trim();
-    if (!typ) return;
-    const freq = String(f['Frekvens'] || '').trim();
-    const deadline0 = toIsoDate(f['Nästa deadline'] || '');
-    const freqLow = freq.toLowerCase();
-    const isMomsSched = typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'));
-    if (!deadline0 && !isMomsSched) return;
-
-    const avslutasIso = toIsoDate(f['Avslutas'] || '');
-    let horizonEnd = addMonthsIso(todayIso, 12) || todayIso;
-    if (avslutasIso && avslutasIso < horizonEnd) horizonEnd = avslutasIso;
-    const horizonYm = horizonEnd.slice(0, 7);
-
-    if (!uppdragRunsUrl) return;
-
-    // Hämta existerande körningar för uppdraget
-    const existing = new Map();
-    try {
-      const formula = encodeURIComponent(`{Uppdrag ID} = "${uppdragId.replace(/"/g, '\\"')}"`);
-      const res = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
-      (res.data.records || []).forEach(rr => {
-        const key = String(rr?.fields?.['Run Key'] || '').trim();
-        if (key) existing.set(key, rr);
-      });
-    } catch (_) {}
-
-    const nowIso = new Date().toISOString();
-    const createRun = async ({ periodKey, periodLabel, deadlineIso, startIso }) => {
-      if (avslutasIso && deadlineIso && deadlineIso > avslutasIso) return;
-      if (avslutasIso && startIso && startIso > avslutasIso) return;
-      const runKey = `${uppdragId}:${periodKey}`;
-      const existingRun = existing.get(runKey);
-      if (existingRun) {
-        const expectedStart = toIsoDate(startIso || '');
-        const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
-        if (expectedStart && expectedStart !== currentStart && existingRun?.id) {
-          try {
-            await axios.patch(
-              `${uppdragRunsUrl}/${existingRun.id}`,
-              { fields: { 'Startdatum': expectedStart, 'Uppdaterad': nowIso } },
-              { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-            );
-            existingRun.fields = { ...(existingRun.fields || {}), Startdatum: expectedStart };
-          } catch (_) {}
-        }
-        return;
-      }
-      try {
-        const runFields = {
-          'Run Key': runKey,
-          'Uppdrag ID': uppdragId,
-          'Kund ID': String(f['Kund ID'] || '').trim(),
-          'Byrå ID': String(f['Byrå ID'] || '').trim(),
-          'Typ': typ,
-          'Frekvens': freq,
-          'PeriodKey': periodKey,
-          'Period Label': periodLabel,
-          'Deadline': deadlineIso,
-          'Status': 'Planerad',
-          'Skapad': nowIso,
-          'Uppdaterad': nowIso
-        };
-        if (startIso) runFields['Startdatum'] = startIso;
-        await axios.post(
-          uppdragRunsUrl,
-          { fields: runFields },
-          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-        );
-        existing.set(runKey, { id: null, fields: { 'Run Key': runKey, Startdatum: startIso } });
-      } catch (_) {}
-    };
-
-    // Momsredovisning: SKV-deadlines + tydliga periodetiketter, 12 månader (eller 4 kvartal) framåt.
-    if (typ === 'Momsredovisning' && (freqLow.includes('månad') || freqLow.includes('kvartal'))) {
-      let firstPk = momsInferFirstPeriod(f, freq);
-      if (!firstPk) firstPk = momsDefaultPeriodKeyForBoard(todayYm, freq) || todayYm;
-      const momsRuns = momsRunsThroughHorizon(firstPk, freq, todayYm);
-      for (const run of momsRuns) {
-        // eslint-disable-next-line no-await-in-loop
-        await createRun({
-          periodKey: run.periodKey,
-          periodLabel: run.periodLabel,
-          deadlineIso: run.deadlineIso,
-          startIso: run.startIso
-        });
-      }
-      return;
-    }
-
-    // Löneuppdrag (innevarande/efterhand/legacy): rullande 12 månader från mall start/deadline.
-    if (isLoneUppdragTyp(typ) && freqLow.includes('månad')) {
-      const templateStart = toIsoDate(f['Startdatum'] || '') || deadline0;
-      const templateDeadline = deadline0;
-      if (!templateStart || !templateDeadline) return;
-      const loneRuns = loneRunsThroughHorizon(templateStart, templateDeadline, typ, todayYm);
-      for (const run of loneRuns) {
-        // eslint-disable-next-line no-await-in-loop
-        await createRun({
-          periodKey: run.periodKey,
-          periodLabel: run.periodLabel,
-          deadlineIso: run.deadlineIso,
-          startIso: run.startIso
-        });
-      }
-      return;
-    }
-
-    // Övriga månadsuppdrag: 12 körningar från innevarande månad.
-    if (freqLow.includes('månad')) {
-      const day = parseInt(String(deadline0).slice(8, 10), 10);
-      const dayClamped = (Number.isFinite(day) && day >= 1 && day <= 28) ? day : 15;
-      for (let i = 0; i < 12; i++) {
-        const ym = monthAdd(todayYm, i);
-        if (!ym) continue;
-        if (ym > horizonYm) break;
-        const deadlineIso = `${ym}-${String(dayClamped).padStart(2, '0')}`;
-        // eslint-disable-next-line no-await-in-loop
-        await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
-      }
-      return;
-    }
-
-    // Kvartal/År/Engång: behåll tidigare logik (iterera från nästa deadline fram till horisont)
-    let cur = deadline0;
-    for (let guard = 0; guard < 40; guard++) {
-      if (!cur) break;
-      if (cur > horizonEnd) break;
-
-      let periodKey = cur.slice(0, 7);
-      let periodLabel = monthLabelSv(periodKey);
-      if (freqLow.includes('kvartal')) {
-        const q = currentQuarterFromYm(periodKey);
-        periodKey = q ? `${q.year}-Q${q.quarter}` : periodKey;
-        periodLabel = quarterLabelSv(periodKey) || periodLabel;
-      } else if (freqLow.includes('årsvis') || freqLow.includes('år')) {
-        periodKey = cur.slice(0, 4);
-        periodLabel = periodKey;
-      }
-
-      // eslint-disable-next-line no-await-in-loop
-      await createRun({ periodKey, periodLabel, deadlineIso: cur });
-      cur = calcNextDeadline(cur, freq) || '';
-    }
-  };
-
   // Batch: kör för alla uppdrag (best effort)
+  const runsCtx = {
+    airtableAccessToken,
+    airtableBaseId,
+    todayIso,
+    todayYm,
+    uppdragRunsUrl
+  };
   for (const r of uppdragRecords) {
     // eslint-disable-next-line no-await-in-loop
-    await ensureRunsAheadForUppdrag(r);
+    await ensureRunsAheadForUppdrag(r, runsCtx);
   }
 
   const toCreate = [];
@@ -13163,6 +13216,64 @@ app.get('/api/uppdrag/runs', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/uppdrag/ensure-runs – säkerställ/generera uppdragskörningar för kund (eller alla aktiva uppdrag)
+// Body/query: { customerId? }
+app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const customerId = String((req.body && req.body.customerId) || req.query.customerId || '').trim();
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const uppdragUrl = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+    let records = [];
+    if (customerId) {
+      const listRes = await airtableListWithFormulaFallback({
+        url: uppdragUrl,
+        headers,
+        baseParams: { maxRecords: 100 },
+        formulas: buildUppdragFilterFormulas(customerId)
+      });
+      records = (listRes.data.records || []).filter(r => {
+        const f = r?.fields || {};
+        const recByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+        return recByra === byraIdClean;
+      });
+    } else {
+      const formula = encodeURIComponent(`AND({Status}="Aktiv",{Byrå ID}="${byraIdClean.replace(/"/g, '\\"')}")`);
+      const listRes = await axios.get(`${uppdragUrl}?filterByFormula=${formula}&pageSize=100`, { headers });
+      records = listRes.data.records || [];
+    }
+
+    const results = [];
+    let totalCreated = 0;
+    for (const rec of records) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await ensureRunsForUppdragRecord(rec, airtableAccessToken, airtableBaseId);
+      results.push({ uppdragId: rec.id, typ: rec?.fields?.['Typ'] || '', ...r });
+      totalCreated += Number(r?.created || 0);
+    }
+
+    return res.json({
+      ok: true,
+      customerId: customerId || null,
+      processed: results.length,
+      totalCreated,
+      results
+    });
+  } catch (error) {
+    console.error('❌ POST /api/uppdrag/ensure-runs:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    res.status(status).json({ error: msg });
+  }
+});
+
 // PATCH /api/uppdrag/runs/:runId/status – uppdatera status på en uppdragskörning
 // Body: { status }
 app.patch('/api/uppdrag/runs/:runId/status', authenticateToken, async (req, res) => {
@@ -13379,10 +13490,13 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       const record = await tryWriteWithFallback(write);
       const warning = record && record.__clientflow_warning;
       if (warning) delete record.__clientflow_warning;
-      setImmediate(() => {
-        processUppdragUnderlagSchedule().catch((e) => console.warn('ensure runs after uppdrag update:', e.message));
-      });
-      return res.json({ record, updated: true, warning });
+      let runsEnsure = null;
+      try {
+        runsEnsure = await ensureRunsForUppdragRecord(record, airtableAccessToken, airtableBaseId);
+      } catch (e) {
+        console.warn('ensure runs after uppdrag update:', e.message);
+      }
+      return res.json({ record, updated: true, warning, runsEnsure });
     }
 
     const write = async (payloadFields) => {
@@ -13397,10 +13511,13 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     const record = await tryWriteWithFallback(write);
     const warning = record && record.__clientflow_warning;
     if (warning) delete record.__clientflow_warning;
-    setImmediate(() => {
-      processUppdragUnderlagSchedule().catch((e) => console.warn('ensure runs after uppdrag create:', e.message));
-    });
-    return res.json({ record, created: true, warning });
+    let runsEnsure = null;
+    try {
+      runsEnsure = await ensureRunsForUppdragRecord(record, airtableAccessToken, airtableBaseId);
+    } catch (e) {
+      console.warn('ensure runs after uppdrag create:', e.message);
+    }
+    return res.json({ record, created: true, warning, runsEnsure });
   } catch (error) {
     console.error('❌ POST /api/uppdrag:', error.response?.data || error.message);
     const status = error.response?.status || 500;
