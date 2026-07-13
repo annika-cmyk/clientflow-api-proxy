@@ -1686,7 +1686,9 @@ class CustomerCardManager {
                 const runRec = ctx.runRec || runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
                 // En källa: status i uppdragets historik (så det alltid matchar uppdragsöversikten).
                 // Om vi även har en runRec synkar backend den best-effort.
-                const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey) || '';
+                const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey)
+                    || String(runRec?.fields?.['Status'] || '').trim()
+                    || '';
 
                 const runId = runRec ? String(runRec.id || '').trim() : '';
                 const samForRun = samList.filter(s => {
@@ -2209,6 +2211,11 @@ class CustomerCardManager {
                         target.classList.remove('is-collapsed');
                         target.querySelector('[data-action="toggle-edit"]')?.click();
                     }
+                    return;
+                }
+
+                // Rad-expansion: ignorera klick på status-dropdown och andra formulärelement
+                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"]')) {
                     return;
                 }
 
