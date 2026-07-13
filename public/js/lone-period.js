@@ -147,8 +147,8 @@
         return workYm ? isoWithDay(workYm, day) : '';
     }
 
-    /** Visa körning i vald kalendermånad: från startdatum-månad t.o.m. deadline-månad, plus försenade. */
-    function runVisibleInBoardMonth(runFields, boardYm, todayIso) {
+    /** Visa körning i vald kalendermånad: endast under öppen period (startdatum → deadline). */
+    function runVisibleInBoardMonth(runFields, boardYm, _todayIso) {
         const status = String(runFields?.Status || '').trim();
         if (status === 'Klar') return false;
         const start = toDateStr(runFields?.Startdatum || '');
@@ -157,9 +157,7 @@
         const startYm = start ? start.slice(0, 7) : '';
         const endYm = deadline ? deadline.slice(0, 7) : '';
         if (!startYm || !endYm) return false;
-        if (boardYm >= startYm && boardYm <= endYm) return true;
-        if (todayIso && deadline && todayIso > deadline && boardYm >= startYm) return true;
-        return false;
+        return boardYm >= startYm && boardYm <= endYm;
     }
 
     global.LonePeriod = {
