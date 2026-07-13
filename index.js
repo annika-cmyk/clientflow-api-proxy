@@ -7141,14 +7141,14 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
 
   const existing = new Map();
   try {
-    const formula = encodeURIComponent(`{Uppdrag ID} = "${uppdragId.replace(/"/g, '\\"')}"`);
-    const res = await axios.get(`${uppdragRunsUrl}?filterByFormula=${formula}&pageSize=100`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
-    (res.data.records || []).forEach(rr => {
+    const runList = await fetchRunsForUppdragId(uppdragRunsUrl, uppdragId, airtableAccessToken);
+    runList.forEach(rr => {
       const key = String(rr?.fields?.['Run Key'] || '').trim();
       if (key) existing.set(key, rr);
     });
   } catch (_) {}
 
+  const grundRutin = String(f['Rutin'] || '').trim();
   const nowIso = new Date().toISOString();
   let created = 0;
   const errors = [];
@@ -7160,17 +7160,27 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
     if (existingRun) {
       const expectedStart = toIsoDate(startIso || '');
       const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
-      if (expectedStart && expectedStart !== currentStart && existingRun?.id) {
+      const patchFields = {};
+      if (expectedStart && expectedStart !== currentStart) patchFields['Startdatum'] = expectedStart;
+      const runRutin = String(existingRun?.fields?.['Rutin'] || '').trim();
+      const forward = isForwardUppdragRun(existingRun?.fields || {}, todayIso);
+      if (grundRutin && forward) {
+        if (runRutin !== grundRutin) patchFields['Rutin'] = grundRutin;
+      } else if (grundRutin && !runRutin) {
+        patchFields['Rutin'] = grundRutin;
+      }
+      if (Object.keys(patchFields).length && existingRun?.id) {
+        patchFields['Uppdaterad'] = nowIso;
         try {
           await axios.patch(
             `${uppdragRunsUrl}/${existingRun.id}`,
-            { fields: { 'Startdatum': expectedStart, 'Uppdaterad': nowIso } },
+            { fields: patchFields },
             { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
           );
-          existingRun.fields = { ...(existingRun.fields || {}), Startdatum: expectedStart };
+          existingRun.fields = { ...(existingRun.fields || {}), ...patchFields };
         } catch (e) {
           const msg = e.response?.data?.error?.message || e.message;
-          console.warn(`ensureRunsAheadForUppdrag: kunde inte uppdatera startdatum för ${runKey}:`, msg);
+          console.warn(`ensureRunsAheadForUppdrag: kunde inte uppdatera körning ${runKey}:`, msg);
         }
       }
       return;
@@ -7191,6 +7201,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
         'Uppdaterad': nowIso
       };
       if (startIso) runFields['Startdatum'] = startIso;
+      if (grundRutin) runFields['Rutin'] = grundRutin;
       await airtablePostRecordWithFieldFallback(
         uppdragRunsUrl,
         runFields,
@@ -12607,6 +12618,7 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Startdatum', type: 'date', description: 'Tidigast datum arbetet kan påbörjas för körningen', options: { dateFormat: { name: 'iso' } } },
   { name: 'PeriodKey', type: 'singleLineText', description: 'Periodnyckel, t.ex. 2026-04 eller 2026-Q2 eller 2026' },
   { name: 'Period Label', type: 'singleLineText', description: 'Visningsnamn för perioden (sv)' },
+  { name: 'Rutin', type: 'multilineText', description: 'Rutin/instruktion som gällde för denna körning (snapshot – ändras inte retroaktivt)' },
   { name: 'Anteckning', type: 'multilineText', description: 'Anteckning specifikt för denna uppdragskörning' },
   { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor kopplade till denna uppdragskörning' },
   { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
@@ -12719,6 +12731,59 @@ async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetr
   const err = new Error(msg);
   err.response = lastErr?.response;
   throw err;
+}
+
+function isForwardUppdragRun(runFields, todayIso) {
+  const status = String(runFields?.['Status'] || '').trim();
+  if (status === 'Klar') return false;
+  const dl = toIsoDateOnly(runFields?.['Deadline'] || '');
+  if (dl && dl < todayIso) return false;
+  return true;
+}
+
+async function fetchRunsForUppdragId(uppdragRunsUrl, uppdragId, airtableAccessToken) {
+  const formula = encodeURIComponent(`{Uppdrag ID} = "${String(uppdragId || '').replace(/"/g, '\\"')}"`);
+  let records = [];
+  let offset = null;
+  do {
+    const params = { filterByFormula: formula, pageSize: 100 };
+    if (offset) params.offset = offset;
+    // eslint-disable-next-line no-await-in-loop
+    const res = await axios.get(uppdragRunsUrl, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      params
+    });
+    records = records.concat(res.data.records || []);
+    offset = res.data.offset || null;
+  } while (offset);
+  return records;
+}
+
+async function propagateRutinToForwardRuns(uppdragId, rutin, airtableAccessToken, baseId, todayIso) {
+  const ctx = await buildEnsureRunsContext(airtableAccessToken, baseId);
+  if (!ctx.uppdragRunsUrl) return { updated: 0, skipped: true, reason: 'runs_table_missing' };
+  const records = await fetchRunsForUppdragId(ctx.uppdragRunsUrl, uppdragId, airtableAccessToken);
+  const nowIso = new Date().toISOString();
+  const rutinText = String(rutin || '');
+  let updated = 0;
+  const errors = [];
+  for (const rr of records) {
+    if (!isForwardUppdragRun(rr?.fields || {}, todayIso)) continue;
+    if (!rr?.id) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await axios.patch(
+        `${ctx.uppdragRunsUrl}/${rr.id}`,
+        { fields: { 'Rutin': rutinText, 'Uppdaterad': nowIso } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+      updated += 1;
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message;
+      errors.push({ runId: rr.id, message: msg });
+    }
+  }
+  return { updated, skipped: false, errors };
 }
 
 async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId }) {
@@ -13338,6 +13403,52 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
   }
 });
 
+// PATCH /api/uppdrag/runs/:runId/note – anteckning på en uppdragskörning
+// Body: { note }
+app.patch('/api/uppdrag/runs/:runId/note', authenticateToken, async (req, res) => {
+  try {
+    const { runId } = req.params || {};
+    const { note } = req.body || {};
+    const id = String(runId || '').trim();
+    if (!id) return res.status(400).json({ error: 'runId saknas' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+    if (!runsTableId) {
+      return res.status(404).json({ error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas.` });
+    }
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(id)}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+    const existing = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    const f = existing.data?.fields || {};
+    const recordByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+    if (!recordByra || recordByra !== byraIdClean) {
+      return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const patchRes = await axios.patch(url, {
+      fields: {
+        'Anteckning': String(note || ''),
+        'Uppdaterad': nowIso
+      }
+    }, { headers });
+
+    return res.json({ record: patchRes.data });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/runs/:runId/note:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg });
+  }
+});
+
 // PATCH /api/uppdrag/runs/:runId/status – uppdatera status på en uppdragskörning
 // Body: { status }
 app.patch('/api/uppdrag/runs/:runId/status', authenticateToken, async (req, res) => {
@@ -13543,6 +13654,9 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     };
 
     if (existing) {
+      const oldRutin = String(existing?.fields?.['Rutin'] || '');
+      const rutinChanged = Object.prototype.hasOwnProperty.call(normalizedFields, 'Rutin')
+        && String(normalizedFields['Rutin'] || '') !== oldRutin;
       const write = async (payloadFields) => {
         const updateRes = await axios.patch(
           `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
@@ -13565,7 +13679,23 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
         console.warn('ensure runs after uppdrag update:', e.message);
         runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
       }
-      return res.json({ record, updated: true, warning, runsEnsure });
+      let rutinPropagate = null;
+      if (rutinChanged) {
+        try {
+          const todayIso = stockholmDateStr(new Date());
+          rutinPropagate = await propagateRutinToForwardRuns(
+            existing.id,
+            String(normalizedFields['Rutin'] || ''),
+            airtableAccessToken,
+            airtableBaseId,
+            todayIso
+          );
+        } catch (e) {
+          console.warn('propagate rutin after uppdrag update:', e.message);
+          rutinPropagate = { updated: 0, skipped: true, reason: 'error', message: e.message };
+        }
+      }
+      return res.json({ record, updated: true, warning, runsEnsure, rutinPropagate });
     }
 
     const write = async (payloadFields) => {
