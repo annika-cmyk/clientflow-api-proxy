@@ -1220,6 +1220,13 @@ class CustomerCardManager {
                     }
                 }
             }
+            const start0 = toDateStr(f['Startdatum'] || '');
+            if (start0 && deadline0) {
+                const map = instByTypeMonth.get(typ) || new Map();
+                addOpenMonthsToInstMap(map, start0.slice(0, 7), deadline0.slice(0, 7), deadline0);
+                instByTypeMonth.set(typ, map);
+                continue;
+            }
             const step = monthsStepFromFreq(f['Frekvens']);
             const map = instByTypeMonth.get(typ) || new Map();
             if (step === 0) {
@@ -1526,6 +1533,25 @@ class CustomerCardManager {
                     }
                     return;
                     }
+                }
+
+                if (isLoneTyp(t) && window.LonePeriod && Array.isArray(runRecords) && runRecords.length) {
+                    const visible = runRecords
+                        .filter((rr) => String(rr?.fields?.['Typ'] || '').trim() === t)
+                        .filter((rr) => LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                    visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
+                    visible.forEach((rr) => {
+                        const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
+                        rowContexts.push({
+                            t, rec, f, freq,
+                            boardKey: `${t}|||${pk}`,
+                            displayTitle: LonePeriod.displayLabel(pk, t) || LonePeriod.typDisplayLabel(t),
+                            instDeadline: String(rr?.fields?.['Deadline'] || '').trim(),
+                            prefillPeriodKey: pk,
+                            runRec: rr
+                        });
+                    });
+                    return;
                 }
 
                 const instMap = instByTypeMonth.get(t) || new Map();
