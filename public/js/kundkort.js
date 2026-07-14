@@ -2547,6 +2547,10 @@ class CustomerCardManager {
                 if (el) el.addEventListener('change', () => this._syncUppdragHeaderMeta(root));
                 if (el && el.tagName === 'INPUT') el.addEventListener('input', () => this._syncUppdragHeaderMeta(root));
             });
+            if (window.DateInput) {
+                DateInput.bindDateInput(root.querySelector('[data-field="Startdatum"]'));
+                DateInput.bindDateInput(root.querySelector('[data-field="Nästa deadline"]'));
+            }
 
             // Autofyll mottagare-namn när mottagare-e-post väljs från Roller
             const underlagEpostEl = root.querySelector('[data-field="Underlagsmottagare e-post"]');
@@ -3311,6 +3315,10 @@ class CustomerCardManager {
         if (momsPeriodEl) momsPeriodEl.addEventListener('change', applyMomsFromPeriod);
         if (startEl) startEl.addEventListener('change', applyLonePreview);
         if (deadlineEl) deadlineEl.addEventListener('change', applyLonePreview);
+        if (window.DateInput) {
+            DateInput.bindDateInput(startEl);
+            DateInput.bindDateInput(deadlineEl);
+        }
         syncExtra();
 
         if (dekAddBtn) dekAddBtn.addEventListener('click', () => addDekRow({ typ: 'NE', text: '' }));
@@ -3337,6 +3345,12 @@ class CustomerCardManager {
                 } else {
                     if (!startdatum) throw new Error('Välj startdatum');
                     if (!deadline) throw new Error('Välj deadline');
+                    const startInput = document.getElementById('uppdrag-new-start');
+                    const deadlineInput = document.getElementById('uppdrag-new-deadline');
+                    if (window.DateInput) {
+                        if (!DateInput.validateDateInput(startInput, 'Startdatum')) throw new Error('Startdatum är ogiltigt');
+                        if (!DateInput.validateDateInput(deadlineInput, 'Deadline')) throw new Error('Deadline är ogiltigt');
+                    }
                 }
 
                 const riskSelected = Array.from(document.querySelectorAll('#uppdrag-new-risk-items .uppdrag-risk-cb:checked')).map(i => i.value);
@@ -3719,10 +3733,16 @@ class CustomerCardManager {
             if (!customerId) throw new Error('Saknar customerId');
 
             const getVal = (name) => root.querySelector(`[data-field="${CSS.escape(name)}"]`);
+            const startInput = getVal('Startdatum');
+            const deadlineInput = getVal('Nästa deadline');
+            if (window.DateInput) {
+                if (!DateInput.validateDateInput(startInput, 'Startdatum')) throw new Error('Startdatum är ogiltigt');
+                if (!DateInput.validateDateInput(deadlineInput, 'Nästa deadline')) throw new Error('Nästa deadline är ogiltigt');
+            }
             const fields = {};
             fields['Frekvens'] = getVal('Frekvens')?.value || '';
-            fields['Startdatum'] = getVal('Startdatum')?.value || '';
-            fields['Nästa deadline'] = getVal('Nästa deadline')?.value || '';
+            fields['Startdatum'] = startInput?.value || '';
+            fields['Nästa deadline'] = deadlineInput?.value || '';
             fields['Ansvarig'] = getVal('Ansvarig')?.value || '';
             fields['Rutin'] = getVal('Rutin')?.value || '';
             const riskSelected = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
