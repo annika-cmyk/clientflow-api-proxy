@@ -81,6 +81,7 @@ class ComponentLoader {
         }
 
         this.initSidebarSearch(element);
+        this.initMinibokBanner();
 
         // Fäll in/ut menyposter under rubriker
         const storageKey = 'clientflow-nav-sections-collapsed';
@@ -127,6 +128,25 @@ class ComponentLoader {
             script.src = 'js/sidebar-search.js?v=1.0';
             script.async = false;
             script.onload = runInit;
+            document.body.appendChild(script);
+        }
+    }
+
+    initMinibokBanner() {
+        const run = () => {
+            if (typeof window.loadMinibokNotifications === 'function') {
+                window.loadMinibokNotifications();
+            }
+        };
+        if (typeof window.loadMinibokNotifications === 'function') {
+            run();
+            return;
+        }
+        if (!document.querySelector('script[src*="minibok-banner.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'js/minibok-banner.js?v=1.0';
+            script.async = false;
+            script.onload = run;
             document.body.appendChild(script);
         }
     }

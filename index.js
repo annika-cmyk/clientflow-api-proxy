@@ -46,6 +46,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+const { createMinibokSync } = require('./lib/minibok-sync');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -62,6 +63,8 @@ console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET')
 console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 'NOT SET');
 console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
+console.log('  MINIBOK_API_KEY:', process.env.MINIBOK_API_KEY ? 'SET' : 'NOT SET');
+console.log('  MINIBOK_WEBHOOK_URL:', process.env.MINIBOK_WEBHOOK_URL ? 'SET' : 'NOT SET');
 console.log('');
 
 const cookieParser = require('cookie-parser');
@@ -84,7 +87,7 @@ app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, credentials');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, credentials, X-User-Email, X-Api-Key, X-Clientflow-Secret');
     res.setHeader('Access-Control-Allow-Credentials', allowOrigin ? 'true' : 'false');
     
     // Hantera preflight requests
@@ -1374,6 +1377,76 @@ app.post('/api/setup/airtable-kundstatus-field', authenticateToken, async (req, 
   });
 });
 
+const MINIBOK_FIELDS = [
+  { name: 'Minibok pending', type: 'checkbox', options: { icon: 'check', color: 'blueBright' } },
+  { name: 'Minibok källa', type: 'singleLineText' },
+  { name: 'Minibok company id', type: 'singleLineText' }
+];
+let minibokFieldsEnsured = false;
+
+async function ensureMinibokFields(airtableToken, baseId) {
+  if (minibokFieldsEnsured) return { ok: true, created: [], existing: MINIBOK_FIELDS.map((f) => f.name) };
+  const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+  if (!airtableToken) return { ok: false, error: 'Token saknas' };
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const kundTable = (metaRes.data?.tables || []).find((t) => t.id === KUNDDATA_TABLE_ID);
+    if (!kundTable) return { ok: false, error: 'KUNDDATA-tabellen hittades inte' };
+
+    const existingNames = new Set((kundTable.fields || []).map((f) => f.name || ''));
+    const created = [];
+    const existing = [];
+
+    for (const fieldDef of MINIBOK_FIELDS) {
+      if (existingNames.has(fieldDef.name)) {
+        existing.push(fieldDef.name);
+        continue;
+      }
+      await axios.post(
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${KUNDDATA_TABLE_ID}/fields`,
+        fieldDef,
+        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+      );
+      created.push(fieldDef.name);
+      console.log(`✅ Minibok-fält skapades: ${fieldDef.name}`);
+    }
+
+    if (created.length + existing.length === MINIBOK_FIELDS.length) {
+      minibokFieldsEnsured = true;
+    }
+    return { ok: true, created, existing };
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.warn('ensureMinibokFields:', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+// POST /api/setup/airtable-minibok-fields – Skapa Minibok-fält i KUNDDATA
+app.post('/api/setup/airtable-minibok-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+  const result = await ensureMinibokFields(airtableAccessToken, baseId);
+  if (result.ok) {
+    return res.json({
+      success: true,
+      message: 'Minibok-fält finns i KUNDDATA-tabellen.',
+      created: result.created || [],
+      existing: result.existing || []
+    });
+  }
+  return res.status(500).json({
+    success: false,
+    error: result.error || 'Kunde inte skapa Minibok-fält. Token behöver schema.bases:write.'
+  });
+});
+
 // Bolagsverket test endpoint
 app.get('/api/bolagsverket/test', (req, res) => {
   res.json({
@@ -1452,6 +1525,15 @@ async function getBolagsverketToken() {
     throw error;
   }
 }
+
+const minibokSync = createMinibokSync({
+  getAirtableUser,
+  getBolagsverketToken,
+  getBolagsverketEnvironment,
+  authenticateToken,
+  ensureMinibokFields,
+  BEFATTNINGSHAVARE_TABLE: process.env.AIRTABLE_TABLE_BEFATTNINGSHAVARE || 'Befattningshavare'
+});
 
 // Bolagsverket isalive endpoint (health check)
 app.get('/api/bolagsverket/isalive', async (req, res) => {
@@ -2904,6 +2986,10 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     console.log(`📊 Airtable fields sent:`, airtableData.fields);
 
     res.json(responseData);
+
+    if (recordId && req.user?.email && !req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
+      minibokSync.notifyMinibokClientChange('client.created', req.user.email, recordId).catch(() => {});
+    }
 
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -4625,6 +4711,10 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     );
     console.log('✅ Kund uppdaterad i Airtable:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+
+    if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
+      minibokSync.notifyMinibokClientChange('client.updated', req.user.email, airtableRes.data).catch(() => {});
+    }
 
   } catch (error) {
     console.error('❌ Fel vid uppdatering av kund:', JSON.stringify(error.response?.data) || error.message);
@@ -8383,6 +8473,10 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
     }
     console.log('✅ Kund skapad i Airtable KUNDDATA:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+
+    if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
+      minibokSync.notifyMinibokClientChange('client.created', req.user.email, airtableRes.data).catch(() => {});
+    }
 
   } catch (error) {
     console.error('❌ Fel vid skapande av kund i KUNDDATA:', error.response?.data || error.message);
@@ -17046,6 +17140,9 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
     res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
   }
 });
+
+// Minibok ↔ Clientflow kundsynk (GET/POST /api/v1/companies + notiser)
+minibokSync.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);
