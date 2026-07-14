@@ -124,6 +124,9 @@ class AuthManager {
                 if (typeof window !== 'undefined') {
                     window.__clientFlowUser = this.currentUser;
                     window.dispatchEvent(new CustomEvent('clientflow:authReady', { detail: { user: this.currentUser } }));
+                if (typeof window.loadMinibokNotifications === 'function') {
+                    window.loadMinibokNotifications();
+                }
                 }
                 this.updateUI();
             } else {

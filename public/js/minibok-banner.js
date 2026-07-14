@@ -5,7 +5,7 @@
   const BANNER_ID = 'minibok-pending-banner';
 
   function getBaseUrl() {
-    return (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
+    return (window.apiConfig && window.apiConfig.baseUrl) || 'https://clientflow-api-proxy-1.onrender.com';
   }
 
   function getAuthOpts() {
@@ -76,16 +76,31 @@
       .replace(/"/g, '&quot;');
   }
 
+  async function waitForAuth_(maxMs) {
+    var deadline = Date.now() + (maxMs || 10000);
+    while (Date.now() < deadline) {
+      if (window.AuthManager && typeof AuthManager.isAuthenticated === 'function' && AuthManager.isAuthenticated()) {
+        return true;
+      }
+      if (window.__clientFlowUser) return true;
+      await new Promise(function (ok) { setTimeout(ok, 150); });
+    }
+    return !!(window.AuthManager && AuthManager.isAuthenticated && AuthManager.isAuthenticated());
+  }
+
   async function loadMinibokNotifications() {
     if (!window.AuthManager || typeof AuthManager.isAuthenticated !== 'function') return;
-    const authed = await AuthManager.isAuthenticated().catch(() => false);
+    var authed = await waitForAuth_(10000);
     if (!authed) {
       removeBanner();
       return;
     }
     try {
       const res = await fetch(`${getBaseUrl()}/api/minibok/notifications`, getAuthOpts());
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.warn('Minibok notifications HTTP', res.status);
+        return;
+      }
       const data = await res.json();
       renderBanner(data.notifications || []);
     } catch (e) {
@@ -95,7 +110,15 @@
 
   window.loadMinibokNotifications = loadMinibokNotifications;
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', function () {
+    loadMinibokNotifications();
+  });
+
+  window.addEventListener('clientflow:authReady', function () {
+    loadMinibokNotifications();
+  });
+
+  window.addEventListener('focus', function () {
     loadMinibokNotifications();
   });
 })();

@@ -144,7 +144,7 @@ class ComponentLoader {
         }
         if (!document.querySelector('script[src*="minibok-banner.js"]')) {
             const script = document.createElement('script');
-            script.src = 'js/minibok-banner.js?v=1.0';
+            script.src = 'js/minibok-banner.js?v=1.1';
             script.async = false;
             script.onload = run;
             document.body.appendChild(script);
