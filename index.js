@@ -5332,7 +5332,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       if (!a || !(a.url || a.filename)) return;
       const fn = (a.filename || '').toLowerCase();
       if (fn.startsWith('riskbedomning-') || fn.includes('riskbedomning')) allItems.push({ ...a, _typ: 'riskbedomning', _sourceField: 'Attachments', _sourceIndex: i });
-      else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening')) allItems.push({ ...a, _typ: 'pep', _sourceField: 'Attachments', _sourceIndex: i });
+      else if (fn.startsWith('pep-screening_') || fn.includes('pep-screening') || fn.startsWith('entity-screening_') || fn.includes('entity-screening')) allItems.push({ ...a, _typ: 'pep', _sourceField: 'Attachments', _sourceIndex: i });
       else allItems.push({ ...a, _typ: 'ovrigt', _sourceField: 'Attachments', _sourceIndex: i, _category: 'ovrigt' });
     });
 
@@ -15613,12 +15613,44 @@ app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) =>
         const datumStr = new Date().toISOString().split('T')[0];
         const filnamn = `Entity-screening_${String(namn).replace(/\s+/g, '_')}_${datumStr}.pdf`;
 
-        // Spara PDF till KUNDDATA (Dokumentation/Attachments) om möjligt
+        // Spara PDF till KUNDDATA (Attachments / PEP rapporter) om möjligt
         let savedToDocs = false;
         if (token && kundId) {
             try {
                 const pdfBuffer = Buffer.from(pdfBase64, 'base64');
                 savedToDocs = await uploadAttachmentToAirtable(token, baseId, kundId, pdfBuffer, filnamn, 'application/pdf', KUNDDATA_TABLE);
+                if (!savedToDocs) {
+                    const protocol = req.get('x-forwarded-proto') || req.protocol || (req.secure ? 'https' : 'http');
+                    const host = req.get('x-forwarded-host') || req.get('host');
+                    const reqBaseUrl = host ? `${protocol}://${host}` : null;
+                    const fileUrl = await saveFileLocally(pdfBuffer, filnamn, 'application/pdf', reqBaseUrl);
+                    if (fileUrl) {
+                        const custRes = await axios.get(
+                            `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+                            { headers: { Authorization: `Bearer ${token}` } }
+                        );
+                        const f = custRes.data.fields || {};
+                        const docFields = ['Attachments', 'PEP rapporter', 'PEP rapport', 'Dokumentation'];
+                        for (const fieldName of docFields) {
+                            try {
+                                const existing = f[fieldName] || [];
+                                const arr = Array.isArray(existing) ? [...existing] : [];
+                                arr.push({ url: fileUrl, filename: filnamn });
+                                await axios.patch(
+                                    `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+                                    { fields: { [fieldName]: arr } },
+                                    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+                                );
+                                savedToDocs = true;
+                                console.log('✅ Entity-rapport sparad i fält:', fieldName);
+                                break;
+                            } catch (patchErr) {
+                                if (patchErr.response?.status === 422) continue;
+                                if (!savedToDocs) console.warn('PATCH till', fieldName, ':', patchErr.message);
+                            }
+                        }
+                    }
+                }
             } catch (saveErr) {
                 console.warn('Kunde inte spara entity-rapport till Airtable:', saveErr.message);
             }

@@ -4219,6 +4219,23 @@ class CustomerCardManager {
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
+                    <div class="roller-screening-toolbar" style="margin-bottom:0.75rem;padding:0.75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.04em;margin-bottom:0.5rem;">
+                            PEP & sanktionsscreening (Dilisense)
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="entity-screen-btn" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
+                                <i class="fas fa-building"></i> Screena företag
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" id="screen-all-pep-btn" onclick="customerCardManager.screenAllPepAndEntity(event)">
+                                <i class="fas fa-search-dollar"></i> Screena företag + alla personer
+                            </button>
+                            <span id="entity-screening-datum-wrap">${this._getEntityScreeningDatumBadge()}</span>
+                        </div>
+                        <div style="font-size:0.78rem;color:#64748b;margin-top:0.5rem;">
+                            Företaget kontrolleras mot sanktionslistor. Personer (styrelse, firmatecknare m.fl.) screenas individuellt.
+                        </div>
+                    </div>
                     <div id="roles-list" class="roles-list">${rollerHTML}</div>
                     <div style="margin-top:0.75rem;">
                         <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.addRollePerson()"><i class="fas fa-plus"></i> Lägg till</button>
@@ -6113,8 +6130,9 @@ class CustomerCardManager {
                     </div>
                     <div style="margin-top:0.75rem;">
                         <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.entityScreeningFromBolagsverket(event)">
-                            <i class="fas fa-building"></i> Sanktionsscreening företag (Dilisense)
+                            <i class="fas fa-building"></i> Screena företag (sanktionslistor)
                         </button>
+                        <span style="font-size:0.78rem;color:#64748b;margin-left:0.5rem;">Personer screenas under Företagsinformation → Roller.</span>
                     </div>
                 </div>
 
@@ -10220,51 +10238,11 @@ class CustomerCardManager {
         if (typeof window.showAiThinking === 'function') window.showAiThinking();
 
         try {
-            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-
-            // Konvertera personnr (YYYYMMDD-XXXX) till dob (DD/MM/YYYY) om möjligt
-            let dob = null;
-            if (p.personnr) {
-                const digits = p.personnr.replace(/\D/g, '');
-                if (digits.length >= 8) {
-                    const year = digits.substring(0, 4);
-                    const month = digits.substring(4, 6);
-                    const day = digits.substring(6, 8);
-                    dob = `${day}/${month}/${year}`;
-                }
-            }
-
-            const response = await fetch(`${baseUrl}/api/pep-screening/${this.customerId}`, {
-                method: 'POST',
-                ...getAuthOptsKundkort(),
-                body: JSON.stringify({ namn: p.namn, personnr: p.personnr, dob })
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const msg = response.status === 429
-                    ? 'För många sökningar – vänta några minuter och försök igen.'
-                    : (data.error || `HTTP ${response.status}`);
-                throw new Error(msg);
-            }
-
-            // Visa resultat i modal (PDF sparas i Airtable / Dokumentation, laddas inte ner automatiskt)
-            this._showPepResultModal(p.namn, data, idx);
-
-            // Uppdatera dokumentation-fliken om rapporten sparades i Airtable
+            const data = await this._runPersonScreeningInternal(idx, { showModal: true });
             if (data.savedToDocs) {
-                this.loadDocuments();
                 this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
             }
-
-            // Spara senaste PEP-sökningens datum på personen
-            if (this._kontaktPersoner && this._kontaktPersoner[idx]) {
-                this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
-                await this._saveKontaktPersoner();
-                this._refreshRollerList();
-            }
-
+            this._refreshRollerList();
         } catch (error) {
             console.error('❌ PEP-screening fel:', error);
             this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
@@ -10274,6 +10252,214 @@ class CustomerCardManager {
         }
     }
 
+    _getEntityScreeningDatumBadge() {
+        const f = this.customerData?.fields || {};
+        const datum = (f['Entity screening datum'] || f['PEP entity screening datum'] || '').toString().trim();
+        if (!datum) return '';
+        const fmt = /^\d{4}-\d{2}-\d{2}/.test(datum)
+            ? new Date(datum).toLocaleDateString('sv-SE')
+            : datum;
+        return `<span class="roller-person-pep-datum" title="Senaste företagsscreening"><i class="fas fa-building"></i> Företag: ${this._esc(fmt)}</span>`;
+    }
+
+    async _saveEntityScreeningDatum() {
+        const datum = new Date().toISOString().split('T')[0];
+        if (this.customerData?.fields) {
+            this.customerData.fields['Entity screening datum'] = datum;
+        }
+        const wrap = document.getElementById('entity-screening-datum-wrap');
+        if (wrap) wrap.innerHTML = this._getEntityScreeningDatumBadge();
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields: { 'Entity screening datum': datum } })
+            });
+        } catch (e) {
+            console.warn('Kunde inte spara entity screening datum till Airtable:', e.message);
+        }
+        return datum;
+    }
+
+    async _runEntityScreeningInternal({ showModal = true } = {}) {
+        const kundId = this.customerId;
+        if (!kundId) throw new Error('Kund-ID saknas.');
+        const f = this.customerData?.fields || {};
+        const namn = (f['Namn'] || f['Företagsnamn'] || '').toString().trim();
+        const orgnr = (f['Orgnr'] || f['Organisationsnummer'] || '').toString().trim();
+        if (!namn) throw new Error('Företagsnamn saknas på kunden.');
+
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/entity-screening/${kundId}`, {
+            method: 'POST',
+            ...getAuthOptsKundkort(),
+            body: JSON.stringify({ namn, orgnr })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const msg = response.status === 429
+                ? 'För många sökningar – vänta några minuter och försök igen.'
+                : (data.error || `HTTP ${response.status}`);
+            throw new Error(msg);
+        }
+
+        await this._saveEntityScreeningDatum();
+        if (data.savedToDocs) this.loadDocuments();
+        if (showModal) this._showEntityResultModal(namn, orgnr, data);
+
+        return { typ: 'entity', namn, orgnr, ...data };
+    }
+
+    async _runPersonScreeningInternal(idx, { showModal = true } = {}) {
+        const p = (this._kontaktPersoner || [])[idx];
+        if (!p || !p.namn) throw new Error(`Person ${idx + 1} saknar namn.`);
+
+        let dob = null;
+        if (p.personnr) {
+            const digits = p.personnr.replace(/\D/g, '');
+            if (digits.length >= 8) {
+                dob = `${digits.substring(6, 8)}/${digits.substring(4, 6)}/${digits.substring(0, 4)}`;
+            }
+        }
+
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/pep-screening/${this.customerId}`, {
+            method: 'POST',
+            ...getAuthOptsKundkort(),
+            body: JSON.stringify({ namn: p.namn, personnr: p.personnr, dob })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            const msg = response.status === 429
+                ? 'För många sökningar – vänta några minuter och försök igen.'
+                : (data.error || `HTTP ${response.status}`);
+            throw new Error(msg);
+        }
+
+        if (this._kontaktPersoner && this._kontaktPersoner[idx]) {
+            this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
+            await this._saveKontaktPersoner();
+        }
+        if (data.savedToDocs) this.loadDocuments();
+        if (showModal) this._showPepResultModal(p.namn, data, idx);
+
+        return { typ: 'person', namn: p.namn, idx, ...data };
+    }
+
+    async screenAllPepAndEntity(e) {
+        try {
+            if (e && e.preventDefault) e.preventDefault();
+            if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+                this.showNotification('Du måste logga in.', 'error');
+                return;
+            }
+
+            const personer = (this._kontaktPersoner || []).filter(p => p && p.namn);
+            const btn = document.getElementById('screen-all-pep-btn');
+            const origHtml = btn?.innerHTML;
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Screenar...';
+                btn.disabled = true;
+            }
+            if (typeof window.showAiThinking === 'function') {
+                window.showAiThinking('Screenar företag och personer mot PEP/sanktionslistor...');
+            }
+
+            const results = [];
+            const errors = [];
+
+            try {
+                results.push(await this._runEntityScreeningInternal({ showModal: false }));
+            } catch (err) {
+                errors.push({ namn: 'Företaget', error: err.message });
+            }
+
+            for (let i = 0; i < personer.length; i++) {
+                const idx = (this._kontaktPersoner || []).indexOf(personer[i]);
+                if (idx < 0) continue;
+                try {
+                    results.push(await this._runPersonScreeningInternal(idx, { showModal: false }));
+                } catch (err) {
+                    errors.push({ namn: personer[i].namn, error: err.message });
+                }
+            }
+
+            this._refreshRollerList();
+            this._showScreenAllResultModal(results, errors);
+
+            const entityHits = results.filter(r => r.typ === 'entity').reduce((s, r) => s + (r.total_hits || 0), 0);
+            const personHits = results.filter(r => r.typ === 'person').reduce((s, r) => s + (r.total_hits || 0), 0);
+            const saved = results.some(r => r.savedToDocs);
+            let msg = `Screening klar: ${results.length} sökning(ar), ${entityHits + personHits} träff(ar) totalt.`;
+            if (errors.length) msg += ` ${errors.length} misslyckades.`;
+            this.showNotification(msg, errors.length && !results.length ? 'error' : (entityHits + personHits > 0 ? 'error' : 'success'));
+            if (saved) this.showNotification('Rapporter sparade på fliken Dokumentation.', 'success');
+        } catch (err) {
+            console.error('❌ Batch-screening fel:', err);
+            this.showNotification(`Screening misslyckades: ${err.message}`, 'error');
+        } finally {
+            if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+            const btn = document.getElementById('screen-all-pep-btn');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-search-dollar"></i> Screena företag + alla personer';
+                btn.disabled = false;
+            }
+        }
+    }
+
+    _showScreenAllResultModal(results, errors) {
+        const totalHits = results.reduce((s, r) => s + (Number(r.total_hits) || 0), 0);
+        const statusColor = totalHits === 0 && !errors.length ? '#16a34a' : (totalHits > 0 ? '#dc2626' : '#d97706');
+        const statusIcon = totalHits === 0 && !errors.length ? 'fa-check-circle' : (totalHits > 0 ? 'fa-exclamation-triangle' : 'fa-exclamation-circle');
+        const statusText = totalHits === 0 && !errors.length
+            ? 'Inga träffar i snabbkontrollen'
+            : `${totalHits} träff(ar) totalt${errors.length ? ` · ${errors.length} fel` : ''}`;
+
+        const rowsHtml = results.map(r => {
+            const hits = Number(r.total_hits) || 0;
+            const icon = r.typ === 'entity' ? 'fa-building' : 'fa-user';
+            const label = r.typ === 'entity' ? 'Företag' : 'Person';
+            const color = hits === 0 ? '#16a34a' : '#dc2626';
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0.75rem;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:0.4rem;background:#fff;">
+                <span><i class="fas ${icon}" style="color:#64748b;margin-right:0.4rem;"></i><strong>${label}:</strong> ${this._esc(r.namn || '')}</span>
+                <span style="font-weight:700;color:${color};">${hits} träff${hits === 1 ? '' : 'ar'}</span>
+            </div>`;
+        }).join('');
+
+        const errorsHtml = errors.length ? `
+            <div style="margin-top:0.75rem;">
+                <div style="font-size:0.78rem;font-weight:700;color:#b45309;margin-bottom:0.35rem;">Misslyckade sökningar</div>
+                ${errors.map(e => `<div style="font-size:0.82rem;color:#92400e;padding:0.35rem 0;">${this._esc(e.namn)}: ${this._esc(e.error)}</div>`).join('')}
+            </div>` : '';
+
+        const modalHtml = `
+            <div id="screen-all-result-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;">
+                <div style="background:#fff;border-radius:12px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                    <div style="padding:1.5rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+                        <div>
+                            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:#94a3b8;">PEP & sanktionsscreening</div>
+                            <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-top:0.2rem;">Sammanfattning</div>
+                        </div>
+                        <button onclick="document.getElementById('screen-all-result-modal')?.remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:1.2rem;"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div style="padding:1.5rem;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;border-radius:8px;margin-bottom:1rem;background:${totalHits === 0 && !errors.length ? '#f0fdf4' : '#fef2f2'};border:1px solid ${totalHits === 0 && !errors.length ? '#bbf7d0' : '#fecaca'};">
+                            <i class="fas ${statusIcon}" style="color:${statusColor};font-size:1.3rem;"></i>
+                            <span style="font-weight:600;color:${statusColor};">${statusText}</span>
+                        </div>
+                        ${rowsHtml}
+                        ${errorsHtml}
+                        <div style="margin-top:1rem;font-size:0.78rem;color:#94a3b8;">PDF-rapporter sparas under Dokumentation.</div>
+                        <button onclick="document.getElementById('screen-all-result-modal')?.remove()" style="margin-top:0.75rem;background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">Stäng</button>
+                    </div>
+                </div>
+            </div>`;
+
+        document.getElementById('screen-all-result-modal')?.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
     async entityScreeningFromBolagsverket(e) {
         try {
             if (e && e.preventDefault) e.preventDefault();
@@ -10281,45 +10467,34 @@ class CustomerCardManager {
                 this.showNotification('Du måste logga in.', 'error');
                 return;
             }
-            const kundId = this.customerId;
-            if (!kundId) {
+            if (!this.customerId) {
                 this.showNotification('Kund-ID saknas.', 'error');
                 return;
             }
-            const f = this.customerData?.fields || {};
-            const namn = (f['Namn'] || f['Företagsnamn'] || '').toString().trim();
-            const orgnr = (f['Orgnr'] || f['Organisationsnummer'] || '').toString().trim();
-            if (!namn) {
-                this.showNotification('Företagsnamn saknas på kunden.', 'error');
-                return;
-            }
 
+            const btn = document.getElementById('entity-screen-btn');
+            const origHtml = btn?.innerHTML;
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Screenar...';
+                btn.disabled = true;
+            }
             if (typeof window.showAiThinking === 'function') window.showAiThinking('Söker företag i sanktionslistor...');
 
-            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const response = await fetch(`${baseUrl}/api/entity-screening/${kundId}`, {
-                method: 'POST',
-                ...getAuthOptsKundkort(),
-                body: JSON.stringify({ namn, orgnr })
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                const msg = response.status === 429
-                    ? 'För många sökningar – vänta några minuter och försök igen.'
-                    : (data.error || `HTTP ${response.status}`);
-                throw new Error(msg);
-            }
-
-            this._showEntityResultModal(namn, orgnr, data);
+            const data = await this._runEntityScreeningInternal({ showModal: true });
             if (data.savedToDocs) {
-                this.loadDocuments();
                 this.showNotification('Entity-rapport sparad på fliken Dokumentation.', 'success');
             }
+            this._refreshRollerList();
         } catch (err) {
             console.error('❌ Entity-screening fel:', err);
             this.showNotification(`Screening misslyckades: ${err.message}`, 'error');
         } finally {
             if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+            const btn = document.getElementById('entity-screen-btn');
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-building"></i> Screena företag';
+                btn.disabled = false;
+            }
         }
     }
 
