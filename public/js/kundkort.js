@@ -909,10 +909,14 @@ class CustomerCardManager {
 
         return this.loadUppdragDataAndRender().catch((e) => {
             console.error('❌ loadUppdrag:', e);
+            const timedOut = e?.name === 'AbortError' || /abort/i.test(String(e?.message || ''));
             container.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <p>Kunde inte ladda uppdrag.</p>
+                    <p>${timedOut ? 'Hämtningen tog för lång tid. Försök igen.' : 'Kunde inte ladda uppdrag.'}</p>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.loadUppdrag()">
+                        <i class="fas fa-redo"></i> Försök igen
+                    </button>
                 </div>
             `;
         });
