@@ -12959,9 +12959,10 @@ async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId })
   const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
   const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const cust = esc(customerId);
+  // Linked-record "Kund ID" matchas via FIND/ARRAYJOIN; textfält via direkt jämförelse.
   const formulas = [
-    `{Kund ID} = "${cust}"`,
-    `FIND("${cust}", ARRAYJOIN({Kund ID}))`
+    `FIND("${cust}", ARRAYJOIN({Kund ID}))`,
+    `{Kund ID} = "${cust}"`
   ];
   const fetchPages = async (baseParams) => {
     let out = [];
@@ -12976,10 +12977,13 @@ async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId })
     return out;
   };
   let records = [];
+  let formulaOk = false;
   for (const formula of formulas) {
     try {
       records = await fetchPages({ filterByFormula: formula, sort: [{ field: 'Deadline', direction: 'asc' }] });
-      if (records.length) break;
+      formulaOk = true;
+      // Tomt resultat är giltigt — skanna inte hela tabellen (hänger fliken).
+      break;
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
       if (/Invalid permissions|not found/i.test(msg) && !records.length) {
@@ -12988,43 +12992,26 @@ async function listUppdragRunsForCustomer({ airtableToken, baseId, customerId })
       if (/Unknown field|sort/i.test(String(msg))) {
         try {
           records = await fetchPages({ filterByFormula: formula });
-          if (records.length) break;
+          formulaOk = true;
+          break;
         } catch (e2) {
           const msg2 = e2.response?.data?.error?.message || e2.message || '';
           if (/Invalid permissions|not found/i.test(msg2)) {
             return { records: [], tableMissing: true, error: msg2 };
           }
+          // Prova nästa formel
         }
+      } else if (/INVALID_FILTER_BY_FORMULA|formula/i.test(String(msg))) {
+        // Prova nästa formel
       } else {
         throw e;
       }
     }
   }
-  if (!records.length) {
-    try {
-      let offset = null;
-      do {
-        const params = { pageSize: 100 };
-        if (offset) params.offset = offset;
-        const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
-        const all = r.data.records || [];
-        records = all.filter(rec => {
-          const f = rec.fields || {};
-          const k = f['Kund ID'];
-          if (k === customerId) return true;
-          if (Array.isArray(k) && k.includes(customerId)) return true;
-          return false;
-        });
-        offset = r.data.offset || null;
-        if (records.length) break;
-      } while (offset);
-    } catch (e) {
-      const msg = e.response?.data?.error?.message || e.message || '';
-      if (/Invalid permissions|not found/i.test(String(msg))) {
-        return { records: [], tableMissing: true, error: msg };
-      }
-      throw e;
-    }
+  // Ingen fulltabell-scan: den blockerade Uppdrag-fliken när kunden saknade körningar.
+  if (!formulaOk) {
+    console.warn('listUppdragRunsForCustomer: ingen formel fungerade för kund', customerId);
+    return { records: [], tableId };
   }
   records.sort((a, b) => {
     const da = String(a?.fields?.['Deadline'] || '');
@@ -13041,24 +13028,27 @@ async function listUppdragRunsForUppdragId({ airtableToken, baseId, uppdragId })
   const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const uid = esc(uppdragId);
   const formulas = [
-    `{Uppdrag ID} = "${uid}"`,
-    `FIND("${uid}", ARRAYJOIN({Uppdrag ID}))`
+    `FIND("${uid}", ARRAYJOIN({Uppdrag ID}))`,
+    `{Uppdrag ID} = "${uid}"`
   ];
   let records = [];
   for (const formula of formulas) {
     try {
       let offset = null;
+      const page = [];
       do {
         const params = { filterByFormula: formula, pageSize: 100 };
         if (offset) params.offset = offset;
         const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
-        records = records.concat(r.data.records || []);
+        page.push(...(r.data.records || []));
         offset = r.data.offset || null;
       } while (offset);
-      if (records.length) break;
+      records = page;
+      // Tomt resultat är giltigt — gå inte vidare till nästa formel i onödan
+      break;
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
-      if (/Unknown field|formula/i.test(String(msg))) continue;
+      if (/Unknown field|formula|INVALID_FILTER/i.test(String(msg))) continue;
       throw e;
     }
   }

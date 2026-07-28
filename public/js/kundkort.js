@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.11', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.12', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -909,10 +909,14 @@ class CustomerCardManager {
 
         return this.loadUppdragDataAndRender().catch((e) => {
             console.error('❌ loadUppdrag:', e);
+            const timedOut = e?.name === 'AbortError' || /abort/i.test(String(e?.message || ''));
             container.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <p>Kunde inte ladda uppdrag.</p>
+                    <p>${timedOut ? 'Hämtningen tog för lång tid. Försök igen.' : 'Kunde inte ladda uppdrag.'}</p>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.loadUppdrag()">
+                        <i class="fas fa-redo"></i> Försök igen
+                    </button>
                 </div>
             `;
         });
@@ -1013,11 +1017,28 @@ class CustomerCardManager {
         const customerId = this.customerId || this.currentCustomerId;
         if (!customerId) throw new Error('Saknar customerId');
 
+        // Timeout så fliken inte fastnar om en API-call hänger (t.ex. långsam Airtable-scan)
+        const fetchWithTimeout = (url, init = {}, ms = 20000) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), ms);
+            const merged = { ...init };
+            const parentSignal = init.signal;
+            if (parentSignal) {
+                if (parentSignal.aborted) ctrl.abort();
+                else parentSignal.addEventListener('abort', () => ctrl.abort(), { once: true });
+            }
+            merged.signal = ctrl.signal;
+            return fetch(url, merged).finally(() => clearTimeout(timer));
+        };
+
         const [uppdragRes, usersRes, samarbeteRes, runsRes] = await Promise.all([
-            fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }),
-            fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }).catch(() => null),
-            fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null),
-            fetch(`${baseUrl}/api/uppdrag/runs?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }).catch(() => null)
+            fetchWithTimeout(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }, 25000),
+            fetchWithTimeout(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...opts }, 15000).catch(() => null),
+            fetchWithTimeout(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }, 15000).catch(() => null),
+            fetchWithTimeout(`${baseUrl}/api/uppdrag/runs?customerId=${encodeURIComponent(customerId)}`, { method: 'GET', ...opts }, 20000).catch((e) => {
+                console.warn('[UppdragBoard] kunde inte hämta körningar i tid:', e?.message || e);
+                return null;
+            })
         ]);
         if (!uppdragRes.ok) {
             const err = await uppdragRes.json().catch(() => ({}));
