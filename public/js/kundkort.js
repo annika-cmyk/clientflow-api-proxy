@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.9', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.10', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -6755,7 +6755,7 @@ class CustomerCardManager {
         const savedVhUtlandskaAgare = saved.vh_utlandska_agare === true ? 'Ja' : 'Nej';
 
         // Nya fält — Sektion 5 (syfte)
-        const savedSyfteAffarsrelation = saved.syfte_affarsrelation || '';
+        const savedSyfteAffarsrelation = saved.syfte_affarsrelation || 'sedvanliga redovisningstjänster';
 
         // Status
         const kycStatus = saved.status || '';
