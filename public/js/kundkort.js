@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.4', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.9', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -6239,6 +6239,43 @@ class CustomerCardManager {
         return t._mergedRecordIds && t._mergedRecordIds.length ? t._mergedRecordIds : [t.id];
     }
 
+    /** Aktiva tjänstnamn för kunden, baserat på byråns aktuella tjänster (riskbedömningssidan). */
+    _getAktivaTjansterNamn() {
+        const f = this.customerData?.fields || {};
+        const aktivaIds = this._aktivaTjansterIds || new Set(f['Kundens utvalda tjänster'] || []);
+        return (this._byransTjanster || [])
+            .filter(t => this._tjanstIdMatchSet(t).some(id => aktivaIds.has(id)))
+            .map(t => t.namn)
+            .filter(Boolean)
+            .join(', ');
+    }
+
+    /** Synka KYC-fältet "Byråns tjänster" mot aktuella aktiva tjänster (UI + sparad JSON). */
+    async _syncKycTjansterFromAktiva() {
+        const liveTjanster = this._getAktivaTjansterNamn();
+        const textarea = document.getElementById('kyc-tjanster');
+        if (textarea) textarea.value = liveTjanster;
+
+        if (this._savedKycFormular && typeof this._savedKycFormular === 'object') {
+            this._savedKycFormular.tjanster = liveTjanster;
+        }
+
+        // Uppdatera sparad KYC-JSON om formuläret redan finns, så PDF/öppning får rätt tjänster
+        if (!this.customerId || !this._savedKycFormular?.foretagsnamn) return;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const payload = { ...this._savedKycFormular, tjanster: liveTjanster };
+            const resp = await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify(payload)
+            });
+            if (resp.ok) this._savedKycFormular = payload;
+        } catch (e) {
+            console.warn('⚠️ Kunde inte synka tjänster till KYC-formulär:', e.message);
+        }
+    }
+
     // Alla tillgängliga tjänster från Airtable-fältets choices
     getAllTjanster() {
         return [
@@ -6272,8 +6309,9 @@ class CustomerCardManager {
         const byraId = this.userByraIds?.[0] || this.userData?.byraId || '';
         const byraHighRisk = this.customerData.fields['Lookup Byråns högrisktjänster'] || [];
 
-        // Hämta byråns alla tillgängliga tjänster {id, namn}, cacha per byrå
-        if (!this._byransTjanster && byraId) {
+        // Hämta byråns alla tillgängliga tjänster {id, namn} — alltid färskt så
+        // namnändringar på riskbedömningssidan syns direkt
+        if (byraId) {
             try {
                 const res = await fetch(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, {
                     ...getAuthOptsKundkort()
@@ -6283,7 +6321,7 @@ class CustomerCardManager {
                 this._byransTjanster = this._dedupeByraTjanster(raw);
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta tjänster:', e.message);
-                this._byransTjanster = [];
+                if (!this._byransTjanster) this._byransTjanster = [];
             }
         }
 
@@ -6496,6 +6534,8 @@ class CustomerCardManager {
             ['services-content', 'ovrigkyc-tjanster'].forEach(tid => {
                 if (document.getElementById(tid)) this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, tid);
             });
+            // Synka "Byråns tjänster" i KYC-formuläret med de aktiva tjänsterna
+            await this._syncKycTjansterFromAktiva();
             this._saveKycStatus('KYC genomgången - Tjänster', true);
             this.showNotification(`Tjänster sparade — ${checkedIds.length} aktiva`, 'success');
 
@@ -6550,8 +6590,8 @@ class CustomerCardManager {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const byraId = this.userByraIds?.[0] || this.userData?.byraId || '';
 
-        // Ladda byråns tjänster om de inte redan cachats (behövs för att förifyll "tjänster")
-        if (!this._byransTjanster && byraId) {
+        // Ladda byråns tjänster färskt (så namnändringar på riskbedömningssidan syns i KYC)
+        if (byraId) {
             try {
                 const res = await fetch(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { ...getAuthOptsKundkort() });
                 const data = res.ok ? await res.json() : {};
@@ -6559,23 +6599,21 @@ class CustomerCardManager {
                 this._byransTjanster = this._dedupeByraTjanster ? this._dedupeByraTjanster(raw) : raw;
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta byråns tjänster för KYC:', e.message);
-                this._byransTjanster = [];
+                if (!this._byransTjanster) this._byransTjanster = [];
             }
         }
 
-        // Ladda kundens aktiva tjänster om de inte redan cachats
-        if (!this._aktivaTjansterIds) {
-            try {
-                const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/tjanster`, { ...getAuthOptsKundkort() });
-                const data = res.ok ? await res.json() : {};
-                this._aktivaTjansterIds = new Set((data.tjanster || []).map(t => t.id));
-                if (this.customerData?.fields) {
-                    this.customerData.fields['Kundens utvalda tjänster'] = data.linkedIds || [];
-                }
-            } catch (e) {
-                console.warn('⚠️ Kunde inte hämta kundens tjänster för KYC:', e.message);
-                this._aktivaTjansterIds = new Set();
+        // Ladda kundens aktiva tjänster färskt
+        try {
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/tjanster`, { ...getAuthOptsKundkort() });
+            const data = res.ok ? await res.json() : {};
+            this._aktivaTjansterIds = new Set((data.tjanster || []).map(t => t.id));
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kundens utvalda tjänster'] = data.linkedIds || [];
             }
+        } catch (e) {
+            console.warn('⚠️ Kunde inte hämta kundens tjänster för KYC:', e.message);
+            if (!this._aktivaTjansterIds) this._aktivaTjansterIds = new Set();
         }
 
         // Hämta eventuellt sparat KYC-formulär
@@ -6655,10 +6693,9 @@ class CustomerCardManager {
 
         // 5. Affärsförbindelsens syfte - delvis hämtat
         const savedVerksamhet = saved.verksamhet || f['Verksamhetsbeskrivning'] || f['Beskrivning av kunden'] || '';
-        // Tjänster - hämta aktiva tjänstnamn via cachade ID:n (laddas i loadKYCFormular)
-        const aktivaIds = this._aktivaTjansterIds || new Set(f['Kundens utvalda tjänster'] || []);
-        const aktivaTjanster = (this._byransTjanster || []).filter(t => this._tjanstIdMatchSet(t).some(id => aktivaIds.has(id))).map(t => t.namn);
-        const savedTjanster = saved.tjanster || aktivaTjanster.join(', ');
+        // Tjänster — alltid synka mot aktuella aktiva tjänstnamn från riskbedömningssidan
+        const liveTjanster = this._getAktivaTjansterNamn();
+        const savedTjanster = liveTjanster || saved.tjanster || '';
         const savedKapitalUrsprung = saved.kapitalUrsprung || '';
         const savedAnstallda = saved.anstallda || '';
         const savedOmsattning = saved.omsattning || f['Omsättning'] || '';
@@ -6712,9 +6749,10 @@ class CustomerCardManager {
         const visaTinForetag = savedHemvistForetag.trim().toLowerCase() !== 'sverige' && savedHemvistForetag.trim() !== '';
 
         // Nya fält — Sektion 3 (verklig huvudman)
-        const savedVhAgarandel = (saved.vh_agarandel === null || saved.vh_agarandel === undefined) ? '' : saved.vh_agarandel;
-        const savedVhNoteratBolag = saved.vh_noterat_bolag === true;
-        const savedVhUtlandskaAgare = saved.vh_utlandska_agare === true;
+        // Default: ägarandel 100 %, noterat bolag Nej, utländska ägare Nej
+        const savedVhAgarandel = (saved.vh_agarandel === null || saved.vh_agarandel === undefined || saved.vh_agarandel === '') ? 100 : saved.vh_agarandel;
+        const savedVhNoteratBolag = saved.vh_noterat_bolag === true ? 'Ja' : 'Nej';
+        const savedVhUtlandskaAgare = saved.vh_utlandska_agare === true ? 'Ja' : 'Nej';
 
         // Nya fält — Sektion 5 (syfte)
         const savedSyfteAffarsrelation = saved.syfte_affarsrelation || '';
@@ -6863,11 +6901,11 @@ class CustomerCardManager {
                                 </div>
                                 <div class="uppdrag-field">
                                     <label>Noterat bolag eller ägt av noterat bolag</label>
-                                    ${janejSelect('kyc-vh-noterat-bolag', savedVhNoteratBolag ? 'Ja' : (saved.vh_noterat_bolag === false ? 'Nej' : ''))}
+                                    ${janejSelect('kyc-vh-noterat-bolag', savedVhNoteratBolag)}
                                 </div>
                                 <div class="uppdrag-field">
                                     <label>Utländska ägare eller styrelseledamöter</label>
-                                    ${janejSelect('kyc-vh-utlandska-agare', savedVhUtlandskaAgare ? 'Ja' : (saved.vh_utlandska_agare === false ? 'Nej' : ''))}
+                                    ${janejSelect('kyc-vh-utlandska-agare', savedVhUtlandskaAgare)}
                                 </div>
                             </div>
                         </div>

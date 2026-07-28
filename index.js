@@ -12178,6 +12178,18 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
 
     // Hämta byråinfo (logotyp, byrånamn)
     const pdfUser = await getAirtableUser(req.user.email);
+
+    // Synka Byråns tjänster mot kundens aktuella val (namn från riskbedömningssidan)
+    try {
+      const byraId = pdfUser?.byraId ? String(pdfUser.byraId).trim() : (f['Byrå ID'] || f.Byrå || '');
+      const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
+      const { namn: liveTjansterNamn } = await resolveKundAktivaTjansterNamn(
+        airtableAccessToken, baseId, byraId, linkedTjanstIds
+      );
+      if (liveTjansterNamn.length) {
+        kyc.tjanster = liveTjansterNamn.join(', ');
+      }
+    } catch (_) { /* behåll sparat värde om synk misslyckas */ }
     const logoRaw = pdfUser?.logo;
     const logoUrl = Array.isArray(logoRaw) && logoRaw.length > 0
       ? logoRaw[0].url
