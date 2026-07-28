@@ -14851,7 +14851,6 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 <div class="meta-grid">
   <div class="meta-item"><div class="meta-label">Ansvarig hos byr\u00e5n</div><div class="meta-value">${nf['Uppdragsansvarig']}</div></div>
   <div class="meta-item"><div class="meta-label">Avtalsdatum</div><div class="meta-value">${fmtDate(nf['Avtalsdatum'])}</div></div>
-  <div class="meta-item"><div class="meta-label">G\u00e4ller fr.o.m.</div><div class="meta-value">${fmtDate(nf['Avtalet g\u00e4ller ifr\u00e5n'])}</div></div>
   <div class="meta-item"><div class="meta-label">Upps\u00e4gningstid</div><div class="meta-value">${nf['Upps\u00e4gningstid'] != null ? nf['Upps\u00e4gningstid'] + '\u00a0m\u00e5nader' : '3\u00a0m\u00e5nader'}</div></div>
 </div>
 

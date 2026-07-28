@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.10', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.11', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7591,7 +7591,7 @@ class CustomerCardManager {
                 </div>` : f['Status'] === 'Signerat' ? `
                 <div class="uppdrag-banner uppdrag-banner--ok">
                     <i class="fas fa-check-circle"></i>
-                    Signerat och klart ${fmtDate(f['Signeringsdatum']) ? fmtDate(f['Signeringsdatum']) + ' —' : ''} gäller fr.o.m. ${fmtDate(f['Avtalet gäller ifrån']) || '–'}.
+                    Signerat och klart${fmtDate(f['Signeringsdatum']) ? ' ' + fmtDate(f['Signeringsdatum']) : ''}.
                 </div>` : (f['Status'] === 'Skickat till kund' && avtal?.fields?.['InleedDokumentId']) ? `
                 <div class="uppdrag-banner uppdrag-banner--vantar">
                     <i class="fas fa-clock"></i>
@@ -7643,10 +7643,6 @@ class CustomerCardManager {
                             <div class="uppdrag-field">
                                 <label>Avtalsdatum</label>
                                 <input type="date" id="ua-avtalsdatum" class="uppdrag-input" value="${fmtDate(f['Avtalsdatum']) || today}">
-                            </div>
-                            <div class="uppdrag-field">
-                                <label>Avtalet gäller fr.o.m.</label>
-                                <input type="date" id="ua-galler-fran" class="uppdrag-input" value="${fmtDate(f['Avtalet gäller ifrån'])}">
                             </div>
                             <div class="uppdrag-field">
                                 <label>Uppsägningstid (månader)</label>
@@ -7839,7 +7835,6 @@ class CustomerCardManager {
             'Orgnr':                                this.customerData?.fields?.['Orgnr'] || '',
             'Uppdragsansvarig':                     val('ua-ansvarig'),
             'Avtalsdatum':                          val('ua-avtalsdatum') || null,
-            'Avtalet galler fran':                  val('ua-galler-fran') || null,
             'Uppsagningstid':                       (() => { const n = parseInt(val('ua-uppsagningstid'), 10); return isNaN(n) ? null : n; })(),
             'Valda tjanster':                       valdaTjanster.join(', '),
             'Ovrigt uppdrag':                       val('ua-tjanster-ovrigt'),
