@@ -11017,6 +11017,66 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: var(--text);
     white-space: nowrap;
 }
+.kundlista-add-btn {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 10px;
+    background: var(--btn-bg);
+    color: var(--btn-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    box-shadow: 0 2px 8px var(--accent-tint);
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kundlista-add-btn:hover {
+    background: var(--btn-bg-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px var(--accent-tint);
+}
+.kundlista-add-btn:active {
+    transform: translateY(0);
+}
+.kundlista-add-modal {
+    max-width: 480px;
+    width: min(96vw, 480px);
+}
+.kundlista-add-modal .form-hint {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--ink-3);
+}
+.kundlista-add-error {
+    display: none;
+    margin: 0 0 1rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 0.875rem;
+}
+.kundlista-add-error.is-visible {
+    display: block;
+}
+.kundlista-add-alt {
+    margin: 0.75rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+.kundlista-add-alt button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+}
 .kundlista-table {
     background: #fff;
     border-radius: 12px;
@@ -11198,6 +11258,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .kundlista-loading i,
 .kundlista-empty i { font-size: 1.8rem; }
+.kundlista-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
 
 /* Kundlista – mindre skärm: kompakt lista (padding/spacing till sidomenyn samma som övriga sidor) */
 @media (max-width: 1024px) {

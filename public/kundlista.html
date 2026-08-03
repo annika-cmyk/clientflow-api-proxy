@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Kundlista</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=3.3">
+    <link rel="stylesheet" href="styles.css?v=3.4">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="kundlista-page">
@@ -28,6 +28,9 @@
                         <input type="text" id="search-filter" placeholder="Sök på företagsnamn, organisationsnummer eller befattningshavare">
                     </div>
                     <span class="kundlista-count"><span id="total-count">0</span> kunder</span>
+                    <button type="button" class="kundlista-add-btn" id="kundlista-add-btn" title="Lägg till företag" aria-label="Lägg till företag">
+                        <i class="fas fa-plus" aria-hidden="true"></i>
+                    </button>
                 </div>
 
                 <div class="kundlista-statusfilter" id="status-filter" role="group" aria-label="Filtrera på status">
@@ -66,6 +69,6 @@
     <script src="js/ai-chat.js?v=2.3"></script>
     <script src="app.js?v=2.2"></script>
     <script src="js/kund-compliance.js?v=1.1"></script>
-    <script src="js/kundlista.js?v=2.4"></script>
+    <script src="js/kundlista.js?v=2.5"></script>
 </body>
 </html>
