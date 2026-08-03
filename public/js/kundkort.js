@@ -4052,19 +4052,69 @@ class CustomerCardManager {
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body">
-                    <div class="lead-fields">
-                        <div class="lead-field"><label>Företagsnamn</label><span>${fmt(namn)}</span></div>
-                        <div class="lead-field"><label>Organisationsnummer</label><span>${fmt(orgnr)}</span></div>
-                        <div class="lead-field"><label>Registreringsdatum</label><span>${fmt(regdatum)}</span></div>
-                        <div class="lead-field"><label>Registreringsland</label><span>${fmt(regland)}</span></div>
-                        <div class="lead-field"><label>Organisationsform</label><span>${fmt(bolagsform)}</span></div>
-                        <div class="lead-field lead-field--full"><label>Adress</label><span>${fmt(adress)}</span></div>
-                        <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span>${fmt(verksamhet)}</span></div>
+                    <div id="bolagsverket-view">
+                        <div class="lead-fields">
+                            <div class="lead-field"><label>Företagsnamn</label><span id="bv-namn-view">${fmt(namn)}</span></div>
+                            <div class="lead-field"><label>Organisationsnummer</label><span id="bv-orgnr-view">${fmt(orgnr)}</span></div>
+                            <div class="lead-field"><label>Registreringsdatum</label><span id="bv-regdatum-view">${fmt(regdatum)}</span></div>
+                            <div class="lead-field"><label>Registreringsland</label><span id="bv-regland-view">${fmt(regland)}</span></div>
+                            <div class="lead-field"><label>Organisationsform</label><span id="bv-bolagsform-view">${fmt(bolagsform)}</span></div>
+                            <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${fmt(adress)}</span></div>
+                            <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
+                        </div>
+                        <div class="lead-section" style="margin-top:1rem;">
+                            <label>SNI-koder</label>
+                            <div class="lead-sni" id="bv-sni-view">${sniHTML}</div>
+                        </div>
                     </div>
-                    <div class="lead-section" style="margin-top:1rem;">
-                        <label>SNI-koder</label>
-                        <div class="lead-sni">${sniHTML}</div>
+                    <div id="bolagsverket-edit" class="kunduppgifter-edit" style="display:none;">
+                        <div class="collapsible-edit-grid">
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-namn-input">Företagsnamn</label>
+                                <input type="text" id="bv-namn-input" class="kunduppgifter-input" value="${this._esc(namn)}" placeholder="Företagsnamn" autocomplete="organization">
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-orgnr-input">Organisationsnummer</label>
+                                <input type="text" id="bv-orgnr-input" class="kunduppgifter-input" value="${this._esc(orgnr)}" placeholder="t.ex. 556722-3705" inputmode="numeric" autocomplete="off">
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-regdatum-input">Registreringsdatum</label>
+                                <input type="text" id="bv-regdatum-input" class="kunduppgifter-input" value="${this._esc(regdatum)}" placeholder="ÅÅÅÅ-MM-DD">
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-regland-input">Registreringsland</label>
+                                <input type="text" id="bv-regland-input" class="kunduppgifter-input" value="${this._esc(regland)}" placeholder="t.ex. Sverige">
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-bolagsform-input">Organisationsform</label>
+                                <select id="bv-bolagsform-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    ${['Aktiebolag', 'Privat aktiebolag', 'Publikt aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Fysiska personer', 'Annat']
+                                        .concat(bolagsform && !['Aktiebolag', 'Privat aktiebolag', 'Publikt aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Fysiska personer', 'Annat'].includes(bolagsform) ? [bolagsform] : [])
+                                        .map(o => `<option value="${this._esc(o)}" ${bolagsform === o ? 'selected' : ''}>${this._esc(o)}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="kunduppgifter-form-row" style="grid-column:1/-1;">
+                                <label for="bv-adress-input">Adress</label>
+                                <input type="text" id="bv-adress-input" class="kunduppgifter-input" value="${this._esc(adress)}" placeholder="Gatuadress, postnummer ort">
+                            </div>
+                            <div class="kunduppgifter-form-row" style="grid-column:1/-1;">
+                                <label for="bv-verksamhet-input">Verksamhetsbeskrivning</label>
+                                <textarea id="bv-verksamhet-input" class="kunduppgifter-input" rows="3" placeholder="Beskrivning från Bolagsverket eller egen text">${this._esc(verksamhet)}</textarea>
+                            </div>
+                            <div class="kunduppgifter-form-row" style="grid-column:1/-1;">
+                                <label for="bv-sni-input">SNI-koder</label>
+                                <textarea id="bv-sni-input" class="kunduppgifter-input" rows="3" placeholder="En per rad, t.ex. 62010 - Dataprogrammering">${this._esc(sniRaw)}</textarea>
+                            </div>
+                        </div>
+                        <div class="kunduppgifter-actions">
+                            <button class="btn btn-primary btn-sm" type="button" onclick="customerCardManager.saveBolagsverketUppgifter()"><i class="fas fa-save"></i> Spara</button>
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="customerCardManager.toggleBolagsverketEdit()">Avbryt</button>
+                        </div>
                     </div>
+                    <button class="card-edit-fab" id="bolagsverket-edit-btn" title="Redigera manuellt" onclick="event.stopPropagation(); customerCardManager.toggleBolagsverketEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -4450,6 +4500,122 @@ class CustomerCardManager {
                     applyBtn.innerHTML = '<i class="fas fa-save"></i> Uppdatera kund';
                 }
             });
+        }
+    }
+
+    toggleBolagsverketEdit() {
+        this._ensureCardOpen('bolagsverket-card');
+        const view = document.getElementById('bolagsverket-view');
+        const edit = document.getElementById('bolagsverket-edit');
+        const btn = document.getElementById('bolagsverket-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+                btn.classList.remove('is-active');
+            }
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-times"></i>';
+                btn.classList.add('is-active');
+            }
+            document.getElementById('bv-namn-input')?.focus();
+        }
+    }
+
+    async saveBolagsverketUppgifter() {
+        const customerId = this.customerId;
+        if (!customerId) {
+            this.showNotification('Kund-ID saknas', 'error');
+            return;
+        }
+
+        const namn = document.getElementById('bv-namn-input')?.value.trim() || '';
+        const orgnrRaw = document.getElementById('bv-orgnr-input')?.value.trim() || '';
+        const regdatum = document.getElementById('bv-regdatum-input')?.value.trim() || '';
+        const regland = document.getElementById('bv-regland-input')?.value.trim() || '';
+        const bolagsform = document.getElementById('bv-bolagsform-input')?.value.trim() || '';
+        const adress = document.getElementById('bv-adress-input')?.value.trim() || '';
+        const verksamhet = document.getElementById('bv-verksamhet-input')?.value.trim() || '';
+        const sni = document.getElementById('bv-sni-input')?.value.trim() || '';
+
+        if (!namn) {
+            this.showNotification('Ange ett företagsnamn.', 'error');
+            document.getElementById('bv-namn-input')?.focus();
+            return;
+        }
+
+        let orgnr = '';
+        if (orgnrRaw) {
+            const digits = orgnrRaw.replace(/[^\d]/g, '');
+            if (digits.length < 10 || digits.length > 12) {
+                this.showNotification('Ogiltigt organisationsnummer. Ange 10–12 siffror, eller lämna fältet tomt.', 'error');
+                document.getElementById('bv-orgnr-input')?.focus();
+                return;
+            }
+            orgnr = digits;
+        }
+
+        const saveBtn = document.querySelector('#bolagsverket-edit .btn-primary');
+        const originalText = saveBtn?.innerHTML;
+        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
+
+        try {
+            if (!isLoggedInKundkort()) throw new Error('Inte inloggad');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const existing = this.customerData?.fields || {};
+            const sniField = (existing['SNI kod'] != null) ? 'SNI kod'
+                : ((existing['SNI-koder'] != null) ? 'SNI-koder' : 'SNI kod');
+
+            const fields = { Namn: namn };
+            if (orgnr) fields.Orgnr = orgnr;
+            if (regdatum) fields.regdatum = regdatum;
+            if (regland) fields.registreringsland = regland;
+            if (bolagsform) fields.Bolagsform = bolagsform;
+            if (adress) fields.Address = adress;
+            if (verksamhet) fields.Verksamhetsbeskrivning = verksamhet;
+            if (sni) fields[sniField] = sni;
+
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                if (response.status === 409 || data.error === 'duplicate') {
+                    throw new Error(data.message || 'Organisationsnumret finns redan hos er byrå.');
+                }
+                throw new Error(data.error || data.message || `HTTP ${response.status}`);
+            }
+
+            if (this.customerData?.fields) {
+                Object.assign(this.customerData.fields, fields);
+            }
+
+            const nameEl = document.getElementById('customer-name');
+            const orgEl = document.getElementById('customer-org-number');
+            if (nameEl) nameEl.textContent = namn;
+            if (orgEl) {
+                orgEl.textContent = orgnr
+                    || this.customerData?.fields?.Orgnr
+                    || this.customerData?.fields?.['Organisationsnummer']
+                    || 'Org.nr saknas';
+            }
+
+            this.loadCompanyInfo();
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
+            this.showNotification('Företagsuppgifter sparade!', 'success');
+        } catch (error) {
+            console.error('❌ Fel vid sparande av Bolagsverket-uppgifter:', error);
+            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.innerHTML = originalText; saveBtn.disabled = false; }
         }
     }
 
