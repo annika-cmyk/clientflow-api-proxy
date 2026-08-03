@@ -4864,14 +4864,54 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
 function pdfEscape(s) {
   return (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+/** Konvertera HTML (t.ex. från rich text / KYC) till läsbar plaintext för PDF. */
+function pdfHtmlToPlainText(s) {
+  if (s == null || s === '') return '';
+  let t = String(s);
+  const looksLikeHtml = /<\s*\/?\s*[a-z][^>]*>/i.test(t) || /&(?:nbsp|amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/i.test(t);
+  if (!looksLikeHtml) return t;
+
+  // Block-/listbrytningar innan taggarna tas bort
+  t = t.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+  t = t.replace(/<\s*\/\s*(p|div|tr|h[1-6]|section|article|ul|ol)\s*>/gi, '\n');
+  t = t.replace(/<\s*(p|div|tr|h[1-6]|section|article)(\s[^>]*)?>/gi, '\n');
+  t = t.replace(/<\s*li(\s[^>]*)?>/gi, '\n• ');
+  t = t.replace(/<\s*\/\s*li\s*>/gi, '');
+  t = t.replace(/<[^>]+>/g, '');
+
+  t = t
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const code = parseInt(h, 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : '';
+    });
+
+  t = t.replace(/\u00a0/g, ' ');
+  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
+  t = t.replace(/[ \t]{2,}/g, ' ');
+  t = t.replace(/\n{3,}/g, '\n\n');
+  return t.trim();
+}
+
 function pdfNl2br(s) {
-  return pdfEscape(s).replace(/\n/g, '<br>');
+  return pdfEscape(pdfHtmlToPlainText(s)).replace(/\n/g, '<br>');
 }
 function pdfToText(v) {
   if (v == null || v === '') return '';
-  if (typeof v === 'string') return v;
-  if (Array.isArray(v)) return v.map(b => b?.text ?? '').join('');
-  return String(v);
+  if (typeof v === 'string') return pdfHtmlToPlainText(v);
+  if (Array.isArray(v)) return pdfHtmlToPlainText(v.map(b => b?.text ?? '').join(''));
+  return pdfHtmlToPlainText(String(v));
 }
 function pdfFmtList(v) {
   return Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
@@ -5286,18 +5326,19 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       orgnr: savedKyc.orgnr || orgnr,
       foretradareNamn: savedKyc.foretradareNamn || '',
       foretradarePnr: savedKyc.foretradarePnr || '',
-      huvudmanInfo: savedKyc.huvudmanInfo || pdfToText(f['Verklig huvudman']) || '',
-      huvudmanAnnatSatt: savedKyc.huvudmanAnnatSatt || '',
+      huvudmanInfo: pdfHtmlToPlainText(savedKyc.huvudmanInfo) || pdfToText(f['Verklig huvudman']) || '',
+      huvudmanAnnatSatt: pdfHtmlToPlainText(savedKyc.huvudmanAnnatSatt) || '',
       pep: savedKyc.pep || (pdfFmtList(f['PEP']).length && !pdfFmtList(f['PEP']).includes('Inte PEP') ? 'Ja' : 'Nej'),
-      pepDetaljer: savedKyc.pepDetaljer || '',
+      pepDetaljer: pdfHtmlToPlainText(savedKyc.pepDetaljer) || '',
       pepFamilj: savedKyc.pepFamilj || 'Nej',
-      verksamhet: savedKyc.verksamhet || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      // KYC-verksamhet kan innehålla HTML från rich text – rensas till plaintext i PDF
+      verksamhet: pdfHtmlToPlainText(savedKyc.verksamhet) || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       tjanster: tjansterNamnLista,
-      kapitalUrsprung: savedKyc.kapitalUrsprung || pdfFmtList(f['Vilket ursprung har företagets kapital?']).join(', ') || '',
+      kapitalUrsprung: pdfHtmlToPlainText(savedKyc.kapitalUrsprung) || pdfFmtList(f['Vilket ursprung har företagets kapital?']).join(', ') || '',
       anstallda: savedKyc.anstallda || '',
       omsattning: savedKyc.omsattning || f['Omsättning'] || '',
       internationellHandel: savedKyc.internationellHandel || f['Har företaget transaktioner med andra länder?'] || '',
-      internationellaLander: savedKyc.internationellaLander || '',
+      internationellaLander: pdfHtmlToPlainText(savedKyc.internationellaLander) || '',
       kontanter: savedKyc.kontanter || ''
     };
 
@@ -12332,7 +12373,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       : (typeof logoRaw === 'string' && logoRaw.startsWith('http') ? logoRaw : null);
 
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
+    const nl2br = (s) => esc(pdfHtmlToPlainText(s)).replace(/\n/g, '<br>');
 
     const janej = (v) => v === 'Ja' ? '<span style="color:#dc2626;font-weight:600;">Ja</span>' : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : esc(v || '–'));
 
