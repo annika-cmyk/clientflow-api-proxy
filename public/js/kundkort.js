@@ -4324,7 +4324,7 @@ class CustomerCardManager {
                             <span id="entity-screening-datum-wrap">${this._getEntityScreeningDatumBadge()}</span>
                         </div>
                         <div style="font-size:0.78rem;color:#64748b;margin-top:0.5rem;">
-                            Företaget kontrolleras mot sanktionslistor. Personer (styrelse, firmatecknare m.fl.) screenas individuellt.
+                            Kundföretaget och poster med rollen Företag med ägarandelar screenas som företag. Övriga roller screenas som personer.
                         </div>
                     </div>
                     <div id="roles-list" class="roles-list">${rollerHTML}</div>
@@ -4981,7 +4981,35 @@ class CustomerCardManager {
     }
 
     _rollerAlternativ() {
-        return ['Styrelseledamot', 'Revisor', 'VD', 'Suppleant', 'Firmatecknare', 'Ägare EF', 'Ombud', 'Verklig huvudman'];
+        return [
+            'Styrelseledamot',
+            'Revisor',
+            'VD',
+            'Suppleant',
+            'Firmatecknare',
+            'Ägare EF',
+            'Delägare',
+            'Ombud',
+            'Verklig huvudman',
+            'Företag med ägarandelar'
+        ];
+    }
+
+    _getRollerList(p) {
+        if (!p) return [];
+        if (Array.isArray(p.roller)) return p.roller;
+        if (p.roll) return [p.roll];
+        return [];
+    }
+
+    /** Rollpost som ska screenas som företag/enhet (inte person). */
+    _isRollerFöretag(p) {
+        const roller = this._getRollerList(p).map(r => String(r || '').trim().toLowerCase());
+        if (roller.some(r => r === 'företag med ägarandelar')) return true;
+        // Fallback: företagsnamn som lagts som rollrad utan rätt roll-etikett
+        const namn = String(p?.namn || '').trim();
+        if (!namn) return false;
+        return /\b(ab|aktiebolag|hb|kb|llc|ltd|inc|gmbh|oy|as|asa|bv|s\.?a\.?|ag|plc|corp\.?|company)\b/i.test(namn);
     }
 
     _renderRollerView(personer) {
@@ -4990,26 +5018,30 @@ class CustomerCardManager {
         }
         return `<div class="roller-person-list">
             ${personer.map((p, idx) => {
-                const roller = Array.isArray(p.roller) ? p.roller : (p.roll ? [p.roll] : []);
+                const roller = this._getRollerList(p);
                 const rollText = roller.length ? roller.join(', ') : '';
+                const isForetag = this._isRollerFöretag(p);
                 const pepDatum = p.pepSoktDatum ? new Date(p.pepSoktDatum).toLocaleDateString('sv-SE') : '';
                 const pepMarked = !!p.pepMarkerad;
+                const idMissing = isForetag ? 'Org.nr saknas' : 'Personnr saknas';
+                const nameIcon = isForetag ? 'fa-building' : 'fa-user';
+                const screenTitle = isForetag ? 'Sanktionsscreening (företag)' : 'PEP & Sanktionsscreening';
                 return `
                 <div class="roller-person-item" data-idx="${idx}">
                     <div class="roller-person-info">
                         <div class="roller-person-name-row">
-                            <span class="roller-person-name"><i class="fas fa-user"></i> ${this._esc(p.namn || 'Namnlös')}</span>
+                            <span class="roller-person-name"><i class="fas ${nameIcon}"></i> ${this._esc(p.namn || 'Namnlös')}</span>
                             ${pepMarked ? `<span class="roller-person-pep-flag" title="Markerad som PEP/sanktionslista"><i class="fas fa-flag"></i> PEP/Sanktion</span>` : ''}
-                            ${pepDatum ? `<span class="roller-person-pep-datum" title="Senaste PEP-sökning"><i class="fas fa-search-dollar"></i> ${pepDatum}</span>` : ''}
+                            ${pepDatum ? `<span class="roller-person-pep-datum" title="${isForetag ? 'Senaste företagsscreening' : 'Senaste PEP-sökning'}"><i class="fas fa-search-dollar"></i> ${pepDatum}</span>` : ''}
                         </div>
                         ${rollText ? `<div class="roller-person-meta"><span class="roller-person-roll">${this._esc(rollText)}</span></div>` : ''}
                     </div>
                     <div class="roller-person-details">
                         ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas</span>'}
-                        ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> Personnr saknas</span>'}
+                        ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> ${idMissing}</span>`}
                     </div>
                     <div class="roller-person-actions">
-                        <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="PEP & Sanktionsscreening" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
+                        <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="${screenTitle}" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
                             <i class="fas fa-search-dollar"></i>
                         </a>
                         <button type="button" class="btn-icon-note roller-edit-btn" title="Redigera" data-idx="${idx}"><i class="fas fa-edit"></i></button>
@@ -5169,10 +5201,37 @@ class CustomerCardManager {
         this._refreshRollerList();
     }
 
+    _updateRollePersonModalLabels() {
+        const isForetag = [...document.querySelectorAll('.rp-roll-cb:checked')]
+            .some(cb => String(cb.value || '').trim().toLowerCase() === 'företag med ägarandelar');
+        const title = document.getElementById('rp-modal-title');
+        const namnInput = document.getElementById('rp-namn');
+        const idLabel = document.getElementById('rp-personnr-label');
+        const idInput = document.getElementById('rp-personnr');
+        const isNew = (title?.dataset?.isNew === '1');
+        if (title) {
+            title.textContent = isForetag
+                ? (isNew ? 'Lägg till företag' : 'Redigera företag')
+                : (isNew ? 'Lägg till kontaktperson' : 'Redigera kontaktperson');
+        }
+        if (namnInput) namnInput.placeholder = isForetag ? 'Företagsnamn' : 'Förnamn Efternamn';
+        if (idLabel) {
+            idLabel.innerHTML = isForetag
+                ? 'Organisationsnummer <span style="color:#94a3b8;font-size:0.82em">(valfritt, används vid sanktionsscreening)</span>'
+                : 'Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span>';
+        }
+        if (idInput) idInput.placeholder = isForetag ? 't.ex. 556722-3705' : 'YYYYMMDD-XXXX';
+    }
+
     _showRollePersonModal(person, idx) {
         const isNew = (idx === null || idx === undefined);
         const existing = document.getElementById('rolle-person-modal');
         if (existing) existing.remove();
+
+        const isForetag = this._isRollerFöretag(person);
+        const defaultTitle = isNew
+            ? (isForetag ? 'Lägg till företag' : 'Lägg till kontaktperson')
+            : (isForetag ? 'Redigera företag' : 'Redigera kontaktperson');
 
         const modal = document.createElement('div');
         modal.id = 'rolle-person-modal';
@@ -5180,13 +5239,13 @@ class CustomerCardManager {
         modal.innerHTML = `
             <div class="modal-box" style="max-width:460px;">
                 <div class="modal-header">
-                    <h3>${isNew ? 'Lägg till kontaktperson' : 'Redigera kontaktperson'}</h3>
+                    <h3 id="rp-modal-title" data-is-new="${isNew ? '1' : '0'}">${this._esc(defaultTitle)}</h3>
                     <button class="modal-close" onclick="document.getElementById('rolle-person-modal').remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
                         <label>Namn</label>
-                        <input type="text" id="rp-namn" class="form-control" value="${this._esc(person?.namn || '')}" placeholder="Förnamn Efternamn">
+                        <input type="text" id="rp-namn" class="form-control" value="${this._esc(person?.namn || '')}" placeholder="${isForetag ? 'Företagsnamn' : 'Förnamn Efternamn'}">
                     </div>
                     <div class="form-group form-group-roller">
                         <label>Roller / befattningar</label>
@@ -5203,7 +5262,7 @@ class CustomerCardManager {
                         <input type="email" id="rp-epost" class="form-control" value="${this._esc(person?.epost || '')}" placeholder="namn@foretag.se">
                     </div>
                     <div class="form-group">
-                        <label>Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span></label>
+                        <label id="rp-personnr-label">Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span></label>
                         <input type="text" id="rp-personnr" class="form-control" value="${this._esc(person?.personnr || '')}" placeholder="YYYYMMDD-XXXX">
                     </div>
                 </div>
@@ -5213,6 +5272,8 @@ class CustomerCardManager {
                 </div>
             </div>`;
         document.body.appendChild(modal);
+        document.getElementById('rp-roller-wrap')?.addEventListener('change', () => this._updateRollePersonModalLabels());
+        this._updateRollePersonModalLabels();
         document.getElementById('rp-namn').focus();
     }
 
@@ -10465,26 +10526,34 @@ class CustomerCardManager {
     async pepScreening(idx) {
         const p = (this._kontaktPersoner || [])[idx];
         if (!p || !p.namn) {
-            this.showNotification('Personen saknar namn — kan inte screena.', 'error');
+            this.showNotification('Namn saknas — kan inte screena.', 'error');
             return;
         }
 
+        const isForetag = this._isRollerFöretag(p);
         const btn = document.getElementById(`pep-btn-${idx}`);
         const origHtml = btn?.innerHTML;
         if (btn) {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             btn.style.pointerEvents = 'none';
         }
-        if (typeof window.showAiThinking === 'function') window.showAiThinking();
+        if (typeof window.showAiThinking === 'function') {
+            window.showAiThinking(isForetag ? 'Söker företag i sanktionslistor...' : 'Söker person i PEP/sanktionslistor...');
+        }
 
         try {
-            const data = await this._runPersonScreeningInternal(idx, { showModal: true });
+            const data = isForetag
+                ? await this._runRoleEntityScreeningInternal(idx, { showModal: true })
+                : await this._runPersonScreeningInternal(idx, { showModal: true });
             if (data.savedToDocs) {
-                this.showNotification('PEP-rapport sparad på fliken Dokumentation.', 'success');
+                this.showNotification(
+                    isForetag ? 'Entity-rapport sparad på fliken Dokumentation.' : 'PEP-rapport sparad på fliken Dokumentation.',
+                    'success'
+                );
             }
             this._refreshRollerList();
         } catch (error) {
-            console.error('❌ PEP-screening fel:', error);
+            console.error('❌ PEP/entity-screening fel:', error);
             this.showNotification(`Screening misslyckades: ${error.message}`, 'error');
         } finally {
             if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
@@ -10579,12 +10648,45 @@ class CustomerCardManager {
 
         if (this._kontaktPersoner && this._kontaktPersoner[idx]) {
             this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
-            await this._saveKontaktPersoner();
+            await this._saveKontaktPersoner({}, { skipSuccessNotification: true });
         }
         if (data.savedToDocs) this.loadDocuments();
         if (showModal) this._showPepResultModal(p.namn, data, idx);
 
         return { typ: 'person', namn: p.namn, idx, ...data };
+    }
+
+    /** Screena en rollrad som företag (t.ex. Företag med ägarandelar). */
+    async _runRoleEntityScreeningInternal(idx, { showModal = true } = {}) {
+        const p = (this._kontaktPersoner || [])[idx];
+        if (!p || !p.namn) throw new Error(`Företag ${idx + 1} saknar namn.`);
+        const kundId = this.customerId;
+        if (!kundId) throw new Error('Kund-ID saknas.');
+
+        const namn = String(p.namn || '').trim();
+        const orgnr = String(p.personnr || '').trim();
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/entity-screening/${kundId}`, {
+            method: 'POST',
+            ...getAuthOptsKundkort(),
+            body: JSON.stringify({ namn, orgnr })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const msg = response.status === 429
+                ? 'För många sökningar – vänta några minuter och försök igen.'
+                : (data.error || `HTTP ${response.status}`);
+            throw new Error(msg);
+        }
+
+        if (this._kontaktPersoner && this._kontaktPersoner[idx]) {
+            this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
+            await this._saveKontaktPersoner({}, { skipSuccessNotification: true });
+        }
+        if (data.savedToDocs) this.loadDocuments();
+        if (showModal) this._showEntityResultModal(namn, orgnr, data);
+
+        return { typ: 'entity', namn, orgnr, idx, ...data };
     }
 
     async screenAllPepAndEntity(e) {
@@ -10596,6 +10698,8 @@ class CustomerCardManager {
             }
 
             const personer = (this._kontaktPersoner || []).filter(p => p && p.namn);
+            const kundNamnNorm = String(this.customerData?.fields?.Namn || this.customerData?.fields?.['Företagsnamn'] || '')
+                .trim().toLowerCase();
             const btn = document.getElementById('screen-all-pep-btn');
             const origHtml = btn?.innerHTML;
             if (btn) {
@@ -10616,12 +10720,20 @@ class CustomerCardManager {
             }
 
             for (let i = 0; i < personer.length; i++) {
-                const idx = (this._kontaktPersoner || []).indexOf(personer[i]);
+                const p = personer[i];
+                const idx = (this._kontaktPersoner || []).indexOf(p);
                 if (idx < 0) continue;
+                const isForetag = this._isRollerFöretag(p);
+                // Hoppa över rollföretag som är samma som kunden (redan screenat ovan)
+                if (isForetag && kundNamnNorm && String(p.namn || '').trim().toLowerCase() === kundNamnNorm) {
+                    continue;
+                }
                 try {
-                    results.push(await this._runPersonScreeningInternal(idx, { showModal: false }));
+                    results.push(isForetag
+                        ? await this._runRoleEntityScreeningInternal(idx, { showModal: false })
+                        : await this._runPersonScreeningInternal(idx, { showModal: false }));
                 } catch (err) {
-                    errors.push({ namn: personer[i].namn, error: err.message });
+                    errors.push({ namn: p.namn, error: err.message });
                 }
             }
 
