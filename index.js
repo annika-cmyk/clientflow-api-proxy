@@ -838,6 +838,98 @@ app.get('/api/ai/validate-assistant', authenticateToken, async (req, res) => {
 });
 
 // ============================================================
+/** Kompakt kundsammanfattning till AI-chatt (när användaren är på kundkort). */
+async function buildAiChatKundContext(customerId, reqUser) {
+  const id = String(customerId || '').trim();
+  if (!isAirtableRecordIdStr(id)) return '';
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  const RISKER_TABLE = 'tblWw6tM2YOTYFn2H';
+  if (!airtableAccessToken) return '';
+
+  try {
+    const kundRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 20000 }
+    );
+    const f = kundRes.data?.fields || {};
+
+    // Behörighet: samma byrå (eller admin)
+    try {
+      const userData = reqUser?.email ? await getUser(reqUser.email) : null;
+      const role = userData?.role || reqUser?.role || '';
+      const userByraId = userData?.byraId ? String(userData.byraId).trim() : '';
+      const custByraId = String(f['Byrå ID'] || f.Byrå || '').trim();
+      if (role !== 'ClientFlowAdmin' && userByraId && custByraId && userByraId !== custByraId) {
+        return '';
+      }
+    } catch (_) { /* fortsätt med begränsad kontext */ }
+
+    const arr = (v) => Array.isArray(v) ? v.filter(Boolean).join(', ') : (v ? String(v) : '');
+    const clip = (v, max = 500) => {
+      const s = v == null ? '' : String(v).trim();
+      if (!s) return '';
+      return s.length > max ? s.slice(0, max) + '…' : s;
+    };
+
+    const linkedRiskIds = f['risker kopplat till tjänster'] || [];
+    const riskRecs = await fetchAirtableRecordsByIds(
+      airtableAccessToken, baseId, RISKER_TABLE, linkedRiskIds, { concurrency: 6 }
+    );
+    const riskLines = riskRecs.slice(0, 40).map((r) => {
+      const rf = r.fields || {};
+      const typ = String(rf['Typ av riskfaktor'] || '').trim();
+      const namn = String(rf['Riskfaktor'] || '').trim();
+      const niva = String(rf['Riskbedömning'] || '').trim();
+      if (!namn) return null;
+      return `- ${namn}${typ ? ` [${typ}]` : ''}${niva ? ` — ${niva}` : ''}`;
+    }).filter(Boolean);
+
+    const tjanstIds = f['Kundens utvalda tjänster'] || [];
+    const tjanstRecs = await fetchAirtableRecordsByIds(
+      airtableAccessToken, baseId, RISK_ASSESSMENT_TABLE, tjanstIds, { concurrency: 6 }
+    );
+    const tjanster = tjanstRecs.map((r) => {
+      const tf = r.fields || {};
+      const namn = String(tf['Task Name'] || '').trim();
+      const niva = String(tf['Riskbedömning'] || '').trim();
+      return namn ? `${namn}${niva ? ` (${niva})` : ''}` : null;
+    }).filter(Boolean);
+
+    let kyc = {};
+    try { kyc = JSON.parse(f['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+
+    const lines = [
+      '[Aktuell kund i ClientFlow – använd detta underlag när frågan handlar om kunden]',
+      `Namn: ${f['Namn'] || f['Företagsnamn'] || '–'}`,
+      `Orgnr: ${f['Orgnr'] || f['Organisationsnummer'] || '–'}`,
+      `Bolagsform: ${f['Bolagsform'] || '–'}`,
+      `Kundstatus: ${f['Kundstatus'] || '–'}`,
+      `Omsättning: ${f['Omsättning'] || '–'}`,
+      `SNI/bransch: ${arr(f['SNI kod'] || f['SNI-koder'] || f['SNI-kod'] || f['SNI-bransch'] || f['Bransch']) || '–'}`,
+      `Tjänster: ${tjanster.length ? tjanster.join('; ') : '–'}`,
+      `Risknivå (sparad): ${f['Riskniva'] || f['sammanlagd risk'] || '–'}`,
+      `Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}`,
+      `Internationell handel (KYC): ${kyc.internationellHandel || '–'}`,
+      `PEP-status: ${arr(f['PEP']) || '–'}`,
+      `Högriskbransch: ${arr(f['Kunden verkar i en högriskbransch']) || '–'}`,
+      `Riskhöjande övrigt: ${arr(f['Riskhöjande faktorer övrigt']) || '–'}`,
+      `Risksänkande: ${arr(f['Risksänkande faktorer']) || '–'}`,
+      `Valda riskfaktorer:`,
+      ...(riskLines.length ? riskLines : ['- (inga valda)']),
+      `Beskrivning: ${clip(f['Beskrivning av kunden'] || f['Verksamhetsbeskrivning'], 700) || '–'}`,
+      `Ytterligare beskrivning: ${clip(f['Ytterligare beskrivning av kunden och verksamheten'], 500) || '–'}`,
+      `Sparad riskbedömning: ${clip(f['Byrans riskbedomning'], 800) || '–'}`,
+      'Hitta inte på detaljer som saknas ovan. Om något saknas: säg det.'
+    ];
+    return lines.join('\n');
+  } catch (e) {
+    console.warn('⚠️ AI-chat kundkontext:', e.message);
+    return '';
+  }
+}
+
 // POST /api/ai-chat — Chatta med AI (Annika) om systemet och riskbedömningar
 // ============================================================
 app.post('/api/ai-chat', authenticateToken, async (req, res) => {
@@ -846,7 +938,7 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
   if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
-  const { message, history = [], threadId: threadIdBody } = req.body || {};
+  const { message, history = [], threadId: threadIdBody, customerId: customerIdBody } = req.body || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({ error: 'Meddelande krävs.' });
   }
@@ -856,10 +948,13 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   const whoChats = userByra ? `${userName} från ${userByra}` : userName;
 
   try {
+    const kundContext = await buildAiChatKundContext(customerIdBody, req.user);
+
     const systemContent = `Du är en hjälpassistent i ClientFlow för svenska redovisningsbyråer. Du svarar på svenska, professionellt och sakligt.
 
 Viktigt:
 - Hitta aldrig på personer, kunder, företag eller detaljer. Om du saknar information, säg det och fråga efter det som behövs.
+- Om aktuell kundkontext bifogas: använd den. Påstå inte att du saknar kunddata som faktiskt finns där.
 - Låtsas inte vara en riktig person (t.ex. "Annika"). Skriv i neutral assistent-ton.
 - Använd inte smeknamn eller “skämtsam” jargong. Inga emojis.
 
@@ -872,7 +967,7 @@ Du hjälper till med:
 
 Stil:
 - Svara kort och tydligt. Använd gärna punktlistor.
-- Referera till användarens fråga och den information som faktiskt finns i konversationen.`;
+- Referera till användarens fråga och den information som faktiskt finns i konversationen eller kundkontexten.`;
 
     const sanitizeChatText = (t, maxLen = 4000) => {
       const s = (t == null) ? '' : String(t);
@@ -904,9 +999,16 @@ Stil:
       || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
       || null;
 
+    const kundBlock = kundContext
+      ? ['', sanitizeChatText(kundContext, 6000), '']
+      : [];
+
     let userContent;
     if (threadIdIn) {
-      userContent = safeMsg;
+      userContent = [
+        ...(kundBlock.length ? kundBlock : []),
+        safeMsg
+      ].join('\n');
     } else {
       const histLines = hist
         .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -914,7 +1016,7 @@ Stil:
       userContent = [
         '[ClientFlow – roll och kontext]',
         systemContent,
-        '',
+        ...kundBlock,
         ...(histLines.length ? ['Tidigare i samtalet:', ...histLines, ''] : []),
         'Nuvarande fråga:',
         safeMsg
@@ -3699,6 +3801,40 @@ function isAirtableRecordIdStr(s) {
   return typeof s === 'string' && /^rec[A-Za-z0-9]{10,}$/.test(String(s).trim());
 }
 
+/** Hämta Airtable-poster per record-id (parallellt). Mer robust än lång OR(RECORD_ID()=...)‑formel. */
+async function fetchAirtableRecordsByIds(airtableToken, baseId, tableIdOrName, ids, opts = {}) {
+  const list = (Array.isArray(ids) ? ids : [])
+    .map((id) => String(id || '').trim())
+    .filter(isAirtableRecordIdStr);
+  if (!airtableToken || !baseId || !tableIdOrName || list.length === 0) return [];
+  const unique = [...new Set(list)];
+  const concurrency = Math.max(1, Math.min(opts.concurrency || 8, 20));
+  const tablePath = encodeURIComponent(tableIdOrName);
+  const out = [];
+  for (let i = 0; i < unique.length; i += concurrency) {
+    const chunk = unique.slice(i, i + concurrency);
+    // eslint-disable-next-line no-await-in-loop
+    const settled = await Promise.all(chunk.map(async (id) => {
+      try {
+        const r = await axios.get(
+          `https://api.airtable.com/v0/${baseId}/${tablePath}/${id}`,
+          { headers: { Authorization: `Bearer ${airtableToken}` }, timeout: opts.timeout || 20000 }
+        );
+        return r.data || null;
+      } catch (e) {
+        if (opts.logErrors) {
+          console.warn(`⚠️ Airtable fetch ${tableIdOrName}/${id}:`, e.response?.status || e.message);
+        }
+        return null;
+      }
+    }));
+    for (const rec of settled) {
+      if (rec && rec.id) out.push(rec);
+    }
+  }
+  return out;
+}
+
 function extractRecIdsFromText(text) {
   if (!text) return [];
   const ids = new Set();
@@ -4603,16 +4739,16 @@ app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
     );
     const linkedIds = kundRes.data.fields['risker kopplat till tjänster'] || [];
 
-    if (linkedIds.length === 0) return res.json({ records: [], linkedIds: [] });
+    if (!Array.isArray(linkedIds) || linkedIds.length === 0) {
+      return res.json({ records: [], linkedIds: [] });
+    }
 
-    // Hämta de länkade posterna
-    const formula = encodeURIComponent('OR(' + linkedIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
-    const riskRes = await axios.get(
-      `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_TABLE}?filterByFormula=${formula}`,
-      { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
+    // Hämta per id (robustare än lång OR-formel; hoppar över poster som inte finns i risk-tabellen)
+    const records = await fetchAirtableRecordsByIds(
+      airtableAccessToken, airtableBaseId, RISKER_TABLE, linkedIds, { logErrors: false }
     );
 
-    res.json({ records: riskRes.data.records || [], linkedIds });
+    res.json({ records, linkedIds });
   } catch (error) {
     console.error('❌ Fel vid hämtning av kundens risker:', error.response?.data || error.message);
     res.status(500).json({ error: error.message });
@@ -16040,7 +16176,8 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
   const { kundId } = req.params;
   const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
   const openaiKey = process.env.OPENAI_API_KEY;
-  const baseId = process.env.AIRTABLE_BASE_ID;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
@@ -16048,20 +16185,33 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
 
   try {
     const kundRes = await axios.get(
-      `https://api.airtable.com/v0/${baseId}/KUNDDATA/${kundId}`,
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
     );
     const f = kundRes.data.fields || {};
 
     const arr = (v) => Array.isArray(v) ? v.join(', ') : (v || '–');
+    const clip = (v, max = 2500) => {
+      const s = v == null ? '' : String(v).trim();
+      if (!s) return '';
+      return s.length > max ? s.slice(0, max) + '…' : s;
+    };
 
     // Hämta kundens valda tjänster (samma tabell som byråns tjänstanalys: "Risker kopplad till tjänster") + länkade riskposter
     let tjansterText = '–';
     /** Byråns sparade analys per tjänst — endast poster som ligger i "Kundens utvalda tjänster" */
     let byraValdaTjansterDetaljText = '  (Inga tjänster är valda för kunden — inget byråunderlag per tjänst att visa.)';
     let lankadeRiskerText = '';
+    /** Flagga: finns förhöjd geo/import-export i valda riskfaktorer? */
+    let harForhojdInternationellExponering = false;
+    let harForhojdPepRiskfaktor = false;
+    let antalValdaRiskfaktorer = 0;
 
-    const tjansterTableEnc = encodeURIComponent(RISK_ASSESSMENT_TABLE);
+    const parseJsonArr = (v) => {
+      if (!v) return [];
+      if (Array.isArray(v)) return v;
+      try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
+    };
 
     await Promise.all([
       // Tjänster + byråns fält (analys, risknivå, åtgärder) endast för valda tjänst-ID:n
@@ -16069,33 +16219,22 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
         try {
           const tjansterIds = f['Kundens utvalda tjänster'] || [];
           if (Array.isArray(tjansterIds) && tjansterIds.length > 0) {
-            const expanded = await Promise.all(tjansterIds.map(async (id) => {
-              try {
-                const r = await axios.get(
-                  `https://api.airtable.com/v0/${baseId}/${tjansterTableEnc}/${id}`,
-                  { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-                );
-                const tf = r.data.fields || {};
-                const namn = (tf['Task Name'] || '').trim() || id;
-                return { namn, tf };
-              } catch {
-                return null;
-              }
-            }));
-            const ok = expanded.filter(Boolean);
+            const expandedRecs = await fetchAirtableRecordsByIds(
+              airtableAccessToken, baseId, RISK_ASSESSMENT_TABLE, tjansterIds, { logErrors: true }
+            );
+            const ok = expandedRecs.map((r) => {
+              const tf = r.fields || {};
+              const namn = (tf['Task Name'] || '').trim() || r.id;
+              return { namn, tf };
+            });
             if (ok.length > 0) {
               tjansterText = ok.map((x) => x.namn).join(', ');
-              const parseJsonArr = (v) => {
-                if (!v) return [];
-                if (Array.isArray(v)) return v;
-                try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
-              };
               byraValdaTjansterDetaljText = ok.map(({ namn, tf }) => {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
-                const tjBeskr = (tf['Tjänstebeskrivning'] || '').trim();
-                const brf = (tf['Beskrivning av riskfaktor'] || '').trim();
+                const tjBeskr = clip(tf['Tjänstebeskrivning'], 1200);
+                const brf = clip(tf['Beskrivning av riskfaktor'], 1200);
                 const risk = (tf['Riskbedömning'] || '').trim();
-                const atgLegacy = (tf['Åtgjärd'] || '').trim();
+                const atgLegacy = clip(tf['Åtgjärd'], 800);
                 const hot = parseJsonArr(tf['Hot']);
                 const sarbarheter = parseJsonArr(tf['Sårbarheter']);
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
@@ -16106,27 +16245,27 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 if (risk) line += `\n    Byråns riskbedömning för tjänsten: ${risk}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
-                  hot.forEach(h => {
+                  hot.slice(0, 8).forEach(h => {
                     const t = (h && (h.typ || '')).toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
                     const titel = (h && h.titel || '').toString().trim();
-                    const besk = (h && h.beskrivning || '').toString().trim();
+                    const besk = clip(h && h.beskrivning, 400);
                     if (titel || besk) line += `\n      - [${t}] ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (sarbarheter.length) {
                   line += `\n    Sårbarheter/riskfaktorer kopplade till tjänsten:`;
-                  sarbarheter.forEach(s => {
+                  sarbarheter.slice(0, 8).forEach(s => {
                     const kat = (s && s.kategori || '').toString().trim();
                     const titel = (s && s.titel || '').toString().trim();
-                    const besk = (s && s.beskrivning || '').toString().trim();
+                    const besk = clip(s && s.beskrivning, 400);
                     if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (atgarder.length) {
                   line += `\n    Byråns tjänstespecifika åtgärder:`;
-                  atgarder.forEach(a => {
+                  atgarder.slice(0, 8).forEach(a => {
                     const titel = (a && a.titel || '').toString().trim();
-                    const besk = (a && a.beskrivning || '').toString().trim();
+                    const besk = clip(a && a.beskrivning, 400);
                     if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 } else if (atgLegacy) {
@@ -16136,35 +16275,96 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
               }).join('\n\n');
             }
           }
-        } catch (e) { /* ignorera */ }
+        } catch (e) {
+          console.warn('⚠️ AI-riskbedömning: kunde inte hämta valda tjänster:', e.message);
+        }
       })(),
 
-      // Länkade riskposter (per tjänst och riskfaktortyp)
+      // Länkade riskposter (geografiska, kund, distribution, verksamhet m.m.) — per id, inte OR-formel
       (async () => {
         try {
           const linkedIds = f['risker kopplat till tjänster'] || [];
-          if (Array.isArray(linkedIds) && linkedIds.length > 0) {
-            const formula = encodeURIComponent('OR(' + linkedIds.map(id => `RECORD_ID()="${id}"`).join(',') + ')');
-            const riskRes = await axios.get(
-              `https://api.airtable.com/v0/${baseId}/${RISKER_TABLE}?filterByFormula=${formula}`,
-              { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-            );
-            const riskPoster = riskRes.data.records || [];
-            if (riskPoster.length > 0) {
-              lankadeRiskerText = riskPoster.map(r => {
-                const rf = r.fields;
-                const namn = rf['Riskfaktor'] || '–';
-                const typ = rf['Typ av riskfaktor'] || '';
-                const niva = rf['Riskbedömning'] || '';
-                const beskr = rf['Beskrivning'] || '';
-                const atg = rf['Åtgjärd'] || '';
-                return `  • ${namn}${typ ? ` [${typ}]` : ''}${niva ? ` — ${niva}` : ''}` +
-                  (beskr ? `\n    Beskrivning: ${beskr}` : '') +
-                  (atg ? `\n    Åtgärd: ${atg}` : '');
-              }).join('\n');
-            }
+          if (!Array.isArray(linkedIds) || linkedIds.length === 0) return;
+
+          const tjanstIdSet = new Set(
+            (Array.isArray(f['Kundens utvalda tjänster']) ? f['Kundens utvalda tjänster'] : [])
+              .map((id) => String(id || '').trim())
+              .filter(isAirtableRecordIdStr)
+          );
+          const riskIds = linkedIds
+            .map((id) => String(id || '').trim())
+            .filter((id) => isAirtableRecordIdStr(id) && !tjanstIdSet.has(id));
+
+          const riskPoster = await fetchAirtableRecordsByIds(
+            airtableAccessToken, baseId, RISKER_TABLE, riskIds, { logErrors: true }
+          );
+          antalValdaRiskfaktorer = riskPoster.length;
+          if (riskPoster.length === 0) {
+            console.warn(`⚠️ AI-riskbedömning: ${riskIds.length} länkade risk-id men 0 poster hämtades (kund ${kundId}).`);
+            return;
           }
-        } catch (e) { /* ignorera */ }
+
+          const typOrder = [
+            'Geografiska riskfaktorer',
+            'Riskfaktorer kopplat till kund',
+            'Distrubutionskanaler',
+            'Distributionskanaler',
+            'Verksamhetsspecifika riskfaktorer'
+          ];
+          const typLabel = {
+            'Geografiska riskfaktorer': 'Geografiska riskfaktorer',
+            'Riskfaktorer kopplat till kund': 'Riskfaktorer kopplat till kund',
+            'Distrubutionskanaler': 'Distributionskanaler',
+            'Distributionskanaler': 'Distributionskanaler',
+            'Verksamhetsspecifika riskfaktorer': 'Verksamhetsspecifika riskfaktorer'
+          };
+          const byTyp = new Map();
+          for (const r of riskPoster) {
+            const rf = r.fields || {};
+            const typ = String(rf['Typ av riskfaktor'] || 'Övriga').trim() || 'Övriga';
+            if (/tjänst|produkt/i.test(typ)) continue;
+            const namn = String(rf['Riskfaktor'] || '').trim() || '–';
+            const niva = String(rf['Riskbedömning'] || '').trim();
+            const beskr = clip(rf['Beskrivning'], 600);
+            const atg = clip(rf['Åtgjärd'], 600);
+            const namnLower = namn.toLowerCase();
+            const nivaLower = niva.toLowerCase();
+            const isForhojdNiva = nivaLower === 'förhöjd' || nivaLower === 'hog' || nivaLower === 'hög';
+            if (isForhojdNiva && /pep/.test(namnLower)) harForhojdPepRiskfaktor = true;
+            // Förhöjd geo/import-export (t.ex. "Utanför EU", "Kunder med import/export")
+            if (
+              isForhojdNiva &&
+              /utanför\s*eu|utanfor\s*eu|import\s*\/?\s*export|internationell|högriskland|hogriskland|tredjeland/.test(namnLower)
+            ) {
+              harForhojdInternationellExponering = true;
+            }
+            if (!byTyp.has(typ)) byTyp.set(typ, []);
+            byTyp.get(typ).push(
+              `  • ${namn}${niva ? ` — ${niva}` : ''}` +
+              (beskr ? `\n    Beskrivning: ${beskr}` : '') +
+              (atg ? `\n    Åtgärd: ${atg}` : '')
+            );
+          }
+
+          const sections = [];
+          const seenLabels = new Set();
+          for (const typ of typOrder) {
+            const items = byTyp.get(typ);
+            if (!items || !items.length) continue;
+            const label = typLabel[typ] || typ;
+            if (seenLabels.has(label)) continue;
+            seenLabels.add(label);
+            sections.push(`${label}:\n${items.join('\n')}`);
+            byTyp.delete(typ);
+          }
+          for (const [typ, items] of byTyp.entries()) {
+            if (!items.length) continue;
+            sections.push(`${typ}:\n${items.join('\n')}`);
+          }
+          lankadeRiskerText = sections.join('\n\n');
+        } catch (e) {
+          console.warn('⚠️ AI-riskbedömning: kunde inte hämta länkade riskfaktorer:', e.message);
+        }
       })()
     ]);
 
@@ -16177,7 +16377,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
         : tjansterTrim;
 
     // Anonymiserat underlag till AI: inget kundnamn/orgnr; beskrivningsfält i sin helhet (inkl. namn användaren skrivit där)
-    const rawBesk = f['Beskrivning av kunden'];
+    const rawBesk = f['Beskrivning av kunden'] || f['Verksamhetsbeskrivning'];
     const beskrivningKundFull =
       rawBesk == null || String(rawBesk).trim() === '' ? '–' : String(rawBesk);
     const rawExtra = f['Ytterligare beskrivning av kunden och verksamheten'];
@@ -16191,6 +16391,24 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
 
     const pepStatus = arr(f['PEP']);
     const pepTraffar = f['Antal träffar PEP och sanktionslistor'] ?? '–';
+    const sniText = arr(f['SNI kod'] || f['SNI-koder'] || f['SNI-kod'] || f['SNI-bransch'] || f['Bransch']);
+    const transaktionerAndraLander = f['Har företaget transaktioner med andra länder?'] || '–';
+
+    // KYC-formulär (JSON) — kompletterande underlag som ofta saknats i AI-prompten
+    let kyc = {};
+    try { kyc = JSON.parse(f['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+    const kycInternationell = (kyc.internationellHandel || '').toString().trim() || '–';
+    const kycInternationellaLander = clip(kyc.internationellaLander, 500) || '–';
+    const kycKontanter = (kyc.kontanter || '').toString().trim() || '–';
+    const kycKontanterAndel = clip(kyc.kontanterAndel, 200) || '–';
+    const kycPep = (kyc.pep || '').toString().trim() || '–';
+    const kycPepFamilj = (kyc.pepFamilj || '').toString().trim() || '–';
+    const kycKapital = clip(kyc.kapitalUrsprung, 500) || '–';
+    const kycAnstallda = clip(kyc.anstallda, 200) || '–';
+    const kycVhUtlandska = kyc.vh_utlandska_agare === true ? 'Ja' : (kyc.vh_utlandska_agare === false ? 'Nej' : '–');
+    const kycSyfte = clip(kyc.syfte_affarsrelation || kyc.syfte, 500) || '–';
+    if (String(kycInternationell).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
+    if (String(transaktionerAndraLander).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
 
     const sparadRiskniva = f['Riskniva'] || '';
     const sparadBedomning = (f['Byrans riskbedomning'] || '').trim();
@@ -16199,9 +16417,9 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
 
     const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
 Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbedömning enligt PVML (Penningtvättslagen).
-Väg in all tillgänglig information — varje ifyllt fält bidrar till helhetsbilden av kunden.
+Väg in all tillgänglig information — varje ifyllt fält och varje vald riskfaktor bidrar till helhetsbilden av kunden.
 ${harSparadBedomning ? `
-BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Ta hänsyn till dem och förfina/uppdatera istället för att skriva om från noll. Behåll formuleringar som fortfarande stämmer.
+BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Använd dem som utgångspunkt men KORRIGERA allt som strider mot aktuellt underlag nedan (t.ex. påståenden om "inga internationella transaktioner" om geografiska/import-export-faktorer är valda). Behåll bara formuleringar som fortfarande stämmer.
 - Sparad risknivå: ${sparadRiskniva || '–'}
 - Sparad riskbedömning: ${sparadBedomning || '–'}
 - Sparade åtgärder: ${sparadeAtgarder || '–'}
@@ -16232,17 +16450,29 @@ ${byraValdaTjansterDetaljText}
 
 KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
 - Organisationsform: ${f['Bolagsform'] || '–'}
-- Bransch/SNI: ${f['SNI-bransch'] || f['Bransch'] || '–'}
+- Bransch/SNI: ${sniText}
 - Omsättning (valt intervall, t.ex. 0–200 000 kr): ${f['Omsättning'] || '–'}
 - Verklig huvudman: ${verkligHuvudmanAnon}
 - Skatterättslig hemvist: ${arr(f['Skatterättslig hemvist'])}
 - Betalningar: ${arr(f['Betalningar'])}
 - Syfte med affärsförbindelsen (fritext i ClientFlow): ${syfteRaw}
-- Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}
+- Transaktioner med andra länder (kundkort/KYC-fält): ${transaktionerAndraLander}
 - Kapitalets ursprung: ${arr(f['Vilket ursprung har företagets kapital?'])}
 - Affärsmodell: ${f['Affärsmodell'] || '–'}
 - Byråns beskrivning av kunden (hela texten, kan innehålla namn om byrån skrivit det): ${beskrivningKundFull}
 - Ytterligare beskrivning av kunden och verksamheten (hela texten): ${beskrivningExtraFull}
+
+KYC-FORMULÄR (kompletterande svar sparade i ClientFlow — väg in även dessa):
+- Internationell handel enligt KYC: ${kycInternationell}
+- Länder vid internationell handel: ${kycInternationellaLander}
+- Kontanthantering enligt KYC: ${kycKontanter}
+- Andel/omfattning kontanter: ${kycKontanterAndel}
+- PEP enligt KYC: ${kycPep}
+- Familjemedlem/medarbetare till PEP enligt KYC: ${kycPepFamilj}
+- Kapitalets ursprung enligt KYC: ${kycKapital}
+- Antal anställda enligt KYC: ${kycAnstallda}
+- Utländska ägare enligt KYC: ${kycVhUtlandska}
+- Syfte enligt KYC: ${kycSyfte}
 
 PEP & SANKTIONER (från fliken Riskbedömning — vad som är bockat/registrerat i Airtable):
 - PEP-status: ${pepStatus}
@@ -16253,11 +16483,16 @@ RISKFAKTORER (övergripande):
 - Riskhöjande faktorer övrigt: ${arr(f['Riskhöjande faktorer övrigt'])}
 - Risksänkande faktorer: ${arr(f['Risksänkande faktorer'])}
 - Kommentar till riskfaktorer: ${f['Kommentar till riskfaktorerna ovan'] || '–'}
+- Risker från KYC (fritext om ifyllt): ${clip(f['Risker från KYC'], 800) || '–'}
 
-IDENTIFIERADE RISKFAKTORER PER TJÄNST/KATEGORI (detta är vad användaren har valt på fliken Riskbedömning — t.ex. "PEP, familjemedlem till PEP..." med nivå Förhöjd/Medel/Låg, eller "Privatkunder" med Medel):
+IDENTIFIERADE RISKFAKTORER FRÅN FLIKEN RISKBEDÖMNING (auktoritativt — ${antalValdaRiskfaktorer} valda poster; geografiska, kund, distribution, verksamhet):
 ${lankadeRiskerText || '  Inga specifika riskfaktorer registrerade.'}
 
-Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt.
+SYSTEMFLAGGOR FRÅN UNDERLAGET (använd som snabbkoll — hitta inte på motsatsen):
+- Förhöjd internationell exponering enligt valda riskfaktorer/KYC: ${harForhojdInternationellExponering ? 'JA' : 'NEJ'}
+- Förhöjd PEP-riskfaktor vald: ${harForhojdPepRiskfaktor ? 'JA' : 'NEJ'}
+
+Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt — MEN tomma fält får ALDRIG upphäva konkret valda riskfaktorer ovan.
 
 FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
 - Beskriv kundens verksamhet på ett naturligt och sammanhängande sätt. Använd inte enbart branschkoden/SNI-koden ordagrant (t.ex. skriv inte "Kunden verkar inom onkologi" utan "Kunden driver en konsultverksamhet/hyrläkarverksamhet inom onkologi" eller liknande, baserat på vad beskrivningsfälten säger).
@@ -16271,6 +16506,12 @@ RISKNIVÅ — ANVÄND "Lag" ENDAST NÄR DET ÄR TYDLIGT MOTIVERAT:
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
 1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd", ska kundens sammanlagda risknivå vara "Hog" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Medel" på PEP-faktorn ska sammanlagd risk vara minst "Medel". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
+
+1b. INTERNATIONELL EXPONERING / GEOGRAFI / IMPORT-EXPORT (KRITISKT):
+   - Om någon vald riskfaktor är "Utanför EU", "Kunder med import/export", annan import/export-faktor, eller har nivå "Förhöjd"/"Hög" under Geografiska riskfaktorer eller riskfaktorer kopplat till kund med internationell koppling: du FÅR INTE skriva att det saknas indikationer på internationella transaktioner.
+   - Sådana faktorer MÅSTE nämnas uttryckligen bland riskhöjande faktorer i riskbedömningstexten.
+   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": sammanlagd risknivå ska vara minst "Medel" (ofta "Hog" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
+   - Om fältet "Transaktioner med andra länder" eller KYC "Internationell handel" är tomt/Nej men valda riskfaktorer visar internationell exponering: prioritera de valda riskfaktorerna.
 
 2. ÅTGÄRDER — detta är kritiskt:
    - FORMATKRAV (gäller när atgarder inte är tom sträng): Varje punkt MÅSTE vara praktiskt genomförbar och innehålla:

@@ -87,7 +87,7 @@
           <i class="fas fa-times"></i>
         </button>
       </div>
-      <p class="ai-chat-panel__intro">Ställ frågor om ClientFlow, riskbedömningar, KYC och AML (PTL).</p>
+      <p class="ai-chat-panel__intro">Ställ frågor om ClientFlow, riskbedömningar, KYC och AML (PTL). På kundkort får AI med kundens underlag.</p>
       <div class="ai-chat-panel__messages" id="ai-chat-messages"></div>
       <div class="ai-chat-panel__input-wrap">
         <textarea id="ai-chat-input" class="ai-chat-panel__input" rows="2" placeholder="Skriv till ClientFlow AI..." maxlength="2000"></textarea>
@@ -154,6 +154,23 @@
     return p.innerHTML.replace(/\n/g, '<br>');
   }
 
+  /** Om användaren är på kundkort: skicka customerId så AI får kundens underlag. */
+  function getCurrentCustomerIdForChat() {
+    try {
+      if (window.customerCardManager && window.customerCardManager.customerId) {
+        return String(window.customerCardManager.customerId).trim();
+      }
+      const params = new URLSearchParams(window.location.search || '');
+      const fromQuery = params.get('id') || params.get('customerId') || params.get('kundId');
+      if (fromQuery && /^rec[A-Za-z0-9]{10,}$/.test(fromQuery)) return fromQuery;
+      if (/kundkort/i.test(window.location.pathname || '')) {
+        const m = String(window.location.href || '').match(/rec[A-Za-z0-9]{10,}/);
+        if (m) return m[0];
+      }
+    } catch (_) {}
+    return null;
+  }
+
   async function sendMessage() {
     if (!inputEl || !messagesEl) return;
     const text = inputEl.value.trim();
@@ -172,13 +189,15 @@
     try {
       const apiBase = getChatApiBaseUrl();
       const url = apiBase + '/api/ai-chat';
+      const customerId = getCurrentCustomerIdForChat();
       const res = await fetch(url, {
         method: 'POST',
         ...getAuthOpts(),
         body: JSON.stringify({
           message: text,
           history: history.slice(0, -1),
-          threadId: chatThreadId || undefined
+          threadId: chatThreadId || undefined,
+          ...(customerId ? { customerId } : {})
         })
       });
       const raw = await res.text();
