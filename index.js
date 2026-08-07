@@ -47,6 +47,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const { createMinibokSync } = require('./lib/minibok-sync');
+const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -1635,6 +1636,13 @@ const minibokSync = createMinibokSync({
   authenticateToken,
   ensureMinibokFields,
   BEFATTNINGSHAVARE_TABLE: process.env.AIRTABLE_TABLE_BEFATTNINGSHAVARE || 'Befattningshavare'
+});
+
+const minibokUppdrag = createMinibokUppdrag({
+  authenticateMinibokApi: minibokSync.authenticateMinibokApi,
+  resolveUserEmail: minibokSync.resolveUserEmail,
+  resolveMinibokUser: minibokSync.resolveMinibokUser,
+  getAirtableUser
 });
 
 // Bolagsverket isalive endpoint (health check)
@@ -14266,7 +14274,36 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    return res.json({ record: updateRes.data, nextDeadline: next || null });
+    // Synka Status=Klar i Uppdragskörningar för samma period (Clientflow + Minibok delar Airtable)
+    let runSync = { synced: false };
+    if (periodKey) {
+      try {
+        const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+        if (runsTableId) {
+          const runsUrl = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}`;
+          const formula = encodeURIComponent(
+            `AND({Uppdrag ID}="${String(existing.id).replace(/"/g, '\\"')}",{PeriodKey}="${String(periodKey).replace(/"/g, '\\"')}")`
+          );
+          const listRes = await axios.get(`${runsUrl}?filterByFormula=${formula}&maxRecords=5`, {
+            headers: { Authorization: `Bearer ${airtableAccessToken}` }
+          });
+          const runs = listRes.data.records || [];
+          const nowIso = new Date().toISOString();
+          await Promise.all(runs.map((rr) => axios.patch(
+            `${runsUrl}/${encodeURIComponent(rr.id)}`,
+            { fields: { Status: 'Klar', Uppdaterad: nowIso } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          )));
+          runSync = { synced: runs.length > 0, updated: runs.length, runId: runs[0]?.id || null };
+        } else {
+          runSync = { synced: false, reason: 'runs_table_missing' };
+        }
+      } catch (e) {
+        runSync = { synced: false, reason: e.response?.data?.error?.message || e.message };
+      }
+    }
+
+    return res.json({ record: updateRes.data, nextDeadline: next || null, periodKey, runSync });
   } catch (error) {
     console.error('❌ POST /api/uppdrag/complete:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -17458,6 +17495,8 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
 
 // Minibok ↔ Clientflow kundsynk (GET/POST /api/v1/companies + notiser)
 minibokSync.registerRoutes(app);
+// Minibok ↔ Clientflow Uppdrag (översikt + klarmarkering)
+minibokUppdrag.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);
