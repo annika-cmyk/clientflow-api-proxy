@@ -159,6 +159,28 @@ async function main() {
     return res.status;
   });
 
+  // 8. Uppdrag meta + board (Minibok byråsida)
+  await runStep('GET /api/v1/uppdrag/meta', async () => {
+    const res = await axios.get(`${CLIENTFLOW_BASE}/api/v1/uppdrag/meta`, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      timeout: 15000
+    });
+    if (!res.data?.airtable?.tables?.length) throw new Error('meta saknar tables');
+    log('Uppdrag meta tables', res.data.airtable.tables.map((t) => t.name));
+    return res.data;
+  });
+
+  await runStep('GET /api/v1/uppdrag?view=board', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    const res = await axios.get(`${CLIENTFLOW_BASE}/api/v1/uppdrag`, {
+      headers: { Authorization: `Bearer ${API_KEY}`, 'X-User-Email': USER_EMAIL },
+      params: { userEmail: USER_EMAIL, view: 'board', month, mine: 0 },
+      timeout: 30000
+    });
+    log('Uppdrag board', { month: res.data.month, count: res.data.count, sample: (res.data.rows || []).slice(0, 3) });
+    return res.data;
+  });
+
   console.log('\n✅ Integrationstest klart.');
 }
 
