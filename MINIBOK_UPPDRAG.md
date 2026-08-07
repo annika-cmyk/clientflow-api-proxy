@@ -115,16 +115,17 @@ Svar (förenklat):
 ```json
 {
   "view": "board",
-  "month": "2026-04",
+  "month": "2026-08",
   "rows": [
     {
       "uppdragId": "rec…",
       "customerId": "rec…",
-      "customerName": "Exempel AB",
+      "customerName": "ENA Operations AB",
       "orgNr": "5561234567",
-      "typ": "Löneuppdrag innevarande",
-      "periodKey": "2026-04",
-      "deadline": "2026-04-25",
+      "typ": "Löneuppdrag efterhand",
+      "periodKey": "2026-07",
+      "periodLabel": "Lön som utbetalats i juli",
+      "deadline": "2026-08-10",
       "status": "Planerad",
       "done": false,
       "ansvarig": "Annika"
@@ -133,6 +134,10 @@ Svar (förenklat):
   "records": [ /* råa Airtable-records om du vill bygga egen board-logik */ ]
 }
 ```
+
+**Viktigt:** Board-vyn använder samma periodmotor som Clientflow (`lone-period.js` / `moms-period.js`).
+Löneuppdrag syns under hela fönstret startdatum→deadline (inte bara om `Nästa deadline` ligger i vald månad).
+Visa `periodLabel` i Period-kolumnen (t.ex. "Lön som utbetalats i juli").
 
 **Raw (samma payload som Clientflow `GET /api/uppdrag/byra`):**
 ```
