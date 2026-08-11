@@ -7457,6 +7457,7 @@ function toIsoDateOnly(v) {
 async function ensureUppdragRunsSchema(airtableAccessToken, baseId) {
   try {
     await ensureUppdragTypChoices(airtableAccessToken, baseId);
+    await ensureUppdragStatusChoices(airtableAccessToken, baseId);
     await ensureUppdragRunsTypChoices(airtableAccessToken, baseId);
     await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId);
   } catch (_) {}
@@ -13659,6 +13660,61 @@ async function ensureUppdragRunsStatusChoices(airtableToken, baseId, tableMeta) 
   }
 }
 
+/** Säkerställ Aktiv/Pausad/Avslutad på Uppdrag.Status (via typecast om Meta API nekar). */
+async function ensureUppdragStatusChoices(airtableToken, baseId, tableMeta) {
+  const desired = ['Aktiv', 'Pausad', 'Avslutad'];
+  try {
+    const t = tableMeta || await getUppdragTableMeta(airtableToken, baseId);
+    if (!t || !t.id) return { ok: false, reason: 'Tabell saknas' };
+    const statusField = (t.fields || []).find(f => (f.name || '').trim() === 'Status');
+    if (!statusField || !statusField.id) return { ok: false, reason: 'Fältet "Status" saknas' };
+    const current = (statusField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false, current };
+
+    // Meta API kan neka choice-uppdatering – skapa saknade val via typecast på en rad.
+    const tableRef = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const listUrl = `https://api.airtable.com/v0/${baseId}/${tableRef}`;
+    const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+    const listRes = await axios.get(listUrl, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      params: { maxRecords: 1, fields: ['Status'] },
+      timeout: 10000
+    });
+    const sample = (listRes.data.records || [])[0];
+    if (!sample?.id) return { ok: false, reason: 'Ingen Uppdrag-rad att typecasta mot', missing };
+    const prev = sample.fields?.['Status'];
+    for (const name of missing) {
+      // eslint-disable-next-line no-await-in-loop
+      await axios.patch(
+        `${listUrl}/${sample.id}`,
+        { fields: { Status: name }, typecast: true },
+        { headers, timeout: 10000 }
+      );
+    }
+    if (prev) {
+      await axios.patch(
+        `${listUrl}/${sample.id}`,
+        { fields: { Status: prev }, typecast: true },
+        { headers, timeout: 10000 }
+      );
+    } else {
+      // Rensa tillfälligt satt status om raden saknade värde
+      try {
+        await axios.patch(
+          `${listUrl}/${sample.id}`,
+          { fields: { Status: null } },
+          { headers, timeout: 10000 }
+        );
+      } catch (_) {}
+    }
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera Uppdrag.Status-val' };
+  }
+}
+
 // POST /api/setup/airtable-uppdrag – Skapa tabellen "Uppdrag" i Airtable (auth)
 // Kräver Personal Access Token med schema.bases:read och schema.bases:write.
 app.post('/api/setup/airtable-uppdrag', authenticateToken, async (req, res) => {
@@ -14455,10 +14511,17 @@ app.post('/api/uppdrag/end', authenticateToken, async (req, res) => {
       'Avslutas': endIso,
       'Uppdaterad': new Date().toISOString()
     };
-    if (endIso === todayIso) patchFields['Status'] = 'Avslutad';
+    // Status=Avslutad kräver att valet finns (eller typecast:true som skapar det).
+    // Avslutas-datumet är det som stoppar nya körningar – Status är kompletterande.
+    const setStatusAvslutad = endIso === todayIso;
+    if (setStatusAvslutad) patchFields['Status'] = 'Avslutad';
     let record;
     try {
-      const patchRes = await axios.patch(uppdragUrl, { fields: patchFields }, { headers });
+      const patchRes = await axios.patch(
+        uppdragUrl,
+        { fields: patchFields, typecast: true },
+        { headers }
+      );
       record = patchRes.data;
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
@@ -14469,7 +14532,22 @@ app.post('/api/uppdrag/end', authenticateToken, async (req, res) => {
           details: msg
         });
       }
-      throw e;
+      // Om Status-valet inte kan skapas: spara Avslutas ändå (det är det viktiga).
+      if (setStatusAvslutad && /select option|INVALID_MULTIPLE_CHOICE|Insufficient permissions/i.test(String(msg))) {
+        try {
+          const retryFields = {
+            'Avslutas': endIso,
+            'Uppdaterad': new Date().toISOString()
+          };
+          const retryRes = await axios.patch(uppdragUrl, { fields: retryFields }, { headers });
+          record = retryRes.data;
+          console.warn('POST /api/uppdrag/end: Status=Avslutad kunde inte sättas, sparade Avslutas ändå:', msg);
+        } catch (e2) {
+          throw e;
+        }
+      } else {
+        throw e;
+      }
     }
 
     const deleteResult = await deleteUppdragRunsAfterDate({
