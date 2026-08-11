@@ -1,0 +1,44 @@
+# Minibok ↔ Clientflow: AML (risk + policy)
+
+Airtable-backed endpoints för Miniboks AML lager 3.
+
+## Endpoints (API key)
+
+Auth: `Authorization: Bearer {MINIBOK_API_KEY}` + `X-User-Email` / `?userEmail=`
+
+| Method | Path | Syfte |
+|--------|------|--------|
+| GET | `/api/v1/companies/:clientflowId/aml-risk` | Kundens riskprofil (KUNDDATA) |
+| GET | `/api/v1/companies/aml-risk?orgNr=` | Samma via org.nr |
+| GET | `/api/v1/agency/aml-risk` | Byråns allmänna riskbedömning |
+| GET | `/api/v1/agency/aml-policy` | Byråns AML-policy/rutiner + rules[] |
+| GET | `/api/v1/aml/meta` | Kort kontraktsbeskrivning |
+
+`clientflowId` = Airtable **KUNDDATA** `rec…`.
+
+## Fältmappning (kort)
+
+**KUNDDATA → customer aml-risk**
+
+| API | Airtable |
+|-----|----------|
+| `overallRisk` | `Riskniva` / `sammanlagd risk` → low\|medium\|high |
+| `expectedTurnoverRange` | `Omsättning` |
+| `assessedAt` | `Riskbedömning utförd datum` |
+| `rationale` | `Byrans riskbedomning` |
+| `ownershipSummary` / `ownershipMarkers` | `Verklig huvudman` + Kontaktpersoner/KYC |
+| `pep` | `PEP` / KYC JSON |
+| `riskAtgarderAktiverade` | Uppdrag.`Riskåtgärder aktiverade` (any for kund) |
+
+**Byråer → agency aml-risk / aml-policy**
+
+- Allmän risk: sektionerna `1. Syfte…` … `8. Värdering…`
+- Policy: `1. Syfte och omfattning policy` … `Policydokumentet reviderat och godkänt`
+- `rules[]` inkluderar sektionslabels + inbyggd `cash_text` med `match`
+
+## Tester
+
+```bash
+npm test
+# eller: node --test lib/minibok-aml.test.js
+```
