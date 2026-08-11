@@ -339,7 +339,8 @@
       if (!prev.startDate && st) prev.startDate = st;
     };
 
-    // Primärt: riktiga Uppdragskörningar (samma källa som kundkortet / Minibok)
+    // Riktiga Uppdragskörningar (statuskälla) – kompletteras alltid med historik/syntetiska
+    // perioder så en trunkerad API-hämtning inte lämnar boarden tom.
     const airtableRuns = runsByUppdragId.get(String(r.id || '').trim()) || [];
     if (airtableRuns.length) {
       airtableRuns.forEach((rr) => {
@@ -361,20 +362,6 @@
           || (isLoneTyp(typ) && window.LonePeriod && pk ? LonePeriod.displayLabel(pk, typ) : '');
         addRun(pk, dl, st, label, String(ff['Status'] || '').trim(), rr);
       });
-      // Komplettera med historik om någon Klar-period saknas som körningsrad
-      const hist = safeJson((f['Historik'] || '').toString().trim(), []);
-      if (Array.isArray(hist)) {
-        hist.forEach((h) => {
-          const pk = String(h?.periodKey || '').trim();
-          if (!pk) return;
-          const dl = toDateStr(h?.deadline) || deadlineIsoFromPeriodKey(pk, typ, freq, refDeadline);
-          const st = (isLoneTyp(typ) && window.LonePeriod)
-            ? LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || refDeadline)
-            : '';
-          addRun(pk, dl, st, '', String(h?.status || '').trim(), null);
-        });
-      }
-      return Array.from(runs.values());
     }
 
     const hist = safeJson((f['Historik'] || '').toString().trim(), []);
@@ -1047,6 +1034,13 @@
     if (els.month) els.month.textContent = monthLabel(monthCursor);
   }
 
+  function fetchWithTimeout(url, init = {}, ms = 25000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    const merged = { ...init, signal: ctrl.signal };
+    return fetch(url, merged).finally(() => clearTimeout(timer));
+  }
+
   async function load() {
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       setVisible(els.loading, false);
@@ -1061,7 +1055,7 @@
 
     try {
       const mine = scope === 'mine' ? '1' : '0';
-      const res = await fetch(`${baseUrl}/api/uppdrag/byra?mine=${mine}`, getAuthOpts());
+      const res = await fetchWithTimeout(`${baseUrl}/api/uppdrag/byra?mine=${mine}`, getAuthOpts(), 25000);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       allRecords = Array.isArray(data.records) ? data.records : [];
@@ -1071,8 +1065,11 @@
       setVisible(els.loading, false);
       setVisible(els.content, true);
     } catch (e) {
+      const aborted = e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')));
       console.error('❌ Uppdrag översikt:', e);
-      tbodyEl.innerHTML = `<tr><td colspan="5" class="uppdragboard-empty">Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}</td></tr>`;
+      tbodyEl.innerHTML = `<tr><td colspan="5" class="uppdragboard-empty">${aborted
+        ? 'Hämtningen tog för lång tid. Ladda om sidan eller prova igen om en stund.'
+        : `Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}`}</td></tr>`;
       setVisible(els.loading, false);
       setVisible(els.content, true);
     }

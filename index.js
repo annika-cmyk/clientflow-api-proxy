@@ -13189,7 +13189,10 @@ function isForwardUppdragRun(runFields, todayIso) {
 }
 
 async function fetchRunsForUppdragId(uppdragRunsUrl, uppdragId, airtableAccessToken) {
-  const formula = encodeURIComponent(`{Uppdrag ID} = "${String(uppdragId || '').replace(/"/g, '\\"')}"`);
+  // Viktigt: skicka rå formel i axios params (axios URL-encodar själv).
+  // Tidigare encodeURIComponent här gjorde att filtreringen failade tyst →
+  // ensure-runs såg "inga körningar" och skapade tusentals dubbletter.
+  const formula = `{Uppdrag ID} = "${String(uppdragId || '').replace(/"/g, '\\"')}"`;
   let records = [];
   let offset = null;
   do {
@@ -13198,7 +13201,8 @@ async function fetchRunsForUppdragId(uppdragRunsUrl, uppdragId, airtableAccessTo
     // eslint-disable-next-line no-await-in-loop
     const res = await axios.get(uppdragRunsUrl, {
       headers: { Authorization: `Bearer ${airtableAccessToken}` },
-      params
+      params,
+      timeout: 20000
     });
     records = records.concat(res.data.records || []);
     offset = res.data.offset || null;
@@ -13337,7 +13341,50 @@ async function listUppdragRunsForUppdragId({ airtableToken, baseId, uppdragId })
   return { records, tableId };
 }
 
-async function listUppdragRunsForByra({ airtableToken, baseId, byraId }) {
+function dedupeUppdragRunRecords(runRecords) {
+  const best = new Map();
+  const rankStatus = (s) => {
+    const v = String(s || '').trim();
+    if (v === 'Klar') return 4;
+    if (v === 'Sen') return 3;
+    if (v === 'Pågående') return 2;
+    if (v === 'Planerad') return 1;
+    return 0;
+  };
+  for (const rr of Array.isArray(runRecords) ? runRecords : []) {
+    const f = rr?.fields || {};
+    const uid = String(f['Uppdrag ID'] || '').trim();
+    const pk = String(f['PeriodKey'] || '').trim();
+    if (!uid || !pk) continue;
+    const key = uppdragRunCompositeKey(uid, pk);
+    const prev = best.get(key);
+    if (!prev) {
+      best.set(key, rr);
+      continue;
+    }
+    const prevF = prev.fields || {};
+    const score = rankStatus(f['Status']) - rankStatus(prevF['Status']);
+    if (score > 0) {
+      best.set(key, rr);
+      continue;
+    }
+    if (score < 0) continue;
+    const a = String(f['Uppdaterad'] || f['Skapad'] || '');
+    const b = String(prevF['Uppdaterad'] || prevF['Skapad'] || '');
+    if (a.localeCompare(b) > 0) best.set(key, rr);
+  }
+  return Array.from(best.values());
+}
+
+function isoMonthsFromToday(deltaMonths) {
+  const d = new Date();
+  const base = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + (deltaMonths || 0), 1));
+  const y = base.getUTCFullYear();
+  const m = String(base.getUTCMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
+}
+
+async function listUppdragRunsForByra({ airtableToken, baseId, byraId, maxPages = 8, timeoutMs = 8000 }) {
   const byraIdClean = String(byraId || '').replace(/,/g, '').trim();
   if (!byraIdClean) return { records: [], skipped: true, reason: 'missing_byra' };
   const tableId = await resolveUppdragRunsTableId(airtableToken, baseId);
@@ -13345,22 +13392,55 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId }) {
   const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
   const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const num = parseInt(byraIdClean, 10);
-  const formulas = isNaN(num)
-    ? [`{Byrå ID}="${esc(byraIdClean)}"`]
-    : [`OR({Byrå ID}="${esc(byraIdClean)}",{Byrå ID}=${num})`];
+  const byraClause = isNaN(num)
+    ? `{Byrå ID}="${esc(byraIdClean)}"`
+    : `OR({Byrå ID}="${esc(byraIdClean)}",{Byrå ID}=${num})`;
+  // Begränsa till synligt board-fönster (ca ±12 mån) så översikten inte hämtar
+  // tiotusentals dubblettrader och hänger på "Laddar uppdrag...".
+  const fromIso = isoMonthsFromToday(-13);
+  const toIso = isoMonthsFromToday(13);
+  const formulas = [
+    `AND(${byraClause},IS_AFTER({Deadline},'${fromIso}'),IS_BEFORE({Deadline},'${toIso}'))`,
+    byraClause
+  ];
+  const pageLimit = Math.max(1, Math.min(20, Number(maxPages) || 8));
+  const started = Date.now();
   let records = [];
   let formulaOk = false;
+  let truncated = false;
   for (const formula of formulas) {
     try {
       let offset = null;
       const page = [];
+      let pages = 0;
       do {
-        const params = { filterByFormula: formula, pageSize: 100 };
+        if (Date.now() - started > timeoutMs) {
+          truncated = true;
+          break;
+        }
+        const params = {
+          filterByFormula: formula,
+          pageSize: 100,
+          fields: [
+            'Run Key', 'Uppdrag ID', 'Kund ID', 'Byrå ID', 'Typ', 'Frekvens',
+            'Startdatum', 'PeriodKey', 'Period Label', 'Deadline', 'Status',
+            'Anteckning', 'Uppdaterad', 'Skapad'
+          ]
+        };
         if (offset) params.offset = offset;
         // eslint-disable-next-line no-await-in-loop
-        const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
+        const r = await axios.get(url, {
+          headers: { Authorization: `Bearer ${airtableToken}` },
+          params,
+          timeout: Math.max(3000, Math.min(15000, timeoutMs))
+        });
         page.push(...(r.data.records || []));
         offset = r.data.offset || null;
+        pages += 1;
+        if (pages >= pageLimit) {
+          truncated = !!offset;
+          offset = null;
+        }
       } while (offset);
       records = page;
       formulaOk = true;
@@ -13370,15 +13450,22 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId }) {
       if (/Invalid permissions|not found/i.test(msg)) {
         return { records: [], tableMissing: true, error: msg };
       }
-      if (/Unknown field|formula|INVALID_FILTER/i.test(String(msg))) continue;
+      if (/Unknown field|formula|INVALID_FILTER|timeout|ECONNABORTED/i.test(String(msg))) continue;
       throw e;
     }
   }
   if (!formulaOk) {
     console.warn('listUppdragRunsForByra: ingen formel fungerade för byrå', byraIdClean);
-    return { records: [], tableId };
+    return { records: [], tableId, truncated: false };
   }
-  return { records, tableId };
+  const deduped = dedupeUppdragRunRecords(records);
+  return {
+    records: deduped,
+    tableId,
+    truncated,
+    rawCount: records.length,
+    dedupedCount: deduped.length
+  };
 }
 
 async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, periodKey, uppdragFields }) {
@@ -14124,24 +14211,36 @@ app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
 
     let runs = [];
     let runsTableMissing = false;
+    let runsTruncated = false;
     try {
-      const runsResult = await listUppdragRunsForByra({
-        airtableToken: airtableAccessToken,
-        baseId: airtableBaseId,
-        byraId: byraIdClean
-      });
+      // Översikten får aldrig hänga på fulltabell-scan av Uppdragskörningar
+      // (byråer kan ha tiotusentals dubbletter). Timea ut och returnera records ändå.
+      const runsResult = await Promise.race([
+        listUppdragRunsForByra({
+          airtableToken: airtableAccessToken,
+          baseId: airtableBaseId,
+          byraId: byraIdClean,
+          maxPages: 8,
+          timeoutMs: 8000
+        }),
+        new Promise((resolve) => setTimeout(() => resolve({ records: [], timedOut: true }), 9000))
+      ]);
       runsTableMissing = !!runsResult.tableMissing;
+      runsTruncated = !!(runsResult.truncated || runsResult.timedOut);
       runs = Array.isArray(runsResult.records) ? runsResult.records : [];
       if (mine) {
         const uppdragIds = new Set(records.map((r) => String(r.id || '').trim()).filter(Boolean));
         runs = runs.filter((rr) => uppdragIds.has(String(rr?.fields?.['Uppdrag ID'] || '').trim()));
+      }
+      if (runsResult.timedOut) {
+        console.warn('GET /api/uppdrag/byra runs: timed out – returnerar uppdrag utan full körningslista');
       }
     } catch (e) {
       console.warn('GET /api/uppdrag/byra runs:', e.message);
       runs = [];
     }
 
-    res.json({ records, runs, runsTableMissing });
+    res.json({ records, runs, runsTableMissing, runsTruncated });
   } catch (error) {
     console.error('❌ GET /api/uppdrag/byra:', error.response?.data || error.message);
     const status = error.response?.status || 500;
