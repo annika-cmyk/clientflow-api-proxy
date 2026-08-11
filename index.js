@@ -7250,12 +7250,13 @@ function momsStartIsoFromPeriodKey(periodKey, freq) {
   return `${y}-${String(m).padStart(2, '0')}-01`;
 }
 
+/** SKV: 12:e i *andra* månaden efter periodens utgång (17:e i jan/aug). */
 function momsDeadlineIsoFromPeriodKey(periodKey, freq) {
   const end = momsPeriodEndFromKey(periodKey, freq);
   if (!end) return '';
   let y = end.year;
-  let m = end.month + 1;
-  if (m > 12) { m = 1; y += 1; }
+  let m = end.month + 2;
+  if (m > 12) { m -= 12; y += 1; }
   const day = (m === 1 || m === 8) ? 17 : 12;
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -7292,9 +7293,12 @@ function momsPeriodKeyFromDeadlineYm(deadlineYm, freq) {
   if (!f.includes('kvartal')) return '';
   const p = momsParseYm(deadlineYm);
   if (!p) return '';
-  if (p.month === 1) return `${p.year - 1}-Q4`;
-  const quarter = Math.ceil((p.month - 1) / 3);
-  return quarter >= 1 && quarter <= 4 ? `${p.year}-Q${quarter}` : '';
+  // Deadline-månad = periodslut + 2 → gå tillbaka 2 månader till kvartalets sista månad
+  let m = p.month - 2;
+  let y = p.year;
+  if (m < 1) { m += 12; y -= 1; }
+  const quarter = Math.ceil(m / 3);
+  return quarter >= 1 && quarter <= 4 ? `${y}-Q${quarter}` : '';
 }
 
 function momsDisplayLabel(periodKey, freq) {
@@ -7578,9 +7582,15 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
     if (existingRun) {
       const expectedStart = toIsoDate(startIso || '');
       const currentStart = toIsoDate(existingRun?.fields?.['Startdatum'] || '');
+      const expectedDeadline = toIsoDate(deadlineIso || '');
+      const currentDeadline = toIsoDate(existingRun?.fields?.['Deadline'] || '');
+      const expectedLabel = String(periodLabel || '').trim();
+      const currentLabel = String(existingRun?.fields?.['Period Label'] || '').trim();
       const patchFields = {};
       if (!String(existingRun?.fields?.['Run Key'] || '').trim()) patchFields['Run Key'] = runKey;
       if (expectedStart && expectedStart !== currentStart) patchFields['Startdatum'] = expectedStart;
+      if (expectedDeadline && expectedDeadline !== currentDeadline) patchFields['Deadline'] = expectedDeadline;
+      if (expectedLabel && expectedLabel !== currentLabel) patchFields['Period Label'] = expectedLabel;
       const runRutin = String(existingRun?.fields?.['Rutin'] || '').trim();
       const forward = isForwardUppdragRun(existingRun?.fields || {}, todayIso);
       if (grundRutin && forward) {

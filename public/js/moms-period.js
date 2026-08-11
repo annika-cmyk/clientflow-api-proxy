@@ -54,7 +54,7 @@
         return null;
     }
 
-    /** Startdatum = 1:a i månaden efter momsperiodens utgång. */
+    /** Startdatum = 1:a i månaden efter momsperiodens utgång (arbetsfönster öppnar). */
     function startIsoFromPeriodKey(periodKey, freq) {
         const end = periodEndFromKey(periodKey, freq);
         if (!end) return '';
@@ -64,13 +64,17 @@
         return `${y}-${pad2(m)}-01`;
     }
 
-    /** SKV: 12:e i deadline-månaden, utom januari och augusti → 17:e. */
+    /**
+     * SKV: sista dag = 12:e i den *andra* månaden efter periodens utgång,
+     * utom januari och augusti → 17:e.
+     * Ex: Q2 (apr–jun) → 17 aug; Q3 (jul–sep) → 12 nov; juni-månadsmoms → 17 aug.
+     */
     function deadlineIsoFromPeriodKey(periodKey, freq) {
         const end = periodEndFromKey(periodKey, freq);
         if (!end) return '';
         let y = end.year;
-        let m = end.month + 1;
-        if (m > 12) { m = 1; y += 1; }
+        let m = end.month + 2;
+        if (m > 12) { m -= 12; y += 1; }
         const day = (m === 1 || m === 8) ? 17 : 12;
         return `${y}-${pad2(m)}-${pad2(day)}`;
     }
@@ -103,21 +107,24 @@
         };
     }
 
-    /** Kvartalsmoms: periodnyckel från deadline-månad (månaden efter kvartalets slut). */
+    /** Kvartalsmoms: periodnyckel från deadline-månad (andra månaden efter kvartalets slut). */
     function periodKeyFromDeadlineYm(deadlineYm, freq) {
         const f = String(freq || '').toLowerCase();
         if (!f.includes('kvartal')) return '';
         const p = parseYm(deadlineYm);
         if (!p) return '';
-        if (p.month === 1) return `${p.year - 1}-Q4`;
-        const quarter = Math.ceil((p.month - 1) / 3);
-        return quarter >= 1 && quarter <= 4 ? `${p.year}-Q${quarter}` : '';
+        // Deadline-månad = periodslut + 2 → gå tillbaka 2 månader till kvartalets sista månad
+        let m = p.month - 2;
+        let y = p.year;
+        if (m < 1) { m += 12; y -= 1; }
+        const quarter = Math.ceil(m / 3);
+        return quarter >= 1 && quarter <= 4 ? `${y}-Q${quarter}` : '';
     }
 
     /**
      * Periodnyckel som är öppen i vald brädemånad.
-     * Kvartal: moms Q2 (apr–jun) syns i juli–deadline, inte under Q2.
-     * Månad: perioden är månaden före arbetsfönstret (t.ex. jan-moms i februari).
+     * Kvartal: moms Q2 (apr–jun) syns juli–augusti (t.o.m. deadline), inte under Q2.
+     * Månad: perioden är månaden före arbetsfönstret; deadline = andra månaden efter perioden.
      */
     function defaultPeriodKeyForBoard(boardYm, freq) {
         const ym = String(boardYm || '').trim();
@@ -274,18 +281,27 @@
         return opts;
     }
 
-    /** Visa körning i vald kalendermånad (bräda): från månaden efter momsperiod t.o.m. deadline, plus försenade. */
+    /**
+     * Visa körning i vald kalendermånad (bräda).
+     * Arbetsfönster beräknas från PeriodKey (SKV), inte från ev. felaktig lagrad Deadline.
+     * Klar: bara inom fönstret. Ej klar + försenad: syns t.o.m. aktuell månad.
+     */
     function runVisibleInBoardMonth(runFields, boardYm, todayIso) {
         const pk = String(runFields?.PeriodKey || '').trim();
         const deadline = String(runFields?.Deadline || '').trim().slice(0, 10);
+        const status = String(runFields?.Status || '').trim();
         const freq = runFields?.Frekvens || 'Varje månad';
         if (!pk || !boardYm) return false;
         const win = workWindowYm(pk, freq);
         if (!win) return false;
         const { startYm, deadlineYm } = win;
-        const effectiveDeadlineYm = deadline ? deadline.slice(0, 7) : deadlineYm;
-        if (boardYm >= startYm && boardYm <= effectiveDeadlineYm) return true;
-        if (todayIso && deadline && todayIso > deadline && boardYm >= startYm) return true;
+        if (boardYm >= startYm && boardYm <= deadlineYm) return true;
+        if (status === 'Klar') return false;
+        const effectiveDeadline = deadline || `${deadlineYm}-${(deadlineYm.slice(5, 7) === '01' || deadlineYm.slice(5, 7) === '08') ? '17' : '12'}`;
+        if (todayIso && effectiveDeadline && todayIso > effectiveDeadline && boardYm >= startYm) {
+            const todayYm = String(todayIso).slice(0, 7);
+            return /^\d{4}-\d{2}$/.test(todayYm) && boardYm <= todayYm;
+        }
         return false;
     }
 

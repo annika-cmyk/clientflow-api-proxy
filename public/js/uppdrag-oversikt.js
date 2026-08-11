@@ -347,9 +347,17 @@
         const ff = rr?.fields || {};
         if (typ && String(ff['Typ'] || '').trim() && String(ff['Typ'] || '').trim() !== typ) return;
         const pk = String(ff['PeriodKey'] || '').trim();
-        const dl = toDateStr(ff['Deadline'] || '');
+        let dl = toDateStr(ff['Deadline'] || '');
+        // Moms: alltid SKV-deadline från PeriodKey (lagrad Deadline kan vara felräknad)
+        if (typ === 'Momsredovisning' && window.MomsPeriod && pk) {
+          const computedDl = MomsPeriod.deadlineIsoFromPeriodKey(pk, freq);
+          if (computedDl) dl = computedDl;
+        }
         if (!pk && !dl) return;
         let st = toDateStr(ff['Startdatum'] || '');
+        if (typ === 'Momsredovisning' && window.MomsPeriod && pk) {
+          st = MomsPeriod.startIsoFromPeriodKey(pk, freq) || st;
+        }
         if (!st && dl) {
           if (isLoneTyp(typ) && window.LonePeriod && pk) {
             st = LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || dl) || '';
@@ -359,6 +367,7 @@
         }
         if (!st && dl) st = dl;
         const label = String(ff['Period Label'] || '').trim()
+          || (typ === 'Momsredovisning' && window.MomsPeriod && pk ? MomsPeriod.displayLabel(pk, freq) : '')
           || (isLoneTyp(typ) && window.LonePeriod && pk ? LonePeriod.displayLabel(pk, typ) : '');
         addRun(pk, dl, st, label, String(ff['Status'] || '').trim(), rr);
       });

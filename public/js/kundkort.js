@@ -1568,11 +1568,14 @@ class CustomerCardManager {
                     } else {
                         visible.forEach((rr) => {
                             const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
+                            const computedDl = pk
+                                ? (MomsPeriod.deadlineIsoFromPeriodKey(pk, momsFreq) || '')
+                                : '';
                             rowContexts.push({
                                 t, rec, f, freq: momsFreq,
                                 boardKey: `${t}|||${pk}`,
                                 displayTitle: momsRunTitle(pk),
-                                instDeadline: String(rr?.fields?.['Deadline'] || '').trim(),
+                                instDeadline: computedDl || String(rr?.fields?.['Deadline'] || '').trim(),
                                 prefillPeriodKey: pk,
                                 runRec: rr
                             });
