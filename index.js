@@ -14507,6 +14507,9 @@ app.post('/api/uppdrag/end', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Du saknar behörighet att avsluta detta uppdrag.' });
     }
 
+    // Best-effort: se till att Status-valet Avslutad finns innan vi sätter det.
+    try { await ensureUppdragStatusChoices(airtableAccessToken, airtableBaseId); } catch (_) {}
+
     let patchFields = {
       'Avslutas': endIso,
       'Uppdaterad': new Date().toISOString()
