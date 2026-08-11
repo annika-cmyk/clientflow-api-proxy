@@ -141,6 +141,32 @@ async function fetchAllRuns() {
   return { groups, total, pages };
 }
 
+async function deleteOne(id, headers) {
+  const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${encodeURIComponent(id)}`;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      await axios.delete(url, { headers, timeout: 60000 });
+      return 'deleted';
+    } catch (e) {
+      const status = e.response?.status;
+      const type = e.response?.data?.error?.type || '';
+      const msg = e.response?.data?.error?.message || e.message;
+      // Redan borta = OK
+      if (status === 404 || type === 'NOT_FOUND' || /Could not find a record/i.test(String(msg))) {
+        return 'missing';
+      }
+      if (status === 429 || status >= 500) {
+        const wait = Math.min(60000, 1500 * 2 ** attempt);
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(wait);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error(`Kunde inte ta bort ${id}`);
+}
+
 async function deleteBatch(ids) {
   const headers = { Authorization: `Bearer ${TOKEN}` };
   const qs = ids.map((id) => `records[]=${encodeURIComponent(id)}`).join('&');
@@ -148,9 +174,10 @@ async function deleteBatch(ids) {
   for (let attempt = 0; attempt < 8; attempt++) {
     try {
       await axios.delete(url, { headers, timeout: 60000 });
-      return ids.length;
+      return { deleted: ids.length, missing: 0, errors: 0 };
     } catch (e) {
       const status = e.response?.status;
+      const type = e.response?.data?.error?.type || '';
       const msg = e.response?.data?.error?.message || e.message;
       if (status === 429 || status >= 500) {
         const wait = Math.min(60000, 1500 * 2 ** attempt);
@@ -158,6 +185,25 @@ async function deleteBatch(ids) {
         // eslint-disable-next-line no-await-in-loop
         await sleep(wait);
         continue;
+      }
+      // Om en rad i batchen saknas fallerar hela batchen – radera en och en.
+      if (status === 404 || type === 'NOT_FOUND' || /Could not find a record/i.test(String(msg))) {
+        let deleted = 0;
+        let missing = 0;
+        let errors = 0;
+        for (const id of ids) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const result = await deleteOne(id, headers);
+            if (result === 'deleted') deleted += 1;
+            else missing += 1;
+            // eslint-disable-next-line no-await-in-loop
+            await sleep(120);
+          } catch (_) {
+            errors += 1;
+          }
+        }
+        return { deleted, missing, errors };
       }
       throw e;
     }
@@ -219,25 +265,29 @@ async function main() {
   console.log(`\n🗑️  Raderar ${toDelete.length} dubbletter (batch om 10)...`);
   const t1 = Date.now();
   let deleted = 0;
+  let missing = 0;
   let errors = 0;
   for (let i = 0; i < toDelete.length; i += 10) {
     const batch = toDelete.slice(i, i + 10);
     try {
       // eslint-disable-next-line no-await-in-loop
-      deleted += await deleteBatch(batch);
+      const result = await deleteBatch(batch);
+      deleted += result.deleted || 0;
+      missing += result.missing || 0;
+      errors += result.errors || 0;
     } catch (e) {
       errors += batch.length;
       console.error(`  ❌ batch @${i}:`, e.response?.data || e.message);
     }
     if ((i / 10) % 20 === 0 || i + 10 >= toDelete.length) {
       const pct = Math.round((Math.min(i + 10, toDelete.length) / toDelete.length) * 100);
-      console.log(`  progress ${Math.min(i + 10, toDelete.length)}/${toDelete.length} (${pct}%) deleted=${deleted} errors=${errors} – ${Math.round((Date.now() - t1) / 1000)}s`);
+      console.log(`  progress ${Math.min(i + 10, toDelete.length)}/${toDelete.length} (${pct}%) deleted=${deleted} missing=${missing} errors=${errors} – ${Math.round((Date.now() - t1) / 1000)}s`);
     }
     // eslint-disable-next-line no-await-in-loop
     await sleep(220);
   }
 
-  console.log(`\n✅ Klart. Raderade ${deleted}, fel ${errors}, tid ${Math.round((Date.now() - t1) / 1000)}s`);
+  console.log(`\n✅ Klart. Raderade ${deleted}, redan borta ${missing}, fel ${errors}, tid ${Math.round((Date.now() - t1) / 1000)}s`);
 }
 
 main().catch((e) => {
