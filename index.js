@@ -7465,7 +7465,18 @@ function uppdragRunCompositeKey(uppdragId, periodKey) {
 function pickBestUppdragRunRecord(records, expectedRunKey) {
   const list = Array.isArray(records) ? records.slice() : [];
   if (!list.length) return null;
+  const statusRank = (s) => {
+    const v = String(s || '').trim();
+    if (v === 'Klar') return 4;
+    if (v === 'Sen') return 3;
+    if (v === 'Pågående') return 2;
+    if (v === 'Planerad') return 1;
+    return 0;
+  };
   list.sort((a, b) => {
+    const aStatus = statusRank(a?.fields?.['Status']);
+    const bStatus = statusRank(b?.fields?.['Status']);
+    if (aStatus !== bStatus) return bStatus - aStatus;
     const aKey = String(a?.fields?.['Run Key'] || '').trim();
     const bKey = String(b?.fields?.['Run Key'] || '').trim();
     if (expectedRunKey) {
@@ -7474,9 +7485,10 @@ function pickBestUppdragRunRecord(records, expectedRunKey) {
     }
     if (aKey && !bKey) return -1;
     if (!aKey && bKey) return 1;
-    const aSk = String(a?.fields?.['Skapad'] || '');
-    const bSk = String(b?.fields?.['Skapad'] || '');
-    return aSk.localeCompare(bSk);
+    // Prefer newest update when status/run-key are equal
+    const aUpd = String(a?.fields?.['Uppdaterad'] || a?.fields?.['Skapad'] || '');
+    const bUpd = String(b?.fields?.['Uppdaterad'] || b?.fields?.['Skapad'] || '');
+    return bUpd.localeCompare(aUpd);
   });
   return list[0];
 }
