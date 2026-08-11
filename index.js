@@ -48,6 +48,7 @@ const path = require('path');
 require('dotenv').config();
 const { createMinibokSync } = require('./lib/minibok-sync');
 const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
+const { createMinibokAml } = require('./lib/minibok-aml');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -1642,6 +1643,14 @@ const minibokUppdrag = createMinibokUppdrag({
   authenticateMinibokApi: minibokSync.authenticateMinibokApi,
   resolveUserEmail: minibokSync.resolveUserEmail,
   resolveMinibokUser: minibokSync.resolveMinibokUser,
+  getAirtableUser
+});
+
+const minibokAml = createMinibokAml({
+  authenticateMinibokApi: minibokSync.authenticateMinibokApi,
+  resolveUserEmail: minibokSync.resolveUserEmail,
+  resolveMinibokUser: minibokSync.resolveMinibokUser,
+  findCompanyForUser: minibokSync.findCompanyForUser,
   getAirtableUser
 });
 
@@ -17737,6 +17746,8 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
 minibokSync.registerRoutes(app);
 // Minibok ↔ Clientflow Uppdrag (översikt + klarmarkering)
 minibokUppdrag.registerRoutes(app);
+// Minibok ↔ Clientflow AML (kundrisk, byrå risk, policy)
+minibokAml.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);
