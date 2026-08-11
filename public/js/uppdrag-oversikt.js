@@ -53,6 +53,8 @@
 
   let scope = 'byra'; // 'byra' | 'mine'
   let allRecords = [];
+  let allRunRecords = [];
+  let runsByUppdragId = new Map();
   let q = '';
   let activeType = 'Löneuppdrag';
   let monthCursor = new Date(); // current month
@@ -63,6 +65,18 @@
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const monthMin = new Date(monthStart.getFullYear(), monthStart.getMonth() - 12, 1);
   const monthMax = new Date(monthStart.getFullYear(), monthStart.getMonth() + 11, 1);
+
+  function indexRunsByUppdrag(runRecords) {
+    const map = new Map();
+    (Array.isArray(runRecords) ? runRecords : []).forEach((rr) => {
+      const uid = String(rr?.fields?.['Uppdrag ID'] || '').trim();
+      if (!uid) return;
+      const arr = map.get(uid) || [];
+      arr.push(rr);
+      map.set(uid, arr);
+    });
+    return map;
+  }
 
   function setVisible(el, show) { if (el) el.style.display = show ? '' : 'none'; }
   function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -285,7 +299,7 @@
     const refStart = toDateStr(f['Startdatum'] || '');
     const runs = new Map();
 
-    const addRun = (periodKey, deadlineIso, startIso, periodLabel) => {
+    const addRun = (periodKey, deadlineIso, startIso, periodLabel, status, runRec) => {
       const dl = toDateStr(deadlineIso);
       if (!dl) return;
       const pk = String(periodKey || '').trim() || periodKeyFromDeadline(dl, typ, freq);
@@ -298,10 +312,70 @@
         : (String(periodLabel || '').trim()
           || (isLoneTyp(typ) && window.LonePeriod ? LonePeriod.displayLabel(pk, typ) : ''));
       const key = `${r.id}:${pk}`;
-      if (!runs.has(key)) {
-        runs.set(key, { record: r, typ, deadline: dl, startDate: st, periodKey: pk, periodLabel: label, key });
+      const statusResolved = String(status || '').trim()
+        || runStatusFromHistory(f, pk)
+        || String(runRec?.fields?.['Status'] || '').trim()
+        || '';
+      const prev = runs.get(key);
+      if (!prev) {
+        runs.set(key, {
+          record: r,
+          runRec: runRec || null,
+          typ,
+          deadline: dl,
+          startDate: st,
+          periodKey: pk,
+          periodLabel: label,
+          status: statusResolved,
+          key
+        });
+        return;
       }
+      // Prefer körningsrad + Klar-status om vi redan har en syntetisk rad
+      if (!prev.runRec && runRec) prev.runRec = runRec;
+      if ((!prev.status || prev.status === 'Planerad') && statusResolved) prev.status = statusResolved;
+      if (statusResolved === 'Klar') prev.status = 'Klar';
+      if (!prev.periodLabel && label) prev.periodLabel = label;
+      if (!prev.startDate && st) prev.startDate = st;
     };
+
+    // Primärt: riktiga Uppdragskörningar (samma källa som kundkortet / Minibok)
+    const airtableRuns = runsByUppdragId.get(String(r.id || '').trim()) || [];
+    if (airtableRuns.length) {
+      airtableRuns.forEach((rr) => {
+        const ff = rr?.fields || {};
+        if (typ && String(ff['Typ'] || '').trim() && String(ff['Typ'] || '').trim() !== typ) return;
+        const pk = String(ff['PeriodKey'] || '').trim();
+        const dl = toDateStr(ff['Deadline'] || '');
+        if (!pk && !dl) return;
+        let st = toDateStr(ff['Startdatum'] || '');
+        if (!st && dl) {
+          if (isLoneTyp(typ) && window.LonePeriod && pk) {
+            st = LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || dl) || '';
+          } else {
+            st = startIsoForRun(pk || periodKeyFromDeadline(dl, typ, freq), dl, typ, freq, f);
+          }
+        }
+        if (!st && dl) st = dl;
+        const label = String(ff['Period Label'] || '').trim()
+          || (isLoneTyp(typ) && window.LonePeriod && pk ? LonePeriod.displayLabel(pk, typ) : '');
+        addRun(pk, dl, st, label, String(ff['Status'] || '').trim(), rr);
+      });
+      // Komplettera med historik om någon Klar-period saknas som körningsrad
+      const hist = safeJson((f['Historik'] || '').toString().trim(), []);
+      if (Array.isArray(hist)) {
+        hist.forEach((h) => {
+          const pk = String(h?.periodKey || '').trim();
+          if (!pk) return;
+          const dl = toDateStr(h?.deadline) || deadlineIsoFromPeriodKey(pk, typ, freq, refDeadline);
+          const st = (isLoneTyp(typ) && window.LonePeriod)
+            ? LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || refDeadline)
+            : '';
+          addRun(pk, dl, st, '', String(h?.status || '').trim(), null);
+        });
+      }
+      return Array.from(runs.values());
+    }
 
     const hist = safeJson((f['Historik'] || '').toString().trim(), []);
     if (Array.isArray(hist)) {
@@ -312,7 +386,7 @@
         const st = (isLoneTyp(typ) && window.LonePeriod)
           ? LonePeriod.startIsoFromPeriodKey(pk, typ, refStart || refDeadline)
           : '';
-        addRun(pk, dl, st, '');
+        addRun(pk, dl, st, '', String(h?.status || '').trim(), null);
       });
     }
 
@@ -341,7 +415,12 @@
 
     const step = monthsStepFromFreq(freq);
     if (step === 0) {
-      if (refDeadline) addRun(refDeadline.slice(0, 7), refDeadline);
+      if (refDeadline) {
+        const pk = (typ === 'Bokslut' || typ === 'Deklaration' || getModeForUppdrag(typ, freq) === 'year')
+          ? yearKeyForMonth(refDeadline.slice(0, 7))
+          : refDeadline.slice(0, 7);
+        addRun(pk, refDeadline, refStart);
+      }
       return Array.from(runs.values());
     }
     if (!refDeadline) return Array.from(runs.values());
@@ -379,7 +458,17 @@
               PeriodKey: run.periodKey,
               Deadline: run.deadline,
               Frekvens: freq,
-              Status: runStatusFromHistory(run?.record?.fields || {}, run.periodKey)
+              Status: run.status || runStatusFromHistory(run?.record?.fields || {}, run.periodKey)
+            }, mk, todayIso);
+            if (!visible) {
+              cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+              continue;
+            }
+          } else if (isLoneTyp(run.typ) && window.LonePeriod) {
+            const visible = LonePeriod.runVisibleInBoardMonth({
+              Startdatum: run.startDate,
+              Deadline: run.deadline,
+              Status: run.status || ''
             }, mk, todayIso);
             if (!visible) {
               cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
@@ -426,6 +515,8 @@
   }
 
   function runStatusForInstance(x) {
+    const fromRun = String(x?.status || x?.runRec?.fields?.['Status'] || '').trim();
+    if (fromRun) return fromRun;
     const f = x?.record?.fields || {};
     return runStatusFromHistory(f, periodKeyForInstance(x)) || 'Planerad';
   }
@@ -661,7 +752,7 @@
         : (showRunName)
           ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(runName)}</span>`
           : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
-      const runStatus = runStatusFromHistory(f, periodKey) || 'Planerad';
+      const runStatus = runStatusForInstance(x);
       const statusCell = `
         <div class="uppdragboard-statuscell">
           <select class="form-select uppdragboard-status-select"
@@ -974,6 +1065,8 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       allRecords = Array.isArray(data.records) ? data.records : [];
+      allRunRecords = Array.isArray(data.runs) ? data.runs : [];
+      runsByUppdragId = indexRunsByUppdrag(allRunRecords);
       render();
       setVisible(els.loading, false);
       setVisible(els.content, true);

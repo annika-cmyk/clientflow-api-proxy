@@ -5010,9 +5010,14 @@ function buildKundRiskbedomningPdfHtml(data) {
   const nl2br = (s) => pdfNl2br(s);
   const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
 
-  const bulletList = (items) => {
+  const bulletList = (items, emptyLabel) => {
     const list = (items || []).filter(Boolean);
-    if (!list.length) return '<p>—</p>';
+    if (!list.length) {
+      if (emptyLabel) {
+        return `<p><span class="chip chip-pos">${esc(emptyLabel)}</span></p>`;
+      }
+      return '<p>—</p>';
+    }
     return `<ul style="margin:0;padding-left:1.2rem;">${list.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
   };
 
@@ -5022,9 +5027,19 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h3>Geografiska riskfaktorer</h3>${bulletList(rf.geografiska)}
       <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund)}
       <h3>Distributionskanaler</h3>${bulletList(rf.distribution)}
-      <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet)}
-      <h3>Riskhöjande faktorer övrigt</h3>${bulletList(rf.riskhojOvrigt)}
-      <h3>Risksänkande faktorer</h3>${bulletList(rf.risksankande)}`;
+      <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet, 'Inga verksamhetsspecifika riskfaktorer')}
+      <h3>Riskhöjande faktorer övrigt</h3>${bulletList(rf.riskhojOvrigt, 'Inga övriga riskhöjande faktorer')}
+      <h3>Risksänkande faktorer</h3>${bulletList(rf.risksankande, 'Inga risksänkande faktorer')}`;
+
+  const atgarderText = (data.atgarder || '').trim()
+    || 'Inga specifika risksänkande åtgärder planerade på kunden';
+
+  const pepStatus = (data.pepStatus || '').trim();
+  const pepDetaljer = (data.pepDetaljer || '').trim();
+  const pepFamilj = (data.pepFamilj || '').trim();
+  const pepFamiljDetaljer = (data.pepFamiljDetaljer || '').trim();
+  const sanktionsstatus = (data.sanktionsstatus || '').trim();
+  const pepLegacy = Array.isArray(data.pepList) ? data.pepList.filter(Boolean) : [];
 
   return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><style>
     @page { size: A4; margin: 14mm; }
@@ -5051,7 +5066,7 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h1>Riskbedömning — ${esc(data.kundnamn)}</h1>
       <p class="meta">Organisationsnummer: ${esc(data.orgnr)} | Exporterad: ${esc(data.exportStamp)}${data.riskUtford ? ' | Utförd: ' + esc(data.riskUtford) : ''}${data.riskGodkand ? ' | Godkänd: ' + esc(data.riskGodkand) : ''}</p>
 
-      ${data.verksamhet ? section('Beskrivning av verksamheten', nl2br(data.verksamhet)) : ''}
+      ${data.verksamhet ? section('Verksamhetsbeskrivning från Bolagsverket', nl2br(data.verksamhet)) : ''}
 
       <h2>Sammanlagd risknivå</h2>
       <p><span class="niva niva-${data.nivaClass}">${esc(data.nivaLabel)}</span></p>
@@ -5067,11 +5082,13 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h2>Byråns bedömning av kunden</h2>
       <div class="section">${data.byransRiskbedomning ? nl2br(data.byransRiskbedomning) : '—'}</div>
       <h2>Åtgärder</h2>
-      <div class="section">${data.atgarder ? nl2br(data.atgarder) : '—'}</div>
+      <div class="section">${nl2br(atgarderText)}</div>
 
       <h2>PEP &amp; sanktioner</h2>
       <div class="section">
-        <p><strong>PEP-status:</strong> ${data.pepList.length ? esc(data.pepList.join(', ')) : '—'}${data.pepTraffar !== '' && data.pepTraffar != null ? ` | Antal träffar: ${esc(String(data.pepTraffar))}` : ''}</p>
+        <p><strong>PEP-status (KYC punkt 4):</strong> ${pepStatus ? esc(pepStatus) : (pepLegacy.length ? esc(pepLegacy.join(', ')) : '—')}${pepDetaljer ? ` — ${esc(pepDetaljer)}` : ''}</p>
+        <p><strong>Familjemedlem/nära medarbetare till PEP:</strong> ${pepFamilj ? esc(pepFamilj) : '—'}${pepFamiljDetaljer ? ` — ${esc(pepFamiljDetaljer)}` : ''}</p>
+        <p><strong>Sanktionsstatus (Dilisense):</strong> ${sanktionsstatus ? esc(sanktionsstatus) : '—'}</p>
         ${data.rapportPep ? `<p><strong>Rapport:</strong> ${esc(data.rapportPep)}</p>` : ''}
       </div>
 
@@ -5304,6 +5321,44 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       }
     }
 
+    const pdfParts = [];
+
+    // KYC-formulär (sparad JSON + komplettering från kunddata)
+    let savedKyc = {};
+    try { savedKyc = JSON.parse(f['KYC-formular (JSON)'] || '{}'); } catch (_) { savedKyc = {}; }
+
+    const pepList = pdfFmtList(f['PEP']);
+    const pepStatusFromKyc = (savedKyc.pep || '').trim()
+      || (pepList.length
+        ? (pepList.includes('Inte PEP') ? 'Nej' : 'Ja')
+        : '');
+    const pepDetaljerFromKyc = (savedKyc.pepDetaljer || '').trim();
+    const pepFamiljFromKyc = (savedKyc.pepFamilj || '').trim() || (pepStatusFromKyc ? 'Nej' : '');
+    const pepFamiljDetaljerFromKyc = (savedKyc.pepFamiljDetaljer || '').trim();
+
+    const pepTraffarRaw = f['Antal träffar PEP och sanktionslistor'];
+    const pepTraffarNum = pepTraffarRaw === '' || pepTraffarRaw == null ? null : Number(pepTraffarRaw);
+    const entityScreeningDatum = (f['Entity screening datum'] || f['PEP entity screening datum'] || '').toString().trim();
+    const attachmentNames = []
+      .concat(Array.isArray(f['Attachments']) ? f['Attachments'] : [])
+      .concat(Array.isArray(f['PEP rapporter']) ? f['PEP rapporter'] : [])
+      .concat(Array.isArray(f['PEP rapport']) ? f['PEP rapport'] : [])
+      .map((a) => String(a?.filename || a?.name || ''))
+      .filter(Boolean);
+    const hasDilisenseScreening = attachmentNames.some((n) =>
+      /pep-screening|entity-screening|dilisense/i.test(n)
+    );
+    let sanktionsstatus = '';
+    if (pepTraffarNum != null && !Number.isNaN(pepTraffarNum)) {
+      sanktionsstatus = pepTraffarNum === 0
+        ? 'Inga träffar mot sanktionslistor (Dilisense)'
+        : `${pepTraffarNum} träff(ar) mot sanktionslistor (Dilisense)`;
+    } else if (entityScreeningDatum || hasDilisenseScreening) {
+      sanktionsstatus = entityScreeningDatum
+        ? `Dilisense-screening utförd ${entityScreeningDatum} (inga registrerade träffar)`
+        : 'Dilisense-screening utförd (inga registrerade träffar)';
+    }
+
     const riskData = {
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
@@ -5314,8 +5369,13 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       risksankandeAtgarder: pdfToText(f['Risksänkande åtgjärder']),
       byransRiskbedomning: pdfToText(f['Byrans riskbedomning']),
       atgarder: pdfToText(f['Atgarder riskbedomning']),
-      pepList: pdfFmtList(f['PEP']),
-      pepTraffar: f['Antal träffar PEP och sanktionslistor'],
+      pepList,
+      pepStatus: pepStatusFromKyc,
+      pepDetaljer: pepDetaljerFromKyc,
+      pepFamilj: pepFamiljFromKyc,
+      pepFamiljDetaljer: pepFamiljDetaljerFromKyc,
+      sanktionsstatus,
+      pepTraffar: pepTraffarRaw,
       rapportPep: f['Rapport PEP'] || '',
       riskUtford: f['Riskbedömning utförd datum'] ? new Date(f['Riskbedömning utförd datum']).toLocaleDateString('sv-SE') : '',
       riskGodkand: f['Kundens riskbedömning godkänd'] ? new Date(f['Kundens riskbedömning godkänd']).toLocaleDateString('sv-SE') : '',
@@ -5323,11 +5383,6 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       riskfaktorer
     };
 
-    const pdfParts = [];
-
-    // KYC-formulär (sparad JSON + komplettering från kunddata)
-    let savedKyc = {};
-    try { savedKyc = JSON.parse(f['KYC-formular (JSON)'] || '{}'); } catch (_) { savedKyc = {}; }
     const tjansterNamnLista = tjansterNamn.join(', ');
     const kycForPdf = {
       foretagsnamn: savedKyc.foretagsnamn || kundnamn,
@@ -5336,9 +5391,9 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       foretradarePnr: savedKyc.foretradarePnr || '',
       huvudmanInfo: pdfHtmlToPlainText(savedKyc.huvudmanInfo) || pdfToText(f['Verklig huvudman']) || '',
       huvudmanAnnatSatt: pdfHtmlToPlainText(savedKyc.huvudmanAnnatSatt) || '',
-      pep: savedKyc.pep || (pdfFmtList(f['PEP']).length && !pdfFmtList(f['PEP']).includes('Inte PEP') ? 'Ja' : 'Nej'),
-      pepDetaljer: pdfHtmlToPlainText(savedKyc.pepDetaljer) || '',
-      pepFamilj: savedKyc.pepFamilj || 'Nej',
+      pep: pepStatusFromKyc || 'Nej',
+      pepDetaljer: pdfHtmlToPlainText(pepDetaljerFromKyc) || '',
+      pepFamilj: pepFamiljFromKyc || 'Nej',
       // KYC-verksamhet kan innehålla HTML från rich text – rensas till plaintext i PDF
       verksamhet: pdfHtmlToPlainText(savedKyc.verksamhet) || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       tjanster: tjansterNamnLista,
@@ -7597,6 +7652,38 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
     return { created, deduped, skipped: false, errors };
   }
 
+  // Bokslut/Deklaration: alltid skapa minst nästa körning (även om deadline > 12 mån),
+  // och använd alltid års-PeriodKey (YYYY) så board/UI hittar raden.
+  const isYearUppdrag = typ === 'Bokslut' || typ === 'Deklaration'
+    || freqLow.includes('årsvis') || freqLow.includes('år');
+  if (isYearUppdrag) {
+    const start0 = toIsoDate(f['Startdatum'] || '');
+    let cur = deadline0;
+    for (let guard = 0; guard < 40; guard++) {
+      if (!cur) break;
+      // Första körningen skapas alltid; efterföljande (årsvis) bara inom horisonten.
+      if (guard > 0 && cur > horizonEnd) break;
+
+      const periodKey = cur.slice(0, 4);
+      const startIso = (guard === 0 && start0)
+        ? start0
+        : (addYearsIso(cur, -1) || start0 || undefined);
+
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({
+        periodKey,
+        periodLabel: periodKey,
+        deadlineIso: cur,
+        startIso
+      });
+
+      // Engång / saknad årsvis-frekvens: bara en körning
+      if (!freqLow.includes('årsvis') && !freqLow.includes('år')) break;
+      cur = calcNextDeadline(cur, freq) || '';
+    }
+    return { created, deduped, skipped: false, errors };
+  }
+
   let cur = deadline0;
   for (let guard = 0; guard < 40; guard++) {
     if (!cur) break;
@@ -7608,9 +7695,6 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       const q = currentQuarterFromYm(periodKey);
       periodKey = q ? `${q.year}-Q${q.quarter}` : periodKey;
       periodLabel = quarterLabelSv(periodKey) || periodLabel;
-    } else if (freqLow.includes('årsvis') || freqLow.includes('år')) {
-      periodKey = cur.slice(0, 4);
-      periodLabel = periodKey;
     }
 
     // eslint-disable-next-line no-await-in-loop
@@ -13240,6 +13324,104 @@ async function listUppdragRunsForUppdragId({ airtableToken, baseId, uppdragId })
   return { records, tableId };
 }
 
+async function listUppdragRunsForByra({ airtableToken, baseId, byraId }) {
+  const byraIdClean = String(byraId || '').replace(/,/g, '').trim();
+  if (!byraIdClean) return { records: [], skipped: true, reason: 'missing_byra' };
+  const tableId = await resolveUppdragRunsTableId(airtableToken, baseId);
+  if (!tableId) return { records: [], tableMissing: true };
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
+  const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const num = parseInt(byraIdClean, 10);
+  const formulas = isNaN(num)
+    ? [`{Byrå ID}="${esc(byraIdClean)}"`]
+    : [`OR({Byrå ID}="${esc(byraIdClean)}",{Byrå ID}=${num})`];
+  let records = [];
+  let formulaOk = false;
+  for (const formula of formulas) {
+    try {
+      let offset = null;
+      const page = [];
+      do {
+        const params = { filterByFormula: formula, pageSize: 100 };
+        if (offset) params.offset = offset;
+        // eslint-disable-next-line no-await-in-loop
+        const r = await axios.get(url, { headers: { Authorization: `Bearer ${airtableToken}` }, params });
+        page.push(...(r.data.records || []));
+        offset = r.data.offset || null;
+      } while (offset);
+      records = page;
+      formulaOk = true;
+      break;
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || '';
+      if (/Invalid permissions|not found/i.test(msg)) {
+        return { records: [], tableMissing: true, error: msg };
+      }
+      if (/Unknown field|formula|INVALID_FILTER/i.test(String(msg))) continue;
+      throw e;
+    }
+  }
+  if (!formulaOk) {
+    console.warn('listUppdragRunsForByra: ingen formel fungerade för byrå', byraIdClean);
+    return { records: [], tableId };
+  }
+  return { records, tableId };
+}
+
+async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, periodKey, uppdragFields }) {
+  const pk = String(periodKey || '').trim();
+  const uid = String(uppdragId || '').trim();
+  if (!pk || !uid || !airtableToken || !baseId) return { synced: false, reason: 'missing_args' };
+  const tableId = await resolveUppdragRunsTableId(airtableToken, baseId);
+  if (!tableId) return { synced: false, reason: 'runs_table_missing' };
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const formula = `AND({Uppdrag ID}="${esc(uid)}",{PeriodKey}="${esc(pk)}")`;
+  const nowIso = new Date().toISOString();
+  try {
+    const listRes = await axios.get(url, {
+      headers,
+      params: { filterByFormula: formula, maxRecords: 5 }
+    });
+    const existing = (listRes.data.records || [])[0];
+    if (existing?.id) {
+      await axios.patch(
+        `${url}/${existing.id}`,
+        { fields: { Status: 'Klar', Uppdaterad: nowIso } },
+        { headers }
+      );
+      return { synced: true, runId: existing.id, updated: true };
+    }
+    const f = uppdragFields || {};
+    const typ = String(f['Typ'] || '').trim();
+    const freq = String(f['Frekvens'] || '').trim();
+    const deadlineIso = toIsoDateOnly(f['Nästa deadline'] || '') || '';
+    const startIso = toIsoDateOnly(f['Startdatum'] || '') || '';
+    const fields = {
+      'Run Key': `${uid}:${pk}`,
+      'Uppdrag ID': uid,
+      'Kund ID': String(f['Kund ID'] || '').trim(),
+      'Byrå ID': String(f['Byrå ID'] || '').trim(),
+      'Typ': typ,
+      'Frekvens': freq,
+      'PeriodKey': pk,
+      'Period Label': pk,
+      'Status': 'Klar',
+      'Skapad': nowIso,
+      'Uppdaterad': nowIso
+    };
+    if (deadlineIso) fields['Deadline'] = deadlineIso;
+    if (startIso) fields['Startdatum'] = startIso;
+    const created = await airtablePostRecordWithFieldFallback(url, fields, headers);
+    return { synced: true, runId: created?.id || null, created: true };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    console.warn('syncUppdragRunStatusKlar:', msg);
+    return { synced: false, reason: 'error', message: msg };
+  }
+}
+
 async function deleteUppdragRunsAfterDate({ airtableToken, baseId, uppdragId, endDateIso }) {
   const endIso = parseDateOnly(endDateIso);
   if (!endIso) return { deleted: 0, skipped: true };
@@ -13927,7 +14109,26 @@ app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
       if (cid && nameById[cid]) r.fields['Kundnamn'] = nameById[cid];
     });
 
-    res.json({ records });
+    let runs = [];
+    let runsTableMissing = false;
+    try {
+      const runsResult = await listUppdragRunsForByra({
+        airtableToken: airtableAccessToken,
+        baseId: airtableBaseId,
+        byraId: byraIdClean
+      });
+      runsTableMissing = !!runsResult.tableMissing;
+      runs = Array.isArray(runsResult.records) ? runsResult.records : [];
+      if (mine) {
+        const uppdragIds = new Set(records.map((r) => String(r.id || '').trim()).filter(Boolean));
+        runs = runs.filter((rr) => uppdragIds.has(String(rr?.fields?.['Uppdrag ID'] || '').trim()));
+      }
+    } catch (e) {
+      console.warn('GET /api/uppdrag/byra runs:', e.message);
+      runs = [];
+    }
+
+    res.json({ records, runs, runsTableMissing });
   } catch (error) {
     console.error('❌ GET /api/uppdrag/byra:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -14274,36 +14475,33 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    // Synka Status=Klar i Uppdragskörningar för samma period (Clientflow + Minibok delar Airtable)
-    let runSync = { synced: false };
-    if (periodKey) {
-      try {
-        const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
-        if (runsTableId) {
-          const runsUrl = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}`;
-          const formula = encodeURIComponent(
-            `AND({Uppdrag ID}="${String(existing.id).replace(/"/g, '\\"')}",{PeriodKey}="${String(periodKey).replace(/"/g, '\\"')}")`
-          );
-          const listRes = await axios.get(`${runsUrl}?filterByFormula=${formula}&maxRecords=5`, {
-            headers: { Authorization: `Bearer ${airtableAccessToken}` }
-          });
-          const runs = listRes.data.records || [];
-          const nowIso = new Date().toISOString();
-          await Promise.all(runs.map((rr) => axios.patch(
-            `${runsUrl}/${encodeURIComponent(rr.id)}`,
-            { fields: { Status: 'Klar', Uppdaterad: nowIso } },
-            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-          )));
-          runSync = { synced: runs.length > 0, updated: runs.length, runId: runs[0]?.id || null };
-        } else {
-          runSync = { synced: false, reason: 'runs_table_missing' };
-        }
-      } catch (e) {
-        runSync = { synced: false, reason: e.response?.data?.error?.message || e.message };
-      }
+    let runsEnsure = null;
+    try {
+      runsEnsure = await ensureRunsForUppdragRecord(
+        mergeUppdragRecordFields(updateRes.data, fields),
+        airtableAccessToken,
+        airtableBaseId
+      );
+    } catch (e) {
+      console.warn('ensure runs after uppdrag complete:', e.message);
+      runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
     }
 
-    return res.json({ record: updateRes.data, nextDeadline: next || null, periodKey, runSync });
+    let runSync = null;
+    try {
+      runSync = await syncUppdragRunStatusKlar({
+        airtableToken: airtableAccessToken,
+        baseId: airtableBaseId,
+        uppdragId: existing.id,
+        periodKey,
+        uppdragFields: { ...(existing.fields || {}), ...fields, 'Nästa deadline': completedDeadline }
+      });
+    } catch (e) {
+      console.warn('sync run status after uppdrag complete:', e.message);
+      runSync = { synced: false, reason: 'error', message: e.message };
+    }
+
+    return res.json({ record: updateRes.data, nextDeadline: next || null, periodKey, runsEnsure, runSync });
   } catch (error) {
     console.error('❌ POST /api/uppdrag/complete:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -15417,6 +15615,37 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
 // DILISENSE — PEP & Sanktionsscreening
 // ============================================================
 
+/** Spara/uppdatera antal Dilisense-träffar på kunden (används i risk-PDF). mode: set | max | add */
+async function saveDilisenseTraffarToKund(token, baseId, kundId, hits, mode = 'max') {
+  if (!token || !baseId || !kundId) return false;
+  const n = Number(hits);
+  if (Number.isNaN(n) || n < 0) return false;
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  const field = 'Antal träffar PEP och sanktionslistor';
+  try {
+    let value = n;
+    if (mode === 'max' || mode === 'add') {
+      const custRes = await axios.get(
+        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const existing = Number(custRes.data?.fields?.[field]);
+      if (!Number.isNaN(existing)) {
+        value = mode === 'add' ? existing + n : Math.max(existing, n);
+      }
+    }
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+      { fields: { [field]: value } },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    return true;
+  } catch (err) {
+    console.warn('Kunde inte spara Dilisense-träffar:', err.response?.data || err.message);
+    return false;
+  }
+}
+
 // POST /api/pep-screening/:kundId
 // Body: { namn, personnr, dob } — screena en person och spara PDF till dokumentationsfliken
 app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
@@ -15635,8 +15864,11 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
 
         console.log(`✅ PEP-screening klar: ${totalHits} träffar för ${namn}`);
 
-        // PEP-status sätts av användaren på fliken Riskbedömning (Airtable), inte från rapporten.
-        // Screening ger endast PDF + träffar i svaret; användaren bockar i PEP själv om det gäller.
+        // Spara träffar till kundkortet så risk-PDF kan visa sanktionsstatus.
+        // PEP-status (KYC punkt 4) sätts fortfarande av användaren / KYC-formuläret.
+        if (token && kundId) {
+            await saveDilisenseTraffarToKund(token, baseId, kundId, totalHits, 'max');
+        }
 
         res.json({
             namn,
@@ -15872,6 +16104,10 @@ app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) =>
         }
 
         console.log(`✅ Entity-screening klar: ${totalHits} träffar för ${namn}`);
+
+        if (token && kundId) {
+            await saveDilisenseTraffarToKund(token, baseId, kundId, totalHits, 'max');
+        }
 
         return res.json({
             namn,

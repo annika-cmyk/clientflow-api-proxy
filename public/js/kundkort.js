@@ -1608,6 +1608,26 @@ class CustomerCardManager {
                 } else if (t === 'Löneuppdrag' && instDeadline) {
                     const prev = addMonthsIso(instDeadline, -1);
                     prefillPeriodKey = prev ? prev.slice(0, 7) : defaultPeriodKey;
+                } else if ((t === 'Bokslut' || t === 'Deklaration') && instDeadline) {
+                    // Matcha körning via deadline-år (inte visningsmånadens år)
+                    prefillPeriodKey = yearKeyForMonth(instDeadline.slice(0, 7)) || defaultPeriodKey;
+                }
+                let runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
+                if (!runRec && (t === 'Bokslut' || t === 'Deklaration')) {
+                    const openRun = (Array.isArray(runRecords) ? runRecords : []).find((rr) => {
+                        if (String(rr?.fields?.['Typ'] || '').trim() !== t) return false;
+                        const dl = toDateStr(rr?.fields?.['Deadline'] || '');
+                        const st = toDateStr(rr?.fields?.['Startdatum'] || '');
+                        if (instDeadline && dl && dl.slice(0, 10) === instDeadline.slice(0, 10)) return true;
+                        if (st && dl && mk >= st.slice(0, 7) && mk <= dl.slice(0, 7)) return true;
+                        return false;
+                    });
+                    if (openRun) {
+                        runRec = openRun;
+                        prefillPeriodKey = String(openRun?.fields?.['PeriodKey'] || '').trim()
+                            || yearKeyForMonth(String(openRun?.fields?.['Deadline'] || '').slice(0, 7))
+                            || prefillPeriodKey;
+                    }
                 }
                 rowContexts.push({
                     t, rec, f, freq,
@@ -1619,7 +1639,7 @@ class CustomerCardManager {
                             : (window.LonePeriod ? LonePeriod.typDisplayLabel(t) : t)),
                     instDeadline,
                     prefillPeriodKey,
-                    runRec: runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null
+                    runRec
                 });
             });
 
@@ -10614,10 +10634,43 @@ class CustomerCardManager {
         }
 
         await this._saveEntityScreeningDatum();
+        this._syncLocalDilisenseTraffar(data.total_hits);
         if (data.savedToDocs) this.loadDocuments();
         if (showModal) this._showEntityResultModal(namn, orgnr, data);
 
         return { typ: 'entity', namn, orgnr, ...data };
+    }
+
+    _syncLocalDilisenseTraffar(hits, { mode = 'max' } = {}) {
+        if (!this.customerData) this.customerData = { fields: {} };
+        if (!this.customerData.fields) this.customerData.fields = {};
+        const field = 'Antal träffar PEP och sanktionslistor';
+        const n = Number(hits);
+        if (Number.isNaN(n) || n < 0) return;
+        const existing = Number(this.customerData.fields[field]);
+        let value = n;
+        if (!Number.isNaN(existing)) {
+            if (mode === 'add') value = existing + n;
+            else if (mode === 'max') value = Math.max(existing, n);
+            else value = n;
+        }
+        this.customerData.fields[field] = value;
+    }
+
+    async _saveDilisenseTraffarTotal(totalHits) {
+        const n = Number(totalHits);
+        if (Number.isNaN(n) || n < 0 || !this.customerId) return;
+        this._syncLocalDilisenseTraffar(n, { mode: 'set' });
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields: { 'Antal träffar PEP och sanktionslistor': n } })
+            });
+        } catch (e) {
+            console.warn('Kunde inte spara Dilisense-träffar lokalt/API:', e.message);
+        }
     }
 
     async _runPersonScreeningInternal(idx, { showModal = true } = {}) {
@@ -10650,6 +10703,7 @@ class CustomerCardManager {
             this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
             await this._saveKontaktPersoner({}, { skipSuccessNotification: true });
         }
+        this._syncLocalDilisenseTraffar(data.total_hits);
         if (data.savedToDocs) this.loadDocuments();
         if (showModal) this._showPepResultModal(p.namn, data, idx);
 
@@ -10683,6 +10737,7 @@ class CustomerCardManager {
             this._kontaktPersoner[idx].pepSoktDatum = new Date().toISOString().split('T')[0];
             await this._saveKontaktPersoner({}, { skipSuccessNotification: true });
         }
+        this._syncLocalDilisenseTraffar(data.total_hits);
         if (data.savedToDocs) this.loadDocuments();
         if (showModal) this._showEntityResultModal(namn, orgnr, data);
 
@@ -10742,10 +10797,12 @@ class CustomerCardManager {
 
             const entityHits = results.filter(r => r.typ === 'entity').reduce((s, r) => s + (r.total_hits || 0), 0);
             const personHits = results.filter(r => r.typ === 'person').reduce((s, r) => s + (r.total_hits || 0), 0);
+            const totalHits = entityHits + personHits;
+            await this._saveDilisenseTraffarTotal(totalHits);
             const saved = results.some(r => r.savedToDocs);
-            let msg = `Screening klar: ${results.length} sökning(ar), ${entityHits + personHits} träff(ar) totalt.`;
+            let msg = `Screening klar: ${results.length} sökning(ar), ${totalHits} träff(ar) totalt.`;
             if (errors.length) msg += ` ${errors.length} misslyckades.`;
-            this.showNotification(msg, errors.length && !results.length ? 'error' : (entityHits + personHits > 0 ? 'error' : 'success'));
+            this.showNotification(msg, errors.length && !results.length ? 'error' : (totalHits > 0 ? 'error' : 'success'));
             if (saved) this.showNotification('Rapporter sparade på fliken Dokumentation.', 'success');
         } catch (err) {
             console.error('❌ Batch-screening fel:', err);
