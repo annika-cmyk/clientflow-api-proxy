@@ -1,0 +1,20 @@
+---
+description: Always deploy finished ClientFlow fixes to production via main
+alwaysApply: true
+---
+
+# Deploy always
+
+After finishing a user-requested fix or feature in this repo, deploy without waiting to be asked again.
+
+## Deploy steps
+
+1. Commit relevant code changes (never `env.env`, secrets, or debug-only scripts unless explicitly requested).
+2. Rebase/pull if `main` is behind `origin/main`, resolve conflicts, then `git push origin main`.
+3. Render auto-deploys from `main` — confirm push succeeded and briefly tell the user deploy is building.
+
+## Exceptions
+
+- Do not deploy if the user only asked a question / review with no code changes.
+- Do not deploy incomplete work the user asked to hold or keep local.
+- Never force-push `main`.

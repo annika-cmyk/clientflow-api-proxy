@@ -6981,10 +6981,9 @@ class CustomerCardManager {
         const savedKontanter = saved.kontanter || defaultKontanter;
         const savedKontanterAndel = saved.kontanterAndel || '';
 
-        // Nya fält — Sektion 1 (grunduppgifter)
-        // Autohämta bolagsform från företagsinformationen (med normalisering av vanliga varianter)
+        // Bolagsform hämtas från företagsinformationen (visas inte i KYC-formuläret)
         const bolagsformOptions = ['Aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Annat'];
-        const rawBolagsform = (f['Bolagsform'] || '').toString().trim();
+        const rawBolagsform = (f['Bolagsform'] || saved.bolagsform || '').toString().trim();
         const bolagsformSynonymer = {
             'Enskild näringsidkare': 'Enskild firma',
             'Enskild näringsverksamhet': 'Enskild firma',
@@ -6992,26 +6991,11 @@ class CustomerCardManager {
             'Fysiska personer': 'Enskild firma'
         };
         const normBolagsform = bolagsformSynonymer[rawBolagsform] || rawBolagsform;
-        const savedBolagsform = saved.bolagsform || (bolagsformOptions.includes(normBolagsform) ? normBolagsform : (rawBolagsform ? 'Annat' : ''));
+        const savedBolagsform = bolagsformOptions.includes(normBolagsform)
+            ? normBolagsform
+            : (rawBolagsform ? (bolagsformSynonymer[rawBolagsform] || rawBolagsform) : '');
+        const arEnskildFirmaKyc = savedBolagsform === 'Enskild firma';
 
-        // Autohämta SNI-kod(er) och bransch från företagsinformationen
-        const sniRaw = f['SNI kod'] || f['SNI-koder'] || f['SNI-kod'] || '';
-        let autoSniKoder = '';
-        let autoBransch = '';
-        if (sniRaw) {
-            const sniChunks = String(sniRaw).split('\n').flatMap(r => r.split(',')).map(r => r.trim()).filter(Boolean);
-            const sniParsed = sniChunks.map(row => {
-                const m = row.match(/^(\d{4,6})\s*(?:[-–]\s*|\s{1,})(.+)$/);
-                if (m) return { kod: m[1], label: (m[2] || '').trim() };
-                const m2 = row.match(/^(\d{4,6})$/);
-                if (m2) return { kod: m2[1], label: '' };
-                return { kod: null, label: row };
-            });
-            autoSniKoder = sniParsed.map(p => p.kod).filter(Boolean).join(', ');
-            autoBransch = (sniParsed.find(p => p.label)?.label) || '';
-        }
-        const savedBransch = saved.bransch || autoBransch;
-        const savedSniKod = saved.sni_kod || autoSniKoder;
         const savedHemvistForetag = saved.skatterattslig_hemvist_foretag || 'Sverige';
         const savedTinForetag = saved.tin_foretag || '';
         const visaTinForetag = savedHemvistForetag.trim().toLowerCase() !== 'sverige' && savedHemvistForetag.trim() !== '';
@@ -7102,21 +7086,7 @@ class CustomerCardManager {
                                     <label>Organisationsnummer</label>
                                     <input type="text" id="kyc-orgnr" class="uppdrag-input" value="${esc(orgnr)}">
                                 </div>
-                                <div class="uppdrag-field">
-                                    <label>Bolagsform *</label>
-                                    <select id="kyc-bolagsform" class="uppdrag-input">
-                                        <option value="">Välj...</option>
-                                        ${bolagsformOptions.map(o => `<option value="${esc(o)}" ${savedBolagsform === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
-                                    </select>
-                                </div>
-                                <div class="uppdrag-field">
-                                    <label>Bransch</label>
-                                    <input type="text" id="kyc-bransch" class="uppdrag-input" value="${esc(savedBransch)}" placeholder="t.ex. Bygg, Restaurang, Konsult">
-                                </div>
-                                <div class="uppdrag-field">
-                                    <label>SNI-kod <span class="uppdrag-hint" style="font-weight:400;text-transform:none;letter-spacing:0;">(hämtas automatiskt)</span></label>
-                                    <input type="text" id="kyc-sni-kod" class="uppdrag-input" value="${esc(savedSniKod)}" placeholder="t.ex. 41200">
-                                </div>
+                                <input type="hidden" id="kyc-bolagsform" value="${esc(savedBolagsform)}">
                                 <div class="uppdrag-field">
                                     <label>Skatterättslig hemvist *</label>
                                     <input type="text" id="kyc-hemvist-foretag" class="uppdrag-input" value="${esc(savedHemvistForetag)}" placeholder="Sverige" oninput="customerCardManager._toggleKycTinByHemvist('kyc-hemvist-foretag','kyc-tin-foretag-wrap')">
@@ -7146,7 +7116,14 @@ class CustomerCardManager {
                         </div>
                     </div>
 
-                    <!-- 3. VERKLIG HUVUDMAN -->
+                    <!-- 3. VERKLIG HUVUDMAN (döljs för enskild firma — ägaren är alltid verklig huvudman) -->
+                    ${arEnskildFirmaKyc ? `
+                    <input type="hidden" id="kyc-huvudman-info" value="${esc(savedHuvudmanInfo || (foretradareList[0] ? `${foretradareList[0].namn || ''}${foretradareList[0].personnr ? ' (' + foretradareList[0].personnr + ')' : ''}` : ''))}">
+                    <input type="hidden" id="kyc-huvudman-annat-satt" value="">
+                    <input type="hidden" id="kyc-vh-agarandel" value="100">
+                    <input type="hidden" id="kyc-vh-noterat-bolag" value="Nej">
+                    <input type="hidden" id="kyc-vh-utlandska-agare" value="Nej">
+                    ` : `
                     <div class="uppdrag-section uppdrag-section--card">
                         <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
                             <div class="uppdrag-section-title"><i class="fas fa-user-shield"></i> 3. Verklig huvudman</div>
@@ -7178,6 +7155,7 @@ class CustomerCardManager {
                             </div>
                         </div>
                     </div>
+                    `}
 
                     <!-- 4. PEP -->
                     <div class="uppdrag-section uppdrag-section--card">
@@ -7445,16 +7423,14 @@ class CustomerCardManager {
             internationellaLander: g('kyc-internationella-lander'),
             kontanter: g('kyc-kontanter'),
             kontanterAndel: g('kyc-kontanter-andel'),
-            // Sektion 1 — nya fält
+            // Sektion 1 — bolagsform från företagsinfo (dolt); bransch/SNI visas inte i formuläret
             bolagsform: g('kyc-bolagsform'),
-            bransch: g('kyc-bransch'),
-            sni_kod: g('kyc-sni-kod'),
             skatterattslig_hemvist_foretag: g('kyc-hemvist-foretag'),
             tin_foretag: g('kyc-tin-foretag'),
             // Sektion 2 — bakåtkompatibla enskilda fält (första företrädaren)
             skatterattslig_hemvist_foretradare: foretradare[0]?.skatterattslig_hemvist || 'Sverige',
             tin_foretradare: foretradare[0]?.tin || '',
-            // Sektion 3 — nya fält
+            // Sektion 3 — nya fält (dolda för enskild firma)
             vh_agarandel: (() => { const v = g('kyc-vh-agarandel'); return v === '' ? null : Number(v); })(),
             vh_noterat_bolag: document.getElementById('kyc-vh-noterat-bolag')?.value === 'Ja',
             vh_utlandska_agare: document.getElementById('kyc-vh-utlandska-agare')?.value === 'Ja',
@@ -7466,14 +7442,10 @@ class CustomerCardManager {
     async saveKYCFormular() {
         const data = this._collectKYCFormularData();
 
-        // Validering: bolagsform och skatterättslig hemvist (företag) är obligatoriska
-        const saknas = [];
-        if (!data.bolagsform) saknas.push('Bolagsform');
-        if (!data.skatterattslig_hemvist_foretag) saknas.push('Skatterättslig hemvist (företag)');
-        if (saknas.length > 0) {
-            this.showNotification(`Fyll i obligatoriska fält: ${saknas.join(', ')}.`, 'error');
-            const firstId = !data.bolagsform ? 'kyc-bolagsform' : 'kyc-hemvist-foretag';
-            const el = document.getElementById(firstId);
+        // Validering: skatterättslig hemvist (företag) är obligatorisk
+        if (!data.skatterattslig_hemvist_foretag) {
+            this.showNotification('Fyll i obligatoriska fält: Skatterättslig hemvist (företag).', 'error');
+            const el = document.getElementById('kyc-hemvist-foretag');
             if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
             return;
         }

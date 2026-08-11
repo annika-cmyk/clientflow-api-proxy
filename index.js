@@ -4937,6 +4937,14 @@ function pdfJanej(v) {
     : (v === 'Nej' ? '<span style="color:#16a34a;font-weight:600;">Nej</span>' : pdfEscape(v || '–'));
 }
 
+function isEnskildFirmaBolagsform(bolagsform) {
+  const raw = String(bolagsform || '').trim().toLowerCase();
+  return raw === 'enskild firma'
+    || raw === 'enskild näringsidkare'
+    || raw === 'enskild näringsverksamhet'
+    || raw === 'fysiska personer';
+}
+
 function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
   const ACCENT_KYC = '#3b4a8a';
   const esc = pdfEscape;
@@ -4975,10 +4983,10 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
       <div class="col"><span class="field-label">Personnummer:</span> ${esc(kyc.foretradarePnr)}</div>
     </div>
   </div>
-  <div class="section"><h2>3. Verklig huvudman</h2>
+  ${isEnskildFirmaBolagsform(kyc.bolagsform) ? '' : `<div class="section"><h2>3. Verklig huvudman</h2>
     <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br>${nl2br(kyc.huvudmanInfo || '—')}</div>
     ${kyc.huvudmanAnnatSatt ? `<div class="field"><span class="field-label">Kontroll genom avtal:</span><br>${nl2br(kyc.huvudmanAnnatSatt)}</div>` : ''}
-  </div>
+  </div>`}
   <div class="section"><h2>4. PEP</h2>
     <div class="field"><span class="field-label">PEP-status:</span> ${pdfJanej(kyc.pep)}</div>
     ${kyc.pep === 'Ja' && kyc.pepDetaljer ? `<div class="field"><span class="field-label">Detaljer:</span> ${esc(kyc.pepDetaljer)}</div>` : ''}
@@ -5387,6 +5395,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const kycForPdf = {
       foretagsnamn: savedKyc.foretagsnamn || kundnamn,
       orgnr: savedKyc.orgnr || orgnr,
+      bolagsform: savedKyc.bolagsform || f['Bolagsform'] || '',
       foretradareNamn: savedKyc.foretradareNamn || '',
       foretradarePnr: savedKyc.foretradarePnr || '',
       huvudmanInfo: pdfHtmlToPlainText(savedKyc.huvudmanInfo) || pdfToText(f['Verklig huvudman']) || '',
@@ -12519,11 +12528,6 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       <div class="col"><span class="field-label">Organisationsnummer:</span> <span class="field-value">${esc(kyc.orgnr)}</span></div>
     </div>
     <div class="row">
-      <div class="col"><span class="field-label">Bolagsform:</span> <span class="field-value">${esc(kyc.bolagsform || '\u2014')}</span></div>
-      <div class="col"><span class="field-label">Bransch:</span> <span class="field-value">${esc(kyc.bransch || '\u2014')}</span></div>
-    </div>
-    <div class="row">
-      <div class="col"><span class="field-label">SNI-kod:</span> <span class="field-value">${esc(kyc.sni_kod || '\u2014')}</span></div>
       <div class="col"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(kyc.skatterattslig_hemvist_foretag || '\u2014')}</span></div>
     </div>
     ${(kyc.skatterattslig_hemvist_foretag && kyc.skatterattslig_hemvist_foretag.trim().toLowerCase() !== 'sverige' && kyc.tin_foretag) ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(kyc.tin_foretag)}</span></div>` : ''}
@@ -12551,7 +12555,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
     })()}
   </div>
 
-  <div class="section">
+  ${isEnskildFirmaBolagsform(kyc.bolagsform || f['Bolagsform']) ? '' : `<div class="section">
     <h2>3. Verklig huvudman</h2>
     <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br><span class="field-value">${nl2br(kyc.huvudmanInfo || '\u2014')}</span></div>
     ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
@@ -12560,7 +12564,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       <div class="col"><span class="field-label">Börsnoterat bolag:</span> ${janej(kyc.vh_noterat_bolag ? 'Ja' : 'Nej')}</div>
       <div class="col"><span class="field-label">Utländska ägare:</span> ${janej(kyc.vh_utlandska_agare ? 'Ja' : 'Nej')}</div>
     </div>
-  </div>
+  </div>`}
 
   <div class="section">
     <h2>4. Politiskt exponerad person (PEP)</h2>
