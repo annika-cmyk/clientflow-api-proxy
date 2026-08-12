@@ -530,7 +530,30 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   return parts.map((c) => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
 }
 
-/** Samma assistent-anrop med enkel backoff vid 429/temporära fel. */
+/** Extrahera väntetid (ms) från OpenAI rate-limit-meddelanden, t.ex. "Please try again in 38.202s". */
+function parseOpenAIRetryAfterMs(errOrMsg) {
+  const em = String(errOrMsg?.message || errOrMsg || '');
+  const m = em.match(/try again in\s+(\d+(?:\.\d+)?)\s*s/i);
+  if (m) {
+    const sec = Number(m[1]);
+    if (!Number.isNaN(sec) && sec > 0) return Math.min(90000, Math.ceil(sec * 1000) + 1500);
+  }
+  const headers = errOrMsg?.response?.headers || {};
+  const ra = headers['retry-after'] || headers['Retry-After'];
+  if (ra != null && String(ra).trim() !== '') {
+    const sec = Number(ra);
+    if (!Number.isNaN(sec) && sec > 0) return Math.min(90000, Math.ceil(sec * 1000) + 500);
+  }
+  return null;
+}
+
+function isOpenAIRateLimitError(err) {
+  const status = err?.response?.status || err?.status;
+  const em = String(err?.message || '');
+  return status === 429 || /rate limit|tokens per min|TPM|429/i.test(em);
+}
+
+/** Samma assistent-anrop med backoff vid 429/temporära fel (respekterar "try again in Xs"). */
 async function runOpenAIAssistantRunWithRetry(openaiKey, userContent, opts = {}, retryOpts = {}) {
   const maxAttempts = Math.max(1, Math.min(retryOpts.maxAttempts ?? 3, 8));
   const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -541,17 +564,22 @@ async function runOpenAIAssistantRunWithRetry(openaiKey, userContent, opts = {},
       return await runOpenAIAssistantRun(openaiKey, userContent, opts);
     } catch (e) {
       lastErr = e;
-      const status = e.response?.status;
+      const status = e.response?.status || e.status;
       const em = String(e.message || '');
+      const rateLimited = isOpenAIRateLimitError(e);
       const shouldRetry =
-        status === 429 ||
+        rateLimited ||
         status === 500 ||
         status === 502 ||
         status === 503 ||
         status === 504 ||
-        /rate limit|429|timeout|temporar|unavailable/i.test(em);
+        /timeout|temporar|unavailable/i.test(em);
       if (!shouldRetry || attempt === maxAttempts) break;
-      const backoff = attempt === 1 ? 1500 : 2800;
+      const parsed = parseOpenAIRetryAfterMs(e);
+      const backoff = parsed != null
+        ? parsed
+        : (attempt === 1 ? 2000 : Math.min(20000, 2500 * attempt));
+      console.warn(`⏳ OpenAI retry ${attempt}/${maxAttempts} om ${Math.round(backoff / 1000)}s:`, em.slice(0, 180));
       // eslint-disable-next-line no-await-in-loop
       await sleepMs(backoff);
     }
@@ -16720,10 +16748,15 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const f = kundRes.data.fields || {};
 
     const arr = (v) => Array.isArray(v) ? v.join(', ') : (v || '–');
-    const clip = (v, max = 2500) => {
+    const clip = (v, max = 1200) => {
       const s = v == null ? '' : String(v).trim();
       if (!s) return '';
       return s.length > max ? s.slice(0, max) + '…' : s;
+    };
+    const clipBlock = (v, max = 3500) => {
+      const s = v == null ? '' : String(v).trim();
+      if (!s) return '';
+      return s.length > max ? s.slice(0, max) + '\n…(avkortat p.g.a. storlek)' : s;
     };
 
     // Hämta kundens valda tjänster (samma tabell som byråns tjänstanalys: "Risker kopplad till tjänster") + länkade riskposter
@@ -16758,12 +16791,12 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             });
             if (ok.length > 0) {
               tjansterText = ok.map((x) => x.namn).join(', ');
-              byraValdaTjansterDetaljText = ok.map(({ namn, tf }) => {
+              byraValdaTjansterDetaljText = clipBlock(ok.map(({ namn, tf }) => {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
-                const tjBeskr = clip(tf['Tjänstebeskrivning'], 1200);
-                const brf = clip(tf['Beskrivning av riskfaktor'], 1200);
+                const tjBeskr = clip(tf['Tjänstebeskrivning'], 350);
+                const brf = clip(tf['Beskrivning av riskfaktor'], 350);
                 const risk = (tf['Riskbedömning'] || '').trim();
-                const atgLegacy = clip(tf['Åtgjärd'], 800);
+                const atgLegacy = clip(tf['Åtgjärd'], 250);
                 const hot = parseJsonArr(tf['Hot']);
                 const sarbarheter = parseJsonArr(tf['Sårbarheter']);
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
@@ -16774,34 +16807,34 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 if (risk) line += `\n    Byråns riskbedömning för tjänsten: ${risk}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
-                  hot.slice(0, 8).forEach(h => {
+                  hot.slice(0, 4).forEach(h => {
                     const t = (h && (h.typ || '')).toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
                     const titel = (h && h.titel || '').toString().trim();
-                    const besk = clip(h && h.beskrivning, 400);
+                    const besk = clip(h && h.beskrivning, 180);
                     if (titel || besk) line += `\n      - [${t}] ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (sarbarheter.length) {
                   line += `\n    Sårbarheter/riskfaktorer kopplade till tjänsten:`;
-                  sarbarheter.slice(0, 8).forEach(s => {
+                  sarbarheter.slice(0, 4).forEach(s => {
                     const kat = (s && s.kategori || '').toString().trim();
                     const titel = (s && s.titel || '').toString().trim();
-                    const besk = clip(s && s.beskrivning, 400);
+                    const besk = clip(s && s.beskrivning, 180);
                     if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (atgarder.length) {
                   line += `\n    Byråns tjänstespecifika åtgärder:`;
-                  atgarder.slice(0, 8).forEach(a => {
+                  atgarder.slice(0, 4).forEach(a => {
                     const titel = (a && a.titel || '').toString().trim();
-                    const besk = clip(a && a.beskrivning, 400);
+                    const besk = clip(a && a.beskrivning, 180);
                     if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 } else if (atgLegacy) {
                   line += `\n    Byråns åtgärder kopplade till tjänsten: ${atgLegacy}`;
                 }
                 return line;
-              }).join('\n\n');
+              }).join('\n\n'), 4500);
             }
           }
         } catch (e) {
@@ -16854,8 +16887,8 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             if (/tjänst|produkt/i.test(typ)) continue;
             const namn = String(rf['Riskfaktor'] || '').trim() || '–';
             const niva = String(rf['Riskbedömning'] || '').trim();
-            const beskr = clip(rf['Beskrivning'], 600);
-            const atg = clip(rf['Åtgjärd'], 600);
+            const beskr = clip(rf['Beskrivning'], 220);
+            const atg = clip(rf['Åtgjärd'], 180);
             const namnLower = namn.toLowerCase();
             const nivaLower = niva.toLowerCase();
             const isForhojdNiva = nivaLower === 'förhöjd' || nivaLower === 'hog' || nivaLower === 'hög';
@@ -16890,7 +16923,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             if (!items.length) continue;
             sections.push(`${typ}:\n${items.join('\n')}`);
           }
-          lankadeRiskerText = sections.join('\n\n');
+          lankadeRiskerText = clipBlock(sections.join('\n\n'), 3500);
         } catch (e) {
           console.warn('⚠️ AI-riskbedömning: kunde inte hämta länkade riskfaktorer:', e.message);
         }
@@ -16922,24 +16955,24 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
       return '';
     };
 
-    const beskrivningKundFull = pickText(
+    const beskrivningKundFull = clip(pickText(
       bodyOverride.beskrivningKunden,
       bodyOverride.beskrivningAvKunden,
       f['Beskrivning av kunden']
-    ) || '–';
-    const verksamhetsbeskrivningBolagsverket = pickText(
+    ), 1800) || '–';
+    const verksamhetsbeskrivningBolagsverket = clip(pickText(
       bodyOverride.verksamhetsbeskrivning,
       f['Verksamhetsbeskrivning']
-    ) || '–';
-    const beskrivningExtraFull = pickText(
+    ), 900) || '–';
+    const beskrivningExtraFull = clip(pickText(
       bodyOverride.ytterligareBeskrivning,
       f['Ytterligare beskrivning av kunden och verksamheten']
-    ) || '–';
-    const kommentarRiskfaktorer = pickText(
+    ), 900) || '–';
+    const kommentarRiskfaktorer = clip(pickText(
       bodyOverride.kommentarRisk,
       bodyOverride.kommentarRiskfaktorer,
       f['Kommentar till riskfaktorerna ovan']
-    ) || '–';
+    ), 1200) || '–';
     const verkligHuvudmanAnon = (() => {
       const v = f['Verklig huvudman'];
       if (v == null || String(v).trim() === '' || String(v).trim() === '–') return '–';
@@ -17184,15 +17217,17 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
-    // Vector: OPENAI_RISK_VECTOR_STORE_ID om satt, annars OPENAI_VECTOR_STORE_ID (file_search i assistentkörning när ID finns).
-    const riskVectorStoreId =
-      (process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
-      || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
-      || null;
+    // Vector store ökar tokenförbrukning kraftigt (TPM). Standard: av för kundrisk; sätt OPENAI_RISK_USE_VECTOR=1 för att tvinga på.
+    const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
+    const riskVectorStoreId = riskUseVector
+      ? ((process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
+        || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
+        || null)
+      : null;
 
     // Via samma OpenAI-assistent som övriga ClientFlow (OPENAI_ASSISTANT_ID). Run-instruktioner säkerställer JSON-svar.
     const assistantInstructions =
-      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Om file_search finns: använd kunskapsbasen som komplement till kundunderlaget, inte som ersättning. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
+      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
 
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
@@ -17204,29 +17239,33 @@ Svara EXAKT i detta JSON-format (inget annat):
         pollMs: 1500,
         debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
       },
-      { maxAttempts: 3 }
+      { maxAttempts: 4 }
     );
     let result = parseAssistantJson(aiText);
 
-    // Om modellen svarar “konstigt”, gör en enkel omskrivningsrunda med tydliga krav.
+    // Om modellen svarar “konstigt”, gör en kort omskrivning UTAN att duplicera hela underlaget (sparar TPM).
     if (!result || isLowQualityRiskText(result.riskbedomning)) {
-      const rewritePrompt = `Du ska förbättra (skriva om) en kundriskbedömning enligt PVML på tydlig svenska.
-Skriv om texten så att den är lätt att förstå, utan UI-termer (kryss/bockat/markerat/flik/formulär).
-Håll dig till fakta i underlaget. Hitta inte på nya detaljer.
-Returnera EXAKT samma JSON-format som tidigare.
+      const rewritePrompt = `Skriv om riskbedömningen till tydlig svenska enligt PVML.
+Utan UI-termer (kryss/bockat/markerat/flik/formulär). Hitta inte på nya fakta.
+Returnera EXAKT JSON: {"riskniva":"Lag|Medel|Hog","riskbedomning":"...","atgarder":"..."}.
 
-UNDERLAG (kunddata + regler):
-${prompt}
+NUVARANDE SVAR ATT FÖRBÄTTRA:
+${clip(aiText, 4000)}
 
-NUVARANDE AI-SVAR (att förbättra):
-${aiText}`;
+KORT UNDERLAG (kom ihåg manuella fritexter):
+- Byråns beskrivning: ${beskrivningKundFull}
+- Kommentar riskfaktorer: ${kommentarRiskfaktorer}
+- Tjänster: ${tjansterListaCanonical}
+- Riskfaktorer: ${clip(lankadeRiskerText || 'Inga', 1200)}
+- Internationell exponering: ${harForhojdInternationellExponering ? 'JA' : 'NEJ'}
+- PEP-riskfaktor: ${harForhojdPepRiskfaktor ? 'JA' : 'NEJ'}`;
       const rewriteText = await runOpenAIAssistantRunWithRetry(
         openaiKey,
         rewritePrompt,
         {
           instructions: assistantInstructions,
-          vectorStoreId: riskVectorStoreId || undefined,
-          maxWaitMs: 180000,
+          vectorStoreId: undefined,
+          maxWaitMs: 120000,
           pollMs: 1500,
           debugMeta: { route: '/api/ai-riskbedomning-rewrite', user: req.user?.email || '' }
         },
@@ -17244,15 +17283,18 @@ ${aiText}`;
     });
 
   } catch (error) {
-    const status = error.response?.status || 500;
     const msg = error.response?.data?.error?.message || error.message || 'Okänt fel';
-    console.error('❌ AI-riskbedömning fel:', status, msg);
-    if (status === 429) {
+    const rateLimited = isOpenAIRateLimitError(error) || /rate limit|tokens per min|TPM/i.test(msg);
+    const retryMs = parseOpenAIRetryAfterMs(error);
+    const waitSec = retryMs != null ? Math.ceil(retryMs / 1000) : 40;
+    console.error('❌ AI-riskbedömning fel:', rateLimited ? 429 : (error.response?.status || 500), msg);
+    if (rateLimited) {
       return res.status(429).json({
-        error: 'AI är tillfälligt hårt belastad (rate limit). Vänta 10–30 sek och försök igen.'
+        error: `AI har tillfälligt nått OpenAI:s tokengräns. Vänta ca ${waitSec} sekunder och försök igen.`,
+        retryAfterSec: waitSec
       });
     }
-    res.status(status).json({ error: 'Kunde inte generera AI-analys: ' + msg });
+    res.status(error.response?.status || 500).json({ error: 'Kunde inte generera AI-analys: ' + msg });
   }
 });
 

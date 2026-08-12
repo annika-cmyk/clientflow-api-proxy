@@ -6193,7 +6193,19 @@ class CustomerCardManager {
             this.showNotification('AI-analys klar! Granska och spara.', 'success');
         } catch (err) {
             console.error('❌ AI-riskbedömning fel:', err);
-            this.showNotification('AI-analys misslyckades: ' + err.message, 'error');
+            const msg = String(err.message || '');
+            const waitMatch = msg.match(/(\d+)\s*sekund/i) || msg.match(/try again in\s+(\d+)/i);
+            const waitSec = waitMatch ? waitMatch[1] : null;
+            if (/rate limit|tokengräns|TPM|429/i.test(msg)) {
+                this.showNotification(
+                    waitSec
+                        ? `AI är tillfälligt begränsad. Vänta ca ${waitSec} sekunder och försök igen.`
+                        : 'AI är tillfälligt begränsad (för många tokens/minut). Vänta en stund och försök igen.',
+                    'error'
+                );
+            } else {
+                this.showNotification('AI-analys misslyckades: ' + msg, 'error');
+            }
         } finally {
             if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
             if (btn) { btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag'; btn.disabled = false; }
