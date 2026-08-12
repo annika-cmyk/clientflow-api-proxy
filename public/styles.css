@@ -2157,6 +2157,41 @@ body.sidebar-collapsed .logout-btn {
     overflow: hidden;
 }
 
+/* Undvik kort-i-kort i Företagssök-modal / flat resultatvy */
+.company-info-section--flat .company-result,
+.company-result {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    width: 100%;
+}
+.lead-card--flat,
+#bolagsverket-modal .lead-card,
+.company-info-section--flat .lead-card {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+#bolagsverket-modal .company-header,
+.company-info-section--flat .company-header {
+    margin-bottom: 1rem;
+}
+#bolagsverket-modal .lead-card-header,
+.company-info-section--flat .lead-card-header {
+    padding-left: 0;
+    padding-right: 0;
+}
+#bolagsverket-modal .lead-field,
+#bolagsverket-modal .lead-section,
+.company-info-section--flat .lead-field,
+.company-info-section--flat .lead-section {
+    padding-left: 0;
+    padding-right: 0;
+}
+
 .lead-card-header {
     display: flex;
     align-items: flex-start;

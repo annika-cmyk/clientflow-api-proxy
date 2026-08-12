@@ -1321,7 +1321,7 @@ class ClientFlowApp {
                 : '<span class="lead-empty">Inga roller registrerade</span>';
 
         const html = `
-            <div class="lead-card">
+            <div class="lead-card lead-card--flat">
 
                 <!-- Huvud: namn + orgnr + status -->
                 <div class="lead-card-header">
