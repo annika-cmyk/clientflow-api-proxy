@@ -16791,50 +16791,70 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             });
             if (ok.length > 0) {
               tjansterText = ok.map((x) => x.namn).join(', ');
-              byraValdaTjansterDetaljText = clipBlock(ok.map(({ namn, tf }) => {
+              // Låg/Medel: bara namn + nivå. Hög: full byråanalys (beskrivning, hot, åtgärder).
+              const isHogRiskTjanst = (riskRaw) => {
+                const r = String(riskRaw || '').trim().toLowerCase();
+                return r === 'hog' || r === 'hög' || r === 'high' || r.startsWith('hög') || r.startsWith('hog');
+              };
+              const kortLista = [];
+              const hogFull = [];
+              for (const { namn, tf } of ok) {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
-                const tjBeskr = clip(tf['Tjänstebeskrivning'], 350);
-                const brf = clip(tf['Beskrivning av riskfaktor'], 350);
                 const risk = (tf['Riskbedömning'] || '').trim();
-                const atgLegacy = clip(tf['Åtgjärd'], 250);
+                const riskLabel = risk || 'Ej angiven';
+                const kort = `  • ${namn}${typ ? ` (${typ})` : ''} — risknivå: ${riskLabel}`;
+                if (!isHogRiskTjanst(risk)) {
+                  kortLista.push(kort);
+                  continue;
+                }
+                const tjBeskr = clip(tf['Tjänstebeskrivning'], 500);
+                const brf = clip(tf['Beskrivning av riskfaktor'], 700);
+                const atgLegacy = clip(tf['Åtgjärd'], 500);
                 const hot = parseJsonArr(tf['Hot']);
                 const sarbarheter = parseJsonArr(tf['Sårbarheter']);
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
 
-                let line = `  • ${namn}${typ ? ` (${typ})` : ''}`;
+                let line = `${kort}\n    (HÖGRISKTJÄNST — full analys nedan)`;
                 if (tjBeskr) line += `\n    Tjänstebeskrivning: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
-                if (risk) line += `\n    Byråns riskbedömning för tjänsten: ${risk}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
-                  hot.slice(0, 4).forEach(h => {
+                  hot.slice(0, 8).forEach(h => {
                     const t = (h && (h.typ || '')).toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
                     const titel = (h && h.titel || '').toString().trim();
-                    const besk = clip(h && h.beskrivning, 180);
+                    const besk = clip(h && h.beskrivning, 280);
                     if (titel || besk) line += `\n      - [${t}] ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (sarbarheter.length) {
                   line += `\n    Sårbarheter/riskfaktorer kopplade till tjänsten:`;
-                  sarbarheter.slice(0, 4).forEach(s => {
+                  sarbarheter.slice(0, 8).forEach(s => {
                     const kat = (s && s.kategori || '').toString().trim();
                     const titel = (s && s.titel || '').toString().trim();
-                    const besk = clip(s && s.beskrivning, 180);
+                    const besk = clip(s && s.beskrivning, 280);
                     if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (atgarder.length) {
                   line += `\n    Byråns tjänstespecifika åtgärder:`;
-                  atgarder.slice(0, 4).forEach(a => {
+                  atgarder.slice(0, 8).forEach(a => {
                     const titel = (a && a.titel || '').toString().trim();
-                    const besk = clip(a && a.beskrivning, 180);
+                    const besk = clip(a && a.beskrivning, 280);
                     if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 } else if (atgLegacy) {
                   line += `\n    Byråns åtgärder kopplade till tjänsten: ${atgLegacy}`;
                 }
-                return line;
-              }).join('\n\n'), 4500);
+                hogFull.push(line);
+              }
+              const parts = [];
+              if (kortLista.length) {
+                parts.push('Tjänster med låg/medel risk (endast namn + nivå — ingen full analys):\n' + kortLista.join('\n'));
+              }
+              if (hogFull.length) {
+                parts.push('Högrisktjänster (full byråanalys):\n' + hogFull.join('\n\n'));
+              }
+              byraValdaTjansterDetaljText = clipBlock(parts.join('\n\n') || '  (Inga tjänster.)', 6000);
             }
           }
         } catch (e) {
@@ -17035,7 +17055,9 @@ REGLER FÖR TJÄNSTER (KRITISKT — BROTT MOT DESSA REGLER GER FELAKTIG RISKBED�
 - Fältet "Syfte med affärsförbindelsen" är fritext; det får inte ersätta tjänstlistan om de säger olika — prioritera tjänstlistan + beskrivningarna.
 
 BYRÅNS ANALYS AV VALDA TJÄNSTER (endast tjänster som finns i TJÄNSTLISTA ovan — samma poster som "Kundens utvalda tjänster"):
-Detta är byråns förhandsbedömning per tjänst (beskrivning av riskfaktor, riskbedömning, åtgärder) från ClientFlow. Väg in det när du bedömer denna kunds risk; generalisera inte från tjänster som inte är valda för kunden.
+- Tjänster med Låg/Medel risk: endast namn + risknivå anges (ingen detaljtext behövs).
+- Tjänster med Hög risk: full byråanalys (beskrivning, hot, sårbarheter, åtgärder) ingår.
+Väg in detta när du bedömer kundens risk; generalisera inte från tjänster som inte är valda för kunden.
 ${byraValdaTjansterDetaljText}
 
 KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
