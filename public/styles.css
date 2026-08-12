@@ -8197,6 +8197,118 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     }
 }
 
+/* Skapa uppdrag-modal – enhetlig med form-grid i övriga modaler */
+.uppdrag-setup-modal {
+    max-width: 720px;
+    width: min(96vw, 720px);
+    max-height: 90vh;
+    overflow: hidden;
+}
+.uppdrag-setup-modal .modal-body {
+    overflow: auto;
+}
+.uppdrag-setup-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    margin: 0;
+}
+.uppdrag-setup-form .form-group {
+    margin-bottom: 0;
+}
+.uppdrag-setup-form .form-group.full-width {
+    grid-column: 1 / -1;
+}
+.uppdrag-setup-form label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text, #334155);
+}
+.uppdrag-setup-form input,
+.uppdrag-setup-form select,
+.uppdrag-setup-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-color, #cbd5e1);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--title-text, #0f172a);
+    font: inherit;
+    font-size: 0.95rem;
+}
+.uppdrag-setup-form input:focus,
+.uppdrag-setup-form select:focus,
+.uppdrag-setup-form textarea:focus {
+    outline: none;
+    border-color: var(--accent, #0f766e);
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+.uppdrag-setup-form textarea {
+    resize: vertical;
+    min-height: 88px;
+}
+.uppdrag-setup-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+.uppdrag-setup-section {
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--line, #e2e8f0);
+}
+.uppdrag-setup-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+}
+.uppdrag-setup-section-title {
+    margin: 0 0 0.55rem;
+    font-size: 0.92rem;
+    font-weight: 650;
+    color: var(--title-text, #0f172a);
+}
+.uppdrag-setup-section-head .uppdrag-setup-section-title {
+    margin: 0;
+}
+.uppdrag-setup-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.uppdrag-risk-choice {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text, #334155);
+    cursor: pointer;
+}
+.uppdrag-risk-choice input {
+    margin-top: 0.2rem;
+}
+.uppdrag-setup-modal .uppdrag-dek-row select,
+.uppdrag-setup-modal .uppdrag-dek-row input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border-color, #cbd5e1);
+    border-radius: 8px;
+    background: #fff;
+    font: inherit;
+    font-size: 0.92rem;
+}
+@media (max-width: 700px) {
+    .uppdrag-setup-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 .uppdrag-block {
     margin-top: 0.85rem;
 }

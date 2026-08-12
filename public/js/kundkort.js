@@ -3126,6 +3126,30 @@ class CustomerCardManager {
         }).join('')}</div>`;
     }
 
+    _isEnskildFirmaCustomer() {
+        const raw = String(this.customerData?.fields?.Bolagsform || '').trim();
+        const norm = ({
+            'Enskild näringsidkare': 'Enskild firma',
+            'Enskild näringsverksamhet': 'Enskild firma',
+            'Enskild firma': 'Enskild firma',
+            'Fysiska personer': 'Enskild firma'
+        })[raw] || raw;
+        return /enskild/i.test(norm);
+    }
+
+    /** Standarddatum bokslut/deklaration för enskild firma: 01-01 → 06-15. Efter 1/5 → nästa år. */
+    _defaultEfBokslutDates(now = new Date()) {
+        const y = now.getFullYear();
+        const m = now.getMonth() + 1;
+        const d = now.getDate();
+        const year = (m > 5 || (m === 5 && d > 1)) ? y + 1 : y;
+        return {
+            year,
+            start: `${year}-01-01`,
+            deadline: `${year}-06-15`
+        };
+    }
+
     _showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder }) {
         if (!missingTypes || missingTypes.length === 0) {
             this.showNotification('Alla uppdrag är redan upplagda på kunden', 'info');
@@ -3149,85 +3173,90 @@ class CustomerCardManager {
         }).join('');
 
         const riskChoicesHtml = (riskAtgarder || []).map(a => {
-            return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
+            return `<label class="uppdrag-risk-choice">
                 <input type="checkbox" class="uppdrag-risk-cb" value="${this._esc(a)}">
                 <span>${this._esc(a)}</span>
             </label>`;
-        }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
+        }).join('') || `<p class="uppdrag-muted" style="margin:0;">Inga åtgärder hittades i kundens riskbedömning.</p>`;
 
         const typeOptionsHtml = missingTypes.map(t => {
             const label = this._uppdragTypLabel(t);
             return `<option value="${this._esc(t)}">${this._esc(label)}</option>`;
         }).join('');
 
+        const arEnskildFirma = this._isEnskildFirmaCustomer();
+
         modal.innerHTML = `
-            <div class="modal-box" style="max-width:760px; width:96vw; max-height:90vh;">
+            <div class="modal-box uppdrag-setup-modal">
                 <div class="modal-header">
                     <h3><i class="fas fa-briefcase"></i> Skapa uppdrag</h3>
-                    <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()"><i class="fas fa-times"></i></button>
+                    <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()" aria-label="Stäng"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="modal-body" style="overflow:auto;">
-                    <div class="lead-fields uppdrag-lead-fields" style="margin-top:0;">
-                        <div class="lead-field">
-                            <label>Typ av uppdrag *</label>
-                            <select class="form-control" id="uppdrag-new-typ">${typeOptionsHtml}</select>
+                <div class="modal-body">
+                    <div class="form-grid uppdrag-setup-form">
+                        <div class="form-group">
+                            <label for="uppdrag-new-typ">Typ av uppdrag *</label>
+                            <select id="uppdrag-new-typ">${typeOptionsHtml}</select>
                         </div>
-                        <div class="lead-field">
-                            <label>Handläggare *</label>
-                            <select class="form-control" id="uppdrag-new-ansvarig">${userOptHtml}</select>
+                        <div class="form-group">
+                            <label for="uppdrag-new-ansvarig">Handläggare *</label>
+                            <select id="uppdrag-new-ansvarig">${userOptHtml}</select>
                         </div>
-                        <div class="lead-field">
-                            <label>Frekvens *</label>
-                            <select class="form-control" id="uppdrag-new-frekvens"></select>
+                        <div class="form-group">
+                            <label for="uppdrag-new-frekvens">Frekvens *</label>
+                            <select id="uppdrag-new-frekvens"></select>
                         </div>
-                        <div class="lead-field uppdrag-span-full" id="uppdrag-moms-period-wrap" style="display:none;">
-                            <label id="uppdrag-moms-period-label">Första momsperiod *</label>
-                            <select class="form-control" id="uppdrag-new-forsta-period"></select>
-                            <p class="uppdrag-muted" style="margin:0.35rem 0 0;" id="uppdrag-moms-period-hint">Start och deadline enligt Skatteverket (12:e, 17:e i jan/aug) fylls i automatiskt.</p>
+                        <div class="form-group" id="uppdrag-moms-period-wrap" style="display:none;">
+                            <label for="uppdrag-new-forsta-period" id="uppdrag-moms-period-label">Första momsperiod *</label>
+                            <select id="uppdrag-new-forsta-period"></select>
+                            <p class="uppdrag-muted uppdrag-setup-hint" id="uppdrag-moms-period-hint">Start och deadline enligt Skatteverket fylls i automatiskt.</p>
                         </div>
-                        <div class="lead-field" id="uppdrag-new-start-wrap">
-                            <label>Startdatum *</label>
-                            <input class="kunduppgifter-input" type="date" id="uppdrag-new-start">
+                        <div class="form-group" id="uppdrag-new-start-wrap">
+                            <label for="uppdrag-new-start">Startdatum *</label>
+                            <input type="date" id="uppdrag-new-start">
                         </div>
-                        <div class="lead-field" id="uppdrag-new-deadline-wrap">
-                            <label>Deadline *</label>
-                            <input class="kunduppgifter-input" type="date" id="uppdrag-new-deadline">
+                        <div class="form-group" id="uppdrag-new-deadline-wrap">
+                            <label for="uppdrag-new-deadline">Deadline *</label>
+                            <input type="date" id="uppdrag-new-deadline">
                         </div>
-                        <div class="lead-field uppdrag-span-full" id="uppdrag-moms-preview-wrap" style="display:none;">
+                        <div class="form-group full-width" id="uppdrag-ef-dates-hint" style="display:none;">
+                            <p class="uppdrag-muted uppdrag-setup-hint" style="margin:0;">Förvalt för enskild firma: 1 jan → 15 juni (efter 1 maj blir det nästa år).</p>
+                        </div>
+                        <div class="form-group full-width" id="uppdrag-moms-preview-wrap" style="display:none;">
                             <label>Beräknat (SKV)</label>
                             <p class="uppdrag-muted" style="margin:0;" id="uppdrag-moms-preview-text">—</p>
                         </div>
-                        <div class="lead-field uppdrag-span-full" id="uppdrag-lone-preview-wrap" style="display:none;">
+                        <div class="form-group full-width" id="uppdrag-lone-preview-wrap" style="display:none;">
                             <label>Första lönekörningar</label>
                             <p class="uppdrag-muted" style="margin:0;" id="uppdrag-lone-preview-text">—</p>
                         </div>
-                        <div class="lead-field uppdrag-span-full">
-                            <label>Rutin / instruktion</label>
-                            <textarea class="kunduppgifter-input" rows="4" id="uppdrag-new-rutin" placeholder="Skriv rutin/instruktion..."></textarea>
+                        <div class="form-group full-width">
+                            <label for="uppdrag-new-rutin">Rutin / instruktion</label>
+                            <textarea id="uppdrag-new-rutin" rows="3" placeholder="Skriv rutin/instruktion..."></textarea>
                         </div>
                     </div>
 
-                    <div class="uppdrag-riskbox" style="margin-top:1rem;">
-                        <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
-                        <div class="uppdrag-riskbox-items" id="uppdrag-new-risk-items">
+                    <section class="uppdrag-setup-section">
+                        <h4 class="uppdrag-setup-section-title">Åtgärd enligt kundens riskbedömning</h4>
+                        <div class="uppdrag-setup-section-body" id="uppdrag-new-risk-items">
                             ${riskChoicesHtml}
                         </div>
-                    </div>
+                    </section>
 
-                    <div id="uppdrag-new-deklaration-extra" style="margin-top:1rem; display:none;">
-                        <div class="uppdrag-deklaration-rows">
-                            <div class="uppdrag-deklaration-head">
-                                <div class="uppdrag-riskbox-title" style="margin:0;">Deklarationstyper</div>
-                                <button type="button" class="btn btn-secondary btn-sm" id="uppdrag-dek-add"><i class="fas fa-plus"></i> Lägg till rad</button>
-                            </div>
-                            <div id="uppdrag-dek-rows"></div>
-                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Du kan lägga samma deklarationstyp flera gånger och skriva fritext (t.ex. namn).</div>
+                    <section class="uppdrag-setup-section" id="uppdrag-new-deklaration-extra" style="display:none;">
+                        <div class="uppdrag-setup-section-head">
+                            <h4 class="uppdrag-setup-section-title">Deklarationstyper</h4>
+                            <button type="button" class="btn btn-secondary btn-sm" id="uppdrag-dek-add"><i class="fas fa-plus"></i> Lägg till rad</button>
                         </div>
-                    </div>
+                        <div class="uppdrag-setup-section-body">
+                            <div id="uppdrag-dek-rows"></div>
+                            <p class="uppdrag-muted uppdrag-setup-hint">Du kan lägga samma deklarationstyp flera gånger och skriva fritext (t.ex. namn).</p>
+                        </div>
+                    </section>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()">Avbryt</button>
-                    <button class="btn btn-primary btn-sm" type="button" id="uppdrag-new-save"><i class="fas fa-save"></i> Skapa</button>
+                    <button class="btn btn-secondary" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()">Avbryt</button>
+                    <button class="btn btn-primary" type="button" id="uppdrag-new-save"><i class="fas fa-save"></i> Skapa</button>
                 </div>
             </div>
         `;
@@ -3256,11 +3285,11 @@ class CustomerCardManager {
             const txt = row?.text || '';
             return `
                 <div class="uppdrag-dek-row">
-                    <select class="form-control uppdrag-dek-typ">
+                    <select class="uppdrag-dek-typ">
                         ${declTypes.map(x => `<option value="${this._esc(x)}" ${x === t ? 'selected' : ''}>${this._esc(x)}</option>`).join('')}
                     </select>
-                    <input type="text" class="kunduppgifter-input uppdrag-dek-text" placeholder="Fritext (t.ex. namn)" value="${this._esc(txt)}">
-                    <button type="button" class="btn btn-ghost btn-sm uppdrag-dek-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+                    <input type="text" class="uppdrag-dek-text" placeholder="Fritext (t.ex. namn)" value="${this._esc(txt)}">
+                    <button type="button" class="btn btn-ghost btn-sm uppdrag-dek-remove" title="Ta bort" aria-label="Ta bort rad"><i class="fas fa-times"></i></button>
                 </div>
             `;
         };
@@ -3278,12 +3307,14 @@ class CustomerCardManager {
         const momsPeriodLabel = document.getElementById('uppdrag-moms-period-label');
         const startWrap = document.getElementById('uppdrag-new-start-wrap');
         const deadlineWrap = document.getElementById('uppdrag-new-deadline-wrap');
+        const efDatesHint = document.getElementById('uppdrag-ef-dates-hint');
         const momsPreviewWrap = document.getElementById('uppdrag-moms-preview-wrap');
         const momsPreviewText = document.getElementById('uppdrag-moms-preview-text');
         const lonePreviewWrap = document.getElementById('uppdrag-lone-preview-wrap');
         const lonePreviewText = document.getElementById('uppdrag-lone-preview-text');
         const startEl = document.getElementById('uppdrag-new-start');
         const deadlineEl = document.getElementById('uppdrag-new-deadline');
+        let lastTypForDefaults = '';
 
         const fillMomsPeriodOptions = () => {
             if (!momsPeriodEl || !window.MomsPeriod) return;
@@ -3332,27 +3363,43 @@ class CustomerCardManager {
                 : '—';
         };
 
+        const applyEfYearEndDefaults = (force = false) => {
+            const t = typEl.value;
+            const isYearEnd = t === 'Bokslut' || t === 'Deklaration';
+            if (efDatesHint) efDatesHint.style.display = (isYearEnd && arEnskildFirma) ? '' : 'none';
+            if (!isYearEnd || !arEnskildFirma) return;
+            if (!force && lastTypForDefaults === t && startEl?.value && deadlineEl?.value) return;
+            const dates = this._defaultEfBokslutDates();
+            if (startEl) startEl.value = dates.start;
+            if (deadlineEl) deadlineEl.value = dates.deadline;
+        };
+
         const syncExtra = () => {
             const t = typEl.value;
+            const typChanged = t !== lastTypForDefaults;
             setFreqOptions(t);
-            declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
+            declWrap.style.display = (t === 'Deklaration') ? '' : 'none';
             const isMoms = t === 'Momsredovisning';
             const isLone = isLoneTypLocal(t);
-            if (momsWrap) momsWrap.style.display = isMoms ? 'block' : 'none';
-            if (momsPreviewWrap) momsPreviewWrap.style.display = isMoms ? 'block' : 'none';
-            if (lonePreviewWrap) lonePreviewWrap.style.display = isLone ? 'block' : 'none';
+            const isYearEnd = t === 'Bokslut' || t === 'Deklaration';
+            if (momsWrap) momsWrap.style.display = isMoms ? '' : 'none';
+            if (momsPreviewWrap) momsPreviewWrap.style.display = isMoms ? '' : 'none';
+            if (lonePreviewWrap) lonePreviewWrap.style.display = isLone ? '' : 'none';
             const manualDates = !isMoms;
             if (startWrap) startWrap.style.display = manualDates ? '' : 'none';
             if (deadlineWrap) deadlineWrap.style.display = manualDates ? '' : 'none';
             if (isMoms) {
                 fillMomsPeriodOptions();
                 applyMomsFromPeriod();
+            } else if (isYearEnd) {
+                applyEfYearEndDefaults(typChanged);
             } else if (isLone) {
                 applyLonePreview();
             }
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
                 addDekRow({ typ: 'NE', text: '' });
             }
+            lastTypForDefaults = t;
         };
         typEl.addEventListener('change', syncExtra);
         freqEl.addEventListener('change', () => { if (typEl.value === 'Momsredovisning') { fillMomsPeriodOptions(); applyMomsFromPeriod(); } });
