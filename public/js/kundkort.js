@@ -6128,6 +6128,29 @@ class CustomerCardManager {
         }
     }
 
+    _getLiveFieldTextForAi(fieldName, { domIds = [], richDomIds = [] } = {}) {
+        for (const id of domIds) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const v = (el.value || '').toString().trim();
+            if (v) return v;
+        }
+        for (const id of richDomIds) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const html = (el.innerHTML || '').toString().trim();
+            const text = (el.innerText || el.textContent || '').toString().trim();
+            if (text) return html || text;
+        }
+        const fromData = this.customerData?.fields?.[fieldName];
+        if (fromData == null) return '';
+        if (typeof fromData === 'string') return fromData.trim();
+        if (Array.isArray(fromData)) {
+            return fromData.map((b) => (b && typeof b === 'object' ? (b.text || '') : String(b || ''))).join('').trim();
+        }
+        return String(fromData).trim();
+    }
+
     async getAiRiskbedomning() {
         const btn = document.getElementById('ai-rb-btn');
         if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...'; btn.disabled = true; }
@@ -6135,9 +6158,24 @@ class CustomerCardManager {
 
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            // Skicka med manuella fritexter från UI/lokal state så AI inte missar osparade/visade värden
+            const payload = {
+                beskrivningKunden: this._getLiveFieldTextForAi('Beskrivning av kunden', {
+                    richDomIds: ['ku-beskrivning-input', 'ku-beskrivning-view']
+                }),
+                verksamhetsbeskrivning: this._getLiveFieldTextForAi('Verksamhetsbeskrivning', {
+                    domIds: ['bv-verksamhet-input'],
+                    richDomIds: ['bv-verksamhet-view']
+                }),
+                ytterligareBeskrivning: this._getLiveFieldTextForAi('Ytterligare beskrivning av kunden och verksamheten'),
+                kommentarRisk: this._getLiveFieldTextForAi('Kommentar till riskfaktorerna ovan', {
+                    domIds: ['riskf-input-kommentar-risk']
+                })
+            };
             const res = await fetch(`${baseUrl}/api/ai-riskbedomning/${this.customerId}`, {
                 method: 'POST',
-                ...getAuthOptsKundkort()
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify(payload)
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));

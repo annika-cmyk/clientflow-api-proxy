@@ -16905,13 +16905,41 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
         ? 'Inga tjänster är kopplade till kunden i ClientFlow (fältet "Kundens utvalda tjänster" är tomt).'
         : tjansterTrim;
 
-    // Anonymiserat underlag till AI: inget kundnamn/orgnr; beskrivningsfält i sin helhet (inkl. namn användaren skrivit där)
-    const rawBesk = f['Beskrivning av kunden'] || f['Verksamhetsbeskrivning'];
-    const beskrivningKundFull =
-      rawBesk == null || String(rawBesk).trim() === '' ? '–' : String(rawBesk);
-    const rawExtra = f['Ytterligare beskrivning av kunden och verksamheten'];
-    const beskrivningExtraFull =
-      rawExtra == null || String(rawExtra).trim() === '' ? '–' : String(rawExtra);
+    // Anonymiserat underlag till AI: inget kundnamn/orgnr.
+    // Viktigt: håll isär byråns manuella beskrivning och Bolagsverkets verksamhetsbeskrivning.
+    // Tillåt osparade värden från klienten (body) så AI ser det användaren just skrivit.
+    const bodyOverride = req.body && typeof req.body === 'object' ? req.body : {};
+    const toAiPlain = (v) => {
+      if (v == null) return '';
+      const plain = pdfHtmlToPlainText(typeof v === 'string' || Array.isArray(v) ? (Array.isArray(v) ? pdfToText(v) : v) : String(v));
+      return String(plain || '').replace(/\u00a0/g, ' ').trim();
+    };
+    const pickText = (...candidates) => {
+      for (const c of candidates) {
+        const t = toAiPlain(c);
+        if (t) return t;
+      }
+      return '';
+    };
+
+    const beskrivningKundFull = pickText(
+      bodyOverride.beskrivningKunden,
+      bodyOverride.beskrivningAvKunden,
+      f['Beskrivning av kunden']
+    ) || '–';
+    const verksamhetsbeskrivningBolagsverket = pickText(
+      bodyOverride.verksamhetsbeskrivning,
+      f['Verksamhetsbeskrivning']
+    ) || '–';
+    const beskrivningExtraFull = pickText(
+      bodyOverride.ytterligareBeskrivning,
+      f['Ytterligare beskrivning av kunden och verksamheten']
+    ) || '–';
+    const kommentarRiskfaktorer = pickText(
+      bodyOverride.kommentarRisk,
+      bodyOverride.kommentarRiskfaktorer,
+      f['Kommentar till riskfaktorerna ovan']
+    ) || '–';
     const verkligHuvudmanAnon = (() => {
       const v = f['Verklig huvudman'];
       if (v == null || String(v).trim() === '' || String(v).trim() === '–') return '–';
@@ -16988,8 +17016,10 @@ KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till
 - Transaktioner med andra länder (kundkort/KYC-fält): ${transaktionerAndraLander}
 - Kapitalets ursprung: ${arr(f['Vilket ursprung har företagets kapital?'])}
 - Affärsmodell: ${f['Affärsmodell'] || '–'}
-- Byråns beskrivning av kunden (hela texten, kan innehålla namn om byrån skrivit det): ${beskrivningKundFull}
+- Byråns beskrivning av kunden (MANUELL — det byrån själv skrivit om kunden; prioritera detta framför SNI/Bolagsverket när det finns innehåll): ${beskrivningKundFull}
+- Verksamhetsbeskrivning från Bolagsverket (officiell registertext — kompletterande, inte ersättning för byråns beskrivning): ${verksamhetsbeskrivningBolagsverket}
 - Ytterligare beskrivning av kunden och verksamheten (hela texten): ${beskrivningExtraFull}
+- Kommentar till riskfaktorerna ovan (MANUELL — byråns egna anteckningar om riskbilden; MÅSTE vägas in om ifylld): ${kommentarRiskfaktorer}
 
 KYC-FORMULÄR (kompletterande svar sparade i ClientFlow — väg in även dessa):
 - Internationell handel enligt KYC: ${kycInternationell}
@@ -17011,7 +17041,7 @@ RISKFAKTORER (övergripande):
 - Kunden verkar i högriskbransch: ${arr(f['Kunden verkar i en högriskbransch'])}
 - Riskhöjande faktorer övrigt: ${arr(f['Riskhöjande faktorer övrigt'])}
 - Risksänkande faktorer: ${arr(f['Risksänkande faktorer'])}
-- Kommentar till riskfaktorer: ${f['Kommentar till riskfaktorerna ovan'] || '–'}
+- Kommentar till riskfaktorerna ovan: ${kommentarRiskfaktorer}
 - Risker från KYC (fritext om ifyllt): ${clip(f['Risker från KYC'], 800) || '–'}
 
 IDENTIFIERADE RISKFAKTORER FRÅN FLIKEN RISKBEDÖMNING (auktoritativt — ${antalValdaRiskfaktorer} valda poster; geografiska, kund, distribution, verksamhet):
@@ -17020,12 +17050,20 @@ ${lankadeRiskerText || '  Inga specifika riskfaktorer registrerade.'}
 SYSTEMFLAGGOR FRÅN UNDERLAGET (använd som snabbkoll — hitta inte på motsatsen):
 - Förhöjd internationell exponering enligt valda riskfaktorer/KYC: ${harForhojdInternationellExponering ? 'JA' : 'NEJ'}
 - Förhöjd PEP-riskfaktor vald: ${harForhojdPepRiskfaktor ? 'JA' : 'NEJ'}
+- Byråns manuella beskrivning ifylld: ${beskrivningKundFull !== '–' ? 'JA' : 'NEJ'}
+- Kommentar till riskfaktorer ifylld: ${kommentarRiskfaktorer !== '–' ? 'JA' : 'NEJ'}
 
 Basera din bedömning på helheten av all information ovan. Om ett fält är tomt (–) ska det inte påverka bedömningen negativt — MEN tomma fält får ALDRIG upphäva konkret valda riskfaktorer ovan.
 
+OBLIGATORISKT — BYRÅNS EGNA FRITEXTER (KRITISKT):
+- Om "Byråns beskrivning av kunden" INTE är "–": du MÅSTE använda den i riskbedömningstexten (verksamhets-/kundkontext). Den har högre prioritet än SNI-koder och Bolagsverkets verksamhetsbeskrivning.
+- Om "Kommentar till riskfaktorerna ovan" INTE är "–": du MÅSTE uttryckligen ta upp innehållet i kommentaren i riskbedömningen (t.ex. nära relation/familj, tidigare kännedom, omständigheter som både höjer och sänker risk). Kommentaren får inte ignoreras.
+- Nära personlig/familjär relation till kunden (t.ex. syskon, partner, nära vän) är en relevant risk-/objektivitetsfaktor enligt PVML och ska nämnas när den framgår av beskrivning eller kommentar.
+- Hitta inte på detaljer som saknas, men utelämna aldrig ifylld manuell beskrivning/kommentar.
+
 FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
-- Beskriv kundens verksamhet på ett naturligt och sammanhängande sätt. Använd inte enbart branschkoden/SNI-koden ordagrant (t.ex. skriv inte "Kunden verkar inom onkologi" utan "Kunden driver en konsultverksamhet/hyrläkarverksamhet inom onkologi" eller liknande, baserat på vad beskrivningsfälten säger).
-- Läs ALLTID "Byråns beskrivning av kunden" och "Ytterligare beskrivning" noggrant — de ger viktig kontext om vad kunden faktiskt gör (t.ex. hyrläkare, konsult, e-handel, restaurang). Använd den informationen för att ge en verklighetstrogen bild av verksamheten.
+- Beskriv kundens verksamhet på ett naturligt och sammanhängande sätt. Använd inte enbart branschkoden/SNI-koden ordagrant.
+- Prioritetsordning för verksamhetsbild: (1) Byråns beskrivning av kunden, (2) Ytterligare beskrivning, (3) Kommentar till riskfaktorer, (4) Bolagsverkets verksamhetsbeskrivning, (5) SNI först som komplement.
 - Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
 
 RISKNIVÅ — ANVÄND "Lag" ENDAST NÄR DET ÄR TYDLIGT MOTIVERAT:
@@ -17067,11 +17105,12 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 3. RISKBEDÖMNINGSTEXT: Skriv en utförlig riskbedömning på 5-10 meningar (MINST 5 meningar, gärna fler). Texten ska vara professionell, konkret och bygga på kundens faktiska underlag. Nämn BARA tjänster som finns i TJÄNSTLISTA — inga andra.
 
    STRUKTURERA TEXTEN SÅ HÄR (alla relevanta punkter ska beröras):
-   a) VERKSAMHETSBESKRIVNING: Beskriv kort vad kunden gör (baserat på bransch, beskrivningsfält och affärsmodell). Var specifik — inte bara branschkoden.
-   b) RISKSÄNKANDE FAKTORER: Vad talar för lägre risk? T.ex. enkel affärsstruktur, inhemska transaktioner, transparent verksamhet, känd bransch.
-   c) RISKHÖJANDE FAKTORER: Vad talar för högre risk? T.ex. kontantintensiv bransch, internationella transaktioner, PEP, komplex ägarstruktur. Nämn BARA saker som faktiskt framgår av underlaget.
-   d) TJÄNSTER OCH DERAS RISKPROFIL: Beskriv kort riskprofilen kopplad till de tjänster byrån faktiskt utför åt kunden (ENBART från TJÄNSTLISTA).
-   e) SAMMANVÄGD BEDÖMNING: Motivera den valda risknivån genom att väga samman ovanstående.
+   a) VERKSAMHETSBESKRIVNING: Beskriv kort vad kunden gör. Utgå PRIMÄRT från byråns beskrivning av kunden (och ytterligare beskrivning); komplettera med Bolagsverket/SNI bara om det behövs.
+   b) BYRÅNS KOMMENTAR/RELATION: Om kommentar till riskfaktorer eller manuell beskrivning anger särskilda omständigheter (t.ex. familjerelation, tidigare kännedom): ta upp det här eller under riskhöjande/risksänkande.
+   c) RISKSÄNKANDE FAKTORER: Vad talar för lägre risk? T.ex. enkel affärsstruktur, inhemska transaktioner, transparent verksamhet, känd bransch — inklusive ev. risksänkande aspekter i kommentaren.
+   d) RISKHÖJANDE FAKTORER: Vad talar för högre risk? Nämn BARA saker som faktiskt framgår av underlaget, inklusive kommentaren.
+   e) TJÄNSTER OCH DERAS RISKPROFIL: Beskriv kort riskprofilen kopplad till de tjänster byrån faktiskt utför åt kunden (ENBART från TJÄNSTLISTA).
+   f) SAMMANVÄGD BEDÖMNING: Motivera den valda risknivån genom att väga samman ovanstående.
 
    VIKTIG REGEL: Om det inte finns riskhöjande faktorer, skriv tydligt att inga riskhöjande faktorer noterats — hitta INTE PÅ risker för att "balansera" texten.
 
