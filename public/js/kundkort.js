@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.12', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.19', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -943,6 +943,65 @@ class CustomerCardManager {
         return out;
     }
 
+    _parseRiskAtgarderList(raw) {
+        const text = (raw == null) ? '' : String(raw).trim();
+        if (!text) return [];
+        if (text.startsWith('[')) {
+            try {
+                const arr = JSON.parse(text);
+                if (Array.isArray(arr)) {
+                    return arr.map((x) => {
+                        if (typeof x === 'string') return x.trim();
+                        if (x && typeof x === 'object') return String(x.text || x.name || x.label || '').trim();
+                        return '';
+                    }).filter(Boolean);
+                }
+            } catch (_) { /* fall through */ }
+        }
+        return text.split(/\r?\n/).map(s => s.replace(/^\s*[-•]\s*/, '').trim()).filter(Boolean);
+    }
+
+    _parseRiskAtgarderDone(raw) {
+        const items = this._parseRiskAtgarderList(raw);
+        if (!raw || !String(raw).trim().startsWith('[')) {
+            return items.map((text) => ({ text, checkedAt: '', user: '' }));
+        }
+        try {
+            const arr = JSON.parse(String(raw).trim());
+            if (!Array.isArray(arr)) return items.map((text) => ({ text, checkedAt: '', user: '' }));
+            return arr.map((x) => {
+                if (typeof x === 'string') return { text: x.trim(), checkedAt: '', user: '' };
+                return {
+                    text: String(x?.text || x?.name || '').trim(),
+                    checkedAt: x?.checkedAt || '',
+                    user: x?.user || ''
+                };
+            }).filter((x) => x.text);
+        } catch (_) {
+            return items.map((text) => ({ text, checkedAt: '', user: '' }));
+        }
+    }
+
+    _getRequiredRiskAtgarderForUppdrag(fields) {
+        const selected = this._parseRiskAtgarderList((fields || {})['Riskåtgärder valda']);
+        if (selected.length) return selected;
+        return this._getRiskAtgarderList();
+    }
+
+    _riskAtgarderAllChecked(required, done) {
+        const need = (Array.isArray(required) ? required : []).map((s) => String(s || '').trim()).filter(Boolean);
+        if (!need.length) return true;
+        const have = new Set((Array.isArray(done) ? done : []).map((x) => String((x && x.text) || x || '').trim().toLowerCase()).filter(Boolean));
+        return need.every((r) => have.has(r.toLowerCase()));
+    }
+
+    _isUppdragEnded(fields, todayIso = '') {
+        const status = String((fields || {})['Status'] || 'Aktiv').trim();
+        if (status === 'Avslutad') return true;
+        const av = String((fields || {})['Avslutas'] || '').slice(0, 10);
+        return !!(av && todayIso && av <= todayIso);
+    }
+
     _notifyUppdragRunsEnsure(runsEnsure, successLabel = 'Uppdrag sparat') {
         const re = runsEnsure || null;
         if (!re) {
@@ -1152,10 +1211,15 @@ class CustomerCardManager {
 
         // Används i Samarbete-modalen för att kunna koppla en förfrågan till ett uppdrag
         this._uppdragRecords = records.slice();
+        this._uppdragRunRecords = runRecords.slice();
 
         const legacyLone = byType('Löneuppdrag');
         const existingTypes = ALL_TYPES.filter(t => !!byType(t));
         if (legacyLone && !existingTypes.includes('Löneuppdrag')) existingTypes.unshift('Löneuppdrag');
+        records.forEach((r) => {
+            const t = String(r?.fields?.['Typ'] || '').trim();
+            if (t && !existingTypes.includes(t)) existingTypes.push(t);
+        });
         const missingTypes = ALL_TYPES.filter(t => !byType(t));
 
         const addDisabled = missingTypes.length ? '' : 'disabled';
@@ -1288,34 +1352,111 @@ class CustomerCardManager {
             instByTypeMonth.set(typ, map);
         }
 
+        const todayForEnded = (() => {
+            try { return new Date().toISOString().slice(0, 10); } catch (_) { return ''; }
+        })();
+        const allUppdragSorted = records.slice().sort((a, b) => {
+            const aEnded = this._isUppdragEnded(a?.fields || {}, todayForEnded);
+            const bEnded = this._isUppdragEnded(b?.fields || {}, todayForEnded);
+            if (aEnded !== bEnded) return aEnded ? 1 : -1;
+            return String(a?.fields?.['Typ'] || '').localeCompare(String(b?.fields?.['Typ'] || ''), 'sv');
+        });
+        const allaUppdragRowsHtml = allUppdragSorted.map((rec) => {
+            const f = rec.fields || {};
+            const typ = String(f['Typ'] || '').trim();
+            if (!typ) return '';
+            const ended = this._isUppdragEnded(f, todayForEnded);
+            const statusLabel = ended ? 'Avslutad' : (String(f['Status'] || 'Aktiv').trim() || 'Aktiv');
+            const avslutas = String(f['Avslutas'] || '').slice(0, 10);
+            const freq = String(f['Frekvens'] || '—').trim() || '—';
+            const ansvarig = String(f['Ansvarig'] || '—').trim() || '—';
+            const nextDl = String(f['Nästa deadline'] || '').slice(0, 10);
+            const statusClass = ended ? 'is-ended' : 'is-active';
+            return `
+                <tr class="uppdrag-alla-row ${ended ? 'is-ended' : ''}" data-kund-alla-typ="${this._esc(typ)}">
+                    <td><strong>${this._esc(this._uppdragTypLabel(typ))}</strong></td>
+                    <td>${this._esc(freq)}</td>
+                    <td>
+                        <span class="uppdrag-alla-status ${statusClass}">${this._esc(statusLabel)}</span>
+                        ${avslutas && ended ? `<div class="uppdrag-muted" style="font-size:0.78rem; margin-top:0.2rem;">t.o.m. ${this._esc(avslutas)}</div>` : ''}
+                    </td>
+                    <td>${this._esc(ansvarig)}</td>
+                    <td>${nextDl ? this._esc(nextDl) : '—'}</td>
+                    <td style="text-align:right;">
+                        <button type="button" class="btn btn-ghost btn-sm" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(typ)}">
+                            <i class="fas fa-pen"></i> Redigera
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).filter(Boolean).join('') || `<tr><td colspan="6" class="uppdragboard-empty">Inga uppdrag upplagda ännu.</td></tr>`;
+
+        const allaUppdragCardHtml = `
+            <div class="collapsible-card kundkort-uppdrag-panel">
+                <div class="collapsible-header" style="cursor:default;">
+                    <div class="collapsible-title"><i class="fas fa-layer-group"></i><span>Alla uppdrag</span></div>
+                    <button type="button" class="btn btn-primary btn-sm" id="uppdrag-add-btn-top" ${addDisabled}>
+                        <i class="fas fa-plus"></i> Lägg upp uppdrag
+                    </button>
+                </div>
+                <div class="collapsible-body">
+                    <p class="uppdrag-muted" style="margin-top:0;">Grunduppdrag som är upplagda på kunden, inklusive avslutade. Här redigerar du mallen.</p>
+                    <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
+                        <table class="uppdragboard-table uppdrag-alla-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:24%; text-align:left;">Uppdrag</th>
+                                    <th style="width:16%; text-align:left;">Frekvens</th>
+                                    <th style="width:16%; text-align:left;">Status</th>
+                                    <th style="width:16%; text-align:left;">Handläggare</th>
+                                    <th style="width:16%; text-align:left;">Nästa deadline</th>
+                                    <th style="width:12%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>${allaUppdragRowsHtml}</tbody>
+                        </table>
+                    </div>
+                    <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
+                        ${existingTypes.length ? existingTypes.map(t => {
+                            if (isLoneTyp(t)) return this._renderUppdragKort(t, 'fa-money-check-alt', byType(t), byraUsers, riskAtgarder);
+                            if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
+                            if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
+                            if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
+                            return this._renderUppdragKort(t, 'fa-briefcase', byType(t), byraUsers, riskAtgarder);
+                        }).join('') : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
         const boardHtml = `
-            <div class="uppdragboard-top" style="margin-bottom:0.85rem;">
-                <div class="uppdragboard-title">
+            <div class="collapsible-card kundkort-uppdrag-panel">
+                <div class="collapsible-header" style="cursor:default;">
+                    <div class="collapsible-title"><i class="fas fa-play-circle"></i><span>Aktuella körningar</span></div>
                     <div class="uppdragboard-period">
                         <button type="button" class="uppdragboard-navbtn" id="kund-uppdragboard-prev" title="Föregående månad" aria-label="Föregående månad"><i class="fas fa-chevron-left"></i></button>
                         <div class="uppdragboard-month" id="kund-uppdragboard-month">—</div>
                         <button type="button" class="uppdragboard-navbtn" id="kund-uppdragboard-next" title="Nästa månad" aria-label="Nästa månad"><i class="fas fa-chevron-right"></i></button>
                     </div>
                 </div>
-            </div>
-            <div class="uppdragboard-table-wrap" style="margin-bottom:1rem;">
-                <table class="uppdragboard-table">
-                    <thead>
-                        <tr>
-                            <th class="uppdragboard-th-client" style="width:44%; text-align:left;">Uppdrag</th>
-                            <th class="uppdragboard-th-run" style="width:22%; text-align:center;">Klart senast</th>
-                            <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Underlag</th>
-                            <th class="uppdragboard-th-done" style="width:12%; text-align:center;">Status</th>
-                            <th class="uppdragboard-th-arrow" style="width:6%;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="kund-uppdragboard-tbody"></tbody>
-                </table>
-            </div>
-            <div style="display:flex; justify-content:flex-end; margin-top:0.5rem;">
-                <button type="button" class="btn btn-primary btn-sm" id="uppdrag-add-btn-top" ${addDisabled}>
-                    <i class="fas fa-plus"></i> Lägg upp uppdrag
-                </button>
+                <div class="collapsible-body">
+                    <p class="uppdrag-muted" style="margin-top:0;">Körningar för vald period. Åtgärder enligt kundens riskbedömning måste bockas i innan klarmarkering.</p>
+                    <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
+                        <table class="uppdragboard-table">
+                            <thead>
+                                <tr>
+                                    <th class="uppdragboard-th-client" style="width:28%; text-align:left;">Uppdrag</th>
+                                    <th class="uppdragboard-th-run" style="width:16%; text-align:center;">Klart senast</th>
+                                    <th class="uppdragboard-th-done" style="width:12%; text-align:center;">Underlag</th>
+                                    <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Status</th>
+                                    <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Klarmarkera</th>
+                                    <th class="uppdragboard-th-arrow" style="width:6%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="kund-uppdragboard-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -1360,20 +1501,8 @@ class CustomerCardManager {
             <div class="uppdrag-tab">
                 ${runsSetupHtml}
                 ${runsEnsureHtml}
+                ${allaUppdragCardHtml}
                 ${boardHtml}
-                <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
-                    ${existingTypes.length ? existingTypes.map(t => {
-                        if (isLoneTyp(t)) return this._renderUppdragKort(t, 'fa-money-check-alt', byType(t), byraUsers, riskAtgarder);
-                        if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
-                        if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
-                        if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
-                        return '';
-                    }).join('') : `
-                        <div class="uppdrag-empty" style="padding:0.25rem 0;">
-                            <div class="uppdrag-muted">Inga uppdrag upplagda ännu.</div>
-                        </div>
-                    `}
-                </div>
             </div>
         `;
 
@@ -1886,6 +2015,40 @@ class CustomerCardManager {
                                                 ? '<div class="uppdrag-muted" style="margin-top:0.3rem; font-size:0.8rem;">Låst rutin för avslutad körning.</div>'
                                                 : '')}
                                     </div>
+                                    ${(() => {
+                                        const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
+                                        const doneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
+                                        const doneSet = new Set(doneAtgarder.map((x) => String(x.text || '').toLowerCase()));
+                                        if (!requiredAtgarder.length) {
+                                            return `<div class="uppdrag-riskbox" style="margin-top:0.85rem;">
+                                                <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                                                <div class="uppdrag-muted" style="margin-top:0.45rem;">Inga åtgärder finns i kundens riskbedömning för detta uppdrag.</div>
+                                            </div>`;
+                                        }
+                                        const locked = runStatus === 'Klar';
+                                        return `<div class="uppdrag-riskbox" style="margin-top:0.85rem;" data-kund-risk-box="${this._esc(boardKey)}">
+                                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Bocka i åtgärderna för denna körning innan du klarmarkerar. Varje körning dokumenteras för sig.</div>
+                                            <div class="uppdrag-riskbox-items">
+                                                ${requiredAtgarder.map((a) => {
+                                                    const checked = doneSet.has(String(a).toLowerCase());
+                                                    return `<label class="uppdrag-risk-check">
+                                                        <input type="checkbox"
+                                                            data-kund-action="toggle-risk-atgard"
+                                                            data-kund-run-id="${this._esc(runId)}"
+                                                            data-kund-typ="${this._esc(t)}"
+                                                            data-kund-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                                            data-kund-board-key="${this._esc(boardKey)}"
+                                                            value="${this._esc(a)}"
+                                                            ${checked ? 'checked' : ''}
+                                                            ${locked ? 'disabled' : ''}>
+                                                        <span>${this._esc(a)}</span>
+                                                    </label>`;
+                                                }).join('')}
+                                            </div>
+                                            <div class="uppdrag-muted" data-kund-risk-status="${this._esc(boardKey)}" style="margin-top:0.4rem;"></div>
+                                        </div>`;
+                                    })()}
                                     ${runRec ? `
                                       <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.85rem;">
                                         <div class="uppdrag-view-label">Status</div>
@@ -2021,9 +2184,17 @@ class CustomerCardManager {
                     : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
 
                 const isKlar = runStatus === 'Klar';
+                const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
+                const doneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
+                const allRiskDone = this._riskAtgarderAllChecked(requiredAtgarder, doneAtgarder);
+                const doneBtnTitle = isKlar
+                    ? 'Klarmarkerad'
+                    : (requiredAtgarder.length && !allRiskDone
+                        ? 'Bocka i åtgärder enligt kundens riskbedömning först'
+                        : 'Klarmarkera');
 
                 return `
-                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''} ${isKlar ? 'is-done' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}">
+                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''} ${isKlar ? 'is-done' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}" data-kund-period="${this._esc(String(prefillPeriodKey || ''))}">
                     <td>
                         <div class="uppdragboard-client">
                             <span class="uppdragboard-link">${this._esc(displayTitle)}</span>
@@ -2033,6 +2204,18 @@ class CustomerCardManager {
                     <td>${runHtml}</td>
                     <td style="text-align:center;">${underlagHtml}</td>
                     <td>${statusHtml}</td>
+                    <td style="text-align:center;">
+                        <button type="button" class="uppdragboard-donebtn ${isKlar ? 'is-done' : ''}"
+                            data-kund-action="klarmarkera"
+                            data-kund-typ="${this._esc(t)}"
+                            data-kund-period="${this._esc(String(prefillPeriodKey || ''))}"
+                            data-kund-run-id="${this._esc(runId)}"
+                            data-kund-board-key="${this._esc(boardKey)}"
+                            title="${this._esc(doneBtnTitle)}"
+                            aria-label="${this._esc(doneBtnTitle)}">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </td>
                     <td class="uppdragboard-arrow">
                         <button type="button" class="uppdragboard-expandbtn" title="Visa mer" aria-label="Visa mer" data-kund-board-key="${this._esc(boardKey)}" data-kund-toggle-typ="${this._esc(t)}">
                             <i class="fas fa-chevron-down"></i>
@@ -2040,15 +2223,16 @@ class CustomerCardManager {
                     </td>
                 </tr>
                 <tr class="uppdragboard-details" data-kund-details-for="${this._esc(boardKey)}" style="${isOpen ? '' : 'display:none;'}">
-                    <td colspan="5">${detailsHtml}</td>
+                    <td colspan="6">${detailsHtml}</td>
                 </tr>
                 `;
             }).filter(Boolean).join('');
             if (!rows && existingTypes.length) {
                 console.error('[UppdragBoard] rows blev tomt trots existingTypes:', existingTypes, '– records:', records.map(r => ({ id: r?.id, typ: r?.fields?.['Typ'] })));
             }
-            tbody.innerHTML = rows || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag.</td></tr>`;
+            tbody.innerHTML = rows || `<tr><td colspan="6" class="uppdragboard-empty">Inga körningar för vald period.</td></tr>`;
         };
+        this._kundUppdragBoardRerender = renderBoard;
 
         const installRunsBtn = document.getElementById('uppdrag-install-runs-btn');
         if (installRunsBtn) {
@@ -2260,8 +2444,38 @@ class CustomerCardManager {
                     return;
                 }
 
+                const klarBtn = e.target.closest('[data-kund-action="klarmarkera"]');
+                if (klarBtn && container.contains(klarBtn)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const typ = klarBtn.getAttribute('data-kund-typ') || '';
+                    const periodKey = klarBtn.getAttribute('data-kund-period') || '';
+                    const runId = klarBtn.getAttribute('data-kund-run-id') || '';
+                    const boardKey = klarBtn.getAttribute('data-kund-board-key') || typ;
+                    const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                    const runRec = runId ? (runRecords || []).find(x => String(x.id) === String(runId)) : null;
+                    const required = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
+                    const box = container.querySelector(`[data-kund-risk-box="${CSS.escape(boardKey)}"]`);
+                    const checkedFromDom = box
+                        ? Array.from(box.querySelectorAll('input[data-kund-action="toggle-risk-atgard"]:checked')).map(i => i.value)
+                        : [];
+                    const done = checkedFromDom.length
+                        ? checkedFromDom.map((text) => ({ text }))
+                        : this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
+                    if (required.length && !this._riskAtgarderAllChecked(required, done)) {
+                        this._kundUppdragBoardOpenKey = boardKey;
+                        this._kundUppdragBoardOpenTyp = typ;
+                        try { renderBoard(); } catch (_) {}
+                        this.showNotification('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.', 'error');
+                        return;
+                    }
+                    const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
+                    this._showCompleteUppdragModal(root, typ, { periodKey, runId, requiredAtgarder: required, doneAtgarder: done, boardKey });
+                    return;
+                }
+
                 // Rad-expansion: ignorera klick på status-dropdown och andra formulärelement
-                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"]')) {
+                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"], [data-kund-action="klarmarkera"], [data-kund-action="toggle-risk-atgard"], .uppdrag-risk-check')) {
                     return;
                 }
 
@@ -2475,12 +2689,77 @@ class CustomerCardManager {
             }, { signal: _boardSignal });
 
             container.addEventListener('change', (e) => {
+                const riskCb = e.target.closest('[data-kund-action="toggle-risk-atgard"]');
+                if (riskCb && container.contains(riskCb)) {
+                    const runId = (riskCb.getAttribute('data-kund-run-id') || '').toString();
+                    const typ = (riskCb.getAttribute('data-kund-typ') || '').toString();
+                    const periodKey = (riskCb.getAttribute('data-kund-period') || '').toString();
+                    const boardKey = (riskCb.getAttribute('data-kund-board-key') || '').toString();
+                    const box = riskCb.closest('[data-kund-risk-box]') || container.querySelector(`[data-kund-risk-box="${CSS.escape(boardKey)}"]`);
+                    const statusEl = container.querySelector(`[data-kund-risk-status="${CSS.escape(boardKey)}"]`);
+                    const items = box
+                        ? Array.from(box.querySelectorAll('input[data-kund-action="toggle-risk-atgard"]:checked')).map((i) => ({ text: i.value, checked: true }))
+                        : [];
+                    if (!runId) {
+                        if (statusEl) statusEl.textContent = 'Sparas när körningen klarmarkeras (ingen körningsrad ännu).';
+                        return;
+                    }
+                    if (statusEl) statusEl.textContent = 'Sparar...';
+                    fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/risk-atgarder`, {
+                        method: 'PATCH',
+                        ...getAuthOptsKundkort(),
+                        headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                        body: JSON.stringify({ items })
+                    })
+                        .then((r) => r.json().then((d) => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
+                        .then((d) => {
+                            const rr = (Array.isArray(runRecords) ? runRecords : []).find((x) => String(x?.id || '') === String(runId));
+                            if (rr) {
+                                rr.fields = rr.fields || {};
+                                rr.fields['Riskåtgärder utförda'] = JSON.stringify(d.riskAtgarder || items);
+                            }
+                            if (statusEl) statusEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
+                            setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+                        })
+                        .catch((err) => {
+                            if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
+                        });
+                    return;
+                }
+
                 const sel = e.target.closest('[data-kund-action="set-run-status"]');
                 if (!sel || !container.contains(sel)) return;
                 const runId = (sel.getAttribute('data-run-id') || '').toString();
                 const newStatus = (sel.value || '').toString().trim();
                 const typ = (sel.getAttribute('data-run-typ') || '').toString();
                 const periodKey = (sel.getAttribute('data-run-period') || '').toString();
+                if (newStatus === 'Klar') {
+                    const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                    const runRec = runId ? (runRecords || []).find(x => String(x.id) === String(runId)) : null;
+                    const required = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
+                    const row = sel.closest('tr');
+                    const boardKey = row?.getAttribute('data-kund-board-key') || typ;
+                    const box = container.querySelector(`[data-kund-risk-box="${CSS.escape(boardKey)}"]`);
+                    const checkedFromDom = box
+                        ? Array.from(box.querySelectorAll('input[data-kund-action="toggle-risk-atgard"]:checked')).map(i => i.value)
+                        : [];
+                    const done = checkedFromDom.length
+                        ? checkedFromDom.map((text) => ({ text }))
+                        : this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
+                    const prevStatus = String(runRec?.fields?.['Status'] || 'Planerad').trim() || 'Planerad';
+                    if (required.length && !this._riskAtgarderAllChecked(required, done)) {
+                        sel.value = prevStatus === 'Klar' ? 'Planerad' : prevStatus;
+                        this._kundUppdragBoardOpenKey = boardKey;
+                        this._kundUppdragBoardOpenTyp = typ;
+                        try { renderBoard(); } catch (_) {}
+                        this.showNotification('Bocka i alla åtgärder enligt kundens riskbedömning innan du sätter status till Klar.', 'error');
+                        return;
+                    }
+                    sel.value = prevStatus === 'Klar' ? 'Planerad' : prevStatus;
+                    const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
+                    this._showCompleteUppdragModal(root, typ, { periodKey, runId, requiredAtgarder: required, doneAtgarder: done, boardKey });
+                    return;
+                }
                 const msgKey = runId ? runId : `fallback:${typ}:${periodKey}`;
                 const msgEl = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(runId)}"]`);
                 const msgEl2 = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(msgKey)}"]`) || msgEl;
@@ -2877,13 +3156,25 @@ class CustomerCardManager {
         return doneD >= start && doneD < nextD;
     }
 
-    _showCompleteUppdragModal(root, typ) {
+    _showCompleteUppdragModal(root, typ, extra = {}) {
         const existing = document.getElementById('uppdrag-complete-modal');
         if (existing) existing.remove();
 
-        // PTL anses "på" om det finns valda åtgärder (checkbox-togglen är borttagen)
-        const riskOn = (root.querySelectorAll('input[data-risk-item]:checked').length > 0)
-            || (() => { try { return (JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]') || []).length > 0; } catch (_) { return false; } })();
+        const rec = (this._uppdragRecords || []).find(r => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim());
+        const requiredAtgarder = Array.isArray(extra.requiredAtgarder)
+            ? extra.requiredAtgarder
+            : this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
+        const doneAtgarder = Array.isArray(extra.doneAtgarder) ? extra.doneAtgarder : [];
+        const riskOn = requiredAtgarder.length > 0;
+        if (riskOn && !this._riskAtgarderAllChecked(requiredAtgarder, doneAtgarder)) {
+            if (extra.boardKey) {
+                this._kundUppdragBoardOpenKey = extra.boardKey;
+                this._kundUppdragBoardOpenTyp = typ;
+                try { this._kundUppdragBoardRerender?.(); } catch (_) {}
+            }
+            this.showNotification('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.', 'error');
+            return;
+        }
 
         const modal = document.createElement('div');
         modal.id = 'uppdrag-complete-modal';
@@ -2897,9 +3188,11 @@ class CustomerCardManager {
                 <div class="modal-body" style="overflow:auto;">
                     ${riskOn ? `
                         <div class="uppdrag-riskbox" style="margin-top:0;">
-                            <div class="uppdrag-setup-desc" style="margin:0;">
-                                PTL-åtgärd är aktiverad för detta uppdrag. För dokumentation behöver du skriva en anteckning och du kan även ladda upp underlag.
+                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+                            <div class="uppdrag-view-list" style="margin-top:0.5rem;">
+                                ${requiredAtgarder.map((a) => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${this._esc(a)}</div>`).join('')}
                             </div>
+                            <div class="uppdrag-muted" style="margin-top:0.45rem;">Åtgärderna dokumenteras på denna körning.</div>
                         </div>
                     ` : `
                         <div class="uppdrag-setup-desc" style="margin-top:0;">
@@ -2908,7 +3201,7 @@ class CustomerCardManager {
                     `}
 
                     <div class="form-group" style="margin-top:0.75rem;">
-                        <label>${riskOn ? 'Anteckning *' : 'Anteckning'}</label>
+                        <label>Anteckning</label>
                         <textarea id="uppdrag-complete-note" class="kunduppgifter-input" rows="3" placeholder="Skriv anteckning..."></textarea>
                     </div>
 
@@ -2932,26 +3225,6 @@ class CustomerCardManager {
             try {
                 const note = (document.getElementById('uppdrag-complete-note')?.value || '').trim();
 
-                if (riskOn && !note) {
-                    this.showNotification('Anteckning krävs när PTL-åtgärd är aktiverad.', 'error');
-                    return;
-                }
-
-                // PTL-krav: om åtgärder är aktiverade måste minst en vara vald
-                let riskValda = [];
-                try { riskValda = JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]'); } catch (_) { riskValda = []; }
-                if (root.querySelectorAll('input[data-risk-item]:checked').length) {
-                    riskValda = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
-                }
-                if (riskOn && (!riskValda || riskValda.length === 0)) {
-                    root.classList.remove('is-collapsed');
-                    root.querySelector('[data-action="toggle-edit"]')?.click();
-                    this.showNotification('Välj minst en PTL-åtgärd innan klarmarkering.', 'error');
-                    document.getElementById('uppdrag-complete-modal')?.remove();
-                    return;
-                }
-
-                // Upload files (if any)
                 if (riskOn) {
                     const input = document.getElementById('uppdrag-complete-files');
                     const files = input ? Array.from(input.files || []) : [];
@@ -2977,14 +3250,17 @@ class CustomerCardManager {
                             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                             uploaded.push({ filename, uploadedAt: new Date().toISOString() });
                         }
-                        // Persist PTL Underlag into uppdrag record
                         await this._saveUppdragPtlUnderlagOnly(typ, uploaded);
                     }
                 }
 
                 document.getElementById('uppdrag-complete-modal')?.remove();
-                const periodKey = this._getUppdragPeriodKeyForComplete(typ);
-                await this._completeUppdragFromCard(root, typ, { noteOverride: note, periodKey });
+                const periodKey = extra.periodKey || this._getUppdragPeriodKeyForComplete(typ);
+                await this._completeUppdragFromCard(root, typ, {
+                    noteOverride: note,
+                    periodKey,
+                    riskAtgarder: doneAtgarder
+                });
             } catch (e) {
                 this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
             }
@@ -3598,9 +3874,6 @@ class CustomerCardManager {
 
         const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
 
-        const isDone = this._isUppdragDoneForPeriod(f);
-        const doneBtnClass = isDone ? 'uppdrag-done-btn is-done' : 'uppdrag-done-btn';
-
         return `
             <div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
@@ -3612,10 +3885,7 @@ class CustomerCardManager {
                             <span class="uppdrag-meta-chip"><i class="fas fa-user"></i> <span data-uppdrag-meta="Ansvarig">${headerAnsvarig}</span></span>
                         </div>
                     </div>
-                    <button type="button" class="${doneBtnClass}" title="${isDone ? 'Klarmarkerad' : 'Klarmarkera'}" aria-label="Klarmarkera" data-action="done-header" onclick="event.stopPropagation()">
-                        <i class="fas fa-check"></i>
-                    </button>
-                    <button type="button" class="uppdrag-edit-btn" title="Redigera" aria-label="Redigera" data-action="toggle-edit" onclick="event.stopPropagation()">
+                    <button type="button" class="uppdrag-edit-btn" title="Redigera grunduppdrag" aria-label="Redigera grunduppdrag" data-action="toggle-edit" onclick="event.stopPropagation()">
                         <i class="fas fa-pen"></i>
                     </button>
                     <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
@@ -3641,19 +3911,7 @@ class CustomerCardManager {
 
                         ${viewDeklarationHtml}
 
-                        <div class="uppdrag-block">
-                            <label class="uppdrag-label"><i class="fas fa-sticky-note"></i> Anteckning (för denna körning)</label>
-                            <textarea class="kunduppgifter-input" rows="2" data-field="_note" placeholder="T.ex. avvikelse, extra info..."></textarea>
-                        </div>
-
-                        <div class="uppdrag-actions uppdrag-actions--after-note">
-                            <button type="button" class="btn btn-secondary btn-sm" data-action="done"><i class="fas fa-check"></i> Klarmarkera</button>
-                        </div>
-
-                        <div class="uppdrag-prev-notes">
-                            <div class="uppdrag-prev-notes-head">Tidigare anteckningar (klarmarkerade körningar)</div>
-                            <div class="uppdrag-prev-notes-list">${notesHtml}</div>
-                        </div>
+                        <div class="uppdrag-muted" style="margin-top:0.75rem;">Klarmarkering och åtgärder per körning hanteras i kortet Aktuella körningar.</div>
                     </div>
 
                     <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
@@ -3862,23 +4120,19 @@ class CustomerCardManager {
             const customerId = this.customerId || this.currentCustomerId;
             if (!customerId) throw new Error('Saknar customerId');
 
-            // PTL-krav: om åtgärder är aktiverade måste minst en vara vald
-        const riskOn = root.querySelector('[data-uppdrag-risk-on]')?.value === '1'
-            || !!root.querySelector('[data-field="Riskåtgärder aktiverade"]')?.checked;
-            let riskValda = [];
-            try { riskValda = JSON.parse(root.querySelector('[data-uppdrag-risk-valda]')?.value || '[]'); } catch (_) { riskValda = []; }
-            if (root.querySelectorAll('input[data-risk-item]:checked').length) {
-                riskValda = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
+            const rec = (this._uppdragRecords || []).find(r => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim());
+            const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
+            let riskValda = Array.isArray(options.riskAtgarder) ? options.riskAtgarder : [];
+            if (root) {
+                const fromCard = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
+                if (fromCard.length && !riskValda.length) riskValda = fromCard.map((text) => ({ text }));
             }
-        if (riskOn && (!riskValda || riskValda.length === 0)) {
-            // open edit mode for clarity
-            root.classList.remove('is-collapsed');
-            root.querySelector('[data-action="toggle-edit"]')?.click();
-            this.showNotification('Du måste välja minst en PTL-åtgärd innan du kan klarmarkera uppdraget.', 'error');
-            return;
-        }
+            if (requiredAtgarder.length && !this._riskAtgarderAllChecked(requiredAtgarder, riskValda)) {
+                this.showNotification('Du måste bocka i alla åtgärder enligt kundens riskbedömning innan du kan klarmarkera körningen.', 'error');
+                return;
+            }
 
-            const note = (options.noteOverride != null) ? String(options.noteOverride) : (root.querySelector('[data-field="_note"]')?.value || '');
+            const note = (options.noteOverride != null) ? String(options.noteOverride) : (root?.querySelector('[data-field="_note"]')?.value || '');
             const periodKey = String(options.periodKey != null ? options.periodKey : this._getUppdragPeriodKeyForComplete(typ)).trim();
             const res = await fetch(`${baseUrl}/api/uppdrag/complete`, {
                 method: 'POST',
@@ -3887,7 +4141,8 @@ class CustomerCardManager {
                     customerId,
                     typ,
                     note,
-                    ...(periodKey ? { periodKey } : {})
+                    ...(periodKey ? { periodKey } : {}),
+                    ...(riskValda.length ? { riskAtgarder: riskValda } : {})
                 })
             });
             const data = await res.json().catch(() => ({}));

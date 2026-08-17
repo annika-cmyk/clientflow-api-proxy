@@ -8249,6 +8249,73 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     opacity: 0.6;
 }
 
+.kundkort-uppdrag-panel > .collapsible-header {
+    cursor: default;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.kundkort-uppdrag-panel > .collapsible-header:hover {
+    background: #ffffff;
+}
+.kundkort-uppdrag-panel .collapsible-body {
+    padding: 0 1.25rem 1.15rem;
+}
+.kundkort-uppdrag-panel .uppdragboard-table-wrap {
+    margin-top: 0.75rem;
+}
+.kundkort-uppdrag-panel .uppdragboard-period {
+    margin-left: auto;
+}
+
+.uppdrag-alla-table {
+    min-width: 680px;
+}
+.uppdrag-alla-table th,
+.uppdrag-alla-table td {
+    white-space: normal;
+    text-align: left;
+}
+.uppdrag-alla-row.is-ended td {
+    color: #64748b;
+}
+.uppdrag-alla-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #334155;
+}
+.uppdrag-alla-status.is-active {
+    background: #dcfce7;
+    color: #166534;
+    border-color: #86efac;
+}
+.uppdrag-alla-status.is-ended {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.uppdrag-risk-check {
+    display: flex;
+    gap: 0.55rem;
+    align-items: flex-start;
+    margin: 0.4rem 0;
+    color: #0f172a;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.uppdrag-risk-check input {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+.uppdrag-risk-check input:disabled + span {
+    color: #334155;
+}
+
 .uppdrag-deklaration-rows {
     margin-top: 0.6rem;
     padding: 0.85rem 0.95rem;
