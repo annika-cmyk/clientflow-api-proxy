@@ -311,26 +311,88 @@ async function assertCustomerAccess(req, customerId, options = {}) {
   return { userData, customerRecord };
 }
 
-async function listByraUsersByByraId(byraId, airtableAccessToken, baseId) {
+function mapApplicationUserRecord(r) {
+  const f = r?.fields || {};
+  return {
+    id: r.id,
+    email: f.Email || '',
+    name: f['Full Name'] || f.Namn || '',
+    role: access.normalizeRole(f.Role || '') || f.Role || '',
+    byra: f['Byrå'] || f.fldcZZOiC9y5BKFWf || '',
+    byraId: f['Byrå ID i text 2'] || f['Byra ID i text 2'] || ''
+  };
+}
+
+async function airtableListAllRecords(url, headers, extraParams = {}) {
+  const all = [];
+  let offset = null;
+  do {
+    const params = { pageSize: 100, ...extraParams };
+    if (offset) params.offset = offset;
+    const res = await axios.get(url, { headers, params, timeout: 15000 });
+    all.push(...(res.data.records || []));
+    offset = res.data.offset || null;
+  } while (offset);
+  return all;
+}
+
+async function listByraUsersByByraId(byraId, airtableAccessToken, baseId, options = {}) {
   const raw = String(byraId || '').trim();
-  if (!raw || !airtableAccessToken) return [];
-  const byraIdEsc = access.escapeAirtableString(raw);
-  const filterFormula = `{Byrå ID i text 2}="${byraIdEsc}"`;
-  const url = `https://api.airtable.com/v0/${baseId || airtableBaseId}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
-  const airtableRes = await axios.get(url, {
-    headers: { Authorization: `Bearer ${airtableAccessToken}` },
-    timeout: 15000
-  });
-  return (airtableRes.data.records || []).map((r) => {
-    const f = r.fields || {};
-    return {
-      id: r.id,
-      email: f.Email || '',
-      name: f['Full Name'] || f.Namn || '',
-      role: f.Role || '',
-      byraId: f['Byrå ID i text 2'] || ''
-    };
-  });
+  const byraName = options.byraName || access.byraDisplayName(options.byraRecord?.fields || {});
+  if (!airtableAccessToken || (!raw && !byraName && !options.byraRecord)) return [];
+  const bid = baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
+  const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+  const url = `https://api.airtable.com/v0/${bid}/${encodeURIComponent(USERS_TABLE)}`;
+  const byId = new Map();
+
+  const addRecords = (records) => {
+    (records || []).forEach((r) => { if (r?.id) byId.set(r.id, r); });
+  };
+
+  const tryFormulas = async (formulas, { stopOnSuccess = false } = {}) => {
+    let listed = false;
+    for (const formula of formulas) {
+      try {
+        addRecords(await airtableListAllRecords(url, headers, { filterByFormula: formula }));
+        listed = true;
+        if (stopOnSuccess) break;
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        if (!/Unknown field name|INVALID_FILTER|422/i.test(String(msg))) throw e;
+      }
+    }
+    return listed;
+  };
+
+  if (raw) {
+    const listedById = await tryFormulas(access.byraUsersFilterFormulas(raw), { stopOnSuccess: true });
+    if (!listedById) {
+      console.warn('listByraUsersByByraId: kunde inte filtrera Application Users på byrå-id');
+    }
+  }
+  await tryFormulas(access.byraUsersNameFilterFormulas(byraName));
+
+  const linkedIds = access.extractLinkedUserIdsFromByraFields(options.byraRecord?.fields || {});
+  const missing = linkedIds.filter((id) => !byId.has(id));
+  if (missing.length) {
+    const extra = await fetchAirtableRecordsByIds(airtableAccessToken, bid, USERS_TABLE, missing, { logErrors: false });
+    addRecords(extra);
+  }
+
+  return [...byId.values()]
+    .map(mapApplicationUserRecord)
+    .filter((u) => u.id)
+    .sort((a, b) => {
+      const rank = (role) => {
+        const n = access.normalizeRole(role);
+        if (n === 'Ledare') return 0;
+        if (n === 'Anställd') return 1;
+        return 2;
+      };
+      const d = rank(a.role) - rank(b.role);
+      if (d !== 0) return d;
+      return String(a.name || a.email).localeCompare(String(b.name || b.email), 'sv');
+    });
 }
 
 async function grantCustomerAccessToNamedUsers({ customerId, names, klientansvarigName, airtableAccessToken, baseId, userData }) {
@@ -9738,31 +9800,22 @@ app.post('/api/setup/airtable-byra-profil-fields', authenticateToken, async (req
 });
 
 // GET /api/byra/anvandare – Lista användare som tillhör inloggad byrå (Application Users)
+// Ledare: alla anställda och andra ledare på byrån. Anställd får samma lista (för uppdrag/behörighet).
 app.get('/api/byra/anvandare', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
-    const byraId = result.byraId;
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const byraIdEsc = String(byraId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const filterFormula = `{Byrå ID i text 2}="${byraIdEsc}"`;
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
-    const airtableRes = await axios.get(url, {
-      headers: { 'Authorization': `Bearer ${airtableAccessToken}` }
+    const users = await listByraUsersByByraId(result.byraId, airtableAccessToken, airtableBaseId, {
+      byraRecord: result.record
     });
-    const users = (airtableRes.data.records || []).map(r => {
-      const f = r.fields || {};
-      return {
-        id: r.id,
-        email: f['Email'] || '',
-        name: f['Full Name'] || f['Namn'] || '',
-        role: f['Role'] || '',
-        byra: f['Byrå'] || f['fldcZZOiC9y5BKFWf'] || '',
-        byraId: f['Byrå ID i text 2'] || ''
-      };
+    res.json({
+      success: true,
+      users,
+      viewerRole: result.userData?.role || '',
+      canManage: access.isLedareOrAdmin(result.userData?.role)
     });
-    res.json({ success: true, users });
   } catch (error) {
     console.error('❌ GET /api/byra/anvandare:', error.response?.data || error.message);
     const status = error.response?.status || 500;
@@ -9775,8 +9828,7 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
-    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
-    if (!allowedRoles.includes(result.userData.role)) {
+    if (!access.isLedareOrAdmin(result.userData.role)) {
       return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får skapa användare' });
     }
     const body = req.body || {};
@@ -9835,8 +9887,7 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
-    const allowedRoles = ['ClientFlowAdmin', 'Ledare'];
-    if (!allowedRoles.includes(result.userData.role)) {
+    if (!access.isLedareOrAdmin(result.userData.role)) {
       return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera användare' });
     }
     const { id } = req.params;
@@ -9847,8 +9898,7 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${id}`;
     const getRes = await axios.get(getUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
     const existing = getRes.data;
-    const userByraId = (existing.fields || {})['Byrå ID i text 2'];
-    if (String(userByraId).trim() !== String(byraId).trim()) {
+    if (!access.userRecordBelongsToByra(existing.fields || {}, byraId, result.record?.id)) {
       return res.status(403).json({ error: 'Du kan bara redigera användare i din egen byrå' });
     }
     const fields = {};
@@ -15075,24 +15125,15 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
     const byraId = canUseRequested ? requestedByraId : (inloggedUser.byraId || '');
     const byraNamnFallback = inloggedUser.byra || '';
 
-    // Hämta alla konsulter på samma byrå
-    const filterFormula = byraId
-      ? `{Byrå ID i text 2}="${byraId}"`
-      : `{Byrå}="${byraNamnFallback}"`;
-
-    const konsultRes = await axios.get(
-      `https://api.airtable.com/v0/${airtableBaseId}/${USERS_TABLE}`,
-      {
-        headers: { Authorization: `Bearer ${airtableAccessToken}` },
-        params: { filterByFormula: filterFormula, fields: ['fldU9goXGJs7wk7OZ', 'Full Name', 'Email', 'Role'] }
-      }
-    );
-
-    const konsulter = (konsultRes.data.records || []).map(r => ({
-      id: r.id,
-      namn: r.fields['fldU9goXGJs7wk7OZ'] || r.fields['Full Name'] || r.fields['Email'] || '',
-      email: r.fields['Email'] || '',
-      roll: r.fields['Role'] || ''
+    // Hämta alla konsulter på samma byrå (ledare, anställda och övrig byråpersonal)
+    const byraUsers = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, {
+      byraName: byraNamnFallback
+    });
+    const konsulter = byraUsers.map(u => ({
+      id: u.id,
+      namn: u.name || u.email || '',
+      email: u.email || '',
+      roll: u.role || ''
     })).filter(k => k.namn);
 
     // Hämta tillåtna tjänster via Airtable Metadata API (choices på "Kundens utvalda tjänster")

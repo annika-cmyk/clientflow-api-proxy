@@ -16,6 +16,8 @@ class ByraAnvandareManager {
     this.utbildningar = [];
     this.filteredUsers = [];
     this.filteredLogs = [];
+    this.canManage = false;
+    this.viewerRole = '';
     this.byraInfo = null;
     this.byraId = '';
     this.byraTjanster = [];
@@ -773,6 +775,33 @@ class ByraAnvandareManager {
     }
   }
 
+  displayRole(role) {
+    const r = String(role || '').trim();
+    if (!r || r === 'Användare' || r === 'anvandare' || r === 'user') return 'Anställd';
+    return r;
+  }
+
+  updateManageUi() {
+    const btn = document.getElementById('anvandare-skapa-btn');
+    if (btn) btn.hidden = !this.canManage;
+  }
+
+  updateUserCount() {
+    const el = document.getElementById('anvandare-antal');
+    if (!el) return;
+    const total = this.users.length;
+    const shown = this.filteredUsers.length;
+    if (!total) {
+      el.textContent = 'Inga användare hittades på byrån.';
+      return;
+    }
+    if (shown !== total) {
+      el.textContent = shown + ' av ' + total + ' personer på byrån';
+      return;
+    }
+    el.textContent = total === 1 ? '1 person på byrån' : total + ' personer på byrån';
+  }
+
   async loadUsers() {
     const list = document.querySelector('.users-list');
     if (list) list.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar användare...</p></div>';
@@ -780,20 +809,24 @@ class ByraAnvandareManager {
       const res = await fetch(getBaseUrl() + '/api/byra/anvandare', getAuthOpts());
       if (!res.ok) throw new Error(res.statusText || 'Kunde inte hämta användare');
       const data = await res.json();
+      this.canManage = !!data.canManage;
+      this.viewerRole = data.viewerRole || '';
       this.users = (data.users || []).map(u => ({
         id: u.id,
         name: u.name || u.email,
         email: u.email,
-        role: u.role || 'Anställd',
+        role: this.displayRole(u.role),
         status: 'Aktiv',
         lastLogin: '—',
         byra: u.byra || ''
       }));
       this.filteredUsers = [...this.users];
+      this.updateManageUi();
       this.renderUsers();
       this.populateUserFilters();
     } catch (err) {
       console.error('loadUsers:', err);
+      this.updateUserCount();
       if (list) list.innerHTML = '<div class="no-results"><i class="fas fa-exclamation-triangle"></i><p>Kunde inte ladda användare.</p></div>';
     }
   }
@@ -954,14 +987,23 @@ class ByraAnvandareManager {
     const userFilter = document.getElementById('user-filter');
     if (userFilter) {
       userFilter.innerHTML = '<option value="">Alla användare</option>';
-      [...new Set(this.users.map(u => u.name))].forEach(name => {
+      [...new Set(this.users.map(u => u.name))].sort((a, b) => String(a).localeCompare(String(b), 'sv')).forEach(name => {
         userFilter.innerHTML += '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
       });
     }
     const roleFilter = document.getElementById('role-filter');
     if (roleFilter) {
+      const roleRank = (role) => {
+        if (role === 'Ledare') return 0;
+        if (role === 'Anställd') return 1;
+        return 2;
+      };
+      const roles = [...new Set(this.users.map(u => this.displayRole(u.role)))].sort((a, b) => {
+        const d = roleRank(a) - roleRank(b);
+        return d !== 0 ? d : String(a).localeCompare(String(b), 'sv');
+      });
       roleFilter.innerHTML = '<option value="">Alla roller</option>';
-      [...new Set(this.users.map(u => u.role))].forEach(role => {
+      roles.forEach(role => {
         roleFilter.innerHTML += '<option value="' + escapeHtml(role) + '">' + escapeHtml(role) + '</option>';
       });
     }
@@ -1044,8 +1086,9 @@ class ByraAnvandareManager {
   renderUsers() {
     const usersList = document.querySelector('.users-list');
     if (!usersList) return;
+    this.updateUserCount();
     if (this.users.length === 0) {
-      usersList.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar användare...</p></div>';
+      usersList.innerHTML = '<div class="no-results"><i class="fas fa-users"></i><p>Inga användare hittades på byrån.</p></div>';
       return;
     }
     if (this.filteredUsers.length === 0) {
@@ -1059,14 +1102,14 @@ class ByraAnvandareManager {
         <div class="user-details">
           <h4>${escapeHtml(user.name)}</h4>
           <p>${escapeHtml(user.email)}</p>
-          <span class="user-role">${escapeHtml(user.role === 'Användare' ? 'Anställd' : user.role)}</span>
+          <span class="user-role">${escapeHtml(this.displayRole(user.role))}</span>
         </div>
         <div class="user-status">
           <span class="status aktiv">${escapeHtml(user.status)}</span>
           <span class="last-login">${escapeHtml(user.lastLogin)}</span>
         </div>
         <div class="user-actions">
-          <button type="button" class="btn-secondary anvandare-redigera" data-id="${escapeHtml(user.id)}">Redigera</button>
+          ${this.canManage ? `<button type="button" class="btn-secondary anvandare-redigera" data-id="${escapeHtml(user.id)}">Redigera</button>` : ''}
         </div>
       </div>
     `).join('');
