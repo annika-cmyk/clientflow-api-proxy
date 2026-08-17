@@ -7,6 +7,7 @@ class CustomerManager {
         this.lastQuery = '';
         // Lead och Pågående kund visas som standard, Avslutad döljs tills filtret väljs
         this.activeStatuses = new Set(['Lead', 'Pågående kund']);
+        this.viewerRole = '';
         this.init();
     }
 
@@ -252,6 +253,21 @@ class CustomerManager {
         }
     }
 
+    updateAccessHint() {
+        const el = document.getElementById('kundlista-access-hint');
+        if (!el) return;
+        const role = String(this.viewerRole || '').trim().toLowerCase();
+        if (role === 'ledare' || role === 'clientflowadmin' || role === 'admin') {
+            el.textContent = 'Du är ledare och ser alla företag på byrån. En anställd ser bara de företag hen har behörighet till.';
+            return;
+        }
+        if (role === 'anställd' || role === 'anstalld' || role === 'användare' || role === 'anvandare' || role === 'user') {
+            el.textContent = 'Du ser bara företag du har behörighet till.';
+            return;
+        }
+        el.textContent = '';
+    }
+
     applyFilters() {
         const q = (this.lastQuery || '').toLowerCase();
         this.filteredCustomers = this.customers.filter(c => {
@@ -286,6 +302,8 @@ class CustomerManager {
 
             const data = await kundRes.json();
             const records = (data.success && data.data) ? data.data : [];
+            this.viewerRole = data.userRole || '';
+            this.updateAccessHint();
 
             this.avtalStatusMap = {};
             if (avtalRes?.ok) {

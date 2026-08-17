@@ -11195,6 +11195,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: var(--text);
     white-space: nowrap;
 }
+.kundlista-access-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
 .kundlista-add-btn {
     flex-shrink: 0;
     width: 42px;
