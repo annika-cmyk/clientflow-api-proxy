@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.23', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.24', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -5166,9 +5166,10 @@ class CustomerCardManager {
             const match = users.find((u) => String(u.name || '').trim() === klientansvarig);
             if (match?.id && !ids.includes(String(match.id))) ids.push(String(match.id));
         }
+        const existingAnvandare = this.customerData?.fields?.['Användare'];
         const fields = {
             'Klientansvarig': klientansvarig,
-            'Användare': ids.join(',')
+            'Användare': Array.isArray(existingAnvandare) ? ids : ids.join(',')
         };
         const result = await this._patchKunddataFields(fields);
         if (!result.ok) return;

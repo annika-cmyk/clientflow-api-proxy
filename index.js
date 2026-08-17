@@ -4774,7 +4774,7 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
       axios.get(`https://api.airtable.com/v0/${airtableBaseId}/tblpKIMpde6sFFqDH?maxRecords=500`, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` }, timeout: 15000 })
     ]);
 
-    const kundRecords = kundRes.data.records || [];
+    const kundRecords = access.filterRecordsForUser(userData, kundRes.data.records || []);
     const avtalRecords = avtalRes.data.records || [];
     const customerIdsWithAvtal = new Set();
     for (const a of avtalRecords) {
@@ -5066,25 +5066,40 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
     const headers = { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
     let payload = { ...cleanedFields };
+    if (Object.prototype.hasOwnProperty.call(payload, 'Användare')) {
+      const existingAnvandare = customerRecord.fields?.['Användare'];
+      const ids = access.parseAnvandareIds(payload['Användare']);
+      payload['Användare'] = Array.isArray(existingAnvandare) ? ids : ids.join(',');
+    }
     const skipped = [];
     let createdMissingBehorighet = false;
+    let retriedAnvandareType = false;
     let airtableRes;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
-        airtableRes = await axios.patch(url, { fields: payload }, { headers, timeout: 15000 });
+        airtableRes = await axios.patch(url, { fields: payload, typecast: true }, { headers, timeout: 15000 });
         break;
       } catch (e) {
         const msg = e.response?.data?.error?.message || e.message || '';
         const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
-        if (!unknown || !(unknown in payload)) throw e;
-        if (!createdMissingBehorighet && (unknown === 'Klientansvarig' || unknown === 'Användare')) {
-          createdMissingBehorighet = true;
-          const ensured = await ensureKunddataBehorighetFields(airtableAccessToken, airtableBaseId);
-          if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
+        if (unknown && unknown in payload) {
+          if (!createdMissingBehorighet && (unknown === 'Klientansvarig' || unknown === 'Användare')) {
+            createdMissingBehorighet = true;
+            const ensured = await ensureKunddataBehorighetFields(airtableAccessToken, airtableBaseId);
+            if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
+          }
+          delete payload[unknown];
+          skipped.push(unknown);
+          if (Object.keys(payload).length === 0) throw e;
+          continue;
         }
-        delete payload[unknown];
-        skipped.push(unknown);
-        if (Object.keys(payload).length === 0) throw e;
+        if (!retriedAnvandareType && payload['Användare'] != null && /INVALID_VALUE|cannot accept|linked record/i.test(String(msg))) {
+          retriedAnvandareType = true;
+          const ids = access.parseAnvandareIds(payload['Användare']);
+          payload['Användare'] = Array.isArray(payload['Användare']) ? ids.join(',') : ids;
+          continue;
+        }
+        throw e;
       }
     }
     if (!airtableRes) {
@@ -6807,7 +6822,7 @@ app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
     } catch (kundErr) {
       const kundMsg = kundErr.response?.data?.error?.message || kundErr.message || '';
       if (kundErr.response?.status === 422 && /Unknown field name/i.test(String(kundMsg))) {
-        let fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500&fields[]=Namn`;
+        let fallbackUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500&fields[]=Namn&fields[]=Användare&fields[]=Byrå ID`;
         if (filterFormula) fallbackUrl += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
         kundRes = await axios.get(fallbackUrl, { headers: airtableHeaders, timeout: 15000 });
       } else {
@@ -6815,7 +6830,7 @@ app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
       }
     }
     const customerMap = {};
-    for (const r of kundRes.data.records || []) {
+    for (const r of access.filterRecordsForUser(userData, kundRes.data.records || [])) {
       const f = r.fields || {};
       customerMap[r.id] = f.Namn || f['Företagsnamn'] || f.Foretagsnamn || 'Namn saknas';
     }
@@ -10755,11 +10770,11 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
 
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
-    const formattedRecords = records.map(record => ({
+    const formattedRecords = access.filterRecordsForUser(userData, records.map(record => ({
       id: record.id,
       createdTime: record.createdTime,
       fields: record.fields
-    }));
+    })));
 
     const duration = Date.now() - startTime;
     const filterApplied = filterFormula || 'Ingen filtrering (ClientFlowAdmin)';
@@ -10768,7 +10783,7 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
       success: true,
       message: `KUNDDATA hämtad för ${userData.role}`,
       records: formattedRecords,
-      recordCount: records.length,
+      recordCount: formattedRecords.length,
       userRole: userData.role,
       userByraId: userData.byraId,
       userId: userData.id,
@@ -10832,6 +10847,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
       allRecords = allRecords.concat(r.data.records || []);
       offset = r.data.offset || null;
     } while (offset);
+    allRecords = access.filterRecordsForUser(userData, allRecords);
 
     const riskniva = { Låg: 0, Medel: 0, Hög: 0, Övrigt: 0 };
     const tjänstAntal = {};
@@ -11006,6 +11022,7 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       allRecords = allRecords.concat(r.data.records || []);
       offset = r.data.offset || null;
     } while (offset);
+    allRecords = access.filterRecordsForUser(userData, allRecords);
 
     let kunder = [];
     if (typ === 'tjanst') {
@@ -11162,6 +11179,7 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
       offset = response.data.offset || null;
     } while (offset);
 
+    records = access.filterRecordsForUser(userData, records);
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
@@ -14523,10 +14541,10 @@ app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
         const custUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(KUNDDATA_TABLE_ID_LOCAL)}`;
         let offsetK = null;
         do {
-          const params = { pageSize: 100, filterByFormula: allowedFormula, fields: ['Namn'] };
+          const params = { pageSize: 100, filterByFormula: allowedFormula, fields: ['Namn', 'Användare', 'Byrå ID'] };
           if (offsetK) params.offset = offsetK;
           const kr = await axios.get(custUrl, { headers, params });
-          (kr.data.records || []).forEach((r) => { if (r.id) allowedIds.add(r.id); });
+          access.filterRecordsForUser(userData, kr.data.records || []).forEach((r) => { if (r.id) allowedIds.add(r.id); });
           offsetK = kr.data.offset || null;
         } while (offsetK);
       } catch (e) {
