@@ -1959,43 +1959,6 @@ class CustomerCardManager {
 
                 const detailsHtml = `
                     <div class="uppdragboard-details-inner">
-                        <div class="uppdragboard-section uppdragboard-section--grund">
-                            <div class="uppdragboard-section-head">
-                                <i class="fas fa-layer-group"></i>
-                                <span>Grunduppdrag</span>
-                                <span class="uppdragboard-section-hint">Mall och inställningar som gäller löpande</span>
-                            </div>
-                            <div class="uppdragboard-section-body">
-                                <div class="uppdragboard-meta-grid">
-                                    <div><span class="uppdrag-muted">Klientansvarig</span><div>${klientansvarig ? this._esc(klientansvarig) : '—'}</div></div>
-                                    <div><span class="uppdrag-muted">Handläggare</span><div>${ansvarig ? this._esc(ansvarig) : '—'}</div></div>
-                                    <div><span class="uppdrag-muted">Frekvens</span><div>${this._esc(freq)}</div></div>
-                                    <div><span class="uppdrag-muted">Startdatum</span><div>${startdatum ? this._esc(startdatum) : '—'}</div></div>
-                                    <div><span class="uppdrag-muted">Nästa deadline</span><div>${nextDeadline ? this._esc(nextDeadline) : '—'}</div></div>
-                                </div>
-                                <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.75rem;">
-                                    <div class="uppdrag-view-label">Rutin / instruktion (mall)</div>
-                                    <div class="uppdrag-view-text">${grundRutin ? this._esc(grundRutin) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
-                                    <div class="uppdrag-muted" style="margin-top:0.35rem; font-size:0.8rem;">Ändringar här uppdaterar bara framtida körningar – avslutade behåller sin sparade rutin.</div>
-                                </div>
-                                ${autoOn ? `
-                                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.65rem;">
-                                        <div class="uppdrag-view-label">Auto underlagsförfrågan</div>
-                                        <div class="uppdrag-view-text">${this._esc(autoSummary)}</div>
-                                    </div>
-                                ` : ''}
-                                <div style="display:flex; justify-content:flex-end; margin-top:0.75rem;">
-                                    <button type="button" class="btn btn-ghost btn-sm"
-                                        title="Redigera grunduppdrag"
-                                        aria-label="Redigera grunduppdrag"
-                                        data-kund-action="edit-uppdrag"
-                                        data-kund-edit-typ="${this._esc(t)}">
-                                        <i class="fas fa-pen"></i> Redigera grunduppdrag
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="uppdragboard-section uppdragboard-section--korning">
                             <div class="uppdragboard-section-head">
                                 <i class="fas fa-play-circle"></i>
@@ -2131,24 +2094,6 @@ class CustomerCardManager {
                                     <div class="uppdrag-muted">Ingen körning planerad för den här månaden. Bläddra till rätt månad eller generera körningar.</div>
                                 `}
                             </div>
-                        </div>
-
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-top:0.9rem; flex-wrap:wrap;">
-                            ${(() => {
-                                const avslutasIso = toDateStr(f['Avslutas'] || '');
-                                return avslutasIso
-                                    ? `<div class="uppdrag-muted"><i class="fas fa-calendar-times"></i> Avslutas ${fmtLong(avslutasIso)}</div>`
-                                    : `<div></div>`;
-                            })()}
-                            <button type="button" class="btn btn-secondary btn-sm"
-                                title="Avsluta uppdrag"
-                                aria-label="Avsluta uppdrag"
-                                data-kund-action="end-uppdrag"
-                                data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
-                                data-kund-edit-typ="${this._esc(t)}"
-                                data-kund-avslutas="${this._esc(toDateStr(f['Avslutas'] || ''))}">
-                                <i class="fas fa-stop-circle"></i> Avsluta uppdrag
-                            </button>
                         </div>
                     </div>
                 `;
@@ -3975,6 +3920,23 @@ class CustomerCardManager {
                         ${viewDeklarationHtml}
 
                         <div class="uppdrag-muted" style="margin-top:0.75rem;">Klarmarkering och åtgärder per körning hanteras i kortet Aktuella körningar.</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-top:0.9rem; flex-wrap:wrap;">
+                            ${(() => {
+                                const avslutasIso = String(f['Avslutas'] || '').slice(0, 10);
+                                return avslutasIso
+                                    ? `<div class="uppdrag-muted"><i class="fas fa-calendar-times"></i> Avslutas ${this._esc(avslutasIso)}</div>`
+                                    : `<div></div>`;
+                            })()}
+                            <button type="button" class="btn btn-secondary btn-sm"
+                                title="Avsluta uppdrag"
+                                aria-label="Avsluta uppdrag"
+                                data-kund-action="end-uppdrag"
+                                data-kund-uppdrag-id="${this._esc(String(recId || ''))}"
+                                data-kund-edit-typ="${this._esc(typ)}"
+                                data-kund-avslutas="${this._esc(String(f['Avslutas'] || '').slice(0, 10))}">
+                                <i class="fas fa-stop-circle"></i> Avsluta uppdrag
+                            </button>
+                        </div>
                     </div>
 
                     <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
