@@ -1695,6 +1695,71 @@ app.post('/api/setup/airtable-kundstatus-field', authenticateToken, async (req, 
   });
 });
 
+const KUNDDATA_BEHORIGHET_FIELDS = [
+  { name: 'Klientansvarig', type: 'singleLineText', description: 'Klientansvarig på byrån (namn)' },
+  { name: 'Användare', type: 'singleLineText', description: 'Behöriga byråanvändare (Airtable record-id, kommaseparerade)' }
+];
+let kunddataBehorighetFieldsEnsured = false;
+
+async function ensureKunddataBehorighetFields(airtableToken, baseId) {
+  if (kunddataBehorighetFieldsEnsured) return { ok: true, created: [], existing: KUNDDATA_BEHORIGHET_FIELDS.map((f) => f.name) };
+  const tableId = kunddataTableId();
+  if (!airtableToken) return { ok: false, error: 'Token saknas' };
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const kundTable = (metaRes.data?.tables || []).find((t) => t.id === tableId || t.name === 'KUNDDATA');
+    if (!kundTable) return { ok: false, error: 'KUNDDATA-tabellen hittades inte' };
+    const existingNames = new Set((kundTable.fields || []).map((f) => f.name || ''));
+    const created = [];
+    const existing = [];
+    for (const fieldDef of KUNDDATA_BEHORIGHET_FIELDS) {
+      if (existingNames.has(fieldDef.name)) {
+        existing.push(fieldDef.name);
+        continue;
+      }
+      await axios.post(
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${kundTable.id}/fields`,
+        fieldDef,
+        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+      );
+      created.push(fieldDef.name);
+      console.log(`✅ Behörighetsfält skapades i KUNDDATA: ${fieldDef.name}`);
+    }
+    if (created.length + existing.length === KUNDDATA_BEHORIGHET_FIELDS.length) {
+      kunddataBehorighetFieldsEnsured = true;
+    }
+    return { ok: true, created, existing };
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.warn('ensureKunddataBehorighetFields:', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+app.post('/api/setup/airtable-kundbehorighet-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  }
+  const result = await ensureKunddataBehorighetFields(airtableAccessToken, baseId);
+  if (result.ok) {
+    return res.json({
+      success: true,
+      message: 'Behörighetsfält finns i KUNDDATA.',
+      created: result.created || [],
+      existing: result.existing || []
+    });
+  }
+  return res.status(500).json({
+    success: false,
+    error: result.error || 'Kunde inte skapa behörighetsfält. Token behöver schema.bases:write.'
+  });
+});
+
 const MINIBOK_FIELDS = [
   { name: 'Minibok pending', type: 'checkbox', options: { icon: 'check', color: 'blueBright' } },
   { name: 'Minibok källa', type: 'singleLineText' },
@@ -4999,12 +5064,34 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
-    const airtableRes = await axios.patch(url,
-      { fields: cleanedFields },
-      { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
+    const headers = { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+    let payload = { ...cleanedFields };
+    const skipped = [];
+    let createdMissingBehorighet = false;
+    let airtableRes;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        airtableRes = await axios.patch(url, { fields: payload }, { headers, timeout: 15000 });
+        break;
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+        if (!unknown || !(unknown in payload)) throw e;
+        if (!createdMissingBehorighet && (unknown === 'Klientansvarig' || unknown === 'Användare')) {
+          createdMissingBehorighet = true;
+          const ensured = await ensureKunddataBehorighetFields(airtableAccessToken, airtableBaseId);
+          if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
+        }
+        delete payload[unknown];
+        skipped.push(unknown);
+        if (Object.keys(payload).length === 0) throw e;
+      }
+    }
+    if (!airtableRes) {
+      return res.status(422).json({ error: 'Kunde inte spara något fält', skipped });
+    }
     console.log('✅ Kund uppdaterad i Airtable:', airtableRes.data.id);
-    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+    res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data, skipped });
 
     if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
       minibokSync.notifyMinibokClientChange('client.updated', req.user.email, airtableRes.data).catch(() => {});

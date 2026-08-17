@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.21', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.23', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -595,7 +595,7 @@ class CustomerCardManager {
         const customerId = this.customerId;
         if (!customerId) {
             this.showNotification('Kund-ID saknas', 'error');
-            return false;
+            return { ok: false, skipped: [] };
         }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -607,25 +607,26 @@ class CustomerCardManager {
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 const msg = err.error || err.message || `HTTP ${response.status}`;
-                if (response.status === 422) {
-                    throw new Error(`${msg} Skapa checkbox-fält i KUNDDATA: ${Object.keys(fields).join(', ')}`);
-                }
                 throw new Error(msg);
             }
+            const saved = await response.json().catch(() => ({}));
+            const skipped = Array.isArray(saved.skipped) ? saved.skipped : [];
+            const applied = { ...fields };
+            skipped.forEach((name) => { delete applied[name]; });
             if (this.customerData?.fields) {
-                Object.assign(this.customerData.fields, fields);
+                Object.assign(this.customerData.fields, applied);
             }
             this._updateKlarTabIndicators(this.customerData?.fields || {});
-            return true;
+            return { ok: true, skipped };
         } catch (error) {
             console.error('❌ Kunde inte spara kundfält:', error);
             this.showNotification('Kunde inte spara: ' + error.message, 'error');
-            return false;
+            return { ok: false, skipped: [] };
         }
     }
 
     async setUppdragsavtalUtanforClientFlow(checked) {
-        const ok = await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked });
+        const ok = (await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked })).ok;
         if (ok) {
             const cb = document.getElementById('kund-ua-utanfor-avtal-cf');
             if (cb) cb.checked = !!checked;
@@ -638,7 +639,7 @@ class CustomerCardManager {
     }
 
     async setKycFormularUtanforClientFlow(checked) {
-        const ok = await this._patchKunddataFields({ 'KYC-formulär utanför ClientFlow': !!checked });
+        const ok = (await this._patchKunddataFields({ 'KYC-formulär utanför ClientFlow': !!checked })).ok;
         if (ok) {
             const cb = document.getElementById('kund-kyc-utanfor-cf');
             if (cb) cb.checked = !!checked;
@@ -5169,9 +5170,15 @@ class CustomerCardManager {
             'Klientansvarig': klientansvarig,
             'Användare': ids.join(',')
         };
-        const ok = await this._patchKunddataFields(fields);
-        if (!ok) return;
-        this.showNotification('Behörighet sparad.', 'success');
+        const result = await this._patchKunddataFields(fields);
+        if (!result.ok) return;
+        if (result.skipped?.includes('Klientansvarig') && !result.skipped.includes('Användare')) {
+            this.showNotification('Behöriga användare sparade. Klientansvarig kunde inte sparas i Airtable.', 'success');
+        } else if (result.skipped?.length) {
+            this.showNotification('Behörighet sparad, utom: ' + result.skipped.join(', '), 'success');
+        } else {
+            this.showNotification('Behörighet sparad.', 'success');
+        }
         this.loadCompanyInfo();
     }
 
