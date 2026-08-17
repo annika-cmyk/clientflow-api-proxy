@@ -396,6 +396,55 @@ async function listByraUsersByByraId(byraId, airtableAccessToken, baseId, option
     });
 }
 
+async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId) {
+  const formula = access.kunddataFilterFormula(userData);
+  if (formula === null) return [];
+  const bid = baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
+  const url = `https://api.airtable.com/v0/${bid}/${kunddataTableId()}`;
+  const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+  const byId = new Map();
+
+  const pull = async (filterByFormula) => {
+    let offset = null;
+    do {
+      const params = { pageSize: 100 };
+      if (filterByFormula) params.filterByFormula = filterByFormula;
+      if (offset) params.offset = offset;
+      const res = await axios.get(url, { headers, params, timeout: 15000 });
+      (res.data.records || []).forEach((r) => {
+        if (r?.id) byId.set(r.id, r);
+      });
+      offset = res.data.offset || null;
+    } while (offset);
+  };
+
+  try {
+    await pull(formula || undefined);
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message || '';
+    if (!/Unknown field name|INVALID_FILTER|422/i.test(String(msg))) throw e;
+    if (formula) await pull(access.byraFilterFormula(userData.byraId) || undefined);
+  }
+
+  if (access.isAnstalld(userData.role)) {
+    for (const extra of access.anvandareContainsFormulas(userData)) {
+      try {
+        await pull(extra);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        if (!/Unknown field name|INVALID_FILTER|422/i.test(String(msg))) throw e;
+      }
+    }
+  }
+
+  const mapped = [...byId.values()].map((r) => ({
+    id: r.id,
+    createdTime: r.createdTime,
+    fields: r.fields || {}
+  }));
+  return access.filterRecordsForUser(userData, mapped);
+}
+
 async function grantCustomerAccessToNamedUsers({ customerId, names, klientansvarigName, airtableAccessToken, baseId, userData }) {
   const token = airtableAccessToken || process.env.AIRTABLE_ACCESS_TOKEN;
   const bid = baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
@@ -10736,7 +10785,6 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
     console.log(`👤 Användare: ${userData.name} (${userData.role}) från ${userData.byra}`);
     console.log(`🏢 Byrå ID: ${userData.byraId}`);
 
-    let records = [];
     const filterFormula = access.kunddataFilterFormula(userData);
     if (filterFormula === null) {
       return res.json({
@@ -10753,31 +10801,8 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
       });
     }
 
-    const baseUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-    const baseParams = new URLSearchParams();
-    baseParams.append('pageSize', '100');
-    if (filterFormula) baseParams.append('filterByFormula', filterFormula);
-
-    let offset = null;
-    do {
-      const params = new URLSearchParams(baseParams);
-      if (offset) params.append('offset', offset);
-      const response = await axios.get(`${baseUrl}?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-      const page = response.data.records || [];
-      records.push(...page);
-      offset = response.data.offset || null;
-    } while (offset);
-
-    console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
-
-    const formattedRecords = access.filterRecordsForUser(userData, records.map(record => ({
-      id: record.id,
-      createdTime: record.createdTime,
-      fields: record.fields
-    })));
+    const formattedRecords = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    console.log(`✅ Hämtade ${formattedRecords.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
     const filterApplied = filterFormula || 'Ingen filtrering (ClientFlowAdmin)';
@@ -11140,8 +11165,6 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
     console.log(`👤 Användare: ${userData.name} (${userData.role}) från ${userData.byra}`);
     console.log(`🏢 Byrå ID: ${userData.byraId}`);
 
-    const { filterFormula: customFilter, maxRecords } = req.body || {};
-    let records = [];
     const filterFormula = access.kunddataFilterFormula(userData);
     if (filterFormula === null) {
       return res.json({
@@ -11156,33 +11179,7 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
         });
     }
 
-    const baseUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
-    const baseParams = new URLSearchParams();
-    baseParams.append('pageSize', '100');
-    if (filterFormula) baseParams.append('filterByFormula', filterFormula);
-    if (maxRecords) baseParams.append('maxRecords', maxRecords);
-
-    let offset = null;
-    do {
-      const params = new URLSearchParams(baseParams);
-      if (offset) params.append('offset', offset);
-      const response = await axios.get(`${baseUrl}?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${airtableAccessToken}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      });
-      const page = response.data.records || [];
-      records.push(...page.map(record => ({
-        id: record.id,
-        createdTime: record.createdTime,
-        fields: record.fields
-      })));
-      offset = response.data.offset || null;
-    } while (offset);
-
-    records = access.filterRecordsForUser(userData, records);
+    const records = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
