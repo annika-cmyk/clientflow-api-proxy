@@ -1362,6 +1362,7 @@ class CustomerCardManager {
             if (aEnded !== bEnded) return aEnded ? 1 : -1;
             return String(a?.fields?.['Typ'] || '').localeCompare(String(b?.fields?.['Typ'] || ''), 'sv');
         });
+        const openAllaTyp = String(this._kundAllaUppdragOpenTyp || '').trim();
         const allaUppdragRowsHtml = allUppdragSorted.map((rec) => {
             const f = rec.fields || {};
             const typ = String(f['Typ'] || '').trim();
@@ -1373,8 +1374,10 @@ class CustomerCardManager {
             const ansvarig = String(f['Ansvarig'] || '—').trim() || '—';
             const nextDl = String(f['Nästa deadline'] || '').slice(0, 10);
             const statusClass = ended ? 'is-ended' : 'is-active';
+            const isOpen = openAllaTyp === typ;
+            const kortHtml = this._renderUppdragKortByTyp(typ, rec, byraUsers, riskAtgarder, { embed: true });
             return `
-                <tr class="uppdrag-alla-row ${ended ? 'is-ended' : ''}" data-kund-alla-typ="${this._esc(typ)}">
+                <tr class="uppdrag-alla-row ${ended ? 'is-ended' : ''} ${isOpen ? 'is-open' : ''}" data-kund-alla-typ="${this._esc(typ)}" data-kund-action="toggle-alla-uppdrag">
                     <td><strong>${this._esc(this._uppdragTypLabel(typ))}</strong></td>
                     <td>${this._esc(freq)}</td>
                     <td>
@@ -1383,11 +1386,17 @@ class CustomerCardManager {
                     </td>
                     <td>${this._esc(ansvarig)}</td>
                     <td>${nextDl ? this._esc(nextDl) : '—'}</td>
-                    <td style="text-align:right;">
+                    <td class="uppdragboard-arrow" style="text-align:right;">
                         <button type="button" class="btn btn-ghost btn-sm" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(typ)}">
                             <i class="fas fa-pen"></i> Redigera
                         </button>
+                        <button type="button" class="uppdragboard-expandbtn" title="Visa grunduppdrag" aria-label="Visa grunduppdrag" data-kund-action="toggle-alla-uppdrag" data-kund-alla-typ="${this._esc(typ)}">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
                     </td>
+                </tr>
+                <tr class="uppdrag-alla-details" data-kund-alla-details-for="${this._esc(typ)}" style="${isOpen ? '' : 'display:none;'}">
+                    <td colspan="6">${kortHtml}</td>
                 </tr>
             `;
         }).filter(Boolean).join('') || `<tr><td colspan="6" class="uppdragboard-empty">Inga uppdrag upplagda ännu.</td></tr>`;
@@ -1401,7 +1410,7 @@ class CustomerCardManager {
                     </button>
                 </div>
                 <div class="collapsible-body">
-                    <p class="uppdrag-muted" style="margin-top:0;">Grunduppdrag som är upplagda på kunden, inklusive avslutade. Här redigerar du mallen.</p>
+                    <p class="uppdrag-muted" style="margin-top:0;">Grunduppdrag som är upplagda på kunden, inklusive avslutade. Fäll ut en rad för att se och redigera mallen.</p>
                     <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
                         <table class="uppdragboard-table uppdrag-alla-table">
                             <thead>
@@ -1416,15 +1425,6 @@ class CustomerCardManager {
                             </thead>
                             <tbody>${allaUppdragRowsHtml}</tbody>
                         </table>
-                    </div>
-                    <div id="kund-uppdrag-edit-host" style="display:none; margin-top:1rem;">
-                        ${existingTypes.length ? existingTypes.map(t => {
-                            if (isLoneTyp(t)) return this._renderUppdragKort(t, 'fa-money-check-alt', byType(t), byraUsers, riskAtgarder);
-                            if (t === 'Momsredovisning') return this._renderUppdragKort('Momsredovisning', 'fa-receipt', byType('Momsredovisning'), byraUsers, riskAtgarder);
-                            if (t === 'Bokslut') return this._renderUppdragKort('Bokslut', 'fa-file-invoice-dollar', byType('Bokslut'), byraUsers, riskAtgarder);
-                            if (t === 'Deklaration') return this._renderUppdragKort('Deklaration', 'fa-file-signature', byType('Deklaration'), byraUsers, riskAtgarder, { showDeklaration: true });
-                            return this._renderUppdragKort(t, 'fa-briefcase', byType(t), byraUsers, riskAtgarder);
-                        }).join('') : ''}
                     </div>
                 </div>
             </div>
@@ -2431,19 +2431,23 @@ class CustomerCardManager {
                     return;
                 }
 
-                // Redigera uppdrag via liten penna i detaljvyn
+                const toggleAlla = e.target.closest('[data-kund-action="toggle-alla-uppdrag"]');
+                if (toggleAlla && container.contains(toggleAlla) && !e.target.closest('[data-kund-action="edit-uppdrag"]')) {
+                    e.preventDefault();
+                    const t = toggleAlla.getAttribute('data-kund-alla-typ')
+                        || toggleAlla.closest('[data-kund-alla-typ]')?.getAttribute('data-kund-alla-typ')
+                        || '';
+                    this._toggleAllaUppdragRow(t);
+                    return;
+                }
+
+                // Redigera grunduppdrag – fäll ut raden och gå in i redigeringsläge
                 const editBtn = e.target.closest('[data-kund-action="edit-uppdrag"]');
                 if (editBtn) {
                     e.preventDefault();
+                    e.stopPropagation();
                     const t = editBtn.getAttribute('data-kund-edit-typ') || '';
-                    const host = document.getElementById('kund-uppdrag-edit-host');
-                    if (host) host.style.display = '';
-                    const target = document.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
-                    if (target) {
-                        try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) {}
-                        target.classList.remove('is-collapsed');
-                        target.querySelector('[data-action="toggle-edit"]')?.click();
-                    }
+                    this._toggleAllaUppdragRow(t, { open: true, edit: true });
                     return;
                 }
 
@@ -3721,6 +3725,51 @@ class CustomerCardManager {
         });
     }
 
+    _renderUppdragKortByTyp(typ, record, byraUsers, riskAtgarder, extra = {}) {
+        const t = String(typ || '').trim();
+        if (window.LonePeriod && LonePeriod.isLoneTyp(t)) {
+            return this._renderUppdragKort(t, 'fa-money-check-alt', record, byraUsers, riskAtgarder, extra);
+        }
+        if (t === 'Momsredovisning') return this._renderUppdragKort(t, 'fa-receipt', record, byraUsers, riskAtgarder, extra);
+        if (t === 'Bokslut') return this._renderUppdragKort(t, 'fa-file-invoice-dollar', record, byraUsers, riskAtgarder, extra);
+        if (t === 'Deklaration') return this._renderUppdragKort(t, 'fa-file-signature', record, byraUsers, riskAtgarder, { ...extra, showDeklaration: true });
+        return this._renderUppdragKort(t, 'fa-briefcase', record, byraUsers, riskAtgarder, extra);
+    }
+
+    _toggleAllaUppdragRow(typ, opts = {}) {
+        const t = String(typ || '').trim();
+        if (!t) return;
+        const container = document.getElementById('uppdrag-content');
+        if (!container) return;
+        const details = container.querySelector(`[data-kund-alla-details-for="${CSS.escape(t)}"]`);
+        const row = container.querySelector(`.uppdrag-alla-row[data-kund-alla-typ="${CSS.escape(t)}"]`);
+        if (!details || !row) return;
+        const forceOpen = opts.open === true;
+        const forceClose = opts.open === false;
+        const isOpen = details.style.display !== 'none';
+        const nextOpen = forceOpen ? true : (forceClose ? false : !isOpen);
+
+        container.querySelectorAll('.uppdrag-alla-details').forEach((el) => {
+            const key = el.getAttribute('data-kund-alla-details-for') || '';
+            const keep = nextOpen && key === t;
+            el.style.display = keep ? '' : 'none';
+        });
+        container.querySelectorAll('.uppdrag-alla-row').forEach((el) => {
+            el.classList.toggle('is-open', nextOpen && (el.getAttribute('data-kund-alla-typ') || '') === t);
+        });
+        this._kundAllaUppdragOpenTyp = nextOpen ? t : '';
+
+        if (nextOpen) {
+            try { row.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+        }
+        if (nextOpen && opts.edit) {
+            const target = details.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
+            if (target && target.dataset.uppdragEditing !== '1') {
+                target.querySelector('[data-action="toggle-edit"]')?.click();
+            }
+        }
+    }
+
     _renderUppdragKort(typ, icon, record, byraUsers, riskAtgarder, extra = {}) {
         const f = record?.fields || {};
         const recId = record?.id || '';
@@ -3880,9 +3929,11 @@ class CustomerCardManager {
         ` : '';
 
         const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
-
-        return `
-            <div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
+        const embed = !!extra.embed;
+        const cardOpen = embed
+            ? `<div class="uppdrag-card uppdrag-card--embed" data-uppdrag-typ="${this._esc(typ)}">
+                    <button type="button" class="uppdrag-edit-btn" hidden data-action="toggle-edit" aria-hidden="true"></button>`
+            : `<div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
                     <div class="uppdrag-header">
                         <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(this._uppdragTypLabel(typ))}</span></div>
@@ -3898,7 +3949,11 @@ class CustomerCardManager {
                     </button>
                     <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
                 </div>
-                <div class="collapsible-body">
+                <div class="collapsible-body">`;
+        const cardClose = embed ? `</div>` : `</div></div>`;
+
+        return `
+            ${cardOpen}
                     <input type="hidden" data-uppdrag-risk-on value="${riskOn ? '1' : '0'}">
                     <input type="hidden" data-uppdrag-risk-valda value="${riskValdaJson}">
                     <input type="hidden" data-uppdrag-ptl-underlag value="${ptlUnderlagJson}">
@@ -4034,8 +4089,7 @@ class CustomerCardManager {
                             <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-edit"><i class="fas fa-times"></i> Avbryt</button>
                         </div>
                     </div>
-                </div>
-            </div>
+                ${cardClose}
         `;
     }
 
