@@ -8275,8 +8275,33 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     white-space: normal;
     text-align: left;
 }
+.uppdrag-alla-row {
+    cursor: pointer;
+}
+.uppdrag-alla-row.is-open {
+    background: #f8fafc;
+}
+.uppdrag-alla-row.is-open .uppdragboard-expandbtn i {
+    transform: rotate(180deg);
+}
 .uppdrag-alla-row.is-ended td {
     color: #64748b;
+}
+.uppdrag-alla-details td {
+    white-space: normal;
+    background: #f8fafc;
+    padding: 0.35rem 1rem 1.1rem;
+    border-bottom: 1px solid var(--border);
+}
+.uppdrag-card--embed {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    margin: 0;
+    overflow: visible;
+}
+.uppdrag-card--embed .uppdrag-view-top {
+    align-items: flex-start;
 }
 .uppdrag-alla-status {
     display: inline-flex;
