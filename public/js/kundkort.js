@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.19', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.20', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -1183,6 +1183,7 @@ class CustomerCardManager {
         }
         const runRecords = Array.isArray(runsData.records) ? runsData.records : [];
         const byraUsers = Array.isArray(usersData.users) ? usersData.users : [];
+        this._byraUsers = byraUsers;
         const samarbeteReqs = Array.isArray(samarbeteData.requests) ? samarbeteData.requests : [];
         const samarbeteByUppdragTyp = new Map();
         const samarbeteByUppdragId = new Map();
@@ -1928,6 +1929,7 @@ class CustomerCardManager {
                 const grundRutin = String(f['Rutin'] || '').trim();
                 const korningRutin = rutinForKorning(grundRutin, runRec, todayIso);
                 const ansvarig = String(f['Ansvarig'] || '').trim();
+                const klientansvarig = String(f['Klientansvarig'] || '').trim();
                 const startdatum = toDateStr(f['Startdatum'] || '');
                 const nextDeadline = toDateStr(f['Nästa deadline'] || '');
                 const korningLabel = runRec
@@ -1965,6 +1967,7 @@ class CustomerCardManager {
                             </div>
                             <div class="uppdragboard-section-body">
                                 <div class="uppdragboard-meta-grid">
+                                    <div><span class="uppdrag-muted">Klientansvarig</span><div>${klientansvarig ? this._esc(klientansvarig) : '—'}</div></div>
                                     <div><span class="uppdrag-muted">Handläggare</span><div>${ansvarig ? this._esc(ansvarig) : '—'}</div></div>
                                     <div><span class="uppdrag-muted">Frekvens</span><div>${this._esc(freq)}</div></div>
                                     <div><span class="uppdrag-muted">Startdatum</span><div>${startdatum ? this._esc(startdatum) : '—'}</div></div>
@@ -2865,7 +2868,7 @@ class CustomerCardManager {
             if (doneHeaderBtn) doneHeaderBtn.addEventListener('click', () => this._showCompleteUppdragModal(root, typ));
 
             // Live-sync header meta when user edits
-            ['Frekvens', 'Nästa deadline', 'Ansvarig'].forEach((field) => {
+            ['Frekvens', 'Nästa deadline', 'Ansvarig', 'Klientansvarig'].forEach((field) => {
                 const el = root.querySelector(`[data-field="${CSS.escape(field)}"]`);
                 if (el) el.addEventListener('change', () => this._syncUppdragHeaderMeta(root));
                 if (el && el.tagName === 'INPUT') el.addEventListener('input', () => this._syncUppdragHeaderMeta(root));
@@ -3416,13 +3419,9 @@ class CustomerCardManager {
         modal.className = 'modal-overlay';
 
         const currentUserName = ((window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()?.name) || this.userData?.name || '').toString().trim();
-        const userOptions = [{ name: '' }].concat((byraUsers || []).map(u => ({ name: u.name || u.email || u.id || '' }))).filter(x => x.name !== undefined);
-        const userOptHtml = userOptions.map(u => {
-            const name = String(u.name || '');
-            const label = name || 'Välj handläggare';
-            const sel = name && currentUserName && name === currentUserName ? 'selected' : '';
-            return `<option value="${this._esc(name)}" ${sel}>${this._esc(label)}</option>`;
-        }).join('');
+        const defaultKlient = String(this.customerData?.fields?.['Klientansvarig'] || currentUserName || '').trim();
+        const handlaggareOptHtml = this._userSelectOptions(byraUsers, currentUserName, 'Välj handläggare');
+        const klientansvarigOptHtml = this._userSelectOptions(byraUsers, defaultKlient, 'Välj klientansvarig');
 
         const riskChoicesHtml = (riskAtgarder || []).map(a => {
             return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
@@ -3449,8 +3448,13 @@ class CustomerCardManager {
                             <select class="form-control" id="uppdrag-new-typ">${typeOptionsHtml}</select>
                         </div>
                         <div class="lead-field">
+                            <label>Klientansvarig *</label>
+                            <select class="form-control" id="uppdrag-new-klientansvarig">${klientansvarigOptHtml}</select>
+                        </div>
+                        <div class="lead-field">
                             <label>Handläggare *</label>
-                            <select class="form-control" id="uppdrag-new-ansvarig">${userOptHtml}</select>
+                            <select class="form-control" id="uppdrag-new-ansvarig">${handlaggareOptHtml}</select>
+                            <p class="uppdrag-muted" style="margin:0.35rem 0 0;">Handläggaren är den som utför arbetet.</p>
                         </div>
                         <div class="lead-field">
                             <label>Frekvens *</label>
@@ -3650,12 +3654,14 @@ class CustomerCardManager {
                 const customerId = this.customerId || this.currentCustomerId;
                 const typ = typEl.value;
                 const ansvarig = document.getElementById('uppdrag-new-ansvarig').value || '';
+                const klientansvarig = document.getElementById('uppdrag-new-klientansvarig')?.value || '';
                 const frekvens = freqEl.value || '';
                 const startdatum = document.getElementById('uppdrag-new-start').value || '';
                 const deadline = document.getElementById('uppdrag-new-deadline').value || '';
                 const rutin = document.getElementById('uppdrag-new-rutin').value || '';
 
                 if (!typ) throw new Error('Välj typ');
+                if (!klientansvarig) throw new Error('Välj klientansvarig');
                 if (!ansvarig) throw new Error('Välj handläggare');
                 if (!frekvens) throw new Error('Välj frekvens');
                 const forstaPeriod = (typ === 'Momsredovisning' && momsPeriodEl) ? (momsPeriodEl.value || '').trim() : '';
@@ -3678,6 +3684,7 @@ class CustomerCardManager {
 
                 const fields = {
                     'Ansvarig': ansvarig,
+                    'Klientansvarig': klientansvarig,
                     'Frekvens': frekvens,
                     'Startdatum': startdatum,
                     'Nästa deadline': deadline,
@@ -3722,6 +3729,7 @@ class CustomerCardManager {
         const deadline = f['Nästa deadline'] || '';
         const startdatum = f['Startdatum'] || '';
         const ansvarig = f['Ansvarig'] || '';
+        const klientansvarig = f['Klientansvarig'] || this.customerData?.fields?.['Klientansvarig'] || '';
         const rutin = f['Rutin'] || '';
         const riskValdaRaw = (f['Riskåtgärder valda'] || '').toString().trim();
         let riskValda = [];
@@ -3753,10 +3761,8 @@ class CustomerCardManager {
                 </div>`;
             }).join('') || `<div class="uppdrag-muted">Inga tidigare anteckningar.</div>`;
 
-        const userOptions = [{ id: '', name: 'Välj handläggare' }].concat(
-            (byraUsers || []).map(u => ({ id: u.id || u.email || u.name || '', name: u.name || u.email || u.id || '' }))
-        );
-        const userOptHtml = userOptions.map(u => `<option value="${this._esc(String(u.name))}" ${String(u.name) === String(ansvarig) ? 'selected' : ''}>${this._esc(String(u.name))}</option>`).join('');
+        const userOptHtml = this._userSelectOptions(byraUsers, ansvarig, 'Välj handläggare');
+        const klientansvarigOptHtml = this._userSelectOptions(byraUsers, klientansvarig, 'Välj klientansvarig');
 
         const freqChoices = typ === 'Momsredovisning'
             ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
@@ -3820,6 +3826,7 @@ class CustomerCardManager {
         const headerDeadline = deadline ? this._esc(String(deadline)) : '–';
         const headerFreq = freq ? this._esc(String(freq)) : '–';
         const headerAnsvarig = ansvarig ? this._esc(String(ansvarig)) : '–';
+        const headerKlientansvarig = klientansvarig ? this._esc(String(klientansvarig)) : '–';
 
         const viewRiskSelectedHtml = (riskValda && riskValda.length)
             ? `<div class="uppdrag-view-list">${riskValda.map(x => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${this._esc(String(x))}</div>`).join('')}</div>`
@@ -3882,6 +3889,7 @@ class CustomerCardManager {
                         <div class="uppdrag-header-meta">
                             <span class="uppdrag-meta-chip"><i class="fas fa-redo"></i> <span data-uppdrag-meta="Frekvens">${headerFreq}</span></span>
                             <span class="uppdrag-meta-chip"><i class="fas fa-calendar-alt"></i> <span data-uppdrag-meta="Nästa deadline">${headerDeadline}</span></span>
+                            <span class="uppdrag-meta-chip"><i class="fas fa-user-tie"></i> <span data-uppdrag-meta="Klientansvarig">${headerKlientansvarig}</span></span>
                             <span class="uppdrag-meta-chip"><i class="fas fa-user"></i> <span data-uppdrag-meta="Ansvarig">${headerAnsvarig}</span></span>
                         </div>
                     </div>
@@ -3923,6 +3931,10 @@ class CustomerCardManager {
                             <div class="lead-field">
                                 <label>Startdatum</label>
                                 <input class="kunduppgifter-input" type="date" data-field="Startdatum" value="${this._esc(String(startdatum || ''))}">
+                            </div>
+                            <div class="lead-field">
+                                <label>Klientansvarig</label>
+                                <select class="form-control" data-field="Klientansvarig">${klientansvarigOptHtml}</select>
                             </div>
                             <div class="lead-field">
                                 <label>Handläggare</label>
@@ -4046,6 +4058,7 @@ class CustomerCardManager {
             fields['Startdatum'] = startInput?.value || '';
             fields['Nästa deadline'] = deadlineInput?.value || '';
             fields['Ansvarig'] = getVal('Ansvarig')?.value || '';
+            fields['Klientansvarig'] = getVal('Klientansvarig')?.value || '';
             fields['Rutin'] = getVal('Rutin')?.value || '';
             const riskSelected = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
             fields['Riskåtgärder valda'] = JSON.stringify(riskSelected);
@@ -4162,6 +4175,7 @@ class CustomerCardManager {
         const freq = getVal('Frekvens')?.value || '–';
         const deadline = getVal('Nästa deadline')?.value || '–';
         const ansvarig = getVal('Ansvarig')?.value || '–';
+        const klientansvarig = getVal('Klientansvarig')?.value || '–';
         const set = (k, v) => {
             const el = root.querySelector(`[data-uppdrag-meta="${CSS.escape(k)}"]`);
             if (el) el.textContent = String(v || '–');
@@ -4169,11 +4183,18 @@ class CustomerCardManager {
         set('Frekvens', freq || '–');
         set('Nästa deadline', deadline || '–');
         set('Ansvarig', ansvarig || '–');
+        set('Klientansvarig', klientansvarig || '–');
     }
 
     loadCompanyInfo() {
         const container = document.getElementById('foretagsinformation-content');
         if (!container) return;
+        this._ensureByraUsers().then((users) => {
+            if (users && document.getElementById('behorighet-card') && !this._behorighetUsersReady) {
+                this._behorighetUsersReady = true;
+                this.loadCompanyInfo();
+            }
+        });
 
         if (!this.customerData) {
             container.innerHTML = '<p class="lead-empty">Ingen företagsinformation tillgänglig.</p>';
@@ -4432,6 +4453,8 @@ class CustomerCardManager {
                     </button>
                 </div>
             </div>
+
+            ${this._renderBehorighetCardHtml(fields)}
 
             <!-- KORT 3: Beskrivning av kunden -->
             <div class="collapsible-card is-collapsed" id="beskrivning-card">
@@ -4979,6 +5002,130 @@ class CustomerCardManager {
         }
     }
 
+    async _ensureByraUsers() {
+        if (Array.isArray(this._byraUsers) && this._byraUsers.length) return this._byraUsers;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/byra/anvandare`, { method: 'GET', ...getAuthOptsKundkort() });
+            const data = res.ok ? await res.json() : { users: [] };
+            this._byraUsers = Array.isArray(data.users) ? data.users : [];
+            return this._byraUsers;
+        } catch (_) {
+            this._byraUsers = this._byraUsers || [];
+            return this._byraUsers;
+        }
+    }
+
+    _behorigaUsersFromFields(fields) {
+        const raw = fields?.['Användare'];
+        const ids = Array.isArray(raw)
+            ? raw.map((v) => String(v || '').trim()).filter(Boolean)
+            : String(raw || '').split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+        const users = this._byraUsers || [];
+        return ids.map((id) => {
+            const u = users.find((x) => String(x.id) === id);
+            return { id, name: u?.name || u?.email || id };
+        });
+    }
+
+    _renderBehorighetCardHtml(fields) {
+        const klientansvarig = String(fields?.['Klientansvarig'] || '').trim();
+        const behoriga = this._behorigaUsersFromFields(fields);
+        const canEdit = true;
+        const klientView = klientansvarig || '<span class="missing-data">Ej angiven</span>';
+        const listView = behoriga.length
+            ? behoriga.map((u) => `<span class="kunduppgifter-value">${this._esc(u.name)}</span>`).join(', ')
+            : '<span class="missing-data">Inga behöriga användare</span>';
+        const klientOpts = this._userSelectOptions(this._byraUsers || [], klientansvarig, 'Välj klientansvarig');
+        const selectedIds = new Set(behoriga.map((u) => u.id));
+        const userChecks = (this._byraUsers || []).map((u) => {
+            const id = String(u.id || '');
+            const name = String(u.name || u.email || id);
+            const checked = selectedIds.has(id) ? 'checked' : '';
+            return `<label style="display:flex; gap:0.5rem; align-items:center; margin:0.25rem 0;">
+                <input type="checkbox" class="behorighet-user-cb" value="${this._esc(id)}" ${checked}>
+                <span>${this._esc(name)}</span>
+            </label>`;
+        }).join('') || '<div class="uppdrag-muted">Inga användare på byrån.</div>';
+
+        return `
+            <div class="collapsible-card is-collapsed" id="behorighet-card">
+                <div class="collapsible-header" onclick="customerCardManager.toggleCard('behorighet-card')">
+                    <div class="collapsible-title"><i class="fas fa-user-shield"></i><span>Behörighet</span></div>
+                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+                </div>
+                <div class="collapsible-body" style="position:relative;">
+                    <div id="behorighet-view" class="kunduppgifter-view">
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-user-tie"></i> Klientansvarig</span>
+                            <span class="kunduppgifter-value" id="behorighet-klient-view">${klientView}</span>
+                        </div>
+                        <div class="kunduppgifter-row">
+                            <span class="kunduppgifter-label"><i class="fas fa-users"></i> Behöriga på kunden</span>
+                            <span class="kunduppgifter-value" id="behorighet-users-view">${listView}</span>
+                        </div>
+                        <p class="uppdrag-muted" style="margin:0.75rem 0 0;">Anställda som är behöriga ser allt på kunden. Ledare ser alla kunder på byrån.</p>
+                    </div>
+                    <div id="behorighet-edit" class="kunduppgifter-edit" style="display:none;">
+                        <div class="kunduppgifter-form-row">
+                            <label for="behorighet-klient-input">Klientansvarig</label>
+                            <select id="behorighet-klient-input" class="kunduppgifter-input">${klientOpts}</select>
+                        </div>
+                        <div class="kunduppgifter-form-row">
+                            <label>Anställda med behörighet</label>
+                            <div id="behorighet-users-wrap">${userChecks}</div>
+                        </div>
+                        <div class="kunduppgifter-actions">
+                            <button class="btn btn-primary btn-sm" type="button" onclick="customerCardManager.saveBehorighet()"><i class="fas fa-save"></i> Spara</button>
+                            <button class="btn btn-ghost btn-sm" type="button" onclick="customerCardManager.toggleBehorighetEdit()">Avbryt</button>
+                        </div>
+                    </div>
+                    ${canEdit ? `<button class="card-edit-fab" id="behorighet-edit-btn" title="Redigera behörighet" onclick="event.stopPropagation(); customerCardManager.toggleBehorighetEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    toggleBehorighetEdit() {
+        this._ensureCardOpen('behorighet-card');
+        const view = document.getElementById('behorighet-view');
+        const edit = document.getElementById('behorighet-edit');
+        const btn = document.getElementById('behorighet-edit-btn');
+        if (!view || !edit) return;
+        const isEditing = edit.style.display !== 'none';
+        if (isEditing) {
+            edit.style.display = 'none';
+            view.style.display = '';
+            if (btn) btn.style.display = '';
+        } else {
+            view.style.display = 'none';
+            edit.style.display = '';
+            if (btn) btn.style.display = 'none';
+        }
+    }
+
+    async saveBehorighet() {
+        const klientansvarig = document.getElementById('behorighet-klient-input')?.value?.trim() || '';
+        const ids = Array.from(document.querySelectorAll('#behorighet-users-wrap .behorighet-user-cb:checked'))
+            .map((el) => String(el.value || '').trim())
+            .filter(Boolean);
+        const users = this._byraUsers || [];
+        if (klientansvarig) {
+            const match = users.find((u) => String(u.name || '').trim() === klientansvarig);
+            if (match?.id && !ids.includes(String(match.id))) ids.push(String(match.id));
+        }
+        const fields = {
+            'Klientansvarig': klientansvarig,
+            'Användare': ids.join(',')
+        };
+        const ok = await this._patchKunddataFields(fields);
+        if (!ok) return;
+        this.showNotification('Behörighet sparad.', 'success');
+        this.loadCompanyInfo();
+    }
+
     toggleCard(cardId) {
         const card = document.getElementById(cardId);
         if (!card) return;
@@ -5328,6 +5475,24 @@ class CustomerCardManager {
                 </div>`;
             }).join('')}
         </div>`;
+    }
+
+    _userSelectOptions(byraUsers, selectedName, placeholder) {
+        const selected = String(selectedName || '').trim();
+        const names = (byraUsers || []).map((u) => String(u.name || u.email || u.id || '').trim()).filter(Boolean);
+        const unique = [...new Set(names)];
+        if (selected && !unique.includes(selected)) unique.unshift(selected);
+        const opts = [`<option value="">${this._esc(placeholder || 'Välj')}</option>`];
+        unique.forEach((name) => {
+            const sel = name === selected ? 'selected' : '';
+            opts.push(`<option value="${this._esc(name)}" ${sel}>${this._esc(name)}</option>`);
+        });
+        return opts.join('');
+    }
+
+    _isLedareOrAdmin() {
+        const role = String(this.userData?.role || '').trim().toLowerCase();
+        return role === 'ledare' || role === 'clientflowadmin' || role === 'admin';
     }
 
     _esc(str) {

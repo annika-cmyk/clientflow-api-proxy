@@ -784,7 +784,7 @@ class ByraAnvandareManager {
         id: u.id,
         name: u.name || u.email,
         email: u.email,
-        role: u.role || 'Användare',
+        role: u.role || 'Anställd',
         status: 'Aktiv',
         lastLogin: '—',
         byra: u.byra || ''
@@ -814,7 +814,7 @@ class ByraAnvandareManager {
       emailEl.value = user.email || '';
       emailEl.readOnly = true;
       namnEl.value = user.name || '';
-      rollEl.value = user.role || 'Användare';
+      rollEl.value = user.role === 'Användare' ? 'Anställd' : (user.role || 'Anställd');
       passwordEl.value = '';
       if (passwordWrap) passwordWrap.style.display = 'block';
     } else {
@@ -823,7 +823,7 @@ class ByraAnvandareManager {
       emailEl.value = '';
       emailEl.readOnly = false;
       namnEl.value = '';
-      rollEl.value = 'Användare';
+      rollEl.value = 'Anställd';
       passwordEl.value = '';
       if (passwordWrap) passwordWrap.style.display = 'block';
     }
@@ -1059,7 +1059,7 @@ class ByraAnvandareManager {
         <div class="user-details">
           <h4>${escapeHtml(user.name)}</h4>
           <p>${escapeHtml(user.email)}</p>
-          <span class="user-role">${escapeHtml(user.role)}</span>
+          <span class="user-role">${escapeHtml(user.role === 'Användare' ? 'Anställd' : user.role)}</span>
         </div>
         <div class="user-status">
           <span class="status aktiv">${escapeHtml(user.status)}</span>

@@ -54,6 +54,7 @@ const {
   requiredRiskAtgarderFromUppdrag,
   riskAtgarderAllChecked
 } = require('./lib/uppdrag-risk');
+const access = require('./lib/access');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -263,6 +264,128 @@ async function getAirtableUser(email) {
     }
     return null;
   }
+}
+
+function kunddataTableId() {
+  return process.env.AIRTABLE_TABLE_KUNDDATA_ID || process.env.AIRTABLE_KUNDDATA_TABLE_ID || 'tblOIuLQS2DqmOQWe';
+}
+
+async function fetchKunddataRecord(customerId, airtableAccessToken, baseId) {
+  const id = String(customerId || '').trim();
+  if (!id || !airtableAccessToken) return null;
+  const url = `https://api.airtable.com/v0/${baseId || airtableBaseId}/${kunddataTableId()}/${id}`;
+  const res = await axios.get(url, {
+    headers: { Authorization: `Bearer ${airtableAccessToken}` },
+    timeout: 15000
+  });
+  return res.data;
+}
+
+async function assertCustomerAccess(req, customerId, options = {}) {
+  const userData = options.userData || (req.user?.email ? await getUser(req.user.email) : null);
+  if (!userData) {
+    const err = new Error('Användare hittades inte');
+    err.status = 404;
+    throw err;
+  }
+  const token = options.airtableAccessToken || process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = options.baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
+  let customerRecord = options.customerRecord || null;
+  if (!customerRecord) {
+    try {
+      customerRecord = await fetchKunddataRecord(customerId, token, baseId);
+    } catch (e) {
+      if (e.response?.status === 404) {
+        const err = new Error('Kund hittades inte');
+        err.status = 404;
+        throw err;
+      }
+      throw e;
+    }
+  }
+  if (!access.userHasCustomerAccess(userData, customerRecord)) {
+    const err = new Error('Du har inte behörighet att se denna kund');
+    err.status = 403;
+    throw err;
+  }
+  return { userData, customerRecord };
+}
+
+async function listByraUsersByByraId(byraId, airtableAccessToken, baseId) {
+  const raw = String(byraId || '').trim();
+  if (!raw || !airtableAccessToken) return [];
+  const byraIdEsc = access.escapeAirtableString(raw);
+  const filterFormula = `{Byrå ID i text 2}="${byraIdEsc}"`;
+  const url = `https://api.airtable.com/v0/${baseId || airtableBaseId}/${encodeURIComponent(USERS_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}`;
+  const airtableRes = await axios.get(url, {
+    headers: { Authorization: `Bearer ${airtableAccessToken}` },
+    timeout: 15000
+  });
+  return (airtableRes.data.records || []).map((r) => {
+    const f = r.fields || {};
+    return {
+      id: r.id,
+      email: f.Email || '',
+      name: f['Full Name'] || f.Namn || '',
+      role: f.Role || '',
+      byraId: f['Byrå ID i text 2'] || ''
+    };
+  });
+}
+
+async function grantCustomerAccessToNamedUsers({ customerId, names, klientansvarigName, airtableAccessToken, baseId, userData }) {
+  const token = airtableAccessToken || process.env.AIRTABLE_ACCESS_TOKEN;
+  const bid = baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
+  if (!token || !customerId) return { updated: false };
+  const customer = await fetchKunddataRecord(customerId, token, bid);
+  const byraId = access.customerByraId(customer.fields) || userData?.byraId;
+  const users = await listByraUsersByByraId(byraId, token, bid);
+  const extraIds = access.resolveUserIdsByNames(users, names);
+  const nextAnvandare = access.mergeAnvandareValue(customer.fields?.['Användare'], extraIds);
+  const fields = {};
+  const prevIds = access.parseAnvandareIds(customer.fields?.['Användare']).join(',');
+  const nextIds = access.parseAnvandareIds(nextAnvandare).join(',');
+  if (nextIds && nextIds !== prevIds) fields['Användare'] = nextAnvandare;
+  const nextKlient = String(klientansvarigName || '').trim();
+  if (nextKlient && String(customer.fields?.['Klientansvarig'] || '').trim() !== nextKlient) {
+    fields['Klientansvarig'] = nextKlient;
+  }
+  if (Object.keys(fields).length === 0) return { updated: false, customer };
+  try {
+    await axios.patch(
+      `https://api.airtable.com/v0/${bid}/${kunddataTableId()}/${customerId}`,
+      { fields },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    return { updated: true, fields };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message || '';
+    const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+    if (unknown?.[1] && fields[unknown[1]]) {
+      delete fields[unknown[1]];
+      if (Object.keys(fields).length === 0) return { updated: false, skipped: unknown[1] };
+      await axios.patch(
+        `https://api.airtable.com/v0/${bid}/${kunddataTableId()}/${customerId}`,
+        { fields },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+      return { updated: true, fields, skipped: unknown[1] };
+    }
+    console.warn('grantCustomerAccessToNamedUsers:', msg);
+    return { updated: false, error: msg };
+  }
+}
+
+function emptyKunddataForRole(userData, extra = {}) {
+  return {
+    success: true,
+    records: [],
+    data: [],
+    kunder: [],
+    userRole: userData?.role,
+    userByraId: userData?.byraId,
+    ...extra
+  };
 }
 
 // JWT Secret – i produktion MÅSTE den sättas i miljövariabler
@@ -890,13 +1013,9 @@ async function buildAiChatKundContext(customerId, reqUser) {
     );
     const f = kundRes.data?.fields || {};
 
-    // Behörighet: samma byrå (eller admin)
     try {
       const userData = reqUser?.email ? await getUser(reqUser.email) : null;
-      const role = userData?.role || reqUser?.role || '';
-      const userByraId = userData?.byraId ? String(userData.byraId).trim() : '';
-      const custByraId = String(f['Byrå ID'] || f.Byrå || '').trim();
-      if (role !== 'ClientFlowAdmin' && userByraId && custByraId && userByraId !== custByraId) {
+      if (userData && !access.userHasCustomerAccess(userData, { fields: f })) {
         return '';
       }
     } catch (_) { /* fortsätt med begränsad kontext */ }
@@ -4517,31 +4636,8 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    let filterFormula = '';
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        break;
-      case 'Ledare':
-        if (userData.byraId) {
-          const num = parseInt(userData.byraId);
-          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
-        } else {
-          return res.json({ records: [] });
-        }
-        break;
-      case 'Anställd':
-        if (!userData.id || !userData.byraId) return res.json({ records: [] });
-        const _n1 = parseInt(userData.byraId);
-        const _byra1 = isNaN(_n1)
-          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-          : `{Byrå ID}=${_n1}`;
-        const _uid1 = String(userData.id).replace(/"/g, '\\"');
-        const _u1 = `SEARCH("${_uid1}", {Användare}&"")`;
-        filterFormula = `AND(${_byra1},${_u1})`;
-        break;
-      default:
-        return res.json({ records: [] });
-    }
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) return res.json({ records: [] });
 
     let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
     if (filterFormula) kundUrl += `?filterByFormula=${encodeURIComponent(filterFormula)}`;
@@ -4630,45 +4726,7 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
       throw error;
     }
 
-    // Kontrollera behörighet baserat på roll
-    let hasAccess = false;
-    
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        // Se allt
-        hasAccess = true;
-        console.log('🔓 ClientFlowAdmin: Har behörighet');
-        break;
-        
-      case 'Ledare':
-        // Se poster med samma Byrå ID
-        const customerByraId = customerRecord.fields['Byra_ID'] || customerRecord.fields['ByraID'] || customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
-        if (userData.byraId && customerByraId && userData.byraId.toString() === customerByraId.toString()) {
-          hasAccess = true;
-          console.log(`👔 Ledare: Har behörighet (Byrå ID matchar: ${userData.byraId})`);
-        } else {
-          console.log(`⚠️ Ledare: Ingen behörighet (Byrå ID: ${userData.byraId} vs ${customerByraId})`);
-        }
-        break;
-        
-        case 'Anställd':
-        // Se poster där användarens ID finns i Användare-fältet
-        const customerUsers = customerRecord.fields['Användare'];
-        const userIdString = userData.id ? userData.id.toString() : '';
-        const userList = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
-        if (userIdString && userList.some((u) => String(u) === userIdString)) {
-          hasAccess = true;
-          console.log(`👷 Anställd: Har behörighet (Användare matchar: ${userData.id})`);
-        } else {
-          console.log(`⚠️ Anställd: Ingen behörighet (Användare: ${userData.id} vs ${JSON.stringify(customerUsers)})`);
-        }
-        break;
-        
-      default:
-        console.log(`⚠️ Okänd roll: ${userData.role} - ingen behörighet`);
-    }
-
-    if (!hasAccess) {
+    if (!access.userHasCustomerAccess(userData, customerRecord)) {
       return res.status(403).json({
         success: false,
         message: 'Du har inte behörighet att se denna kund',
@@ -4744,14 +4802,12 @@ app.get('/api/kunddata/:id/tjanster', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
 
-    // Hämta kundens länkade tjänst-ID:n
-    const kundRes = await axios.get(
-      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
-      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-    );
-    const linkedIds = kundRes.data.fields?.['Kundens utvalda tjänster'] || [];
+    const { customerRecord } = await assertCustomerAccess(req, req.params.id, {
+      airtableAccessToken,
+      baseId: airtableBaseId
+    });
+    const linkedIds = customerRecord.fields?.['Kundens utvalda tjänster'] || [];
 
     if (linkedIds.length === 0) return res.json({ tjanster: [], linkedIds: [] });
 
@@ -4770,7 +4826,7 @@ app.get('/api/kunddata/:id/tjanster', authenticateToken, async (req, res) => {
     res.json({ tjanster, linkedIds });
   } catch (err) {
     console.error('❌ kunddata tjanster:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -4779,15 +4835,13 @@ app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
 
-    // Hämta kundens länkade risk-ID:n (det nya länkfältet)
-    const kundRes = await axios.get(
-      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
-      { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
-    );
-    const linkedIds = kundRes.data.fields['risker kopplat till tjänster'] || [];
+    const { customerRecord } = await assertCustomerAccess(req, req.params.id, {
+      airtableAccessToken,
+      baseId: airtableBaseId
+    });
+    const linkedIds = customerRecord.fields['risker kopplat till tjänster'] || [];
 
     if (!Array.isArray(linkedIds) || linkedIds.length === 0) {
       return res.json({ records: [], linkedIds: [] });
@@ -4801,7 +4855,7 @@ app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
     res.json({ records, linkedIds });
   } catch (error) {
     console.error('❌ Fel vid hämtning av kundens risker:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
+    res.status(error.status || 500).json({ error: error.message });
   }
 });
 
@@ -4816,8 +4870,9 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     }
 
     const cleanedFields = Object.fromEntries(
-      Object.entries(fields).filter(([, v]) => {
+      Object.entries(fields).filter(([k, v]) => {
         if (Array.isArray(v)) return true;
+        if (k === 'Användare' || k === 'Klientansvarig') return v !== undefined && v !== null;
         return v !== undefined && v !== null && v !== '';
       })
     );
@@ -4839,18 +4894,9 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       if (e.response?.status === 404) return res.status(404).json({ error: 'Kund hittades inte' });
       throw e;
     }
-    let hasAccess = false;
-    if (userData.role === 'ClientFlowAdmin') hasAccess = true;
-    else if (userData.role === 'Ledare') {
-      const customerByraId = customerRecord.fields['Byra_ID'] || customerRecord.fields['Byrå ID'] || customerRecord.fields.Byrå;
-      if (userData.byraId && customerByraId && String(userData.byraId) === String(customerByraId)) hasAccess = true;
-    } else if (userData.role === 'Anställd') {
-      const customerUsers = customerRecord.fields['Användare'];
-      const uid = userData.id ? String(userData.id) : '';
-      const list = customerUsers == null ? [] : (Array.isArray(customerUsers) ? customerUsers : [customerUsers]);
-      if (uid && list.some((u) => String(u) === uid)) hasAccess = true;
+    if (!access.userHasCustomerAccess(userData, customerRecord)) {
+      return res.status(403).json({ error: 'Du har inte behörighet att uppdatera denna kund' });
     }
-    if (!hasAccess) return res.status(403).json({ error: 'Du har inte behörighet att uppdatera denna kund' });
 
     if (cleanedFields['Orgnr'] != null) {
       let byraId = (cleanedFields['Byrå ID'] || '').toString().trim();
@@ -6600,31 +6646,8 @@ app.get('/api/samarbete/new-responses', authenticateToken, async (req, res) => {
     const userData = await getAirtableUser(req.user.email);
     if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
 
-    let filterFormula = '';
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        break;
-      case 'Ledare':
-        if (userData.byraId) {
-          const num = parseInt(userData.byraId);
-          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
-        } else {
-          return res.json({ responses: [] });
-        }
-        break;
-      case 'Anställd':
-        if (!userData.id || !userData.byraId) return res.json({ responses: [] });
-        const _n1 = parseInt(userData.byraId);
-        const _byra1 = isNaN(_n1)
-          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-          : `{Byrå ID}=${_n1}`;
-        const _uid1 = String(userData.id).replace(/"/g, '\\"');
-        const _u1 = `SEARCH("${_uid1}", {Användare}&"")`;
-        filterFormula = `AND(${_byra1},${_u1})`;
-        break;
-      default:
-        return res.json({ responses: [] });
-    }
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) return res.json({ responses: [] });
 
     let kundUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE_ID}?maxRecords=500`;
     if (filterFormula) kundUrl += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
@@ -9759,7 +9782,7 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
     const body = req.body || {};
     const email = (body.email || '').toString().trim();
     const name = (body.name || body.fullName || '').toString().trim();
-    const role = (body.role || 'Användare').toString().trim();
+    const role = (body.role || 'Anställd').toString().trim();
     const password = (body.password || '').toString();
     if (!email) return res.status(400).json({ error: 'E-post krävs' });
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -9769,7 +9792,7 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
     const fields = {
       'Email': email,
       'Full Name': name || email,
-      'Role': role || 'Användare',
+      'Role': role || 'Anställd',
       'Byrå ID i text 2': byraId
     };
     if (password) fields['password'] = password;
@@ -10017,8 +10040,7 @@ app.get('/api/utbildning/genomforda', authenticateToken, async (req, res) => {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const byraId = String(userData.byraId).trim();
-    const role = (userData.role || '').toLowerCase();
-    const isAnstalld = role === 'anställd' || role === 'anstald';
+    const isAnstalld = access.isAnstalld(userData.role);
     const byraEsc = byraId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const kursEsc = String(AML_KURS_NAMN).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const formula = `AND({Byrå ID}="${byraEsc}", {Kurs}="${kursEsc}")`;
@@ -10453,62 +10475,20 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
     console.log(`🏢 Byrå ID: ${userData.byraId}`);
 
     let records = [];
-    let filterFormula = '';
-
-    // Rollbaserad filtrering för Airtable
-    switch (userData.role) {
-        case 'ClientFlowAdmin':
-          console.log('🔓 ClientFlowAdmin: Visar alla poster');
-          break;
-        case 'Ledare':
-          if (userData.byraId) {
-            const _byraIdNum1 = parseInt(userData.byraId);
-            filterFormula = isNaN(_byraIdNum1) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${_byraIdNum1}`;
-            console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId}`);
-          } else {
-            return res.json({
-              success: true,
-              message: 'Ledare utan Byrå ID - inga poster att visa',
-              records: [],
-              userRole: userData.role,
-              userByraId: userData.byraId,
-              timestamp: new Date().toISOString(),
-              duration: Date.now() - startTime
-            });
-          }
-          break;
-        case 'Anställd':
-          // Anställd: filtrera på både Byrå ID och Användare (recordID)
-          if (!userData.id || !userData.byraId) {
-            return res.json({
-              success: true,
-              message: userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa',
-              records: [],
-              userRole: userData.role,
-              userByraId: userData.byraId,
-              userId: userData.id,
-              timestamp: new Date().toISOString(),
-              duration: Date.now() - startTime
-            });
-          }
-          const _byraIdNumA = parseInt(userData.byraId);
-          const byraPart = isNaN(_byraIdNumA)
-            ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-            : `{Byrå ID}=${_byraIdNumA}`;
-          const escId = String(userData.id).replace(/"/g, '\\"');
-          const userPart = `SEARCH("${escId}", {Användare}&"")`;
-          filterFormula = `AND(${byraPart},${userPart})`;
-          console.log(`👷 Anställd: Filtrerar på Byrå ID ${userData.byraId} OCH användar-ID (Användare): ${userData.id}`);
-          break;
-        default:
-          return res.json({
-            success: true,
-            message: `Okänd användarroll: ${userData.role}`,
-            records: [],
-            userRole: userData.role,
-            timestamp: new Date().toISOString(),
-            duration: Date.now() - startTime
-          });
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) {
+      return res.json({
+        success: true,
+        message: access.isAnstalld(userData.role)
+          ? (userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa')
+          : (access.isLedare(userData.role) ? 'Ledare utan Byrå ID - inga poster att visa' : `Okänd användarroll: ${userData.role}`),
+        records: [],
+        userRole: userData.role,
+        userByraId: userData.byraId,
+        userId: userData.id,
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime
+      });
     }
 
     const baseUrl = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}`;
@@ -10590,30 +10570,9 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    let filterFormula = '';
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        break;
-      case 'Ledare':
-        if (userData.byraId) {
-          const num = parseInt(userData.byraId);
-          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
-        } else {
-          return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
-        }
-        break;
-      case 'Anställd':
-        if (!userData.id || !userData.byraId) return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
-        const _n2 = parseInt(userData.byraId);
-        const _byra2 = isNaN(_n2)
-          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-          : `{Byrå ID}=${_n2}`;
-        const _uid2 = String(userData.id).replace(/"/g, '\\"');
-        const _u2 = `SEARCH("${_uid2}", {Användare}&"")`;
-        filterFormula = `AND(${_byra2},${_u2})`;
-        break;
-      default:
-        return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) {
+      return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
     }
 
     let allRecords = [];
@@ -10787,31 +10746,8 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    let filterFormula = '';
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        break;
-      case 'Ledare':
-        if (userData.byraId) {
-          const num = parseInt(userData.byraId);
-          filterFormula = isNaN(num) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${userData.byraId}`;
-        } else {
-          return res.json({ kunder: [] });
-        }
-        break;
-      case 'Anställd':
-        if (!userData.id || !userData.byraId) return res.json({ kunder: [] });
-        const _n3 = parseInt(userData.byraId);
-        const _byra3 = isNaN(_n3)
-          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-          : `{Byrå ID}=${_n3}`;
-        const _uid3 = String(userData.id).replace(/"/g, '\\"');
-        const _u3 = `SEARCH("${_uid3}", {Användare}&"")`;
-        filterFormula = `AND(${_byra3},${_u3})`;
-        break;
-      default:
-        return res.json({ kunder: [] });
-    }
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) return res.json({ kunder: [] });
 
     let allRecords = [];
     let offset = null;
@@ -10942,58 +10878,15 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
 
     const { filterFormula: customFilter, maxRecords } = req.body || {};
     let records = [];
-    let filterFormula = '';
-
-    // Rollbaserad filtrering med Airtable-formel
-    switch (userData.role) {
-      case 'ClientFlowAdmin':
-        console.log('🔓 ClientFlowAdmin: Visar alla poster');
-        break;
-      case 'Ledare':
-        if (userData.byraId) {
-          const _byraIdNum2 = parseInt(userData.byraId);
-          filterFormula = isNaN(_byraIdNum2) ? `{Byrå ID}="${userData.byraId}"` : `{Byrå ID}=${_byraIdNum2}`;
-          console.log(`👔 Ledare: Filtrerar på Byrå ID: ${userData.byraId} (formel: ${filterFormula})`);
-        } else {
-          return res.json({
-            success: true,
-            data: [],
-            message: 'Ledare utan Byrå ID - inga poster att visa',
-            userRole: userData.role,
-            userByraId: userData.byraId,
-            timestamp: new Date().toISOString(),
-            duration: Date.now() - startTime
-          });
-        }
-        break;
-      case 'Anställd':
-        if (!userData.id || !userData.byraId) {
-          return res.json({
-            success: true,
-            data: [],
-            message: userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa',
-            userRole: userData.role,
-            userByraId: userData.byraId,
-            userId: userData.id,
-            timestamp: new Date().toISOString(),
-            duration: Date.now() - startTime
-          });
-        }
-        const _byraNumPost = parseInt(userData.byraId);
-        const byraPartPost = isNaN(_byraNumPost)
-          ? `{Byrå ID}="${String(userData.byraId).replace(/"/g, '\\"')}"`
-          : `{Byrå ID}=${_byraNumPost}`;
-        const escIdPost = String(userData.id).replace(/"/g, '\\"');
-        const userPartPost = `SEARCH("${escIdPost}", {Användare}&"")`;
-        filterFormula = `AND(${byraPartPost},${userPartPost})`;
-        console.log(`👷 Anställd: Filtrerar på Byrå ID ${userData.byraId} OCH användar-ID (Användare): ${userData.id}`);
-        break;
-      default:
-        return res.json({
-          success: true,
-          data: [],
-          message: `Okänd användarroll: ${userData.role}`,
-          userRole: userData.role,
+    const filterFormula = access.kunddataFilterFormula(userData);
+    if (filterFormula === null) {
+      return res.json({
+        success: true,
+        data: [],
+        message: access.isAnstalld(userData.role)
+          ? (userData.id ? 'Anställd utan Byrå ID - inga poster att visa' : 'Anställd utan användar-ID - inga poster att visa')
+          : (access.isLedare(userData.role) ? 'Ledare utan Byrå ID - inga poster att visa' : `Okänd användarroll: ${userData.role}`),
+        userRole: userData.role,
           timestamp: new Date().toISOString(),
           duration: Date.now() - startTime
         });
@@ -13081,7 +12974,8 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Startdatum', type: 'date', description: 'Tidigast datum uppdraget ska börja synas i att-göra', options: { dateFormat: { name: 'iso' } } },
   { name: 'Första period', type: 'singleLineText', description: 'Första momsperiod (YYYY-MM eller YYYY-Qn) – sätts vid upplägg av moms' },
   { name: 'Nästa deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
-  { name: 'Ansvarig', type: 'singleLineText', description: 'Handläggare (namn eller user-id)' },
+  { name: 'Ansvarig', type: 'singleLineText', description: 'Handläggare – den som utför arbetet (namn eller user-id)' },
+  { name: 'Klientansvarig', type: 'singleLineText', description: 'Klientansvarig på byrån (namn eller user-id)' },
   { name: 'Rutin', type: 'multilineText', description: 'Instruktion/rutin för uppdraget' },
   { name: 'Anteckning', type: 'multilineText', description: 'Anteckning om uppdraget (generellt)' },
   { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor för dokumentation (t.ex. per körning/deadline)' },
@@ -14049,6 +13943,11 @@ app.get('/api/uppdrag', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.query;
     if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+    try {
+      await assertCustomerAccess(req, customerId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message || 'Saknar behörighet' });
+    }
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
@@ -14079,6 +13978,11 @@ app.get('/api/uppdrag/runs', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.query;
     if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+    try {
+      await assertCustomerAccess(req, customerId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message || 'Saknar behörighet' });
+    }
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
     const result = await listUppdragRunsForCustomer({
@@ -14364,13 +14268,32 @@ app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
       offset = r.data.offset || null;
     } while (offset);
 
-    // "Mina" = filtrera på Ansvarig = användarens namn (lagras som text i uppdrag idag)
+    if (access.isAnstalld(userData?.role) && !mine) {
+      const allowedFormula = access.kunddataFilterFormula(userData);
+      if (allowedFormula === null) {
+        return res.json({ records: [], runs: [] });
+      }
+      const allowedIds = new Set();
+      try {
+        const KUNDDATA_TABLE_ID_LOCAL = process.env.AIRTABLE_TABLE_KUNDDATA_ID || process.env.AIRTABLE_KUNDDATA_TABLE_ID || 'tblOIuLQS2DqmOQWe';
+        const custUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(KUNDDATA_TABLE_ID_LOCAL)}`;
+        let offsetK = null;
+        do {
+          const params = { pageSize: 100, filterByFormula: allowedFormula, fields: ['Namn'] };
+          if (offsetK) params.offset = offsetK;
+          const kr = await axios.get(custUrl, { headers, params });
+          (kr.data.records || []).forEach((r) => { if (r.id) allowedIds.add(r.id); });
+          offsetK = kr.data.offset || null;
+        } while (offsetK);
+      } catch (e) {
+        console.warn('GET /api/uppdrag/byra: kunde inte hämta tillåtna kunder för anställd:', e.message);
+      }
+      records = records.filter((rec) => allowedIds.has(String(rec.fields?.['Kund ID'] || '').trim()));
+    }
+
+    // "Mina" = handläggare eller klientansvarig
     if (mine) {
-      const myName = (userData?.name || '').toString().trim().toLowerCase();
-      records = records.filter(rec => {
-        const a = (rec.fields?.['Ansvarig'] || '').toString().trim().toLowerCase();
-        return myName && a === myName;
-      });
+      records = records.filter((rec) => access.uppdragAssignedToUser(rec.fields || {}, userData));
     }
 
     // Enrich: kundnamn via Kund ID -> KUNDDATA
@@ -14467,6 +14390,11 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
 
     const userData = await getUser(req.user.email);
     const byraId = userData?.byraId ? String(userData.byraId).replace(/,/g, '') : '';
+    try {
+      await assertCustomerAccess(req, customerId, { userData });
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message || 'Saknar behörighet' });
+    }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
     const existingRes = await airtableListWithFormulaFallback({
@@ -14487,6 +14415,26 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     if (ptlLegacyKey) delete normalizedFields[ptlLegacyKey];
 
     normalizeMomsUppdragFields(typ, normalizedFields);
+
+    const grantAssignedUsers = async () => {
+      const names = [
+        normalizedFields['Ansvarig'],
+        normalizedFields['Klientansvarig'],
+        normalizedFields['Handläggare']
+      ];
+      try {
+        await grantCustomerAccessToNamedUsers({
+          customerId,
+          names,
+          klientansvarigName: normalizedFields['Klientansvarig'],
+          airtableAccessToken,
+          baseId: airtableBaseId,
+          userData
+        });
+      } catch (e) {
+        console.warn('grant access after uppdrag save:', e.message);
+      }
+    };
 
     const fields = {
       'Kund ID': customerId,
@@ -14558,6 +14506,7 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
           rutinPropagate = { updated: 0, skipped: true, reason: 'error', message: e.message };
         }
       }
+      await grantAssignedUsers();
       return res.json({ record, updated: true, warning, runsEnsure, rutinPropagate });
     }
 
@@ -14584,6 +14533,7 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       console.warn('ensure runs after uppdrag create:', e.message);
       runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
     }
+    await grantAssignedUsers();
     return res.json({ record, created: true, warning, runsEnsure });
   } catch (error) {
     console.error('❌ POST /api/uppdrag:', error.response?.data || error.message);
