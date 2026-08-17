@@ -29,6 +29,8 @@ Auth: `Authorization: Bearer {MINIBOK_API_KEY}` + `X-User-Email` / `?userEmail=`
 | `ownershipSummary` / `ownershipMarkers` | `Verklig huvudman` + Kontaktpersoner/KYC |
 | `pep` | `PEP` / KYC JSON |
 | `riskAtgarderAktiverade` | Uppdrag.`Riskåtgärder aktiverade` (any for kund) |
+| `requiredActions` / `hotspots` | KUNDDATA.`Atgarder riskbedomning` (radbruten text) |
+| `riskActions[]` | Samma katalog + `periodKind` från uppdragets `Riskåtgärder valda` (`vat` = Momsredovisning, `other` = övriga uppdrag, `unassigned` = inte kopplad) |
 
 **Byråer → agency aml-risk / aml-policy**
 
