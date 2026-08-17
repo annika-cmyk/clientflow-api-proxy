@@ -49,6 +49,11 @@ require('dotenv').config();
 const { createMinibokSync } = require('./lib/minibok-sync');
 const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 const { createMinibokAml } = require('./lib/minibok-aml');
+const {
+  normalizeUppdragRiskAtgarderDone,
+  requiredRiskAtgarderFromUppdrag,
+  riskAtgarderAllChecked
+} = require('./lib/uppdrag-risk');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -13118,6 +13123,7 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Period Label', type: 'singleLineText', description: 'Visningsnamn för perioden (sv)' },
   { name: 'Rutin', type: 'multilineText', description: 'Rutin/instruktion som gällde för denna körning (snapshot – ändras inte retroaktivt)' },
   { name: 'Anteckning', type: 'multilineText', description: 'Anteckning specifikt för denna uppdragskörning' },
+  { name: 'Riskåtgärder utförda', type: 'multilineText', description: 'JSON: åtgärder enligt kundens riskbedömning som bockats av för denna körning (text, checkedAt, user)' },
   { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor kopplade till denna uppdragskörning' },
   { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
@@ -13221,6 +13227,32 @@ async function airtablePostRecordWithFieldFallback(url, fields, headers, maxRetr
           dropped.push('Status');
           continue;
         }
+      }
+      break;
+    }
+  }
+  const msg = lastErr?.response?.data?.error?.message || lastErr?.message || 'Okänt fel';
+  const err = new Error(msg);
+  err.response = lastErr?.response;
+  throw err;
+}
+
+async function airtablePatchRecordWithFieldFallback(url, fields, headers, maxRetries = 12) {
+  const payload = { ...(fields || {}) };
+  const dropped = [];
+  let lastErr = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await axios.patch(url, { fields: payload }, { headers });
+      return { record: res.data, dropped };
+    } catch (e) {
+      lastErr = e;
+      const msg = e.response?.data?.error?.message || e.message || '';
+      const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i);
+      if (unknown?.[1] && Object.prototype.hasOwnProperty.call(payload, unknown[1])) {
+        delete payload[unknown[1]];
+        dropped.push(unknown[1]);
+        continue;
       }
       break;
     }
@@ -13519,7 +13551,7 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId, maxPages 
   };
 }
 
-async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, periodKey, uppdragFields }) {
+async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, periodKey, uppdragFields, extraFields }) {
   const pk = String(periodKey || '').trim();
   const uid = String(uppdragId || '').trim();
   if (!pk || !uid || !airtableToken || !baseId) return { synced: false, reason: 'missing_args' };
@@ -13537,11 +13569,8 @@ async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, peri
     });
     const existing = (listRes.data.records || [])[0];
     if (existing?.id) {
-      await axios.patch(
-        `${url}/${existing.id}`,
-        { fields: { Status: 'Klar', Uppdaterad: nowIso } },
-        { headers }
-      );
+      const patchFields = { Status: 'Klar', Uppdaterad: nowIso, ...(extraFields || {}) };
+      await airtablePatchRecordWithFieldFallback(`${url}/${existing.id}`, patchFields, headers);
       return { synced: true, runId: existing.id, updated: true };
     }
     const f = uppdragFields || {};
@@ -13564,6 +13593,7 @@ async function syncUppdragRunStatusKlar({ airtableToken, baseId, uppdragId, peri
     };
     if (deadlineIso) fields['Deadline'] = deadlineIso;
     if (startIso) fields['Startdatum'] = startIso;
+    Object.assign(fields, extraFields || {});
     const created = await airtablePostRecordWithFieldFallback(url, fields, headers);
     return { synced: true, runId: created?.id || null, created: true };
   } catch (e) {
@@ -14232,6 +14262,77 @@ app.patch('/api/uppdrag/runs/:runId/status', authenticateToken, async (req, res)
   }
 });
 
+// PATCH /api/uppdrag/runs/:runId/risk-atgarder – bocka av åtgärder enligt kundens riskbedömning för en körning
+// Body: { items: [{ text, checked: true }] } eller { items: ["åtgärd"] }
+app.patch('/api/uppdrag/runs/:runId/risk-atgarder', authenticateToken, async (req, res) => {
+  try {
+    const { runId } = req.params || {};
+    const id = String(runId || '').trim();
+    if (!id) return res.status(400).json({ error: 'runId saknas' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+    if (!runsTableId) {
+      return res.status(404).json({ error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas.` });
+    }
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(id)}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+    const existing = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    const f = existing.data?.fields || {};
+    const recordByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+    if (!recordByra || recordByra !== byraIdClean) {
+      return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const user = req.user?.email || '';
+    const prev = normalizeUppdragRiskAtgarderDone(f['Riskåtgärder utförda']);
+    const prevByText = new Map(prev.map((x) => [String(x.text || '').toLowerCase(), x]));
+    const incoming = Array.isArray(req.body?.items) ? req.body.items : [];
+    const next = [];
+    incoming.forEach((item) => {
+      const text = (item && typeof item === 'object')
+        ? String(item.text || item.name || '').trim()
+        : String(item || '').trim();
+      if (!text) return;
+      const checked = (item && typeof item === 'object' && Object.prototype.hasOwnProperty.call(item, 'checked'))
+        ? !!item.checked
+        : true;
+      if (!checked) return;
+      const prevHit = prevByText.get(text.toLowerCase());
+      next.push({
+        text,
+        checkedAt: prevHit?.checkedAt || item.checkedAt || nowIso,
+        user: prevHit?.user || item.user || user
+      });
+    });
+
+    const patch = await airtablePatchRecordWithFieldFallback(url, {
+      'Riskåtgärder utförda': JSON.stringify(next),
+      'Uppdaterad': nowIso
+    }, headers);
+
+    return res.json({
+      record: patch.record,
+      riskAtgarder: next,
+      warning: (patch.dropped || []).includes('Riskåtgärder utförda')
+        ? 'Fältet "Riskåtgärder utförda" saknas i Airtable. Installera fält via Uppdrag-fliken.'
+        : null
+    });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/runs/:runId/risk-atgarder:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg });
+  }
+});
+
 // GET /api/uppdrag/byra?mine=0|1 – lista uppdrag för byrån (eller bara mina)
 app.get('/api/uppdrag/byra', authenticateToken, async (req, res) => {
   try {
@@ -14612,7 +14713,7 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
-    const { customerId, typ, note, doneAt, periodKey: periodKeyRaw } = req.body || {};
+    const { customerId, typ, note, doneAt, periodKey: periodKeyRaw, riskAtgarder: riskAtgarderRaw } = req.body || {};
     if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
     const doneIso = (doneAt && /^\d{4}-\d{2}-\d{2}$/.test(String(doneAt))) ? String(doneAt) : new Date().toISOString().slice(0, 10);
 
@@ -14690,6 +14791,19 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       if (!Array.isArray(history)) history = [];
     } catch (_) { history = []; }
 
+    const requiredAtgarder = requiredRiskAtgarderFromUppdrag(f);
+    const submittedAtgarder = normalizeUppdragRiskAtgarderDone(riskAtgarderRaw);
+    const riskOn = !!f['Riskåtgärder aktiverade'] || requiredAtgarder.length > 0;
+    if (riskOn && requiredAtgarder.length && !riskAtgarderAllChecked(requiredAtgarder, submittedAtgarder)) {
+      return res.status(400).json({
+        error: 'Alla åtgärder enligt kundens riskbedömning måste bockas i innan uppdraget kan klarmarkeras.',
+        requiredAtgarder
+      });
+    }
+    const documentedAtgarder = submittedAtgarder.length
+      ? submittedAtgarder
+      : requiredAtgarder.map((text) => ({ text, checkedAt: doneIso, user: req.user?.email || '' }));
+
     const prevIdx = history.findIndex(it => it && String(it.periodKey || '').trim() === periodKey);
     const historyEntry = {
       doneAt: doneIso,
@@ -14697,7 +14811,8 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       ...(completedDeadline ? { deadline: completedDeadline } : {}),
       status: 'Klar',
       note: (note || '').toString().trim(),
-      user: req.user?.email || ''
+      user: req.user?.email || '',
+      ...(documentedAtgarder.length ? { riskAtgarder: documentedAtgarder } : {})
     };
     if (prevIdx >= 0) history[prevIdx] = { ...(history[prevIdx] || {}), ...historyEntry };
     else history.unshift(historyEntry);
@@ -14737,7 +14852,10 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
         baseId: airtableBaseId,
         uppdragId: existing.id,
         periodKey,
-        uppdragFields: { ...(existing.fields || {}), ...fields, 'Nästa deadline': completedDeadline }
+        uppdragFields: { ...(existing.fields || {}), ...fields, 'Nästa deadline': completedDeadline },
+        extraFields: documentedAtgarder.length
+          ? { 'Riskåtgärder utförda': JSON.stringify(documentedAtgarder) }
+          : {}
       });
     } catch (e) {
       console.warn('sync run status after uppdrag complete:', e.message);

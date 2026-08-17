@@ -569,12 +569,44 @@
     });
   }
 
-  function getRiskState(fields) {
-    let riskValda = [];
-    try { riskValda = safeJson((fields?.['Riskåtgärder valda'] || '').toString().trim(), []); } catch (_) { riskValda = []; }
-    if (!Array.isArray(riskValda)) riskValda = [];
+  function parseRiskAtgarderList(raw) {
+    const text = (raw == null) ? '' : String(raw).trim();
+    if (!text) return [];
+    if (text.startsWith('[')) {
+      const arr = safeJson(text, []);
+      if (!Array.isArray(arr)) return [];
+      return arr.map((x) => {
+        if (typeof x === 'string') return x.trim();
+        if (x && typeof x === 'object') return String(x.text || x.name || x.label || '').trim();
+        return '';
+      }).filter(Boolean);
+    }
+    return text.split(/\r?\n/).map((s) => s.replace(/^\s*[-•]\s*/, '').trim()).filter(Boolean);
+  }
+
+  function parseRiskAtgarderDone(raw) {
+    const text = (raw == null) ? '' : String(raw).trim();
+    if (!text) return [];
+    const arr = text.startsWith('[') ? safeJson(text, []) : text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (!Array.isArray(arr)) return [];
+    return arr.map((x) => {
+      if (typeof x === 'string') return { text: x.trim(), checkedAt: '', user: '' };
+      return { text: String(x?.text || x?.name || '').trim(), checkedAt: x?.checkedAt || '', user: x?.user || '' };
+    }).filter((x) => x.text);
+  }
+
+  function riskAtgarderAllChecked(required, done) {
+    const need = (Array.isArray(required) ? required : []).map((s) => String(s || '').trim()).filter(Boolean);
+    if (!need.length) return true;
+    const have = new Set((Array.isArray(done) ? done : []).map((x) => String((x && x.text) || x || '').trim().toLowerCase()).filter(Boolean));
+    return need.every((r) => have.has(r.toLowerCase()));
+  }
+
+  function getRiskState(fields, runFields) {
+    const riskValda = parseRiskAtgarderList(fields?.['Riskåtgärder valda']);
     const riskOn = !!fields?.['Riskåtgärder aktiverade'] || riskValda.length > 0;
-    return { riskOn, riskValda };
+    const done = parseRiskAtgarderDone(runFields?.['Riskåtgärder utförda']);
+    return { riskOn, riskValda, done };
   }
 
   async function savePtlUnderlagOnly(customerId, typ, uploadedItems) {
@@ -591,11 +623,16 @@
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  function showCompleteModal({ customerId, typ, fields, periodKey }) {
+  function showCompleteModal({ customerId, typ, fields, periodKey, runFields, runId, doneAtgarder }) {
     const existing = document.getElementById('uppdrag-complete-modal');
     if (existing) existing.remove();
 
-    const { riskOn, riskValda } = getRiskState(fields || {});
+    const { riskOn, riskValda, done: storedDone } = getRiskState(fields || {}, runFields || {});
+    const done = Array.isArray(doneAtgarder) && doneAtgarder.length ? doneAtgarder : storedDone;
+    if (riskOn && riskValda.length && !riskAtgarderAllChecked(riskValda, done)) {
+      alert('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.');
+      return;
+    }
 
     const modal = document.createElement('div');
     modal.id = 'uppdrag-complete-modal';
@@ -607,11 +644,13 @@
           <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body" style="overflow:auto;">
-          ${riskOn ? `
+          ${riskOn && riskValda.length ? `
             <div class="uppdrag-riskbox" style="margin-top:0;">
-              <div class="uppdrag-setup-desc" style="margin:0;">
-                PTL-åtgärd är aktiverad för detta uppdrag. För dokumentation behöver du skriva en anteckning och du kan även ladda upp underlag.
+              <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
+              <div class="uppdrag-view-list" style="margin-top:0.5rem;">
+                ${riskValda.map((a) => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${esc(a)}</div>`).join('')}
               </div>
+              <div class="uppdrag-muted" style="margin-top:0.45rem;">Åtgärderna dokumenteras på denna körning.</div>
             </div>
           ` : `
             <div class="uppdrag-setup-desc" style="margin-top:0;">
@@ -620,7 +659,7 @@
           `}
 
           <div class="form-group" style="margin-top:0.75rem;">
-            <label>${riskOn ? 'Anteckning *' : 'Anteckning'}</label>
+            <label>Anteckning</label>
             <textarea id="uppdrag-complete-note" class="kunduppgifter-input" rows="3" placeholder="Skriv anteckning..."></textarea>
           </div>
 
@@ -643,12 +682,8 @@
     document.getElementById('uppdrag-complete-confirm').addEventListener('click', async () => {
       try {
         const note = (document.getElementById('uppdrag-complete-note')?.value || '').trim();
-        if (riskOn && !note) {
-          alert('Anteckning krävs när PTL-åtgärd är aktiverad.');
-          return;
-        }
-        if (riskOn && (!riskValda || riskValda.length === 0)) {
-          alert('Du måste välja minst en PTL-åtgärd på kundkortet innan du kan klarmarkera här.');
+        if (riskOn && riskValda.length && !riskAtgarderAllChecked(riskValda, done)) {
+          alert('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.');
           return;
         }
 
@@ -686,7 +721,8 @@
             customerId,
             typ,
             note,
-            ...(periodKey ? { periodKey: String(periodKey).trim() } : {})
+            ...(periodKey ? { periodKey: String(periodKey).trim() } : {}),
+            ...(done.length ? { riskAtgarder: done } : (riskValda.length ? { riskAtgarder: riskValda.map((text) => ({ text })) } : {}))
           })
         });
         const data = await res.json().catch(() => ({}));
@@ -768,9 +804,21 @@
       const rutin = (f['Rutin'] || '').toString().trim();
       const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
       const hasRunningNote = !!String(runningNote || '').trim();
-      const riskValda = safeJson((f['Riskåtgärder valda'] || '').toString().trim(), []);
+      const runId = String(x.runRec?.id || '').trim();
+      const { riskValda, done: riskDone } = getRiskState(f, x.runRec?.fields || {});
+      const doneSet = new Set((riskDone || []).map((a) => String(a.text || '').toLowerCase()));
+      const riskLocked = runStatus === 'Klar';
       const riskList = Array.isArray(riskValda) && riskValda.length
-        ? `<div class="uppdrag-view-list">${riskValda.slice(0, 20).map(a => `<div class="uppdrag-view-list-item"><i class="fas fa-check"></i>${esc(a)}</div>`).join('')}</div>`
+        ? `<div class="uppdrag-riskbox-items" data-risk-box="${esc(x.key)}">
+            ${riskValda.slice(0, 20).map((a) => {
+              const checked = doneSet.has(String(a).toLowerCase());
+              return `<label class="uppdrag-risk-check">
+                <input type="checkbox" data-action="toggle-risk-atgard" data-key="${esc(x.key)}" data-run-id="${esc(runId)}" value="${esc(a)}" ${checked ? 'checked' : ''} ${riskLocked ? 'disabled' : ''}>
+                <span>${esc(a)}</span>
+              </label>`;
+            }).join('')}
+            <div class="uppdrag-muted" data-risk-status-for="${esc(x.key)}" style="margin-top:0.35rem;"></div>
+          </div>`
         : '';
       const hist = safeJson((f['Historik'] || '').toString().trim(), []);
       const histHtml = Array.isArray(hist) && hist.length
@@ -805,7 +853,7 @@
           <td>${runCell}</td>
           <td>${statusCell}</td>
           <td>
-            <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" title="Klarmarkera">
+            <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" data-run-id="${esc(runId)}" title="Klarmarkera">
               <i class="fas fa-check"></i>
             </button>
           </td>
@@ -891,7 +939,30 @@
         const periodKey = doneBtn?.getAttribute('data-period-key') || '';
         const rowTyp = doneBtn?.getAttribute('data-typ') || row.getAttribute('data-typ') || activeType;
         const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(rowTyp));
-        showCompleteModal({ customerId, typ: rowTyp, fields: rec?.fields || {}, periodKey });
+        const runId = doneBtn?.getAttribute('data-run-id') || '';
+        const box = tbodyEl.querySelector(`[data-risk-box="${CSS.escape(key)}"]`);
+        const checkedFromDom = box
+          ? Array.from(box.querySelectorAll('input[data-action="toggle-risk-atgard"]:checked')).map((i) => ({ text: i.value }))
+          : [];
+        const inst = filtered.find((it) => String(it.key) === String(key));
+        const runFields = inst?.runRec?.fields || {};
+        const { riskOn, riskValda, done: storedDone } = getRiskState(rec?.fields || {}, runFields);
+        const doneAtgarder = checkedFromDom.length ? checkedFromDom : storedDone;
+        if (riskOn && riskValda.length && !riskAtgarderAllChecked(riskValda, doneAtgarder)) {
+          if (details) details.style.display = '';
+          row.classList.add('is-open');
+          alert('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.');
+          return;
+        }
+        showCompleteModal({
+          customerId,
+          typ: rowTyp,
+          fields: rec?.fields || {},
+          periodKey,
+          runFields,
+          runId,
+          doneAtgarder
+        });
       });
     });
 
@@ -1032,6 +1103,42 @@
           if (statusEl) statusEl.textContent = 'Kunde inte ladda upp: ' + (err.message || 'fel');
         } finally {
           btn.disabled = false;
+        }
+      });
+    });
+
+    tbodyEl.querySelectorAll('[data-action="toggle-risk-atgard"]').forEach((cb) => {
+      cb.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const key = cb.getAttribute('data-key') || '';
+        const runId = cb.getAttribute('data-run-id') || '';
+        const box = tbodyEl.querySelector(`[data-risk-box="${CSS.escape(key)}"]`);
+        const statusEl = tbodyEl.querySelector(`[data-risk-status-for="${CSS.escape(key)}"]`);
+        const items = box
+          ? Array.from(box.querySelectorAll('input[data-action="toggle-risk-atgard"]:checked')).map((i) => ({ text: i.value, checked: true }))
+          : [];
+        if (!runId) {
+          if (statusEl) statusEl.textContent = 'Sparas när körningen klarmarkeras.';
+          return;
+        }
+        if (statusEl) statusEl.textContent = 'Sparar...';
+        try {
+          const res = await fetch(`${baseUrl}/api/uppdrag/runs/${encodeURIComponent(runId)}/risk-atgarder`, {
+            method: 'PATCH',
+            ...getAuthOpts(),
+            body: JSON.stringify({ items })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          const inst = filtered.find((it) => String(it.key) === String(key));
+          if (inst?.runRec) {
+            inst.runRec.fields = inst.runRec.fields || {};
+            inst.runRec.fields['Riskåtgärder utförda'] = JSON.stringify(data.riskAtgarder || items);
+          }
+          if (statusEl) statusEl.textContent = data.warning ? String(data.warning) : 'Sparat.';
+          setTimeout(() => { if (statusEl && statusEl.textContent === 'Sparat.') statusEl.textContent = ''; }, 2000);
+        } catch (err) {
+          if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
         }
       });
     });
