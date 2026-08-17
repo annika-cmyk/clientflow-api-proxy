@@ -9925,6 +9925,113 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
   }
 });
 
+async function airtablePatchKunddataRecords(airtableAccessToken, baseId, records) {
+  const tableId = kunddataTableId();
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}`;
+  const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+  const updated = [];
+  const errors = [];
+  for (let i = 0; i < records.length; i += 10) {
+    const chunk = records.slice(i, i + 10);
+    try {
+      const res = await axios.patch(url, { records: chunk }, { headers, timeout: 20000 });
+      updated.push(...(res.data.records || []));
+    } catch (e) {
+      for (const rec of chunk) {
+        try {
+          const one = await axios.patch(`${url}/${rec.id}`, { fields: rec.fields }, { headers, timeout: 15000 });
+          if (one.data) updated.push(one.data);
+        } catch (e2) {
+          errors.push({
+            customerId: rec.id,
+            error: e2.response?.data?.error?.message || e2.message || 'Kunde inte uppdatera'
+          });
+        }
+      }
+    }
+    if (i + 10 < records.length) {
+      await new Promise((resolve) => setTimeout(resolve, 220));
+    }
+  }
+  return { updated, errors };
+}
+
+// POST /api/byra/kundbehorigheter/bulk – Lägg till flera användare på flera företag samtidigt
+app.post('/api/byra/kundbehorigheter/bulk', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    if (!access.isLedareOrAdmin(result.userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får tilldela kundbehörigheter' });
+    }
+    const body = req.body || {};
+    const userIds = [...new Set((Array.isArray(body.userIds) ? body.userIds : [])
+      .map((id) => String(id || '').trim())
+      .filter((id) => /^rec[A-Za-z0-9]{10,}$/.test(id)))];
+    const customerIds = [...new Set((Array.isArray(body.customerIds) ? body.customerIds : [])
+      .map((id) => String(id || '').trim())
+      .filter((id) => /^rec[A-Za-z0-9]{10,}$/.test(id)))];
+    const mode = String(body.mode || 'merge').toLowerCase() === 'replace' ? 'replace' : 'merge';
+    if (!userIds.length) return res.status(400).json({ error: 'Välj minst en användare' });
+    if (!customerIds.length) return res.status(400).json({ error: 'Välj minst ett företag' });
+    if (userIds.length > 50) return res.status(400).json({ error: 'Högst 50 användare åt gången' });
+    if (customerIds.length > 400) return res.status(400).json({ error: 'Högst 400 företag åt gången' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const agencyUsers = await listByraUsersByByraId(result.byraId, airtableAccessToken, airtableBaseId, {
+      byraRecord: result.record
+    });
+    const allowedUserIds = new Set(agencyUsers.map((u) => u.id));
+    if (userIds.some((id) => !allowedUserIds.has(id))) {
+      return res.status(400).json({ error: 'En eller flera användare tillhör inte byrån' });
+    }
+
+    const customers = await fetchAirtableRecordsByIds(
+      airtableAccessToken,
+      airtableBaseId,
+      kunddataTableId(),
+      customerIds,
+      { logErrors: false }
+    );
+    const found = new Set(customers.map((c) => c.id));
+    const missing = customerIds.filter((id) => !found.has(id));
+    const toPatch = [];
+    const unchanged = [];
+    const denied = [];
+
+    customers.forEach((rec) => {
+      if (!access.userHasCustomerAccess(result.userData, rec)) {
+        denied.push(rec.id);
+        return;
+      }
+      const next = access.applyAnvandareIds(rec.fields?.['Användare'], userIds, mode);
+      if (access.anvandareIdsEqual(rec.fields?.['Användare'], next)) {
+        unchanged.push(rec.id);
+        return;
+      }
+      toPatch.push({ id: rec.id, fields: { Användare: next } });
+    });
+
+    const patched = await airtablePatchKunddataRecords(airtableAccessToken, airtableBaseId, toPatch);
+    res.json({
+      success: patched.errors.length === 0,
+      mode,
+      updated: patched.updated.length,
+      unchanged: unchanged.length,
+      denied: denied.length,
+      missing: missing.length,
+      errors: patched.errors
+    });
+  } catch (error) {
+    console.error('❌ POST /api/byra/kundbehorigheter/bulk:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
 // Utbildningar – Airtable-tabell "Utbildningar" (samma som Registrera utbildning)
 const UTBILDNINGAR_TABLE = 'Utbildningar';
 

@@ -18,6 +18,10 @@ class ByraAnvandareManager {
     this.filteredLogs = [];
     this.canManage = false;
     this.viewerRole = '';
+    this.customers = [];
+    this.selectedUserIds = new Set();
+    this.selectedCustomerIds = new Set();
+    this.behorighetLoaded = false;
     this.byraInfo = null;
     this.byraId = '';
     this.byraTjanster = [];
@@ -121,6 +125,17 @@ class ByraAnvandareManager {
 
     const utbildningForm = document.getElementById('utbildning-form');
     if (utbildningForm) utbildningForm.addEventListener('submit', (e) => { e.preventDefault(); this.saveUtbildning(); });
+
+    const behUserSearch = document.getElementById('behorighet-user-search');
+    if (behUserSearch) behUserSearch.addEventListener('input', () => this.renderBehorighetUsers());
+    const behCustomerSearch = document.getElementById('behorighet-customer-search');
+    if (behCustomerSearch) behCustomerSearch.addEventListener('input', () => this.renderBehorighetCustomers());
+    const behUserAll = document.getElementById('behorighet-user-all');
+    if (behUserAll) behUserAll.addEventListener('change', () => this.toggleVisibleBehorighetUsers(behUserAll.checked));
+    const behCustomerAll = document.getElementById('behorighet-customer-all');
+    if (behCustomerAll) behCustomerAll.addEventListener('change', () => this.toggleVisibleBehorighetCustomers(behCustomerAll.checked));
+    const behSpara = document.getElementById('behorighet-spara-btn');
+    if (behSpara) behSpara.addEventListener('click', () => this.saveBulkBehorighet());
   }
 
   switchTab(tabName) {
@@ -131,6 +146,7 @@ class ByraAnvandareManager {
     const btn = document.querySelector(`[data-tab="${tabName}"]`);
     if (btn) btn.classList.add('active');
     this.currentTab = tabName;
+    if (tabName === 'behorigheter') this.ensureBehorighetData();
   }
 
   initializeTabs() {
@@ -824,6 +840,7 @@ class ByraAnvandareManager {
       this.updateManageUi();
       this.renderUsers();
       this.populateUserFilters();
+      if (this.currentTab === 'behorigheter') this.ensureBehorighetData();
     } catch (err) {
       console.error('loadUsers:', err);
       this.updateUserCount();
@@ -1109,6 +1126,7 @@ class ByraAnvandareManager {
           <span class="last-login">${escapeHtml(user.lastLogin)}</span>
         </div>
         <div class="user-actions">
+          ${this.canManage ? `<button type="button" class="btn-secondary anvandare-foretag" data-id="${escapeHtml(user.id)}">Företag</button>` : ''}
           ${this.canManage ? `<button type="button" class="btn-secondary anvandare-redigera" data-id="${escapeHtml(user.id)}">Redigera</button>` : ''}
         </div>
       </div>
@@ -1120,6 +1138,234 @@ class ByraAnvandareManager {
         if (user) self.openUserModal(user);
       });
     });
+    usersList.querySelectorAll('.anvandare-foretag').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        self.openBulkBehorighetForUser(id);
+      });
+    });
+  }
+
+  parseCustomerAnvandareIds(value) {
+    if (value == null || value === '') return [];
+    if (Array.isArray(value)) return value.flatMap((v) => this.parseCustomerAnvandareIds(v));
+    return String(value).split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  customerMatchesSearch(customer, q) {
+    if (!q) return true;
+    const hay = `${customer.namn} ${customer.orgnr}`.toLowerCase();
+    return hay.includes(q);
+  }
+
+  userMatchesSearch(user, q) {
+    if (!q) return true;
+    const hay = `${user.name} ${user.email} ${user.role}`.toLowerCase();
+    return hay.includes(q);
+  }
+
+  visibleBehorighetUsers() {
+    const q = (document.getElementById('behorighet-user-search')?.value || '').trim().toLowerCase();
+    return this.users.filter((u) => this.userMatchesSearch(u, q));
+  }
+
+  visibleBehorighetCustomers() {
+    const q = (document.getElementById('behorighet-customer-search')?.value || '').trim().toLowerCase();
+    return this.customers.filter((c) => this.customerMatchesSearch(c, q));
+  }
+
+  updateBehorighetCounts() {
+    const userEl = document.getElementById('behorighet-user-count');
+    const custEl = document.getElementById('behorighet-customer-count');
+    if (userEl) userEl.textContent = this.selectedUserIds.size + ' valda';
+    if (custEl) custEl.textContent = this.selectedCustomerIds.size + ' valda';
+  }
+
+  customerAlreadyHasSelectedUsers(customer) {
+    if (!this.selectedUserIds.size) return false;
+    const have = new Set(customer.anvandareIds || []);
+    for (const id of this.selectedUserIds) {
+      if (!have.has(id)) return false;
+    }
+    return true;
+  }
+
+  renderBehorighetUsers() {
+    const list = document.getElementById('behorighet-user-list');
+    if (!list) return;
+    const rows = this.visibleBehorighetUsers();
+    if (!this.users.length) {
+      list.innerHTML = '<p class="dashboard-card-desc">Inga användare att visa.</p>';
+      this.updateBehorighetCounts();
+      return;
+    }
+    if (!rows.length) {
+      list.innerHTML = '<p class="dashboard-card-desc">Inga användare matchar sökningen.</p>';
+      this.updateBehorighetCounts();
+      return;
+    }
+    list.innerHTML = rows.map((user) => `
+      <label class="behorighet-pick-row">
+        <input type="checkbox" class="behorighet-user-cb" value="${escapeHtml(user.id)}" ${this.selectedUserIds.has(user.id) ? 'checked' : ''}>
+        <span class="behorighet-pick-meta">
+          <strong>${escapeHtml(user.name)}</strong>
+          <small>${escapeHtml(user.email)} · ${escapeHtml(this.displayRole(user.role))}</small>
+        </span>
+      </label>
+    `).join('');
+    list.querySelectorAll('.behorighet-user-cb').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) this.selectedUserIds.add(cb.value);
+        else this.selectedUserIds.delete(cb.value);
+        this.updateBehorighetCounts();
+        this.renderBehorighetCustomers();
+      });
+    });
+    const all = document.getElementById('behorighet-user-all');
+    if (all) all.checked = rows.length > 0 && rows.every((u) => this.selectedUserIds.has(u.id));
+    this.updateBehorighetCounts();
+  }
+
+  renderBehorighetCustomers() {
+    const list = document.getElementById('behorighet-customer-list');
+    if (!list) return;
+    const rows = this.visibleBehorighetCustomers();
+    if (!this.customers.length) {
+      list.innerHTML = '<p class="dashboard-card-desc">Inga företag att visa.</p>';
+      this.updateBehorighetCounts();
+      return;
+    }
+    if (!rows.length) {
+      list.innerHTML = '<p class="dashboard-card-desc">Inga företag matchar sökningen.</p>';
+      this.updateBehorighetCounts();
+      return;
+    }
+    list.innerHTML = rows.map((c) => {
+      const already = this.customerAlreadyHasSelectedUsers(c);
+      return `
+      <label class="behorighet-pick-row">
+        <input type="checkbox" class="behorighet-customer-cb" value="${escapeHtml(c.id)}" ${this.selectedCustomerIds.has(c.id) ? 'checked' : ''}>
+        <span class="behorighet-pick-meta">
+          <strong>${escapeHtml(c.namn)}</strong>
+          <small>${escapeHtml(c.orgnr || 'Orgnr saknas')}${already ? ' · <span class="har-redan">har redan</span>' : ''}</small>
+        </span>
+      </label>`;
+    }).join('');
+    list.querySelectorAll('.behorighet-customer-cb').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) this.selectedCustomerIds.add(cb.value);
+        else this.selectedCustomerIds.delete(cb.value);
+        this.updateBehorighetCounts();
+      });
+    });
+    const all = document.getElementById('behorighet-customer-all');
+    if (all) all.checked = rows.length > 0 && rows.every((c) => this.selectedCustomerIds.has(c.id));
+    this.updateBehorighetCounts();
+  }
+
+  toggleVisibleBehorighetUsers(checked) {
+    this.visibleBehorighetUsers().forEach((u) => {
+      if (checked) this.selectedUserIds.add(u.id);
+      else this.selectedUserIds.delete(u.id);
+    });
+    this.renderBehorighetUsers();
+    this.renderBehorighetCustomers();
+  }
+
+  toggleVisibleBehorighetCustomers(checked) {
+    this.visibleBehorighetCustomers().forEach((c) => {
+      if (checked) this.selectedCustomerIds.add(c.id);
+      else this.selectedCustomerIds.delete(c.id);
+    });
+    this.renderBehorighetCustomers();
+  }
+
+  setBehorighetStatus(text) {
+    const el = document.getElementById('behorighet-status');
+    if (el) el.textContent = text || '';
+  }
+
+  async ensureBehorighetData() {
+    const gate = document.getElementById('behorighet-gate');
+    const bulk = document.getElementById('behorighet-bulk');
+    if (!this.canManage) {
+      if (gate) gate.hidden = false;
+      if (bulk) bulk.hidden = true;
+      return;
+    }
+    if (gate) gate.hidden = true;
+    if (bulk) bulk.hidden = false;
+    this.renderBehorighetUsers();
+    if (this.behorighetLoaded) {
+      this.renderBehorighetCustomers();
+      return;
+    }
+    const list = document.getElementById('behorighet-customer-list');
+    if (list) list.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar företag...</p></div>';
+    try {
+      const res = await fetch(getBaseUrl() + '/api/kunddata', getAuthOpts());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || res.statusText);
+      this.customers = (data.records || []).map((r) => {
+        const f = r.fields || {};
+        return {
+          id: r.id,
+          namn: f.Namn || f['Företagsnamn'] || f.Email || r.id,
+          orgnr: f.Orgnr || f.Organisationsnummer || '',
+          anvandareIds: this.parseCustomerAnvandareIds(f['Användare'])
+        };
+      }).sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
+      this.behorighetLoaded = true;
+      this.renderBehorighetCustomers();
+    } catch (err) {
+      console.error('ensureBehorighetData:', err);
+      if (list) list.innerHTML = '<div class="no-results"><i class="fas fa-exclamation-triangle"></i><p>Kunde inte ladda företag.</p></div>';
+    }
+  }
+
+  openBulkBehorighetForUser(userId) {
+    this.selectedUserIds = new Set(userId ? [userId] : []);
+    this.switchTab('behorigheter');
+  }
+
+  async saveBulkBehorighet() {
+    const statusEl = document.getElementById('behorighet-status');
+    const btn = document.getElementById('behorighet-spara-btn');
+    const userIds = [...this.selectedUserIds];
+    const customerIds = [...this.selectedCustomerIds];
+    if (!userIds.length) {
+      this.setBehorighetStatus('Välj minst en användare.');
+      return;
+    }
+    if (!customerIds.length) {
+      this.setBehorighetStatus('Välj minst ett företag.');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    this.setBehorighetStatus('Sparar behörigheter...');
+    try {
+      const res = await fetch(getBaseUrl() + '/api/byra/kundbehorigheter/bulk', getAuthOpts('POST', {
+        userIds,
+        customerIds,
+        mode: 'merge'
+      }));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      const parts = [];
+      parts.push(data.updated === 1 ? '1 företag uppdaterat' : `${data.updated || 0} företag uppdaterade`);
+      if (data.unchanged) parts.push(`${data.unchanged} hade redan behörigheten`);
+      if (data.denied) parts.push(`${data.denied} hoppades över`);
+      if (data.errors?.length) parts.push(`${data.errors.length} fel`);
+      this.setBehorighetStatus(parts.join('. ') + '.');
+      this.behorighetLoaded = false;
+      await this.ensureBehorighetData();
+      if (statusEl) setTimeout(() => { if (statusEl.textContent === parts.join('. ') + '.') statusEl.textContent = ''; }, 6000);
+    } catch (err) {
+      console.error('saveBulkBehorighet:', err);
+      this.setBehorighetStatus('Fel: ' + (err.message || 'Kunde inte spara.'));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   async loadLogs() {

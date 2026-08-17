@@ -347,81 +347,44 @@
                         <section class="dashboard-section">
                             <div class="dashboard-card">
                                 <div class="dashboard-card-header">
-                                    <h2><i class="fas fa-key"></i> Behörighetshantering</h2>
+                                    <h2><i class="fas fa-key"></i> Kundbehörigheter</h2>
                                 </div>
                                 <div class="dashboard-card-body">
-                                    <p class="dashboard-card-desc">Hantera vilka funktioner olika användarroller har tillgång till.</p>
-                                    <h4 style="margin:1rem 0 0.5rem;font-size:0.95rem;">Användarroller</h4>
-                                    <div class="roles-grid">
-                                        <div class="role-card">
-                                            <h5>Administratör</h5>
-                                            <ul class="permissions-list">
-                                                <li>Full tillgång till alla funktioner</li>
-                                                <li>Hantera användare och behörigheter</li>
-                                                <li>Systemkonfiguration</li>
-                                                <li>Exportera all data</li>
-                                            </ul>
-                                            <button class="btn-secondary">Redigera roll</button>
+                                    <p class="dashboard-card-desc">Ge en eller flera användare tillgång till många företag samtidigt. Befintliga behörigheter tas inte bort.</p>
+                                    <p id="behorighet-gate" class="dashboard-card-desc" hidden>Endast ledare kan tilldela kundbehörigheter.</p>
+                                    <div id="behorighet-bulk" class="behorighet-bulk">
+                                        <div class="behorighet-bulk-grid">
+                                            <div class="behorighet-picker">
+                                                <div class="behorighet-picker-head">
+                                                    <h3>Användare</h3>
+                                                    <span id="behorighet-user-count">0 valda</span>
+                                                </div>
+                                                <input type="search" id="behorighet-user-search" class="form-input" placeholder="Sök namn eller e-post">
+                                                <label class="behorighet-select-all">
+                                                    <input type="checkbox" id="behorighet-user-all">
+                                                    <span>Välj alla synliga</span>
+                                                </label>
+                                                <div id="behorighet-user-list" class="behorighet-picker-list"></div>
+                                            </div>
+                                            <div class="behorighet-picker">
+                                                <div class="behorighet-picker-head">
+                                                    <h3>Företag</h3>
+                                                    <span id="behorighet-customer-count">0 valda</span>
+                                                </div>
+                                                <input type="search" id="behorighet-customer-search" class="form-input" placeholder="Sök företagsnamn eller orgnr">
+                                                <label class="behorighet-select-all">
+                                                    <input type="checkbox" id="behorighet-customer-all">
+                                                    <span>Välj alla synliga</span>
+                                                </label>
+                                                <div id="behorighet-customer-list" class="behorighet-picker-list"></div>
+                                            </div>
                                         </div>
-                                        <div class="role-card">
-                                            <h5>Chef</h5>
-                                            <ul class="permissions-list">
-                                                <li>Läsa alla kunder och rapporter</li>
-                                                <li>Skapa och redigera kunder</li>
-                                                <li>Hantera riskbedömningar</li>
-                                                <li>Exportera rapporter</li>
-                                            </ul>
-                                            <button class="btn-secondary">Redigera roll</button>
+                                        <div class="behorighet-bulk-actions">
+                                            <button type="button" class="btn-primary" id="behorighet-spara-btn">
+                                                <i class="fas fa-plus"></i> Lägg till behörighet
+                                            </button>
+                                            <span id="behorighet-status" class="byra-spara-status"></span>
                                         </div>
-                                        <div class="role-card">
-                                            <h5>Användare</h5>
-                                            <ul class="permissions-list">
-                                                <li>Läsa tilldelade kunder</li>
-                                                <li>Uppdatera kundinformation</li>
-                                                <li>Skapa riskbedömningar</li>
-                                                <li>Begränsad export</li>
-                                            </ul>
-                                            <button class="btn-secondary">Redigera roll</button>
-                                        </div>
-                                    </div>
-                                    <h4 style="margin:1.5rem 0 0.5rem;font-size:0.95rem;">Anpassade behörigheter</h4>
-                                    <div class="permission-matrix">
-                                        <table class="permissions-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Funktion</th>
-                                                    <th>Administratör</th>
-                                                    <th>Chef</th>
-                                                    <th>Användare</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <tr>
-                                                    <td>Läsa kunder</td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Skapa kunder</td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-times text-danger"></i></td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Riskbedömningar</td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Exportera data</td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-check text-success"></i></td>
-                                                    <td><i class="fas fa-times text-danger"></i></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -516,7 +479,7 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <!-- Load byrå användare specific script -->
-    <script src="js/byra-anvandare.js?v=15.21"></script>
+    <script src="js/byra-anvandare.js?v=15.22"></script>
     <!-- Then load the main app -->
     <script src="app.js"></script>
 </body>
