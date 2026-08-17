@@ -138,6 +138,7 @@
       f['Kundnamn'],
       f['Namn'],
       f['Ansvarig'],
+      f['Klientansvarig'],
       f['Typ'],
       f['Frekvens'],
       f['Nästa deadline'],
