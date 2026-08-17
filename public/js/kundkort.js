@@ -1642,6 +1642,21 @@ class CustomerCardManager {
                 return Array.from(best.values());
             };
 
+            const KV = window.KoringVisibility || null;
+            const findOverdueRun = (typ) => {
+                const list = (Array.isArray(runRecords) ? runRecords : []).filter((rr) => {
+                    if (String(rr?.fields?.['Typ'] || '').trim() !== typ) return false;
+                    return !!(KV && KV.isOverdueNotDone(rr.fields, todayIso));
+                });
+                list.sort((a, b) => String(a?.fields?.['Deadline'] || '').localeCompare(String(b?.fields?.['Deadline'] || '')));
+                return list[0] || null;
+            };
+            const assignmentVisibleInMonth = (fields) => {
+                if (this._isUppdragEnded(fields, todayIso)) return false;
+                if (!KV) return true;
+                return KV.shouldShowAssignmentInPeriod(fields, mk, todayIso);
+            };
+
             const rowContexts = [];
             existingTypes.forEach((t) => {
                 const rec = byType(t);
@@ -1650,6 +1665,7 @@ class CustomerCardManager {
                     return;
                 }
                 const f = rec.fields || {};
+                if (this._isUppdragEnded(f, todayIso)) return;
                 const freqRaw = (f['Frekvens'] || '').toString().trim();
                 const freq = freqRaw || '—';
                 const modeForPrefillDefault = getModeForUppdrag(t, freq);
@@ -1669,12 +1685,16 @@ class CustomerCardManager {
                         MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     if (!visible.length) {
+                        if (!assignmentVisibleInMonth(f)) return;
                         let pk = MomsPeriod.defaultPeriodKeyForBoard(mk, momsFreq);
                         if (!pk) {
                             return;
                         }
                         const instMap = instByTypeMonth.get(t) || new Map();
                         const instDl = instMap.get(mk) || '';
+                        const win = MomsPeriod.workWindowYm(pk, momsFreq);
+                        const periodOpen = !!(win && mk >= win.startYm && mk <= win.deadlineYm);
+                        if (!periodOpen && !instDl && !(KV && KV.isAssignmentOverdueNotDone(f, todayIso))) return;
                         let runRec = runByTypPeriod.get(`${t}|||${pk}`) || null;
                         if (instDl) {
                             const byDeadline = (Array.isArray(runRecords) ? runRecords : []).find((rr) => {
@@ -1717,7 +1737,8 @@ class CustomerCardManager {
 
                 if (isLoneTyp(t) && window.LonePeriod && Array.isArray(runRecords) && runRecords.length) {
                     const visible = dedupeRunsByPeriodKey(runRecords, t, (rr) =>
-                        LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                        LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso)
+                        || !!(KV && KV.isOverdueNotDone(rr.fields, todayIso)));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     visible.forEach((rr) => {
                         const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
@@ -1734,7 +1755,7 @@ class CustomerCardManager {
                 }
 
                 const instMap = instByTypeMonth.get(t) || new Map();
-                const instDeadline = instMap.get(mk) || '';
+                let instDeadline = instMap.get(mk) || '';
                 let prefillPeriodKey = defaultPeriodKey;
                 if (isLoneTyp(t) && instDeadline && window.LonePeriod) {
                     prefillPeriodKey = LonePeriod.periodKeyFromDeadline(instDeadline, t) || defaultPeriodKey;
@@ -1760,6 +1781,21 @@ class CustomerCardManager {
                         prefillPeriodKey = String(openRun?.fields?.['PeriodKey'] || '').trim()
                             || yearKeyForMonth(String(openRun?.fields?.['Deadline'] || '').slice(0, 7))
                             || prefillPeriodKey;
+                    }
+                }
+                const runOpen = !!(instDeadline || (runRec && KV && KV.isRunOpenInMonth(runRec.fields, mk)));
+                const runOverdue = !!(runRec && KV && KV.isOverdueNotDone(runRec.fields, todayIso));
+                if (!runOpen && !runOverdue) {
+                    const overdueRun = findOverdueRun(t);
+                    if (overdueRun) {
+                        runRec = overdueRun;
+                        instDeadline = String(overdueRun.fields?.['Deadline'] || '').trim();
+                        prefillPeriodKey = String(overdueRun.fields?.['PeriodKey'] || '').trim()
+                            || ((t === 'Bokslut' || t === 'Deklaration')
+                                ? (yearKeyForMonth(instDeadline.slice(0, 7)) || prefillPeriodKey)
+                                : prefillPeriodKey);
+                    } else if (!assignmentVisibleInMonth(f)) {
+                        return;
                     }
                 }
                 rowContexts.push({
@@ -2175,9 +2211,6 @@ class CustomerCardManager {
                 </tr>
                 `;
             }).filter(Boolean).join('');
-            if (!rows && existingTypes.length) {
-                console.error('[UppdragBoard] rows blev tomt trots existingTypes:', existingTypes, '– records:', records.map(r => ({ id: r?.id, typ: r?.fields?.['Typ'] })));
-            }
             tbody.innerHTML = rows || `<tr><td colspan="6" class="uppdragboard-empty">Inga körningar för vald period.</td></tr>`;
         };
         this._kundUppdragBoardRerender = renderBoard;

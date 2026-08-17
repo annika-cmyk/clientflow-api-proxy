@@ -438,24 +438,32 @@
   function expandRunsToMonthInstances(runs) {
     const inst = [];
     const todayIso = new Date().toISOString().slice(0, 10);
+    const KV = window.KoringVisibility || null;
     for (const run of runs || []) {
       const startYm = toDateStr(run.startDate)?.slice(0, 7);
       const endYm = toDateStr(run.deadline)?.slice(0, 7);
       if (!startYm || !endYm) continue;
+      const runStatus = run.status || runStatusFromHistory(run?.record?.fields || {}, run.periodKey);
+      const overdue = !!(KV && KV.isOverdueNotDone({
+        Deadline: run.deadline,
+        Status: runStatus
+      }, todayIso));
       let cursor = new Date(Number(startYm.slice(0, 4)), Number(startYm.slice(5, 7)) - 1, 1);
       const end = new Date(Number(endYm.slice(0, 4)), Number(endYm.slice(5, 7)) - 1, 1);
-      for (let guard = 0; guard < 36; guard++) {
+      const last = overdue ? monthMax : end;
+      for (let guard = 0; guard < 48; guard++) {
         if (cursor > monthMax) break;
-        if (cursor > end) break;
+        if (cursor > last) break;
         if (cursor >= monthMin) {
           const mk = monthKey(cursor);
+          const inWindow = cursor <= end;
           if (run.typ === 'Momsredovisning' && window.MomsPeriod) {
             const freq = String(run?.record?.fields?.['Frekvens'] || '').trim();
             const visible = MomsPeriod.runVisibleInBoardMonth({
               PeriodKey: run.periodKey,
               Deadline: run.deadline,
               Frekvens: freq,
-              Status: run.status || runStatusFromHistory(run?.record?.fields || {}, run.periodKey)
+              Status: runStatus
             }, mk, todayIso);
             if (!visible) {
               cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
@@ -465,12 +473,15 @@
             const visible = LonePeriod.runVisibleInBoardMonth({
               Startdatum: run.startDate,
               Deadline: run.deadline,
-              Status: run.status || ''
-            }, mk, todayIso);
+              Status: runStatus
+            }, mk, todayIso) || overdue;
             if (!visible) {
               cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
               continue;
             }
+          } else if (!inWindow && !overdue) {
+            cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+            continue;
           }
           inst.push({
             ...run,

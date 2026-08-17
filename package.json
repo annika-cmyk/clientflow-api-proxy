@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon index.js",
-    "test": "node --test lib/minibok-aml.test.js lib/access.test.js",
+    "test": "node --test lib/minibok-aml.test.js lib/access.test.js lib/uppdrag-risk.test.js lib/koring-visibility.test.js",
     "postinstall": "echo 'Skipping puppeteer install - using @sparticuz/chromium'"
   },
   "keywords": [
