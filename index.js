@@ -55,7 +55,6 @@ const {
   riskAtgarderAllChecked
 } = require('./lib/uppdrag-risk');
 const access = require('./lib/access');
-const companyStatus = require('./public/js/company-status.js');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -1702,55 +1701,6 @@ const KUNDDATA_BEHORIGHET_FIELDS = [
 ];
 let kunddataBehorighetFieldsEnsured = false;
 
-const KUNDDATA_COMPANY_STATUS_FIELDS = [
-  {
-    name: companyStatus.AIRTABLE_STATUS_FIELD,
-    type: 'multilineText',
-    description: 'Normaliserad Bolagsverket/SCB-status (JSON) plus originalkoder'
-  }
-];
-let kunddataCompanyStatusFieldsEnsured = false;
-
-async function ensureKunddataCompanyStatusFields(airtableToken, baseId) {
-  if (kunddataCompanyStatusFieldsEnsured) {
-    return { ok: true, created: [], existing: KUNDDATA_COMPANY_STATUS_FIELDS.map((f) => f.name) };
-  }
-  const tableId = kunddataTableId();
-  if (!airtableToken) return { ok: false, error: 'Token saknas' };
-  try {
-    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
-      headers: { Authorization: `Bearer ${airtableToken}` },
-      timeout: 10000
-    });
-    const kundTable = (metaRes.data?.tables || []).find((t) => t.id === tableId || t.name === 'KUNDDATA');
-    if (!kundTable) return { ok: false, error: 'KUNDDATA-tabellen hittades inte' };
-    const existingNames = new Set((kundTable.fields || []).map((f) => f.name || ''));
-    const created = [];
-    const existing = [];
-    for (const fieldDef of KUNDDATA_COMPANY_STATUS_FIELDS) {
-      if (existingNames.has(fieldDef.name)) {
-        existing.push(fieldDef.name);
-        continue;
-      }
-      await axios.post(
-        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${kundTable.id}/fields`,
-        fieldDef,
-        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
-      );
-      created.push(fieldDef.name);
-      console.log(`✅ Företagsstatusfält skapades i KUNDDATA: ${fieldDef.name}`);
-    }
-    if (created.length + existing.length === KUNDDATA_COMPANY_STATUS_FIELDS.length) {
-      kunddataCompanyStatusFieldsEnsured = true;
-    }
-    return { ok: true, created, existing };
-  } catch (err) {
-    const msg = err.response?.data?.error?.message || err.message;
-    console.warn('ensureKunddataCompanyStatusFields:', msg);
-    return { ok: false, error: msg };
-  }
-}
-
 async function ensureKunddataBehorighetFields(airtableToken, baseId) {
   if (kunddataBehorighetFieldsEnsured) return { ok: true, created: [], existing: KUNDDATA_BEHORIGHET_FIELDS.map((f) => f.name) };
   const tableId = kunddataTableId();
@@ -2225,7 +2175,6 @@ app.post('/api/bolagsverket/organisationer', async (req, res) => {
     res.json({
       success: true,
       data: allOrganisations,
-      companyStatus: companyStatus.normalizeFromApiPayload(allOrganisations),
       timestamp: new Date().toISOString(),
       duration: duration,
       environment: environment,
@@ -3042,11 +2991,6 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
           return pick(orgData.organisationsform) || pick(orgData.juridiskForm) || '';
         })();
 
-        const statusSnap = companyStatus.attachLatestReport(
-          companyStatus.normalizeOrganisation(orgData),
-          dokumentInfo?.dokument || []
-        );
-
         // Förbered data för Airtable med förbättrad mappning
         const airtableData = {
           fields: {
@@ -3057,9 +3001,8 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
             'Bolagsform': organisationsformText,
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
-            'registreringsland': orgData.registreringsland?.klartext || 'Sverige',
-            'Aktivt företag': statusSnap.company_status === 'ACTIVE' ? 'Ja' : 'Nej',
-            [companyStatus.AIRTABLE_STATUS_FIELD]: companyStatus.snapshotToJson(statusSnap),
+            'registreringsland': orgData.registreringsland?.klartext || '',
+            'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             // Sätt Användare till inloggad användares Airtable-recordID (text),
             // så att filter/search på userData.id fungerar för rollen "Anställd".
             'Användare': anvandareId ? String(anvandareId) : '',
@@ -3120,7 +3063,6 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
-    await ensureKunddataCompanyStatusFields(airtableAccessToken, airtableBaseId);
 
     if (!airtableAccessToken) {
       console.log('⚠️ Airtable inte konfigurerat (AIRTABLE_ACCESS_TOKEN saknas) - returnerar data utan att spara');
@@ -5144,10 +5086,6 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
           if (!createdMissingBehorighet && (unknown === 'Klientansvarig' || unknown === 'Användare')) {
             createdMissingBehorighet = true;
             const ensured = await ensureKunddataBehorighetFields(airtableAccessToken, airtableBaseId);
-            if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
-          }
-          if (unknown === companyStatus.AIRTABLE_STATUS_FIELD) {
-            const ensured = await ensureKunddataCompanyStatusFields(airtableAccessToken, airtableBaseId);
             if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
           }
           delete payload[unknown];
