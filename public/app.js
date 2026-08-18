@@ -1106,6 +1106,9 @@ class ClientFlowApp {
                 return out || 'Saknas';
             })(),
             status: (() => {
+                if (typeof CompanyStatus !== 'undefined' && CompanyStatus.normalizeFromApiPayload) {
+                    return CompanyStatus.normalizeFromApiPayload(primaryOrg ? [primaryOrg] : []).company_status_label;
+                }
                 // Om verksamOrganisation är 'JA', är företaget aktivt
                 if (primaryOrg?.verksamOrganisation?.kod === 'JA') {
                     return 'Aktiv';
@@ -1186,9 +1189,15 @@ class ClientFlowApp {
                 return [];
             })(),
             pagandeAvveckling: (() => {
-                const v = primaryOrg?.pagandeAvvecklingsEllerOmstruktureringsforsfarande ?? primaryOrg?.pagandeAvveckling ?? primaryOrg?.avvecklingsforsfarande ?? primaryOrg?.avvecklingsOmstruktureringsforsfarande;
+                const v = primaryOrg?.pagaendeAvvecklingsEllerOmstruktureringsforfarande
+                    ?? primaryOrg?.pagandeAvvecklingsEllerOmstruktureringsforsfarande
+                    ?? primaryOrg?.pagandeAvveckling
+                    ?? primaryOrg?.avvecklingsforsfarande
+                    ?? primaryOrg?.avvecklingsOmstruktureringsforsfarande;
                 if (!v) return null;
                 if (typeof v === 'string' && v.trim() && v !== '-') return v;
+                const first = v.pagaendeAvvecklingsEllerOmstruktureringsforfarandeLista?.[0];
+                if (first?.klartext) return [first.klartext, first.fromDatum].filter(Boolean).join(' ');
                 if (v?.datum) return v.datum;
                 if (v?.klartext) return v.klartext;
                 if (v?.beskrivning) return v.beskrivning;
@@ -1208,6 +1217,13 @@ class ClientFlowApp {
                 hasVerksamhetsbeskrivning: !!primaryOrg?.verksamhetsbeskrivning
             }
         };
+        if (typeof CompanyStatus !== 'undefined' && CompanyStatus.normalizeFromApiPayload) {
+            const snap = CompanyStatus.normalizeFromApiPayload(primaryOrg ? [primaryOrg] : []);
+            transformedData.companyStatus = snap;
+            transformedData.status = snap.company_status_label || transformedData.status;
+            transformedData.aktivtForetag = snap.company_status === 'ACTIVE';
+            if (snap.warning_text) transformedData.pagandeAvveckling = snap.warning_text;
+        }
         
         console.log('✅ Transformed data:', transformedData);
         console.log('🔍 Debug information:', transformedData.debug);
@@ -1333,16 +1349,15 @@ class ClientFlowApp {
                         ${formatValue(companyData.status)}
                     </span>
                 </div>
+                ${companyData.companyStatus?.has_critical_company_event && companyData.companyStatus?.warning_text
+                    ? `<div class="company-status-alert" role="alert"><i class="fas fa-exclamation-triangle"></i><div><strong>${companyData.companyStatus.warning_title || 'Företagsvarning'}</strong><div>${companyData.companyStatus.warning_text}</div></div></div>`
+                    : ''}
 
                 <!-- Fält-grid -->
                 <div class="lead-fields">
                     <div class="lead-field">
                         <label>Registreringsdatum</label>
                         <span>${formatValue(companyData.registreringsdatum)}</span>
-                    </div>
-                    <div class="lead-field">
-                        <label>Registreringsland</label>
-                        <span>${formatValue(companyData.registreringsland)}</span>
                     </div>
                     <div class="lead-field">
                         <label>Organisationsform</label>

@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.25', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.26', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -4250,6 +4250,40 @@ class CustomerCardManager {
         const verksamhet = fields.Verksamhetsbeskrivning || '';
         const sniRaw = fields['SNI kod'] || fields['SNI-koder'] || '';
         const befattning = fields.Befattningshavare || '';
+        const companySnap = this._parseCompanySnapshot(fields);
+        const companyStatus = companySnap?.company_status
+            || (String(fields['Aktivt företag'] || '').trim() === 'Nej' ? 'INACTIVE' : (status === 'Avregistrerad' ? 'DEREGISTERED' : (status ? 'ACTIVE' : 'UNKNOWN')));
+        const companyStatusLabel = companySnap?.company_status_label
+            || (window.CompanyStatus?.STATUS_LABEL?.[companyStatus] || '');
+        const warningHtml = (companySnap?.has_critical_company_event && companySnap?.warning_text)
+            ? `<div class="company-status-alert" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div>
+                        <strong>${this._esc(companySnap.warning_title || 'Företagsvarning')}</strong>
+                        <div>${this._esc(companySnap.warning_text)}</div>
+                    </div>
+               </div>`
+            : '';
+        const headerBadge = document.getElementById('customer-company-status');
+        if (headerBadge) {
+            headerBadge.outerHTML = this._companyStatusBadgeHtml(companyStatus, companyStatusLabel, 'customer-company-status');
+        }
+        const juridiskForm = companySnap?.juridisk_form_text || '';
+        const reklamsparr = !!companySnap?.reklamsparr;
+        const verksamLabel = companySnap?.verksam_organisation === 'JA'
+            ? 'Klassas som verksam (SCB)'
+            : (companySnap?.verksam_organisation === 'NEJ' ? 'Klassas inte som verksam (SCB)' : '');
+        const latestReport = companySnap?.latest_annual_report_period_end
+            ? {
+                period: companySnap.latest_annual_report_period_end,
+                registered: companySnap.latest_annual_report_registered_at,
+                id: companySnap.latest_annual_report_dokument_id,
+                format: companySnap.latest_annual_report_filformat
+            }
+            : null;
+        const checkedAt = companySnap?.company_data_last_checked_at
+            ? String(companySnap.company_data_last_checked_at).slice(0, 10)
+            : '';
 
         // SNI-koder — kan komma som:
         // - "62010 Dataprogrammering\n62020 Konsultverksamhet"
@@ -4378,18 +4412,29 @@ class CustomerCardManager {
                 </div>
                 <div class="collapsible-body">
                     <div id="bolagsverket-view">
+                        ${warningHtml}
                         <div class="lead-fields">
                             <div class="lead-field"><label>Företagsnamn</label><span id="bv-namn-view">${fmt(namn)}</span></div>
                             <div class="lead-field"><label>Organisationsnummer</label><span id="bv-orgnr-view">${fmt(orgnr)}</span></div>
+                            <div class="lead-field"><label>Status</label><span id="bv-status-view">${this._companyStatusBadgeHtml(companyStatus, companyStatusLabel)}</span></div>
+                            <div class="lead-field"><label>Organisationsform</label><span id="bv-bolagsform-view">${fmt(bolagsform)}${juridiskForm && juridiskForm !== bolagsform ? `<div class="uppdrag-muted" style="margin-top:0.2rem;font-size:0.8rem;">Juridisk form: ${this._esc(juridiskForm)}</div>` : ''}</span></div>
                             <div class="lead-field"><label>Registreringsdatum</label><span id="bv-regdatum-view">${fmt(regdatum)}</span></div>
-                            <div class="lead-field"><label>Registreringsland</label><span id="bv-regland-view">${fmt(regland)}</span></div>
-                            <div class="lead-field"><label>Organisationsform</label><span id="bv-bolagsform-view">${fmt(bolagsform)}</span></div>
                             <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${fmt(adress)}</span></div>
-                            <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
-                        </div>
-                        <div class="lead-section" style="margin-top:1rem;">
-                            <label>SNI-koder</label>
-                            <div class="lead-sni" id="bv-sni-view">${sniHTML}</div>
+                            <div class="lead-field lead-field--full"><label>Huvudsaklig SNI / verksamhet</label>
+                                <div id="bv-verksamhet-view">
+                                    <div class="lead-sni" id="bv-sni-view">${sniHTML}</div>
+                                    <div style="margin-top:0.45rem;">${fmt(verksamhet)}</div>
+                                </div>
+                            </div>
+                            <div class="lead-field lead-field--full"><label>Senaste årsredovisning</label>
+                                <span id="bv-arsredovisning-view">${latestReport
+                                    ? `<span>${this._esc(latestReport.period)}${latestReport.registered ? ` <span class="uppdrag-muted">(registrerad ${this._esc(latestReport.registered)})</span>` : ''}</span>
+                                       ${latestReport.id ? `<button type="button" class="btn btn-ghost btn-sm" data-kund-action="open-arsredovisning" data-dokument-id="${this._esc(latestReport.id)}" data-orgnr="${this._esc(orgnr)}">Öppna</button>` : ''}`
+                                    : '<span class="lead-empty">Ingen digital årsredovisning hämtad ännu.</span>'}</span>
+                            </div>
+                            ${verksamLabel ? `<div class="lead-field lead-field--full"><label>Verksam enligt SCB</label><span>${this._esc(verksamLabel)}<div class="uppdrag-muted" style="margin-top:0.25rem;font-size:0.78rem;">${this._esc(window.CompanyStatus?.VERKSAM_NOTE || '')}</div></span></div>` : ''}
+                            ${reklamsparr ? `<div class="lead-field lead-field--full"><label>Reklamspärr</label><span>Ja — undvik marknadsutskick.</span></div>` : ''}
+                            ${checkedAt ? `<div class="lead-field"><label>Senast kontrollerad</label><span>${this._esc(checkedAt)}</span></div>` : ''}
                         </div>
                     </div>
                     <div id="bolagsverket-edit" class="kunduppgifter-edit" style="display:none;">
@@ -4671,8 +4716,119 @@ class CustomerCardManager {
                 await this.refreshBolagsverketData();
             });
         }
+        this._bindBolagsverketDocClicks();
+        if (orgnr) this._loadBolagsverketDocuments(orgnr);
 
         console.log('✅ Company info loaded with lead-card layout');
+    }
+
+    _parseCompanySnapshot(fields) {
+        const CS = window.CompanyStatus;
+        if (!CS) return null;
+        return CS.parseStoredSnapshot((fields || {})[CS.AIRTABLE_STATUS_FIELD]);
+    }
+
+    _companyStatusBadgeHtml(status, label, id) {
+        const st = status || 'UNKNOWN';
+        const text = label || (window.CompanyStatus?.STATUS_LABEL?.[st] || '');
+        if (!text) return id ? `<span id="${id}" class="company-status-badge is-unknown" hidden></span>` : '';
+        const tone = {
+            ACTIVE: 'is-active',
+            INACTIVE: 'is-inactive',
+            DEREGISTERED: 'is-critical',
+            LIQUIDATION: 'is-critical',
+            BANKRUPTCY: 'is-critical',
+            RECONSTRUCTION: 'is-warn',
+            UNKNOWN: 'is-unknown'
+        }[st] || 'is-unknown';
+        const idAttr = id ? ` id="${this._esc(id)}"` : '';
+        return `<span${idAttr} class="company-status-badge ${tone}">${this._esc(text)}</span>`;
+    }
+
+    _bindBolagsverketDocClicks() {
+        if (this._bvDocClickBound) return;
+        this._bvDocClickBound = true;
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-kund-action="open-arsredovisning"]');
+            if (!btn) return;
+            e.preventDefault();
+            const dokumentId = btn.getAttribute('data-dokument-id') || '';
+            const orgnr = btn.getAttribute('data-orgnr') || '';
+            this._openArsredovisning(dokumentId, orgnr, btn);
+        });
+    }
+
+    async _loadBolagsverketDocuments(orgnr) {
+        const wrap = document.getElementById('bv-arsredovisning-view');
+        if (!wrap || !orgnr) return;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/bolagsverket/dokumentlista`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ organisationsnummer: orgnr })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return;
+            const CS = window.CompanyStatus;
+            const docs = CS ? CS.normalizeDocumentList(data.dokument || []) : (data.dokument || []);
+            if (!docs.length) {
+                wrap.innerHTML = '<span class="lead-empty">Ingen digitalt inlämnad årsredovisning finns.</span>';
+                return;
+            }
+            const latest = docs[0];
+            wrap.innerHTML = docs.slice(0, 3).map((d, i) => `
+                <div class="lead-ar-item">
+                    <span>${this._esc(d.rapporteringsperiodTom || 'Okänd period')}${d.registreringstidpunkt ? ` <span class="uppdrag-muted">(reg. ${this._esc(d.registreringstidpunkt)})</span>` : ''}${i === 0 ? ' <span class="uppdrag-muted">senaste</span>' : ''}</span>
+                    <button type="button" class="btn btn-ghost btn-sm" data-kund-action="open-arsredovisning" data-dokument-id="${this._esc(d.dokumentId)}" data-orgnr="${this._esc(orgnr)}">Öppna</button>
+                </div>
+            `).join('');
+            const snap = this._parseCompanySnapshot(this.customerData?.fields || {});
+            if (snap && CS && latest.dokumentId && snap.latest_annual_report_dokument_id !== latest.dokumentId) {
+                const next = CS.attachLatestReport(snap, docs);
+                next.company_data_last_checked_at = snap.company_data_last_checked_at || new Date().toISOString();
+                this.customerData.fields[CS.AIRTABLE_STATUS_FIELD] = CS.snapshotToJson(next);
+            }
+        } catch (e) {
+            console.warn('dokumentlista:', e.message || e);
+        }
+    }
+
+    async _openArsredovisning(dokumentId, orgnr, btn) {
+        if (!dokumentId) {
+            this.showNotification('Dokument-id saknas.', 'error');
+            return;
+        }
+        const orig = btn?.innerHTML;
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            }
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const url = `${baseUrl}/api/bolagsverket/dokument/${encodeURIComponent(dokumentId)}${orgnr ? `?orgnr=${encodeURIComponent(orgnr)}` : ''}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${res.status}`);
+            }
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = `arsredovisning-${dokumentId}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+        } catch (e) {
+            this.showNotification('Kunde inte hämta årsredovisningen: ' + (e.message || 'fel'), 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = orig || 'Öppna';
+            }
+        }
     }
 
     async refreshBolagsverketData() {
@@ -4704,47 +4860,69 @@ class CustomerCardManager {
             const payload = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(payload.error || payload.message || `HTTP ${res.status}`);
 
-            const app = window.clientFlowApp;
-            if (!app || typeof app.transformBolagsverketData !== 'function') {
-                throw new Error('Kunde inte hitta transformBolagsverketData (app.js).');
+            const CS = window.CompanyStatus;
+            let snapshot = payload.companyStatus
+                || (CS ? CS.normalizeFromApiPayload(payload.data) : null);
+            if (CS && snapshot) {
+                try {
+                    const docRes = await fetch(`${baseUrl}/api/bolagsverket/dokumentlista`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ organisationsnummer: orgnr })
+                    });
+                    const docPayload = await docRes.json().catch(() => ({}));
+                    if (docRes.ok) snapshot = CS.attachLatestReport(snapshot, docPayload.dokument || []);
+                } catch (_e) { /* metadata is optional on refresh */ }
             }
-            app.lastSearchedOrgNumber = orgnr;
-            const transformed = app.transformBolagsverketData(payload.data);
 
-            const newFields = {};
-            const setIf = (key, val) => {
-                const v = (val == null) ? '' : String(val).trim();
-                if (v) newFields[key] = v;
-            };
+            const prevSnap = this._parseCompanySnapshot(fields) || {};
+            const newFields = CS
+                ? CS.airtableFieldsFromSnapshot(snapshot, fields)
+                : {};
+            if (!CS) {
+                const app = window.clientFlowApp;
+                if (!app || typeof app.transformBolagsverketData !== 'function') {
+                    throw new Error('Kunde inte hitta transformBolagsverketData (app.js).');
+                }
+                app.lastSearchedOrgNumber = orgnr;
+                const transformed = app.transformBolagsverketData(payload.data);
+                const setIf = (key, val) => {
+                    const v = (val == null) ? '' : String(val).trim();
+                    if (v) newFields[key] = v;
+                };
+                setIf('regdatum', transformed.registreringsdatum);
+                setIf('Bolagsform', transformed.form);
+                setIf('Address', transformed.adress?.fullAddress);
+                setIf('Verksamhetsbeskrivning', transformed.verksamhet);
+            }
 
-            setIf('regdatum', transformed.registreringsdatum);
-            setIf('registreringsland', transformed.registreringsland);
-            setIf('Bolagsform', transformed.form);
-            setIf('Address', transformed.adress?.fullAddress);
-            setIf('Verksamhetsbeskrivning', transformed.verksamhet);
+            const diffs = CS
+                ? CS.diffSnapshots(prevSnap, snapshot, fields).filter((d) => d.key !== 'company_status' || d.prev !== d.next)
+                : Object.keys(newFields)
+                    .map((k) => ({ key: k, label: k, prev: String(fields[k] || '').trim(), next: String(newFields[k] || '').trim() }))
+                    .filter((d) => d.prev !== d.next);
 
-            if (Array.isArray(transformed.sniKoder) && transformed.sniKoder.length) {
-                const lines = transformed.sniKoder
-                    .filter(s => (s?.kod || '').toString().trim())
-                    .map(s => {
-                        const kod = String(s.kod || '').trim();
-                        const klar = String(s.klartext || '').trim();
-                        return klar ? `${kod} - ${klar}` : kod;
-                    })
-                    .join('\n');
-                if (lines) {
-                    const target = (fields['SNI kod'] != null) ? 'SNI kod'
-                        : ((fields['SNI-koder'] != null) ? 'SNI-koder' : 'SNI kod');
-                    newFields[target] = lines;
+            if (snapshot?.name && fields.Namn && CS && !CS.namesLikelyMatch(fields.Namn, snapshot.name)) {
+                if (!diffs.some((d) => d.key === 'Namn')) {
+                    diffs.unshift({
+                        key: 'Namn',
+                        label: 'Företagsnamn (stämmer inte med registret)',
+                        prev: fields.Namn,
+                        next: snapshot.name,
+                        kind: 'identity'
+                    });
+                } else {
+                    diffs.find((d) => d.key === 'Namn').label = 'Företagsnamn (stämmer inte med registret)';
                 }
             }
 
-            const norm = (v) => (v == null) ? '' : String(v).replace(/\r/g, '').trim();
-            const diffs = Object.keys(newFields)
-                .map((k) => ({ key: k, prev: norm(fields[k]), next: norm(newFields[k]) }))
-                .filter(d => d.prev !== d.next);
-
-            this._showBolagsverketDiffModal({ customerId, diffs, newFields });
+            this._showBolagsverketDiffModal({
+                customerId,
+                diffs,
+                newFields,
+                snapshot,
+                prevSnap
+            });
         } catch (e) {
             console.error('❌ refreshBolagsverketData:', e);
             this.showNotification('Kunde inte uppdatera från Bolagsverket: ' + (e.message || 'fel'), 'error');
@@ -4756,24 +4934,37 @@ class CustomerCardManager {
         }
     }
 
-    _showBolagsverketDiffModal({ customerId, diffs, newFields }) {
+    _showBolagsverketDiffModal({ customerId, diffs, newFields, snapshot, prevSnap }) {
         const existing = document.getElementById('bolagsverket-diff-modal');
         if (existing) existing.remove();
 
+        const CS = window.CompanyStatus;
         const modal = document.createElement('div');
         modal.id = 'bolagsverket-diff-modal';
         modal.className = 'modal-overlay';
+        const critical = !!(snapshot && snapshot.has_critical_company_event);
+        const becameCritical = critical && !prevSnap?.has_critical_company_event;
+        const alertHtml = critical
+            ? `<div class="company-status-alert" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <div>
+                        <strong>${this._esc(snapshot.warning_title || 'Företagsvarning')}</strong>
+                        <div>${this._esc(snapshot.warning_text || '')}</div>
+                        ${becameCritical ? '<div class="uppdrag-muted" style="margin-top:0.25rem;">Ny händelse sedan förra kontrollen.</div>' : ''}
+                    </div>
+               </div>`
+            : '';
 
         const rowsHtml = diffs.length ? diffs.map((d) => `
             <label class="uppdrag-riskbox-toggle" style="align-items:flex-start; font-weight:600;">
-                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}">
+                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}" ${d.kind === 'status' || d.kind === 'identity' || becameCritical ? 'checked' : ''}>
                 <div style="display:grid; gap:0.15rem;">
-                    <div style="color:#0f172a;">${this._esc(d.key)}</div>
+                    <div style="color:#0f172a;">${this._esc(d.label || d.key)}</div>
                     <div class="uppdrag-muted">Nu: ${this._esc(d.prev || '—')}</div>
                     <div class="uppdrag-muted">Ny: ${this._esc(d.next || '—')}</div>
                 </div>
             </label>
-        `).join('') : `<div class="uppdrag-muted">Inga förändringar hittades.</div>`;
+        `).join('') : `<div class="uppdrag-muted">Inga fältändringar. Status och tidpunkt för kontrollen kan sparas.</div>`;
 
         modal.innerHTML = `
             <div class="modal-box" style="max-width:820px; width:96vw; max-height:90vh;">
@@ -4782,11 +4973,12 @@ class CustomerCardManager {
                     <button class="modal-close" type="button" onclick="document.getElementById('bolagsverket-diff-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body" style="overflow:auto;">
+                    ${alertHtml}
                     ${rowsHtml}
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('bolagsverket-diff-modal')?.remove()">Stäng</button>
-                    <button class="btn btn-primary btn-sm" type="button" id="bolagsverket-diff-apply" ${diffs.length ? '' : 'disabled'}>
+                    <button class="btn btn-primary btn-sm" type="button" id="bolagsverket-diff-apply">
                         <i class="fas fa-save"></i> Uppdatera kund
                     </button>
                 </div>
@@ -4799,13 +4991,22 @@ class CustomerCardManager {
         if (applyBtn) {
             applyBtn.addEventListener('click', async () => {
                 try {
-                    const selectedKeys = Array.from(modal.querySelectorAll('.bv-diff-cb:checked')).map(cb => cb.value);
+                    const selectedKeys = Array.from(modal.querySelectorAll('.bv-diff-cb:checked')).map((cb) => cb.value);
                     const fieldsToSave = {};
-                    selectedKeys.forEach(k => { fieldsToSave[k] = newFields[k]; });
+                    selectedKeys.forEach((k) => {
+                        if (newFields[k] != null) fieldsToSave[k] = newFields[k];
+                    });
+                    if (CS && snapshot) {
+                        snapshot.company_data_changed_at = diffs.length ? new Date().toISOString() : (prevSnap?.company_data_changed_at || '');
+                        fieldsToSave[CS.AIRTABLE_STATUS_FIELD] = CS.snapshotToJson(snapshot);
+                        fieldsToSave[CS.AIRTABLE_ACTIVE_FIELD] = snapshot.company_status === 'ACTIVE' ? 'Ja' : 'Nej';
+                        if (snapshot.warning_text && Object.prototype.hasOwnProperty.call(this.customerData?.fields || {}, CS.AIRTABLE_WARNING_FIELD)) {
+                            fieldsToSave[CS.AIRTABLE_WARNING_FIELD] = snapshot.warning_text;
+                        }
+                    }
                     if (!Object.keys(fieldsToSave).length) return;
 
                     const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-                    const orig = applyBtn.innerHTML;
                     applyBtn.disabled = true;
                     applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
 
