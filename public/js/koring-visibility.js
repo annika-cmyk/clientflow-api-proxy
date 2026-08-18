@@ -72,6 +72,41 @@
         return deadline < today;
     }
 
+    function addDaysIso(iso, days) {
+        const s = toDateStr(iso);
+        if (!s) return '';
+        const d = new Date(s + 'T00:00:00');
+        if (Number.isNaN(d.getTime())) return '';
+        d.setDate(d.getDate() + (Number(days) || 0));
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
+    }
+
+    /** Deadline idag eller inom `days` dagar, inte redan klar och inte försenad. */
+    function isDueSoon(fields, todayIso, days) {
+        const today = toDateStr(todayIso);
+        const deadline = toDateStr(field(fields, ['Deadline', 'Nästa deadline', 'deadline']));
+        if (!deadline || !today) return false;
+        if (isDoneStatus(statusOf(fields))) return false;
+        if (deadline < today) return false;
+        const until = addDaysIso(today, days == null ? 5 : days);
+        return !!until && deadline <= until;
+    }
+
+    function runAttentionKind(fields, todayIso) {
+        if (isOverdueNotDone(fields, todayIso)) return 'overdue';
+        if (isDueSoon(fields, todayIso, 5)) return 'due-soon';
+        return '';
+    }
+
+    /** Aktuella körningar: bara öppna (ej klar) i perioden, plus ej klara från tidigare. */
+    function shouldShowOpenRunInPeriod(fields, ym, todayIso) {
+        if (isDoneStatus(statusOf(fields))) return false;
+        return isRunOpenInMonth(fields, ym) || isOverdueNotDone(fields, todayIso);
+    }
+
     function isAssignmentOpenInMonth(fields, ym) {
         const start = toDateStr(field(fields, ['Startdatum', 'startDate']));
         const deadline = toDateStr(field(fields, ['Nästa deadline', 'Deadline', 'deadline']));
@@ -105,8 +140,12 @@
     const api = {
         toDateStr,
         parseYm,
+        isDoneStatus,
         isRunOpenInMonth,
         isOverdueNotDone,
+        isDueSoon,
+        runAttentionKind,
+        shouldShowOpenRunInPeriod,
         isAssignmentOpenInMonth,
         isAssignmentOverdueNotDone,
         shouldShowRunInPeriod,

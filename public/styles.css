@@ -8655,6 +8655,32 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: var(--success);
 }
 
+.uppdragboard-row.is-overdue td {
+    background: rgba(185, 28, 28, 0.08);
+}
+.uppdragboard-row.is-overdue .uppdragboard-link {
+    color: #b91c1c;
+    font-weight: 750;
+}
+.uppdragboard-row.is-due-soon td {
+    background: rgba(217, 119, 6, 0.10);
+}
+.uppdragboard-row.is-due-soon .uppdragboard-link {
+    color: #b45309;
+    font-weight: 700;
+}
+.uppdragboard-deadline-hint {
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 0.15rem;
+}
+.uppdragboard-deadline-hint.is-overdue {
+    color: #b91c1c;
+}
+.uppdragboard-deadline-hint.is-due-soon {
+    color: #b45309;
+}
+
 .uppdrag-run-status-select {
     min-width: 180px;
     max-width: 260px;

@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.24', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.25', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -1442,15 +1442,14 @@ class CustomerCardManager {
                     </div>
                 </div>
                 <div class="collapsible-body">
-                    <p class="uppdrag-muted" style="margin-top:0;">Körningar för vald period. Åtgärder enligt kundens riskbedömning måste bockas i innan klarmarkering.</p>
+                    <p class="uppdrag-muted" style="margin-top:0;">Öppna körningar i vald period. Ej klarmarkerade från tidigare perioder är rödmarkerade. Deadline inom 5 dagar markeras. Åtgärder enligt kundens riskbedömning måste bockas i innan klarmarkering.</p>
                     <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
                         <table class="uppdragboard-table">
                             <thead>
                                 <tr>
-                                    <th class="uppdragboard-th-client" style="width:28%; text-align:left;">Uppdrag</th>
-                                    <th class="uppdragboard-th-run" style="width:16%; text-align:center;">Klart senast</th>
-                                    <th class="uppdragboard-th-done" style="width:12%; text-align:center;">Underlag</th>
-                                    <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Status</th>
+                                    <th class="uppdragboard-th-client" style="width:36%; text-align:left;">Uppdrag</th>
+                                    <th class="uppdragboard-th-run" style="width:20%; text-align:center;">Klart senast</th>
+                                    <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Underlag</th>
                                     <th class="uppdragboard-th-done" style="width:16%; text-align:center;">Klarmarkera</th>
                                     <th class="uppdragboard-th-arrow" style="width:6%;"></th>
                                 </tr>
@@ -1605,20 +1604,6 @@ class CustomerCardManager {
                 return hit ? String(hit.status || '').trim() : '';
             };
 
-            const statusBadgeFromRunStatus = (st) => {
-                const s = String(st || '').trim();
-                if (!s) return '';
-                const style = (s === 'Klar')
-                    ? 'background:#dcfce7; color:#166534; border-color:#86efac;'
-                    : (s === 'Sen')
-                        ? 'background:#fee2e2; color:#991b1b; border-color:#fecaca;'
-                        : (s === 'Pågående')
-                            ? 'background:#dbeafe; color:#1d4ed8; border-color:#bfdbfe;'
-                            : 'background:#f1f5f9; color:#334155; border-color:#e2e8f0;';
-                const icon = (s === 'Klar') ? 'fa-check' : (s === 'Sen') ? 'fa-exclamation-triangle' : (s === 'Pågående') ? 'fa-spinner' : 'fa-calendar';
-                return `<span class="uppdragboard-progress" style="${style}"><i class="fas ${icon}"></i> ${this._esc(s)}</span>`;
-            };
-
             const runStatusOptionsHtml = (selected) => {
                 const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
                 const sel = String(selected || '').trim();
@@ -1658,7 +1643,7 @@ class CustomerCardManager {
                 return KV.shouldShowAssignmentInPeriod(fields, mk, todayIso);
             };
 
-            const rowContexts = [];
+            let rowContexts = [];
             existingTypes.forEach((t) => {
                 const rec = byType(t);
                 if (!rec) {
@@ -1683,7 +1668,9 @@ class CustomerCardManager {
                     if (MomsPeriod.isMonthlyFreq(momsFreq) || MomsPeriod.isQuarterlyFreq(momsFreq)) {
                     const momsRunTitle = (periodKey) => MomsPeriod.runTitle(periodKey, momsFreq, mk);
                     let visible = dedupeRunsByPeriodKey(runRecords, 'Momsredovisning', (rr) =>
-                        MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso));
+                        !(KV && KV.isDoneStatus && KV.isDoneStatus(rr?.fields?.Status))
+                        && (MomsPeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso)
+                            || !!(KV && KV.isOverdueNotDone(rr.fields, todayIso))));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     if (!visible.length) {
                         if (!assignmentVisibleInMonth(f)) return;
@@ -1738,8 +1725,9 @@ class CustomerCardManager {
 
                 if (isLoneTyp(t) && window.LonePeriod && Array.isArray(runRecords) && runRecords.length) {
                     const visible = dedupeRunsByPeriodKey(runRecords, t, (rr) =>
-                        LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso)
-                        || !!(KV && KV.isOverdueNotDone(rr.fields, todayIso)));
+                        !(KV && KV.isDoneStatus && KV.isDoneStatus(rr?.fields?.Status))
+                        && (LonePeriod.runVisibleInBoardMonth(rr.fields, mk, todayIso)
+                            || !!(KV && KV.isOverdueNotDone(rr.fields, todayIso))));
                     visible.sort((a, b) => String(a?.fields?.['PeriodKey'] || '').localeCompare(String(b?.fields?.['PeriodKey'] || '')));
                     visible.forEach((rr) => {
                         const pk = String(rr?.fields?.['PeriodKey'] || '').trim();
@@ -1813,6 +1801,13 @@ class CustomerCardManager {
                 });
             });
 
+            rowContexts = rowContexts.filter((ctx) => {
+                const histSt = runStatusFromUppdragHistory(ctx.f, ctx.prefillPeriodKey);
+                const runSt = String(ctx.runRec?.fields?.Status || '').trim();
+                if (KV && KV.isDoneStatus && (KV.isDoneStatus(histSt) || KV.isDoneStatus(runSt))) return false;
+                return !!(ctx.runRec || ctx.instDeadline);
+            });
+
             this._kundUppdragPeriodKeyByTyp = new Map(
                 rowContexts.map((ctx) => [ctx.t, String(ctx.prefillPeriodKey || '').trim()])
             );
@@ -1862,9 +1857,6 @@ class CustomerCardManager {
                         <i class="fas fa-paper-plane"></i> Auto
                     </span>`
                     : '';
-                const runHtml = instDeadline
-                    ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>`
-                    : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>`;
                 const isOpen = openKey === boardKey;
                 const samList = (() => {
                     const byTyp = (samarbeteByUppdragTyp.get(t) || []);
@@ -1900,6 +1892,20 @@ class CustomerCardManager {
                 const runStatus = runStatusFromUppdragHistory(f, prefillPeriodKey)
                     || String(runRec?.fields?.['Status'] || '').trim()
                     || '';
+                const attention = (KV && KV.runAttentionKind)
+                    ? KV.runAttentionKind({
+                        Status: runStatus,
+                        Deadline: instDeadline || String(runRec?.fields?.['Deadline'] || '').trim()
+                    }, todayIso)
+                    : '';
+                const attentionHint = attention === 'overdue'
+                    ? '<div class="uppdragboard-deadline-hint is-overdue">Försenad</div>'
+                    : (attention === 'due-soon'
+                        ? '<div class="uppdragboard-deadline-hint is-due-soon">Deadline inom 5 dagar</div>'
+                        : '');
+                const runHtml = instDeadline
+                    ? `<div><strong>${fmtShort(instDeadline)}</strong></div><div style="font-size:0.8rem; color:#94a3b8;">${this._esc(freq)}</div>${attentionHint}`
+                    : `<div style="font-size:0.85rem; color:#94a3b8;">—</div>${attentionHint}`;
 
                 const runId = runRec ? String(runRec.id || '').trim() : '';
                 const samForRun = samList.filter(s => {
@@ -2135,39 +2141,6 @@ class CustomerCardManager {
                     </div>
                 `;
 
-                const statusHtml = (instDeadline || runStatus)
-                    ? (runRec
-                        ? `
-                            <div class="uppdragboard-statuscell">
-                              <select class="form-select uppdragboard-status-select"
-                                aria-label="Status"
-                                title="Ändra status"
-                                data-kund-action="set-run-status"
-                                data-run-id="${this._esc(String(runRec.id || ''))}"
-                                data-run-typ="${this._esc(String(t || ''))}"
-                                data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
-                                ${runStatusOptionsHtml(runStatus || 'Planerad')}
-                              </select>
-                              <span class="uppdrag-muted uppdragboard-status-msg" data-kund-run-status-msg="${this._esc(String(runRec.id || ''))}"></span>
-                            </div>
-                          `
-                        : `
-                            <div class="uppdragboard-statuscell">
-                              <select class="form-select uppdragboard-status-select"
-                                aria-label="Status"
-                                title="Ändra status"
-                                data-kund-action="set-run-status"
-                                data-run-id=""
-                                data-run-typ="${this._esc(String(t || ''))}"
-                                data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
-                                ${runStatusOptionsHtml(runStatus || 'Planerad')}
-                              </select>
-                              <span class="uppdrag-muted uppdragboard-status-msg" data-kund-run-status-msg="fallback:${this._esc(String(t || ''))}:${this._esc(String(prefillPeriodKey || ''))}"></span>
-                            </div>
-                          `
-                    )
-                    : `<span class="uppdragboard-progress" style="opacity:.65;">Ingen körning</span>`;
-
                 const isKlar = runStatus === 'Klar';
                 const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
                 const doneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
@@ -2178,8 +2151,12 @@ class CustomerCardManager {
                         ? 'Bocka i åtgärder enligt kundens riskbedömning först'
                         : 'Klarmarkera');
 
+                const rowTone = attention === 'overdue'
+                    ? 'is-overdue'
+                    : (attention === 'due-soon' ? 'is-due-soon' : (isKlar ? 'is-done' : ''));
+
                 return `
-                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''} ${isKlar ? 'is-done' : ''}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}" data-kund-period="${this._esc(String(prefillPeriodKey || ''))}">
+                <tr class="uppdragboard-row ${isOpen ? 'is-open' : ''} ${rowTone}" data-kund-board-key="${this._esc(boardKey)}" data-kund-board-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}" data-kund-period="${this._esc(String(prefillPeriodKey || ''))}">
                     <td>
                         <div class="uppdragboard-client">
                             <span class="uppdragboard-link">${this._esc(displayTitle)}</span>
@@ -2188,7 +2165,6 @@ class CustomerCardManager {
                     </td>
                     <td>${runHtml}</td>
                     <td style="text-align:center;">${underlagHtml}</td>
-                    <td>${statusHtml}</td>
                     <td style="text-align:center;">
                         <button type="button" class="uppdragboard-donebtn ${isKlar ? 'is-done' : ''}"
                             data-kund-action="klarmarkera"
@@ -2208,11 +2184,11 @@ class CustomerCardManager {
                     </td>
                 </tr>
                 <tr class="uppdragboard-details" data-kund-details-for="${this._esc(boardKey)}" style="${isOpen ? '' : 'display:none;'}">
-                    <td colspan="6">${detailsHtml}</td>
+                    <td colspan="5">${detailsHtml}</td>
                 </tr>
                 `;
             }).filter(Boolean).join('');
-            tbody.innerHTML = rows || `<tr><td colspan="6" class="uppdragboard-empty">Inga körningar för vald period.</td></tr>`;
+            tbody.innerHTML = rows || `<tr><td colspan="5" class="uppdragboard-empty">Inga öppna körningar för vald period.</td></tr>`;
         };
         this._kundUppdragBoardRerender = renderBoard;
 
