@@ -65,8 +65,9 @@ Periodrader byggs i frontend från:
 | Status | singleSelect | `Aktiv` / `Pausad` / `Avslutad` |
 | Historik | long text (JSON) | Per-period status + anteckningar |
 | Riskåtgärder aktiverade | checkbox | Kräver anteckning vid klarmarkering i CF-UI |
-| Riskåtgärder valda | long text | PTL |
-| Anteckning / Rutin | long text | Instruktioner |
+| Riskåtgärder valda | long text | Risksänkande åtgärder på uppdraget (`riskAtgarderValda[]`) |
+| Anteckning / Rutin | long text | Instruktioner — exponeras på board-rader som `rutin` / `anteckning` |
+| Klientansvarig | text | På uppdraget; fallback från KUNDDATA |
 
 ### Tabell: Uppdragskörningar
 

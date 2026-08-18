@@ -25,7 +25,15 @@ Auth: `Authorization: Bearer {MINIBOK_API_KEY}` + `X-User-Email` / `?userEmail=`
 | `overallRisk` | `Riskniva` / `sammanlagd risk` → low\|medium\|high |
 | `expectedTurnoverRange` | `Omsättning` |
 | `assessedAt` | `Riskbedömning utförd datum` |
-| `rationale` | `Byrans riskbedomning` |
+| `approvedAt` | `Kundens riskbedömning godkänd` |
+| `rationale` | `Byrans riskbedomning` / `Motivering` |
+| `businessSummary` | `Verksamhet` → `Beskrivning av kunden` → KYC → `Verksamhetsbeskrivning` |
+| `industryCodes` / `sniCodes` | `SNI kod` / `SNI-koder` |
+| `internationalTrade` | `Har företaget transaktioner med andra länder?` + KYC-länder |
+| `riskReducingMeasures` | `Risksänkande åtgjärder` |
+| `riskReducingFactors` / `riskRaisingFactors` | Riskfaktor-fält på KUNDDATA |
+| `klientansvarig` / `behoriga` | `Klientansvarig` + `Användare` (namn från Application Users) |
+| `clientflowNotes` | Tabellen Anteckningar |
 | `ownershipSummary` / `ownershipMarkers` | `Verklig huvudman` + Kontaktpersoner/KYC |
 | `pep` | `PEP` / KYC JSON |
 | `riskAtgarderAktiverade` | Uppdrag.`Riskåtgärder aktiverade` (any for kund) |
@@ -36,6 +44,7 @@ Auth: `Authorization: Bearer {MINIBOK_API_KEY}` + `X-User-Email` / `?userEmail=`
 
 - Allmän risk: sektionerna `1. Syfte…` … `8. Värdering…`
 - Policy: `1. Syfte och omfattning policy` … `Policydokumentet reviderat och godkänt`
+- `focusAreas` och `geoHighRiskList` läses från samma Byråer-post även på `/agency/aml-policy` (så Minibok-AI inte får tom policy)
 - `rules[]` inkluderar sektionslabels + inbyggd `cash_text` med `match`
 
 ## Tester
