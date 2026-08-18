@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.29', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.30', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -1619,11 +1619,6 @@ class CustomerCardManager {
                 return hit ? String(hit.ansvarig || '').trim() : '';
             };
 
-            const runStatusOptionsHtml = (selected) => {
-                const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
-                const sel = String(selected || '').trim();
-                return opts.map(o => `<option value="${this._esc(o)}" ${o === sel ? 'selected' : ''}>${this._esc(o)}</option>`).join('');
-            };
             const dedupeRunsByPeriodKey = (runs, typ, visibleFn) => {
                 const best = new Map();
                 (Array.isArray(runs) ? runs : []).forEach((rr) => {
@@ -2081,19 +2076,6 @@ class CustomerCardManager {
                                     ${runRec ? `
                                       <div class="uppdragboard-run-controls">
                                         <div class="uppdrag-view-field uppdrag-view-field--plain">
-                                          <div class="uppdrag-view-label">Status</div>
-                                          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
-                                            <select class="form-select uppdrag-run-status-select"
-                                              data-kund-action="set-run-status"
-                                              data-run-id="${this._esc(runId)}"
-                                              data-run-typ="${this._esc(String(t || ''))}"
-                                              data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
-                                              ${runStatusOptionsHtml(runStatus || 'Planerad')}
-                                            </select>
-                                            <span class="uppdrag-muted" data-kund-run-status-msg="${this._esc(runId)}" style="margin:0;"></span>
-                                          </div>
-                                        </div>
-                                        <div class="uppdrag-view-field uppdrag-view-field--plain">
                                           <div class="uppdrag-view-label">Tilldelad</div>
                                           <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
                                             <select class="form-select uppdrag-run-ansvarig-select"
@@ -2476,7 +2458,7 @@ class CustomerCardManager {
                 }
 
                 // Rad-expansion: ignorera klick på status-dropdown och andra formulärelement
-                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"], [data-kund-action="set-run-ansvarig"], [data-kund-action="klarmarkera"], [data-kund-action="toggle-risk-atgard"], .uppdrag-risk-check')) {
+                if (e.target.closest('select, .uppdragboard-statuscell, [data-kund-action="set-run-ansvarig"], [data-kund-action="klarmarkera"], [data-kund-action="toggle-risk-atgard"], .uppdrag-risk-check')) {
                     return;
                 }
 
@@ -2775,75 +2757,6 @@ class CustomerCardManager {
                         });
                     return;
                 }
-
-                const sel = e.target.closest('[data-kund-action="set-run-status"]');
-                if (!sel || !container.contains(sel)) return;
-                const runId = (sel.getAttribute('data-run-id') || '').toString();
-                const newStatus = (sel.value || '').toString().trim();
-                const typ = (sel.getAttribute('data-run-typ') || '').toString();
-                const periodKey = (sel.getAttribute('data-run-period') || '').toString();
-                if (newStatus === 'Klar') {
-                    const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
-                    const runRec = runId ? (runRecords || []).find(x => String(x.id) === String(runId)) : null;
-                    const required = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
-                    const row = sel.closest('tr');
-                    const boardKey = row?.getAttribute('data-kund-board-key') || typ;
-                    const box = container.querySelector(`[data-kund-risk-box="${CSS.escape(boardKey)}"]`);
-                    const checkedFromDom = box
-                        ? Array.from(box.querySelectorAll('input[data-kund-action="toggle-risk-atgard"]:checked')).map(i => i.value)
-                        : [];
-                    const done = checkedFromDom.length
-                        ? checkedFromDom.map((text) => ({ text }))
-                        : this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
-                    const prevStatus = String(runRec?.fields?.['Status'] || 'Planerad').trim() || 'Planerad';
-                    if (required.length && !this._riskAtgarderAllChecked(required, done)) {
-                        sel.value = prevStatus === 'Klar' ? 'Planerad' : prevStatus;
-                        this._kundUppdragBoardOpenKey = boardKey;
-                        this._kundUppdragBoardOpenTyp = typ;
-                        try { renderBoard(); } catch (_) {}
-                        this.showNotification('Bocka i alla åtgärder enligt kundens riskbedömning innan du sätter status till Klar.', 'error');
-                        return;
-                    }
-                    sel.value = prevStatus === 'Klar' ? 'Planerad' : prevStatus;
-                    const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
-                    this._showCompleteUppdragModal(root, typ, { periodKey, runId, requiredAtgarder: required, doneAtgarder: done, boardKey });
-                    return;
-                }
-                const msgKey = runId ? runId : `fallback:${typ}:${periodKey}`;
-                const msgEl = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(runId)}"]`);
-                const msgEl2 = container.querySelector(`[data-kund-run-status-msg="${CSS.escape(msgKey)}"]`) || msgEl;
-                if (msgEl2) msgEl2.textContent = 'Sparar...';
-                const doSave = fetch(`${baseUrl}/api/uppdrag/run-status`, {
-                    method: 'PATCH',
-                    ...getAuthOptsKundkort(),
-                    headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
-                    body: JSON.stringify({ customerId, typ, periodKey, status: newStatus, runId: runId || undefined })
-                });
-
-                doSave
-                    .then(r => r.json().then(d => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
-                    .then((d) => {
-                        // uppdatera lokal cache (uppdragspostens historik är källan)
-                        const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
-                        if (rec) {
-                            const savedTyp = rec.fields?.['Typ'];
-                            rec.fields = rec.fields || {};
-                            if (d && d.record && d.record.fields) rec.fields = d.record.fields;
-                            if (savedTyp && !rec.fields['Typ']) rec.fields['Typ'] = savedTyp;
-                        }
-                        // best-effort: uppdatera runRecords om vi har en (enbart för UI consistency)
-                        if (runId) {
-                            const rr = (Array.isArray(runRecords) ? runRecords : []).find(x => String(x?.id || '') === String(runId));
-                            if (rr) { rr.fields = rr.fields || {}; rr.fields['Status'] = newStatus; }
-                        }
-                        if (msgEl2) msgEl2.textContent = 'Sparat.';
-                        setTimeout(() => { if (msgEl2 && msgEl2.textContent === 'Sparat.') msgEl2.textContent = ''; }, 2000);
-                        // re-render så status uppdateras
-                        try { renderBoard(); } catch (_) {}
-                    })
-                    .catch(err => {
-                        if (msgEl2) msgEl2.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
-                    });
             }, { signal: _boardSignal });
             container.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
