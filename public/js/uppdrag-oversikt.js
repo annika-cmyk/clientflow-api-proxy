@@ -538,10 +538,17 @@
     return true;
   }
 
-  function runStatusOptionsHtml(selected) {
-    const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
-    const sel = String(selected || '').trim();
-    return opts.map(o => `<option value="${esc(o)}" ${o === sel ? 'selected' : ''}>${esc(o)}</option>`).join('');
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function attentionForInstance(x, runStatus, done) {
+    const KV = window.KoringVisibility || null;
+    if (!KV || !KV.runAttentionKind) return '';
+    return KV.runAttentionKind({
+      Status: (done || runStatus === 'Klar') ? 'Klar' : runStatus,
+      Deadline: x?.deadline
+    }, todayIso());
   }
 
   function buildInstances(records) {
@@ -791,27 +798,26 @@
         ? MomsPeriod.runTitle(periodKey, MomsPeriod.inferFreq(freq, periodKey, null), x.month)
         : String(x.periodLabel || '').trim();
       const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning') && runName;
-      const runCell = (viewMode === 'open')
-        ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${esc(String(x.deadline || '–'))}</span>`
-        : (showRunName)
-          ? `<span class="uppdragboard-progress ${done ? 'is-done' : ''}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(runName)}</span>`
-          : `<span class="uppdragboard-progress ${done ? 'is-done' : ''}">${done} / 1</span>`;
       const runStatus = runStatusForInstance(x);
-      const statusCell = `
-        <div class="uppdragboard-statuscell">
-          <select class="form-select uppdragboard-status-select"
-            aria-label="Status"
-            title="Ändra status"
-            data-action="set-run-status"
-            data-customer-id="${esc(kundId)}"
-            data-typ="${esc(String(x.typ || activeType))}"
-            data-periodkey="${esc(periodKey)}"
-          >
-            ${runStatusOptionsHtml(runStatus)}
-          </select>
-          <span class="uppdrag-muted uppdragboard-status-msg" data-status-msg-for="${esc(kundId)}:${esc(activeType)}:${esc(periodKey)}"></span>
-        </div>
-      `;
+      const isKlar = done || runStatus === 'Klar';
+      const attention = attentionForInstance(x, runStatus, done);
+      const pillTone = isKlar
+        ? 'is-done'
+        : (attention === 'overdue' ? 'is-overdue' : (attention === 'due-soon' ? 'is-due-soon' : ''));
+      const rowTone = attention === 'overdue'
+        ? 'is-overdue'
+        : (attention === 'due-soon' ? 'is-due-soon' : (isKlar ? 'is-done' : ''));
+      const attentionHint = attention === 'overdue'
+        ? '<div class="uppdragboard-deadline-hint is-overdue">Försenad</div>'
+        : (attention === 'due-soon'
+          ? '<div class="uppdragboard-deadline-hint is-due-soon">Deadline inom 5 dagar</div>'
+          : '');
+      const runPill = (viewMode === 'open')
+        ? `<span class="uppdragboard-progress ${pillTone}">${esc(String(x.deadline || '–'))}</span>`
+        : (showRunName)
+          ? `<span class="uppdragboard-progress ${pillTone}" title="Klart senast ${esc(String(x.deadline || ''))}">${esc(runName)}</span>`
+          : `<span class="uppdragboard-progress ${pillTone}">${done} / 1</span>`;
+      const runCell = `<div class="uppdragboard-runcell">${runPill}${attentionHint}</div>`;
 
       const rutin = (f['Rutin'] || '').toString().trim();
       const runningNote = (f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
@@ -858,12 +864,11 @@
         : ``;
 
       return `
-        <tr class="uppdragboard-row" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}">
+        <tr class="uppdragboard-row ${rowTone}" data-key="${esc(x.key)}" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}">
           <td class="uppdragboard-client">
             ${link ? `<a class="uppdragboard-link" href="${esc(link)}">${esc(kundLabel)}</a>` : esc(kundLabel)}
           </td>
           <td>${runCell}</td>
-          <td>${statusCell}</td>
           <td>
             <button type="button" class="uppdragboard-donebtn ${done ? 'is-done' : ''}" data-action="done" data-customer-id="${esc(kundId)}" data-typ="${esc(String(x.typ || ''))}" data-period-key="${esc(periodKey)}" data-run-id="${esc(runId)}" title="Klarmarkera">
               <i class="fas fa-check"></i>
@@ -872,7 +877,7 @@
           <td class="uppdragboard-arrow"><button type="button" class="uppdragboard-expandbtn" data-action="toggle" title="Visa mer"><i class="fas fa-chevron-down"></i></button></td>
         </tr>
         <tr class="uppdragboard-details" data-details-for="${esc(x.key)}" style="display:none;">
-          <td colspan="5">
+          <td colspan="4">
             <div class="uppdragboard-details-inner">
               <div class="uppdragboard-details-top">
                 <div class="uppdrag-view-field">
@@ -924,7 +929,7 @@
           </td>
         </tr>
       `;
-    }).join('') || `<tr><td colspan="5" class="uppdragboard-empty">Inga uppdrag för vald månad.</td></tr>`;
+    }).join('') || `<tr><td colspan="4" class="uppdragboard-empty">Inga uppdrag för vald månad.</td></tr>`;
 
     tbodyEl.innerHTML = rowsHtml;
 
@@ -1195,7 +1200,7 @@
     } catch (e) {
       const aborted = e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')));
       console.error('❌ Uppdrag översikt:', e);
-      tbodyEl.innerHTML = `<tr><td colspan="5" class="uppdragboard-empty">${aborted
+      tbodyEl.innerHTML = `<tr><td colspan="4" class="uppdragboard-empty">${aborted
         ? 'Hämtningen tog för lång tid. Ladda om sidan eller prova igen om en stund.'
         : `Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}`}</td></tr>`;
       setVisible(els.loading, false);
@@ -1244,33 +1249,6 @@
     els.createBtn.addEventListener('click', () => {
       // Skapa sker idag på kundkortet. Vi håller detta enkelt och länkar till kundlistan.
       window.location.href = 'kundlista.html';
-    });
-
-    // status change
-    tbodyEl.querySelectorAll('[data-action="set-run-status"]').forEach(sel => {
-      sel.addEventListener('change', async () => {
-        const customerId = sel.getAttribute('data-customer-id') || '';
-        const typ = sel.getAttribute('data-typ') || '';
-        const periodKey = sel.getAttribute('data-periodkey') || '';
-        const status = sel.value || '';
-        const msgKey = `${customerId}:${typ}:${periodKey}`;
-        const msgEl = tbodyEl.querySelector(`[data-status-msg-for="${CSS.escape(msgKey)}"]`);
-        if (msgEl) msgEl.textContent = 'Sparar...';
-        try {
-          const res = await fetch(`${baseUrl}/api/uppdrag/run-status`, {
-            method: 'PATCH',
-            ...getAuthOpts(),
-            body: JSON.stringify({ customerId, typ, periodKey, status })
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-          if (msgEl) msgEl.textContent = 'Sparat.';
-          setTimeout(() => { if (msgEl && msgEl.textContent === 'Sparat.') msgEl.textContent = ''; }, 1500);
-          await load();
-        } catch (e) {
-          if (msgEl) msgEl.textContent = 'Kunde inte spara: ' + (e.message || 'fel');
-        }
-      });
     });
   }
 
