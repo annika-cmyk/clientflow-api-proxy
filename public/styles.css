@@ -8566,6 +8566,30 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     min-width: 260px;
 }
 
+.uppdragboard-assignee {
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.uppdragboard-run-controls {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-top: 0.85rem;
+}
+
+.uppdragboard-run-controls .uppdrag-view-field {
+    min-width: 220px;
+    flex: 1 1 220px;
+}
+
+.uppdrag-run-ansvarig-select {
+    min-width: 220px;
+}
+
 .uppdragboard-badge {
     display: inline-flex;
     align-items: center;

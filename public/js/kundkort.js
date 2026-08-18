@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.28', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.29', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -1603,6 +1603,21 @@ class CustomerCardManager {
                 const hit = history.find(it => it && String(it.periodKey || '').trim() === pk);
                 return hit ? String(hit.status || '').trim() : '';
             };
+            const runAnsvarigFromUppdragHistory = (uppdragFields, periodKey) => {
+                if (window.KoringAnsvarig && KoringAnsvarig.ansvarigFromHistory) {
+                    return KoringAnsvarig.ansvarigFromHistory(uppdragFields, periodKey);
+                }
+                const pk = String(periodKey || '').trim();
+                if (!pk) return '';
+                let history = [];
+                try {
+                    const raw = (uppdragFields?.['Historik'] || '').toString().trim();
+                    if (raw && raw.startsWith('[')) history = JSON.parse(raw);
+                    if (!Array.isArray(history)) history = [];
+                } catch (_) { history = []; }
+                const hit = history.find(it => it && String(it.periodKey || '').trim() === pk);
+                return hit ? String(hit.ansvarig || '').trim() : '';
+            };
 
             const runStatusOptionsHtml = (selected) => {
                 const opts = ['Planerad', 'Pågående', 'Klar', 'Sen'];
@@ -1972,6 +1987,11 @@ class CustomerCardManager {
                 const grundRutin = String(f['Rutin'] || '').trim();
                 const korningRutin = rutinForKorning(grundRutin, runRec, todayIso);
                 const ansvarig = String(f['Ansvarig'] || '').trim();
+                const runAnsvarig = String(runRec?.fields?.['Ansvarig'] || '').trim()
+                    || runAnsvarigFromUppdragHistory(f, prefillPeriodKey);
+                const resolvedAnsvarig = (window.KoringAnsvarig && KoringAnsvarig.resolveRunAnsvarig)
+                    ? KoringAnsvarig.resolveRunAnsvarig(runAnsvarig, ansvarig)
+                    : { name: runAnsvarig || ansvarig, inherited: !runAnsvarig && !!ansvarig };
                 const klientansvarig = String(f['Klientansvarig'] || '').trim();
                 const startdatum = toDateStr(f['Startdatum'] || '');
                 const nextDeadline = toDateStr(f['Nästa deadline'] || '');
@@ -2059,17 +2079,33 @@ class CustomerCardManager {
                                         </div>`;
                                     })()}
                                     ${runRec ? `
-                                      <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:0.85rem;">
-                                        <div class="uppdrag-view-label">Status</div>
-                                        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
-                                          <select class="form-select uppdrag-run-status-select"
-                                            data-kund-action="set-run-status"
-                                            data-run-id="${this._esc(runId)}"
-                                            data-run-typ="${this._esc(String(t || ''))}"
-                                            data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
-                                            ${runStatusOptionsHtml(runStatus || 'Planerad')}
-                                          </select>
-                                          <span class="uppdrag-muted" data-kund-run-status-msg="${this._esc(runId)}" style="margin:0;"></span>
+                                      <div class="uppdragboard-run-controls">
+                                        <div class="uppdrag-view-field uppdrag-view-field--plain">
+                                          <div class="uppdrag-view-label">Status</div>
+                                          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
+                                            <select class="form-select uppdrag-run-status-select"
+                                              data-kund-action="set-run-status"
+                                              data-run-id="${this._esc(runId)}"
+                                              data-run-typ="${this._esc(String(t || ''))}"
+                                              data-run-period="${this._esc(String(prefillPeriodKey || ''))}">
+                                              ${runStatusOptionsHtml(runStatus || 'Planerad')}
+                                            </select>
+                                            <span class="uppdrag-muted" data-kund-run-status-msg="${this._esc(runId)}" style="margin:0;"></span>
+                                          </div>
+                                        </div>
+                                        <div class="uppdrag-view-field uppdrag-view-field--plain">
+                                          <div class="uppdrag-view-label">Tilldelad</div>
+                                          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
+                                            <select class="form-select uppdrag-run-ansvarig-select"
+                                              data-kund-action="set-run-ansvarig"
+                                              data-run-id="${this._esc(runId)}"
+                                              data-run-typ="${this._esc(String(t || ''))}"
+                                              data-run-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                              aria-label="Tilldela körning">
+                                              ${this._koringAssigneeOptionsHtml(runAnsvarig, ansvarig)}
+                                            </select>
+                                            <span class="uppdrag-muted" data-kund-run-ansvarig-msg="${this._esc(runId)}" style="margin:0;"></span>
+                                          </div>
                                         </div>
                                       </div>
                                     ` : `
@@ -2161,6 +2197,9 @@ class CustomerCardManager {
                         <div class="uppdragboard-client">
                             <span class="uppdragboard-link">${this._esc(displayTitle)}</span>
                             ${autoChip}
+                            ${resolvedAnsvarig.name
+                                ? `<div class="uppdragboard-assignee">${this._esc(resolvedAnsvarig.name)}${resolvedAnsvarig.inherited ? ' <span class="uppdrag-muted">(uppdraget)</span>' : ''}</div>`
+                                : ''}
                         </div>
                     </td>
                     <td>${runHtml}</td>
@@ -2437,7 +2476,7 @@ class CustomerCardManager {
                 }
 
                 // Rad-expansion: ignorera klick på status-dropdown och andra formulärelement
-                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"], [data-kund-action="klarmarkera"], [data-kund-action="toggle-risk-atgard"], .uppdrag-risk-check')) {
+                if (e.target.closest('select, .uppdragboard-statuscell, .uppdrag-run-status-select, [data-kund-action="set-run-status"], [data-kund-action="set-run-ansvarig"], [data-kund-action="klarmarkera"], [data-kund-action="toggle-risk-atgard"], .uppdrag-risk-check')) {
                     return;
                 }
 
@@ -2685,6 +2724,54 @@ class CustomerCardManager {
                         })
                         .catch((err) => {
                             if (statusEl) statusEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
+                        });
+                    return;
+                }
+
+                const ansvarigSel = e.target.closest('[data-kund-action="set-run-ansvarig"]');
+                if (ansvarigSel && container.contains(ansvarigSel)) {
+                    const runId = (ansvarigSel.getAttribute('data-run-id') || '').toString();
+                    const typ = (ansvarigSel.getAttribute('data-run-typ') || '').toString();
+                    const periodKey = (ansvarigSel.getAttribute('data-run-period') || '').toString();
+                    const nextAnsvarig = (ansvarigSel.value || '').toString().trim();
+                    const msgEl = container.querySelector(`[data-kund-run-ansvarig-msg="${CSS.escape(runId)}"]`);
+                    if (msgEl) msgEl.textContent = 'Sparar...';
+                    fetch(`${baseUrl}/api/uppdrag/run-ansvarig`, {
+                        method: 'PATCH',
+                        ...getAuthOptsKundkort(),
+                        headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                        body: JSON.stringify({
+                            customerId,
+                            typ,
+                            periodKey,
+                            ansvarig: nextAnsvarig,
+                            runId: runId || undefined
+                        })
+                    })
+                        .then((r) => r.json().then((d) => { if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d; }))
+                        .then((d) => {
+                            const rec = _recByType.get(typ) || records.find((x) => String(x?.fields?.['Typ'] || '') === String(typ));
+                            if (rec) {
+                                const savedTyp = rec.fields?.['Typ'];
+                                rec.fields = rec.fields || {};
+                                if (d && d.record && d.record.fields) rec.fields = d.record.fields;
+                                if (savedTyp && !rec.fields['Typ']) rec.fields['Typ'] = savedTyp;
+                            }
+                            if (runId) {
+                                const rr = (Array.isArray(runRecords) ? runRecords : []).find((x) => String(x?.id || '') === String(runId));
+                                if (rr) {
+                                    rr.fields = rr.fields || {};
+                                    rr.fields['Ansvarig'] = nextAnsvarig;
+                                }
+                            }
+                            if (msgEl) msgEl.textContent = d.warning ? String(d.warning) : 'Sparat.';
+                            setTimeout(() => {
+                                if (msgEl && (msgEl.textContent === 'Sparat.' || msgEl.textContent === d.warning)) msgEl.textContent = '';
+                            }, 2500);
+                            try { renderBoard(); } catch (_) {}
+                        })
+                        .catch((err) => {
+                            if (msgEl) msgEl.textContent = 'Kunde inte spara: ' + (err.message || 'fel');
                         });
                     return;
                 }
@@ -5547,6 +5634,49 @@ class CustomerCardManager {
         if (selected && !unique.includes(selected)) unique.unshift(selected);
         const opts = [`<option value="">${this._esc(placeholder || 'Välj')}</option>`];
         unique.forEach((name) => {
+            const sel = name === selected ? 'selected' : '';
+            opts.push(`<option value="${this._esc(name)}" ${sel}>${this._esc(name)}</option>`);
+        });
+        return opts.join('');
+    }
+
+    _koringEligibleAssigneeNames(uppdragAnsvarig, runAnsvarig) {
+        const fields = this.customerData?.fields || {};
+        const raw = fields['Användare'];
+        const ids = Array.isArray(raw)
+            ? raw.map((v) => String(v || '').trim()).filter(Boolean)
+            : String(raw || '').split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+        const klientansvarig = String(fields['Klientansvarig'] || '').trim();
+        if (window.KoringAnsvarig && KoringAnsvarig.eligibleAssigneeNames) {
+            return KoringAnsvarig.eligibleAssigneeNames({
+                users: this._byraUsers || [],
+                customerAnvandareIds: ids,
+                klientansvarig,
+                uppdragAnsvarig,
+                currentRunAnsvarig: runAnsvarig
+            });
+        }
+        const names = new Set();
+        (this._byraUsers || []).forEach((u) => {
+            const n = String(u.name || u.email || '').trim();
+            if (n) names.add(n);
+        });
+        [klientansvarig, uppdragAnsvarig, runAnsvarig].forEach((n) => {
+            const name = String(n || '').trim();
+            if (name) names.add(name);
+        });
+        return [...names];
+    }
+
+    _koringAssigneeOptionsHtml(runAnsvarig, uppdragAnsvarig) {
+        const selected = String(runAnsvarig || '').trim();
+        const inherit = String(uppdragAnsvarig || '').trim();
+        const inheritLabel = inherit
+            ? `Samma som uppdraget (${inherit})`
+            : 'Samma som uppdraget';
+        const names = this._koringEligibleAssigneeNames(inherit, selected);
+        const opts = [`<option value="">${this._esc(inheritLabel)}</option>`];
+        names.forEach((name) => {
             const sel = name === selected ? 'selected' : '';
             opts.push(`<option value="${this._esc(name)}" ${sel}>${this._esc(name)}</option>`);
         });

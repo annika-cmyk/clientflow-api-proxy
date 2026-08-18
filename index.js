@@ -55,6 +55,7 @@ const {
   riskAtgarderAllChecked
 } = require('./lib/uppdrag-risk');
 const access = require('./lib/access');
+const koringAnsvarig = require('./public/js/koring-ansvarig');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -7792,6 +7793,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
   } catch (_) {}
 
   const grundRutin = String(f['Rutin'] || '').trim();
+  const uppdragAnsvarig = String(f['Ansvarig'] || '').trim();
   const nowIso = new Date().toISOString();
   let created = 0;
   const errors = [];
@@ -7852,6 +7854,7 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       };
       if (startIso) runFields['Startdatum'] = startIso;
       if (grundRutin) runFields['Rutin'] = grundRutin;
+      if (uppdragAnsvarig) runFields['Ansvarig'] = uppdragAnsvarig;
       await airtablePostRecordWithFieldFallback(
         uppdragRunsUrl,
         runFields,
@@ -13284,6 +13287,7 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
+  { name: 'Ansvarig', type: 'singleLineText', description: 'Tilldelad handläggare för just denna körning (kan skilja sig från uppdragets ansvarig)' },
   { name: 'Skapad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
   { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
 ];
@@ -15158,6 +15162,144 @@ app.patch('/api/uppdrag/run-status', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('❌ PATCH /api/uppdrag/run-status:', error.response?.data || error.message);
     const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg, airtableError: error.response?.data });
+  }
+});
+
+// PATCH /api/uppdrag/run-ansvarig – tilldela en specifik körning till någon med kundbehörighet
+// Body: { customerId, typ, periodKey, ansvarig, runId? }
+app.patch('/api/uppdrag/run-ansvarig', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+    const { customerId, typ, periodKey, ansvarig, runId } = req.body || {};
+    if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+    const pk = String(periodKey || '').trim();
+    if (!pk) return res.status(400).json({ error: 'periodKey krävs' });
+
+    const nextAnsvarig = koringAnsvarig.normalizeAnsvarig(ansvarig);
+    let accessInfo;
+    try {
+      accessInfo = await assertCustomerAccess(req, customerId, { airtableAccessToken });
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message || 'Ingen behörighet till kunden' });
+    }
+    const { userData, customerRecord } = accessInfo;
+    const customerFields = customerRecord?.fields || {};
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+    const existingRes = await airtableListWithFormulaFallback({
+      url,
+      headers: { Authorization: `Bearer ${airtableAccessToken}` },
+      baseParams: { maxRecords: 1 },
+      formulas: buildUppdragFilterFormulas(customerId, typ)
+    });
+    const existing = (existingRes.data.records || [])[0];
+    if (!existing) return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+
+    const uppdragFields = existing.fields || {};
+    const uppdragAnsvarig = String(uppdragFields['Ansvarig'] || '').trim();
+    const klientansvarig = String(customerFields['Klientansvarig'] || uppdragFields['Klientansvarig'] || '').trim();
+    const runIdClean = String(runId || '').trim();
+
+    let currentRunAnsvarig = koringAnsvarig.ansvarigFromHistory(uppdragFields, pk);
+    if (runIdClean) {
+      try {
+        const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+        if (runsTableId) {
+          const runRes = await axios.get(
+            `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(runIdClean)}`,
+            { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 10000 }
+          );
+          const runByra = String(runRes.data?.fields?.['Byrå ID'] || '').trim();
+          const runKund = String(runRes.data?.fields?.['Kund ID'] || '').trim();
+          const userByra = String(userData?.byraId || access.customerByraId(customerFields) || '').trim();
+          if (runKund && runKund !== String(customerId).trim()) {
+            return res.status(403).json({ error: 'Körningen tillhör inte kunden' });
+          }
+          if (runByra && userByra && runByra !== userByra) {
+            return res.status(403).json({ error: 'Körningen tillhör inte byrån' });
+          }
+          currentRunAnsvarig = String(runRes.data?.fields?.['Ansvarig'] || '').trim() || currentRunAnsvarig;
+        }
+      } catch (_) {}
+    }
+
+    let byraUsers = [];
+    try {
+      const byraId = access.customerByraId(customerFields) || userData?.byraId;
+      let byraRecord = null;
+      try {
+        const byraResult = await getByraerRecordForUser(req);
+        if (!byraResult?.error) byraRecord = byraResult.record;
+      } catch (_) {}
+      byraUsers = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, { byraRecord });
+    } catch (e) {
+      console.warn('PATCH /api/uppdrag/run-ansvarig: kunde inte lista byråanvändare:', e.message);
+    }
+
+    const eligible = koringAnsvarig.eligibleAssigneeNames({
+      users: byraUsers,
+      customerAnvandareIds: access.parseAnvandareIds(customerFields['Användare']),
+      klientansvarig,
+      uppdragAnsvarig,
+      currentRunAnsvarig
+    });
+    if (!koringAnsvarig.isEligibleAssignee(nextAnsvarig, eligible)) {
+      return res.status(400).json({ error: 'Personen har inte behörighet till kunden.' });
+    }
+
+    let history = [];
+    try {
+      const raw = (uppdragFields['Historik'] || '').toString().trim();
+      if (raw) history = JSON.parse(raw);
+      if (!Array.isArray(history)) history = [];
+    } catch (_) { history = []; }
+
+    const nowIso = new Date().toISOString();
+    const user = req.user?.email || '';
+    const idx = history.findIndex((it) => it && String(it.periodKey || '').trim() === pk);
+    const entry = { periodKey: pk, ansvarig: nextAnsvarig, ansvarigUpdatedAt: nowIso, ansvarigUser: user };
+    if (idx >= 0) history[idx] = { ...(history[idx] || {}), ...entry };
+    else history.unshift(entry);
+    history = history.slice(0, 250);
+
+    const updateRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existing.id}`,
+      { fields: { Historik: JSON.stringify(history), Uppdaterad: nowIso } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    let syncedRun = false;
+    let droppedAnsvarig = false;
+    if (runIdClean) {
+      try {
+        const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+        if (!runsTableId) throw new Error('runs table missing');
+        const patched = await airtablePatchRecordWithFieldFallback(
+          `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(runIdClean)}`,
+          { Ansvarig: nextAnsvarig || null, Uppdaterad: nowIso },
+          { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+        );
+        droppedAnsvarig = Array.isArray(patched?.dropped) && patched.dropped.includes('Ansvarig');
+        syncedRun = !droppedAnsvarig;
+      } catch (_) {}
+    }
+
+    return res.json({
+      record: updateRes.data,
+      periodKey: pk,
+      ansvarig: nextAnsvarig,
+      inherited: !nextAnsvarig,
+      syncedRun,
+      warning: droppedAnsvarig
+        ? 'Tilldelningen sparades i historiken. Lägg till fältet Ansvarig i tabellen Uppdragskörningar (setup) för att synka körningsraden.'
+        : undefined
+    });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/run-ansvarig:', error.response?.data || error.message);
+    const status = error.status || error.response?.status || 500;
     const msg = error.response?.data?.error?.message || error.message;
     return res.status(status).json({ error: msg, airtableError: error.response?.data });
   }
