@@ -242,6 +242,17 @@
         return String(freq || '').toLowerCase().includes('kvartal');
     }
 
+    function isYearlyFreq(freq) {
+        const f = String(freq || '').toLowerCase();
+        if (isMonthlyFreq(freq) || isQuarterlyFreq(freq)) return false;
+        return f.includes('årsvis') || f.includes('år');
+    }
+
+    /** Månad/kvartal: start och deadline enligt SKV. Årsvis: manuellt startdatum och deadline. */
+    function usesSkvAutoDates(freq) {
+        return isMonthlyFreq(freq) || isQuarterlyFreq(freq);
+    }
+
     /** Lista periodnycklar: 12 månader eller 4 kvartal framåt från första. */
     function periodKeysAhead(firstPeriodKey, freq, count) {
         const f = String(freq || '').toLowerCase();
@@ -322,6 +333,8 @@
         runMeta,
         isMonthlyFreq,
         isQuarterlyFreq,
+        isYearlyFreq,
+        usesSkvAutoDates,
         periodKeysAhead,
         currentYm,
         quarterOptionsForYear,

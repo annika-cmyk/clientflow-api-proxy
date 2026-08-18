@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.26', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.27', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -3432,6 +3432,9 @@ class CustomerCardManager {
                             <label>Deadline *</label>
                             <input class="kunduppgifter-input" type="date" id="uppdrag-new-deadline">
                         </div>
+                        <div class="lead-field uppdrag-span-full" id="uppdrag-moms-manual-hint-wrap" style="display:none;">
+                            <p class="uppdrag-muted" style="margin:0;">För årsvis moms anger du startdatum och deadline själv. Skatteverkets 12:e/17:e används bara vid månad och kvartal.</p>
+                        </div>
                         <div class="lead-field uppdrag-span-full" id="uppdrag-moms-preview-wrap" style="display:none;">
                             <label>Beräknat (SKV)</label>
                             <p class="uppdrag-muted" style="margin:0;" id="uppdrag-moms-preview-text">—</p>
@@ -3517,6 +3520,7 @@ class CustomerCardManager {
         const momsPeriodLabel = document.getElementById('uppdrag-moms-period-label');
         const startWrap = document.getElementById('uppdrag-new-start-wrap');
         const deadlineWrap = document.getElementById('uppdrag-new-deadline-wrap');
+        const momsManualHintWrap = document.getElementById('uppdrag-moms-manual-hint-wrap');
         const momsPreviewWrap = document.getElementById('uppdrag-moms-preview-wrap');
         const momsPreviewText = document.getElementById('uppdrag-moms-preview-text');
         const lonePreviewWrap = document.getElementById('uppdrag-lone-preview-wrap');
@@ -3535,13 +3539,46 @@ class CustomerCardManager {
             momsPeriodEl.innerHTML = opts.map(o => `<option value="${this._esc(o.value)}">${this._esc(o.label)}</option>`).join('');
         };
 
+        const momsUsesSkvDates = (freq) => {
+            if (!window.MomsPeriod) return true;
+            return MomsPeriod.usesSkvAutoDates
+                ? MomsPeriod.usesSkvAutoDates(freq)
+                : (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq));
+        };
+
+        const syncMomsDateMode = () => {
+            const isMoms = typEl.value === 'Momsredovisning';
+            const freq = freqEl.value || '';
+            const auto = isMoms && momsUsesSkvDates(freq);
+            if (momsWrap) momsWrap.style.display = auto ? 'block' : 'none';
+            if (momsPreviewWrap) momsPreviewWrap.style.display = auto ? 'block' : 'none';
+            if (momsManualHintWrap) momsManualHintWrap.style.display = (isMoms && !auto) ? 'block' : 'none';
+            if (startWrap) startWrap.style.display = auto ? 'none' : '';
+            if (deadlineWrap) deadlineWrap.style.display = auto ? 'none' : '';
+            if (auto) {
+                fillMomsPeriodOptions();
+                applyMomsFromPeriod();
+            } else if (isMoms) {
+                if (startEl && startEl.dataset.skvAuto === '1') startEl.value = '';
+                if (deadlineEl && deadlineEl.dataset.skvAuto === '1') deadlineEl.value = '';
+                if (startEl) delete startEl.dataset.skvAuto;
+                if (deadlineEl) delete deadlineEl.dataset.skvAuto;
+            }
+        };
+
         const applyMomsFromPeriod = () => {
             if (!window.MomsPeriod || !momsPeriodEl) return;
             const pk = momsPeriodEl.value;
             const freq = freqEl.value || '';
             const meta = MomsPeriod.runMeta(pk, freq);
-            if (startEl) startEl.value = meta.startIso || '';
-            if (deadlineEl) deadlineEl.value = meta.deadlineIso || '';
+            if (startEl) {
+                startEl.value = meta.startIso || '';
+                startEl.dataset.skvAuto = '1';
+            }
+            if (deadlineEl) {
+                deadlineEl.value = meta.deadlineIso || '';
+                deadlineEl.dataset.skvAuto = '1';
+            }
             if (momsPreviewText) {
                 const nextPk = MomsPeriod.isQuarterlyFreq(freq) ? MomsPeriod.quarterAdd(pk, 1) : MomsPeriod.monthAdd(pk, 1);
                 const nextMeta = nextPk ? MomsPeriod.runMeta(nextPk, freq) : null;
@@ -3575,18 +3612,10 @@ class CustomerCardManager {
             const t = typEl.value;
             setFreqOptions(t);
             declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
-            const isMoms = t === 'Momsredovisning';
             const isLone = isLoneTypLocal(t);
-            if (momsWrap) momsWrap.style.display = isMoms ? 'block' : 'none';
-            if (momsPreviewWrap) momsPreviewWrap.style.display = isMoms ? 'block' : 'none';
             if (lonePreviewWrap) lonePreviewWrap.style.display = isLone ? 'block' : 'none';
-            const manualDates = !isMoms;
-            if (startWrap) startWrap.style.display = manualDates ? '' : 'none';
-            if (deadlineWrap) deadlineWrap.style.display = manualDates ? '' : 'none';
-            if (isMoms) {
-                fillMomsPeriodOptions();
-                applyMomsFromPeriod();
-            } else if (isLone) {
+            syncMomsDateMode();
+            if (isLone) {
                 applyLonePreview();
             }
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
@@ -3594,7 +3623,7 @@ class CustomerCardManager {
             }
         };
         typEl.addEventListener('change', syncExtra);
-        freqEl.addEventListener('change', () => { if (typEl.value === 'Momsredovisning') { fillMomsPeriodOptions(); applyMomsFromPeriod(); } });
+        freqEl.addEventListener('change', () => { if (typEl.value === 'Momsredovisning') syncMomsDateMode(); });
         if (momsPeriodEl) momsPeriodEl.addEventListener('change', applyMomsFromPeriod);
         if (startEl) startEl.addEventListener('change', applyLonePreview);
         if (deadlineEl) deadlineEl.addEventListener('change', applyLonePreview);
@@ -3623,8 +3652,9 @@ class CustomerCardManager {
                 if (!klientansvarig) throw new Error('Välj klientansvarig');
                 if (!ansvarig) throw new Error('Välj handläggare');
                 if (!frekvens) throw new Error('Välj frekvens');
-                const forstaPeriod = (typ === 'Momsredovisning' && momsPeriodEl) ? (momsPeriodEl.value || '').trim() : '';
-                if (typ === 'Momsredovisning') {
+                const momsAuto = typ === 'Momsredovisning' && momsUsesSkvDates(frekvens);
+                const forstaPeriod = (momsAuto && momsPeriodEl) ? (momsPeriodEl.value || '').trim() : '';
+                if (momsAuto) {
                     if (!forstaPeriod) throw new Error('Välj första momsperiod');
                     if (!startdatum || !deadline) throw new Error('Kunde inte beräkna start/deadline – välj period igen');
                 } else {
