@@ -56,6 +56,7 @@ const {
 } = require('./lib/uppdrag-risk');
 const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
+const hogriskSni = require('./public/js/hogrisk-sni');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -269,6 +270,44 @@ async function getAirtableUser(email) {
 
 function kunddataTableId() {
   return process.env.AIRTABLE_TABLE_KUNDDATA_ID || process.env.AIRTABLE_KUNDDATA_TABLE_ID || 'tblOIuLQS2DqmOQWe';
+}
+
+const HOGRISK_SNI_TABLE = process.env.AIRTABLE_TABLE_HOGRISK_SNI || 'tblTbDvqlxu29G3ND';
+let hogriskSniCache = { at: 0, patterns: null };
+
+async function getHogriskSniPatterns() {
+  if (hogriskSniCache.patterns && (Date.now() - hogriskSniCache.at) < 10 * 60 * 1000) {
+    return hogriskSniCache.patterns;
+  }
+  try {
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!token) throw new Error('AIRTABLE_ACCESS_TOKEN saknas');
+    const records = [];
+    let offset = '';
+    do {
+      const url = `https://api.airtable.com/v0/${baseId}/${HOGRISK_SNI_TABLE}?pageSize=100${offset ? `&offset=${encodeURIComponent(offset)}` : ''}`;
+      const res = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
+      });
+      records.push(...(res.data.records || []));
+      offset = res.data.offset || '';
+    } while (offset);
+    const fromAirtable = hogriskSni.patternsFromRecords(records);
+    const patterns = fromAirtable.length ? fromAirtable : hogriskSni.DEFAULT_PATTERNS;
+    hogriskSniCache = { at: Date.now(), patterns };
+    return patterns;
+  } catch (e) {
+    console.warn('⚠️ Högrisk SNI kunde inte hämtas:', e.message);
+    hogriskSniCache = { at: Date.now(), patterns: hogriskSni.DEFAULT_PATTERNS };
+    return hogriskSni.DEFAULT_PATTERNS;
+  }
+}
+
+async function hogriskSniFromFields(fields) {
+  const patterns = await getHogriskSniPatterns();
+  return hogriskSni.matchFromFields(fields || {}, patterns);
 }
 
 async function fetchKunddataRecord(customerId, airtableAccessToken, baseId) {
@@ -3086,6 +3125,14 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
         // Lägg bara till SNI om vi faktiskt har värden, så vi inte skriver över existerande data med tom sträng
         if (sniString) {
           airtableData.fields['SNI kod'] = sniString;
+          try {
+            const hogriskHit = hogriskSni.matchSni(sniString, await getHogriskSniPatterns());
+            if (hogriskHit.branscher.length) {
+              airtableData.fields['Kunden verkar i en högriskbransch'] = hogriskHit.branscher;
+            }
+          } catch (e) {
+            console.warn('⚠️ Högrisk SNI kunde inte matchas vid nysparning:', e.message);
+          }
         } else {
           console.log('ℹ️ Ingen SNI kod att uppdatera (SCB otillgängligt eller tom lista)');
         }
@@ -4850,6 +4897,15 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
 });
 
 // GET /api/kunddata/:id - Hämta en specifik kund baserat på ID (måste komma före /api/kunddata)
+app.get('/api/hogrisk-sni', authenticateToken, async (req, res) => {
+  try {
+    const patterns = await getHogriskSniPatterns();
+    res.json({ success: true, patterns });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Kunde inte hämta Högrisk SNI' });
+  }
+});
+
 app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
@@ -4918,11 +4974,14 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
       fields: customerRecord.fields
     };
 
+    const hogriskSniMatch = await hogriskSniFromFields(customerRecord.fields || {});
+
     const duration = Date.now() - startTime;
 
     res.json({
       success: true,
       ...formattedRecord,
+      hogriskSni: hogriskSniMatch,
       message: 'Kund hämtad',
       userRole: userData.role,
       timestamp: new Date().toISOString(),
@@ -5110,6 +5169,22 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
             existingNamn: existing.fields?.Namn || ''
           });
         }
+      }
+    }
+
+    const sniChanged = ['SNI kod', 'SNI-koder', 'SNI-kod'].some((k) => Object.prototype.hasOwnProperty.call(cleanedFields, k));
+    if (sniChanged && !Object.prototype.hasOwnProperty.call(cleanedFields, 'Kunden verkar i en högriskbransch')) {
+      try {
+        const mergedFields = { ...(customerRecord.fields || {}), ...cleanedFields };
+        const hogriskHit = await hogriskSniFromFields(mergedFields);
+        if (hogriskHit.branscher.length) {
+          cleanedFields['Kunden verkar i en högriskbransch'] = hogriskSni.mergeLabels(
+            customerRecord.fields?.['Kunden verkar i en högriskbransch'],
+            hogriskHit.branscher
+          );
+        }
+      } catch (e) {
+        console.warn('⚠️ Högrisk SNI kunde inte matchas vid uppdatering:', e.message);
       }
     }
 

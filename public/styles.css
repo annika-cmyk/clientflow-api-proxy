@@ -2287,6 +2287,29 @@ body.sidebar-collapsed .logout-btn {
     font-size: 0.78rem;
     font-weight: 600;
 }
+.sni-code-badge.is-high-risk {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+.sni-code-label.is-high-risk {
+    color: #991b1b;
+    font-weight: 700;
+}
+.riskf-chip--sni {
+    background: #fee2e2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+.riskf-chip--sni em,
+.risker-sni-hint {
+    font-style: normal;
+    font-size: 0.72em;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
 
 .sni-code-label {
     font-size: 0.88rem;

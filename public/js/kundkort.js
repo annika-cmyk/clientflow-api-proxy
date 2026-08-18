@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.30', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.31', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -25,6 +25,7 @@ class CustomerCardManager {
         this.customerData = null;
         this.userData = null;
         this.userByraIds = [];
+        this.hogriskSni = { matches: [], branscher: [], codes: [] };
         
         this.init();
     }
@@ -342,10 +343,12 @@ class CustomerCardManager {
                         createdTime: data.createdTime,
                         fields: data.fields
                     };
+                    this._applyHogriskSni(data.hogriskSni);
                     console.log('✅ Customer data loaded:', this.customerData);
                 } else if (data.id && data.fields) {
                     // Direct record format (fallback)
                     this.customerData = data;
+                    this._applyHogriskSni(data.hogriskSni);
                     console.log('✅ Customer data loaded (fallback):', this.customerData);
                 } else {
                     console.error('❌ Unexpected response format:', data);
@@ -4242,6 +4245,63 @@ class CustomerCardManager {
         set('Klientansvarig', klientansvarig || '–');
     }
 
+    _applyHogriskSni(fromApi) {
+        const HS = window.HogriskSni;
+        if (fromApi && (Array.isArray(fromApi.codes) || Array.isArray(fromApi.branscher))) {
+            this.hogriskSni = {
+                matches: fromApi.matches || [],
+                branscher: fromApi.branscher || [],
+                codes: fromApi.codes || []
+            };
+        } else if (HS) {
+            this.hogriskSni = HS.matchFromFields(this.customerData?.fields || {}, HS.DEFAULT_PATTERNS);
+        } else {
+            this.hogriskSni = { matches: [], branscher: [], codes: [] };
+        }
+        this._syncHogriskFromSni();
+    }
+
+    _hogriskSniCodes() {
+        return new Set((this.hogriskSni?.codes || []).map((c) => String(c)));
+    }
+
+    _hogriskSniBranscher() {
+        return Array.isArray(this.hogriskSni?.branscher) ? this.hogriskSni.branscher.filter(Boolean) : [];
+    }
+
+    async _syncHogriskFromSni() {
+        if (this._hogriskSniSyncing) return;
+        const labels = this._hogriskSniBranscher();
+        if (!labels.length || !this.customerId) return;
+        const HS = window.HogriskSni;
+        const existing = HS
+            ? HS.listLabels(this.customerData?.fields?.['Kunden verkar i en högriskbransch'])
+            : [];
+        const missing = labels.filter((l) => !existing.some((e) => String(e).toLowerCase() === String(l).toLowerCase()));
+        if (!missing.length) return;
+        const merged = HS ? HS.mergeLabels(existing, labels) : existing.concat(labels);
+        this._hogriskSniSyncing = true;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const resp = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ fields: { 'Kunden verkar i en högriskbransch': merged } })
+            });
+            if (!resp.ok) return;
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kunden verkar i en högriskbransch'] = merged;
+            }
+            if (document.getElementById('ovrigkyc-risker-kund')) {
+                this.loadKundRisker();
+            }
+        } catch (_) {
+            /* visningen använder redan SNI-träffarna även om sparandet misslyckas */
+        } finally {
+            this._hogriskSniSyncing = false;
+        }
+    }
+
     loadCompanyInfo() {
         const container = document.getElementById('foretagsinformation-content');
         if (!container) return;
@@ -4303,14 +4363,27 @@ class CustomerCardManager {
             });
 
             if (parsed.length > 0) {
+                const highRiskCodes = this._hogriskSniCodes();
+                const branschByKod = new Map();
+                (this.hogriskSni?.matches || []).forEach((m) => {
+                    if (!m?.kod) return;
+                    const prev = branschByKod.get(m.kod) || [];
+                    if (m.bransch && !prev.includes(m.bransch)) prev.push(m.bransch);
+                    branschByKod.set(m.kod, prev);
+                });
                 sniHTML = parsed.map(({ kod, label }) => {
                     const lRaw = String(label || '').trim();
                     const l = lRaw ? this._esc(lRaw) : '';
                     if (kod != null && /^\d{4,6}$/.test(String(kod).trim())) {
-                        const k = this._esc(String(kod).trim());
-                        return l
-                            ? `<span class="sni-code-badge">${k}</span><span class="sni-code-label">${l}</span>`
-                            : `<span class="sni-code-badge">${k}</span>`;
+                        const rawKod = String(kod).trim();
+                        const k = this._esc(rawKod);
+                        const isHigh = highRiskCodes.has(rawKod);
+                        const branscher = branschByKod.get(rawKod) || [];
+                        const title = isHigh
+                            ? `Högriskbransch: ${this._esc(branscher.join(', ') || 'matchar Högrisk SNI')}`
+                            : '';
+                        const badge = `<span class="sni-code-badge${isHigh ? ' is-high-risk' : ''}"${title ? ` title="${title}"` : ''}>${k}</span>`;
+                        return l ? `${badge}<span class="sni-code-label${isHigh ? ' is-high-risk' : ''}">${l}</span>` : badge;
                     }
                     return l ? `<span class="sni-code-label">${l}</span>` : '';
                 }).filter(Boolean).join('');
@@ -4848,6 +4921,7 @@ class CustomerCardManager {
                     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
 
                     this.customerData.fields = { ...(this.customerData.fields || {}), ...fieldsToSave };
+                    this._applyHogriskSni();
                     document.getElementById('bolagsverket-diff-modal')?.remove();
                     this.showNotification('Uppgifter uppdaterade från Bolagsverket', 'success');
                     this.loadCompanyInfo();
@@ -4954,6 +5028,7 @@ class CustomerCardManager {
             if (this.customerData?.fields) {
                 Object.assign(this.customerData.fields, fields);
             }
+            this._applyHogriskSni();
 
             const nameEl = document.getElementById('customer-name');
             const orgEl = document.getElementById('customer-org-number');
@@ -5975,6 +6050,13 @@ class CustomerCardManager {
         };
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
+        const sniHogrisk = typId === 'kund' ? this._hogriskSniBranscher() : [];
+        const hogriskAlternativ = [...HOGRISK_ALTERNATIV];
+        sniHogrisk.forEach((alt) => {
+            if (!hogriskAlternativ.some((x) => String(x).toLowerCase() === String(alt).toLowerCase())) {
+                hogriskAlternativ.push(alt);
+            }
+        });
         // Undvik dubbel "högriskbransch" – den hanteras ovan med branschval, visa den inte under Övriga
         const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
         const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
@@ -5984,9 +6066,12 @@ class CustomerCardManager {
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
 
-        // Högriskbransch – bara för kund-kortet
+        // Högriskbransch – bara för kund-kortet. SNI-träffar visas alltid.
         const valdaHogrisk = typId === 'kund'
-            ? fmtList(this.customerData?.fields?.['Kunden verkar i en högriskbransch']).filter(v => v && v !== '---')
+            ? Array.from(new Set([
+                ...fmtList(this.customerData?.fields?.['Kunden verkar i en högriskbransch']).filter(v => v && v !== '---'),
+                ...sniHogrisk
+            ]))
             : [];
 
         const hogriskUid = 'hogrisk-sub-body';
@@ -6000,7 +6085,10 @@ class CustomerCardManager {
                     </div>
                 </div>
                 <div class="tjanst-collapsible-body" id="${hogriskUid}" style="display:none;">
-                    <div class="riskf-chips" style="margin-top:0.25rem;">${valdaHogrisk.map(v => `<span class="kyc-chip riskf-chip">${v}</span>`).join('')}</div>
+                    <div class="riskf-chips" style="margin-top:0.25rem;">${valdaHogrisk.map(v => {
+                        const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(v).toLowerCase());
+                        return `<span class="kyc-chip riskf-chip${fromSni ? ' riskf-chip--sni' : ''}">${v}${fromSni ? ' <em>SNI</em>' : ''}</span>`;
+                    }).join('')}</div>
                 </div>
             </div>` : '';
 
@@ -6009,12 +6097,15 @@ class CustomerCardManager {
                 <div class="risker-checkgrupp-titel" style="color:#dc2626;margin-bottom:0.6rem;">
                     <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
                 </div>
-                ${HOGRISK_ALTERNATIV.map(alt => `
+                ${hogriskAlternativ.map(alt => {
+                    const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(alt).toLowerCase());
+                    return `
                     <label class="risker-check-item">
-                        <input type="checkbox" name="hogrisk-kund" value="${alt}" ${valdaHogrisk.includes(alt) ? 'checked' : ''}>
+                        <input type="checkbox" name="hogrisk-kund" value="${alt}" ${valdaHogrisk.includes(alt) || fromSni ? 'checked' : ''} ${fromSni ? 'disabled' : ''}>
                         <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
-                        <span class="risker-check-label"><span class="risker-check-namn">${alt}</span></span>
-                    </label>`).join('')}
+                        <span class="risker-check-label"><span class="risker-check-namn">${alt}${fromSni ? ' <em class="risker-sni-hint">från SNI</em>' : ''}</span></span>
+                    </label>`;
+                }).join('')}
             </div>
             <div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>` : '';
 
@@ -6157,8 +6248,12 @@ class CustomerCardManager {
             // Spara högriskbranscher om det är kund-kortet
             let nyaHogrisk = null;
             if (typId === 'kund') {
-                nyaHogrisk = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
+                const fromBoxes = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
                     .map(cb => cb.value);
+                const HS = window.HogriskSni;
+                nyaHogrisk = HS
+                    ? HS.mergeLabels(fromBoxes, this._hogriskSniBranscher())
+                    : Array.from(new Set(fromBoxes.concat(this._hogriskSniBranscher())));
                 fieldsToSave['Kunden verkar i en högriskbransch'] = nyaHogrisk;
             }
 

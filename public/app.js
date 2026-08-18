@@ -1377,7 +1377,12 @@ class ClientFlowApp {
                         ${companyData.sniKoder && companyData.sniKoder.length > 0
                             ? companyData.sniKoder
                                 .filter(s => s.klartext && s.klartext.trim())
-                                .map(s => `<span class="sni-code-badge">${s.kod}</span><span class="sni-code-label">${s.klartext}</span>`)
+                                .map(s => {
+                                    const HS = window.HogriskSni;
+                                    const hit = HS ? HS.matchSni(String(s.kod || '')) : { codes: [] };
+                                    const high = hit.codes && hit.codes.includes(String(s.kod || ''));
+                                    return `<span class="sni-code-badge${high ? ' is-high-risk' : ''}">${s.kod}</span><span class="sni-code-label${high ? ' is-high-risk' : ''}">${s.klartext}</span>`;
+                                })
                                 .join('')
                             : '<span class="lead-empty">Saknas</span>'
                         }
