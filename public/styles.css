@@ -5691,12 +5691,12 @@ body.sidebar-collapsed .logout-btn {
     z-index: 10000;
     background: #0f172a;
     color: #ffffff;
-    padding: 0.65rem 0.75rem;
+    padding: 0.75rem 0.85rem;
     border-radius: 10px;
     box-shadow: 0 18px 50px rgba(0,0,0,0.25);
     font-size: 0.85rem;
-    line-height: 1.35;
-    white-space: normal;
+    line-height: 1.4;
+    white-space: pre-wrap;
 }
 
 /* Chevron: pekar NED (?ppen), H?GER (st?ngd) */

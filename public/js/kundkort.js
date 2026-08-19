@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.32', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.33', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -14,6 +14,30 @@ const KUND_OMSATTNING_VAL = [
     '1 500 000–10 000 000 kr',
     'Över 10 000 000 kr'
 ];
+
+const BESKRIVNING_HELP_TEXT = `Vad är kundens verksamhet?
+Vilka tjänster/varor säljer de?
+
+KOSTNADER
+Vilka kostnader har de utöver vanliga företagskostnader?
+Har de bil i företaget?
+Är det normalt med representation?
+Vilka större inköp har de som kan sticka ut?
+Vilka är deras största leverantörer?
+
+INTÄKTER
+Hur tar de betalt?
+Använder de faktureringsprogram?
+Vilka är deras kunder?
+Vilken storlek på inbetalningar är normalt?
+
+BOKFÖRING
+Hur får vi in underlag från kunden?
+Har vi inlogg på banken?
+Hur är ordningen?
+Hur väl känner vi till kunden och hur god kännedom har vi om den bransch kunden verkar i?
+
+Finns det något vi bör vara observanta på?`;
 
 class CustomerCardManager {
     constructor() {
@@ -4596,8 +4620,8 @@ class CustomerCardManager {
                             class="help-qmark"
                             id="beskrivning-help-btn"
                             aria-label="Hjälp för Beskrivning av kunden"
-                            data-help-text="Beskriv kundens verksamhet, vilka som är deras typiska kunder och leverantörer, hur de tar betalt för sina tjänster. Beskriv varför de anlitar byrån och omfattningen. Har de verksamhet/kunder eller leverantörer utomlands? Vilka länder isåfall."
-                            title="Beskriv kundens verksamhet, vilka som är deras typiska kunder och leverantörer, hur de tar betalt för sina tjänster. Beskriv varför de anlitar byrån och omfattningen. Har de verksamhet/kunder eller leverantörer utomlands? Vilka länder isåfall."
+                            data-help-text="${this._esc(BESKRIVNING_HELP_TEXT)}"
+                            title="Vad ska beskrivas?"
                             onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this);"
                         >?</button>
                     </div>
@@ -5353,7 +5377,7 @@ class CustomerCardManager {
 
             const r = btn.getBoundingClientRect();
             const margin = 8;
-            const maxW = Math.min(420, Math.max(240, window.innerWidth - 2 * margin));
+            const maxW = Math.min(480, Math.max(260, window.innerWidth - 2 * margin));
             pop.style.maxWidth = maxW + 'px';
             const pr = pop.getBoundingClientRect();
 
