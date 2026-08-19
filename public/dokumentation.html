@@ -17,7 +17,7 @@
                 <header class="content-header risk-header dokumentation-page-header">
                     <div class="risk-header-content">
                         <h1>Dokumentation</h1>
-                        <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning och byrårutiner enligt penningtvättslagen.</p>
+                        <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning, byrårutiner och dolda kundkort enligt penningtvättslagen.</p>
                     </div>
                     <div class="dokumentation-header-actions" id="dokumentation-export-wrap" style="display:none;">
                         <button type="button" class="btn btn-primary" id="btn-export-dokumentation" title="Generera PDF, ladda ner och spara i historiken">
@@ -31,6 +31,14 @@
                 </div>
 
                 <div id="content" style="display:none;">
+                    <div class="dokumentation-tabs byra-anvandare-tabs">
+                        <div class="tab-navigation" role="tablist">
+                            <button type="button" class="tab-button active" data-dok-tab="byra" role="tab" aria-selected="true">Byråns dokumentation</button>
+                            <button type="button" class="tab-button" data-dok-tab="dolda" role="tab" aria-selected="false">Dolda kunder</button>
+                        </div>
+                    </div>
+
+                    <div id="dok-pane-byra" class="dokumentation-pane">
                     <section class="info-section dokumentation-section">
                         <h3><i class="fas fa-file-contract"></i> Byrårutiner</h3>
                         <p class="section-desc">Rutiner och riktlinjer enligt 4 kap. 3 § Lag (2017:630).</p>
@@ -47,6 +55,15 @@
                         <p class="section-desc">Här sparas skapade riskbedömningar och policydokument med datumstämpel. Du kan öppna tidigare versioner och se när de gjordes.</p>
                         <div id="lansstyrelsen-pdf-list" class="dokumentation-pdf-list"></div>
                     </section>
+                    </div>
+
+                    <div id="dok-pane-dolda" class="dokumentation-pane" hidden>
+                    <section class="info-section dokumentation-section">
+                        <h3><i class="fas fa-user-slash"></i> Dolda kunder</h3>
+                        <p class="section-desc">Kunder som raderats från listan finns kvar här. Öppna kundkortet för att se dokumentationen eller visa kunden igen.</p>
+                        <div id="dolda-kunder-list" class="dolda-kunder-list"></div>
+                    </section>
+                    </div>
                 </div>
 
                 <div id="no-data" class="statistik-section" style="margin-top:1rem; display:none;">
@@ -66,7 +83,7 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="js/dokumentation.js?v=5"></script>
+    <script src="js/dokumentation.js?v=6"></script>
     <script src="app.js"></script>
 </body>
 </html>
