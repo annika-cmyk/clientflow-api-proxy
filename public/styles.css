@@ -11872,7 +11872,165 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* =====================================================================
    Tjänst-modal (lägg till / redigera) med AI-förslag
    ===================================================================== */
-.tjanst-modal-content { max-width: 720px; width: 92%; }
+#tjanst-modal.modal {
+    padding: 1.25rem 1rem;
+    align-items: center;
+}
+.modal-content.tjanst-modal-content {
+    max-width: 880px;
+    width: min(880px, 96vw);
+    max-height: min(860px, 92vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.tjanst-modal-content .modal-header {
+    flex-shrink: 0;
+    padding: 1.1rem 1.35rem 0.85rem;
+    border-bottom: 1px solid var(--line, #e8eaee);
+    align-items: flex-start;
+}
+.tjanst-modal-kicker {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.modal-form.tjanst-form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    padding: 0;
+    overflow: hidden;
+}
+.tjanst-modal-identity {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px auto;
+    gap: 0.75rem 0.85rem;
+    align-items: end;
+    padding: 0.95rem 1.35rem 0.85rem;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line, #e8eaee);
+    flex-shrink: 0;
+}
+.tjanst-modal-identity .form-group {
+    margin: 0;
+}
+.tjanst-modal-identity label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.3rem;
+}
+.tjanst-modal-identity input,
+.tjanst-modal-identity select {
+    width: 100%;
+    height: 40px;
+    border: 1px solid #d7dee8;
+    border-radius: 10px;
+    padding: 0 0.7rem;
+    background: #fff;
+    font-size: 0.92rem;
+}
+.tjanst-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.65rem 1.35rem 0;
+    border-bottom: 1px solid var(--line, #e8eaee);
+    flex-shrink: 0;
+    background: #fff;
+}
+.tjanst-tab {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 650;
+    padding: 0.55rem 0.8rem 0.7rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.tjanst-tab:hover { color: #0f172a; }
+.tjanst-tab.is-active {
+    color: #0f172a;
+    border-bottom-color: var(--accent, #13505c);
+}
+.tjanst-tab-count {
+    min-width: 1.35rem;
+    height: 1.2rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.7rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.tjanst-tab.is-active .tjanst-tab-count {
+    background: var(--accent-tint, #e8f1f2);
+    color: var(--accent, #13505c);
+}
+.tjanst-modal-body {
+    flex: 1;
+    min-height: 280px;
+    overflow: auto;
+    padding: 1rem 1.35rem 1.15rem;
+}
+.tjanst-panel[hidden] { display: none !important; }
+.tjanst-panel label {
+    display: block;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 0.25rem;
+}
+.tjanst-panel-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.4;
+}
+.tjanst-panel #tjanst-beskrivning {
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    border: 1px solid #d7dee8;
+    border-radius: 10px;
+    padding: 0.75rem 0.85rem;
+    font: inherit;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    background: #fff;
+}
+.tjanst-empty {
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    padding: 1.35rem 1rem;
+    text-align: center;
+    color: #64748b;
+    font-size: 0.86rem;
+    background: #f8fafc;
+}
+.tjanst-empty[hidden] { display: none !important; }
+.tjanst-modal-footer {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.85rem 1.35rem;
+    border-top: 1px solid var(--line, #e8eaee);
+    background: #fff;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}
 
 .tjanst-form .form-row {
     display: flex;
@@ -11883,12 +12041,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .form-group-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.4rem;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
 }
 .form-group-head label { margin: 0; }
+.form-group-head .tjanst-panel-hint { margin-bottom: 0; }
 
 .btn-add-row {
     display: inline-flex;
@@ -11896,83 +12055,66 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     gap: 0.35rem;
     font-size: 0.78rem;
     font-weight: 600;
-    padding: 0.3rem 0.7rem;
+    padding: 0.4rem 0.75rem;
     border-radius: 8px;
     border: 1px solid var(--accent-light);
     background: var(--accent-tint);
     color: var(--accent);
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 .btn-add-row:hover { background: var(--accent); color: #fff; }
 
-/* AI-förslagsfält */
-.ai-suggest-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    background: var(--accent-tint);
-    border: 1px solid var(--accent-light);
-    border-radius: 10px;
-    padding: 0.65rem 0.85rem;
-    margin-bottom: 1rem;
-}
-.ai-suggest-text {
-    font-size: 0.82rem;
-    color: #4b5563;
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    flex: 1;
-    min-width: 200px;
-}
-.ai-suggest-text i { color: var(--accent); }
 .btn-ai {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.45rem;
+    height: 40px;
     font-size: 0.82rem;
     font-weight: 600;
-    padding: 0.45rem 0.95rem;
+    padding: 0 0.95rem;
     border-radius: 10px;
     border: none;
     background: var(--accent);
     color: #fff;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.15s ease, transform 0.15s ease, opacity 0.2s ease;
+    transition: background 0.15s ease, opacity 0.2s ease;
 }
-.btn-ai:hover { background: var(--accent-dark); transform: translateY(-1px); }
+.btn-ai:hover { background: var(--accent-dark); }
 .btn-ai:disabled { opacity: 0.7; cursor: progress; }
 .btn-ai.loading i { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Dynamiska rader i modalen – 3-dels kortlayout */
-.dyn-list { display: flex; flex-direction: column; gap: 0.65rem; }
+.dyn-list { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .dyn-row.dyn-card {
     display: flex;
     flex-direction: column;
     padding: 0;
     overflow: hidden;
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--line, #e8eaee);
-    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
 }
 
 .dyn-row-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.45rem 0.65rem;
-    background: var(--panel-2, #fafbfc);
-    border-bottom: 1px solid var(--line, #e8eaee);
+    padding: 0.5rem 0.65rem;
+    background: #fff;
+}
+
+.dyn-card:not(.is-collapsed) .dyn-row-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #eef2f6;
 }
 
 .dyn-drag {
-    color: var(--ink-3, #8b929d);
+    color: #94a3b8;
     cursor: grab;
     font-size: 0.85rem;
     line-height: 1;
@@ -11983,61 +12125,95 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .dyn-header-spacer { flex: 1; min-width: 0; }
 
 .dyn-header-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--label, #9aa1ab);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    flex-shrink: 0;
 }
 
 .dyn-row .dyn-typ,
 .dyn-row .dyn-kategori {
     flex-shrink: 0;
-    font-size: 0.8rem;
-    padding: 0.35rem 0.5rem;
-    border: 1px solid #cbd5e1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
-    background: #fff;
+    background: #f8fafc;
 }
 
-.dyn-row .dyn-typ { min-width: 72px; }
-.dyn-row .dyn-kategori { min-width: 120px; }
+.dyn-row .dyn-typ { min-width: 64px; }
+.dyn-row .dyn-kategori { min-width: 118px; }
+
+.dyn-row-header .dyn-titel {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 650;
+    color: #0f172a;
+    padding: 0.25rem 0.15rem;
+}
+.dyn-row-header .dyn-titel:focus {
+    outline: none;
+    box-shadow: inset 0 -2px 0 var(--accent, #13505c);
+}
+
+.dyn-toggle {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.dyn-toggle:hover { background: #f1f5f9; color: #0f172a; }
+.dyn-card:not(.is-collapsed) .dyn-toggle i { transform: rotate(180deg); }
 
 .dyn-row-body {
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
-    padding: 0.55rem 0.65rem;
+    padding: 0.7rem 0.75rem 0.75rem;
 }
+.dyn-card.is-collapsed .dyn-row-body,
+.dyn-card.is-collapsed .dyn-kalla-row { display: none; }
 
-.dyn-row-body .dyn-titel,
 .dyn-row-body .dyn-besk {
     width: 100%;
     box-sizing: border-box;
-    font-size: 0.85rem;
-    padding: 0.45rem 0.55rem;
+    font-size: 0.86rem;
+    padding: 0.55rem 0.65rem;
     border: 1px solid #d7dee8;
     border-radius: 8px;
     background: #fff;
     font-family: inherit;
+    resize: vertical;
+    min-height: 4.2rem;
+    line-height: 1.45;
 }
 
-.dyn-row-body .dyn-titel { font-weight: 600; }
-.dyn-row-body .dyn-besk { resize: vertical; min-height: 4.5rem; }
-
-/* Diskret källrad längst ned i hot-kortet */
 .dyn-card .dyn-kalla-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    border-top: 0.5px solid var(--line, #e8eaee);
-    padding: 6px 12px;
-    background: var(--card-bg, #fff);
+    border-top: 1px solid #eef2f6;
+    padding: 0.45rem 0.75rem 0.55rem;
+    background: #fff;
 }
 
 .dyn-card .dyn-kalla-icon {
-    font-size: 14px;
-    color: var(--ink-3, #8b929d);
+    font-size: 13px;
+    color: #94a3b8;
     flex-shrink: 0;
 }
 
@@ -12047,7 +12223,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: none;
     background: transparent;
     font-size: 12px;
-    color: var(--text, #5a626d);
+    color: #64748b;
     font-family: inherit;
     padding: 2px 0;
 }
@@ -12070,16 +12246,23 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     height: 28px;
     border: none;
     border-radius: 8px;
-    background: #fee2e2;
-    color: var(--error);
+    background: transparent;
+    color: #94a3b8;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
-.dyn-row-header .dyn-remove:hover { background: #fecaca; }
+.dyn-row-header .dyn-remove:hover { background: #fee2e2; color: var(--error); }
+
+@media (max-width: 720px) {
+    .tjanst-modal-identity {
+        grid-template-columns: 1fr;
+    }
+    .tjanst-tabs { overflow-x: auto; }
+}
 
 .behorighet-bulk-grid {
     display: grid;

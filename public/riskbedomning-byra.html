@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260605c">
+    <link rel="stylesheet" href="styles.css?v=20260819a">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -118,20 +118,23 @@
             <div id="tjanst-modal" class="modal" style="display: none;">
                 <div class="modal-content tjanst-modal-content">
                     <div class="modal-header">
-                        <h3 id="tjanst-modal-title">Lägg till tjänst</h3>
-                        <button class="modal-close" onclick="closeModal('tjanst-modal')">
+                        <div>
+                            <h3 id="tjanst-modal-title">Lägg till tjänst</h3>
+                            <p class="tjanst-modal-kicker">Namn och risk syns alltid. Resten är uppdelat i flikar.</p>
+                        </div>
+                        <button class="modal-close" type="button" onclick="closeModal('tjanst-modal')">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
 
-                        <div class="form-row">
-                            <div class="form-group" style="flex: 2;">
+                        <div class="tjanst-modal-identity">
+                            <div class="form-group tjanst-name-field">
                                 <label for="tjanst-name">Tjänstens namn *</label>
                                 <input type="text" id="tjanst-name" name="task-name" placeholder="t.ex. Löpande bokföring" required>
                             </div>
-                            <div class="form-group" style="flex: 1;">
+                            <div class="form-group tjanst-risk-field">
                                 <label for="tjanst-risk-level">Risknivå</label>
                                 <select id="tjanst-risk-level" name="risk-level">
                                     <option value="">Ej satt</option>
@@ -140,49 +143,64 @@
                                     <option value="Hög">Hög</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div class="ai-suggest-bar">
-                            <div class="ai-suggest-text">
-                                <i class="fas fa-wand-magic-sparkles"></i>
-                                Låt AI föreslå beskrivning, hot, sårbarheter och åtgärder utifrån tjänstens namn.
-                            </div>
                             <button type="button" id="ai-suggest-btn" class="btn btn-ai">
                                 <i class="fas fa-wand-magic-sparkles"></i>
                                 <span class="ai-btn-label">Generera med AI</span>
                             </button>
                         </div>
 
-                        <div class="form-group">
-                            <label for="tjanst-beskrivning"><i class="fas fa-file-lines"></i> Tjänstebeskrivning</label>
-                            <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="3" placeholder="Vad innebär tjänsten i praktiken?"></textarea>
+                        <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
+                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt</button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot <span class="tjanst-tab-count" data-count-for="hot">0</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span></button>
+                        </nav>
+
+                        <div class="tjanst-modal-body">
+                            <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
+                                <label for="tjanst-beskrivning">Tjänstebeskrivning</label>
+                                <p class="tjanst-panel-hint">Kort vad tjänsten innebär i praktiken. AI kan föreslå text utifrån namnet.</p>
+                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad gör ni i tjänsten, för vem, och vilka moment ingår?"></textarea>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
+                                <div class="form-group-head">
+                                    <div>
+                                        <label>Hot (PT/TF)</label>
+                                        <p class="tjanst-panel-hint">Ett hot per rad. Klicka på en rad för att skriva beskrivning och källa.</p>
+                                    </div>
+                                    <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div id="hot-empty" class="tjanst-empty">Inga hot ännu.</div>
+                                <div id="hot-list" class="dyn-list"></div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="sarbarhet" hidden>
+                                <div class="form-group-head">
+                                    <div>
+                                        <label>Sårbarheter</label>
+                                        <p class="tjanst-panel-hint">Var tjänsten kan utnyttjas. Klicka på en rad för att redigera.</p>
+                                    </div>
+                                    <button type="button" class="btn-add-row" data-add="sarbarhet"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div id="sarbarhet-empty" class="tjanst-empty">Inga sårbarheter ännu.</div>
+                                <div id="sarbarhet-list" class="dyn-list"></div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="atgard" hidden>
+                                <div class="form-group-head">
+                                    <div>
+                                        <label>Tjänstespecifika åtgärder</label>
+                                        <p class="tjanst-panel-hint">Vad ni gör för att hantera hoten och sårbarheterna.</p>
+                                    </div>
+                                    <button type="button" class="btn-add-row" data-add="atgard"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div id="atgard-empty" class="tjanst-empty">Inga åtgärder ännu.</div>
+                                <div id="atgard-list" class="dyn-list"></div>
+                            </section>
                         </div>
 
-                        <div class="form-group">
-                            <div class="form-group-head">
-                                <label><i class="fas fa-triangle-exclamation"></i> Hot (PT/TF)</label>
-                                <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till hot</button>
-                            </div>
-                            <div id="hot-list" class="dyn-list"></div>
-                        </div>
-
-                        <div class="form-group">
-                            <div class="form-group-head">
-                                <label><i class="fas fa-shield-halved"></i> Sårbarheter</label>
-                                <button type="button" class="btn-add-row" data-add="sarbarhet"><i class="fas fa-plus"></i> Lägg till sårbarhet</button>
-                            </div>
-                            <div id="sarbarhet-list" class="dyn-list"></div>
-                        </div>
-
-                        <div class="form-group">
-                            <div class="form-group-head">
-                                <label><i class="fas fa-list-check"></i> Tjänstespecifika åtgärder</label>
-                                <button type="button" class="btn-add-row" data-add="atgard"><i class="fas fa-plus"></i> Lägg till åtgärd</button>
-                            </div>
-                            <div id="atgard-list" class="dyn-list"></div>
-                        </div>
-
-                        <div class="form-actions">
+                        <div class="form-actions tjanst-modal-footer">
                             <button type="button" class="btn btn-secondary" onclick="closeModal('tjanst-modal')">
                                 Avbryt
                             </button>
@@ -210,6 +228,6 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
-    <script src="js/riskbedomning-byra.v5.js"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=2"></script>
 </body>
 </html>

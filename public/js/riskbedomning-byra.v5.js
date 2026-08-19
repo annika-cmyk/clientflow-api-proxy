@@ -150,10 +150,15 @@ class RiskAssessmentManager {
         document.querySelectorAll('.btn-add-row').forEach(btn => {
             btn.addEventListener('click', () => {
                 const kind = btn.dataset.add;
-                if (kind === 'hot') this.addHotRow();
-                else if (kind === 'sarbarhet') this.addSarbarhetRow();
-                else if (kind === 'atgard') this.addAtgardRow();
+                this.setTjanstTab(kind);
+                if (kind === 'hot') this.addHotRow({}, { expand: true });
+                else if (kind === 'sarbarhet') this.addSarbarhetRow({}, { expand: true });
+                else if (kind === 'atgard') this.addAtgardRow({}, { expand: true });
             });
+        });
+
+        document.querySelectorAll('.tjanst-tab').forEach((tab) => {
+            tab.addEventListener('click', () => this.setTjanstTab(tab.getAttribute('data-tjanst-tab')));
         });
 
         document.addEventListener('click', (e) => {
@@ -532,8 +537,69 @@ class RiskAssessmentManager {
         if (compEl) compEl.textContent = completedCount;
     }
 
-    // ---- Modal: dynamiska rader (3-dels kortlayout) ----
-    addHotRow(data = {}) {
+    // ---- Modal: dynamiska rader (hopfällbara kort) ----
+    setTjanstTab(tabId) {
+        const id = tabId || 'oversikt';
+        document.querySelectorAll('.tjanst-tab').forEach((tab) => {
+            const on = tab.getAttribute('data-tjanst-tab') === id;
+            tab.classList.toggle('is-active', on);
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        document.querySelectorAll('.tjanst-panel').forEach((panel) => {
+            const on = panel.getAttribute('data-tjanst-panel') === id;
+            panel.classList.toggle('is-active', on);
+            panel.hidden = !on;
+        });
+    }
+
+    updateTjanstLists() {
+        const counts = {
+            hot: document.querySelectorAll('#hot-list .dyn-row').length,
+            sarbarhet: document.querySelectorAll('#sarbarhet-list .dyn-row').length,
+            atgard: document.querySelectorAll('#atgard-list .dyn-row').length
+        };
+        Object.entries(counts).forEach(([key, n]) => {
+            document.querySelectorAll(`[data-count-for="${key}"]`).forEach((el) => { el.textContent = String(n); });
+            const empty = document.getElementById(`${key}-empty`);
+            if (empty) empty.hidden = n > 0;
+        });
+    }
+
+    bindDynCard(row, { expand = false, hasSource = false } = {}) {
+        row.classList.toggle('is-collapsed', !expand);
+        row.querySelector('.dyn-remove')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            row.remove();
+            this.updateTjanstLists();
+        });
+        row.querySelector('.dyn-toggle')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            row.classList.toggle('is-collapsed');
+        });
+        if (expand) {
+            setTimeout(() => row.querySelector('.dyn-titel')?.focus(), 0);
+        }
+        if (!hasSource) return;
+        const kallaInput = row.querySelector('.dyn-kalla');
+        const kallaLink = row.querySelector('.dyn-kalla-link');
+        if (!kallaInput || !kallaLink) return;
+        const syncKallaLink = () => {
+            const val = kallaInput.value.trim();
+            if (this.isKallaUrl(val)) {
+                kallaLink.href = val;
+                kallaLink.hidden = false;
+            } else {
+                kallaLink.removeAttribute('href');
+                kallaLink.hidden = true;
+            }
+        };
+        kallaInput.addEventListener('input', syncKallaLink);
+        syncKallaLink();
+    }
+
+    addHotRow(data = {}, opts = {}) {
         const list = document.getElementById('hot-list');
         if (!list) return;
         const typ = ((data.typ ?? data.type) || '').toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
@@ -549,11 +615,11 @@ class RiskAssessmentManager {
                     <option value="PT" ${typ === 'TF' ? '' : 'selected'}>PT</option>
                     <option value="TF" ${typ === 'TF' ? 'selected' : ''}>TF</option>
                 </select>
-                <span class="dyn-header-spacer"></span>
+                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
+                <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
             </div>
             <div class="dyn-row-body">
-                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <textarea class="dyn-besk" rows="3" placeholder="Beskrivning av hotet">${this.esc(beskrivning)}</textarea>
             </div>
             <div class="dyn-kalla-row">
@@ -562,22 +628,9 @@ class RiskAssessmentManager {
                 <a class="dyn-kalla-link" target="_blank" rel="noopener" hidden>Öppna källa ↗</a>
             </div>
         `;
-        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
-        const kallaInput = row.querySelector('.dyn-kalla');
-        const kallaLink = row.querySelector('.dyn-kalla-link');
-        const syncKallaLink = () => {
-            const val = kallaInput.value.trim();
-            if (this.isKallaUrl(val)) {
-                kallaLink.href = val;
-                kallaLink.hidden = false;
-            } else {
-                kallaLink.removeAttribute('href');
-                kallaLink.hidden = true;
-            }
-        };
-        kallaInput.addEventListener('input', syncKallaLink);
-        syncKallaLink();
+        this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
         list.appendChild(row);
+        this.updateTjanstLists();
     }
 
     // Källa räknas som länk endast om värdet börjar med http(s).
@@ -585,33 +638,34 @@ class RiskAssessmentManager {
         return /^https?:\/\//i.test((value || '').toString().trim());
     }
 
-    addSarbarhetRow(data = {}) {
+    addSarbarhetRow(data = {}, opts = {}) {
         const list = document.getElementById('sarbarhet-list');
         if (!list) return;
         const kategorier = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
         const kategori = data.kategori ?? data.category ?? '';
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
-        const opts = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
+        const optsHtml = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet dyn-card';
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
-                <select class="dyn-kategori" aria-label="Sårbarhetskategori">${opts}</select>
-                <span class="dyn-header-spacer"></span>
+                <select class="dyn-kategori" aria-label="Sårbarhetskategori">${optsHtml}</select>
+                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
+                <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
             </div>
             <div class="dyn-row-body">
-                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
                 <textarea class="dyn-besk" rows="3" placeholder="Beskrivning av sårbarheten">${this.esc(beskrivning)}</textarea>
             </div>
         `;
-        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        this.bindDynCard(row, { expand: !!opts.expand });
         list.appendChild(row);
+        this.updateTjanstLists();
     }
 
-    addAtgardRow(data = {}) {
+    addAtgardRow(data = {}, opts = {}) {
         const list = document.getElementById('atgard-list');
         if (!list) return;
         const titel = data.titel ?? data.title ?? data.namn ?? '';
@@ -622,16 +676,17 @@ class RiskAssessmentManager {
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-header-label">Åtgärd</span>
-                <span class="dyn-header-spacer"></span>
+                <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
+                <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
             </div>
             <div class="dyn-row-body">
-                <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
                 <textarea class="dyn-besk" rows="3" placeholder="Vad kontrolleras och dokumenteras?">${this.esc(beskrivning)}</textarea>
             </div>
         `;
-        row.querySelector('.dyn-remove').addEventListener('click', () => row.remove());
+        this.bindDynCard(row, { expand: !!opts.expand });
         list.appendChild(row);
+        this.updateTjanstLists();
     }
 
     collectHot() {
@@ -665,6 +720,8 @@ class RiskAssessmentManager {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '';
         });
+        this.setTjanstTab('oversikt');
+        this.updateTjanstLists();
     }
 
     fillModal(risk) {
@@ -790,6 +847,8 @@ class RiskAssessmentManager {
             (data.hot || []).forEach(h => this.addHotRow(h));
             (data.sarbarheter || []).forEach(s => this.addSarbarhetRow(s));
             (data.atgarder || []).forEach(a => this.addAtgardRow(a));
+            this.updateTjanstLists();
+            this.setTjanstTab('hot');
 
             this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
