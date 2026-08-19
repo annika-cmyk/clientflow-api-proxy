@@ -65,6 +65,13 @@ const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
 const amlaNews = require('./lib/amla-news');
+const amlNewsSchema = require('./lib/aml-news/schema');
+const { createAirtableStore } = require('./lib/aml-news/store-airtable');
+const { parseAssistantJson } = require('./lib/aml-news/json');
+const { runIngestLayer, runClassifyLayer } = require('./lib/aml-news/pipeline');
+const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
+const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
+const { buildDigestEmail } = require('./lib/aml-news/email');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -609,47 +616,353 @@ const optionalAuthenticateToken = (req, res, next) => {
   });
 };
 
-const amlaNewsCache = { xml: '', fetchedAt: 0, error: '' };
+const amlaNewsCache = { xmls: [], fetchedAt: 0, error: '' };
 
-async function loadAmlaRssXml() {
-  const maxAgeMs = 30 * 60 * 1000;
-  if (amlaNewsCache.xml && Date.now() - amlaNewsCache.fetchedAt < maxAgeMs) {
-    return amlaNewsCache.xml;
-  }
-  const url = process.env.AMLA_RSS_URL || amlaNews.AMLA_RSS_URL;
+function amlaRssUrls() {
+  const extra = String(process.env.AMLA_RSS_URL || '').trim();
+  const urls = extra && !amlaNews.AMLA_RSS_URLS.includes(extra)
+    ? [extra, ...amlaNews.AMLA_RSS_URLS]
+    : amlaNews.AMLA_RSS_URLS.slice();
+  return [...new Set(urls)];
+}
+
+async function fetchAmlaRss(url) {
   const res = await axios.get(url, {
     timeout: 15000,
     responseType: 'text',
     headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' }
   });
   const xml = typeof res.data === 'string' ? res.data : String(res.data || '');
-  if (!xml.includes('<item>')) throw new Error('AMLA RSS saknar poster');
-  amlaNewsCache.xml = xml;
+  if (!xml.includes('<item>')) throw new Error('AMLA RSS saknar poster: ' + url);
+  return xml;
+}
+
+async function loadAmlaRssXmls() {
+  const maxAgeMs = 30 * 60 * 1000;
+  if (amlaNewsCache.xmls.length && Date.now() - amlaNewsCache.fetchedAt < maxAgeMs) {
+    return amlaNewsCache.xmls;
+  }
+  const urls = amlaRssUrls();
+  const results = await Promise.allSettled(urls.map((url) => fetchAmlaRss(url)));
+  const xmls = results
+    .filter((r) => r.status === 'fulfilled')
+    .map((r) => r.value);
+  if (!xmls.length) {
+    const firstErr = results.find((r) => r.status === 'rejected');
+    throw new Error(firstErr && firstErr.reason && firstErr.reason.message || 'AMLA RSS saknar poster');
+  }
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.warn('⚠️ AMLA RSS misslyckades:', urls[i], r.reason && r.reason.message);
+  });
+  amlaNewsCache.xmls = xmls;
   amlaNewsCache.fetchedAt = Date.now();
   amlaNewsCache.error = '';
-  return xml;
+  return xmls;
 }
 
 app.get('/api/amla-news', authenticateToken, async (req, res) => {
   try {
     const lang = String(req.query.lang || 'sv').toLowerCase() === 'en' ? 'en' : 'sv';
-    const xml = await loadAmlaRssXml();
-    const payload = amlaNews.buildAmlaNewsPayload(xml, {
+    const xmls = await loadAmlaRssXmls();
+    const payload = amlaNews.buildAmlaNewsPayload(xmls, {
       lang,
+      sources: amlaRssUrls(),
       fetchedAt: new Date(amlaNewsCache.fetchedAt).toISOString()
     });
     res.json({ success: true, ...payload });
   } catch (error) {
     console.error('❌ GET /api/amla-news:', error.message);
-    if (amlaNewsCache.xml) {
+    if (amlaNewsCache.xmls.length) {
       const lang = String(req.query.lang || 'sv').toLowerCase() === 'en' ? 'en' : 'sv';
-      const payload = amlaNews.buildAmlaNewsPayload(amlaNewsCache.xml, {
+      const payload = amlaNews.buildAmlaNewsPayload(amlaNewsCache.xmls, {
         lang,
+        sources: amlaRssUrls(),
         fetchedAt: new Date(amlaNewsCache.fetchedAt).toISOString()
       });
       return res.json({ success: true, stale: true, ...payload });
     }
     res.status(502).json({ success: false, error: 'Kunde inte hämta AMLA-nyheter' });
+  }
+});
+
+const amlNewsJobState = { lastIngestYmd: '', running: false };
+
+function stockholmDateYmd(d = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Stockholm',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(d);
+}
+
+async function fetchAmlNewsText(url) {
+  const res = await axios.get(url, {
+    timeout: 20000,
+    responseType: 'text',
+    maxRedirects: 5,
+    headers: {
+      Accept: 'application/rss+xml, application/xml, text/html, text/plain, */*',
+      'User-Agent': 'ClientFlow-AML-News/1.0 (+https://www.app.clientflow.se)'
+    },
+    validateStatus: (s) => s >= 200 && s < 400
+  });
+  return typeof res.data === 'string' ? res.data : String(res.data || '');
+}
+
+function getAmlNewsStore() {
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!token) throw new Error('Airtable token saknas');
+  if (!global.__amlNewsStore) {
+    global.__amlNewsStore = createAirtableStore({ axios, token, baseId });
+  }
+  return global.__amlNewsStore;
+}
+
+async function completeAmlNewsClassificationJson({ prompt, instructions }) {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) throw new Error('OPENAI_API_KEY saknas');
+  const text = await runOpenAIAssistantRunWithRetry(
+    openaiKey,
+    prompt,
+    {
+      instructions,
+      maxWaitMs: 90000,
+      pollMs: 1500,
+      debugMeta: { route: 'aml-news-classify' }
+    },
+    { maxAttempts: 2 }
+  );
+  return parseAssistantJson(text);
+}
+
+async function loadByraTjanstNamesForNews(byraId, token, baseId) {
+  try {
+    const recs = await fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId);
+    return recs.map(mapByraTjanstRecord).map((t) => t.namn).filter(Boolean);
+  } catch (_) {
+    return [];
+  }
+}
+
+function profilForAmlNews(fields, byraId, tjanster) {
+  return {
+    ...mapByraProfilFromAirtable(fields),
+    firmId: byraId,
+    byraId,
+    tjanster
+  };
+}
+
+async function ensureAmlNewsDigestField(token, baseId) {
+  const byraTable = await getByraerTableMeta(token, baseId);
+  if (!byraTable?.id) return;
+  const existing = (byraTable.fields || []).map((f) => (f.name || '').trim());
+  if (existing.includes(amlNewsSchema.DIGEST_FIELD)) return;
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: amlNewsSchema.DIGEST_FIELD,
+        type: 'singleLineText',
+        description: 'ISO-tid för senast skickade AML-nyhetsdigest'
+      },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+  } catch (err) {
+    console.warn('ensureAmlNewsDigestField:', err.response?.data?.error?.message || err.message);
+  }
+}
+
+async function runAmlNewsIngestAndClassify(opts = {}) {
+  const store = getAmlNewsStore();
+  try {
+    await store.ensureTable();
+  } catch (err) {
+    console.warn('AML-nyheter ensureTable:', err.response?.data?.error?.message || err.message);
+  }
+  const ingest = await runIngestLayer({ fetchText: fetchAmlNewsText, store });
+  let classify = { layer: 'classify', attempted: 0, classified: 0, results: [] };
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_ASSISTANT_ID) {
+    classify = await runClassifyLayer({
+      store,
+      completeJson: completeAmlNewsClassificationJson,
+      limit: opts.classifyLimit || 15
+    });
+  }
+  return { ingest, classify };
+}
+
+async function sendAmlNewsDigestEmail({ toEmail, toName, byraNamn, items, feedUrl }) {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass) return { sent: false, error: 'SMTP ej konfigurerad' };
+  const from = process.env.MAIL_FROM || 'ClientFlow <noreply@clientflow.se>';
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const mail = buildDigestEmail({ byraNamn, toName, items, feedUrl });
+  try {
+    const transporterOpts = { host, port, secure, auth: { user, pass } };
+    if (port === 587 && !secure) transporterOpts.requireTLS = true;
+    const transporter = nodemailer.createTransport(transporterOpts);
+    await transporter.sendMail({ from, to: toEmail, subject: mail.subject, html: mail.html, text: mail.text });
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err.message };
+  }
+}
+
+async function processAmlNewsWeeklyDigests() {
+  const now = new Date();
+  const force = String(process.env.AML_NEWS_DIGEST_FORCE || '').trim() === '1';
+  if (!force && !shouldSendWeeklyDigest(now, null)) return { skipped: 'not-monday' };
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!token) return { skipped: 'no-airtable' };
+  await ensureAmlNewsDigestField(token, baseId);
+  const store = getAmlNewsStore();
+  let items = [];
+  try {
+    items = await store.list();
+  } catch (err) {
+    console.warn('AML-nyheter digest list:', err.message);
+    return { skipped: 'no-items' };
+  }
+  if (!items.length) return { skipped: 'empty' };
+
+  const byraer = await airtableListAllRecords(
+    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}`,
+    { Authorization: `Bearer ${token}` }
+  );
+  const feedUrl = `${String(process.env.PUBLIC_BASE_URL || 'https://www.app.clientflow.se').replace(/\/$/, '')}/amla-nyheter.html`;
+  const sent = [];
+  for (const rec of byraer) {
+    const fields = rec.fields || {};
+    const byraId = String(fields['Byrå ID'] || '').trim();
+    if (!byraId) continue;
+    const lastSent = fields[amlNewsSchema.DIGEST_FIELD] || '';
+    if (!force && !shouldSendWeeklyDigest(now, lastSent)) continue;
+    const tjanster = await loadByraTjanstNamesForNews(byraId, token, baseId);
+    const profil = profilForAmlNews(fields, byraId, tjanster);
+    const matched = items.map((item) => attachRelevance(item, profil));
+    const picked = selectDigestItems(matched, { since: lastSent, minTier: 'medium' });
+    if (!picked.length) continue;
+    const users = await listByraUsersByByraId(byraId, token, baseId, { byraRecord: rec });
+    const recipients = users.filter((u) => access.isLedareOrAdmin(u.role) && u.email);
+    if (!recipients.length) continue;
+    const byraNamn = access.byraDisplayName(fields);
+    let firmSent = false;
+    for (const user of recipients) {
+      const result = await sendAmlNewsDigestEmail({
+        toEmail: user.email,
+        toName: user.name,
+        byraNamn,
+        items: picked,
+        feedUrl
+      });
+      if (result.sent) {
+        sent.push({ byraId, email: user.email });
+        firmSent = true;
+      } else {
+        console.warn('AML-nyheter digest mail:', user.email, result.error);
+      }
+    }
+    if (firmSent) {
+      try {
+        await patchByraerRecordFields(token, baseId, rec.id, {
+          [amlNewsSchema.DIGEST_FIELD]: now.toISOString()
+        });
+      } catch (err) {
+        console.warn('AML-nyheter digest stamp:', err.message);
+      }
+    }
+  }
+  return { sent: sent.length };
+}
+
+async function processAmlNewsJobs() {
+  if (amlNewsJobState.running) return;
+  amlNewsJobState.running = true;
+  try {
+    const ymd = stockholmDateYmd();
+    if (amlNewsJobState.lastIngestYmd !== ymd) {
+      const out = await runAmlNewsIngestAndClassify();
+      amlNewsJobState.lastIngestYmd = ymd;
+      console.log('📰 AML-nyheter ingest', JSON.stringify({
+        inserted: out.ingest.inserted,
+        fetched: out.ingest.fetched,
+        errors: out.ingest.errors,
+        classified: out.classify.classified
+      }));
+    }
+    const digest = await processAmlNewsWeeklyDigests();
+    if (digest && digest.sent) console.log('📰 AML-nyheter digest skickad', digest.sent);
+  } catch (err) {
+    console.warn('AML-nyheter jobb:', err.message);
+  } finally {
+    amlNewsJobState.running = false;
+  }
+}
+
+app.get('/api/aml-news', authenticateToken, async (req, res) => {
+  try {
+    let profil = { byraId: '', geografiskMarknad: 'Sverige', tjanster: [] };
+    try {
+      const loaded = await loadUserByraerRecord(req);
+      const tjanster = await loadByraTjanstNamesForNews(loaded.byraId, loaded.airtableAccessToken, loaded.airtableBaseId);
+      profil = profilForAmlNews(loaded.record?.fields || {}, loaded.byraId, tjanster);
+    } catch (err) {
+      const user = req.user?.email ? await getAirtableUser(req.user.email) : null;
+      if (!access.isClientFlowAdmin(user?.role || req.user?.role)) throw err;
+    }
+    const store = getAmlNewsStore();
+    let rows = [];
+    try {
+      rows = await store.list();
+    } catch (err) {
+      console.warn('GET /api/aml-news list:', err.message);
+    }
+    const items = buildFirmFeed(rows, profil, {
+      category: req.query.category,
+      severity: req.query.severity,
+      minTier: req.query.minTier || 'medium',
+      q: req.query.q
+    });
+    res.json({
+      success: true,
+      items,
+      shown: items.length,
+      total: rows.length,
+      filters: {
+        categories: amlNewsSchema.CATEGORIES,
+        severities: amlNewsSchema.SEVERITIES,
+        tiers: amlNewsSchema.RELEVANCE_TIERS,
+        categoryLabels: amlNewsSchema.CATEGORY_LABELS_SV,
+        severityLabels: amlNewsSchema.SEVERITY_LABELS_SV,
+        tierLabels: amlNewsSchema.TIER_LABELS_SV,
+        sourceLabels: amlNewsSchema.SOURCE_LABELS_SV
+      }
+    });
+  } catch (error) {
+    console.error('❌ GET /api/aml-news:', error.message);
+    res.status(error.status || 500).json({ success: false, error: error.message || 'Kunde inte hämta AML-nyheter' });
+  }
+});
+
+app.post('/api/aml-news/ingest', authenticateToken, async (req, res) => {
+  try {
+    const user = await getAirtableUser(req.user.email);
+    if (!access.isLedareOrAdmin(user?.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får köra inhämtning' });
+    }
+    const out = await runAmlNewsIngestAndClassify({ classifyLimit: 20 });
+    res.json({ success: true, ...out });
+  } catch (error) {
+    console.error('❌ POST /api/aml-news/ingest:', error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -7587,6 +7900,12 @@ if (!global.__clientflowSamarbeteReminderStarted) {
   global.__clientflowSamarbeteReminderStarted = true;
   setTimeout(() => { processSamarbeteReminders().catch(() => {}); }, 15000);
   setInterval(() => { processSamarbeteReminders().catch(() => {}); }, 60 * 60 * 1000);
+}
+
+if (!global.__clientflowAmlNewsJobStarted) {
+  global.__clientflowAmlNewsJobStarted = true;
+  setTimeout(() => { processAmlNewsJobs().catch(() => {}); }, 45000);
+  setInterval(() => { processAmlNewsJobs().catch(() => {}); }, 60 * 60 * 1000);
 }
 
 // ============================================================
