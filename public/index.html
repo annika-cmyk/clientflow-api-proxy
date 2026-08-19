@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.6">
+    <link rel="stylesheet" href="styles.css?v=2.7">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -20,7 +20,7 @@
                     <p class="whats-new-hello">Hej<span class="whats-new-name-wrap"> <strong id="whats-new-name"></strong></span></p>
                     <p class="whats-new-lead">ClientFlow är under ett intensivt utvecklingsarbete! Här listar vi de ändringar som vi gjort den senaste tiden.</p>
                     <ol class="whats-new-list" id="whats-new-list"></ol>
-                    <p class="whats-new-feedback">Testa gärna och ge oss din feedback! <a id="whats-new-feedback-link" href="mailto:hej@clientflow.se?subject=Feedback%20ClientFlow">Skicka feedback</a></p>
+                    <p class="whats-new-feedback">Testa gärna och ge oss din feedback! <a id="whats-new-feedback-link" href="mailto:hej@clientflow.se?subject=Feedback%20ClientFlow" data-open-feedback>Skicka feedback</a></p>
                 </section>
 
                 <header class="content-header dashboard-header">
@@ -378,6 +378,40 @@
         </main>
     </div>
 
+    <div id="feedback-modal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box feedback-modal-box" role="dialog" aria-labelledby="feedback-modal-title" aria-modal="true">
+            <div class="modal-header">
+                <h3 id="feedback-modal-title">Skicka feedback</h3>
+                <button type="button" class="modal-close" id="feedback-modal-close" aria-label="Stäng">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="feedback-form">
+                <div class="modal-body">
+                    <p class="feedback-modal-lead">Berätta vad som fungerar, vad som strular eller vad du saknar. Vi läser allt på hej@clientflow.se.</p>
+                    <div class="form-group">
+                        <label for="feedback-type">Typ</label>
+                        <select id="feedback-type" name="type">
+                            <option value="forslag">Förslag</option>
+                            <option value="problem">Problem</option>
+                            <option value="fraga">Fråga</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="feedback-message">Din feedback</label>
+                        <textarea id="feedback-message" name="message" rows="6" required maxlength="4000" placeholder="Skriv här…"></textarea>
+                    </div>
+                    <p class="feedback-from">Skickas som <strong id="feedback-from-name"></strong><span id="feedback-from-email-wrap"> · <span id="feedback-from-email"></span></span></p>
+                    <p id="feedback-status" class="feedback-status" hidden></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" id="feedback-cancel">Avbryt</button>
+                    <button type="submit" class="btn btn-primary" id="feedback-submit">Skicka</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <footer class="site-footer">
         <div class="container">
             <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
@@ -391,6 +425,7 @@
     <script src="js/ai-chat.js?v=2.4"></script>
     <script src="js/amla-nyheter.js?v=5"></script>
     <script src="js/whats-new.js?v=1"></script>
+    <script src="js/feedback.js?v=1"></script>
     <script src="app.js?v=2.5"></script>
 </body>
 </html>

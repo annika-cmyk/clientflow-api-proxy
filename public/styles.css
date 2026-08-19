@@ -2493,6 +2493,39 @@ body.sidebar-collapsed .logout-btn {
 .whats-new-feedback a:hover {
   text-decoration: underline;
 }
+
+#feedback-modal.modal-overlay {
+  display: none !important;
+}
+#feedback-modal.modal-overlay.is-open {
+  display: flex !important;
+}
+.feedback-modal-box {
+  max-width: 520px;
+  width: min(520px, 96vw);
+}
+.feedback-modal-lead {
+  margin: 0 0 1rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.feedback-from {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+}
+.feedback-status {
+  margin: 0.85rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.feedback-status.is-ok {
+  color: var(--success);
+}
+.feedback-status.is-error {
+  color: var(--error);
+}
 .dashboard-section {
     margin-bottom: 0;
     min-width: 0;

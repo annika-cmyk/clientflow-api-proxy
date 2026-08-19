@@ -68,7 +68,7 @@
       if (!res.ok) throw new Error('Kunde inte hämta ändringslistan');
       var data = await res.json();
       renderItems(listEl, data.items || []);
-      if (feedbackEl && data.feedbackEmail) {
+      if (feedbackEl && data.feedbackEmail && !feedbackEl.hasAttribute('data-open-feedback')) {
         feedbackEl.href = 'mailto:' + data.feedbackEmail + '?subject=' + encodeURIComponent('Feedback ClientFlow');
       }
     } catch (err) {

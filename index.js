@@ -79,6 +79,7 @@ const { isRelevantForConsultants } = require('./lib/aml-news/sources');
 const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
 const kundDold = require('./lib/kund-dold');
 const { getWhatsNewPayload } = require('./lib/whats-new');
+const feedback = require('./lib/feedback');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -11473,6 +11474,51 @@ app.get('/api/byra/dokument-export/:id', authenticateToken, async (req, res) => 
 // GET /api/whats-new – Senaste användarvända ändringar för dashboarden
 app.get('/api/whats-new', authenticateToken, (req, res) => {
   res.json(getWhatsNewPayload());
+});
+
+const feedbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'För många feedbackförsök. Försök igen om en stund.' }
+});
+
+// POST /api/feedback – Skicka feedback till hej@clientflow.se
+app.post('/api/feedback', authenticateToken, feedbackLimiter, async (req, res) => {
+  try {
+    const input = feedback.normalizeFeedback(req.body || {}, req.user || {});
+    const invalid = feedback.validateFeedback(input);
+    if (invalid) return res.status(400).json({ error: invalid });
+
+    const host = (process.env.SMTP_HOST || '').trim();
+    const user = (process.env.SMTP_USER || '').trim();
+    const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+    const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+    if (!host || !user || !pass) {
+      return res.status(503).json({ error: 'E-post är inte konfigurerad just nu. Mejla hej@clientflow.se i stället.' });
+    }
+
+    const mail = feedback.buildFeedbackEmail(input);
+    const from = process.env.MAIL_FROM || 'ClientFlow <hej@clientflow.se>';
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const transporterOpts = { host, port, secure, auth: { user, pass } };
+    if (port === 587 && !secure) transporterOpts.requireTLS = true;
+    const transporter = nodemailer.createTransport(transporterOpts);
+    await transporter.sendMail({
+      from,
+      to: mail.to,
+      replyTo: mail.replyTo,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ POST /api/feedback:', error.message);
+    res.status(500).json({ error: 'Kunde inte skicka feedback just nu.' });
+  }
 });
 
 // GET /api/settings/kom-igang – Hämta Kom igång-checkboxar från Byråer (databas)
