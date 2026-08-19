@@ -69,6 +69,8 @@ const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
 const { parseAssistantJson } = require('./lib/aml-news/json');
 const { runIngestLayer, runClassifyLayer } = require('./lib/aml-news/pipeline');
+const { ingestSources } = require('./lib/aml-news/ingest');
+const { createMemoryStore } = require('./lib/aml-news/store-memory');
 const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
 const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
 const { buildDigestEmail } = require('./lib/aml-news/email');
@@ -686,6 +688,48 @@ app.get('/api/amla-news', authenticateToken, async (req, res) => {
 });
 
 const amlNewsJobState = { lastIngestYmd: '', running: false };
+const amlNewsLiveCache = { items: [], fetchedAt: 0, errors: [] };
+
+function getAmlNewsMemoryStore() {
+  if (!global.__amlNewsMemoryStore) {
+    global.__amlNewsMemoryStore = createMemoryStore();
+  }
+  return global.__amlNewsMemoryStore;
+}
+
+async function loadAmlNewsRows(opts = {}) {
+  let stored = [];
+  try {
+    stored = await getAmlNewsStore().list();
+  } catch (err) {
+    console.warn('AML-nyheter store.list:', err.message);
+  }
+  const neededSources = ['finanspolisen', 'srf', 'skatteverket'];
+  const haveSources = new Set(stored.map((r) => r.source));
+  const missingSwedish = neededSources.some((id) => !haveSources.has(id));
+  if (stored.length && !missingSwedish && !opts.forceLive) return stored;
+
+  const maxAgeMs = 30 * 60 * 1000;
+  if (amlNewsLiveCache.items.length && Date.now() - amlNewsLiveCache.fetchedAt < maxAgeMs && !opts.forceLive) {
+    return amlNewsLiveCache.items;
+  }
+
+  const ingested = await ingestSources({ fetchText: fetchAmlNewsText });
+  const memory = getAmlNewsMemoryStore();
+  await memory.upsertMany(ingested.items);
+  const merged = await memory.list();
+  amlNewsLiveCache.items = merged;
+  amlNewsLiveCache.fetchedAt = Date.now();
+  amlNewsLiveCache.errors = ingested.errors || [];
+  try {
+    getAmlNewsStore().upsertMany(ingested.items).catch((err) => {
+      console.warn('AML-nyheter persist:', err.message);
+    });
+  } catch (err) {
+    console.warn('AML-nyheter persist:', err.message);
+  }
+  return merged.length ? merged : stored;
+}
 
 function stockholmDateYmd(d = new Date()) {
   return new Intl.DateTimeFormat('sv-SE', {
@@ -918,17 +962,11 @@ app.get('/api/aml-news', authenticateToken, async (req, res) => {
       const user = req.user?.email ? await getAirtableUser(req.user.email) : null;
       if (!access.isClientFlowAdmin(user?.role || req.user?.role)) throw err;
     }
-    const store = getAmlNewsStore();
-    let rows = [];
-    try {
-      rows = await store.list();
-    } catch (err) {
-      console.warn('GET /api/aml-news list:', err.message);
-    }
+    const rows = await loadAmlNewsRows();
     const items = buildFirmFeed(rows, profil, {
       category: req.query.category,
       severity: req.query.severity,
-      minTier: req.query.minTier || 'medium',
+      minTier: req.query.minTier || 'low',
       q: req.query.q
     });
     res.json({

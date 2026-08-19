@@ -66,7 +66,9 @@
       finanspolisen: 'Finanspolisen',
       samordningsfunktionen: 'Samordningsfunktionen',
       revisorsinspektionen: 'Revisorsinspektionen',
-      srf: 'SRF Konsulterna'
+      srf: 'SRF Konsulterna',
+      skatteverket: 'Skatteverket',
+      ekobrottsmyndigheten: 'Ekobrottsmyndigheten'
     },
     tierLabels: { low: 'Låg', medium: 'Medium', high: 'Hög' }
   };
@@ -257,7 +259,7 @@
     applyChrome(root, lang);
     if (status) status.textContent = copy.loading;
     try {
-      var query = opts.limit ? { category: '', severity: '', q: '', minTier: 'medium' } : readFilters(root);
+      var query = opts.limit ? { category: '', severity: '', q: '', minTier: 'low' } : readFilters(root);
       var result = await fetchNews(lang, query);
       var filters = Object.assign({}, DEFAULT_FILTERS, result.data.filters || {});
       if (!opts.limit) fillFilterOptions(root, filters, lang);
