@@ -13297,6 +13297,8 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
       kind: 'kyc',
       byraNamn: sender.byraNamn,
       klientansvarigNamn: sender.name,
+      konsultEmail: sender.email,
+      mottagareNamn: signerareList[0] && signerareList[0].namn,
       kundnamn
     });
     const docRes = await axios.post('https://docsign.se/api/documents', docPayload, { headers: { 'Content-Type': 'application/json' } });
@@ -17426,6 +17428,8 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       kind: 'uppdragsavtal',
       byraNamn: byraSigner.byra,
       klientansvarigNamn: sender.name || byraSigner.name,
+      konsultEmail: sender.email || byraSigner.email,
+      mottagareNamn: signerareList[0] && signerareList[0].namn,
       kundnamn
     });
 
