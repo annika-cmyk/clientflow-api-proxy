@@ -75,7 +75,7 @@ const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
 const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
 const { buildDigestEmail } = require('./lib/aml-news/email');
 const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-news/enrich');
-const { heuristicClassify, isThinSummary } = require('./lib/aml-news/classify');
+const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
 const kundDold = require('./lib/kund-dold');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
@@ -692,6 +692,7 @@ app.get('/api/amla-news', authenticateToken, async (req, res) => {
 
 const amlNewsJobState = { lastIngestYmd: '', running: false };
 const amlNewsLiveCache = { items: [], fetchedAt: 0, errors: [] };
+const amlNewsClassifyState = { running: false };
 
 function getAmlNewsMemoryStore() {
   if (!global.__amlNewsMemoryStore) {
@@ -702,10 +703,64 @@ function getAmlNewsMemoryStore() {
 
 function applyLongerSummaries(rows) {
   return (rows || []).map((row) => {
+    if (row.classified_at && !isThinSummary(row)) return row;
     if (!isThinSummary(row)) return row;
     const heuristic = heuristicClassify(row);
     return { ...row, summary_sv: heuristic.summary_sv };
   });
+}
+
+function applyAiSummaryToCache(item, cls) {
+  const updated = { ...item, ...cls };
+  if (!amlNewsLiveCache.items || !amlNewsLiveCache.items.length) {
+    amlNewsLiveCache.items = [updated];
+    return updated;
+  }
+  amlNewsLiveCache.items = amlNewsLiveCache.items.map((row) => {
+    const same = (row.id && item.id && row.id === item.id)
+      || (row.content_hash && item.content_hash && row.content_hash === item.content_hash)
+      || (row.source_url && item.source_url && row.source_url === item.source_url);
+    return same ? { ...row, ...updated } : row;
+  });
+  return updated;
+}
+
+async function summarizeAmlNewsWithAi(rows) {
+  const slice = (rows || []).filter((row) => needsAiSummary(row)).slice(0, 8);
+  if (!slice.length) return { attempted: 0, classified: 0 };
+  let classified = 0;
+  for (const item of slice) {
+    try {
+      const cls = await classifyItem(item, { completeJson: completeAmlNewsClassificationJson });
+      applyAiSummaryToCache(item, cls);
+      if (item.id && String(item.id).startsWith('rec')) {
+        await getAmlNewsStore().saveClassification(item.id, cls);
+      }
+      classified += 1;
+    } catch (err) {
+      console.warn('AML-nyheter AI-sammanfattning:', err.message);
+    }
+  }
+  return { attempted: slice.length, classified };
+}
+
+function scheduleAmlNewsAiSummaries(rows) {
+  if (amlNewsClassifyState.running) return;
+  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_ASSISTANT_ID) return;
+  const pending = (rows || []).filter((row) => needsAiSummary(row));
+  if (!pending.length) return;
+  amlNewsClassifyState.running = true;
+  summarizeAmlNewsWithAi(pending)
+    .then((out) => {
+      if (out.classified) console.log('📰 AML-nyheter AI-sammanfattningar', JSON.stringify(out));
+    })
+    .catch((err) => console.warn('AML-nyheter AI-sammanfattning:', err.message))
+    .finally(() => { amlNewsClassifyState.running = false; });
+}
+
+function finishAmlNewsRows(rows) {
+  scheduleAmlNewsAiSummaries(rows);
+  return rows;
 }
 
 function persistAmlNewsEnrichment(rows) {
@@ -738,11 +793,11 @@ async function loadAmlNewsRows(opts = {}) {
   const haveSources = new Set(stored.map((r) => r.source));
   const missingSwedish = neededSources.some((id) => !haveSources.has(id));
   const thin = stored.filter((row) => newsItemNeedsBody(row) || isThinSummary(row));
-  if (stored.length && !missingSwedish && !thin.length && !opts.forceLive) return stored;
+  if (stored.length && !missingSwedish && !thin.length && !opts.forceLive) return finishAmlNewsRows(stored);
 
   const maxAgeMs = 30 * 60 * 1000;
   if (amlNewsLiveCache.items.length && Date.now() - amlNewsLiveCache.fetchedAt < maxAgeMs && !opts.forceLive) {
-    return amlNewsLiveCache.items;
+    return finishAmlNewsRows(amlNewsLiveCache.items);
   }
 
   if (stored.length && !missingSwedish && thin.length && !opts.forceLive) {
@@ -750,7 +805,7 @@ async function loadAmlNewsRows(opts = {}) {
     amlNewsLiveCache.items = enriched;
     amlNewsLiveCache.fetchedAt = Date.now();
     persistAmlNewsEnrichment(enriched);
-    return enriched;
+    return finishAmlNewsRows(enriched);
   }
 
   const ingested = await ingestSources({ fetchText: fetchAmlNewsText });
@@ -768,7 +823,7 @@ async function loadAmlNewsRows(opts = {}) {
   } catch (err) {
     console.warn('AML-nyheter persist:', err.message);
   }
-  return merged.length ? merged : stored;
+  return finishAmlNewsRows(merged.length ? merged : stored);
 }
 
 function stockholmDateYmd(d = new Date()) {
@@ -872,7 +927,7 @@ async function runAmlNewsIngestAndClassify(opts = {}) {
     classify = await runClassifyLayer({
       store,
       completeJson: completeAmlNewsClassificationJson,
-      limit: opts.classifyLimit || 15
+      limit: opts.classifyLimit || 25
     });
   }
   return { ingest, classify };

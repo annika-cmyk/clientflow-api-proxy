@@ -23,7 +23,8 @@
       allCats: 'Alla kategorier',
       allSev: 'Alla nivåer',
       showLow: 'Visa låg relevans',
-      fallback: 'Visar AMLA-flödet tills bevakningen är ifylld.'
+      fallback: 'Visar AMLA-flödet tills bevakningen är ifylld.',
+      aiPending: 'AI skriver sammanfattningar för byrån…'
     },
     en: {
       summaries: 'Show summaries',
@@ -42,7 +43,8 @@
       allCats: 'All categories',
       allSev: 'All severities',
       showLow: 'Show low relevance',
-      fallback: 'Showing the AMLA feed until monitoring has items.'
+      fallback: 'Showing the AMLA feed until monitoring has items.',
+      aiPending: 'AI is writing firm-specific summaries…'
     }
   };
 
@@ -198,6 +200,7 @@
             '</a>' +
           '</h3>' +
           '<p class="amla-news-summary">' + escapeHtml(item.summary || item.summaryEn || '') + '</p>' +
+          (item.summaryKind === 'ai' ? '<p class="amla-news-summary-kind">Sammanfattning för redovisningsbyråer</p>' : '') +
           (reasons
             ? '<details class="amla-news-why"><summary>' + escapeHtml(copy.why) + '</summary><ul>' + reasons + '</ul></details>'
             : '') +
@@ -267,8 +270,17 @@
         var count = result.data.shown != null ? result.data.shown : (result.data.items || []).length;
         status.textContent = (result.mode === 'legacy' ? copy.fallback : copy.source) +
           ' · ' + count + (lang === 'en' ? ' articles' : ' artiklar');
+        var waitingAi = (result.data.items || []).some(function (item) { return !item.classifiedAt; });
+        if (waitingAi && result.mode !== 'legacy') status.textContent += ' · ' + copy.aiPending;
       }
       if (list) renderItems(list, result.data.items || [], lang, filters, opts.limit || 0);
+      if (!opts.limit && result.mode !== 'legacy' && !root.getAttribute('data-aml-ai-retry')) {
+        var pending = (result.data.items || []).some(function (item) { return !item.classifiedAt; });
+        if (pending) {
+          root.setAttribute('data-aml-ai-retry', '1');
+          setTimeout(function () { loadInto(root, opts); }, 16000);
+        }
+      }
     } catch (err) {
       console.error('AML-nyheter:', err);
       if (status) status.textContent = copy.error;

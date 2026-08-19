@@ -12606,6 +12606,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .amla-news--summaries .amla-news-summary {
     display: block;
 }
+.amla-news-summary-kind {
+    margin: 0.2rem 0 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--ink-3);
+}
 .amla-news-open {
     display: inline-block;
     margin-top: 0.35rem;
