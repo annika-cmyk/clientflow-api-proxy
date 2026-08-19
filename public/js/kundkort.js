@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.40', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.41', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -477,6 +477,7 @@ class CustomerCardManager {
         }
 
         this._renderKundstatus(fields);
+        this._renderKundDold(fields);
         
         // Update customer type badge
         const typeBadge = document.getElementById('customer-type');
@@ -522,6 +523,99 @@ class CustomerCardManager {
             </select>`;
     }
 
+    _isKundDold(fields) {
+        const v = (fields || {}).Dold;
+        return v === true || v === 'true' || v === 1 || v === '1';
+    }
+
+    _renderKundDold(fields) {
+        const header = document.querySelector('.risk-header-content');
+        if (!header) return;
+        const hidden = this._isKundDold(fields);
+
+        let banner = document.getElementById('kund-dold-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'kund-dold-banner';
+            banner.className = 'kund-dold-banner';
+            header.appendChild(banner);
+        }
+        banner.hidden = !hidden;
+        if (hidden) {
+            banner.innerHTML = 'Kunden är dold från kundlistan. Länken finns kvar under <a href="dokumentation.html#dolda">Dokumentation → Dolda kunder</a>.';
+        }
+
+        let actions = document.getElementById('kund-dold-actions');
+        if (!actions) {
+            actions = document.createElement('div');
+            actions.id = 'kund-dold-actions';
+            actions.className = 'kund-dold-actions';
+            header.appendChild(actions);
+        }
+        if (hidden) {
+            actions.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" id="btn-visa-kund"><i class="fas fa-eye"></i> Visa kunden igen</button>';
+            const btn = actions.querySelector('#btn-visa-kund');
+            if (btn) btn.addEventListener('click', () => this.visaKundIgen());
+        } else {
+            actions.innerHTML = '<button type="button" class="btn btn-ghost btn-sm kund-dold-delete" id="btn-dolj-kund"><i class="fas fa-trash-alt"></i> Radera kund</button>';
+            const btn = actions.querySelector('#btn-dolj-kund');
+            if (btn) btn.addEventListener('click', () => this.doljKund());
+        }
+    }
+
+    async doljKund() {
+        const ok = window.confirm(
+            'Kunden döljs från kundlistan men raderas inte.\n\n' +
+            'Kundkortet och dokumentationen finns kvar. Du hittar länken under Dokumentation → Dolda kunder.'
+        );
+        if (!ok) return;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/dolj`, {
+                method: 'POST',
+                ...getAuthOptsKundkort()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            if (this.customerData) {
+                this.customerData.fields = this.customerData.fields || {};
+                this.customerData.fields.Dold = true;
+            }
+            this._renderKundDold(this.customerData?.fields || {});
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Kunden är dold. Länken finns under Dokumentation.', 'success');
+            }
+        } catch (e) {
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Kunde inte dölja kunden: ' + (e.message || 'fel'), 'error');
+            }
+        }
+    }
+
+    async visaKundIgen() {
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/visa`, {
+                method: 'POST',
+                ...getAuthOptsKundkort()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            if (this.customerData) {
+                this.customerData.fields = this.customerData.fields || {};
+                this.customerData.fields.Dold = false;
+            }
+            this._renderKundDold(this.customerData?.fields || {});
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Kunden visas i kundlistan igen.', 'success');
+            }
+        } catch (e) {
+            if (typeof this.showNotification === 'function') {
+                this.showNotification('Kunde inte visa kunden: ' + (e.message || 'fel'), 'error');
+            }
+        }
+    }
+
     async setKundstatus(value) {
         const status = this._normalizeKundstatus(value);
         try {
@@ -541,6 +635,7 @@ class CustomerCardManager {
                 this.customerData.fields['Kundstatus'] = status;
             }
             this._renderKundstatus(this.customerData?.fields || {});
+            this._renderKundDold(this.customerData?.fields || {});
             if (typeof this.showNotification === 'function') {
                 this.showNotification(`Status uppdaterad till "${status}"`, 'success');
             }

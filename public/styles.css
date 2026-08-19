@@ -11546,6 +11546,48 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .kundstatus-control--lead select { color: #92400e; }
 .kundstatus-control--pagaende select { color: #166534; }
 .kundstatus-control--avslutad select { color: #475569; }
+.kund-dold-banner {
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: #92400e;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    max-width: 36rem;
+}
+.kund-dold-banner a { color: #9a3412; font-weight: 600; }
+.kund-dold-actions { margin-top: 0.65rem; }
+.kund-dold-delete { color: #b91c1c; }
+.dolda-kunder-ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+.dolda-kunder-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    padding: 0.85rem 1rem;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+.dolda-kunder-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.dolda-kunder-meta {
+    font-size: 0.78rem;
+    color: var(--ink-3);
+}
 
 .kundlista-row-arrow {
     color: #cbd5e1;

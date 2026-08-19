@@ -237,6 +237,9 @@
     const exportWrap = getEl('dokumentation-export-wrap');
     if (exportWrap) exportWrap.style.display = 'flex';
     renderPdfList();
+    if (String(window.location.hash || '').replace('#', '') === 'dolda') {
+      showDokumentationTab('dolda');
+    }
   }
 
   function exportTitle(item) {
@@ -367,6 +370,82 @@
   window.dokumentationExportPdf = exportDokumentationPdf;
   window.exportLansstyrelsenPdf = exportDokumentationPdf;
 
+  function formatDoldDatum(iso) {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString('sv-SE', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch (_) {
+      return String(iso).slice(0, 10);
+    }
+  }
+
+  async function loadDoldaKunder() {
+    const list = getEl('dolda-kunder-list');
+    if (!list) return;
+    list.innerHTML = '<p class="section-desc">Laddar dolda kunder…</p>';
+    try {
+      const res = await fetch(getBaseUrl() + '/api/kunddata/dolda', getAuthOpts());
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || 'Kunde inte hämta dolda kunder');
+      const items = data.items || [];
+      if (!items.length) {
+        list.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga dolda kunder. När du raderar en kund från kundkortet hamnar länken här.</p>';
+        return;
+      }
+      list.innerHTML = '<ul class="dolda-kunder-ul">' + items.map(function (item) {
+        const meta = [item.orgnr, item.doldAv ? ('dold av ' + item.doldAv) : '', formatDoldDatum(item.doldDatum)]
+          .filter(Boolean)
+          .join(' · ');
+        return '<li class="dolda-kunder-item">' +
+          '<div class="dolda-kunder-info">' +
+            '<strong>' + escapeHtml(item.namn) + '</strong>' +
+            (meta ? '<span class="dolda-kunder-meta">' + escapeHtml(meta) + '</span>' : '') +
+          '</div>' +
+          '<a class="btn btn-secondary btn-sm" href="' + escapeHtml(item.kundkortUrl) + '">' +
+            '<i class="fas fa-id-card"></i> Öppna kundkort' +
+          '</a>' +
+        '</li>';
+      }).join('') + '</ul>';
+    } catch (err) {
+      list.innerHTML = '<p class="section-desc" style="color:#94a3b8;">' + escapeHtml(err.message || 'Kunde inte ladda dolda kunder.') + '</p>';
+    }
+  }
+
+  function showDokumentationTab(tab) {
+    const which = tab === 'dolda' ? 'dolda' : 'byra';
+    document.querySelectorAll('[data-dok-tab]').forEach(function (btn) {
+      const on = btn.getAttribute('data-dok-tab') === which;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const byra = getEl('dok-pane-byra');
+    const dolda = getEl('dok-pane-dolda');
+    if (byra) byra.hidden = which !== 'byra';
+    if (dolda) dolda.hidden = which !== 'dolda';
+    const exportWrap = getEl('dokumentation-export-wrap');
+    if (exportWrap && exportWrap.style.display !== 'none') {
+      exportWrap.style.visibility = which === 'byra' ? 'visible' : 'hidden';
+    }
+    if (which === 'dolda') loadDoldaKunder();
+    if (which === 'dolda' && window.location.hash !== '#dolda') {
+      history.replaceState(null, '', '#dolda');
+    }
+    if (which === 'byra' && window.location.hash === '#dolda') {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }
+
+  function initDokumentationTabs() {
+    document.querySelectorAll('[data-dok-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        showDokumentationTab(btn.getAttribute('data-dok-tab'));
+      });
+    });
+    if (String(window.location.hash || '').replace('#', '') === 'dolda') {
+      showDokumentationTab('dolda');
+    }
+  }
+
   function initExportButton() {
     const btn = getEl('btn-export-dokumentation');
     if (btn) btn.addEventListener('click', exportDokumentationPdf);
@@ -384,6 +463,7 @@
     setTimeout(runLoadWhenReady, 1500);
   }
   initExportButton();
+  initDokumentationTabs();
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', whenReady);
   else whenReady();

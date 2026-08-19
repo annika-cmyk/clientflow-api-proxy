@@ -65,6 +65,7 @@ const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
 const amlaNews = require('./lib/amla-news');
+const kundDold = require('./lib/kund-dold');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -1841,11 +1842,54 @@ app.post('/api/setup/airtable-kundstatus-field', authenticateToken, async (req, 
   if (ok) {
     return res.json({ success: true, message: `Fältet "${KUNDSTATUS_FIELD_NAME}" finns nu i KUNDDATA-tabellen.` });
   }
-  return res.status(500).json({
+    return res.status(500).json({
     success: false,
     error: `Kunde inte skapa fältet "${KUNDSTATUS_FIELD_NAME}". Kontrollera att Airtable-token har schema.bases:write.`
   });
 });
+
+const KUND_DOLD_FIELDS = [
+  {
+    name: kundDold.DOLD_FIELD,
+    type: 'checkbox',
+    description: 'Dölj kunden från kundlistan. Posten raderas inte.',
+    options: { icon: 'check', color: 'redBright' }
+  },
+  { name: kundDold.DOLD_DATUM_FIELD, type: 'singleLineText', description: 'När kunden doldes' },
+  { name: kundDold.DOLD_AV_FIELD, type: 'singleLineText', description: 'Vem som dolde kunden' }
+];
+let kundDoldFieldsEnsured = false;
+
+async function ensureKundDoldFields(airtableToken, baseId) {
+  if (kundDoldFieldsEnsured) return true;
+  const tableId = kunddataTableId();
+  if (!airtableToken) return false;
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const kundTable = (metaRes.data?.tables || []).find((t) => t.id === tableId || (t.name || '').toUpperCase() === 'KUNDDATA');
+    if (!kundTable) return false;
+    const existing = new Set((kundTable.fields || []).map((f) => (f.name || '').trim()));
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${kundTable.id}/fields`;
+    for (const field of KUND_DOLD_FIELDS) {
+      if (existing.has(field.name)) continue;
+      const body = { name: field.name, type: field.type, description: field.description };
+      if (field.options) body.options = field.options;
+      await axios.post(createUrl, body, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      existing.add(field.name);
+    }
+    kundDoldFieldsEnsured = true;
+    return true;
+  } catch (err) {
+    console.warn('ensureKundDoldFields:', err.response?.data?.error?.message || err.message);
+    return kundDoldFieldsEnsured;
+  }
+}
 
 const KUNDDATA_BEHORIGHET_FIELDS = [
   { name: 'Klientansvarig', type: 'singleLineText', description: 'Klientansvarig på byrån (namn)' },
@@ -4974,7 +5018,7 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
       if (kid) (Array.isArray(kid) ? kid : [kid]).forEach(id => customerIdsWithAvtal.add(id));
     }
 
-    const utanUppdragsavtal = kundRecords
+    const utanUppdragsavtal = kundDold.filterVisibleKunder(kundRecords)
       .filter(r => !customerIdsWithAvtal.has(r.id))
       .map(r => ({
         id: r.id,
@@ -4988,6 +5032,25 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
   } catch (error) {
     console.error('❌ Fel vid hämtning av kunder utan uppdragsavtal:', error.message);
     res.status(500).json({ error: error.message, records: [] });
+  }
+});
+
+// GET /api/kunddata/dolda – dolda kunder (länkar till kundkort, måste före /:id)
+app.get('/api/kunddata/dolda', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ success: false, error: 'Användare hittades inte' });
+    const records = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    const items = kundDold.filterDoldaKunder(records)
+      .map(kundDold.mapDoldKundListItem)
+      .sort((a, b) => String(b.doldDatum || '').localeCompare(String(a.doldDatum || '')) || a.namn.localeCompare(b.namn, 'sv'));
+    res.json({ success: true, items, count: items.length });
+  } catch (error) {
+    console.error('❌ GET /api/kunddata/dolda:', error.message);
+    res.status(500).json({ success: false, error: error.message || 'Kunde inte hämta dolda kunder' });
   }
 });
 
@@ -5338,6 +5401,89 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const airtableErr = error.response?.data?.error;
     const message = airtableErr?.message || error.message || 'Okänt fel';
     res.status(status).json({ error: message, details: airtableErr });
+  }
+});
+
+async function loadKunddataRecordForUser(req, id) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE = kunddataTableId();
+  if (!airtableAccessToken) {
+    const err = new Error('Airtable token saknas');
+    err.status = 500;
+    throw err;
+  }
+  const userData = await getAirtableUser(req.user.email);
+  if (!userData) {
+    const err = new Error('Användare hittades inte');
+    err.status = 404;
+    throw err;
+  }
+  let customerRecord;
+  try {
+    const getRes = await axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}` }
+    });
+    customerRecord = getRes.data;
+  } catch (e) {
+    if (e.response?.status === 404) {
+      const err = new Error('Kund hittades inte');
+      err.status = 404;
+      throw err;
+    }
+    throw e;
+  }
+  if (!access.userHasCustomerAccess(userData, customerRecord)) {
+    const err = new Error('Du har inte behörighet att uppdatera denna kund');
+    err.status = 403;
+    throw err;
+  }
+  return { airtableAccessToken, airtableBaseId, KUNDDATA_TABLE: KUNDDATA_TABLE, userData, customerRecord };
+}
+
+app.post('/api/kunddata/:id/dolj', authenticateToken, async (req, res) => {
+  try {
+    const { airtableAccessToken, airtableBaseId, KUNDDATA_TABLE, userData, customerRecord } = await loadKunddataRecordForUser(req, req.params.id);
+    await ensureKundDoldFields(airtableAccessToken, airtableBaseId);
+    const fields = kundDold.hideFields(userData.name || userData.email);
+    const airtableRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
+      { fields, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({
+      success: true,
+      hidden: true,
+      id: airtableRes.data.id,
+      record: airtableRes.data,
+      item: kundDold.mapDoldKundListItem(airtableRes.data)
+    });
+    if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
+      minibokSync.notifyMinibokClientChange('client.updated', req.user.email, airtableRes.data).catch(() => {});
+    }
+  } catch (error) {
+    console.error('❌ POST /api/kunddata/:id/dolj:', error.message);
+    res.status(error.status || 500).json({ success: false, error: error.message || 'Kunde inte dölja kunden' });
+  }
+});
+
+app.post('/api/kunddata/:id/visa', authenticateToken, async (req, res) => {
+  try {
+    const { airtableAccessToken, airtableBaseId, KUNDDATA_TABLE } = await loadKunddataRecordForUser(req, req.params.id);
+    await ensureKundDoldFields(airtableAccessToken, airtableBaseId);
+    const fields = kundDold.unhideFields();
+    const airtableRes = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${req.params.id}`,
+      { fields, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ success: true, hidden: false, id: airtableRes.data.id, record: airtableRes.data });
+    if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
+      minibokSync.notifyMinibokClientChange('client.updated', req.user.email, airtableRes.data).catch(() => {});
+    }
+  } catch (error) {
+    console.error('❌ POST /api/kunddata/:id/visa:', error.message);
+    res.status(error.status || 500).json({ success: false, error: error.message || 'Kunde inte visa kunden igen' });
   }
 });
 
@@ -11213,7 +11359,9 @@ app.get('/api/kunddata', authenticateToken, async (req, res) => {
       });
     }
 
-    const formattedRecords = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    const formattedRecords = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
     console.log(`✅ Hämtade ${formattedRecords.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
@@ -11591,7 +11739,9 @@ app.post('/api/kunddata', authenticateToken, async (req, res) => {
         });
     }
 
-    const records = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
     console.log(`✅ Hämtade ${records.length} poster från KUNDDATA (Airtable)`);
 
     const duration = Date.now() - startTime;
