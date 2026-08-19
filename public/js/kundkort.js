@@ -8692,7 +8692,7 @@ class CustomerCardManager {
                 </div>` : (f['Status'] === 'Skickat till kund' && avtal?.fields?.['InleedDokumentId']) ? `
                 <div class="uppdrag-banner uppdrag-banner--vantar">
                     <i class="fas fa-clock"></i>
-                    Utskickat och väntar signering ${fmtDate(f['Utskickningsdatum']) ? '— ' + fmtDate(f['Utskickningsdatum']) : ''}. Avtalet skickades till konsult och kund för BankID-signering.
+                    Utskickat och väntar signering ${fmtDate(f['Utskickningsdatum']) ? '— ' + fmtDate(f['Utskickningsdatum']) : ''}. Avtalet skickades till klientansvarig och kund för BankID-signering.
                 </div>` : `
                 <div class="uppdrag-banner uppdrag-banner--utkast">
                     <i class="fas fa-pencil-alt"></i>
@@ -9054,9 +9054,21 @@ class CustomerCardManager {
         }
     }
 
+    _klientansvarigNamn() {
+        const raw = this.customerData?.fields?.['Klientansvarig'];
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) return String(raw.name || raw.Name || '').trim();
+        if (Array.isArray(raw)) {
+            const first = raw[0];
+            if (first && typeof first === 'object') return String(first.name || first.Name || '').trim();
+            return String(first || '').trim();
+        }
+        return String(raw || '').trim();
+    }
+
     async skickaInleed(avtalId) {
         const kontaktPersoner = this._kontaktPersoner || [];
         const valjbara = kontaktPersoner.filter(p => p.epost);
+        const klientansvarig = this._klientansvarigNamn();
         const existing = document.getElementById('inleed-modal');
         if (existing) existing.remove();
 
@@ -9085,8 +9097,9 @@ class CustomerCardManager {
                 <div class="modal-body">
                     ${valjbara.length > 0 ? `
                         <p style="color:#475569;margin-bottom:1rem;font-size:0.9rem;">
-                            Välj vilka kontaktpersoner som ska signera uppdragsavtalet via BankID.
-                            De får ett e-postmeddelande med signeringslänk.
+                            ${klientansvarig
+                                ? `Byråns underskrift görs av klientansvarig <strong>${this._esc(klientansvarig)}</strong>. Välj vilka kontaktpersoner som ska signera för kunden.`
+                                : 'Ange klientansvarig på kundkortet innan avtalet kan skickas. Välj därefter vilka kontaktpersoner som ska signera för kunden.'}
                         </p>
                         <div class="inleed-person-list">${personOptions}</div>
                     ` : `
@@ -9098,7 +9111,7 @@ class CustomerCardManager {
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('inleed-modal').remove()">Avbryt</button>
-                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')" ${valjbara.length === 0 ? 'disabled' : ''}>
+                    <button id="inleed-send-btn" class="btn btn-primary btn-sm" onclick="customerCardManager._genomforSignering('${avtalId}')" ${valjbara.length === 0 || !klientansvarig ? 'disabled' : ''}>
                         <i class="fas fa-paper-plane"></i> Skicka för signering
                     </button>
                 </div>
@@ -9136,7 +9149,7 @@ class CustomerCardManager {
             const resp = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/skicka-for-signering`, {
                 method: 'POST',
                 ...getAuthOptsKundkort(),
-                body: JSON.stringify({ signerare })
+                body: JSON.stringify({ signerare, customerId: this.customerId })
             });
             const data = await resp.json();
             if (!resp.ok) {
@@ -9148,7 +9161,8 @@ class CustomerCardManager {
             if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check"></i> Skickat!'; }
             setTimeout(() => document.getElementById('inleed-modal')?.remove(), 2500);
             const epostLista = signerare.map(s => s.epost).join(', ');
-            this.showNotification(`Avtalet skickat till ${epostLista} för BankID-signering`, 'success');
+            const klient = this._klientansvarigNamn();
+            this.showNotification(`Avtalet skickat till klientansvarig${klient ? ' ' + klient : ''} och ${epostLista} för BankID-signering`, 'success');
             this.loadUppdragsavtal();
         } catch (e) {
             this._showInleedStatus(`Fel: ${e.message}`, 'error');
