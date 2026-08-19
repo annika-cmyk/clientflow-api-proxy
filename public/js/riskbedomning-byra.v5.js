@@ -587,12 +587,21 @@ class RiskAssessmentManager {
         if (!kallaInput || !kallaLink) return;
         const syncKallaLink = () => {
             const val = kallaInput.value.trim();
-            if (this.isKallaUrl(val)) {
-                kallaLink.href = val;
+            const resolved = (typeof AmlKalla !== 'undefined' && AmlKalla.resolveKalla)
+                ? AmlKalla.resolveKalla(val)
+                : { url: this.isKallaUrl(val) ? val : '', host: '', label: val };
+            if (resolved.url) {
+                kallaLink.href = resolved.url;
                 kallaLink.hidden = false;
+                kallaLink.textContent = (resolved.host || resolved.label || 'Öppna webbplats') + ' ↗';
+                kallaLink.title = resolved.url;
+                row.classList.add('has-kalla-link');
             } else {
                 kallaLink.removeAttribute('href');
+                kallaLink.removeAttribute('title');
                 kallaLink.hidden = true;
+                kallaLink.textContent = 'Öppna webbplats ↗';
+                row.classList.remove('has-kalla-link');
             }
         };
         kallaInput.addEventListener('input', syncKallaLink);
@@ -623,9 +632,9 @@ class RiskAssessmentManager {
                 <textarea class="dyn-besk" rows="3" placeholder="Beskrivning av hotet">${this.esc(beskrivning)}</textarea>
             </div>
             <div class="dyn-kalla-row">
-                <i class="fas fa-link dyn-kalla-icon" aria-hidden="true"></i>
-                <input type="text" class="dyn-kalla" placeholder="Källa, t.ex. Finanspolisen eller FATF" value="${this.esc(kalla)}">
-                <a class="dyn-kalla-link" target="_blank" rel="noopener" hidden>Öppna källa ↗</a>
+                <span class="dyn-kalla-label">Källa</span>
+                <input type="text" class="dyn-kalla" placeholder="Myndighet eller webbadress, t.ex. Skatteverket" value="${this.esc(kalla)}" aria-label="Källa">
+                <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden>Öppna webbplats ↗</a>
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
