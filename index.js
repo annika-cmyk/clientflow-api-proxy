@@ -61,6 +61,17 @@ const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
+const dokumentationExport = require('./lib/dokumentation-export');
+const {
+  DOKUMENTATION_PDF_LIST_FIELD,
+  DOKUMENTATION_PDF_FILES_FIELD,
+  stripBase64FromList,
+  addExportToList,
+  mergeAttachmentsIntoList,
+  toPublicListItem,
+  buildExportEntry,
+  buildExportFilename
+} = dokumentationExport;
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -102,6 +113,7 @@ app.use((req, res, next) => {
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, credentials, X-User-Email, X-Api-Key, X-Clientflow-Secret');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Dokumentation-Saved');
     res.setHeader('Access-Control-Allow-Credentials', allowOrigin ? 'true' : 'false');
     
     // Hantera preflight requests
@@ -9352,6 +9364,128 @@ async function getByraerTableMeta(airtableToken, baseId) {
   }
 }
 
+async function ensureDokumentationExportFields(airtableToken, baseId) {
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { created: [], table: null };
+  const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
+  const needed = [
+    {
+      name: DOKUMENTATION_PDF_LIST_FIELD,
+      type: 'multilineText',
+      description: 'JSON-historik för exporterade riskbedömningar och policy-PDF:er (utan filinnehåll).'
+    },
+    {
+      name: DOKUMENTATION_PDF_FILES_FIELD,
+      type: 'multipleAttachments',
+      description: 'Exporterade PDF:er för allmän riskbedömning och byråpolicy.'
+    }
+  ];
+  const created = [];
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+  for (const field of needed) {
+    if (existingNames.includes(field.name)) continue;
+    try {
+      await axios.post(createUrl, {
+        name: field.name,
+        type: field.type,
+        description: field.description
+      }, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      created.push(field.name);
+      delete AIRTABLE_FIELD_ID_CACHE[`${byraTable.id}:${field.name}`];
+    } catch (err) {
+      console.warn('ensureDokumentationExportFields:', field.name, err.response?.data?.error?.message || err.message);
+    }
+  }
+  return { created, table: byraTable };
+}
+
+async function loadUserByraerRecord(req) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) {
+    const err = new Error('Airtable token saknas');
+    err.status = 500;
+    throw err;
+  }
+  const userData = await getAirtableUser(req.user.email);
+  if (!userData) {
+    const err = new Error('Användare hittades inte');
+    err.status = 404;
+    throw err;
+  }
+  const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+  if (!byraId) {
+    const err = new Error('Ingen byrå kopplad');
+    err.status = 400;
+    throw err;
+  }
+  const num = parseInt(byraId, 10);
+  const filterFormula = Number.isNaN(num)
+    ? `{Byrå ID}="${byraId}"`
+    : `OR({Byrå ID}="${byraId}",{Byrå ID}=${num})`;
+  const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+  const airtableRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+  return {
+    airtableAccessToken,
+    airtableBaseId,
+    userData,
+    byraId,
+    record: airtableRes.data.records?.[0] || null
+  };
+}
+
+async function persistDokumentationPdfExport({
+  airtableToken,
+  baseId,
+  record,
+  pdfBuffer,
+  byraNamn,
+  type = 'risk_och_policy',
+  exportedAt
+}) {
+  if (!record?.id) return { saved: false, entry: null };
+  const at = exportedAt || new Date().toISOString();
+  const filename = buildExportFilename({ type, byraNamn, exportedAt: at });
+  await ensureDokumentationExportFields(airtableToken, baseId);
+  const table = await getByraerTableMeta(airtableToken, baseId);
+  const tableId = table?.id || process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+  const att = await uploadAttachmentToAirtableFieldReturnAttachment(
+    airtableToken,
+    baseId,
+    record.id,
+    Buffer.from(pdfBuffer),
+    filename,
+    'application/pdf',
+    tableId,
+    DOKUMENTATION_PDF_FILES_FIELD
+  );
+  const saved = !!(att && (att.id || att.url));
+  if (!saved) {
+    console.warn('⚠️ Dokumentation PDF-fil kunde inte laddas upp till Airtable');
+    return { saved: false, entry: null, list: stripBase64FromList(record.fields?.[DOKUMENTATION_PDF_LIST_FIELD]) };
+  }
+  const entry = buildExportEntry({
+    type,
+    byraNamn,
+    exportedAt: at,
+    attachmentId: att.id || null,
+    filename
+  });
+  const rawList = record.fields?.[DOKUMENTATION_PDF_LIST_FIELD];
+  const nextList = addExportToList(rawList, entry);
+  try {
+    await patchByraerRecordFields(airtableToken, baseId, record.id, {
+      [DOKUMENTATION_PDF_LIST_FIELD]: JSON.stringify(nextList)
+    });
+  } catch (metaErr) {
+    console.warn('⚠️ Dokumentation PDF-lista kunde inte sparas:', metaErr.response?.data?.error?.message || metaErr.message);
+  }
+  return { saved: true, entry, list: nextList };
+}
+
 async function ensureByraProfilAirtableFields(airtableToken, baseId) {
   const byraTable = await getByraerTableMeta(airtableToken, baseId);
   if (!byraTable?.id) return { created: [], table: null };
@@ -10559,62 +10693,68 @@ app.get('/api/utbildning/genomforda', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/settings/dokumentation-pdfs – Hämta sparad PDF-lista från Byråer (databas)
-const DOKUMENTATION_PDF_FIELD = 'Dokumentation PDF-lista';
+// GET /api/settings/dokumentation-pdfs – Historik för exporterad riskbedömning och policy
 app.get('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
   try {
-    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const BYRAER_TABLE = 'Byråer';
-    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
-    const userData = await getAirtableUser(req.user.email);
-    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
-    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
-    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
-    const num = parseInt(byraId);
-    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
-    const airtableRes = await axios.get(url, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
-    if (!airtableRes.data.records?.length) return res.json({ list: [] });
-    const raw = airtableRes.data.records[0].fields[DOKUMENTATION_PDF_FIELD];
-    let list = [];
-    if (raw && typeof raw === 'string') { try { list = JSON.parse(raw); } catch (_) {} }
-    if (!Array.isArray(list)) list = [];
+    const { record } = await loadUserByraerRecord(req);
+    if (!record) return res.json({ list: [] });
+    const raw = record.fields?.[DOKUMENTATION_PDF_LIST_FIELD];
+    const atts = record.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
+    const list = mergeAttachmentsIntoList(raw, atts).map(toPublicListItem);
     res.json({ list });
   } catch (error) {
     console.error('❌ GET /api/settings/dokumentation-pdfs:', error.message);
-    res.status(500).json({ error: error.message });
+    res.status(error.status || 500).json({ error: error.message });
   }
 });
 
-// PUT /api/settings/dokumentation-pdfs – Spara PDF-lista till Byråer (databas)
+// PUT /api/settings/dokumentation-pdfs – Uppdatera metadata (filinnehåll sparas inte här)
 app.put('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
   try {
-    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
-    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const BYRAER_TABLE = 'Byråer';
-    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
-    const userData = await getAirtableUser(req.user.email);
-    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
-    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
-    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad' });
+    const { airtableAccessToken, airtableBaseId, record } = await loadUserByraerRecord(req);
+    if (!record) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
     const { list } = req.body;
     if (!Array.isArray(list)) return res.status(400).json({ error: 'Body måste innehålla { list: array }' });
-    const num = parseInt(byraId);
-    const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
-    const listUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
-    const listRes = await axios.get(listUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
-    if (!listRes.data.records?.length) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
-    const recordId = listRes.data.records[0].id;
-    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
-    await axios.patch(patchUrl, {
-      fields: { [DOKUMENTATION_PDF_FIELD]: JSON.stringify(list) }
-    }, { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } });
-    res.json({ success: true });
+    const cleaned = stripBase64FromList(list);
+    const serialized = JSON.stringify(cleaned);
+    if (serialized.length > 80000) {
+      return res.status(413).json({ error: 'Listan är för stor. Exportera igen så sparas filen på servern.' });
+    }
+    await ensureDokumentationExportFields(airtableAccessToken, airtableBaseId);
+    await patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, {
+      [DOKUMENTATION_PDF_LIST_FIELD]: serialized
+    });
+    res.json({ success: true, list: cleaned.map(toPublicListItem) });
   } catch (error) {
     console.error('❌ PUT /api/settings/dokumentation-pdfs:', error.response?.data || error.message);
-    const status = error.response?.status || 500;
+    const status = error.status || error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message || 'Okänt fel' });
+  }
+});
+
+// GET /api/byra/dokument-export/:id – Ladda ner en sparad export (färsk Airtable-URL)
+app.get('/api/byra/dokument-export/:id', authenticateToken, async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!/^att[a-zA-Z0-9]+$/.test(id)) {
+      return res.status(400).json({ error: 'Ogiltigt dokument-id' });
+    }
+    const { record } = await loadUserByraerRecord(req);
+    if (!record) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
+    const atts = record.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
+    const att = atts.find((a) => a && a.id === id);
+    if (!att || !att.url) return res.status(404).json({ error: 'Dokumentet hittades inte' });
+    const fileRes = await axios.get(att.url, { responseType: 'arraybuffer', timeout: 30000 });
+    const filename = att.filename || 'dokument.pdf';
+    res.set({
+      'Content-Type': att.type || 'application/pdf',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'Content-Length': fileRes.data.length
+    });
+    res.send(Buffer.from(fileRes.data));
+  } catch (error) {
+    console.error('❌ GET /api/byra/dokument-export:', error.message);
+    res.status(error.status || 500).json({ error: error.message });
   }
 });
 
@@ -16451,17 +16591,40 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const pdfBuffer = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true, margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' } });
     await browser.close();
 
-    const datumIso = new Date().toISOString().split('T')[0];
-    const safeByra = (byraNamn || 'byra').replace(/[^a-zA-Z0-9\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6 -]/g, '').trim().replace(/\s+/g, '-');
-    const filename = `Allman-riskbedomning-och-rutiner-${safeByra}-${datumIso}.pdf`;
+    const exportedAt = new Date().toISOString();
+    const filename = buildExportFilename({
+      type: 'risk_och_policy',
+      byraNamn,
+      exportedAt
+    });
 
+    let savedExport = false;
     if (byraRec && byraRec.id) {
       try {
-        await patchByraerFieldToAirtable(byraRec.id, 'Senast Länsstyrelsen-PDF export', new Date().toISOString().split('T')[0]);
+        const persisted = await persistDokumentationPdfExport({
+          airtableToken: airtableAccessToken,
+          baseId: airtableBaseId,
+          record: byraRec,
+          pdfBuffer,
+          byraNamn,
+          type: 'risk_och_policy',
+          exportedAt
+        });
+        savedExport = !!persisted.saved;
+      } catch (saveErr) {
+        console.warn('⚠️ Kunde inte spara dokumentexport i historik:', saveErr.message);
+      }
+      try {
+        await patchByraerFieldToAirtable(byraRec.id, 'Senast Länsstyrelsen-PDF export', exportedAt.split('T')[0]);
       } catch (_) { /* fält finns kanske inte i Airtable */ }
     }
 
-    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`, 'Content-Length': pdfBuffer.length });
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'Content-Length': pdfBuffer.length,
+      'X-Dokumentation-Saved': savedExport ? '1' : '0'
+    });
     res.send(Buffer.from(pdfBuffer));
   } catch (error) {
     console.error('\u274c Länsstyrelsen PDF:', error.message);

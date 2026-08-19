@@ -4,8 +4,6 @@
 (function () {
   if (!document.getElementById('riskbedomning-view')) return;
 
-  const MAX_SAVED_PDFS = 10;
-
   function getEl(id) { return document.getElementById(id); }
   function getAuthOpts() { return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } }; }
   function getBaseUrl() { return (window.apiConfig && window.apiConfig.baseUrl) || ''; }
@@ -17,17 +15,6 @@
       const data = await res.json();
       return Array.isArray(data.list) ? data.list : [];
     } catch { return []; }
-  }
-
-  async function savePdfListToApi(list) {
-    try {
-      const res = await fetch(getBaseUrl() + '/api/settings/dokumentation-pdfs', {
-        method: 'PUT',
-        ...getAuthOpts(),
-        body: JSON.stringify({ list })
-      });
-      return res.ok;
-    } catch { return false; }
   }
 
   function escapeHtml(s) {
@@ -156,18 +143,6 @@
     }
   }
 
-  function blobToBase64(blob) {
-    return new Promise(function (resolve, reject) {
-      const reader = new FileReader();
-      reader.onload = function () {
-        const parts = String(reader.result || '').split(',');
-        resolve(parts[1] || '');
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-
   const RUTINER_LABELS = [
     { key: '1. Syfte och omfattning policy', label: '1. Syfte och omfattning policy' },
     { key: '2. Centralt Funktionsansvarig ', label: '2. Centralt Funktionsansvarig' },
@@ -259,34 +234,39 @@
     renderPdfList();
   }
 
-  async function getSavedPdfs() {
-    return getSavedPdfsFromApi();
+  function exportTitle(item) {
+    if (item && item.title) return item.title;
+    if (item && item.type === 'policy') return 'Byråpolicy (rutiner)';
+    if (item && item.type === 'riskbedomning') return 'Allmän riskbedömning';
+    return 'Allmän riskbedömning och byråpolicy';
   }
 
-  async function savePdfToList(entry) {
-    const list = await getSavedPdfsFromApi();
-    list.unshift(entry);
-    const trimmed = list.slice(0, MAX_SAVED_PDFS);
-    if (await savePdfListToApi(trimmed)) renderPdfListWith(trimmed);
+  function exportStamp(item) {
+    if (item && item.stamp) return item.stamp;
+    if (item && item.exportedAt) return formatExportTimestamp(item.exportedAt);
+    if (item && item.date) return formatDate(item.date);
+    return '';
   }
 
   function renderPdfListWith(list) {
     const container = getEl('lansstyrelsen-pdf-list');
     if (!container) return;
     if (list.length === 0) {
-      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga exporter sparade ännu. Klicka på <strong>Exportera PDF</strong> ovan för att ladda ner och spara en version med dagens datumstämpel.</p>';
+      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga riskbedömningar eller policydokument sparade ännu. Klicka på <strong>Exportera PDF</strong> ovan för att skapa dagens version med datumstämpel.</p>';
       return;
     }
     container.innerHTML = '<ul class="document-list">' + list.map((item, i) => {
-      const stamp = item.exportedAt
-        ? formatExportTimestamp(item.exportedAt)
-        : (item.date || '');
-      const label = item.filename || buildExportDisplayFilename(item.date);
+      const title = exportTitle(item);
+      const stamp = exportStamp(item);
+      const canDownload = !!(item && (item.attachmentId || item.id));
       return `
       <li class="document-list-item">
-        <i class="fas fa-file-pdf"></i>
-        <span><strong>${escapeHtml(label)}</strong><br><span class="section-desc" style="margin:0;">Exporterad: ${escapeHtml(stamp)}</span></span>
-        <button type="button" class="btn btn-secondary btn-sm" data-pdf-index="${i}">
+        <i class="fas fa-file-pdf document-list-icon"></i>
+        <span class="document-list-info">
+          <strong class="document-list-name">${escapeHtml(title)}</strong>
+          <span class="document-list-meta">Skapad ${escapeHtml(stamp || '—')}</span>
+        </span>
+        <button type="button" class="btn btn-secondary btn-sm document-download-btn" data-pdf-index="${i}" ${canDownload ? '' : 'disabled'}>
           <i class="fas fa-download"></i> Ladda ner
         </button>
       </li>`;
@@ -305,18 +285,28 @@
   window.dokumentationDownloadPdf = async function (index, listArg) {
     const list = listArg || await getSavedPdfsFromApi();
     const item = list[index];
-    if (!item || !item.base64) return;
-    const byteNumbers = atob(item.base64).split('').map(c => c.charCodeAt(0));
-    const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = item.filename || 'Byrans-allmanna-riskbedomning-samt-rutiner.pdf';
-    a.click();
-    URL.revokeObjectURL(url);
+    const id = item && (item.attachmentId || item.id);
+    if (!item || !id) {
+      alert('Dokumentet saknar en sparad fil och kan inte laddas ner.');
+      return;
+    }
+    try {
+      const res = await fetch(getBaseUrl() + '/api/byra/dokument-export/' + encodeURIComponent(id), getAuthOpts());
+      if (!res.ok) {
+        const err = await res.json().catch(function () { return {}; });
+        throw new Error(err.error || 'Kunde inte ladda ner dokumentet');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = item.filename || (exportTitle(item) + '.pdf');
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message || 'Kunde inte ladda ner dokumentet');
+    }
   };
-
-  window.getDokumentationSavePdf = function () { return savePdfToList; };
 
   async function exportDokumentationPdf() {
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
@@ -342,12 +332,9 @@
         throw new Error(err.error || err.message || 'Kunde inte generera PDF');
       }
       const blob = await res.blob();
-      const now = new Date();
-      const dateDisplay = now.toLocaleDateString('sv-SE');
-      const exportedAt = now.toISOString();
+      const dateDisplay = new Date().toLocaleDateString('sv-SE');
       const apiFilename = parseFilenameFromResponse(res);
-      const displayFilename = buildExportDisplayFilename(dateDisplay);
-      const downloadName = apiFilename || displayFilename;
+      const downloadName = apiFilename || buildExportDisplayFilename(dateDisplay);
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -356,14 +343,9 @@
       a.click();
       URL.revokeObjectURL(url);
 
-      const base64 = await blobToBase64(blob);
-      if (base64) {
-        await savePdfToList({
-          date: dateDisplay,
-          exportedAt: exportedAt,
-          filename: displayFilename,
-          base64: base64
-        });
+      await renderPdfList();
+      if (res.headers.get('X-Dokumentation-Saved') === '0') {
+        console.warn('Dokumentexporten laddades ner men historiken kunde inte sparas.');
       }
     } catch (err) {
       console.error('Dokumentation export:', err);
