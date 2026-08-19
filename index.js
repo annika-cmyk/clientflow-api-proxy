@@ -74,6 +74,8 @@ const { createMemoryStore } = require('./lib/aml-news/store-memory');
 const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
 const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
 const { buildDigestEmail } = require('./lib/aml-news/email');
+const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-news/enrich');
+const { heuristicClassify, isThinSummary } = require('./lib/aml-news/classify');
 const kundDold = require('./lib/kund-dold');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
@@ -698,6 +700,33 @@ function getAmlNewsMemoryStore() {
   return global.__amlNewsMemoryStore;
 }
 
+function applyLongerSummaries(rows) {
+  return (rows || []).map((row) => {
+    if (!isThinSummary(row)) return row;
+    const heuristic = heuristicClassify(row);
+    return { ...row, summary_sv: heuristic.summary_sv };
+  });
+}
+
+function persistAmlNewsEnrichment(rows) {
+  try {
+    const store = getAmlNewsStore();
+    for (const row of rows || []) {
+      if (!row.id || !String(row.id).startsWith('rec')) continue;
+      if (!row.raw_content && !row.summary_sv) continue;
+      store.updateFields(row.id, {
+        raw_content: row.raw_content,
+        summary_sv: row.summary_sv,
+        fetched_at: row.fetched_at
+      }).catch((err) => {
+        console.warn('AML-nyheter updateFields:', err.message);
+      });
+    }
+  } catch (err) {
+    console.warn('AML-nyheter persist enrich:', err.message);
+  }
+}
+
 async function loadAmlNewsRows(opts = {}) {
   let stored = [];
   try {
@@ -708,17 +737,26 @@ async function loadAmlNewsRows(opts = {}) {
   const neededSources = ['finanspolisen', 'srf', 'skatteverket'];
   const haveSources = new Set(stored.map((r) => r.source));
   const missingSwedish = neededSources.some((id) => !haveSources.has(id));
-  if (stored.length && !missingSwedish && !opts.forceLive) return stored;
+  const thin = stored.filter((row) => newsItemNeedsBody(row) || isThinSummary(row));
+  if (stored.length && !missingSwedish && !thin.length && !opts.forceLive) return stored;
 
   const maxAgeMs = 30 * 60 * 1000;
   if (amlNewsLiveCache.items.length && Date.now() - amlNewsLiveCache.fetchedAt < maxAgeMs && !opts.forceLive) {
     return amlNewsLiveCache.items;
   }
 
+  if (stored.length && !missingSwedish && thin.length && !opts.forceLive) {
+    const enriched = applyLongerSummaries(await enrichItemsWithArticleBodies(stored, fetchAmlNewsText));
+    amlNewsLiveCache.items = enriched;
+    amlNewsLiveCache.fetchedAt = Date.now();
+    persistAmlNewsEnrichment(enriched);
+    return enriched;
+  }
+
   const ingested = await ingestSources({ fetchText: fetchAmlNewsText });
   const memory = getAmlNewsMemoryStore();
   await memory.upsertMany(ingested.items);
-  const merged = await memory.list();
+  const merged = applyLongerSummaries(await memory.list());
   amlNewsLiveCache.items = merged;
   amlNewsLiveCache.fetchedAt = Date.now();
   amlNewsLiveCache.errors = ingested.errors || [];
@@ -726,6 +764,7 @@ async function loadAmlNewsRows(opts = {}) {
     getAmlNewsStore().upsertMany(ingested.items).catch((err) => {
       console.warn('AML-nyheter persist:', err.message);
     });
+    persistAmlNewsEnrichment(merged);
   } catch (err) {
     console.warn('AML-nyheter persist:', err.message);
   }

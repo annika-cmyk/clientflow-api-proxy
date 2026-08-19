@@ -12597,10 +12597,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .amla-news-summary {
     display: none;
-    margin: 0.4rem 0 0;
-    font-size: 0.8rem;
-    line-height: 1.45;
+    margin: 0.45rem 0 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
     color: var(--text);
+    max-width: 48rem;
 }
 .amla-news--summaries .amla-news-summary {
     display: block;
