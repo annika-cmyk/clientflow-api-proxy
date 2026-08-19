@@ -6113,6 +6113,12 @@ body.sidebar-collapsed .logout-btn {
     flex: 1;
     min-width: 0;
 }
+.dokumentation-pdf-list .document-list-name {
+    display: block;
+}
+.dokumentation-pdf-list .document-list-meta {
+    color: #64748b;
+}
 .nav-action-item a { cursor: pointer; }
 .document-list-actions {
     margin-top: 1rem;

@@ -325,7 +325,6 @@ window.hideAiThinking = function () {
 
 // Exportera Länsstyrelsen-PDF (anropas från menyn) – laddar ner och sparar kopia till Dokumentation
 window.exportLansstyrelsenPdf = async function () {
-    const MAX_SAVED = 10;
     const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
     const baseUrl = window.apiConfig ? window.apiConfig.baseUrl : 'https://clientflow-api-proxy-1.onrender.com';
     const navItem = document.getElementById('nav-exportera-lansstyrelsen-pdf');
@@ -355,34 +354,11 @@ window.exportLansstyrelsenPdf = async function () {
         if (m) {
             try { apiFilename = decodeURIComponent(m[1].trim().replace(/^["']|["']$/g, '')); } catch (_) { apiFilename = m[1].trim(); }
         }
-        const now = new Date();
-        const dateDisplay = now.toLocaleDateString('sv-SE');
-        const displayFilename = 'Byråns allmänna riskbedömning och rutiner ' + dateDisplay + '.pdf';
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = apiFilename;
         a.click();
         URL.revokeObjectURL(a.href);
-        const reader = new FileReader();
-        reader.onload = async function () {
-            const base64 = reader.result.split(',')[1];
-            if (!base64) return;
-            const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
-            try {
-                const getRes = await fetch(baseUrl + '/api/settings/dokumentation-pdfs', opts);
-                let list = [];
-                if (getRes.ok) { const data = await getRes.json(); list = Array.isArray(data.list) ? data.list : []; }
-                list.unshift({
-                    date: dateDisplay,
-                    exportedAt: now.toISOString(),
-                    filename: displayFilename,
-                    base64: base64
-                });
-                list = list.slice(0, MAX_SAVED);
-                await fetch(baseUrl + '/api/settings/dokumentation-pdfs', { method: 'PUT', ...opts, body: JSON.stringify({ list }) });
-            } catch (_) {}
-        };
-        reader.readAsDataURL(blob);
     } catch (err) {
         console.error('Länsstyrelsen PDF:', err);
         alert('Kunde inte generera PDF: ' + (err.message || 'Okänt fel'));
