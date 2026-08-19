@@ -58,6 +58,7 @@ const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
+const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const dokumentKategori = require('./lib/dokument-kategori');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
@@ -4191,6 +4192,38 @@ async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverrid
 
 // Risk Assessment API Endpoints
 const RISK_ASSESSMENT_TABLE = 'Risker kopplad till tjänster';
+const OVRIGA_RISKER_TABLE_ID = 'tblWw6tM2YOTYFn2H';
+
+async function fetchAirtableByByraId(table, byraId, token, baseId) {
+  const id = String(byraId || '').trim();
+  if (!id || !token) return [];
+  const formula = encodeURIComponent(`{Byrå ID}="${id.replace(/"/g, '\\"')}"`);
+  const records = [];
+  let offset = '';
+  do {
+    let url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${formula}&pageSize=100`;
+    if (offset) url += `&offset=${encodeURIComponent(offset)}`;
+    // eslint-disable-next-line no-await-in-loop
+    const res = await axios.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000
+    });
+    records.push(...(res.data.records || []));
+    offset = res.data.offset || '';
+  } while (offset);
+  return records;
+}
+
+async function compiledIdentifieradeForByra(byraId, token, baseId) {
+  const [tjanstRecs, ovrigaRecs] = await Promise.all([
+    fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId),
+    fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId)
+  ]);
+  return compileIdentifieradeRisker({
+    tjanster: tjanstRecs.map(mapByraTjanstRecord).filter((t) => t.namn),
+    ovriga: ovrigaRecs.map(mapOvrigRiskRecord).filter((r) => r.namn || r.beskrivning)
+  });
+}
 
 function isAirtableRecordIdStr(s) {
   return typeof s === 'string' && /^rec[A-Za-z0-9]{10,}$/.test(String(s).trim());
@@ -9222,19 +9255,31 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     const record = airtableRes.data.records[0];
     const fields = { ...record.fields };
     const riskKey = '4. Identifierade Risker och Sårbarheter';
-    const riskRaw = fields[riskKey];
-    if (riskRaw && typeof riskRaw === 'string' && /rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
-      const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
-      fields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
-    } else if (riskRaw && typeof riskRaw === 'string') {
-      fields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+    try {
+      const compiled = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
+      fields[riskKey] = compiled;
+      const stored = typeof record.fields[riskKey] === 'string' ? record.fields[riskKey] : '';
+      if (compiled && compiled !== stored) {
+        patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, { [riskKey]: compiled })
+          .catch((err) => console.warn('⚠️ Kunde inte spegla identifierade risker till Byråer:', err.message));
+      }
+    } catch (compileErr) {
+      console.warn('⚠️ Identifierade risker kunde inte hämtas från tjänster/övriga:', compileErr.message);
+      const riskRaw = fields[riskKey];
+      if (riskRaw && typeof riskRaw === 'string' && /rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
+        const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
+        fields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
+      } else if (riskRaw && typeof riskRaw === 'string') {
+        fields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+      }
     }
 
     res.json({
       success: true,
       record: { id: record.id, fields },
       fields,
-      id: record.id
+      id: record.id,
+      identifieradeRiskerLive: true
     });
   } catch (error) {
     console.error('❌ GET /api/byra-rutiner:', error.response?.data || error.message);
@@ -16303,13 +16348,18 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const byraRec = byraRes.data.records?.[0];
     const byraFields = { ...(byraRec?.fields || {}) };
     const riskKey = '4. Identifierade Risker och Sårbarheter';
-    const riskRaw = byraFields[riskKey];
-    if (riskRaw && typeof riskRaw === 'string') {
-      if (/rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
-        const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
-        byraFields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
-      } else {
-        byraFields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+    try {
+      byraFields[riskKey] = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
+    } catch (compileErr) {
+      console.warn('⚠️ Länsstyrelsen-PDF: identifierade risker från källsidor misslyckades:', compileErr.message);
+      const riskRaw = byraFields[riskKey];
+      if (riskRaw && typeof riskRaw === 'string') {
+        if (/rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
+          const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
+          byraFields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
+        } else {
+          byraFields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+        }
       }
     }
     const byraNamn = byraFields['Byrå'] || byraFields['Namn'] || 'Byrån';

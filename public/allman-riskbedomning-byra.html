@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Allmän riskbedömning byrå</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260819d">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -120,26 +120,21 @@
                             </div>
                                 </div>
                             </div>
-                            <div class="byra-card" data-field-id="fld-identifierade-risker">
+                            <div class="byra-card byra-card--live-source" data-field-id="fld-identifierade-risker">
                                 <div class="byra-card-view">
                                     <div class="byra-card-value"></div>
-                                    <div class="byra-card-actions">
-                                        <button type="button" class="btn-ai-suggest" id="btn-ai-identifierade-risker" title="AI analyserar statistik, byråns tjänster och riktlinjer för att föreslå identifierade risker"><i class="fas fa-robot"></i> Generera AI-förslag</button>
-                                        <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
-                                    </div>
+                                    <p class="byra-card-source-hint">
+                                        Hämtas från
+                                        <a href="riskbedomning-byra.html">Byråns tjänster</a>
+                                        och
+                                        <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
+                                        Ändra där om något saknas eller ska uppdateras.
+                                    </p>
                                 </div>
-                                <div class="byra-card-edit">
+                                <div class="byra-card-edit" style="display:none;">
                             <div class="form-group full-width">
                                 <label for="fld-identifierade-risker">4. Identifierade Risker och Sårbarheter</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-identifierade-risker" class="form-input form-textarea" rows="8" placeholder="Beskriv identifierade risker..."></textarea>
-                                </div>
+                                <textarea id="fld-identifierade-risker" class="form-input form-textarea" rows="8" readonly hidden></textarea>
                             </div>
                                 </div>
                             </div>
@@ -234,7 +229,7 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=1.2"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=1.3"></script>
     <script src="app.js"></script>
 </body>
 </html>

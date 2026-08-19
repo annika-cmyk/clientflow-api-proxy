@@ -271,12 +271,17 @@
         btn.addEventListener('click', function () { showEdit(card); });
       });
     });
+    document.querySelectorAll('.byra-card--live-source').forEach(function (card) {
+      showView(card);
+      card.querySelectorAll('.byra-card-edit-btn').forEach(function (b) { b.style.display = 'none'; });
+    });
   }
 
   function initCardSaveButtons(canEdit) {
     if (!canEdit) return;
     document.querySelectorAll('.byra-card[data-field-id]').forEach(function (card) {
       var fid = card.getAttribute('data-field-id');
+      if (fid === 'fld-identifierade-risker') return;
       var m = FIELD_MAP.find(function (x) { return x.id === fid; });
       if (!m) return;
       var formGroup = card.querySelector('.form-group');
@@ -473,46 +478,10 @@
     });
   }
 
-  function initAiIdentifieradeRisker() {
-    var btn = getEl('btn-ai-identifierade-risker');
-    var card = document.querySelector('.byra-card[data-field-id="fld-identifierade-risker"]');
-    var ta = getEl('fld-identifierade-risker');
-    if (!btn || !card || !ta) return;
-    btn.addEventListener('click', async function () {
-      var origHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
-      if (typeof window.showAiThinking === 'function') window.showAiThinking();
-      showEdit(card);
-      ta.focus();
-      try {
-        var res = await fetch(getBaseUrl() + '/api/ai-identifierade-risker-byra', {
-          method: 'POST',
-          ...getAuthOpts()
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (res.ok && data.text) {
-          ta.value = sanitizeIdentifieradeRiskerText(data.text);
-          updateCardView(card);
-        } else {
-          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
-        }
-      } catch (err) {
-        console.error('AI identifierade risker:', err);
-        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
-      } finally {
-        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
-      }
-    });
-  }
-
   function init() {
     load();
     initFormatToolbars();
     initAiBeskrivning();
-    initAiIdentifieradeRisker();
     initAiVarderingRisk();
   }
 

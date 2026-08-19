@@ -4793,6 +4793,20 @@ body.sidebar-collapsed .logout-btn {
     color: var(--ink-3);
 }
 
+.byra-card-source-hint {
+    margin: 0.85rem 0 0;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: #334155;
+}
+.byra-card-source-hint a {
+    color: #13505c;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.byra-card-source-hint a:hover { color: #0c3d46; }
+
 .byra-card-actions {
     display: flex;
     align-items: center;
