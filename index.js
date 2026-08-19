@@ -61,6 +61,7 @@ const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
+const docsignInvite = require('./lib/docsign-invite');
 const dokumentationExport = require('./lib/dokumentation-export');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
@@ -6685,6 +6686,71 @@ async function sendSamarbeteInviteEmail(options) {
   }
 }
 
+function smtpMailFromDisplay(displayName) {
+  const configured = String(process.env.MAIL_FROM || 'ClientFlow <noreply@clientflow.se>').trim();
+  const emailMatch = configured.match(/<([^>]+)>/);
+  const address = (emailMatch && emailMatch[1]) || configured;
+  const label = String(displayName || '').trim();
+  if (!label) return configured;
+  return `"${label.replace(/"/g, '')}" <${address}>`;
+}
+
+async function sendKlientansvarigNotifyEmail({ toEmail, toName, byraNamn, kind, kundnamn, signerNames, replyTo }) {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass || !toEmail) {
+    return { sent: false, error: !toEmail ? 'Ingen e-post till klientansvarig' : 'SMTP ej konfigurerad' };
+  }
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const subject = docsignInvite.buildStaffNotifySubject({ kind, kundnamn });
+  const text = docsignInvite.buildStaffNotifyText({
+    kind,
+    byraNamn,
+    klientansvarigNamn: toName,
+    kundnamn,
+    signerNames
+  });
+  try {
+    const transporterOpts = { host, port, secure, auth: { user, pass } };
+    if (port === 587 && !secure) transporterOpts.requireTLS = true;
+    const transporter = nodemailer.createTransport(transporterOpts);
+    await transporter.sendMail({
+      from: smtpMailFromDisplay(byraNamn),
+      to: toEmail,
+      replyTo: replyTo || toEmail,
+      subject,
+      text
+    });
+    return { sent: true };
+  } catch (err) {
+    console.warn('sendKlientansvarigNotifyEmail:', err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+async function resolveKlientansvarigForSend({ customerFields, extraFields, fallbackUser, airtableAccessToken, baseId }) {
+  const klientansvarigName = String(
+    (customerFields || {})['Klientansvarig'] || (extraFields || {})['Klientansvarig'] || ''
+  ).trim();
+  const byraId = access.customerByraId(customerFields) || fallbackUser?.byraId;
+  let users = [];
+  try {
+    users = await listByraUsersByByraId(byraId, airtableAccessToken, baseId);
+  } catch (e) {
+    console.warn('resolveKlientansvarigForSend: kunde inte lista byråanvändare:', e.message);
+  }
+  const byraNamn = String(fallbackUser?.byra || access.byraDisplayName(customerFields) || '').trim();
+  return docsignInvite.resolveKlientansvarigSender({
+    klientansvarigName,
+    users,
+    fallbackUser,
+    byraNamn
+  });
+}
+
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
@@ -13179,6 +13245,13 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     );
     const custFields = custRes.data.fields || {};
     const kundnamn = custFields['Namn'] || 'Kund';
+    const loggedIn = await getAirtableUser(req.user.email);
+    const sender = await resolveKlientansvarigForSend({
+      customerFields: custFields,
+      fallbackUser: loggedIn || { email: req.user.email, name: req.user.name, byra: req.user.byra, byraId: req.user.byraId },
+      airtableAccessToken,
+      baseId
+    });
 
     // Generera PDF internt
     const kycInternalHeaders = {};
@@ -13198,7 +13271,7 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
         api_key: docsignApiKey,
         name: s.namn,
         email: s.epost,
-        company: kundnamn,
+        company: sender.byraNamn || kundnamn,
         sign_method: 'bankid',
         external_id: `kyc-kund-${(s.personnr || 'x')}-${Date.now()}`,
         debug: false
@@ -13212,14 +13285,19 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     }
 
     const pdfBase64 = pdfBuffer.toString('base64');
-    const docPayload = {
+    const docPayload = docsignInvite.applyDocsignInviteMeta({
       api_key: docsignApiKey,
       name: `KYC-formulär - ${kundnamn}`,
       parties: kundPartyIds,
       send_reminders: true,
       send_receipt: true,
       attachments: [{ name: 'kyc-formular.pdf', base64_content: pdfBase64 }]
-    };
+    }, {
+      kind: 'kyc',
+      byraNamn: sender.byraNamn,
+      klientansvarigNamn: sender.name,
+      kundnamn
+    });
     const docRes = await axios.post('https://docsign.se/api/documents', docPayload, { headers: { 'Content-Type': 'application/json' } });
     if (!docRes.data?.success) {
       return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.' });
@@ -13241,6 +13319,18 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
       { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
+
+    if (sender.email) {
+      sendKlientansvarigNotifyEmail({
+        toEmail: sender.email,
+        toName: sender.name,
+        byraNamn: sender.byraNamn,
+        kind: 'kyc',
+        kundnamn,
+        signerNames: signerareList.map((s) => s.namn),
+        replyTo: sender.email
+      }).catch((e) => console.warn('KYC-notis till klientansvarig:', e.message));
+    }
 
     res.json({
       success: true,
@@ -17203,6 +17293,29 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     );
     const avtalFields = avtalRes.data.fields || {};
     const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
+    const kundId = docsignInvite.extractLinkedRecordId(avtalFields.KundID || avtalFields['Kund ID']);
+    let customerFields = {};
+    if (kundId) {
+      try {
+        const customer = await fetchKunddataRecord(kundId, airtableAccessToken, airtableBaseId);
+        customerFields = customer?.fields || {};
+      } catch (custErr) {
+        console.warn('Uppdragsavtal signering: kunde inte hämta kund för klientansvarig:', custErr.message);
+      }
+    }
+    const sender = await resolveKlientansvarigForSend({
+      customerFields,
+      extraFields: avtalFields,
+      fallbackUser: inloggedUser,
+      airtableAccessToken,
+      baseId: airtableBaseId
+    });
+    const byraSigner = {
+      name: sender.name || inloggedUser.name || req.user.email.split('@')[0],
+      email: sender.email || inloggedUser.email,
+      byra: sender.byraNamn || inloggedUser.byra || 'Byrån',
+      id: inloggedUser.id
+    };
 
     // 2. Generera PDF via intern anrop
     console.log('📄 Genererar PDF för signering, avtal:', id);
@@ -17235,11 +17348,11 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     // 3. Skapa undertecknare i Inleed: först konsult (byrå), sedan kund
     const konsultPayload = {
       api_key: docsignApiKey,
-      name: inloggedUser.name || req.user.email.split('@')[0],
-      email: inloggedUser.email,
-      company: inloggedUser.byra || 'Byrån',
+      name: byraSigner.name,
+      email: byraSigner.email,
+      company: byraSigner.byra,
       sign_method: 'bankid',
-      external_id: `konsult-${inloggedUser.id}-${(inloggedUser.email || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}`,
+      external_id: `konsult-${byraSigner.id || 'byra'}-${(byraSigner.email || '').replace(/[^a-zA-Z0-9@._-]/g, '_')}`,
       debug: false
     };
     console.log('📤 Skapar konsult som undertecknare i Inleed:', konsultPayload.name, konsultPayload.email);
@@ -17279,7 +17392,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
 
     // 4. Skapa dokument i Inleed med alla parter – konsult först, sedan alla kunder
     const pdfBase64 = pdfBuffer.toString('base64');
-    const docPayload = {
+    const docPayload = docsignInvite.applyDocsignInviteMeta({
       api_key: docsignApiKey,
       name: `Uppdragsavtal - ${kundnamn}`,
       parties: [konsultPartyId, ...kundPartyIds],
@@ -17289,7 +17402,12 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         name: 'uppdragsavtal.pdf',
         base64_content: pdfBase64
       }]
-    };
+    }, {
+      kind: 'uppdragsavtal',
+      byraNamn: byraSigner.byra,
+      klientansvarigNamn: sender.name || byraSigner.name,
+      kundnamn
+    });
 
     // 4b. Lägg till kundens egna bilagor (PDF) i DocSign (attachment-fält vars namn innehåller "bilag")
     try {
@@ -17367,7 +17485,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       success: true,
       document_id: documentId,
       party_ids: [konsultPartyId, ...kundPartyIds],
-      message: `Uppdragsavtalet har skickats till konsult (${inloggedUser.email}) och ${signerareList.length} kundsignerare f\u00f6r BankID-signering.`
+      message: `Uppdragsavtalet har skickats till klientansvarig (${byraSigner.email}) och ${signerareList.length} kundsignerare f\u00f6r BankID-signering.`
     });
 
   } catch (error) {
