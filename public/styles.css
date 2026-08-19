@@ -2423,6 +2423,76 @@ body.sidebar-collapsed .logout-btn {
         gap: 1rem;
     }
 }
+.whats-new-banner {
+  margin: 0 0 1.5rem;
+  padding: 1.25rem 1.35rem 1.15rem;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--card-shadow);
+}
+.whats-new-hello {
+  margin: 0 0 0.4rem;
+  color: var(--title-text);
+  font-family: var(--title-font);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.whats-new-hello strong {
+  color: var(--accent);
+}
+.whats-new-lead,
+.whats-new-feedback {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+.whats-new-list {
+  margin: 0.9rem 0 0.95rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.7rem;
+}
+.whats-new-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.7rem;
+  row-gap: 0.15rem;
+  padding-left: 0.15rem;
+}
+.whats-new-date {
+  grid-row: 1 / span 2;
+  align-self: start;
+  margin-top: 0.15rem;
+  min-width: 3.6rem;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.whats-new-item-title {
+  color: var(--title-text);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+.whats-new-item-summary {
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.whats-new-feedback a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.whats-new-feedback a:hover {
+  text-decoration: underline;
+}
 .dashboard-section {
     margin-bottom: 0;
     min-width: 0;
@@ -2674,6 +2744,12 @@ body.sidebar-collapsed .logout-btn {
   .content-header.dashboard-header { padding: 0.75rem 0; margin-bottom: 1rem; }
   .content-header.dashboard-header h1 { font-size: 1.2rem; }
   .content-header.dashboard-header .dashboard-subtitle { font-size: 0.8rem; }
+  .whats-new-banner { padding: 1rem 1rem 0.95rem; margin-bottom: 1.15rem; }
+  .whats-new-hello { font-size: 1.15rem; }
+  .whats-new-lead,
+  .whats-new-feedback { font-size: 0.85rem; }
+  .whats-new-item-title { font-size: 0.88rem; }
+  .whats-new-item-summary { font-size: 0.8rem; }
   .dashboard-card-header { padding: 0.5rem 0.75rem; }
   .dashboard-card-header h2 { font-size: 0.8rem; }
   .dashboard-card-body { padding: 0.5rem 0.75rem; }

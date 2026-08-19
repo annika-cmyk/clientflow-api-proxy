@@ -78,6 +78,7 @@ const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-n
 const { isRelevantForConsultants } = require('./lib/aml-news/sources');
 const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
 const kundDold = require('./lib/kund-dold');
+const { getWhatsNewPayload } = require('./lib/whats-new');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -11467,6 +11468,11 @@ app.get('/api/byra/dokument-export/:id', authenticateToken, async (req, res) => 
     console.error('❌ GET /api/byra/dokument-export:', error.message);
     res.status(error.status || 500).json({ error: error.message });
   }
+});
+
+// GET /api/whats-new – Senaste användarvända ändringar för dashboarden
+app.get('/api/whats-new', authenticateToken, (req, res) => {
+  res.json(getWhatsNewPayload());
 });
 
 // GET /api/settings/kom-igang – Hämta Kom igång-checkboxar från Byråer (databas)

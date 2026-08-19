@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2.6">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -15,6 +15,13 @@
 
         <main class="main-content">
             <div class="container">
+
+                <section id="dashboard-whats-new" class="whats-new-banner" aria-label="Välkommen och senaste ändringar">
+                    <p class="whats-new-hello">Hej<span class="whats-new-name-wrap"> <strong id="whats-new-name"></strong></span></p>
+                    <p class="whats-new-lead">ClientFlow är under ett intensivt utvecklingsarbete! Här listar vi de ändringar som vi gjort den senaste tiden.</p>
+                    <ol class="whats-new-list" id="whats-new-list"></ol>
+                    <p class="whats-new-feedback">Testa gärna och ge oss din feedback! <a id="whats-new-feedback-link" href="mailto:hej@clientflow.se?subject=Feedback%20ClientFlow">Skicka feedback</a></p>
+                </section>
 
                 <header class="content-header dashboard-header">
                     <div class="risk-header-content">
@@ -383,6 +390,7 @@
     <script src="js/components.js"></script>
     <script src="js/ai-chat.js?v=2.4"></script>
     <script src="js/amla-nyheter.js?v=5"></script>
+    <script src="js/whats-new.js?v=1"></script>
     <script src="app.js?v=2.5"></script>
 </body>
 </html>
