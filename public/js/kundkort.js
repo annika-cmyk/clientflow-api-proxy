@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.34', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.35', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -11942,8 +11942,10 @@ class CustomerCardManager {
                     <div class="modal-body">
                         <form id="upload-document-form">
                             <div class="form-group">
-                                <label for="upload-doc-file">Fil *</label>
-                                <input type="file" id="upload-doc-file" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" required>
+                                <label for="upload-doc-file">Filer *</label>
+                                <input type="file" id="upload-doc-file" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple required>
+                                <p class="bv-verksam-hint" id="upload-doc-file-hint" style="margin-top:0.4rem;">Du kan välja flera filer. Alla sparas i vald kategori.</p>
+                                <ul id="upload-doc-file-list" class="document-list" style="margin-top:0.5rem;"></ul>
                             </div>
                             <div class="form-group">
                                 <label for="upload-doc-category">Kategori *</label>
@@ -11951,6 +11953,7 @@ class CustomerCardManager {
                                     <option value="riskbedomning">Dokumentation riskbedömning</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>
+                                    <option value="kyc">KYC-formulär</option>
                                     <option value="bolagsverket_skatteverket">Bolagsverket och Skatteverket</option>
                                     <option value="ovrigt">Övrigt</option>
                                 </select>
@@ -11975,6 +11978,14 @@ class CustomerCardManager {
         const form = document.getElementById('upload-document-form');
         const catSelect = document.getElementById('upload-doc-category');
         const customWrap = document.getElementById('upload-doc-custom-wrap');
+        const fileInput = document.getElementById('upload-doc-file');
+        const fileList = document.getElementById('upload-doc-file-list');
+        const renderFileList = () => {
+            if (!fileList) return;
+            const files = Array.from(fileInput?.files || []);
+            fileList.innerHTML = files.map((f) => `<li class="document-list-item">${this.escapeDocHtml(f.name)}</li>`).join('');
+        };
+        if (fileInput) fileInput.addEventListener('change', renderFileList);
         if (catSelect && customWrap) {
             if (preselectedCategory && catSelect.querySelector(`option[value="${preselectedCategory}"]`)) {
                 catSelect.value = preselectedCategory;
@@ -12003,35 +12014,56 @@ class CustomerCardManager {
         const customInput = document.getElementById('upload-doc-custom');
         const submitBtn = document.getElementById('upload-doc-submit');
         if (!fileInput?.files?.length || !categorySelect) return;
-        const file = fileInput.files[0];
+        const files = Array.from(fileInput.files);
         const category = categorySelect.value;
         const customCategory = (customInput?.value || '').trim();
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Laddar upp...';
+            submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp 1/${files.length}...`;
         }
+        const errors = [];
+        let uploaded = 0;
         try {
-            const base64 = await this.fileToBase64(file);
-            const opts = getAuthOptsKundkort();
-            const res = await fetch(`${baseUrl}/api/documents/upload`, {
-                method: 'POST',
-                ...opts,
-                headers: { ...(opts.headers || {}), 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    customerId: this.customerId,
-                    file: base64,
-                    filename: file.name,
-                    category,
-                    customCategory: customCategory || undefined
-                })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-            this.showNotification('Dokument uppladdat.', 'success');
-            this.closeUploadDocumentModal();
-            this.loadDocuments();
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (submitBtn) {
+                    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp ${i + 1}/${files.length}...`;
+                }
+                try {
+                    const base64 = await this.fileToBase64(file);
+                    const opts = getAuthOptsKundkort();
+                    const res = await fetch(`${baseUrl}/api/documents/upload`, {
+                        method: 'POST',
+                        ...opts,
+                        headers: { ...(opts.headers || {}), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            customerId: this.customerId,
+                            file: base64,
+                            filename: file.name,
+                            category,
+                            customCategory: customCategory || undefined
+                        })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+                    uploaded += 1;
+                } catch (err) {
+                    errors.push(`${file.name}: ${err.message || 'Okänt fel'}`);
+                }
+            }
+            if (uploaded && !errors.length) {
+                this.showNotification(uploaded === 1 ? 'Dokument uppladdat.' : `${uploaded} dokument uppladdade.`, 'success');
+                this.closeUploadDocumentModal();
+                this.loadDocuments();
+            } else if (uploaded && errors.length) {
+                this.showNotification(`${uploaded} uppladdade, ${errors.length} misslyckades. ${errors[0]}`, 'warning');
+                this.closeUploadDocumentModal();
+                this.loadDocuments();
+            } else {
+                throw new Error(errors[0] || 'Kunde inte ladda upp');
+            }
         } catch (err) {
             this.showNotification('Kunde inte ladda upp: ' + (err.message || 'Okänt fel'), 'error');
         } finally {
