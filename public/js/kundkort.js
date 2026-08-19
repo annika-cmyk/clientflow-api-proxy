@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.37', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.39', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7702,6 +7702,40 @@ class CustomerCardManager {
         `;
     }
 
+    _renderInleedSignLinks(inleed, { allowByraSign = false } = {}) {
+        const links = Array.isArray(inleed?.links) ? inleed.links : [];
+        if (!links.length && !inleed?.documentId) return '';
+        const esc = (s) => String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        const byra = links.find((l) => l.roll === 'byra' && l.signUrl && !l.signed);
+        const rows = links.map((l) => {
+            const rollLabel = l.roll === 'byra' ? 'Byrå' : 'Kund';
+            const status = l.signed
+                ? '<span class="inleed-sign-status inleed-sign-status--ok">Signerad</span>'
+                : '<span class="inleed-sign-status inleed-sign-status--wait">Väntar</span>';
+            const who = esc(l.namn || l.email || 'Undertecknare');
+            const open = l.signUrl
+                ? `<a class="inleed-sign-link" href="${esc(l.signUrl)}" target="_blank" rel="noopener noreferrer">${l.signed ? 'Öppna dokument' : 'Öppna och signera'}</a>`
+                : '';
+            return `<li><span class="inleed-sign-who">${who} <em>${rollLabel}</em></span>${status}${open}</li>`;
+        }).join('');
+        const byraBtn = (allowByraSign && byra)
+            ? `<a class="btn btn-inleed" href="${esc(byra.signUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-pen-nib"></i> Signera som byrå</a>`
+            : '';
+        return `
+            <div class="inleed-sign-box">
+                <div class="inleed-sign-box-head">
+                    <div class="inleed-sign-box-title"><i class="fas fa-link"></i> Inleed-länk till dokumentet</div>
+                    ${byraBtn}
+                </div>
+                ${rows ? `<ul class="inleed-sign-list">${rows}</ul>` : '<p class="uppdrag-hint" style="margin:0;">Dokumentet är skickat i Inleed. Öppna mejlet från Inleed om länken saknas här.</p>'}
+            </div>`;
+    }
+
     // ─── KYC-FORMULÄR ─────────────────────────────────────────────────────────
     async loadKYCFormular() {
         const container = document.getElementById('kycformular-content');
@@ -7748,8 +7782,12 @@ class CustomerCardManager {
             if (res.ok) {
                 const data = await res.json();
                 savedKyc = data.kyc || {};
+                this._kycInleed = data.inleed || null;
             }
-        } catch (e) { console.warn('Kunde inte hämta sparat KYC-formulär:', e.message); }
+        } catch (e) {
+            console.warn('Kunde inte hämta sparat KYC-formulär:', e.message);
+            this._kycInleed = null;
+        }
 
         this._savedKycFormular = savedKyc;
         this._updateKlarTabIndicators(this.customerData?.fields || {});
@@ -7913,10 +7951,15 @@ class CustomerCardManager {
                 <option value="Nej" ${val === 'Nej' ? 'selected' : ''}>Nej</option>
             </select>`;
 
+        const inleedLinksHtml = (!kycUtanfor && (kycInleedId || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat'))
+            ? this._renderInleedSignLinks(this._kycInleed, { allowByraSign: true })
+            : '';
+
         container.innerHTML = `
             <div class="uppdrag-wrap">
                 ${kycUtanforHtml}
                 ${statusBannerHtml}
+                ${inleedLinksHtml}
 
                 <div class="uppdrag-doc-header">
                     <div class="uppdrag-doc-titel">KYC — KUNDKÄNNEDOMSFORMULÄR</div>
@@ -8529,11 +8572,13 @@ class CustomerCardManager {
             const byraData  = byraRes.ok  ? await byraRes.json()  : {};
 
             this._uppdragsavtalFields = avtalData.avtal?.fields || null;
+            this._avtalInleed = avtalData.inleed || null;
             this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.renderUppdragsavtal(avtalData.avtal, byraData);
         } catch (e) {
             console.error('❌ loadUppdragsavtal:', e);
             this._uppdragsavtalFields = null;
+            this._avtalInleed = null;
             this._updateKlarTabIndicators(this.customerData?.fields || {});
             this.renderUppdragsavtal(null, {});
         }
@@ -8698,6 +8743,9 @@ class CustomerCardManager {
                     <i class="fas fa-pencil-alt"></i>
                     Utkast — ej signerat ännu.
                 </div>`}
+                ${(!uaUtanfor && (avtal?.fields?.['InleedDokumentId'] || f['Status'] === 'Skickat till kund' || f['Status'] === 'Signerat'))
+                    ? this._renderInleedSignLinks(this._avtalInleed, { allowByraSign: true })
+                    : ''}
 
                 <!-- AVTALSHUVUD -->
                 <div class="uppdrag-doc-header">
