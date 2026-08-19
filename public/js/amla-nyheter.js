@@ -1,5 +1,5 @@
 /**
- * AMLA-nyheter – full sida och dashboard-kort.
+ * AML-nyheter – byråanpassat flöde (källa + sammanfattning + varför).
  */
 (function () {
   var LANG_KEY = 'amla-news-lang';
@@ -8,24 +8,69 @@
   var COPY = {
     sv: {
       summaries: 'Visa sammanfattningar',
-      loading: 'Laddar nyheter från AMLA…',
-      empty: 'Inga nyheter som rör redovisningsbyråer just nu.',
+      loading: 'Laddar nyheter som matchar byråns profil…',
+      empty: 'Inga nyheter når er relevanströskel just nu.',
       error: 'Kunde inte hämta nyheterna. Försök igen senare.',
-      open: 'Öppna artikel',
-      source: 'Källa: AMLA (EU)',
+      open: 'Öppna källa',
+      source: 'Filtrerat mot byråprofilen',
       all: 'Visa alla nyheter',
-      heading: 'AML-nyheter'
+      heading: 'AML-nyheter',
+      why: 'Varför detta visas',
+      category: 'Kategori',
+      severity: 'Allvar',
+      search: 'Sök',
+      searchPh: 'Sök titel, sammanfattning eller källa',
+      allCats: 'Alla kategorier',
+      allSev: 'Alla nivåer',
+      showLow: 'Visa låg relevans',
+      fallback: 'Visar AMLA-flödet tills bevakningen är ifylld.'
     },
     en: {
       summaries: 'Show summaries',
-      loading: 'Loading news from AMLA…',
-      empty: 'No news relevant to accounting firms right now.',
+      loading: 'Loading news matched to your firm profile…',
+      empty: 'No news currently meets your relevance threshold.',
       error: 'Could not load the news. Try again later.',
-      open: 'Open article',
-      source: 'Source: AMLA (EU)',
+      open: 'Open source',
+      source: 'Filtered to your firm profile',
       all: 'View all news',
-      heading: 'AML news'
+      heading: 'AML news',
+      why: 'Why this was flagged',
+      category: 'Category',
+      severity: 'Severity',
+      search: 'Search',
+      searchPh: 'Search title, summary or source',
+      allCats: 'All categories',
+      allSev: 'All severities',
+      showLow: 'Show low relevance',
+      fallback: 'Showing the AMLA feed until monitoring has items.'
     }
+  };
+
+  var DEFAULT_FILTERS = {
+    categories: ['kundkannedom', 'hogriskstater', 'rapporteringsrutiner', 'lagandring', 'branschspecifik', 'ovrigt'],
+    severities: ['informativ', 'kraver_atgard'],
+    categoryLabels: {
+      kundkannedom: 'Kundkännedom',
+      hogriskstater: 'Högriskstater',
+      rapporteringsrutiner: 'Rapporteringsrutiner',
+      lagandring: 'Lagändring',
+      branschspecifik: 'Branschspecifik',
+      ovrigt: 'Övrigt'
+    },
+    severityLabels: { informativ: 'Informativ', kraver_atgard: 'Kräver åtgärd' },
+    sourceLabels: {
+      amla: 'AMLA',
+      eurlex: 'EUR-Lex',
+      fatf: 'FATF',
+      lansstyrelsen: 'Länsstyrelsen',
+      finanspolisen: 'Finanspolisen',
+      samordningsfunktionen: 'Samordningsfunktionen',
+      revisorsinspektionen: 'Revisorsinspektionen',
+      srf: 'SRF Konsulterna',
+      skatteverket: 'Skatteverket',
+      ekobrottsmyndigheten: 'Ekobrottsmyndigheten'
+    },
+    tierLabels: { low: 'Låg', medium: 'Medium', high: 'Hög' }
   };
 
   function getAuthOpts() {
@@ -44,7 +89,7 @@
   }
 
   function showSummaries() {
-    return localStorage.getItem(SUM_KEY) === '1';
+    return localStorage.getItem(SUM_KEY) !== '0';
   }
 
   function escapeHtml(s) {
@@ -68,6 +113,39 @@
     }
   }
 
+  function readFilters(root) {
+    var cat = root.querySelector('[data-aml-filter="category"]');
+    var sev = root.querySelector('[data-aml-filter="severity"]');
+    var q = root.querySelector('[data-aml-filter="q"]');
+    var low = root.querySelector('[data-aml-filter="low"]');
+    return {
+      category: cat ? cat.value : '',
+      severity: sev ? sev.value : '',
+      q: q ? q.value.trim() : '',
+      minTier: low && low.checked ? 'low' : 'medium'
+    };
+  }
+
+  function fillFilterOptions(root, filters, lang) {
+    var copy = COPY[lang] || COPY.sv;
+    var cat = root.querySelector('[data-aml-filter="category"]');
+    var sev = root.querySelector('[data-aml-filter="severity"]');
+    if (cat && !cat.getAttribute('data-filled')) {
+      cat.innerHTML = '<option value="">' + escapeHtml(copy.allCats) + '</option>' +
+        (filters.categories || []).map(function (id) {
+          return '<option value="' + escapeHtml(id) + '">' + escapeHtml((filters.categoryLabels || {})[id] || id) + '</option>';
+        }).join('');
+      cat.setAttribute('data-filled', '1');
+    }
+    if (sev && !sev.getAttribute('data-filled')) {
+      sev.innerHTML = '<option value="">' + escapeHtml(copy.allSev) + '</option>' +
+        (filters.severities || []).map(function (id) {
+          return '<option value="' + escapeHtml(id) + '">' + escapeHtml((filters.severityLabels || {})[id] || id) + '</option>';
+        }).join('');
+      sev.setAttribute('data-filled', '1');
+    }
+  }
+
   function applyChrome(root, lang) {
     if (!root) return;
     var copy = COPY[lang] || COPY.sv;
@@ -81,9 +159,11 @@
     var sum = root.querySelector('#amla-show-summaries, .amla-show-summaries');
     if (sum) sum.checked = showSummaries();
     root.classList.toggle('amla-news--summaries', showSummaries());
+    var q = root.querySelector('[data-aml-filter="q"]');
+    if (q) q.setAttribute('placeholder', copy.searchPh);
   }
 
-  function renderItems(listEl, items, lang, limit) {
+  function renderItems(listEl, items, lang, filters, limit) {
     var copy = COPY[lang] || COPY.sv;
     var rows = limit ? items.slice(0, limit) : items;
     if (!rows.length) {
@@ -91,18 +171,37 @@
       return;
     }
     listEl.innerHTML = rows.map(function (item) {
+      var sourceLabel = (filters.sourceLabels || {})[item.source] || item.source || '';
+      var catLabel = (filters.categoryLabels || {})[item.category] || item.category || '';
+      var sevLabel = (filters.severityLabels || {})[item.severity] || item.severity || '';
+      var tierLabel = (filters.tierLabels || {})[item.relevanceTier] || item.relevanceTier || '';
+      var link = item.sourceUrl || item.link || '';
+      var reasons = (item.reasons || []).map(function (r) {
+        return '<li>' + escapeHtml(r) + '</li>';
+      }).join('');
       return (
-        '<article class="amla-news-item">' +
-          '<time class="amla-news-date" datetime="' + escapeHtml(item.publishedAt || '') + '">' +
-            escapeHtml(formatDate(item.publishedAt, lang)) +
-          '</time>' +
+        '<article class="amla-news-item amla-news-item--' + escapeHtml(item.relevanceTier || 'low') + '">' +
+          '<div class="amla-news-meta">' +
+            '<time class="amla-news-date" datetime="' + escapeHtml(item.publishedAt || '') + '">' +
+              escapeHtml(formatDate(item.publishedAt, lang)) +
+            '</time>' +
+            (sourceLabel ? '<span class="amla-news-source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+          '</div>' +
+          '<div class="amla-news-badges">' +
+            (tierLabel ? '<span class="amla-badge amla-badge-tier-' + escapeHtml(item.relevanceTier || '') + '">' + escapeHtml(tierLabel) + '</span>' : '') +
+            (catLabel ? '<span class="amla-badge">' + escapeHtml(catLabel) + '</span>' : '') +
+            (sevLabel ? '<span class="amla-badge amla-badge-sev-' + escapeHtml(item.severity || '') + '">' + escapeHtml(sevLabel) + '</span>' : '') +
+          '</div>' +
           '<h3 class="amla-news-title">' +
-            '<a href="' + escapeHtml(item.link) + '" target="_blank" rel="noopener noreferrer">' +
+            '<a href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">' +
               escapeHtml(item.title) +
             '</a>' +
           '</h3>' +
           '<p class="amla-news-summary">' + escapeHtml(item.summary || item.summaryEn || '') + '</p>' +
-          '<a class="amla-news-open" href="' + escapeHtml(item.link) + '" target="_blank" rel="noopener noreferrer">' +
+          (reasons
+            ? '<details class="amla-news-why"><summary>' + escapeHtml(copy.why) + '</summary><ul>' + reasons + '</ul></details>'
+            : '') +
+          '<a class="amla-news-open" href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">' +
             escapeHtml(copy.open) + ' <i class="fas fa-external-link-alt"></i>' +
           '</a>' +
         '</article>'
@@ -110,11 +209,45 @@
     }).join('');
   }
 
-  async function fetchNews(lang) {
-    var res = await fetch(getBaseUrl() + '/api/amla-news?lang=' + encodeURIComponent(lang), getAuthOpts());
+  function mapLegacyItems(data) {
+    return (data.items || []).map(function (item) {
+      return {
+        id: item.id || item.link,
+        title: item.title,
+        sourceUrl: item.link,
+        publishedAt: item.publishedAt,
+        summary: item.summary || item.summaryEn || '',
+        source: 'amla',
+        category: '',
+        severity: '',
+        relevanceTier: 'medium',
+        reasons: []
+      };
+    });
+  }
+
+  async function fetchNews(lang, filters) {
+    var qs = new URLSearchParams();
+    if (filters.category) qs.set('category', filters.category);
+    if (filters.severity) qs.set('severity', filters.severity);
+    if (filters.minTier) qs.set('minTier', filters.minTier);
+    if (filters.q) qs.set('q', filters.q);
+    var res = await fetch(getBaseUrl() + '/api/aml-news?' + qs.toString(), getAuthOpts());
     var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) throw new Error(data.error || 'fetch failed');
-    return data;
+    if (res.ok && data.success) {
+      return { mode: 'matched', data: data };
+    }
+    var legacy = await fetch(getBaseUrl() + '/api/amla-news?lang=' + encodeURIComponent(lang), getAuthOpts());
+    var legacyData = await legacy.json().catch(function () { return {}; });
+    if (!legacy.ok) throw new Error(data.error || legacyData.error || 'fetch failed');
+    return {
+      mode: 'legacy',
+      data: {
+        items: mapLegacyItems(legacyData),
+        shown: legacyData.shown,
+        filters: DEFAULT_FILTERS
+      }
+    };
   }
 
   async function loadInto(root, opts) {
@@ -126,13 +259,18 @@
     applyChrome(root, lang);
     if (status) status.textContent = copy.loading;
     try {
-      var data = await fetchNews(lang);
+      var query = opts.limit ? { category: '', severity: '', q: '', minTier: 'low' } : readFilters(root);
+      var result = await fetchNews(lang, query);
+      var filters = Object.assign({}, DEFAULT_FILTERS, result.data.filters || {});
+      if (!opts.limit) fillFilterOptions(root, filters, lang);
       if (status) {
-        status.textContent = copy.source + (data.shown != null ? ' · ' + data.shown + (lang === 'en' ? ' articles' : ' artiklar') : '');
+        var count = result.data.shown != null ? result.data.shown : (result.data.items || []).length;
+        status.textContent = (result.mode === 'legacy' ? copy.fallback : copy.source) +
+          ' · ' + count + (lang === 'en' ? ' articles' : ' artiklar');
       }
-      if (list) renderItems(list, data.items || [], lang, opts.limit || 0);
+      if (list) renderItems(list, result.data.items || [], lang, filters, opts.limit || 0);
     } catch (err) {
-      console.error('AMLA-nyheter:', err);
+      console.error('AML-nyheter:', err);
       if (status) status.textContent = copy.error;
       if (list) list.innerHTML = '';
     }
@@ -153,11 +291,24 @@
         root.classList.toggle('amla-news--summaries', sum.checked);
       });
     }
+    var searchTimer = null;
+    root.querySelectorAll('[data-aml-filter]').forEach(function (el) {
+      var isSearch = el.getAttribute('data-aml-filter') === 'q';
+      el.addEventListener(isSearch ? 'input' : 'change', function () {
+        if (!isSearch) {
+          loadInto(root, opts);
+          return;
+        }
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { loadInto(root, opts); }, 300);
+      });
+    });
   }
 
   function initPage() {
     var root = document.getElementById('amla-news-page');
     if (!root) return;
+    if (!localStorage.getItem(SUM_KEY)) localStorage.setItem(SUM_KEY, '1');
     bindControls(root, {});
     var start = function () { loadInto(root, {}); };
     if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) start();
@@ -167,6 +318,7 @@
   function initDashboard() {
     var root = document.getElementById('dashboard-amla-news');
     if (!root) return;
+    if (!localStorage.getItem(SUM_KEY)) localStorage.setItem(SUM_KEY, '1');
     bindControls(root, { limit: 3 });
     var start = function () { loadInto(root, { limit: 3 }); };
     if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) start();
