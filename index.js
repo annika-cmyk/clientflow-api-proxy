@@ -64,6 +64,7 @@ const dokumentKategori = require('./lib/dokument-kategori');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
+const amlaNews = require('./lib/amla-news');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -607,6 +608,50 @@ const optionalAuthenticateToken = (req, res, next) => {
     next();
   });
 };
+
+const amlaNewsCache = { xml: '', fetchedAt: 0, error: '' };
+
+async function loadAmlaRssXml() {
+  const maxAgeMs = 30 * 60 * 1000;
+  if (amlaNewsCache.xml && Date.now() - amlaNewsCache.fetchedAt < maxAgeMs) {
+    return amlaNewsCache.xml;
+  }
+  const url = process.env.AMLA_RSS_URL || amlaNews.AMLA_RSS_URL;
+  const res = await axios.get(url, {
+    timeout: 15000,
+    responseType: 'text',
+    headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' }
+  });
+  const xml = typeof res.data === 'string' ? res.data : String(res.data || '');
+  if (!xml.includes('<item>')) throw new Error('AMLA RSS saknar poster');
+  amlaNewsCache.xml = xml;
+  amlaNewsCache.fetchedAt = Date.now();
+  amlaNewsCache.error = '';
+  return xml;
+}
+
+app.get('/api/amla-news', authenticateToken, async (req, res) => {
+  try {
+    const lang = String(req.query.lang || 'sv').toLowerCase() === 'en' ? 'en' : 'sv';
+    const xml = await loadAmlaRssXml();
+    const payload = amlaNews.buildAmlaNewsPayload(xml, {
+      lang,
+      fetchedAt: new Date(amlaNewsCache.fetchedAt).toISOString()
+    });
+    res.json({ success: true, ...payload });
+  } catch (error) {
+    console.error('❌ GET /api/amla-news:', error.message);
+    if (amlaNewsCache.xml) {
+      const lang = String(req.query.lang || 'sv').toLowerCase() === 'en' ? 'en' : 'sv';
+      const payload = amlaNews.buildAmlaNewsPayload(amlaNewsCache.xml, {
+        lang,
+        fetchedAt: new Date(amlaNewsCache.fetchedAt).toISOString()
+      });
+      return res.json({ success: true, stale: true, ...payload });
+    }
+    res.status(502).json({ success: false, error: 'Kunde inte hämta AMLA-nyheter' });
+  }
+});
 
 /** Server-interna axios-anrop till egna /api-rutter måste skicka samma JWT som klienten (cookie eller Authorization). */
 function getAuthHeaderForInternalRequests(req) {

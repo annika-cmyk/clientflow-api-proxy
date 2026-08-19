@@ -162,6 +162,28 @@
 
                 <!-- Höger kolumn: Alla övriga kort staplade -->
                 <div class="dashboard-right">
+                <section id="dashboard-amla-news" class="dashboard-section amla-news-dashboard">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header amla-news-toolbar">
+                            <h2><i class="fas fa-newspaper"></i> AML-nyheter</h2>
+                            <div class="amla-news-controls">
+                                <div class="amla-lang-toggle" role="group" aria-label="Språk">
+                                    <button type="button" class="amla-chip" data-amla-lang="sv">SV</button>
+                                    <button type="button" class="amla-chip" data-amla-lang="en">EN</button>
+                                </div>
+                                <label class="amla-summary-toggle">
+                                    <input type="checkbox" class="amla-show-summaries">
+                                    <span data-amla-i18n="summaries">Visa sammanfattningar</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <p class="dashboard-card-desc amla-news-status">Laddar nyheter från AMLA…</p>
+                            <div class="amla-news-list"></div>
+                            <a href="amla-nyheter.html" class="amla-news-all" data-amla-i18n="all">Visa alla nyheter</a>
+                        </div>
+                    </div>
+                </section>
                 <!-- Mina uppgifter -->
                 <section id="dashboard-my-tasks" class="dashboard-section">
                     <div class="dashboard-card dashboard-card-collapsible collapsed">
@@ -360,6 +382,7 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <script src="js/ai-chat.js?v=2.4"></script>
+    <script src="js/amla-nyheter.js?v=1"></script>
     <script src="app.js"></script>
 </body>
 </html>
