@@ -62,6 +62,7 @@ const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identi
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
 const docsignInvite = require('./lib/docsign-invite');
+const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
@@ -12910,15 +12911,17 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
 
 const KUNDDATA_TABLE_KYC = 'tblOIuLQS2DqmOQWe';
 
-function parseInleedDocumentsList(data) {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.documents)) return data.documents;
-  return [];
-}
-
 async function fetchInleedDocumentById(docsignApiKey, inleedDocId) {
   if (!docsignApiKey || !inleedDocId) return null;
-  const matchId = (d) => String(d.id || d.document_id || '') === String(inleedDocId);
+  try {
+    const byIdRes = await axios.get('https://docsign.se/api/documents', {
+      params: { api_key: docsignApiKey, id: inleedDocId },
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
+    const byId = inleedLinks.pickInleedDocument(byIdRes.data, inleedDocId);
+    if (byId) return byId;
+  } catch (_) { /* prova state-lista */ }
   for (const state of ['completed', 'pending', 'signed']) {
     try {
       const docsRes = await axios.get('https://docsign.se/api/documents', {
@@ -12926,7 +12929,7 @@ async function fetchInleedDocumentById(docsignApiKey, inleedDocId) {
         headers: { 'Content-Type': 'application/json' },
         timeout: 15000
       });
-      const doc = parseInleedDocumentsList(docsRes.data).find(matchId);
+      const doc = inleedLinks.pickInleedDocument(docsRes.data, inleedDocId);
       if (doc) return doc;
     } catch (_) { /* prova nästa state */ }
   }
@@ -12963,11 +12966,12 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
 
     // Synka status från Inleed om dokumentet är färdigsignerat men JSON fortfarande säger "Skickat till kund"
     const inleedId = kyc.inleedDokumentId;
-    const docsignApiKey = process.env.DOCSIGN_API_KEY;
-    if (inleedId && docsignApiKey && (kyc.status || '') === 'Skickat till kund') {
+    let inleed = inleedLinks.buildInleedSignPayload(null, { documentId: inleedId });
+    if (inleedId && process.env.DOCSIGN_API_KEY) {
       try {
-        const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
-        if (isInleedDocumentSigned(doc)) {
+        const doc = await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId);
+        inleed = inleedLinks.buildInleedSignPayload(doc, { documentId: inleedId });
+        if (isInleedDocumentSigned(doc) && (kyc.status || '') === 'Skickat till kund') {
           const datum = (doc.completed_at || doc.signed_at || doc.updated_at || '')
             .toString().split(' ')[0].split('T')[0] || new Date().toISOString().split('T')[0];
           kyc.status = 'Signerat';
@@ -12981,7 +12985,7 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
       } catch (_) { /* GET ska inte fallera om Inleed är otillgängligt */ }
     }
 
-    res.json({ kyc });
+    res.json({ kyc, inleed });
   } catch (error) {
     console.error('❌ Error fetching KYC-formular:', error.message);
     res.status(500).json({ error: 'Kunde inte hämta KYC-formulär.' });
@@ -12996,9 +13000,23 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
 
+    let existingKyc = {};
+    try {
+      const existingRes = await axios.get(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      existingKyc = JSON.parse(existingRes.data?.fields?.['KYC-formular (JSON)'] || '{}') || {};
+    } catch (_) { existingKyc = {}; }
+
+    const keepStatus = ['Skickat till kund', 'Signerat'].includes(existingKyc.status);
     const kycData = {
+      ...existingKyc,
       ...req.body,
-      status: req.body.status || 'Sparat',
+      status: keepStatus ? existingKyc.status : (req.body.status || 'Sparat'),
+      inleedDokumentId: existingKyc.inleedDokumentId || req.body.inleedDokumentId || '',
+      utskickningsdatum: existingKyc.utskickningsdatum || req.body.utskickningsdatum || '',
+      signeringsdatum: existingKyc.signeringsdatum || req.body.signeringsdatum || '',
       updatedAt: new Date().toISOString(),
       updatedBy: req.user?.email || ''
     };
@@ -13485,42 +13503,37 @@ app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
     );
     const records = response.data.records || [];
     let avtal = records[0] || null;
+    let inleed = inleedLinks.buildInleedSignPayload(null);
 
-    // Backfill Utskickningsdatum för äldre avtal som saknar det – hämta från Inleed
+    // Hämta Inleed-länkar + backfilla Utskickningsdatum för äldre avtal
     if (avtal) {
       const fields = avtal.fields || {};
       const status = fields['Avtalsstatus'] || fields['Status'] || '';
       const inleedId = fields['InleedDokumentId'];
       const utskickningsdatum = fields['Utskickningsdatum'] || fields['fldCfjnBetFm03KES'];
-      if (inleedId && status === 'Skickat till kund' && !utskickningsdatum && process.env.DOCSIGN_API_KEY) {
+      if (inleedId && process.env.DOCSIGN_API_KEY) {
         try {
-          for (const state of ['pending', 'completed']) {
-            const docsRes = await axios.get('https://docsign.se/api/documents', {
-              params: { api_key: process.env.DOCSIGN_API_KEY, state },
-              headers: { 'Content-Type': 'application/json' }
-            });
-            const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
-            const doc = docs.find(d => String(d.id) === String(inleedId));
-            if (doc) {
-              if (doc.created_at) {
-                const datum = (doc.created_at + '').split(' ')[0].split('T')[0] || (doc.created_at + '').slice(0, 10);
-                if (datum && /^\d{4}-\d{2}-\d{2}$/.test(datum)) {
-                  await axios.patch(
-                    `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtal.id}`,
-                    { fields: { Utskickningsdatum: datum } },
-                    { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-                  );
-                  avtal = { ...avtal, fields: { ...fields, Utskickningsdatum: datum } };
-                }
-              }
-              break;
+          const doc = await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId);
+          inleed = inleedLinks.buildInleedSignPayload(doc, {
+            documentId: inleedId,
+            firstPartyIsByra: true
+          });
+          if (doc && status === 'Skickat till kund' && !utskickningsdatum && doc.created_at) {
+            const datum = (doc.created_at + '').split(' ')[0].split('T')[0] || (doc.created_at + '').slice(0, 10);
+            if (datum && /^\d{4}-\d{2}-\d{2}$/.test(datum)) {
+              await axios.patch(
+                `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtal.id}`,
+                { fields: { Utskickningsdatum: datum } },
+                { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+              );
+              avtal = { ...avtal, fields: { ...fields, Utskickningsdatum: datum } };
             }
           }
-        } catch (e) { /* ignorerar – avtal returneras utan datum */ }
+        } catch (e) { /* ignorerar – avtal returneras utan datum/länkar */ }
       }
     }
 
-    res.json({ avtal });
+    res.json({ avtal, inleed });
   } catch (error) {
     console.error('❌ Error fetching uppdragsavtal:', error.message);
     res.status(500).json({ error: error.message });
