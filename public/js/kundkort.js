@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.39', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.40', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7951,7 +7951,7 @@ class CustomerCardManager {
                 <option value="Nej" ${val === 'Nej' ? 'selected' : ''}>Nej</option>
             </select>`;
 
-        const inleedLinksHtml = (!kycUtanfor && (kycInleedId || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat'))
+        const inleedLinksHtml = (!kycUtanfor && (kycInleedId || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat' || this._kycInleed?.documentId || (this._kycInleed?.links || []).length))
             ? this._renderInleedSignLinks(this._kycInleed, { allowByraSign: true })
             : '';
 
@@ -8335,7 +8335,12 @@ class CustomerCardManager {
             vh_noterat_bolag: document.getElementById('kyc-vh-noterat-bolag')?.value === 'Ja',
             vh_utlandska_agare: document.getElementById('kyc-vh-utlandska-agare')?.value === 'Ja',
             // Sektion 5 — nytt fält
-            syfte_affarsrelation: g('kyc-syfte-affarsrelation')
+            syfte_affarsrelation: g('kyc-syfte-affarsrelation'),
+            // Behåll Inleed-status så Spara inte raderar utskicket
+            status: this._savedKycFormular?.status || '',
+            inleedDokumentId: this._savedKycFormular?.inleedDokumentId || '',
+            utskickningsdatum: this._savedKycFormular?.utskickningsdatum || '',
+            signeringsdatum: this._savedKycFormular?.signeringsdatum || ''
         };
     }
 

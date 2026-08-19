@@ -12936,6 +12936,22 @@ async function fetchInleedDocumentById(docsignApiKey, inleedDocId) {
   return null;
 }
 
+async function fetchInleedDocumentByTitle(docsignApiKey, title) {
+  if (!docsignApiKey || !title) return null;
+  for (const state of ['completed', 'pending', 'signed']) {
+    try {
+      const docsRes = await axios.get('https://docsign.se/api/documents', {
+        params: { api_key: docsignApiKey, state },
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      const doc = inleedLinks.findInleedDocumentByTitle(docsRes.data, title);
+      if (doc) return doc;
+    } catch (_) { /* prova nästa state */ }
+  }
+  return null;
+}
+
 function getInleedSignedPdfUrl(doc) {
   if (!doc) return null;
   return doc.signed_pdf_url || doc.signed_document_url || doc.download_url || null;
@@ -12964,23 +12980,45 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
     let kyc = {};
     try { kyc = raw ? JSON.parse(raw) : {}; } catch (_) { kyc = {}; }
 
-    // Synka status från Inleed om dokumentet är färdigsignerat men JSON fortfarande säger "Skickat till kund"
-    const inleedId = kyc.inleedDokumentId;
+    // Synka status från Inleed. Om id saknas (raderat vid sparning) återkoppla på dokumentnamn.
+    let inleedId = kyc.inleedDokumentId;
     let inleed = inleedLinks.buildInleedSignPayload(null, { documentId: inleedId });
-    if (inleedId && process.env.DOCSIGN_API_KEY) {
+    if (process.env.DOCSIGN_API_KEY) {
       try {
-        const doc = await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId);
-        inleed = inleedLinks.buildInleedSignPayload(doc, { documentId: inleedId });
-        if (isInleedDocumentSigned(doc) && (kyc.status || '') === 'Skickat till kund') {
-          const datum = (doc.completed_at || doc.signed_at || doc.updated_at || '')
-            .toString().split(' ')[0].split('T')[0] || new Date().toISOString().split('T')[0];
-          kyc.status = 'Signerat';
-          kyc.signeringsdatum = /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : new Date().toISOString().split('T')[0];
-          await axios.patch(
-            `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME || 'Kunder')}/${customerId}`,
-            { fields: { 'KYC-formular (JSON)': JSON.stringify(kyc) } },
-            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        let doc = inleedId ? await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId) : null;
+        if (!doc) {
+          const kundnamn = f['Namn'] || kyc.foretagsnamn || '';
+          doc = await fetchInleedDocumentByTitle(
+            process.env.DOCSIGN_API_KEY,
+            inleedLinks.inleedDocumentTitle('kyc', kundnamn)
           );
+        }
+        if (doc) {
+          inleedId = String(doc.id || doc.document_id || inleedId || '');
+          inleed = inleedLinks.buildInleedSignPayload(doc, { documentId: inleedId });
+          const created = (doc.created_at || '').toString().split(' ')[0].split('T')[0];
+          const signedDatum = (doc.completed_at || doc.signed_at || doc.updated_at || created || '')
+            .toString().split(' ')[0].split('T')[0];
+          const signed = isInleedDocumentSigned(doc);
+          const shouldWrite = !kyc.inleedDokumentId
+            || (signed && (kyc.status || '') !== 'Signerat');
+          kyc.inleedDokumentId = inleedId;
+          if (signed) {
+            kyc.status = 'Signerat';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(signedDatum)) kyc.signeringsdatum = signedDatum;
+          } else if ((kyc.status || '') !== 'Signerat') {
+            kyc.status = 'Skickat till kund';
+          }
+          if (!kyc.utskickningsdatum && /^\d{4}-\d{2}-\d{2}$/.test(created)) {
+            kyc.utskickningsdatum = created;
+          }
+          if (shouldWrite) {
+            await axios.patch(
+              `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME || 'Kunder')}/${customerId}`,
+              { fields: { 'KYC-formular (JSON)': JSON.stringify(kyc) } },
+              { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+            );
+          }
         }
       } catch (_) { /* GET ska inte fallera om Inleed är otillgängligt */ }
     }
@@ -13511,13 +13549,37 @@ app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
       const status = fields['Avtalsstatus'] || fields['Status'] || '';
       const inleedId = fields['InleedDokumentId'];
       const utskickningsdatum = fields['Utskickningsdatum'] || fields['fldCfjnBetFm03KES'];
-      if (inleedId && process.env.DOCSIGN_API_KEY) {
+      if (process.env.DOCSIGN_API_KEY) {
         try {
-          const doc = await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId);
+          let doc = inleedId ? await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId) : null;
+          if (!doc) {
+            const kundnamn = fields['Kundnamn'] || fields['Namn'] || '';
+            doc = await fetchInleedDocumentByTitle(
+              process.env.DOCSIGN_API_KEY,
+              inleedLinks.inleedDocumentTitle('uppdragsavtal', kundnamn)
+            );
+          }
+          const resolvedId = String((doc && (doc.id || doc.document_id)) || inleedId || '');
           inleed = inleedLinks.buildInleedSignPayload(doc, {
-            documentId: inleedId,
+            documentId: resolvedId,
             firstPartyIsByra: true
           });
+          if (doc && !inleedId) {
+            const patch = { InleedDokumentId: resolvedId };
+            if (isInleedDocumentSigned(doc) && status !== 'Signerat') {
+              patch.Avtalsstatus = 'Signerat';
+            } else if (status !== 'Signerat') {
+              patch.Avtalsstatus = 'Skickat till kund';
+            }
+            try {
+              await axios.patch(
+                `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtal.id}`,
+                { fields: patch },
+                { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+              );
+              avtal = { ...avtal, fields: { ...fields, ...patch } };
+            } catch (_) { /* länkar visas ändå */ }
+          }
           if (doc && status === 'Skickat till kund' && !utskickningsdatum && doc.created_at) {
             const datum = (doc.created_at + '').split(' ')[0].split('T')[0] || (doc.created_at + '').slice(0, 10);
             if (datum && /^\d{4}-\d{2}-\d{2}$/.test(datum)) {
