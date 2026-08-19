@@ -59,6 +59,7 @@ const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
+const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
@@ -9253,7 +9254,13 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     }
 
     const record = airtableRes.data.records[0];
-    const fields = { ...record.fields };
+    let fields = { ...record.fields };
+    const kycFix = applyKycAtgarderCorrection(fields);
+    fields = kycFix.fields;
+    if (kycFix.changed) {
+      patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, { [kycFix.key]: kycFix.next })
+        .catch((err) => console.warn('⚠️ Kunde inte rätta kundkännedomsåtgärder:', err.message));
+    }
     const riskKey = '4. Identifierade Risker och Sårbarheter';
     try {
       const compiled = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
@@ -16346,7 +16353,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     ]);
 
     const byraRec = byraRes.data.records?.[0];
-    const byraFields = { ...(byraRec?.fields || {}) };
+    const byraFields = applyKycAtgarderCorrection({ ...(byraRec?.fields || {}) }).fields;
     const riskKey = '4. Identifierade Risker och Sårbarheter';
     try {
       byraFields[riskKey] = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
