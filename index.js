@@ -297,7 +297,7 @@ async function getHogriskSniPatterns() {
       offset = res.data.offset || '';
     } while (offset);
     const fromAirtable = hogriskSni.patternsFromRecords(records);
-    const patterns = fromAirtable.length ? fromAirtable : hogriskSni.DEFAULT_PATTERNS;
+    const patterns = hogriskSni.withDefaultPatterns(fromAirtable);
     hogriskSniCache = { at: Date.now(), patterns };
     return patterns;
   } catch (e) {
