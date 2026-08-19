@@ -6,7 +6,8 @@
     const DEFAULT_PATTERNS = [
         { label: 'Växlingskontor', regex: '66120' },
         { label: 'Bilhandel', regex: '45\\d{3,}' },
-        { label: 'Skrot- och metallhandel', regex: '46770' },
+        // SNI 2007: 4677x. SNI 2025: 4687x (t.ex. 46872 metallavfall/metallskrot).
+        { label: 'Skrot- och metallhandel', regex: '^(4677\\d*|4687\\d*)$' },
         { label: 'Smycken/antikviteter', regex: '4777\\d' },
         { label: 'Bygg', regex: '4[1-3]\\d{3,}' },
         { label: 'Bemanning', regex: '7810\\d' },
@@ -148,6 +149,35 @@
         return matchSni(sniRawFromFields(fields), patterns);
     }
 
+    function withDefaultPatterns(custom) {
+        const extra = Array.isArray(custom)
+            ? custom.filter((p) => p && String(p.label || '').trim() && String(p.regex || '').trim())
+            : [];
+        if (!extra.length) return DEFAULT_PATTERNS.slice();
+        const seen = new Set(extra.map((p) => `${p.label}\0${p.regex}`));
+        const out = extra.slice();
+        DEFAULT_PATTERNS.forEach((p) => {
+            const key = `${p.label}\0${p.regex}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(p);
+        });
+        return out;
+    }
+
+    function mergeMatchResults(a, b) {
+        const left = a || { matches: [], branscher: [], codes: [] };
+        const right = b || { matches: [], branscher: [], codes: [] };
+        const matches = []
+            .concat(Array.isArray(left.matches) ? left.matches : [])
+            .concat(Array.isArray(right.matches) ? right.matches : []);
+        return {
+            matches,
+            branscher: mergeLabels(left.branscher, right.branscher),
+            codes: Array.from(new Set([].concat(left.codes || [], right.codes || []).map(String).filter(Boolean)))
+        };
+    }
+
     const api = {
         DEFAULT_PATTERNS,
         parseSniEntries,
@@ -157,7 +187,9 @@
         sniRawFromFields,
         mergeLabels,
         listLabels,
-        patternsFromRecords
+        patternsFromRecords,
+        withDefaultPatterns,
+        mergeMatchResults
     };
 
     if (typeof module !== 'undefined' && module.exports) {

@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.36', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.37', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -4306,16 +4306,20 @@ class CustomerCardManager {
 
     _applyHogriskSni(fromApi) {
         const HS = window.HogriskSni;
-        if (fromApi && (Array.isArray(fromApi.codes) || Array.isArray(fromApi.branscher))) {
-            this.hogriskSni = {
+        const local = HS
+            ? HS.matchFromFields(this.customerData?.fields || {}, HS.DEFAULT_PATTERNS)
+            : { matches: [], branscher: [], codes: [] };
+        const remote = (fromApi && (Array.isArray(fromApi.codes) || Array.isArray(fromApi.branscher)))
+            ? {
                 matches: fromApi.matches || [],
                 branscher: fromApi.branscher || [],
                 codes: fromApi.codes || []
-            };
-        } else if (HS) {
-            this.hogriskSni = HS.matchFromFields(this.customerData?.fields || {}, HS.DEFAULT_PATTERNS);
+            }
+            : null;
+        if (HS && HS.mergeMatchResults) {
+            this.hogriskSni = HS.mergeMatchResults(remote, local);
         } else {
-            this.hogriskSni = { matches: [], branscher: [], codes: [] };
+            this.hogriskSni = remote || local;
         }
         this._syncHogriskFromSni();
     }
