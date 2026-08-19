@@ -2225,6 +2225,14 @@ body.sidebar-collapsed .logout-btn {
 .lead-status.active  { background: #dcfce7; color: #15803d; }
 .lead-status.inactive { background: #fee2e2; color: #b91c1c; }
 
+.bv-verksam-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--ink-3, #64748b);
+    font-weight: 500;
+}
+
 .lead-fields {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

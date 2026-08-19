@@ -1185,16 +1185,42 @@ class ClientFlowApp {
                 }
                 return [];
             })(),
+            verksamOrganisation: (() => {
+                const v = primaryOrg?.verksamOrganisation;
+                if (!v || v.fel) return null;
+                const kod = String(v.kod || '').toUpperCase();
+                if (kod === 'JA') return 'Ja';
+                if (kod === 'NEJ') return 'Nej';
+                const text = v.klartext || v.beskrivning || v.text || '';
+                if (/^ja$/i.test(text)) return 'Ja';
+                if (/^nej$/i.test(text)) return 'Nej';
+                return text || null;
+            })(),
+            avregistreringsorsak: (() => {
+                const v = primaryOrg?.avregistreringsorsak;
+                if (!v || v.fel) return null;
+                const parts = [v.klartext || v.beskrivning || v.text, v.kod].filter(Boolean);
+                return parts.length ? parts.join(' · ') : null;
+            })(),
+            avregistreringsdatum: (() => {
+                const v = primaryOrg?.avregistreradOrganisation;
+                if (!v || v.fel) return null;
+                if (typeof v === 'string' && v.trim()) return v;
+                return v.datum || v.avregistreringsdatum || v.registreringsdatum || null;
+            })(),
             pagandeAvveckling: (() => {
                 const v = primaryOrg?.pagandeAvvecklingsEllerOmstruktureringsforsfarande ?? primaryOrg?.pagandeAvveckling ?? primaryOrg?.avvecklingsforsfarande ?? primaryOrg?.avvecklingsOmstruktureringsforsfarande;
-                if (!v) return null;
+                if (!v || v.fel) return null;
                 if (typeof v === 'string' && v.trim() && v !== '-') return v;
-                if (v?.datum) return v.datum;
-                if (v?.klartext) return v.klartext;
-                if (v?.beskrivning) return v.beskrivning;
-                return null;
+                const parts = [v.klartext || v.beskrivning || v.text, v.datum, v.kod].filter(Boolean);
+                return parts.length ? parts.join(' · ') : null;
             })(),
-            aktivtForetag: !primaryOrg?.avregistreradOrganisation,
+            aktivtForetag: (() => {
+                if (primaryOrg?.verksamOrganisation?.kod === 'JA') return true;
+                if (primaryOrg?.avregistreradOrganisation?.fel) return true;
+                if (primaryOrg?.avregistreringsorsak?.fel) return true;
+                return false;
+            })(),
             // Add more fields as they become available
             antal_anstallda: 'Okänt',
             omsattning: 'Okänt',

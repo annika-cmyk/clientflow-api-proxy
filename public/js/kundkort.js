@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.33', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.34', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -14,6 +14,41 @@ const KUND_OMSATTNING_VAL = [
     '1 500 000–10 000 000 kr',
     'Över 10 000 000 kr'
 ];
+
+const VERKSAM_ORG_HELP =
+    'Ja enligt SCB betyder att företaget är registrerat för F-skatt, moms och/eller som arbetsgivare. API:et ger inte uppdelningen per registrering, bara Ja eller Nej.';
+
+function jaNejFromValue(val) {
+    const s = String(val == null ? '' : val).trim();
+    if (!s) return '';
+    if (/^(ja|aktiv|true|1|yes)$/i.test(s)) return 'Ja';
+    if (/^(nej|avregistrerad|inaktiv|false|0|no)$/i.test(s)) return 'Nej';
+    return '';
+}
+
+function bolagsverketStatusFromFields(fields) {
+    const f = fields || {};
+    const verksam = jaNejFromValue(f['Aktivt företag'])
+        || jaNejFromValue(f['aktiv/inaktiv'])
+        || jaNejFromValue(f['Verksam organisation']);
+    const isActive = verksam === 'Ja';
+    const isInactive = verksam === 'Nej';
+    let statusLabel = '';
+    if (isActive) statusLabel = 'Aktiv';
+    else if (isInactive) statusLabel = 'Avregistrerad';
+    const alt = String(f['aktiv/inaktiv'] || '').trim();
+    if (!statusLabel && /avregistrerad/i.test(alt)) statusLabel = 'Avregistrerad';
+    else if (!statusLabel && /aktiv/i.test(alt)) statusLabel = 'Aktiv';
+    return {
+        statusLabel,
+        isActive,
+        isInactive,
+        verksam,
+        avregOrsak: String(f['Avregistreringsorsak'] || '').trim(),
+        avregDatum: String(f['Avregistreringsdatum'] || '').trim(),
+        avveckling: String(f['Pågående avveckling'] || '').trim()
+    };
+}
 
 const BESKRIVNING_HELP_TEXT = `Vad är kundens verksamhet?
 Vilka tjänster/varor säljer de?
@@ -4354,7 +4389,7 @@ class CustomerCardManager {
         // Namn och orgnr
         const namn = fields.Namn || fields.namn || '';
         const orgnr = fields.Orgnr || fields.orgnr || '';
-        const status = fields['aktiv/inaktiv'] || '';
+        const bvStatus = bolagsverketStatusFromFields(fields);
         const regdatum = fields.regdatum || '';
         const regland = fields.registreringsland || '';
         const bolagsform = fields.Bolagsform || '';
@@ -4511,6 +4546,26 @@ class CustomerCardManager {
                             <div class="lead-field"><label>Registreringsdatum</label><span id="bv-regdatum-view">${fmt(regdatum)}</span></div>
                             <div class="lead-field"><label>Registreringsland</label><span id="bv-regland-view">${fmt(regland)}</span></div>
                             <div class="lead-field"><label>Organisationsform</label><span id="bv-bolagsform-view">${fmt(bolagsform)}</span></div>
+                            <div class="lead-field">
+                                <label>Status</label>
+                                <span id="bv-status-view">${bvStatus.statusLabel
+                                    ? `<span class="lead-status ${bvStatus.isInactive ? 'inactive' : 'active'}">${this._esc(bvStatus.statusLabel)}</span>`
+                                    : fmt('')}</span>
+                            </div>
+                            <div class="lead-field">
+                                <label>Verksam organisation</label>
+                                <span id="bv-verksam-view">${fmt(bvStatus.verksam)}</span>
+                            </div>
+                            <div class="lead-field lead-field--full">
+                                <p class="bv-verksam-hint">${this._esc(VERKSAM_ORG_HELP)}</p>
+                            </div>
+                            ${bvStatus.avregDatum || bvStatus.avregOrsak ? `
+                            <div class="lead-field"><label>Avregistreringsdatum</label><span>${fmt(bvStatus.avregDatum)}</span></div>
+                            <div class="lead-field lead-field--full"><label>Avregistreringsorsak</label><span>${fmt(bvStatus.avregOrsak)}</span></div>
+                            ` : ''}
+                            ${bvStatus.avveckling ? `
+                            <div class="lead-field lead-field--full"><label>Pågående avveckling/omstrukturering</label><span class="lead-avveckling">${this._esc(bvStatus.avveckling)}</span></div>
+                            ` : ''}
                             <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${fmt(adress)}</span></div>
                             <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
                         </div>
@@ -4544,6 +4599,14 @@ class CustomerCardManager {
                                     ${['Aktiebolag', 'Privat aktiebolag', 'Publikt aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Fysiska personer', 'Annat']
                                         .concat(bolagsform && !['Aktiebolag', 'Privat aktiebolag', 'Publikt aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Fysiska personer', 'Annat'].includes(bolagsform) ? [bolagsform] : [])
                                         .map(o => `<option value="${this._esc(o)}" ${bolagsform === o ? 'selected' : ''}>${this._esc(o)}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="kunduppgifter-form-row">
+                                <label for="bv-aktivt-input">Verksam organisation</label>
+                                <select id="bv-aktivt-input" class="kunduppgifter-input">
+                                    <option value="">Välj...</option>
+                                    <option value="Ja" ${bvStatus.verksam === 'Ja' ? 'selected' : ''}>Ja (F-skatt, moms och/eller arbetsgivare)</option>
+                                    <option value="Nej" ${bvStatus.verksam === 'Nej' ? 'selected' : ''}>Nej</option>
                                 </select>
                             </div>
                             <div class="kunduppgifter-form-row" style="grid-column:1/-1;">
@@ -4849,6 +4912,16 @@ class CustomerCardManager {
             setIf('Bolagsform', transformed.form);
             setIf('Address', transformed.adress?.fullAddress);
             setIf('Verksamhetsbeskrivning', transformed.verksamhet);
+            if (transformed.verksamOrganisation === 'Ja' || transformed.verksamOrganisation === 'Nej') {
+                newFields['Aktivt företag'] = transformed.verksamOrganisation;
+            } else if (transformed.status === 'Aktiv') {
+                newFields['Aktivt företag'] = 'Ja';
+            } else if (transformed.status === 'Avregistrerad') {
+                newFields['Aktivt företag'] = 'Nej';
+            }
+            setIf('Avregistreringsorsak', transformed.avregistreringsorsak);
+            setIf('Avregistreringsdatum', transformed.avregistreringsdatum);
+            setIf('Pågående avveckling', transformed.pagandeAvveckling);
 
             if (Array.isArray(transformed.sniKoder) && transformed.sniKoder.length) {
                 const lines = transformed.sniKoder
@@ -4995,6 +5068,7 @@ class CustomerCardManager {
         const regdatum = document.getElementById('bv-regdatum-input')?.value.trim() || '';
         const regland = document.getElementById('bv-regland-input')?.value.trim() || '';
         const bolagsform = document.getElementById('bv-bolagsform-input')?.value.trim() || '';
+        const aktivtForetag = document.getElementById('bv-aktivt-input')?.value.trim() || '';
         const adress = document.getElementById('bv-adress-input')?.value.trim() || '';
         const verksamhet = document.getElementById('bv-verksamhet-input')?.value.trim() || '';
         const sni = document.getElementById('bv-sni-input')?.value.trim() || '';
@@ -5032,6 +5106,7 @@ class CustomerCardManager {
             if (regdatum) fields.regdatum = regdatum;
             if (regland) fields.registreringsland = regland;
             if (bolagsform) fields.Bolagsform = bolagsform;
+            if (aktivtForetag) fields['Aktivt företag'] = aktivtForetag;
             if (adress) fields.Address = adress;
             if (verksamhet) fields.Verksamhetsbeskrivning = verksamhet;
             if (sni) fields[sniField] = sni;
