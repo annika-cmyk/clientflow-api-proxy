@@ -75,6 +75,7 @@ const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
 const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
 const { buildDigestEmail } = require('./lib/aml-news/email');
 const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-news/enrich');
+const { isRelevantForConsultants } = require('./lib/aml-news/sources');
 const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
 const kundDold = require('./lib/kund-dold');
 const {
@@ -726,7 +727,7 @@ function applyAiSummaryToCache(item, cls) {
 }
 
 async function summarizeAmlNewsWithAi(rows) {
-  const slice = (rows || []).filter((row) => needsAiSummary(row)).slice(0, 8);
+  const slice = (rows || []).filter((row) => isRelevantForConsultants(row) && needsAiSummary(row)).slice(0, 8);
   if (!slice.length) return { attempted: 0, classified: 0 };
   let classified = 0;
   for (const item of slice) {
@@ -747,7 +748,7 @@ async function summarizeAmlNewsWithAi(rows) {
 function scheduleAmlNewsAiSummaries(rows) {
   if (amlNewsClassifyState.running) return;
   if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_ASSISTANT_ID) return;
-  const pending = (rows || []).filter((row) => needsAiSummary(row));
+  const pending = (rows || []).filter((row) => isRelevantForConsultants(row) && needsAiSummary(row));
   if (!pending.length) return;
   amlNewsClassifyState.running = true;
   summarizeAmlNewsWithAi(pending)
