@@ -321,7 +321,7 @@ class ClientFlowApp {
 
     async saveKomIgangState() {
         const state = {};
-        [1, 2, 3, 4].forEach(stepNum => {
+        Object.keys(ClientFlowApp.KOM_IGANG_STEP_IDS).forEach(stepNum => {
             (ClientFlowApp.KOM_IGANG_STEP_IDS[stepNum] || []).forEach(id => {
                 const el = document.getElementById(id);
                 if (el) state[id] = el.checked;
