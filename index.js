@@ -6731,10 +6731,10 @@ async function sendKlientansvarigNotifyEmail({ toEmail, toName, byraNamn, kind, 
   }
 }
 
-async function resolveKlientansvarigForSend({ customerFields, extraFields, fallbackUser, airtableAccessToken, baseId }) {
-  const klientansvarigName = String(
+async function resolveKlientansvarigForSend({ customerFields, extraFields, fallbackUser, airtableAccessToken, baseId, requireFound = false }) {
+  const klientansvarigName = docsignInvite.personNameFromAirtable(
     (customerFields || {})['Klientansvarig'] || (extraFields || {})['Klientansvarig'] || ''
-  ).trim();
+  );
   const byraId = access.customerByraId(customerFields) || fallbackUser?.byraId;
   let users = [];
   try {
@@ -6747,7 +6747,8 @@ async function resolveKlientansvarigForSend({ customerFields, extraFields, fallb
     klientansvarigName,
     users,
     fallbackUser,
-    byraNamn
+    byraNamn,
+    requireFound
   });
 }
 
@@ -16041,11 +16042,19 @@ app.post('/api/uppdragsavtal/:id/pdf', authenticateToken, async (req, res) => {
 
     // Normalisera fältnamn: Airtable sparar med ASCII-namn från frontend
     // → Prioritera ASCII-namn (det vi sparar) framför svenska tecken (äldre fält)
-    // Ansvarig hos byrån = den som genererar PDF:en (inloggad användare), inte bara värdet från avtalet
+    // Ansvarig hos byrån = kundens klientansvariga (den som ska signera för byrån)
+    let klientansvarigPdf = '';
+    try {
+      const kundIdForPdf = docsignInvite.extractLinkedRecordId(f.KundID || f['Kund ID']);
+      if (kundIdForPdf) {
+        const customer = await fetchKunddataRecord(kundIdForPdf, airtableAccessToken, airtableBaseId);
+        klientansvarigPdf = docsignInvite.personNameFromAirtable(customer?.fields?.['Klientansvarig']);
+      }
+    } catch (_) {}
     const nf = {};
     nf['Kundnamn']           = f['Kundnamn'] || f['Namn'] || '\u2014';
     nf['Orgnr']              = f['Orgnr'] || '';
-    nf['Uppdragsansvarig']   = (pdfUser?.name && pdfUser.name.trim()) ? pdfUser.name.trim() : (f['Uppdragsansvarig'] || '\u2014');
+    nf['Uppdragsansvarig']   = klientansvarigPdf || f['Uppdragsansvarig'] || (pdfUser?.name && pdfUser.name.trim()) || '\u2014';
     nf['Avtalsdatum']        = f['Avtalsdatum'] || null;
     nf['Avtalet g\u00e4ller ifr\u00e5n'] = f['Avtalet galler fran'] || f['Avtalet g\u00e4ller ifr\u00e5n'] || null;
     nf['Upps\u00e4gningstid']     = f['Uppsagningstid'] ?? f['Upps\u00e4gningstid'] ?? null;
@@ -17250,8 +17259,8 @@ app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) =>
 // ============================================================
 
 // POST /api/uppdragsavtal/:id/skicka-for-signering
-// Body: { signerare: { namn, epost, personnr, telefon? } | [{ namn, epost, personnr, telefon? }, ...] }
-// Skickar till BÅDE kund OCH inloggad konsult – alla måste signera
+// Body: { signerare: [...], customerId? }
+// Skickar till kundens kontaktpersoner OCH kundens klientansvariga (byråns undertecknare)
 app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -17293,7 +17302,9 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     );
     const avtalFields = avtalRes.data.fields || {};
     const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
-    const kundId = docsignInvite.extractLinkedRecordId(avtalFields.KundID || avtalFields['Kund ID']);
+    const kundId = docsignInvite.extractLinkedRecordId(
+      avtalFields.KundID || avtalFields['Kund ID'] || req.body?.customerId
+    );
     let customerFields = {};
     if (kundId) {
       try {
@@ -17308,13 +17319,22 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       extraFields: avtalFields,
       fallbackUser: inloggedUser,
       airtableAccessToken,
-      baseId: airtableBaseId
+      baseId: airtableBaseId,
+      requireFound: true
     });
+    if (!sender.found || !sender.email) {
+      const missingName = !sender.name;
+      return res.status(400).json({
+        error: missingName
+          ? 'Kunden saknar klientansvarig. Ange klientansvarig på kundkortet innan uppdragsavtalet kan skickas för signering.'
+          : `Klientansvarig ${sender.name} saknar e-post i byråns användarlista. Lägg till e-post på användaren innan avtalet kan skickas.`
+      });
+    }
     const byraSigner = {
-      name: sender.name || inloggedUser.name || req.user.email.split('@')[0],
-      email: sender.email || inloggedUser.email,
+      name: sender.name,
+      email: sender.email,
       byra: sender.byraNamn || inloggedUser.byra || 'Byrån',
-      id: inloggedUser.id
+      id: sender.id || inloggedUser.id
     };
 
     // 2. Generera PDF via intern anrop
