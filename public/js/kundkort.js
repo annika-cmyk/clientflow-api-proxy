@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.35', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.36', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7498,6 +7498,19 @@ class CustomerCardManager {
         return this._esc(text || '').replace(/\n/g, '<br>');
     }
 
+    _renderKalla(raw) {
+        const resolved = (typeof AmlKalla !== 'undefined' && AmlKalla.resolveKalla)
+            ? AmlKalla.resolveKalla(raw)
+            : { text: String(raw || '').trim(), label: String(raw || '').trim(), url: '', host: '' };
+        if (!resolved.text && !resolved.url) return '';
+        if (resolved.url) {
+            const name = this._esc(resolved.label || resolved.text || resolved.host);
+            const host = resolved.host ? ` <span class="threat-kalla-host">${this._esc(resolved.host)}</span>` : '';
+            return `<div class="threat-kalla"><span class="threat-kalla-label">Källa</span><a class="threat-kalla-link" href="${this._esc(resolved.url)}" target="_blank" rel="noopener noreferrer">${name} ↗${host}</a></div>`;
+        }
+        return `<div class="threat-kalla"><span class="threat-kalla-label">Källa</span><span class="threat-kalla-text">${this._esc(resolved.text)}</span></div>`;
+    }
+
     _renderByraTjanstDetails(t) {
         const parts = [];
         const beskrivning = String(t.tjanstebeskrivning || t.beskrivning || '').trim();
@@ -7517,13 +7530,15 @@ class CustomerCardManager {
                 const typ = String(h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
                 const title = String(h.titel || h.title || '').trim();
                 const desc = String(h.beskrivning || h.description || '').trim();
-                if (!title && !desc) return '';
+                const kallaHtml = this._renderKalla(h.kalla ?? h.källa ?? h.source);
+                if (!title && !desc && !kallaHtml) return '';
                 return `
                     <div class="threat-row" style="margin-bottom:0.55rem;">
                         <span class="tag ${typ === 'TF' ? 'tag-tf' : 'tag-pt'}">${typ}</span>
                         <div class="threat-body">
                             ${title ? `<div class="threat-title">${this._esc(title)}</div>` : ''}
                             ${desc ? `<div class="threat-desc">${this._nl(desc)}</div>` : ''}
+                            ${kallaHtml}
                         </div>
                     </div>`;
             }).join(''));

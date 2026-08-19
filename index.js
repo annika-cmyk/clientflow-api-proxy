@@ -17918,7 +17918,7 @@ REGLER:
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
 - Om tjänsten är av redovisningskaraktär: fokusera på avstämningar, kontroller och dokumentationskrav kopplade till just den tjänsten
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): fokusera på identitetskontroll, riskbedömning och dokumentation
-- Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot
+- Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
 
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN:
 Använd byråns profil för att kalibrera den sammanvägda risknivån.
@@ -17946,7 +17946,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
   "beskrivning": "2-3 meningar om tjänsten och byråns roll. Inkludera en mening om hur byråns profil påverkar den sammanvägda risknivån.",
-  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "..." } ],
+  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]
 }
