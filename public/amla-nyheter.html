@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • AML-nyheter</title>
+    <link rel="stylesheet" href="styles.css?v=20260819e">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>AML-nyheter</h1>
+                        <p class="dashboard-subtitle">Nyheter från AMLA som rör redovisningsbyråers penningtvättsarbete. Bank-, FIU- och evenemangsnyheter är borfiltrerade.</p>
+                    </div>
+                </header>
+
+                <section class="dashboard-section amla-news-page" id="amla-news-page">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header amla-news-toolbar">
+                            <h2><i class="fas fa-newspaper"></i> AMLA</h2>
+                            <div class="amla-news-controls">
+                                <div class="amla-lang-toggle" role="group" aria-label="Språk">
+                                    <button type="button" class="amla-chip" data-amla-lang="sv">Svenska</button>
+                                    <button type="button" class="amla-chip" data-amla-lang="en">English</button>
+                                </div>
+                                <label class="amla-summary-toggle">
+                                    <input type="checkbox" id="amla-show-summaries">
+                                    <span data-amla-i18n="summaries">Visa sammanfattningar</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <p class="dashboard-card-desc" id="amla-news-status">Laddar nyheter från AMLA…</p>
+                            <div id="amla-news-list" class="amla-news-list"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/amla-nyheter.js?v=1"></script>
+    <script src="app.js"></script>
+</body>
+</html>
