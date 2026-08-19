@@ -57,6 +57,7 @@ const {
 const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
+const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 
 // Debug: Skriv ut miljövariabler för att verifiera .env läses korrekt
 console.log('Environment Variables Debug:');
@@ -15498,9 +15499,7 @@ app.get('/api/byra-tjanster', authenticateToken, async (req, res) => {
     let offset = null;
 
     do {
-      let url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}?filterByFormula=${formula}`
-        + `&fields[]=Task Name&fields[]=Beskrivning av riskfaktor&fields[]=Riskbedömning&fields[]=Åtgjärd&fields[]=TJÄNSTTYP`
-        + `&pageSize=100`;
+      let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}?filterByFormula=${formula}&pageSize=100`;
       if (offset) url += `&offset=${offset}`;
 
       const response = await axios.get(url, {
@@ -15511,15 +15510,8 @@ app.get('/api/byra-tjanster', authenticateToken, async (req, res) => {
     } while (offset);
 
     const tjanster = allRecords
-      .filter(r => r.fields?.['Task Name'])
-      .map(r => ({
-        id: r.id,
-        namn: (r.fields['Task Name'] || '').trim(),
-        beskrivning: r.fields['Beskrivning av riskfaktor'] || '',
-        riskbedomning: r.fields['Riskbedömning'] || '',
-        atgard: r.fields['Åtgjärd'] || '',
-        typ: r.fields['TJÄNSTTYP'] || ''
-      }));
+      .map((r) => mapByraTjanstRecord(r))
+      .filter((t) => t.namn);
 
     console.log(`✅ Byråns tjänster (${byraId}):`, tjanster.map(t => t.namn));
     res.json({ tjanster });

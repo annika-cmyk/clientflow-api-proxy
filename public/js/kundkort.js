@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.31', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.32', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7327,7 +7327,8 @@ class CustomerCardManager {
             ? '<p class="lead-empty">Inga tjänster kopplade till kunden. Klicka Redigera för att välja.</p>'
             : aktiva.map((t, i) => {
                 const uid = `tjanst-details-${p}-${i}`;
-                const hasDetails = t.beskrivning || t.atgard;
+                const detailsHtml = this._renderByraTjanstDetails(t);
+                const hasDetails = !!detailsHtml;
                 return `
                 <div class="tjanst-collapsible-item" onclick="${hasDetails ? `customerCardManager.toggleTjanstDetails('${uid}')` : ''}">
                     <div class="tjanst-collapsible-header">
@@ -7339,12 +7340,7 @@ class CustomerCardManager {
                     </div>
                     ${hasDetails ? `
                     <div class="tjanst-collapsible-body" id="${uid}" style="display:none;">
-                        ${t.beskrivning ? `
-                            <div class="risker-vald-section-label">Beskrivning av riskfaktorn</div>
-                            <div class="risker-vald-desc">${this._esc(t.beskrivning)}</div>` : ''}
-                        ${t.atgard ? `
-                            <div class="risker-vald-section-label">Åtgärder</div>
-                            <div class="risker-vald-desc">${this._esc(t.atgard)}</div>` : ''}
+                        ${detailsHtml}
                     </div>` : ''}
                 </div>`;
             }).join('');
@@ -7397,6 +7393,75 @@ class CustomerCardManager {
                 tjanstBody.appendChild(fab);
             }
         }
+    }
+
+    _nl(text) {
+        return this._esc(text || '').replace(/\n/g, '<br>');
+    }
+
+    _renderByraTjanstDetails(t) {
+        const parts = [];
+        const beskrivning = String(t.tjanstebeskrivning || t.beskrivning || '').trim();
+        const hot = Array.isArray(t.hot) ? t.hot : [];
+        const sarbarheter = Array.isArray(t.sarbarheter) ? t.sarbarheter : [];
+        const atgarder = Array.isArray(t.atgarder) ? t.atgarder : [];
+        const legacyAtgard = String(t.atgard || '').trim();
+
+        if (beskrivning) {
+            parts.push(`
+                <div class="risker-vald-section-label">Tjänstebeskrivning</div>
+                <div class="risker-vald-desc">${this._nl(beskrivning)}</div>`);
+        }
+        if (hot.length) {
+            parts.push(`<div class="risker-vald-section-label">Hot</div>`);
+            parts.push(hot.map((h) => {
+                const typ = String(h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
+                const title = String(h.titel || h.title || '').trim();
+                const desc = String(h.beskrivning || h.description || '').trim();
+                if (!title && !desc) return '';
+                return `
+                    <div class="threat-row" style="margin-bottom:0.55rem;">
+                        <span class="tag ${typ === 'TF' ? 'tag-tf' : 'tag-pt'}">${typ}</span>
+                        <div class="threat-body">
+                            ${title ? `<div class="threat-title">${this._esc(title)}</div>` : ''}
+                            ${desc ? `<div class="threat-desc">${this._nl(desc)}</div>` : ''}
+                        </div>
+                    </div>`;
+            }).join(''));
+        }
+        if (sarbarheter.length) {
+            parts.push(`<div class="risker-vald-section-label">Sårbarheter</div>`);
+            parts.push(sarbarheter.map((s) => {
+                const kat = String(s.kategori || s.category || '').trim();
+                const title = String(s.titel || s.title || '').trim();
+                const desc = String(s.beskrivning || s.description || '').trim();
+                if (!title && !desc) return '';
+                return `
+                    <div class="vuln-item" style="margin-bottom:0.55rem;">
+                        ${kat ? `<div class="tags-row"><span class="tag tag-verk">${this._esc(kat)}</span></div>` : ''}
+                        ${title ? `<div class="vuln-item-title">${this._esc(title)}</div>` : ''}
+                        ${desc ? `<div class="vuln-item-desc">${this._nl(desc)}</div>` : ''}
+                    </div>`;
+            }).join(''));
+        }
+        if (atgarder.length) {
+            parts.push(`<div class="risker-vald-section-label">Tjänstespecifika åtgärder</div>`);
+            parts.push(atgarder.map((a) => {
+                const title = String(a.titel || a.title || a.namn || '').trim();
+                const desc = String(a.beskrivning || a.description || '').trim();
+                if (!title && !desc) return '';
+                return `
+                    <div class="action-item" style="margin-bottom:0.45rem;">
+                        <i class="fas fa-check action-icon"></i>
+                        <span class="action-text">${title ? `<strong>${this._esc(title)}</strong>` : ''}${desc ? (title ? ' — ' : '') + this._nl(desc) : ''}</span>
+                    </div>`;
+            }).join(''));
+        } else if (legacyAtgard) {
+            parts.push(`
+                <div class="risker-vald-section-label">Åtgärder</div>
+                <div class="risker-vald-desc">${this._nl(legacyAtgard)}</div>`);
+        }
+        return parts.filter(Boolean).join('');
     }
 
     toggleTjanstDetails(uid) {
