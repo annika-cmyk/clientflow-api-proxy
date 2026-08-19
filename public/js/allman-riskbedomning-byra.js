@@ -15,7 +15,8 @@
     { id: 'fld-riskreducerande', airtable: '5. Riskreducerande Åtgärder och Rutiner' },
     { id: 'fld-utvardering', airtable: '6. Utvärdering och Uppdatering' },
     { id: 'fld-kommunikation-risk', airtable: '7. Kommunikation.' },
-    { id: 'fld-vardering-risk', airtable: '8. Värdering av sammantagen risk' }
+    { id: 'fld-vardering-risk', airtable: '8. Värdering av sammantagen risk' },
+    { id: 'fld-uppdaterad-datum', airtable: 'Uppdaterad datum', type: 'date' }
   ];
 
   const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
@@ -301,7 +302,9 @@
         var el = getEl(m.id);
         if (!el) return;
         var val = el.value;
-        if (m.type === 'number') { var n = parseFloat(String(val).trim()); val = isNaN(n) ? '' : String(n); } else val = String(val || '').trim();
+        if (m.type === 'number') { var n = parseFloat(String(val).trim()); val = isNaN(n) ? '' : String(n); }
+        else if (m.type === 'date') val = String(val || '').trim().substring(0, 10);
+        else val = String(val || '').trim();
         var fields = {}; fields[m.airtable] = val;
         saveFields(fields, card);
       });

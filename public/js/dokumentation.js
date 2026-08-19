@@ -169,7 +169,8 @@
     { key: '5. Riskreducerande Åtgärder och Rutiner', label: '5. Riskreducerande Åtgärder och Rutiner' },
     { key: '6. Utvärdering och Uppdatering', label: '6. Utvärdering och Uppdatering' },
     { key: '7. Kommunikation.', label: '7. Kommunikation' },
-    { key: '8. Värdering av sammantagen risk', label: '8. Värdering av sammantagen risk' }
+    { key: '8. Värdering av sammantagen risk', label: '8. Värdering av sammantagen risk' },
+    { key: 'Uppdaterad datum', label: 'Reviderad och godkänd' }
   ];
 
   function getField(fields, key) {
@@ -219,6 +220,10 @@
         const val = getField(fields, key);
         if (key === 'Antal anställda' || key === 'Omsättning' || key === 'Antal kundföretag') {
           continue; // visas tillsammans
+        }
+        if (key === 'Uppdaterad datum') {
+          html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
+          continue;
         }
         html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? markdownToHtml(val) : '—'}</div></div>`);
       }
