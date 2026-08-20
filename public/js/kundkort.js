@@ -7797,9 +7797,9 @@ class CustomerCardManager {
         `;
     }
 
-    _renderInleedSignLinks(inleed, { allowByraSign = false } = {}) {
+    _renderInleedSignLinks(inleed, { allowByraSign = false, statusHtml = '', tone = '' } = {}) {
         const links = Array.isArray(inleed?.links) ? inleed.links : [];
-        if (!links.length && !inleed?.documentId) return '';
+        if (!links.length && !inleed?.documentId && !statusHtml) return '';
         const esc = (s) => String(s ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
@@ -7821,13 +7821,18 @@ class CustomerCardManager {
         const byraBtn = (allowByraSign && byra)
             ? `<a class="btn btn-inleed" href="${esc(byra.signUrl)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-pen-nib"></i> Signera som byrå</a>`
             : '';
+        const toneClass = tone === 'ok' ? ' inleed-sign-box--ok' : (tone === 'wait' ? ' inleed-sign-box--wait' : '');
+        const statusLine = statusHtml ? `<div class="inleed-sign-meta">${statusHtml}</div>` : '';
         return `
-            <div class="inleed-sign-box">
+            <div class="inleed-sign-box${toneClass}">
                 <div class="inleed-sign-box-head">
                     <div class="inleed-sign-box-title"><i class="fas fa-link"></i> Inleed-länk till dokumentet</div>
                     ${byraBtn}
                 </div>
-                ${rows ? `<ul class="inleed-sign-list">${rows}</ul>` : '<p class="uppdrag-hint" style="margin:0;">Dokumentet är skickat i Inleed. Öppna mejlet från Inleed om länken saknas här.</p>'}
+                ${statusLine}
+                ${rows ? `<ul class="inleed-sign-list">${rows}</ul>` : (inleed?.documentId || links.length
+                    ? '<p class="uppdrag-hint" style="margin:0;">Dokumentet är skickat i Inleed. Öppna mejlet från Inleed om länken saknas här.</p>'
+                    : '')}
             </div>`;
     }
 
@@ -8005,15 +8010,32 @@ class CustomerCardManager {
         const kycSigneringsdatum = saved.signeringsdatum || '';
         const kycUtanfor = this._fieldIsChecked(f, 'KYC-formulär utanför ClientFlow');
 
-        const kycUtanforHtml = this._renderExternClientFlowOption({
+        const hasInleed = !!(kycInleedId || this._kycInleed?.documentId || (this._kycInleed?.links || []).length);
+        const kycUi = window.KycStatusUi || {};
+        const showUtanfor = kycUi.shouldShowKycUtanforOption
+            ? kycUi.shouldShowKycUtanforOption({ utanfor: kycUtanfor, status: kycStatus, hasInleed })
+            : !(!kycUtanfor && (kycStatus === 'Signerat' || kycStatus === 'Skickat till kund' || hasInleed));
+        const showInleed = kycUi.shouldShowKycInleedBox
+            ? kycUi.shouldShowKycInleedBox({ utanfor: kycUtanfor, status: kycStatus, hasInleed })
+            : (!kycUtanfor && (hasInleed || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat'));
+        const showSeparateBanner = kycUi.shouldShowSeparateKycStatusBanner
+            ? kycUi.shouldShowSeparateKycStatusBanner({ utanfor: kycUtanfor, showInleed })
+            : !showInleed || kycUtanfor;
+        const inleedStatusText = kycUi.kycInleedBoxStatus
+            ? kycUi.kycInleedBoxStatus({ status: kycStatus, signedDate: kycSigneringsdatum })
+            : (kycStatus === 'Signerat'
+                ? (kycSigneringsdatum ? `Signerat ${kycSigneringsdatum}.` : 'Signerat.')
+                : (kycStatus === 'Skickat till kund' ? 'Utskickat och väntar signering.' : ''));
+
+        const kycUtanforHtml = showUtanfor ? this._renderExternClientFlowOption({
             id: 'kund-kyc-utanfor-cf',
             checked: kycUtanfor,
             label: 'Finns utanför ClientFlow',
             hint: 'Fliken KYC-formulär markeras som klar när detta är valt.',
             onChangeHandler: 'setKycFormularUtanforClientFlow'
-        });
+        }) : '';
 
-        const statusBannerHtml = kycUtanfor ? `
+        const statusBannerHtml = !showSeparateBanner ? '' : kycUtanfor ? `
             <div class="uppdrag-banner uppdrag-banner--ok">
                 <i class="fas fa-check-circle"></i>
                 KYC-formulär finns utanför ClientFlow.
@@ -8046,8 +8068,12 @@ class CustomerCardManager {
                 <option value="Nej" ${val === 'Nej' ? 'selected' : ''}>Nej</option>
             </select>`;
 
-        const inleedLinksHtml = (!kycUtanfor && (kycInleedId || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat' || this._kycInleed?.documentId || (this._kycInleed?.links || []).length))
-            ? this._renderInleedSignLinks(this._kycInleed, { allowByraSign: true })
+        const inleedLinksHtml = showInleed
+            ? this._renderInleedSignLinks(this._kycInleed, {
+                allowByraSign: true,
+                statusHtml: inleedStatusText ? `<i class="fas ${kycStatus === 'Signerat' ? 'fa-check-circle' : 'fa-clock'}"></i> ${esc(inleedStatusText)}` : '',
+                tone: kycStatus === 'Signerat' ? 'ok' : (kycStatus === 'Skickat till kund' ? 'wait' : '')
+            })
             : '';
 
         container.innerHTML = `
