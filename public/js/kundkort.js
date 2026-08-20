@@ -496,7 +496,7 @@ class CustomerCardManager {
     _normalizeKundstatus(raw) {
         const v = (raw == null ? '' : String(raw)).trim().toLowerCase();
         if (v === 'lead') return 'Lead';
-        if (v === 'avslutad' || v === 'avslutat') return 'Avslutad';
+        if (v === 'avslutad' || v === 'avslutat' || v === 'avslutad kund') return 'Avslutad';
         return 'Pågående kund';
     }
 
@@ -552,14 +552,20 @@ class CustomerCardManager {
             actions.className = 'kund-dold-actions';
             header.appendChild(actions);
         }
+        const avslutad = this._normalizeKundstatus(fields.Kundstatus) === 'Avslutad';
         if (hidden) {
+            actions.hidden = false;
             actions.innerHTML = '<button type="button" class="btn btn-secondary btn-sm" id="btn-visa-kund"><i class="fas fa-eye"></i> Visa kunden igen</button>';
             const btn = actions.querySelector('#btn-visa-kund');
             if (btn) btn.addEventListener('click', () => this.visaKundIgen());
-        } else {
+        } else if (avslutad) {
+            actions.hidden = false;
             actions.innerHTML = '<button type="button" class="btn btn-ghost btn-sm kund-dold-delete" id="btn-dolj-kund"><i class="fas fa-trash-alt"></i> Radera kund</button>';
             const btn = actions.querySelector('#btn-dolj-kund');
             if (btn) btn.addEventListener('click', () => this.doljKund());
+        } else {
+            actions.innerHTML = '';
+            actions.hidden = true;
         }
     }
 
