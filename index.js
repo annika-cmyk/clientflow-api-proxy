@@ -61,6 +61,7 @@ const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
+const dokumentHistorik = require('./lib/dokument-historik');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
@@ -6663,8 +6664,13 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       allItems.push({ ...a, _typ: 'dokumentation', _sourceField: 'Dokumentation', _sourceIndex: i, _category: category, _customCategory: customCat });
     });
 
+    dokumentHistorik.toHistorikDocumentItems(f).forEach((item) => {
+      if (item && (item.url || item.filename)) allItems.push(item);
+    });
+
     const categoryLabels = {
       riskbedomning: 'Dokumentation riskbedömning',
+      historik: 'Dokumentation - historik',
       arsredovisning: 'Årsredovisningar',
       uppdragsavtal: 'Uppdragsavtal',
       kyc: 'KYC-formulär',
@@ -6676,7 +6682,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const isPep = a._typ === 'pep';
       const isArs = a._typ === 'arsredovisning';
       const isDok = a._typ === 'dokumentation';
-      const category = a._category || (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt');
+      const category = a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt'));
       const customCategory = a._customCategory || '';
       const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
       let namn = a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
@@ -6829,17 +6835,36 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       : (lowerName.endsWith('.png') ? 'image/png'
         : ((lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) ? 'image/jpeg'
           : 'application/octet-stream'));
-    // Försök Dokumentation först (kategoriserad flik), sedan Attachments som finns i många baser.
-    let uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
-      airtableAccessToken,
-      airtableBaseId,
-      customerId,
-      buffer,
-      filename,
-      contentType,
-      KUNDDATA_TABLE,
-      'Dokumentation'
-    );
+    // Historik-kategori skrivs till det egna Airtable-fältet. Övriga kategorier
+    // går till Dokumentation/Attachments + Dokumentation Kategorier.
+    let uploadedAtt = null;
+    let uploadedToHistorikField = false;
+    if (cat === 'historik') {
+      const historikField = dokumentHistorik.pickHistorikFieldName(f);
+      uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        buffer,
+        filename,
+        contentType,
+        KUNDDATA_TABLE,
+        historikField
+      );
+      uploadedToHistorikField = !!(uploadedAtt && (uploadedAtt.url || uploadedAtt.id));
+    }
+    if (!uploadedAtt) {
+      uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        buffer,
+        filename,
+        contentType,
+        KUNDDATA_TABLE,
+        'Dokumentation'
+      );
+    }
     if (!uploadedAtt) {
       uploadedAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
         airtableAccessToken,
@@ -6868,6 +6893,10 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
     }
 
     // Spara kategori per filnamn (och attachment-id om vi fick det), inte per index.
+    // Filer i "Dokumentation - historik" kategoriseras av fältet, inte JSON-listan.
+    if (uploadedToHistorikField) {
+      return res.json({ success: true, message: 'Dokument uppladdat', category: cat });
+    }
     try {
       const latestRes = await axios.get(
         `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,

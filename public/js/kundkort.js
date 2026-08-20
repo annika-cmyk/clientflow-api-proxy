@@ -9907,9 +9907,11 @@ class CustomerCardManager {
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
         if (!content) return;
-        const categoryOrder = ['riskbedomning', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
+        const categoryOrder = ['riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
+        const alwaysShow = ['historik'];
         const categoryIcons = {
             riskbedomning: 'fa-clipboard-check',
+            historik: 'fa-clock-rotate-left',
             arsredovisning: 'fa-file-invoice',
             uppdragsavtal: 'fa-file-signature',
             kyc: 'fa-id-card',
@@ -9917,43 +9919,43 @@ class CustomerCardManager {
             ovrigt: 'fa-folder-open'
         };
 
-        let bodyHTML;
-        if (documents.length === 0) {
-            bodyHTML = `<div class="empty-state"><i class="fas fa-file-alt"></i><p>Inga dokument uppladdade ännu.</p></div>`;
-        } else {
-            const byCategory = {};
-            documents.forEach(doc => {
-                const label = doc.categoryLabel || doc.category || 'Övrigt';
-                if (!byCategory[label]) byCategory[label] = [];
-                byCategory[label].push(doc);
-            });
-            const orderedLabels = [];
-            categoryOrder.forEach(cat => {
-                const label = this.getCategoryLabel(cat);
-                if (byCategory[label] && byCategory[label].length) orderedLabels.push(label);
-            });
-            Object.keys(byCategory).forEach(label => {
-                if (!orderedLabels.includes(label)) orderedLabels.push(label);
-            });
-            bodyHTML = orderedLabels.map(label => {
-                const list = byCategory[label];
-                const cat = list[0]?.category || 'ovrigt';
-                const icon = categoryIcons[cat] || 'fa-file-alt';
-                const safeLabel = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                return `
+        const byCategory = {};
+        (documents || []).forEach(doc => {
+            const label = doc.categoryLabel || doc.category || 'Övrigt';
+            if (!byCategory[label]) byCategory[label] = [];
+            byCategory[label].push(doc);
+        });
+        const orderedLabels = [];
+        categoryOrder.forEach(cat => {
+            const label = this.getCategoryLabel(cat);
+            const hasFiles = byCategory[label] && byCategory[label].length;
+            if (hasFiles || alwaysShow.includes(cat)) orderedLabels.push(label);
+        });
+        Object.keys(byCategory).forEach(label => {
+            if (!orderedLabels.includes(label)) orderedLabels.push(label);
+        });
+        const bodyHTML = orderedLabels.map(label => {
+            const list = byCategory[label] || [];
+            const historikLabel = this.getCategoryLabel('historik');
+            const cat = list[0]?.category || (label === historikLabel ? 'historik' : 'ovrigt');
+            const icon = categoryIcons[cat] || 'fa-file-alt';
+            const safeLabel = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const listHtml = list.length
+                ? `<ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
+                : `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
+            return `
                     <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                         <div class="collapsible-header">
                             <div class="collapsible-title"><i class="fas ${icon}"></i> ${safeLabel}</div>
                         </div>
                         <div class="collapsible-body">
-                            <ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>
+                            ${listHtml}
                             <button class="card-edit-fab" title="Ladda upp dokument till denna kategori" onclick="event.stopPropagation(); customerCardManager.uploadDocument('${cat}')">
                                 <i class="fas fa-pencil-alt"></i>
                             </button>
                         </div>
                     </div>`;
-            }).join('');
-        }
+        }).join('');
 
         content.innerHTML = `
             <div class="documentation-content documentation-cards">
@@ -9969,6 +9971,7 @@ class CustomerCardManager {
     getCategoryLabel(cat) {
         const labels = {
             riskbedomning: 'Dokumentation riskbedömning',
+            historik: 'Dokumentation - historik',
             arsredovisning: 'Årsredovisningar',
             uppdragsavtal: 'Uppdragsavtal',
             kyc: 'KYC-formulär',
@@ -12164,6 +12167,7 @@ class CustomerCardManager {
                                 <label for="upload-doc-category">Kategori *</label>
                                 <select id="upload-doc-category" name="category" required>
                                     <option value="riskbedomning">Dokumentation riskbedömning</option>
+                                    <option value="historik">Dokumentation - historik</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>
                                     <option value="kyc">KYC-formulär</option>
