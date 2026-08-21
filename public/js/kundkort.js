@@ -7268,34 +7268,51 @@ class CustomerCardManager {
         };
     }
 
-    _foreslagenHtml(foreslagen, drivande, residual) {
-        const KP = window.KundRiskprofil;
-        const avviker = KP && KP.residualAvvikerFranForeslagen(residual, foreslagen);
-        const riktning = avviker && KP ? KP.avvikelseRiktning(residual, foreslagen) : '';
+    _foreslagenHtml(foreslagen, drivande) {
         const pill = foreslagen
             ? this._riskPillHtml(foreslagen, false)
             : '<span class="missing-data">Ingen S×K att utgå från</span>';
-        const delta = avviker
-            ? `<span class="ai-rb-avvikelse-pil">beräknat ${this._esc(foreslagen)} → satt till ${this._esc(residual)}${riktning ? ` (${riktning})` : ''}</span>`
-            : '';
         return `
                         <div class="ai-rb-foreslagen">
-                            <span class="ai-rb-profil-kind">FÖRESLAGEN NIVÅ (beräknad)</span>
+                            <span class="ai-rb-profil-kind">Föreslagen nivå (beräknad)</span>
                             ${pill}
-                            ${delta}
+                            ${drivande ? `<div class="ai-rb-drivande">Drivs av: ${this._esc(drivande)}</div>` : ''}
+                        </div>`;
+    }
+
+    _riskCompareHtml(foreslagen, residual, drivande) {
+        const KP = window.KundRiskprofil;
+        const avviker = KP && KP.residualAvvikerFranForeslagen(residual, foreslagen);
+        const riktning = avviker && KP ? KP.avvikelseRiktning(residual, foreslagen) : '';
+        const left = foreslagen
+            ? this._riskPillHtml(foreslagen, false)
+            : '<span class="missing-data">Ingen S×K</span>';
+        const right = residual
+            ? this._riskPillHtml(residual, false)
+            : '<span class="missing-data">Ej vald</span>';
+        return `
+                        <div class="ai-rb-jamforelse">
+                            <div class="ai-rb-jamforelse-col">
+                                <span class="ai-rb-profil-kind">Föreslagen nivå (beräknad)</span>
+                                ${left}
+                            </div>
+                            <div class="ai-rb-jamforelse-arrow" aria-hidden="true">${avviker ? '→' : '='}</div>
+                            <div class="ai-rb-jamforelse-col">
+                                <span class="ai-rb-profil-kind">Vald residual</span>
+                                ${right}
+                                ${riktning ? `<span class="ai-rb-avvikelse-pil">${this._esc(riktning)}</span>` : ''}
+                            </div>
                             ${drivande ? `<div class="ai-rb-drivande">Drivs av: ${this._esc(drivande)}</div>` : ''}
                         </div>`;
     }
 
     _riskbedomningViewHtml(inneboende, residual, motivering, atgarder, opts = {}) {
         const legacy = !!opts.legacy;
-        const badges = `${this._foreslagenHtml(opts.foreslagen, opts.drivande, residual)}
-                        <div class="risker-vald-section-label" style="margin-top:0.75rem;">Slutgiltig bedömning</div>
+        const badges = `${this._riskCompareHtml(opts.foreslagen, residual, opts.drivande)}
                         <div class="ai-rb-profil-row" id="ai-rb-niva-display">
                             ${this._profilBadgeHtml('inneboende', inneboende)}
-                            ${this._profilBadgeHtml('residual', residual)}
                         </div>
-                        ${opts.avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Avvikelse</span><div class="risker-vald-desc">${this._esc(opts.avvikelse)}</div></div>` : ''}`;
+                        ${opts.avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Motivering till avvikelse</span><div class="risker-vald-desc">${this._esc(opts.avvikelse)}</div></div>` : ''}`;
         const legacyBox = (legacy && motivering)
             ? `<div class="ai-rb-legacy">Tidigare bedömning (ej uppdelad i inneboende/residual), kräver manuell översyn<div class="ai-rb-legacy-text">${this._esc(motivering)}</div></div>`
             : '';
@@ -7320,7 +7337,7 @@ class CustomerCardManager {
 
     renderRiskbedomningAiCard(f) {
         const profil = this._readRiskprofilFromFields(f);
-        const titleBadges = `${this._profilBadgeHtml('inneboende', profil.inneboende)} ${this._profilBadgeHtml('residual', profil.residual)}`;
+        const titleBadges = this._profilBadgeHtml('residual', profil.residual);
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="ai-riskbedomning-kort">
@@ -7343,7 +7360,7 @@ class CustomerCardManager {
                     </div>
 
                     <div id="ai-rb-edit" style="display:none;" data-inneboende="${this._esc(profil.inneboende)}" data-residual="${this._esc(profil.residual)}" data-foreslagen="${this._esc(profil.foreslagen)}">
-                        ${this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.residual)}
+                        ${this._foreslagenHtml(profil.foreslagen, profil.drivande)}
                         <div class="risker-vald-section-label" style="margin-top:0.75rem;">Slutgiltig bedömning</div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Inneboende riskprofil</label>
@@ -7448,11 +7465,7 @@ class CustomerCardManager {
             const wrap = edit.querySelector('.ai-rb-foreslagen');
             if (wrap) {
                 const tmp = document.createElement('div');
-                tmp.innerHTML = this._foreslagenHtml(
-                    profil.foreslagen,
-                    profil.drivande,
-                    edit.dataset.residual || profil.residual
-                );
+                tmp.innerHTML = this._foreslagenHtml(profil.foreslagen, profil.drivande);
                 if (tmp.firstElementChild) wrap.replaceWith(tmp.firstElementChild);
             }
         }
@@ -7584,7 +7597,7 @@ class CustomerCardManager {
         }
         const titleBadges = document.querySelector('#ai-riskbedomning-kort .ai-rb-title-badges');
         if (titleBadges) {
-            titleBadges.innerHTML = `${this._profilBadgeHtml('inneboende', inneboende)} ${this._profilBadgeHtml('residual', residual)}`;
+            titleBadges.innerHTML = this._profilBadgeHtml('residual', residual);
         }
     }
 

@@ -6215,12 +6215,40 @@ body.sidebar-collapsed .logout-btn {
     color: #5b21b6;
     line-height: 1.45;
 }
-.ai-rb-foreslagen {
+.ai-rb-foreslagen,
+.ai-rb-jamforelse {
     padding: 0.65rem 0.8rem;
     background: #f8fafc;
     border: 1px dashed #cbd5e1;
     border-radius: 8px;
     margin-bottom: 0.5rem;
+}
+.ai-rb-jamforelse {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.45rem 0.65rem;
+    align-items: center;
+}
+.ai-rb-jamforelse-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: flex-start;
+}
+.ai-rb-jamforelse-arrow {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #94a3b8;
+    line-height: 1;
+}
+.ai-rb-jamforelse .ai-rb-drivande {
+    grid-column: 1 / -1;
+}
+@media (max-width: 520px) {
+    .ai-rb-jamforelse {
+        grid-template-columns: 1fr;
+    }
+    .ai-rb-jamforelse-arrow { display: none; }
 }
 .ai-rb-drivande,
 .ai-rb-avvikelse-view {
