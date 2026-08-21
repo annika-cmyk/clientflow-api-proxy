@@ -255,10 +255,11 @@
       var res = await fetch(getBaseUrl() + '/api/byra-rutiner/' + encodeURIComponent(recordId), {
         method: 'PATCH',
         ...getAuthOpts(),
-        body: JSON.stringify({ fields })
+        body: JSON.stringify({ fields, aiAudit: window._lastArAiAudit || undefined })
       });
       var data = await res.json().catch(function () { return {}; });
       if (res.ok) {
+        window._lastArAiAudit = null;
         if (status) { status.textContent = 'Sparad'; setTimeout(function () { status.textContent = ''; }, 2000); }
         document.querySelectorAll('.byra-card').forEach(updateCardView);
         if (card) showView(card);
@@ -469,6 +470,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
+          if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
           applySammantagenFromText(data.text);
           updateCardView(card);
         } else {
@@ -503,6 +505,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
+          if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
           ta.value = data.text;
           updateCardView(card);
         } else {

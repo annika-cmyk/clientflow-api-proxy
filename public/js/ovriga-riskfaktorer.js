@@ -712,6 +712,7 @@ class RiskFactorsManager {
                 throw new Error(err.error || `HTTP ${response.status}`);
             }
             const data = await response.json();
+            this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
             if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
             if (data.ptTfRelevans) {
@@ -851,12 +852,13 @@ class RiskFactorsManager {
     }
 
     async saveRiskFactor(url, method, payload) {
-        let body = payload;
+        let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
         let response = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
+        if (response.ok) this._lastAiAudit = null;
         if (!response.ok && (body['Riskpoäng'] || body['PT/TF-relevans'])) {
             const err = await response.json().catch(() => ({}));
             const raw = JSON.stringify(err);

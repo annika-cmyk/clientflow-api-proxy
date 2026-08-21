@@ -911,6 +911,7 @@ class RiskAssessmentManager {
             }
 
             const data = await response.json();
+            this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
             if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
             if (data.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet', data.sannolikhet);
@@ -990,12 +991,13 @@ class RiskAssessmentManager {
                 : `${window.apiConfig.baseUrl}/api/risk-assessments`;
             const method = recordId ? 'PUT' : 'POST';
 
-            let body = payload;
+            let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
             let response = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
+            if (response.ok) this._lastAiAudit = null;
 
             if (!response.ok && body['Riskpoäng']) {
                 const err = await response.json().catch(() => ({}));

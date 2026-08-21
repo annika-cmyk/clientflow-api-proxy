@@ -6321,6 +6321,91 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.6rem;
     flex-shrink: 0;
 }
+.audit-filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.85rem 0 1.25rem;
+}
+.audit-filter-form input,
+.audit-filter-form select {
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 6px;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.85rem;
+}
+.audit-review-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--ink-3, #64748b);
+}
+.audit-overdue-banner {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.85rem;
+}
+.audit-subhead {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 0.95rem;
+}
+.audit-log-item,
+.audit-review-group {
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 0.65rem;
+}
+.audit-log-item-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    align-items: center;
+}
+.audit-log-meta,
+.audit-log-line,
+.audit-log-motivering,
+.audit-log-values {
+    font-size: 0.8rem;
+    color: #475569;
+    margin: 0.3rem 0 0;
+}
+.audit-log-values {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.audit-flag {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #0f766e;
+    background: #ccfbf1;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+}
+.audit-flag--warn {
+    color: #92400e;
+    background: #fde68a;
+}
+.audit-review-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+    margin-top: 0.45rem;
+}
+.audit-traff-list {
+    margin: 0.4rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.8rem;
+}
 .dokumentation-export-history { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
 .dokumentation-section { margin-bottom: 2rem; }
 .dokumentation-riskbedomning-view {

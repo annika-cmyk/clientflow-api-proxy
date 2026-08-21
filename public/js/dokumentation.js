@@ -319,9 +319,12 @@
     const exportWrap = getEl('dokumentation-export-wrap');
     if (exportWrap) exportWrap.style.display = 'flex';
     renderPdfList();
-    if (String(window.location.hash || '').replace('#', '') === 'dolda') {
-      showDokumentationTab('dolda');
+    if (window.clientflowAuditLog && window.clientflowAuditLog.revealTab) {
+      window.clientflowAuditLog.revealTab();
     }
+    const hash = String(window.location.hash || '').replace('#', '');
+    if (hash === 'dolda') showDokumentationTab('dolda');
+    if (hash === 'revisionslogg') showDokumentationTab('audit');
   }
 
   function exportTitle(item) {
@@ -543,7 +546,10 @@
   }
 
   function showDokumentationTab(tab) {
-    const which = tab === 'dolda' ? 'dolda' : 'byra';
+    const which = tab === 'dolda' ? 'dolda' : (tab === 'audit' ? 'audit' : 'byra');
+    if (which === 'audit' && window.clientflowAuditLog && !window.clientflowAuditLog.isLedare()) {
+      return showDokumentationTab('byra');
+    }
     document.querySelectorAll('[data-dok-tab]').forEach(function (btn) {
       const on = btn.getAttribute('data-dok-tab') === which;
       btn.classList.toggle('active', on);
@@ -551,20 +557,29 @@
     });
     const byra = getEl('dok-pane-byra');
     const dolda = getEl('dok-pane-dolda');
+    const audit = getEl('dok-pane-audit');
     if (byra) byra.hidden = which !== 'byra';
     if (dolda) dolda.hidden = which !== 'dolda';
+    if (audit) audit.hidden = which !== 'audit';
     const exportWrap = getEl('dokumentation-export-wrap');
     if (exportWrap && exportWrap.style.display !== 'none') {
       exportWrap.style.visibility = which === 'byra' ? 'visible' : 'hidden';
     }
     if (which === 'dolda') loadDoldaKunder();
+    if (which === 'audit' && window.clientflowAuditLog && window.clientflowAuditLog.load) {
+      window.clientflowAuditLog.load();
+    }
     if (which === 'dolda' && window.location.hash !== '#dolda') {
       history.replaceState(null, '', '#dolda');
     }
-    if (which === 'byra' && window.location.hash === '#dolda') {
+    if (which === 'audit' && window.location.hash !== '#revisionslogg') {
+      history.replaceState(null, '', '#revisionslogg');
+    }
+    if (which === 'byra' && (window.location.hash === '#dolda' || window.location.hash === '#revisionslogg')) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }
+  window.showDokumentationTab = showDokumentationTab;
 
   function initDokumentationTabs() {
     document.querySelectorAll('[data-dok-tab]').forEach(function (btn) {
@@ -572,9 +587,9 @@
         showDokumentationTab(btn.getAttribute('data-dok-tab'));
       });
     });
-    if (String(window.location.hash || '').replace('#', '') === 'dolda') {
-      showDokumentationTab('dolda');
-    }
+    const startHash = String(window.location.hash || '').replace('#', '');
+    if (startHash === 'dolda') showDokumentationTab('dolda');
+    if (startHash === 'revisionslogg') showDokumentationTab('audit');
   }
 
   function initExportButton() {

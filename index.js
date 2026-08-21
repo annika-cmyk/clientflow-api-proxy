@@ -79,6 +79,10 @@ const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
+const auditLog = require('./lib/audit-log');
+const auditLogAirtable = require('./lib/audit-log-airtable');
+const auditRuntime = require('./lib/audit-log-runtime');
+const auditHooks = require('./lib/audit-log-hooks');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
@@ -402,6 +406,39 @@ async function assertCustomerAccess(req, customerId, options = {}) {
     throw err;
   }
   return { userData, customerRecord };
+}
+
+function getAuditService() {
+  const existing = auditRuntime.getAuditRuntime();
+  if (existing) return existing;
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!token) return null;
+  const store = auditLogAirtable.createAirtableStore({ axios, token, baseId });
+  const svc = auditLog.createAuditLogService(store);
+  return auditRuntime.initAuditRuntime(svc);
+}
+
+async function writeAuditEvent(input, options) {
+  const svc = getAuditService();
+  if (!svc) return null;
+  try {
+    return await svc.insert(input, options);
+  } catch (err) {
+    console.warn('audit-log insert misslyckades:', err.message);
+    return null;
+  }
+}
+
+async function actorForRequest(req, userData) {
+  if (userData) return auditLog.actorFromUser(userData, req);
+  if (req && req.user && req.user.email) {
+    try {
+      const loaded = await getAirtableUser(req.user.email);
+      if (loaded) return auditLog.actorFromUser(loaded, req);
+    } catch (_) { /* systemfallback */ }
+  }
+  return auditLog.actorFromUser(null, req);
 }
 
 function mapApplicationUserRecord(r) {
@@ -5271,7 +5308,9 @@ app.post('/api/risk-assessments', async (req, res) => {
       });
     }
 
-    const riskData = req.body;
+    const riskData = { ...(req.body || {}) };
+    const tjanstAiAudit = riskData.aiAudit;
+    delete riskData.aiAudit;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5320,6 +5359,29 @@ app.post('/api/risk-assessments', async (req, res) => {
       record: response.data.records[0],
       duration: duration
     });
+    const createdTjanst = response.data.records[0];
+    actorForRequest(req).then(async (actor) => {
+      const f = createdTjanst.fields || {};
+      await auditHooks.logSxkChange({
+        write: writeAuditEvent,
+        actor,
+        byraId: f['Byrå ID'] || riskData['Byrå ID'] || '',
+        entityType: 'tjanst',
+        entityId: createdTjanst.id,
+        before: {},
+        after: f,
+        namn: f['Task Name'] || riskData['Task Name'] || '',
+        trigger: 'manuell_ändring'
+      });
+      if (tjanstAiAudit && tjanstAiAudit.logId) {
+        await auditHooks.logAiSaved({
+          service: getAuditService(),
+          generatedId: tjanstAiAudit.logId,
+          sparadText: f['Tjänstebeskrivning'] || riskData['Tjänstebeskrivning'] || '',
+          actor
+        });
+      }
+    }).catch((err) => console.warn('audit-log tjänst skapad:', err.message));
 
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -5348,7 +5410,9 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
       });
     }
 
-    const riskData = req.body;
+    const riskData = { ...(req.body || {}) };
+    const tjanstAiAudit = riskData.aiAudit;
+    delete riskData.aiAudit;
     console.log(`📝 Mottaget uppdateringsdata för ${id}:`, riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5357,6 +5421,11 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
       'Authorization': `Bearer ${airtableAccessToken}`,
       'Content-Type': 'application/json'
     };
+    let beforeTjanst = {};
+    try {
+      const prev = await axios.get(url, { headers, timeout: 10000 });
+      beforeTjanst = prev.data.fields || {};
+    } catch (_) { /* jämför mot tomt */ }
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -5371,6 +5440,28 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
     const duration = Date.now() - startTime;
     
     console.log(`✅ Riskbedömning uppdaterad: ${id}`);
+    const afterTjanst = response.data.fields || { ...beforeTjanst, ...airtableData };
+    actorForRequest(req).then(async (actor) => {
+      await auditHooks.logSxkChange({
+        write: writeAuditEvent,
+        actor,
+        byraId: afterTjanst['Byrå ID'] || beforeTjanst['Byrå ID'] || '',
+        entityType: 'tjanst',
+        entityId: id,
+        before: beforeTjanst,
+        after: afterTjanst,
+        namn: afterTjanst['Task Name'] || beforeTjanst['Task Name'] || '',
+        trigger: 'manuell_ändring'
+      });
+      if (tjanstAiAudit && tjanstAiAudit.logId) {
+        await auditHooks.logAiSaved({
+          service: getAuditService(),
+          generatedId: tjanstAiAudit.logId,
+          sparadText: afterTjanst['Tjänstebeskrivning'] || riskData['Tjänstebeskrivning'] || '',
+          actor
+        });
+      }
+    }).catch((err) => console.warn('audit-log tjänst uppdaterad:', err.message));
     
     res.json({
       success: true,
@@ -6113,6 +6204,32 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     }
     console.log('✅ Kund uppdaterad i Airtable:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data, skipped });
+    const afterFields = airtableRes.data.fields || { ...(customerRecord.fields || {}), ...payload };
+    const aiAudit = req.body && req.body.aiAudit;
+    actorForRequest(req, userData).then(async (actor) => {
+      const byraId = afterFields['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || userData.byraId || '';
+      await auditHooks.logCustomerRiskChange({
+        write: writeAuditEvent,
+        actor,
+        byraId,
+        customerId: id,
+        before: customerRecord.fields || {},
+        after: afterFields,
+        motivering: afterFields['Byrans riskbedomning'] || req.body?.motivering || '',
+        trigger: req.body?.riskTrigger || 'manuell_ändring'
+      });
+      if (aiAudit && aiAudit.logId) {
+        await auditHooks.logAiSaved({
+          service: getAuditService(),
+          generatedId: aiAudit.logId,
+          sparadText: [
+            afterFields['Byrans riskbedomning'] || '',
+            afterFields['Atgarder riskbedomning'] || ''
+          ].filter(Boolean).join('\n\n'),
+          actor
+        });
+      }
+    }).catch((err) => console.warn('audit-log kund patch:', err.message));
 
     if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
       minibokSync.notifyMinibokClientChange('client.updated', req.user.email, airtableRes.data).catch(() => {});
@@ -10516,6 +10633,14 @@ app.post('/api/kunddata/create', authenticateToken, async (req, res) => {
     }
     console.log('✅ Kund skapad i Airtable KUNDDATA:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data });
+    const createdFields = airtableRes.data.fields || fields || {};
+    actorForRequest(req).then((actor) => auditHooks.logCustomerCreated({
+      write: writeAuditEvent,
+      actor,
+      byraId: createdFields['Byrå ID'] || byraIdClean || '',
+      customerId: airtableRes.data.id,
+      fields: createdFields
+    })).catch((err) => console.warn('audit-log kund skapad:', err.message));
 
     if (!req.headers['x-minibok-source'] && req.headers['x-skip-minibok-webhook'] !== 'true') {
       minibokSync.notifyMinibokClientChange('client.created', req.user.email, airtableRes.data).catch(() => {});
@@ -12346,6 +12471,16 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
       }
     }
     res.json({ success: true, id: updated.id, record: { id: updated.id, fields: updated.fields } });
+    const aiAudit = req.body && req.body.aiAudit;
+    if (aiAudit && aiAudit.logId) {
+      const savedText = Object.values(cleanedFields).filter((v) => typeof v === 'string').join('\n\n');
+      actorForRequest(req, userData).then((actor) => auditHooks.logAiSaved({
+        service: getAuditService(),
+        generatedId: aiAudit.logId,
+        sparadText: savedText,
+        actor
+      })).catch((err) => console.warn('audit-log AR AI-sparad:', err.message));
+    }
   } catch (error) {
     const at = error.response?.data || error.error || {};
     const status = error.response?.status || error.statusCode || 500;
@@ -13220,7 +13355,9 @@ app.post('/api/risk-factors', async (req, res) => {
       });
     }
 
-    const riskData = req.body;
+    const riskData = { ...(req.body || {}) };
+    const faktorAiAudit = riskData.aiAudit;
+    delete riskData.aiAudit;
     console.log('Mottaget riskfaktordata:', riskData);
 
     const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
@@ -13254,6 +13391,29 @@ app.post('/api/risk-factors', async (req, res) => {
       record: response.data,
       duration: duration
     });
+    const createdFaktor = response.data;
+    actorForRequest(req).then(async (actor) => {
+      const f = createdFaktor.fields || {};
+      await auditHooks.logSxkChange({
+        write: writeAuditEvent,
+        actor,
+        byraId: f['Byrå ID'] || riskData['Byrå ID'] || '',
+        entityType: 'riskfaktor',
+        entityId: createdFaktor.id,
+        before: {},
+        after: f,
+        namn: f.Riskfaktor || riskData.Riskfaktor || '',
+        trigger: 'manuell_ändring'
+      });
+      if (faktorAiAudit && faktorAiAudit.logId) {
+        await auditHooks.logAiSaved({
+          service: getAuditService(),
+          generatedId: faktorAiAudit.logId,
+          sparadText: f.Beskrivning || riskData.Beskrivning || '',
+          actor
+        });
+      }
+    }).catch((err) => console.warn('audit-log riskfaktor skapad:', err.message));
 
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -13280,7 +13440,9 @@ app.put('/api/risk-factors/:id', async (req, res) => {
       });
     }
 
-    const riskData = req.body;
+    const riskData = { ...(req.body || {}) };
+    const faktorAiAudit = riskData.aiAudit;
+    delete riskData.aiAudit;
     console.log('Uppdateringsdata:', riskData);
 
     const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
@@ -13292,6 +13454,11 @@ app.put('/api/risk-factors/:id', async (req, res) => {
       'Authorization': `Bearer ${airtableAccessToken}`,
       'Content-Type': 'application/json'
     };
+    let beforeFaktor = {};
+    try {
+      const prev = await axios.get(url, { headers, timeout: 10000 });
+      beforeFaktor = prev.data.fields || {};
+    } catch (_) { /* jämför mot tomt */ }
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -13312,6 +13479,28 @@ app.put('/api/risk-factors/:id', async (req, res) => {
       record: response.data,
       duration: duration
     });
+    const afterFaktor = response.data.fields || { ...beforeFaktor, ...airtableFields };
+    actorForRequest(req).then(async (actor) => {
+      await auditHooks.logSxkChange({
+        write: writeAuditEvent,
+        actor,
+        byraId: afterFaktor['Byrå ID'] || beforeFaktor['Byrå ID'] || '',
+        entityType: 'riskfaktor',
+        entityId: id,
+        before: beforeFaktor,
+        after: afterFaktor,
+        namn: afterFaktor.Riskfaktor || beforeFaktor.Riskfaktor || '',
+        trigger: 'manuell_ändring'
+      });
+      if (faktorAiAudit && faktorAiAudit.logId) {
+        await auditHooks.logAiSaved({
+          service: getAuditService(),
+          generatedId: faktorAiAudit.logId,
+          sparadText: afterFaktor.Beskrivning || riskData.Beskrivning || '',
+          actor
+        });
+      }
+    }).catch((err) => console.warn('audit-log riskfaktor uppdaterad:', err.message));
 
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -14142,6 +14331,17 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
 
     console.log('✅ Avvikelse sparad:', response.data.id);
     res.json({ success: true, record: response.data, message: 'Avvikelse sparad' });
+    actorForRequest(req, userData).then((actor) => auditHooks.logAvvikelse({
+      write: writeAuditEvent,
+      actor,
+      byraId: fields['ByråID'] || userData.byraId || '',
+      avvikelseId: response.data.id,
+      customerId: avvikelseData.customerId || '',
+      beskrivning: avvikelseData.beskrivning || '',
+      status: avvikelseData.status || fields['Status'] || 'Öppen',
+      typ: avvikelseData.typ || '',
+      orgnr: avvikelseData.orgnr || ''
+    })).catch((err) => console.warn('audit-log avvikelse:', err.message));
   } catch (error) {
     console.error('❌ Error saving avvikelse:', error.message);
     if (error.response) {
@@ -14156,6 +14356,49 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
       });
     }
     res.status(500).json({ success: false, message: 'Fel vid sparande av avvikelse', error: error.message });
+  }
+});
+
+// PATCH /api/avvikelser/:id - Statusövergång (append-only i revisionsloggen)
+app.patch('/api/avvikelser/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ success: false, message: 'Användare hittades inte' });
+    const prevRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${AVVIKELSER_TABLE}/${id}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const before = prevRes.data.fields || {};
+    const nextStatus = req.body?.status || before.Status;
+    const fields = {};
+    if (req.body?.status) fields.Status = req.body.status;
+    if (req.body?.rapporteratDatum) fields['Date 2'] = req.body.rapporteratDatum;
+    if (req.body?.beskrivning) fields['Förklararing'] = req.body.beskrivning;
+    const patched = await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${AVVIKELSER_TABLE}/${id}`,
+      { fields, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    const actor = await actorForRequest(req, userData);
+    await auditHooks.logAvvikelseStatus({
+      write: writeAuditEvent,
+      actor,
+      byraId: before.ByråID || userData.byraId || '',
+      avvikelseId: id,
+      customerId: req.body?.customerId || '',
+      fromStatus: before.Status || '',
+      toStatus: nextStatus,
+      beskrivning: req.body?.motivering || req.body?.beskrivning || before['Förklararing'] || '',
+      rapportDatum: fields['Date 2'] || before['Date 2'] || ''
+    });
+    res.json({ success: true, record: patched.data });
+  } catch (error) {
+    console.error('❌ PATCH avvikelser:', error.message);
+    res.status(error.response?.status || 500).json({ success: false, message: error.message });
   }
 });
 
@@ -18139,6 +18382,19 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
           exportedAt
         });
         savedExport = !!persisted.saved;
+        if (persisted.saved) {
+          const listLen = Array.isArray(persisted.list) ? persisted.list.length : 0;
+          actorForRequest(req).then((actor) => auditHooks.logArVersion({
+            write: writeAuditEvent,
+            actor,
+            byraId: userData?.byraId || '',
+            entityId: byraRec.id,
+            fromCount: Math.max(0, listLen - 1),
+            toCount: listLen,
+            trigger: 'export_pdf',
+            filename
+          })).catch((err) => console.warn('audit-log AR-version:', err.message));
+        }
       } catch (saveErr) {
         console.warn('⚠️ Kunde inte spara dokumentexport i historik:', saveErr.message);
       }
@@ -18418,6 +18674,26 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
         if (token && kundId) {
             await saveDilisenseTraffarToKund(token, baseId, kundId, totalHits, 'max');
         }
+        actorForRequest(req).then(async (actor) => {
+          let byraId = '';
+          try {
+            const cust = await axios.get(
+              `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            byraId = cust.data.fields?.['Byrå ID'] || '';
+          } catch (_) { /* byrå optional */ }
+          await auditHooks.logScreening({
+            write: writeAuditEvent,
+            actor,
+            byraId,
+            customerId: kundId,
+            namn,
+            hits: totalHits,
+            foundRecords: checkData.found_records || [],
+            sokTyp: 'pep'
+          });
+        }).catch((err) => console.warn('audit-log pep:', err.message));
 
         res.json({
             namn,
@@ -18657,6 +18933,26 @@ app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) =>
         if (token && kundId) {
             await saveDilisenseTraffarToKund(token, baseId, kundId, totalHits, 'max');
         }
+        actorForRequest(req).then(async (actor) => {
+          let byraId = '';
+          try {
+            const cust = await axios.get(
+              `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            byraId = cust.data.fields?.['Byrå ID'] || '';
+          } catch (_) { /* byrå optional */ }
+          await auditHooks.logScreening({
+            write: writeAuditEvent,
+            actor,
+            byraId,
+            customerId: kundId,
+            namn,
+            hits: totalHits,
+            foundRecords: checkData.found_records || [],
+            sokTyp: 'entity'
+          });
+        }).catch((err) => console.warn('audit-log entity:', err.message));
 
         return res.json({
             namn,
@@ -19654,10 +19950,24 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 
-    res.json({
+    const aiPayload = {
       riskniva: RiskSkala.riskLabelSv(result.riskniva) || 'Normal',
       riskbedomning: result.riskbedomning || '',
       atgarder: result.atgarder || ''
+    };
+    const kundAiLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId: f['Byrå ID'] || '',
+      entityType: 'kund',
+      entityId: kundId,
+      fieldChanged: 'Byrans riskbedomning',
+      aiOutputRaw: [aiPayload.riskniva, aiPayload.riskbedomning, aiPayload.atgarder].filter(Boolean).join('\n\n'),
+      extra: { faltSomGenererades: 'riskniva,riskbedomning,atgarder' }
+    });
+    res.json({
+      ...aiPayload,
+      auditLogId: kundAiLog && kundAiLog.id
     });
 
   } catch (error) {
@@ -19863,7 +20173,7 @@ ${byraProfilUserBlock}${befintligtBlock}`;
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
     );
 
-    res.json({
+    const tjanstAiPayload = {
       tjanstebeskrivning: cleanStr(result.beskrivning ?? result.tjanstebeskrivning),
       sannolikhet: fallbackScores.sannolikhet,
       konsekvens: fallbackScores.konsekvens,
@@ -19873,6 +20183,21 @@ ${byraProfilUserBlock}${befintligtBlock}`;
       hot,
       sarbarheter,
       atgarder
+    };
+    const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
+    const tjanstAiLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId: userDataTjanst?.byraId || req.body?.byraId || '',
+      entityType: 'tjanst',
+      entityId: req.body?.recordId || namn || 'tjanst',
+      fieldChanged: 'Tjänstebeskrivning',
+      aiOutputRaw: tjanstAiPayload.tjanstebeskrivning || JSON.stringify(tjanstAiPayload),
+      extra: { faltSomGenererades: 'tjanstebeskrivning,hot,sarbarheter,atgarder,sxk' }
+    });
+    res.json({
+      ...tjanstAiPayload,
+      auditLogId: tjanstAiLog && tjanstAiLog.id
     });
   } catch (error) {
     const status = error.response?.status || 500;
@@ -19986,7 +20311,7 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
     );
-    res.json({
+    const faktorAiPayload = {
       beskrivning: (result.beskrivning || '').toString().trim(),
       ptTfRelevans: RiskSkala.normalizePtTf(result.ptTfRelevans) || 'PT',
       sannolikhet: fallbackScores.sannolikhet,
@@ -19995,6 +20320,21 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       konsekvensEfter: residualOut.konsekvens,
       riskbedomning: fallbackScores.level || fallbackLevel,
       atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
+    };
+    const userDataFaktor = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
+    const faktorAiLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId: userDataFaktor?.byraId || '',
+      entityType: 'riskfaktor',
+      entityId: req.body?.recordId || riskfaktor || 'riskfaktor',
+      fieldChanged: 'Beskrivning',
+      aiOutputRaw: faktorAiPayload.beskrivning,
+      extra: { faltSomGenererades: 'beskrivning,sxk,atgard' }
+    });
+    res.json({
+      ...faktorAiPayload,
+      auditLogId: faktorAiLog && faktorAiLog.id
     });
   } catch (error) {
     const status = error.response?.status || 500;
@@ -20086,7 +20426,16 @@ Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
     });
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
-    res.json({ text });
+    const varderingLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId: userData?.byraId || '',
+      entityType: 'ar_dokument',
+      entityId: userData?.byraId || 'byra',
+      fieldChanged: '8. Värdering av sammantagen risk',
+      aiOutputRaw: text
+    });
+    res.json({ text, auditLogId: varderingLog && varderingLog.id });
   } catch (error) {
     console.error('❌ AI värdering risk byrå:', error.message);
     const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
@@ -20351,7 +20700,16 @@ Ge endast den färdiga texten, utan ytterligare rubrik eller inledning. Skriv en
       text = stripEmptyTjanstRiskSections(text);
     }
 
-    res.json({ text });
+    const idRiskLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId,
+      entityType: 'ar_dokument',
+      entityId: byraId,
+      fieldChanged: '4. Identifierade Risker och Sårbarheter',
+      aiOutputRaw: text
+    });
+    res.json({ text, auditLogId: idRiskLog && idRiskLog.id });
   } catch (error) {
     console.error('❌ AI identifierade risker byrå:', error.message);
     const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
@@ -20435,13 +20793,210 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
     });
     if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
 
-    res.json({ text });
+    const beskrivningLog = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId: userData?.byraId || '',
+      entityType: 'ar_dokument',
+      entityId: userData?.byraId || 'byra',
+      fieldChanged: '2. Beskrivning av Byråns verksamhet',
+      aiOutputRaw: text
+    });
+    res.json({ text, auditLogId: beskrivningLog && beskrivningLog.id });
   } catch (error) {
     console.error('❌ AI beskrivning byrå:', error.message);
     const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
     res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
   }
 });
+
+function assertLedareAuditAccess(userData, res) {
+  if (!userData) {
+    res.status(404).json({ error: 'Användare hittades inte' });
+    return null;
+  }
+  if (!access.isLedareOrAdmin(userData.role)) {
+    res.status(403).json({ error: 'Revisionsloggen är bara tillgänglig för ledare' });
+    return null;
+  }
+  const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+  if (!byraId && !access.isClientFlowAdmin(userData.role)) {
+    res.status(400).json({ error: 'Ingen byrå kopplad' });
+    return null;
+  }
+  return { userData, byraId };
+}
+
+async function annotateRiskUnsetFlags(entries, token, baseId) {
+  const list = Array.isArray(entries) ? entries : [];
+  const hours = Number(process.env.AUDIT_RISK_UNSET_HOURS || auditLog.RISK_UNSET_HOURS);
+  const now = new Date();
+  const candidates = list.filter((entry) => (
+    entry.actionType === 'risknivå_ej_satt_vid_skapande'
+    && auditLog.isRiskUnsetOverdue(entry, { now, hours, riskStillEmpty: true })
+  ));
+  const ids = [...new Set(candidates.map((entry) => entry.entityId).filter(Boolean))].slice(0, 30);
+  const emptyById = {};
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const rec = await axios.get(
+        `https://api.airtable.com/v0/${baseId}/tblOIuLQS2DqmOQWe/${id}`,
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+      );
+      emptyById[id] = auditLog.customerRiskEmpty(rec.data.fields || {});
+    } catch (_) {
+      emptyById[id] = true;
+    }
+  }));
+  return list.map((entry) => {
+    if (entry.actionType !== 'risknivå_ej_satt_vid_skapande') return entry;
+    const stillEmpty = emptyById[entry.entityId];
+    return {
+      ...entry,
+      overdue: auditLog.isRiskUnsetOverdue(entry, { now, hours, riskStillEmpty: stillEmpty !== false })
+    };
+  });
+}
+
+// GET /api/audit-log – sökbar revisionslogg, filtrerad på byrå (Ledare)
+app.get('/api/audit-log', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    const gate = assertLedareAuditAccess(userData, res);
+    if (!gate) return;
+    const svc = getAuditService();
+    if (!svc) return res.status(500).json({ error: 'Revisionsloggen är inte tillgänglig' });
+    const query = {
+      byraId: access.isClientFlowAdmin(userData.role) && req.query.byraId ? req.query.byraId : gate.byraId,
+      entityType: req.query.entityType || '',
+      entityId: req.query.entityId || '',
+      actionType: req.query.actionType || '',
+      actorId: req.query.actorId || '',
+      from: req.query.from || '',
+      to: req.query.to || '',
+      q: req.query.q || '',
+      requiresReview: req.query.requiresReview === '1' || req.query.requiresReview === 'true' ? true : undefined
+    };
+    const rows = await svc.list(query);
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const annotated = await annotateRiskUnsetFlags(rows, token, baseId);
+    const review = auditLog.groupAiReviewItems(annotated);
+    res.json({
+      items: annotated.map(auditLog.toPublicEntry),
+      reviewItems: review.map(auditLog.toPublicEntry),
+      overdueRiskCount: annotated.filter((row) => row.overdue).length,
+      actionTypes: auditLog.ACTION_TYPES,
+      actionLabels: auditLog.ACTION_LABELS
+    });
+  } catch (error) {
+    console.error('❌ GET audit-log:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte hämta revisionsloggen' });
+  }
+});
+
+// GET /api/audit-log/entity – historik för en post
+app.get('/api/audit-log/entity', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    const gate = assertLedareAuditAccess(userData, res);
+    if (!gate) return;
+    const svc = getAuditService();
+    if (!svc) return res.status(500).json({ error: 'Revisionsloggen är inte tillgänglig' });
+    const items = await svc.getAuditLog(req.query.entityType, req.query.entityId);
+    const scoped = items.filter((row) => !gate.byraId || String(row.byraId) === String(gate.byraId) || access.isClientFlowAdmin(userData.role));
+    res.json({ items: scoped.map(auditLog.toPublicEntry) });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Kunde inte hämta historik' });
+  }
+});
+
+app.put('/api/audit-log/:id', authenticateToken, (req, res) => {
+  res.status(405).json({ error: 'Audit-loggen är append-only. UPDATE är inte tillåtet.' });
+});
+app.patch('/api/audit-log/:id', authenticateToken, (req, res) => {
+  res.status(405).json({ error: 'Audit-loggen är append-only. UPDATE är inte tillåtet.' });
+});
+app.delete('/api/audit-log/:id', authenticateToken, (req, res) => {
+  res.status(405).json({ error: 'Audit-loggen är append-only. DELETE är inte tillåtet.' });
+});
+
+// POST /api/audit-log/:id/godkann – CFA godkänner lågt redigerat AI-innehåll
+app.post('/api/audit-log/:id/godkann', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    const gate = assertLedareAuditAccess(userData, res);
+    if (!gate) return;
+    const motivering = String(req.body?.motivering || '').trim();
+    if (!motivering) return res.status(400).json({ error: 'Motivering krävs för att godkänna oredigerat AI-innehåll' });
+    const svc = getAuditService();
+    const source = await svc.getById(req.params.id);
+    if (!source) return res.status(404).json({ error: 'Loggraden hittades inte' });
+    if (gate.byraId && String(source.byraId) !== String(gate.byraId) && !access.isClientFlowAdmin(userData.role)) {
+      return res.status(403).json({ error: 'Posten tillhör en annan byrå' });
+    }
+    const actor = auditLog.actorFromUser(userData, req);
+    const row = await writeAuditEvent({
+      actionType: 'ai_innehåll_godkänt_oredigerat',
+      entityType: source.entityType,
+      entityId: source.entityId,
+      actor,
+      byraId: source.byraId,
+      fieldChanged: source.fieldChanged,
+      relatedLogId: source.id,
+      motivering,
+      metadata: {
+        godkändAv: actor.actorName,
+        relatedLogId: source.id,
+        diffProcent: source.metadata && source.metadata.diffProcent
+      }
+    });
+    res.json({ success: true, item: auditLog.toPublicEntry(row) });
+  } catch (error) {
+    res.status(error.code === 'AUDIT_MOTIVERING_REQUIRED' ? 400 : 500).json({ error: error.message });
+  }
+});
+
+// POST /api/audit-log/screening-bedomning – bedöm en enskild träff
+app.post('/api/audit-log/screening-bedomning', authenticateToken, async (req, res) => {
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const { customerId, matchadPerson, bedömning, motivering, screeningLogId } = req.body || {};
+    if (!customerId || !matchadPerson || !bedömning || !motivering) {
+      return res.status(400).json({ error: 'customerId, matchadPerson, bedömning och motivering krävs' });
+    }
+    const allowed = ['falsk_positiv', 'relevant', 'eskalerad'];
+    if (!allowed.includes(bedömning)) return res.status(400).json({ error: 'Ogiltig bedömning' });
+    await assertCustomerAccess(req, customerId, { userData });
+    const actor = auditLog.actorFromUser(userData, req);
+    const row = await writeAuditEvent({
+      actionType: 'screening_träff_bedömd',
+      entityType: 'kund',
+      entityId: customerId,
+      actor,
+      byraId: userData.byraId,
+      fieldChanged: 'screening.perTraff',
+      relatedLogId: screeningLogId || '',
+      motivering,
+      metadata: {
+        sokTjanst: 'Dilisense',
+        perTraff: [{
+          matchadPerson,
+          bedömning,
+          bedömdAv: actor.actorName,
+          motivering,
+          datum: new Date().toISOString()
+        }]
+      }
+    });
+    res.json({ success: true, item: auditLog.toPublicEntry(row) });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+getAuditService();
 
 // Minibok ↔ Clientflow kundsynk (GET/POST /api/v1/companies + notiser)
 minibokSync.registerRoutes(app);

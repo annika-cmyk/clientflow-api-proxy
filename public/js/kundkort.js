@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.55', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.56', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7123,8 +7123,9 @@ class CustomerCardManager {
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
                 ...getAuthOptsKundkort(),
-                body: JSON.stringify({ fields })
+                body: JSON.stringify({ fields, aiAudit: this._lastAiAudit || undefined, riskTrigger: 'manuell_ändring' })
             });
+            if (res.ok) this._lastAiAudit = null;
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             // Uppdatera customerData
@@ -7227,6 +7228,7 @@ class CustomerCardManager {
                 throw new Error(err.error || `HTTP ${res.status}`);
             }
             const data = await res.json();
+            this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
             // Fyll i fälten
             const textInput = document.getElementById('ai-rb-text-input');
@@ -10119,7 +10121,36 @@ class CustomerCardManager {
     }
 
     editAvvikelse(avvikelseId) {
-        alert('Redigering av avvikelse kommer snart!');
+        const next = window.prompt('Ny status (Öppen, Under utredning, Rapporterad till Finanspolisen (FM), Avslutad):', '');
+        if (!next) return;
+        this.updateAvvikelseStatus(avvikelseId, next);
+    }
+
+    async updateAvvikelseStatus(avvikelseId, status) {
+        try {
+            const motivering = window.prompt('Kort motivering till statusändringen:', '') || ('Statusändring till ' + status);
+            const rapp = /finanspolisen|fm/i.test(status)
+                ? (window.prompt('Datum rapporterad till Finanspolisen (YYYY-MM-DD):', new Date().toISOString().slice(0, 10)) || '')
+                : '';
+            const res = await fetch(`${window.apiConfig.baseUrl}/api/avvikelser/${avvikelseId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                headers: { 'Content-Type': 'application/json', ...(getAuthOptsKundkort().headers || {}) },
+                body: JSON.stringify({
+                    status,
+                    motivering,
+                    rapporteratDatum: rapp,
+                    customerId: this.customerId
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${res.status}`);
+            }
+            this.loadAvvikelser();
+        } catch (err) {
+            alert('Kunde inte uppdatera status: ' + (err.message || 'okänt fel'));
+        }
     }
 
     async loadDocuments() {

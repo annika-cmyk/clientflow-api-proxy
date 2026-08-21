@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Dokumentation</title>
-    <link rel="stylesheet" href="styles.css?v=3.23">
+    <link rel="stylesheet" href="styles.css?v=3.24">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -17,7 +17,7 @@
                 <header class="content-header risk-header dokumentation-page-header">
                     <div class="risk-header-content">
                         <h1>Dokumentation</h1>
-                        <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning, byrårutiner och dolda kundkort enligt penningtvättslagen.</p>
+                        <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning, byrårutiner, dolda kundkort och revisionslogg enligt penningtvättslagen.</p>
                     </div>
                     <div class="dokumentation-header-actions" id="dokumentation-export-wrap" style="display:none;">
                         <button type="button" class="btn btn-primary" id="btn-export-dokumentation" title="Generera PDF, ladda ner och spara i historiken">
@@ -38,6 +38,7 @@
                         <div class="tab-navigation" role="tablist">
                             <button type="button" class="tab-button active" data-dok-tab="byra" role="tab" aria-selected="true">Byråns dokumentation</button>
                             <button type="button" class="tab-button" data-dok-tab="dolda" role="tab" aria-selected="false">Dolda kunder</button>
+                            <button type="button" class="tab-button" data-dok-tab="audit" role="tab" aria-selected="false" hidden>Revisionslogg</button>
                         </div>
                     </div>
 
@@ -57,6 +58,34 @@
                         <h3><i class="fas fa-file-pdf"></i> Exporterade dokument</h3>
                         <p class="section-desc">Här sparas skapade riskbedömningar och policydokument med datumstämpel. Du kan öppna tidigare versioner och se när de gjordes.</p>
                         <div id="lansstyrelsen-pdf-list" class="dokumentation-pdf-list"></div>
+                    </section>
+                    </div>
+
+                    <div id="dok-pane-audit" class="dokumentation-pane" hidden>
+                    <section class="info-section dokumentation-section">
+                        <h3><i class="fas fa-clipboard-list"></i> Revisionslogg</h3>
+                        <p class="section-desc">Strukturerad, sökbar dokumentation av riskändringar, AI-innehåll, screening och avvikelser. Varje byrå ser bara sina egna poster. Loggen är append-only och bevaras minst fem år.</p>
+                        <p id="audit-overdue-banner" class="audit-overdue-banner" hidden></p>
+                        <form id="audit-filter-form" class="audit-filter-form">
+                            <input type="search" id="audit-q" placeholder="Sök aktör, motivering, entitet…">
+                            <select id="audit-action"><option value="">Alla händelser</option></select>
+                            <select id="audit-entity">
+                                <option value="">Alla entiteter</option>
+                                <option value="kund">Kund</option>
+                                <option value="tjanst">Tjänst</option>
+                                <option value="riskfaktor">Riskfaktor</option>
+                                <option value="ar_dokument">AR-dokument</option>
+                                <option value="avvikelse">Avvikelse</option>
+                            </select>
+                            <input type="date" id="audit-from" aria-label="Från datum">
+                            <input type="date" id="audit-to" aria-label="Till datum">
+                            <label class="audit-review-toggle"><input type="checkbox" id="audit-review-only"> Endast AI att granska</label>
+                            <button type="submit" class="btn btn-secondary btn-sm">Filtrera</button>
+                        </form>
+                        <h4 class="audit-subhead">AI-innehåll att granska</h4>
+                        <div id="audit-review-list" class="audit-review-list"></div>
+                        <h4 class="audit-subhead">Alla händelser</h4>
+                        <div id="audit-log-list" class="audit-log-list"></div>
                     </section>
                     </div>
 
@@ -86,7 +115,8 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="js/dokumentation.js?v=9"></script>
+    <script src="js/audit-logg.js?v=1"></script>
+    <script src="js/dokumentation.js?v=10"></script>
     <script src="app.js"></script>
 </body>
 </html>
