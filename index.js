@@ -73,7 +73,14 @@ const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
-const { resolveAssistantVectorStoreId, buildAssistantRunPayload } = require('./lib/openai-assistant-run');
+const {
+  resolveAssistantVectorStoreId,
+  resolveResponsesModel,
+  buildResponsesPayload,
+  extractResponsesText,
+  conversationIdFromResponse,
+  isResponsesConversationId
+} = require('./lib/openai-assistant-run');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const personRegister = require('./lib/person-register');
 const dokumentKategori = require('./lib/dokument-kategori');
@@ -128,8 +135,9 @@ console.log('  AIRTABLE_ACCESS_TOKEN:', process.env.AIRTABLE_ACCESS_TOKEN ? 'SET
 console.log('  AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID ? 'SET' : 'NOT SET');
 console.log('  AIRTABLE_TABLE_NAME:', process.env.AIRTABLE_TABLE_NAME ? 'SET' : 'NOT SET');
 console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET');
-console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET' : 'NOT SET');
-console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
+  console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET (används inte längre)' : 'NOT SET');
+  console.log('  OPENAI_MODEL:', process.env.OPENAI_MODEL || 'gpt-4o');
+  console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_API_KEY:', process.env.MINIBOK_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_WEBHOOK_URL:', process.env.MINIBOK_WEBHOOK_URL ? 'SET' : 'NOT SET');
@@ -807,7 +815,7 @@ async function summarizeAmlNewsWithAi(rows) {
 
 function scheduleAmlNewsAiSummaries(rows) {
   if (amlNewsClassifyState.running) return;
-  if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_ASSISTANT_ID) return;
+  if (!process.env.OPENAI_API_KEY) return;
   const pending = (rows || []).filter((row) => isRelevantForConsultants(row) && needsAiSummary(row));
   if (!pending.length) return;
   amlNewsClassifyState.running = true;
@@ -984,7 +992,7 @@ async function runAmlNewsIngestAndClassify(opts = {}) {
   }
   const ingest = await runIngestLayer({ fetchText: fetchAmlNewsText, store });
   let classify = { layer: 'classify', attempted: 0, classified: 0, results: [] };
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_ASSISTANT_ID) {
+  if (process.env.OPENAI_API_KEY) {
     classify = await runClassifyLayer({
       store,
       completeJson: completeAmlNewsClassificationJson,
@@ -1167,9 +1175,9 @@ function getAuthHeaderForInternalRequests(req) {
 }
 
 /**
- * All AI i ClientFlow ska gå via er OpenAI-assistent (samma som i Assistants/ChatGPT-byggaren).
- * Sätt OPENAI_ASSISTANT_ID=asst_... File_search kopplas bara när rutten skickar vectorStoreId
- * (chatt och sektion 4). Övriga JSON-rutter stänger av verktyg så assistentens kunskapsbas inte läses in.
+ * All AI i ClientFlow går via OpenAI Responses API (Assistants API stängs 26 aug 2026).
+ * Modell: OPENAI_MODEL (standard gpt-4o). File_search bara när rutten skickar vectorStoreId
+ * (chatt och sektion 4). Chattens threadId är conversation-id (conv_...).
  */
 function formatOpenAIAssistantError(err, step) {
   const status = err.response && err.response.status;
@@ -1180,7 +1188,7 @@ function formatOpenAIAssistantError(err, step) {
     // Friendly config hint for common misconfigurations
     if (status === 404 && /assistant/i.test(msg) && (/not found/i.test(msg) || /no assistant found/i.test(msg))) {
       return new Error(
-        `${step}: OpenAI hittade inte assistenten. Kontrollera att OPENAI_ASSISTANT_ID pekar på en existerande assistent i rätt OpenAI-projekt (och att API-nyckeln tillhör samma projekt). (HTTP ${status})`
+        `${step}: OpenAI hittade inte resursen. Kontrollera att API-nyckeln tillhör rätt projekt och att OPENAI_MODEL / vector store stämmer. (HTTP ${status})`
       );
     }
     return new Error(`${step}: ${msg} (HTTP ${status})`);
@@ -1250,11 +1258,18 @@ function updateAiDebugEvent(id, patch) {
   _aiDebugBuffer[idx] = { ..._aiDebugBuffer[idx], ...patch };
 }
 
+async function ensureOpenAIConversationId(openaiKey, headers, apiBase, requestedId, wantsConversation) {
+  if (isResponsesConversationId(requestedId)) return requestedId;
+  if (!wantsConversation) return null;
+  const created = await axios.post(`${apiBase}/conversations`, {}, { headers, timeout: 30000 });
+  const id = created.data && created.data.id;
+  if (!isResponsesConversationId(id)) throw new Error('Inget conversation-id från OpenAI');
+  return id;
+}
+
 async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
-  const assistantId = opts.assistantId || process.env.OPENAI_ASSISTANT_ID;
   const vectorStoreId = resolveAssistantVectorStoreId(opts.vectorStoreId);
   const maxWaitMs = opts.maxWaitMs ?? 180000;
-  const pollMs = opts.pollMs ?? 1500;
   const threadIdFromCaller = (opts.threadId || '').toString().trim();
   const instructions = (opts.instructions || '').toString().trim();
   const threadIdOut = opts.threadIdOut && typeof opts.threadIdOut === 'object' ? opts.threadIdOut : null;
@@ -1262,121 +1277,112 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const debugId = pushAiDebugEvent({
     route: debugMeta?.route || '',
     user: debugMeta?.user || '',
-    assistantIdMasked: assistantId ? maskId(assistantId, 12) : null,
+    assistantIdMasked: null,
     vectorStoreIdMasked: vectorStoreId ? maskId(vectorStoreId, 12) : null,
     status: 'start',
     prompt: userContent
   });
 
   if (!openaiKey) throw new Error('OPENAI_API_KEY saknas');
-  if (!assistantId) {
-    throw new Error('OPENAI_ASSISTANT_ID saknas. Lägg till ditt assistent-ID (asst_...) i miljövariabler.');
-  }
 
   const apiBase = 'https://api.openai.com/v1';
-  const axiosAssistantHeaders = {
+  const headers = {
     Authorization: `Bearer ${openaiKey}`,
-    'Content-Type': 'application/json',
-    'OpenAI-Beta': 'assistants=v2'
+    'Content-Type': 'application/json'
   };
 
-  let threadId;
+  let conversationId = null;
   try {
-    if (threadIdFromCaller) {
-      threadId = threadIdFromCaller;
-      updateAiDebugEvent(debugId, { threadIdMasked: maskId(threadId, 12), status: 'thread_reused' });
-    } else {
-      const threadRes = await axios.post(
-        `${apiBase}/threads`,
-        {},
-        { headers: axiosAssistantHeaders, timeout: 120000 }
-      );
-      threadId = threadRes.data?.id;
-      updateAiDebugEvent(debugId, { threadIdMasked: threadId ? maskId(threadId, 12) : null, status: 'thread_created' });
+    conversationId = await ensureOpenAIConversationId(
+      openaiKey,
+      headers,
+      apiBase,
+      threadIdFromCaller,
+      !!threadIdOut
+    );
+    if (conversationId) {
+      updateAiDebugEvent(debugId, {
+        threadIdMasked: maskId(conversationId, 12),
+        status: isResponsesConversationId(threadIdFromCaller) ? 'conversation_reused' : 'conversation_created'
+      });
     }
   } catch (e) {
-    updateAiDebugEvent(debugId, { status: 'error_thread' });
-    throw formatOpenAIAssistantError(e, 'OpenAI threads');
+    updateAiDebugEvent(debugId, { status: 'error_conversation' });
+    throw formatOpenAIAssistantError(e, 'OpenAI conversations');
   }
-  if (!threadId) throw new Error('Inget thread-id från OpenAI');
-  if (threadIdOut) threadIdOut.value = threadId;
+  if (threadIdOut && conversationId) threadIdOut.value = conversationId;
 
-  // Lägg till användarmeddelandet i tråden
-  try {
-    await axios.post(
-      `${apiBase}/threads/${threadId}/messages`,
-      { role: 'user', content: userContent },
-      { headers: axiosAssistantHeaders, timeout: 120000 }
-    );
-    updateAiDebugEvent(debugId, { status: 'message_added' });
-  } catch (e) {
-    updateAiDebugEvent(debugId, { status: 'error_add_message' });
-    throw formatOpenAIAssistantError(e, 'OpenAI thread message');
-  }
-
-  const runBody = buildAssistantRunPayload({
-    assistantId,
+  const body = buildResponsesPayload({
+    model: opts.model,
     instructions,
-    vectorStoreId
+    input: userContent,
+    vectorStoreId,
+    conversationId,
+    temperature: opts.temperature
   });
-  let runId;
-  let runStatus;
+
+  let data;
   try {
-    const runRes = await axios.post(
-      `${apiBase}/threads/${threadId}/runs`,
-      runBody,
-      { headers: axiosAssistantHeaders, timeout: 120000 }
-    );
-    runId = runRes.data?.id;
-    runStatus = runRes.data;
-    updateAiDebugEvent(debugId, { runIdMasked: runId ? maskId(runId, 12) : null, status: 'run_created' });
+    const res = await axios.post(`${apiBase}/responses`, body, {
+      headers,
+      timeout: maxWaitMs
+    });
+    data = res.data || {};
+    updateAiDebugEvent(debugId, {
+      runIdMasked: data.id ? maskId(data.id, 12) : null,
+      status: data.status || 'completed'
+    });
   } catch (e) {
-    updateAiDebugEvent(debugId, { status: 'error_run_create' });
-    throw formatOpenAIAssistantError(e, 'OpenAI runs');
-  }
-  if (!runId) throw new Error('Inget run-id från OpenAI');
-
-  const startMs = Date.now();
-  while (['queued', 'in_progress', 'cancelling', 'requires_action'].includes(runStatus.status)) {
-    if (Date.now() - startMs > maxWaitMs) {
-      throw new Error('Timeout – OpenAI-assistenten svarade inte i tid');
+    const status = e.response && e.response.status;
+    const convGone = status === 404 && conversationId && /conversation/i.test(String(
+      (e.response && e.response.data && e.response.data.error && e.response.data.error.message)
+      || e.message || ''
+    ));
+    if (convGone && threadIdOut) {
+      try {
+        conversationId = await ensureOpenAIConversationId(openaiKey, headers, apiBase, '', true);
+        if (conversationId) threadIdOut.value = conversationId;
+        const retryBody = buildResponsesPayload({
+          model: opts.model,
+          instructions,
+          input: userContent,
+          vectorStoreId,
+          conversationId,
+          temperature: opts.temperature
+        });
+        const retryRes = await axios.post(`${apiBase}/responses`, retryBody, {
+          headers,
+          timeout: maxWaitMs
+        });
+        data = retryRes.data || {};
+        updateAiDebugEvent(debugId, {
+          threadIdMasked: maskId(conversationId, 12),
+          runIdMasked: data.id ? maskId(data.id, 12) : null,
+          status: 'conversation_recreated'
+        });
+      } catch (e2) {
+        updateAiDebugEvent(debugId, { status: 'error_response' });
+        throw formatOpenAIAssistantError(e2, 'OpenAI responses');
+      }
+    } else {
+      updateAiDebugEvent(debugId, { status: 'error_response' });
+      throw formatOpenAIAssistantError(e, 'OpenAI responses');
     }
-    await new Promise((r) => setTimeout(r, pollMs));
-    let statusRes;
-    try {
-      statusRes = await axios.get(
-        `${apiBase}/threads/${threadId}/runs/${runId}`,
-        { headers: axiosAssistantHeaders, timeout: 60000 }
-      );
-    } catch (e) {
-      updateAiDebugEvent(debugId, { status: 'error_run_status' });
-      throw formatOpenAIAssistantError(e, 'OpenAI run status');
-    }
-    runStatus = statusRes.data;
   }
 
-  if (runStatus.status !== 'completed') {
-    updateAiDebugEvent(debugId, { status: `run_${runStatus.status || 'failed'}` });
-    const errMsg = runStatus.last_error?.message || runStatus.incomplete_details?.reason || `Status: ${runStatus.status}`;
+  if (data.status && data.status !== 'completed') {
+    updateAiDebugEvent(debugId, { status: `response_${data.status}` });
+    const errMsg = (data.error && data.error.message) || data.incomplete_details && data.incomplete_details.reason
+      || `Status: ${data.status}`;
     throw new Error(errMsg);
   }
-  updateAiDebugEvent(debugId, { status: 'completed' });
 
-  let msgRes;
-  try {
-    msgRes = await axios.get(
-      `${apiBase}/threads/${threadId}/messages?limit=25`,
-      { headers: axiosAssistantHeaders, timeout: 60000 }
-    );
-  } catch (e) {
-    updateAiDebugEvent(debugId, { status: 'error_messages' });
-    throw formatOpenAIAssistantError(e, 'OpenAI messages');
-  }
-  const oaMessages = msgRes.data?.data || [];
-  const assistantMsg = oaMessages.find((m) => m.role === 'assistant' && m.run_id === runId)
-    || oaMessages.find((m) => m.role === 'assistant');
-  const parts = assistantMsg?.content || [];
-  return parts.map((c) => (c.type === 'text' ? (c.text?.value || '') : '')).join('\n').trim();
+  const fromConv = conversationIdFromResponse(data);
+  if (threadIdOut && fromConv) threadIdOut.value = fromConv;
+
+  const text = extractResponsesText(data);
+  updateAiDebugEvent(debugId, { status: text ? 'completed' : 'empty' });
+  return text;
 }
 
 /** Extrahera väntetid (ms) från OpenAI rate-limit-meddelanden, t.ex. "Please try again in 38.202s". */
@@ -1600,7 +1606,8 @@ app.get('/api/ai/status', authenticateToken, (req, res) => {
     ok: true,
     openai: {
       hasApiKey: !!process.env.OPENAI_API_KEY,
-      assistantId: process.env.OPENAI_ASSISTANT_ID ? maskId(process.env.OPENAI_ASSISTANT_ID, 12) : null,
+      api: 'responses',
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
       vectorStoreId: process.env.OPENAI_VECTOR_STORE_ID ? maskId(process.env.OPENAI_VECTOR_STORE_ID, 12) : null
     },
     debug: {
@@ -1642,76 +1649,48 @@ app.get('/api/ai/debug/requests/:id', authenticateToken, async (req, res) => {
 });
 
 // ============================================================
-// GET /api/ai/validate-assistant — Verifiera att assistent-id kan nås med API-nyckeln
+// GET /api/ai/validate-assistant — Verifiera API-nyckel och modell (Responses API)
 // (felsökning, returnerar ingen hemlig data)
 // ============================================================
 app.get('/api/ai/validate-assistant', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
-  const assistantIdRaw = process.env.OPENAI_ASSISTANT_ID;
-  const assistantId = (assistantIdRaw || '').toString().trim();
   if (!openaiKey) return res.status(500).json({ ok: false, error: 'OPENAI_API_KEY saknas.' });
-  if (!assistantId) return res.status(500).json({ ok: false, error: 'OPENAI_ASSISTANT_ID saknas.' });
 
+  const model = resolveResponsesModel(process.env.OPENAI_MODEL);
   const apiBase = 'https://api.openai.com/v1';
   const headers = {
     Authorization: `Bearer ${openaiKey}`,
-    'Content-Type': 'application/json',
-    'OpenAI-Beta': 'assistants=v2'
+    'Content-Type': 'application/json'
   };
 
   try {
-    const r = await axios.get(`${apiBase}/assistants/${encodeURIComponent(assistantId)}`, {
+    const r = await axios.get(`${apiBase}/models/${encodeURIComponent(model)}`, {
       headers,
       timeout: 20000
     });
     const a = r.data || {};
     return res.json({
       ok: true,
-      assistant: {
-        id: a.id ? maskId(a.id, 12) : maskId(assistantId, 12),
-        name: a.name || null,
-        model: a.model || null
+      api: 'responses',
+      model: {
+        id: a.id || model
       },
       config: {
-        assistantIdMasked: maskId(assistantId, 12),
-        assistantIdTrimmed: assistantIdRaw ? (assistantIdRaw !== assistantId) : false
+        model,
+        hasVectorStore: !!(process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
       }
     });
   } catch (e) {
     const status = e.response?.status;
     const msg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
-    let visibleAssistants = null;
-    // Extra diagnos: lista vilka assistenter nyckeln ser
-    if (status === 404 || status === 401) {
-      try {
-        const listRes = await axios.get(`${apiBase}/assistants`, {
-          headers,
-          timeout: 20000,
-          params: { limit: 50 }
-        });
-        const items = Array.isArray(listRes.data?.data) ? listRes.data.data : [];
-        visibleAssistants = items.slice(0, 50).map(x => ({
-          id: x?.id ? maskId(String(x.id), 12) : null,
-          name: x?.name || null,
-          model: x?.model || null
-        }));
-      } catch (listErr) {
-        visibleAssistants = {
-          error: listErr.response?.data?.error?.message || listErr.message || 'Kunde inte lista assistenter'
-        };
-      }
-    }
     return res.status(status || 500).json({
       ok: false,
-      error: msg || 'Kunde inte verifiera assistenten',
+      api: 'responses',
+      error: msg || 'Kunde inte verifiera OpenAI-modellen',
       hint: (status === 404)
-        ? '404 från OpenAI betyder nästan alltid att API-nyckeln inte tillhör samma OpenAI-projekt som assistenten (eller att ID:t innehåller whitespace/är felstavat). Kontrollera också att assistenten inte är borttagen.'
+        ? '404 från OpenAI betyder att OPENAI_MODEL inte finns för den här API-nyckeln, eller att nyckeln tillhör fel projekt.'
         : undefined,
-      visibleAssistants,
-      config: {
-        assistantIdMasked: maskId(assistantId, 12),
-        assistantIdTrimmed: assistantIdRaw ? (assistantIdRaw !== assistantId) : false
-      }
+      config: { model }
     });
   }
 });
@@ -1811,7 +1790,6 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
   console.log('💬 POST /api/ai-chat anropad');
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   const { message, history = [], threadId: threadIdBody, customerId: customerIdBody } = req.body || {};
   if (!message || typeof message !== 'string' || !message.trim()) {
@@ -1903,11 +1881,11 @@ Stil:
       openaiKey,
       userContent,
       {
+        instructions: systemContent,
         threadId: threadIdIn || undefined,
         threadIdOut,
         vectorStoreId: chatVector,
         maxWaitMs: 120000,
-        pollMs: 1500,
         debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
       },
       { maxAttempts: 3 }
@@ -19383,7 +19361,6 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
   const RISKER_TABLE = 'tblWw6tM2YOTYFn2H'; // Risker kopplade till kunden
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const kundRes = await axios.get(
@@ -19901,7 +19878,7 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
-    // Via samma OpenAI-assistent som övriga ClientFlow (OPENAI_ASSISTANT_ID). Run-instruktioner säkerställer JSON-svar.
+    // Via Responses API (samma som övriga ClientFlow). Instruktioner säkerställer JSON-svar.
     const assistantInstructions =
       'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
 
@@ -19996,7 +19973,6 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
 app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   const namn = (req.body?.namn || '').toString().trim();
   if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
@@ -20213,7 +20189,6 @@ ${byraProfilUserBlock}${befintligtBlock}`;
 app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   const riskfaktor = (req.body?.riskfaktor || req.body?.namn || '').toString().trim();
   const typ = (req.body?.typ || req.body?.risktyp || '').toString().trim();
@@ -20355,7 +20330,6 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
@@ -20451,7 +20425,6 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
@@ -20725,7 +20698,6 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
   const authHeader = getAuthHeaderForInternalRequests(req);
 
   if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
-  if (!process.env.OPENAI_ASSISTANT_ID) return res.status(500).json({ error: 'OPENAI_ASSISTANT_ID saknas.' });
 
   try {
     const userData = await getAirtableUser(req.user.email);
