@@ -58,6 +58,15 @@ const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const RiskSkala = require('./public/js/risk-skala');
+const {
+  isRiskSelectFieldName,
+  planSelectChoiceMigration,
+  airtableErrorMessage,
+  isInvalidChoiceError,
+  normalizeRiskFields,
+  shouldOmitRiskSelectValue,
+  missingExactRiskLabels
+} = require('./lib/risk-skala-airtable');
 const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
@@ -4801,6 +4810,182 @@ async function saveFileLocally(fileBuffer, filename, contentType, baseUrlOverrid
 // Risk Assessment API Endpoints
 const RISK_ASSESSMENT_TABLE = 'Risker kopplad till tjänster';
 const OVRIGA_RISKER_TABLE_ID = 'tblWw6tM2YOTYFn2H';
+const RISK_ASSESSMENT_FIELD_MAPPING = {
+  'Task Name': 'fld4yI8yL4PyHO5LX',
+  'TJÄNSTTYP': 'fldA3OjtA9IOnH0XL',
+  'Beskrivning av riskfaktor': 'fldxHa72ao5Zpekt2',
+  'Riskbedömning': 'fldFQcjlerFO8GGQf',
+  'Åtgjärd': 'fldnrHoCosECXWaQM',
+  'Åtgärd': 'fldnrHoCosECXWaQM',
+  'Åtgjörd': 'fldnrHoCosECXWaQM'
+};
+const RISK_FACTOR_FIELD_MAPPING = {
+  'Typ av riskfaktor': 'fldpwh7655qQRsfd2',
+  'Riskfaktor': 'fldBXz24TIPi0dayY',
+  'Beskrivning': 'fld4epowAz3n7gYxl',
+  'Riskbedömning': 'flddfJfl5yru8rKyp',
+  'Åtgjärd': 'fld9EOySG5oGUNUJ0',
+  'Åtgärd': 'fld9EOySG5oGUNUJ0',
+  'Byrå ID': 'fld14CLMCwvjr8ReH',
+  'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5'
+};
+
+let _airtableTablesCache = null;
+let _airtableTablesCacheAt = 0;
+const _riskSkalaChoicesEnsured = new Set();
+
+function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
+  const normalized = normalizeRiskFields(data || {});
+  const out = {};
+  Object.keys(normalized).forEach((key) => {
+    const value = normalized[key];
+    if (shouldOmitRiskSelectValue(key, value)) return;
+    const fieldId = fieldMapping[key];
+    if (fieldId) out[fieldId] = value;
+    else if (!dropUnknown) out[key] = value;
+  });
+  return out;
+}
+
+function sendAirtableRouteError(res, error, fallbackError, duration) {
+  const status = error.response?.status || 500;
+  const payload = {
+    error: fallbackError || 'Airtable API-fel',
+    message: airtableErrorMessage(error),
+    airtableError: error.response?.data || null
+  };
+  if (duration != null) payload.duration = duration;
+  res.status(status).json(payload);
+}
+
+async function getAirtableTablesCached(token, baseId) {
+  const now = Date.now();
+  if (_airtableTablesCache && (now - _airtableTablesCacheAt) < 60000) return _airtableTablesCache;
+  const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 10000
+  });
+  _airtableTablesCache = res.data?.tables || [];
+  _airtableTablesCacheAt = now;
+  return _airtableTablesCache;
+}
+
+async function ensureSelectChoicesViaTypecast(token, baseId, tableName, fieldName, labels) {
+  const wanted = (labels || []).filter(Boolean);
+  if (!wanted.length) return { ok: true, added: [] };
+  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const listRes = await axios.get(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { maxRecords: 1, 'fields[]': fieldName },
+    timeout: 10000
+  });
+  const sample = (listRes.data.records || [])[0];
+  if (!sample?.id) return { ok: false, reason: 'Ingen rad att typecasta mot' };
+  const prev = Object.prototype.hasOwnProperty.call(sample.fields || {}, fieldName)
+    ? sample.fields[fieldName]
+    : undefined;
+  try {
+    for (const label of wanted) {
+      // eslint-disable-next-line no-await-in-loop
+      await axios.patch(`${url}/${sample.id}`, {
+        fields: { [fieldName]: label },
+        typecast: true
+      }, { headers, timeout: 10000 });
+    }
+  } finally {
+    const restore = (prev == null || prev === '')
+      ? { [fieldName]: null }
+      : { [fieldName]: prev };
+    try {
+      await axios.patch(`${url}/${sample.id}`, {
+        fields: restore,
+        typecast: true
+      }, { headers, timeout: 10000 });
+    } catch (restoreErr) {
+      console.warn('ensureSelectChoicesViaTypecast restore:', airtableErrorMessage(restoreErr));
+    }
+  }
+  return { ok: true, added: wanted };
+}
+
+async function ensureRiskSkalaSelectChoices(token, baseId, tableName) {
+  const cacheKey = `${baseId}:${tableName}`;
+  if (_riskSkalaChoicesEnsured.has(cacheKey)) return { ok: true, updated: false, cached: true };
+  try {
+    const tables = await getAirtableTablesCached(token, baseId);
+    const wanted = String(tableName || '').trim().toLowerCase();
+    const table = (tables || []).find((t) => {
+      const name = (t.name || '').trim().toLowerCase();
+      return name === wanted || (t.id || '') === tableName;
+    });
+    if (!table) return { ok: false, reason: 'Tabell saknas' };
+
+    let updated = false;
+    const added = [];
+    const renamed = [];
+    for (const field of table.fields || []) {
+      if (!isRiskSelectFieldName(field.name)) continue;
+      if ((field.type || '') !== 'singleSelect') continue;
+      const currentChoices = field.options?.choices || [];
+      const plan = planSelectChoiceMigration(currentChoices, RiskSkala.labels());
+      const missingExact = missingExactRiskLabels(currentChoices);
+      if (!plan.updated && !missingExact.length) continue;
+      const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields/${field.id}`;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await axios.patch(patchUrl, {
+          options: { choices: plan.choices }
+        }, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        updated = true;
+        added.push(...plan.added);
+        renamed.push(...plan.renamed);
+      } catch (metaErr) {
+        const viaTypecast = await ensureSelectChoicesViaTypecast(
+          token,
+          baseId,
+          table.name || tableName,
+          field.name,
+          missingExact
+        );
+        if (!viaTypecast.ok) {
+          return { ok: false, reason: viaTypecast.reason || airtableErrorMessage(metaErr) };
+        }
+        updated = true;
+        added.push(...(viaTypecast.added || []));
+      }
+    }
+    _riskSkalaChoicesEnsured.add(cacheKey);
+    if (updated) {
+      _airtableTablesCache = null;
+      _airtableTablesCacheAt = 0;
+    }
+    return { ok: true, updated, added, renamed };
+  } catch (e) {
+    return { ok: false, reason: airtableErrorMessage(e) };
+  }
+}
+
+async function writeAirtableRecordWithRiskChoices({
+  token,
+  baseId,
+  tableName,
+  request
+}) {
+  const ensured = await ensureRiskSkalaSelectChoices(token, baseId, tableName);
+  try {
+    return await request();
+  } catch (error) {
+    if (!isInvalidChoiceError(error)) throw error;
+    _riskSkalaChoicesEnsured.delete(`${baseId}:${tableName}`);
+    const retryEnsure = await ensureRiskSkalaSelectChoices(token, baseId, tableName);
+    if (!retryEnsure.ok && !ensured.ok) throw error;
+    return request();
+  }
+}
 
 async function fetchAirtableByByraId(table, byraId, token, baseId) {
   const id = String(byraId || '').trim();
@@ -5005,6 +5190,8 @@ app.get('/api/risk-assessments', async (req, res) => {
       });
     }
 
+    await ensureRiskSkalaSelectChoices(airtableAccessToken, airtableBaseId, RISK_ASSESSMENT_TABLE);
+
     let allRecords = [];
     let offset = null;
     let pageCount = 0;
@@ -5079,28 +5266,10 @@ app.post('/api/risk-assessments', async (req, res) => {
 
     const riskData = req.body;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
-    
-    // Konvertera fältnamn till fält-ID:n för Airtable
-    const fieldMapping = {
-      'Task Name': 'fld4yI8yL4PyHO5LX',
-      'TJÄNSTTYP': 'fldA3OjtA9IOnH0XL',
-      'Beskrivning av riskfaktor': 'fldxHa72ao5Zpekt2',
-      'Riskbedömning': 'fldFQcjlerFO8GGQf',
-      'Åtgjärd': 'fldnrHoCosECXWaQM',
-      'Åtgärd': 'fldnrHoCosECXWaQM',
-      'Åtgjörd': 'fldnrHoCosECXWaQM'
-    };
-    
-    // Skapa nytt objekt med fält-ID:n
-    const airtableData = {};
-    Object.keys(riskData).forEach(key => {
-      const fieldId = fieldMapping[key];
-      if (fieldId) {
-        airtableData[fieldId] = riskData[key];
-        console.log(`📝 Mappat ${key} -> ${fieldId}`);
-      } else {
-        airtableData[key] = riskData[key]; // Behåll andra fält som de är
-      }
+
+    const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
+    Object.keys(airtableData).forEach((key) => {
+      console.log(`📝 Mappat fält ${key}`);
     });
     
     // Validera obligatoriska fält – numera räcker tjänstens namn (Task Name).
@@ -5120,15 +5289,19 @@ app.post('/api/risk-assessments', async (req, res) => {
     }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}`;
-    
-    const response = await axios.post(url, {
-      records: [{ fields: airtableData }]
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
+    const headers = {
+      'Authorization': `Bearer ${airtableAccessToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    const response = await writeAirtableRecordWithRiskChoices({
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      tableName: RISK_ASSESSMENT_TABLE,
+      request: () => axios.post(url, {
+        records: [{ fields: airtableData }],
+        typecast: true
+      }, { headers, timeout: 15000 })
     });
 
     const duration = Date.now() - startTime;
@@ -5145,21 +5318,8 @@ app.post('/api/risk-assessments', async (req, res) => {
     const duration = Date.now() - startTime;
     console.error('Error creating risk assessment:', error.message);
     
-    if (error.response) {
-      console.error('Airtable API Error:', error.response.data);
-      res.status(error.response.status).json({
-        error: 'Airtable API-fel',
-        message: error.response.data.error || error.message,
-        airtableError: error.response.data,
-        duration: duration
-      });
-    } else {
-      res.status(500).json({
-        error: 'Fel vid skapande av riskbedömning',
-        message: error.message,
-        duration: duration
-      });
-    }
+    console.error('Airtable API Error:', error.response?.data || error.message);
+    sendAirtableRouteError(res, error, 'Fel vid skapande av riskbedömning', duration);
   }
 });
 
@@ -5183,40 +5343,22 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
 
     const riskData = req.body;
     console.log(`📝 Mottaget uppdateringsdata för ${id}:`, riskData);
-    
-    // Konvertera fältnamn till fält-ID:n för Airtable
-    const fieldMapping = {
-      'Task Name': 'fld4yI8yL4PyHO5LX',
-      'TJÄNSTTYP': 'fldA3OjtA9IOnH0XL',
-      'Beskrivning av riskfaktor': 'fldxHa72ao5Zpekt2',
-      'Riskbedömning': 'fldFQcjlerFO8GGQf',
-      'Åtgjärd': 'fldnrHoCosECXWaQM',
-      'Åtgärd': 'fldnrHoCosECXWaQM',
-      'Åtgjörd': 'fldnrHoCosECXWaQM'
-    };
-    
-    // Skapa nytt objekt med fält-ID:n
-    const airtableData = {};
-    Object.keys(riskData).forEach(key => {
-      const fieldId = fieldMapping[key];
-      if (fieldId) {
-        airtableData[fieldId] = riskData[key];
-        console.log(`📝 Mappat ${key} -> ${fieldId}`);
-      } else {
-        airtableData[key] = riskData[key]; // Behåll andra fält som de är
-      }
-    });
-    
+
+    const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`;
-    
-    const response = await axios.patch(url, {
-      fields: airtableData
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
+    const headers = {
+      'Authorization': `Bearer ${airtableAccessToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    const response = await writeAirtableRecordWithRiskChoices({
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      tableName: RISK_ASSESSMENT_TABLE,
+      request: () => axios.patch(url, {
+        fields: airtableData,
+        typecast: true
+      }, { headers, timeout: 15000 })
     });
 
     const duration = Date.now() - startTime;
@@ -5231,13 +5373,8 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Error updating risk assessment:', error.message);
-    
-    res.status(500).json({
-      error: 'Fel vid uppdatering av riskbedömning',
-      message: error.message,
-      duration: duration
-    });
+    console.error('Error updating risk assessment:', error.response?.data || error.message);
+    sendAirtableRouteError(res, error, 'Fel vid uppdatering av riskbedömning', duration);
   }
 });
 
@@ -5852,7 +5989,10 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
     const headers = { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
-    let payload = { ...cleanedFields };
+    let payload = normalizeRiskFields({ ...cleanedFields });
+    if (Object.keys(payload).some((key) => isRiskSelectFieldName(key))) {
+      await ensureRiskSkalaSelectChoices(airtableAccessToken, airtableBaseId, 'KUNDDATA');
+    }
     if (Object.prototype.hasOwnProperty.call(payload, 'Användare')) {
       const existingAnvandare = customerRecord.fields?.['Användare'];
       const ids = access.parseAnvandareIds(payload['Användare']);
@@ -12807,6 +12947,8 @@ app.get('/api/risk-factors', async (req, res) => {
       });
     }
 
+    await ensureRiskSkalaSelectChoices(airtableAccessToken, airtableBaseId, RISK_FACTORS_TABLE);
+
     let allRecords = [];
     let offset = null;
     let pageCount = 0;
@@ -12881,40 +13023,24 @@ app.post('/api/risk-factors', async (req, res) => {
 
     const riskData = req.body;
     console.log('Mottaget riskfaktordata:', riskData);
-    
-    // Konvertera fältnamn till fält-ID:n för Airtable
-    const fieldMapping = {
-      'Typ av riskfaktor': 'fldpwh7655qQRsfd2',
-      'Riskfaktor': 'fldBXz24TIPi0dayY',
-      'Beskrivning': 'fld4epowAz3n7gYxl',
-      'Riskbedömning': 'flddfJfl5yru8rKyp',
-      'Åtgjärd': 'fld9EOySG5oGUNUJ0',
-      'Åtgärd': 'fld9EOySG5oGUNUJ0',
-      'Byrå ID': 'fld14CLMCwvjr8ReH',
-      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5'
-    };
 
-    // Skapa Airtable-fält
-    const airtableFields = {};
-    Object.keys(riskData).forEach(key => {
-      if (fieldMapping[key]) {
-        airtableFields[fieldMapping[key]] = riskData[key];
-      }
-      // Ignorera fält som inte finns i mappningen (som 'Aktuell')
-    });
-
+    const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
     console.log('Airtable-fält:', airtableFields);
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}`;
-    
-    const response = await axios.post(url, {
-      fields: airtableFields
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
+    const headers = {
+      'Authorization': `Bearer ${airtableAccessToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    const response = await writeAirtableRecordWithRiskChoices({
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      tableName: RISK_FACTORS_TABLE,
+      request: () => axios.post(url, {
+        fields: airtableFields,
+        typecast: true
+      }, { headers, timeout: 15000 })
     });
 
     const duration = Date.now() - startTime;
@@ -12929,13 +13055,8 @@ app.post('/api/risk-factors', async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Error creating risk factor:', error.message);
-    
-    res.status(500).json({
-      error: 'Fel vid skapande av riskfaktor',
-      message: error.message,
-      duration: duration
-    });
+    console.error('Error creating risk factor:', error.response?.data || error.message);
+    sendAirtableRouteError(res, error, 'Fel vid skapande av riskfaktor', duration);
   }
 });
 
@@ -12959,43 +13080,25 @@ app.put('/api/risk-factors/:id', async (req, res) => {
 
     const riskData = req.body;
     console.log('Uppdateringsdata:', riskData);
-    
-    // Konvertera fältnamn till fält-ID:n för Airtable
-    const fieldMapping = {
-      'Typ av riskfaktor': 'fldpwh7655qQRsfd2',
-      'Riskfaktor': 'fldBXz24TIPi0dayY',
-      'Beskrivning': 'fld4epowAz3n7gYxl',
-      'Riskbedömning': 'flddfJfl5yru8rKyp',
-      'Åtgjärd': 'fld9EOySG5oGUNUJ0',
-      'Åtgärd': 'fld9EOySG5oGUNUJ0',
-      'Byrå ID': 'fld14CLMCwvjr8ReH',
-      'Riskbedömning godkänd datum': 'fld4VBsWkW7GmBFt5',
-      'Aktuell': 'fldAktuell' // Detta fält behöver läggas till i Airtable
-    };
 
-    // Skapa Airtable-fält
-    const airtableFields = {};
-    Object.keys(riskData).forEach(key => {
-      if (fieldMapping[key]) {
-        airtableFields[fieldMapping[key]] = riskData[key];
-      } else {
-        // Om fältet inte finns i mappningen, använd fältnamnet direkt
-        airtableFields[key] = riskData[key];
-      }
-    });
-
+    const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
+    const airtableFields = mapNamedFieldsToAirtable(riskData, factorMapping);
     console.log('Airtable-fält:', airtableFields);
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
-    
-    const response = await axios.patch(url, {
-      fields: airtableFields
-    }, {
-      headers: {
-        'Authorization': `Bearer ${airtableAccessToken}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 15000
+    const headers = {
+      'Authorization': `Bearer ${airtableAccessToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    const response = await writeAirtableRecordWithRiskChoices({
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      tableName: RISK_FACTORS_TABLE,
+      request: () => axios.patch(url, {
+        fields: airtableFields,
+        typecast: true
+      }, { headers, timeout: 15000 })
     });
 
     const duration = Date.now() - startTime;
@@ -13010,13 +13113,8 @@ app.put('/api/risk-factors/:id', async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error('Error updating risk factor:', error.message);
-    
-    res.status(500).json({
-      error: 'Fel vid uppdatering av riskfaktor',
-      message: error.message,
-      duration: duration
-    });
+    console.error('Error updating risk factor:', error.response?.data || error.message);
+    sendAirtableRouteError(res, error, 'Fel vid uppdatering av riskfaktor', duration);
   }
 });
 

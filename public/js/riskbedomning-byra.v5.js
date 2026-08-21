@@ -920,7 +920,11 @@ class RiskAssessmentManager {
                 this.showNotification(recordId ? 'Tjänsten uppdaterad.' : 'Tjänsten tillagd.', 'success');
             } else {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.message || err.error || `HTTP ${response.status}`);
+                const raw = err.message || err.error;
+                const msg = (raw && typeof raw === 'object')
+                    ? (raw.message || JSON.stringify(raw))
+                    : (raw || `HTTP ${response.status}`);
+                throw new Error(msg);
             }
         } catch (error) {
             console.error('Error saving tjänst:', error);
