@@ -457,12 +457,6 @@
     const descChanged = !isNew && prev && fold(prev.beskrivning) !== fold(item.beskrivning);
     const kallaChanged = !isNew && prev && falt === 'hot'
       && fold(prev.kalla || prev.källa) !== fold(item.kalla || item.källa);
-    const descDiff = descChanged
-      ? `<p class="ai-review-diff" data-ai-item-diff>${wordDiffHtml(prev.beskrivning || '', item.beskrivning || '')}</p>`
-      : '';
-    const kallaDiff = kallaChanged
-      ? `<p class="ai-review-diff" data-ai-kalla-diff>${wordDiffHtml(prev.kalla || prev.källa || '', item.kalla || item.källa || '')}</p>`
-      : '';
     return `
       <div class="ai-review-item"${isNew ? ' data-ai-new' : ''}${descChanged || kallaChanged ? ' data-ai-changed' : ''} data-ai-item>
         <div class="ai-review-item-head">
@@ -470,9 +464,8 @@
           ${extra}
           <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
         </div>
-        ${descDiff}
         <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
-        ${falt === 'hot' ? `${kallaDiff}<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
+        ${falt === 'hot' ? `<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
       </div>
     `;
   }
@@ -733,15 +726,30 @@
       .filter(isVisibleReviewItem);
   }
 
+  function itemTitle(item) {
+    return trimStr((item && (item.titel || item.namn)) || '') || 'Utan titel';
+  }
+
+  function changePoints(item) {
+    if (!item || !item.andra) return [];
+    if (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder') {
+      const changes = listItemChanges(item.nuvarande, item.forslag);
+      return [
+        ...changes.added.map((row) => `Lägger till: ${itemTitle(row)}`),
+        ...changes.changed.map((row) => `Justerar: ${itemTitle(row.next)}`),
+        ...changes.removed.map((row) => `Tar bort: ${itemTitle(row)}`)
+      ];
+    }
+    if (item.falt === 'sxk' || item.falt === 'residual') {
+      return [`Föreslår ${formatForslagPreview(item.falt, item.forslag)}.`];
+    }
+    if (isEmptyCurrent(item.falt, item.nuvarande)) return ['Fältet är tomt — det här är ett tillägg.'];
+    return [];
+  }
+
   function reviewCardHtml(item) {
     const klass = item.klass || { key: 'ingen', label: 'Ingen ändring' };
-    const hasCurrent = !isEmptyCurrent(item.falt, item.nuvarande);
-    const currentPreview = hasCurrent ? formatForslagPreview(item.falt, item.nuvarande) : '';
-    const forslagPreview = item.andra ? formatForslagPreview(item.falt, item.forslag) : '';
-    const canDiff = item.andra && hasCurrent && typeof currentPreview === 'string' && typeof forslagPreview === 'string'
-      && item.falt !== 'hot' && item.falt !== 'sarbarheter' && item.falt !== 'atgarder'
-      && item.falt !== 'sxk' && item.falt !== 'residual' && item.falt !== 'ptTfRelevans';
-    const diffHtml = canDiff ? wordDiffHtml(currentPreview, forslagPreview) : '';
+    const points = changePoints(item);
     return `
       <article class="ai-review-card" data-falt="${esc(item.falt)}">
         <div class="ai-review-card-head">
@@ -749,28 +757,17 @@
           <span class="ai-review-kind is-${esc(klass.key)}">${esc(klass.label)}</span>
         </div>
         ${item.kommentar ? `<p class="ai-review-comment">${esc(item.kommentar)}</p>` : ''}
-        ${diffHtml ? `
-          <div class="ai-review-col">
-            <span class="ai-review-col-label">Ändring i texten</span>
-            <p class="ai-review-diff">${diffHtml}</p>
-          </div>
-        ` : ''}
-        ${hasCurrent ? `
-          <div class="ai-review-col">
-            <span class="ai-review-col-label">Nuvarande</span>
-            <pre class="ai-review-current">${esc(currentPreview)}</pre>
-          </div>
-        ` : '<p class="ai-review-ok">Fältet är tomt i dag — det här är ett tillägg.</p>'}
-        ${item.andra ? `
-          <div class="ai-review-col">
-            <span class="ai-review-col-label">Förslag (redigerbart)</span>
-            ${forslagEditorHtml(item)}
-          </div>
-        ` : '<p class="ai-review-ok">Ingen ändring föreslagen.</p>'}
+        ${points.length ? `<ul class="ai-review-points">${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
         <div class="ai-review-actions">
           ${item.andra ? '<button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>' : ''}
           <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
         </div>
+        ${item.andra ? `
+          <details class="ai-review-edit">
+            <summary>Visa och redigera förslaget</summary>
+            ${forslagEditorHtml(item)}
+          </details>
+        ` : ''}
       </article>
     `;
   }
@@ -913,6 +910,7 @@
     tabForFalt,
     wordDiffHtml,
     listItemChanges,
+    changePoints,
     itemKey,
     TJANST_TAB_FOR_FALT
   };
