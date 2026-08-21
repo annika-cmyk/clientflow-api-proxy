@@ -34,11 +34,33 @@
     return '';
   }
 
+  function kycDateIso(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+  }
+
+  function defaultKycUtanforDate(existing, checked, todayIso) {
+    const have = kycDateIso(existing);
+    if (!checked) return have;
+    return have || kycDateIso(todayIso);
+  }
+
+  function kycUtanforBannerText(dateIso) {
+    const d = kycDateIso(dateIso);
+    return d
+      ? `KYC-formulär finns utanför ClientFlow. Utförd ${d}.`
+      : 'KYC-formulär finns utanför ClientFlow.';
+  }
+
   const api = {
     shouldShowKycUtanforOption,
     shouldShowKycInleedBox,
     shouldShowSeparateKycStatusBanner,
-    kycInleedBoxStatus
+    kycInleedBoxStatus,
+    kycDateIso,
+    defaultKycUtanforDate,
+    kycUtanforBannerText
   };
 
   if (typeof module !== 'undefined' && module.exports) {

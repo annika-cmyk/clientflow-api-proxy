@@ -1703,6 +1703,24 @@ body.sidebar-collapsed .logout-btn {
     line-height: 1.4;
 }
 
+.kundkort-extern-option-date {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.75rem 0 0 1.6rem;
+    flex-wrap: wrap;
+}
+
+.kundkort-extern-option-date label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.kundkort-extern-option-date input[type="date"] {
+    max-width: 12rem;
+}
+
 /* Byrå & Användare – samma tabb-stil som kundkort */
 .byra-anvandare-tabs .tab-navigation {
     display: flex;

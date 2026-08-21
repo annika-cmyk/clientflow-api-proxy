@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.46', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.47', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -742,7 +742,13 @@ class CustomerCardManager {
         return v === true || v === 1 || v === 'true' || v === 'Ja' || v === 'checked';
     }
 
-    _renderExternClientFlowOption({ id, checked, label, hint, onChangeHandler }) {
+    _renderExternClientFlowOption({ id, checked, label, hint, onChangeHandler, dateId, dateValue, dateLabel, onDateHandler }) {
+        const dateHtml = dateId ? `
+                <div class="kundkort-extern-option-date">
+                    <label for="${dateId}">${this._esc(dateLabel || 'Datum')}</label>
+                    <input type="date" id="${dateId}" class="uppdrag-input" value="${this._esc(dateValue || '')}"
+                        onchange="customerCardManager.${onDateHandler}(this.value)">
+                </div>` : '';
         return `
             <div class="kundkort-extern-option-card">
                 <label class="kundkort-extern-option">
@@ -751,6 +757,7 @@ class CustomerCardManager {
                     <span>${this._esc(label)}</span>
                 </label>
                 ${hint ? `<p class="kundkort-extern-option-hint">${this._esc(hint)}</p>` : ''}
+                ${dateHtml}
             </div>`;
     }
 
@@ -802,15 +809,40 @@ class CustomerCardManager {
     }
 
     async setKycFormularUtanforClientFlow(checked) {
-        const ok = (await this._patchKunddataFields({ 'KYC-formulär utanför ClientFlow': !!checked })).ok;
+        const kycUi = window.KycStatusUi || {};
+        const dateEl = document.getElementById('kund-kyc-utanfor-datum');
+        const existing = kycUi.kycDateIso
+            ? kycUi.kycDateIso(this.customerData?.fields?.['KYC UTFÖRD DATUM'])
+            : '';
+        const today = new Date().toLocaleDateString('sv-SE');
+        const date = kycUi.defaultKycUtanforDate
+            ? kycUi.defaultKycUtanforDate((dateEl && dateEl.value) || existing, checked, today)
+            : ((dateEl && dateEl.value) || existing || (checked ? today : ''));
+        const fields = { 'KYC-formulär utanför ClientFlow': !!checked };
+        if (checked && date) fields['KYC UTFÖRD DATUM'] = date;
+        const ok = (await this._patchKunddataFields(fields)).ok;
         if (ok) {
             const cb = document.getElementById('kund-kyc-utanfor-cf');
             if (cb) cb.checked = !!checked;
+            if (dateEl && date) dateEl.value = date;
             this.showNotification(checked ? 'KYC utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
             this.loadKYCFormular();
         } else {
             const cb = document.getElementById('kund-kyc-utanfor-cf');
             if (cb) cb.checked = !checked;
+        }
+    }
+
+    async setKycUtanforDatum(value) {
+        const kycUi = window.KycStatusUi || {};
+        const date = kycUi.kycDateIso ? kycUi.kycDateIso(value) : String(value || '').trim();
+        if (value && !date) return;
+        if (!date) return;
+        const ok = (await this._patchKunddataFields({ 'KYC UTFÖRD DATUM': date })).ok;
+        if (ok) {
+            this.showNotification('KYC-datum sparat.', 'success');
+            const banner = document.getElementById('kyc-utanfor-status-banner');
+            if (banner && kycUi.kycUtanforBannerText) banner.innerHTML = `<i class="fas fa-check-circle"></i> ${this._esc(kycUi.kycUtanforBannerText(date))}`;
         }
     }
 
@@ -8040,18 +8072,28 @@ class CustomerCardManager {
                 ? (kycSigneringsdatum ? `Signerat ${kycSigneringsdatum}.` : 'Signerat.')
                 : (kycStatus === 'Skickat till kund' ? 'Utskickat och väntar signering.' : ''));
 
+        const kycUtfordDatum = kycUi.kycDateIso
+            ? kycUi.kycDateIso(f['KYC UTFÖRD DATUM'])
+            : String(f['KYC UTFÖRD DATUM'] || '').slice(0, 10);
         const kycUtanforHtml = showUtanfor ? this._renderExternClientFlowOption({
             id: 'kund-kyc-utanfor-cf',
             checked: kycUtanfor,
             label: 'Finns utanför ClientFlow',
             hint: 'Fliken KYC-formulär markeras som klar när detta är valt.',
-            onChangeHandler: 'setKycFormularUtanforClientFlow'
+            onChangeHandler: 'setKycFormularUtanforClientFlow',
+            dateId: 'kund-kyc-utanfor-datum',
+            dateValue: kycUtfordDatum,
+            dateLabel: 'Utförd datum',
+            onDateHandler: 'setKycUtanforDatum'
         }) : '';
 
+        const utanforBannerText = kycUi.kycUtanforBannerText
+            ? kycUi.kycUtanforBannerText(kycUtfordDatum)
+            : 'KYC-formulär finns utanför ClientFlow.';
         const statusBannerHtml = !showSeparateBanner ? '' : kycUtanfor ? `
-            <div class="uppdrag-banner uppdrag-banner--ok">
+            <div class="uppdrag-banner uppdrag-banner--ok" id="kyc-utanfor-status-banner">
                 <i class="fas fa-check-circle"></i>
-                KYC-formulär finns utanför ClientFlow.
+                ${esc(utanforBannerText)}
             </div>` : kycStatus === 'Signerat' ? `
             <div class="uppdrag-banner uppdrag-banner--ok">
                 <i class="fas fa-check-circle"></i>
@@ -8325,6 +8367,7 @@ class CustomerCardManager {
             </div>
         `;
 
+        if (window.DateInput) DateInput.bindDateInputs(container);
         this._updateKycForetradareRemoveButtons();
     }
 
