@@ -19900,7 +19900,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             const riskLabel = scored.badge
               ? `${scored.badge}${scored.residualLevel ? `; residual ${scored.residualBadge}` : ''}`
               : niva;
-            const tfMark = RiskSkala.isTfRelevant(scored.ptTfRelevans) ? ' [TF]' : '';
+            const tfMark = TjanstTfTackning.formatPtTfMark(scored.ptTfRelevans);
             byTyp.get(typ).push(
               `  • ${namn}${tfMark}${riskLabel ? ` — ${riskLabel}` : ''}` +
               (beskr ? `\n    Beskrivning: ${beskr}` : '') +

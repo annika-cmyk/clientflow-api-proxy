@@ -13535,6 +13535,17 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 800;
     letter-spacing: 0.03em;
 }
+.risk-task-name .pt-tf-tag {
+    margin-left: 0.2rem;
+}
+.pt-tf-tag.is-pt {
+    background: #ede9fe;
+    color: #4c1d95;
+}
+.pt-tf-tag.is-tf {
+    background: #fce7f3;
+    color: #831843;
+}
 
 @media (max-width: 960px) {
     .tjanst-modal-identity {

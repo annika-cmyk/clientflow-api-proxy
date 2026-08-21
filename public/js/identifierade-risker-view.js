@@ -69,24 +69,36 @@
     return { scored: scored, badges: badges };
   }
 
-  function isTfRelevant(value) {
+  function coverageOf(item) {
+    const Tf = tfLib();
+    if (Tf && Tf.ptTfCoverage) return Tf.ptTfCoverage(item && item.hot, item && item.ptTfRelevans);
     const S = skala();
-    if (S && S.isTfRelevant) return S.isTfRelevant(value);
-    const n = String(value || '').toLowerCase();
-    return n === 'tf' || n.indexOf('båda') !== -1 || n.indexOf('bada') !== -1;
+    return (S && S.normalizePtTf && S.normalizePtTf(item && item.ptTfRelevans)) || '';
+  }
+
+  function renderPtTfPills(coverage) {
+    if (coverage === 'Båda') {
+      return '<span class="pt-tf-tag is-pt">PT</span><span class="pt-tf-tag is-tf">TF</span>';
+    }
+    if (coverage === 'TF') return '<span class="pt-tf-tag is-tf">TF</span>';
+    if (coverage === 'PT') return '<span class="pt-tf-tag is-pt">PT</span>';
+    return '';
   }
 
   function renderHot(hot) {
     const Tf = tfLib();
     const rows = asList(hot).map((h) => {
-      const typ = (skala() && skala().normalizePtTf && skala().normalizePtTf(h.typ))
+      const typ = (Tf && Tf.hotTyp && Tf.hotTyp(h))
+        || (skala() && skala().normalizePtTf && skala().normalizePtTf(h.typ))
         || ((String(h.typ || 'PT').toUpperCase() === 'TF') ? 'TF' : 'PT');
-      const isTf = Tf ? Tf.isTfHot(h) : typ === 'TF';
       const title = text(h.titel || h.title);
       const desc = text(h.beskrivning || h.description);
       if (!title && !desc) return '';
+      const tags = typ === 'Båda'
+        ? '<span class="tag tag-pt">PT</span><span class="tag tag-tf">TF</span>'
+        : '<span class="tag ' + (typ === 'TF' ? 'tag-tf' : 'tag-pt') + '">' + esc(typ || 'PT') + '</span>';
       return '<div class="threat-row">'
-        + '<span class="tag ' + (isTf ? 'tag-tf' : 'tag-pt') + '">' + esc(typ) + '</span>'
+        + tags
         + '<div class="threat-body">'
         + (title ? '<div class="threat-title">' + esc(title) + '</div>' : '')
         + (desc ? '<div class="threat-desc">' + nl(desc) + '</div>' : '')
@@ -142,7 +154,7 @@
 
   function cardShell(opts) {
     const checked = opts.aktuell === true;
-    const tfTag = opts.tf ? '<span class="pt-tf-tag">TF</span>' : '';
+    const tfTag = renderPtTfPills(opts.ptTf);
     const residualBadge = opts.badges.residual
       ? '<span class="risk-level-badge ' + esc(opts.residualClass) + '" title="' + esc(opts.badges.residualTitle || '') + '">'
         + esc(opts.badges.residual) + '</span>'
@@ -199,7 +211,7 @@
       id: item.id,
       title: text(item.namn || item.title) || 'Namnlös tjänst',
       aktuell: item.aktuell === true,
-      tf: isTfRelevant(item.ptTfRelevans),
+      ptTf: coverageOf(item),
       saknarTf: saknarTf,
       levelClass: levelClass(info.scored.level),
       residualClass: levelClass(info.scored.residualLevel),
@@ -227,7 +239,7 @@
       id: item.id,
       title: title,
       aktuell: item.aktuell === true,
-      tf: isTfRelevant(item.ptTfRelevans),
+      ptTf: coverageOf(item),
       saknarTf: false,
       levelClass: levelClass(info.scored.level),
       residualClass: levelClass(info.scored.residualLevel),
