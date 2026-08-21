@@ -20195,10 +20195,10 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
       tfMotivering: TjanstTfTackning.hasTfHot(hot) ? '' : cleanStr(result.tfMotivering)
     };
     let granskningPoster = reviewMode
-      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst')
+      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst', befintligt)
       : [];
     if (reviewMode && !granskningPoster.length) {
-      granskningPoster = AiFaltGranskning.fallbackPosters('tjanst', tjanstAiPayload)
+      granskningPoster = AiFaltGranskning.fallbackPosters('tjanst', tjanstAiPayload, befintligt)
         .filter((p) => existingKeys.includes(p.falt));
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
@@ -20350,10 +20350,10 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
     };
     let granskningPoster = reviewMode
-      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig')
+      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig', befintligt)
       : [];
     if (reviewMode && !granskningPoster.length) {
-      granskningPoster = AiFaltGranskning.fallbackPosters('ovrig', faktorAiPayload)
+      granskningPoster = AiFaltGranskning.fallbackPosters('ovrig', faktorAiPayload, befintligt)
         .filter((p) => existingKeys.includes(p.falt));
     }
     const userDataFaktor = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;

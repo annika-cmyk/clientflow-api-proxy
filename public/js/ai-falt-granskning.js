@@ -27,6 +27,8 @@
 - För varje ifyllt fält: lägg en post i granskning.poster.
 - kommentar: 1–2 meningar om vad som är bra, vad som saknas eller vad som bör ändras.
 - Om du föreslår ändring: andra=true och forslag med den nya texten (sträng) eller den nya listan (array av objekt).
+- andra=true bara när forslag SKILJER sig från det befintliga innehållet (annan text, andra S×K-tal, ny/borttagen/ändrad post).
+- Om du bara upprepar samma text eller samma lista: andra=false och forslag="" (eller tom lista).
 - Om texten är bra: andra=false och forslag="" (eller tom lista).
 - Föreslå ändring bara när det behövs (fel, saknad risk, nämner byrån i inneboende beskrivning, svag källa). Inte bara omformulering.`;
 
@@ -217,7 +219,7 @@
     return trimStr(raw);
   }
 
-  function normalizeGranskning(raw, kind) {
+  function normalizeGranskning(raw, kind, befintligt) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const src = raw && typeof raw === 'object'
       ? (Array.isArray(raw.poster) ? raw.poster : (Array.isArray(raw) ? raw : []))
@@ -233,7 +235,8 @@
       const parsed = parseForslag(key, item.forslag ?? item.förslag ?? item.suggestion);
       const wantsChange = item.andra === true || item.andra === 'true';
       const canApply = hasForslag(key, parsed);
-      const andra = (wantsChange || (item.andra == null && canApply)) && canApply;
+      let andra = (wantsChange || (item.andra == null && canApply)) && canApply;
+      if (andra && sameForslag(key, currentValueFor(key, befintligt), parsed)) andra = false;
       if (!kommentar && !andra) return;
       poster.push({
         falt: key,
@@ -322,8 +325,43 @@
     });
   }
 
+  function listItemSignature(item) {
+    return [
+      fold(item && (item.typ || '')),
+      fold(item && (item.kategori || '')),
+      fold(item && (item.titel || item.namn || '')),
+      fold(item && (item.beskrivning || '')),
+      fold(item && (item.kalla || item.källa || ''))
+    ].join('|');
+  }
+
+  function scoreKey(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? String(n) : '';
+  }
+
+  function sameForslag(falt, current, forslag) {
+    if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
+      const a = asList(current).map(listItemSignature).sort();
+      const b = asList(forslag).map(listItemSignature).sort();
+      return a.length === b.length && a.every((sig, i) => sig === b[i]);
+    }
+    if (falt === 'sxk' || falt === 'residual') {
+      const cur = current && typeof current === 'object' ? current : {};
+      const next = forslag && typeof forslag === 'object' && !Array.isArray(forslag) ? forslag : {};
+      return scoreKey(cur.sannolikhet) === scoreKey(next.sannolikhet)
+        && scoreKey(cur.konsekvens) === scoreKey(next.konsekvens);
+    }
+    return fold(current) === fold(forslag);
+  }
+
+  function isGenericReviewComment(text) {
+    const t = fold(text);
+    return !t || t === fold('AI har ett ändringsförslag för det här fältet.');
+  }
+
   function classifyAndring(falt, current, forslag, andra) {
-    if (!andra) return { key: 'ingen', label: 'Ingen ändring' };
+    if (!andra || sameForslag(falt, current, forslag)) return { key: 'ingen', label: 'Ingen ändring' };
     if (isEmptyCurrent(falt, current)) return { key: 'lagg-till', label: 'Lägger till' };
     if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
       const added = addedListItems(current, forslag);
@@ -342,10 +380,20 @@
 
   function decoratePoster(item, befintligt) {
     const nuvarande = currentValueFor(item.falt, befintligt);
+    let andra = !!item.andra;
+    if (andra && sameForslag(item.falt, nuvarande, item.forslag)) andra = false;
     return Object.assign({}, item, {
       nuvarande,
-      klass: classifyAndring(item.falt, nuvarande, item.forslag, item.andra)
+      andra,
+      forslag: andra ? item.forslag : (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder' ? [] : ''),
+      klass: classifyAndring(item.falt, nuvarande, andra ? item.forslag : '', andra)
     });
+  }
+
+  function isVisibleReviewItem(item) {
+    if (item.andra && item.klass && item.klass.key !== 'ingen') return true;
+    if (item.andra) return true;
+    return !isGenericReviewComment(item.kommentar);
   }
 
   function scoreSelectHtml(name, selected) {
@@ -447,12 +495,13 @@
     return field ? String(field.value || '').trim() : row.forslag;
   }
 
-  function fallbackPosters(kind, generated) {
+  function fallbackPosters(kind, generated, befintligt) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const keys = kind === 'ovrig' ? Object.keys(OVRIG_FALT) : Object.keys(TJANST_FALT);
     return keys.map((key) => {
       const forslag = generatedValueFor(key, generated);
       if (!hasForslag(key, forslag)) return null;
+      if (sameForslag(key, currentValueFor(key, befintligt), forslag)) return null;
       return {
         falt: key,
         etikett: catalog[key].etikett,
@@ -481,7 +530,9 @@
     if (!host) return;
     const rawItems = Array.isArray(poster) ? poster : [];
     const befintligt = (handlers && handlers.befintligt) || {};
-    const items = rawItems.map((item) => decoratePoster(item, befintligt));
+    const items = rawItems
+      .map((item) => decoratePoster(item, befintligt))
+      .filter(isVisibleReviewItem);
     if (!items.length) {
       hideReview(host);
       return;
@@ -571,6 +622,7 @@
     formatForslagPreview,
     currentValueFor,
     classifyAndring,
+    sameForslag,
     decoratePoster,
     readEditedForslag,
     fallbackPosters,

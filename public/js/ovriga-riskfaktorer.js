@@ -795,7 +795,7 @@ class RiskFactorsManager {
                 this.applyOvrigAiIfEmpty(prefix, befintligt, data);
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
-                    : (Ai.fallbackPosters('ovrig', data).filter((p) => Ai.filledOvrigKeys(befintligt).includes(p.falt)));
+                    : (Ai.fallbackPosters('ovrig', data, befintligt).filter((p) => Ai.filledOvrigKeys(befintligt).includes(p.falt)));
                 Ai.renderReview(reviewHost, poster, {
                     befintligt,
                     onApply: (row) => this.applyOvrigAiField(prefix, row.falt, row.forslag)

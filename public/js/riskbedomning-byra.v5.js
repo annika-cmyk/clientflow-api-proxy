@@ -1051,7 +1051,7 @@ class RiskAssessmentManager {
                 this.applyTjanstAiIfEmpty(befintligt, data);
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
-                    : (Ai.fallbackPosters('tjanst', data).filter((p) => Ai.filledTjanstKeys(befintligt).includes(p.falt)));
+                    : (Ai.fallbackPosters('tjanst', data, befintligt).filter((p) => Ai.filledTjanstKeys(befintligt).includes(p.falt)));
                 Ai.renderReview(document.getElementById('tjanst-ai-review'), poster, {
                     befintligt,
                     onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag)
