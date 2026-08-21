@@ -7241,7 +7241,7 @@ class CustomerCardManager {
             : '';
         return `
                         <div class="ai-rb-foreslagen">
-                            <span class="ai-rb-profil-kind">Föreslagen nivå (beräknad)</span>
+                            <span class="ai-rb-profil-kind">FÖRESLAGEN NIVÅ (beräknad)</span>
                             ${pill}
                             ${delta}
                             ${drivande ? `<div class="ai-rb-drivande">Drivs av: ${this._esc(drivande)}</div>` : ''}
