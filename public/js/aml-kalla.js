@@ -99,15 +99,17 @@
     }
 
     function splitNamePage(leftover) {
-        const parts = String(leftover || '')
-            .replace(/[—–\-|\s]+$/g, '')
+        const cleaned = String(leftover || '')
+            .replace(/[\s]*[—–\-|:]+[\s]*$/g, '')
+            .trim();
+        const parts = cleaned
             .split(/\s*[—–|]\s+|\s+-\s+/)
             .map((s) => s.trim())
             .filter(Boolean);
         if (parts.length >= 2) {
             return { label: parts[0], page: parts.slice(1).join(' · ') };
         }
-        return { label: leftover || '', page: '' };
+        return { label: cleaned, page: '' };
     }
 
     function humanizeSegment(seg) {
