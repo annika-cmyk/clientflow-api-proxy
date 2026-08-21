@@ -203,6 +203,46 @@
     });
   }
 
+  function isHogriskBranschNamn(namn) {
+    return /h[öo]griskbransch/i.test(trimStr(namn));
+  }
+
+  function hogriskBranschVal(fields) {
+    var raw = fields && fields['Kunden verkar i en högriskbransch'];
+    var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map(trimStr).filter(function (v) { return v && v !== '---'; });
+  }
+
+  function hasHogriskBranschVal(fields) {
+    return hogriskBranschVal(fields).length > 0;
+  }
+
+  function findHogriskBranschRecords(records) {
+    return (Array.isArray(records) ? records : []).filter(function (r) {
+      if (!r) return false;
+      var f = r.fields || r;
+      var namn = f.Riskfaktor || f['Riskfaktor'] || f.namn || r.namn || '';
+      return isHogriskBranschNamn(namn);
+    });
+  }
+
+  function mergeHogriskBranschRisker(fields, riskRecords, extraRecords) {
+    var risker = Array.isArray(riskRecords) ? riskRecords.slice() : [];
+    if (!hasHogriskBranschVal(fields)) return risker;
+    var seen = {};
+    risker.forEach(function (r) {
+      var id = r && r.id;
+      if (id) seen[id] = true;
+    });
+    findHogriskBranschRecords(extraRecords).forEach(function (r) {
+      if (!r) return;
+      if (r.id && seen[r.id]) return;
+      if (r.id) seen[r.id] = true;
+      risker.push(r);
+    });
+    return risker;
+  }
+
   function itemsFromRiskRecords(records) {
     return (Array.isArray(records) ? records : []).map(function (r) {
       var f = (r && r.fields) || r || {};
@@ -232,7 +272,7 @@
     return map;
   }
 
-  function foreslagenFromLinkedRecords(fields, tjanstRecords, riskRecords) {
+  function foreslagenFromLinkedRecords(fields, tjanstRecords, riskRecords, opts) {
     var f = fields || {};
     var tjanstIds = Array.isArray(f['Kundens utvalda tjänster']) ? f['Kundens utvalda tjänster'] : [];
     var linked = Array.isArray(f['risker kopplat till tjänster']) ? f['risker kopplat till tjänster'] : [];
@@ -249,6 +289,10 @@
       .filter(function (id) { return id && !tjanstSet[id]; })
       .map(function (id) { return riskById[id]; })
       .filter(Boolean);
+    var extra = [];
+    if (opts && Array.isArray(opts.allaRiskRecords)) extra = extra.concat(opts.allaRiskRecords);
+    extra = extra.concat(riskRecords || []);
+    risker = mergeHogriskBranschRisker(f, risker, extra);
     return beraknaForeslagenNiva({
       tjanster: itemsFromTjanstRecords(tjanster),
       riskfaktorer: itemsFromRiskRecords(risker)
@@ -356,6 +400,11 @@
     beraknaForeslagenNiva: beraknaForeslagenNiva,
     itemsFromTjanstRecords: itemsFromTjanstRecords,
     itemsFromRiskRecords: itemsFromRiskRecords,
+    isHogriskBranschNamn: isHogriskBranschNamn,
+    hogriskBranschVal: hogriskBranschVal,
+    hasHogriskBranschVal: hasHogriskBranschVal,
+    findHogriskBranschRecords: findHogriskBranschRecords,
+    mergeHogriskBranschRisker: mergeHogriskBranschRisker,
     foreslagenFromLinkedRecords: foreslagenFromLinkedRecords,
     formatDrivandeFaktor: formatDrivandeFaktor,
     residualAvvikerFranForeslagen: residualAvvikerFranForeslagen,

@@ -6606,6 +6606,7 @@ class CustomerCardManager {
                 const riskerForTyp = allaRisker.filter(r => r.fields['Typ av riskfaktor'] === typ);
                 this._renderRiskerForTyp(container, riskerForTyp, linkedIds, id);
             });
+            this._refreshRiskprofilForeslagenUi();
 
         } catch (error) {
             console.error('❌ Fel vid hämtning av risker:', error);
@@ -6645,12 +6646,16 @@ class CustomerCardManager {
             : [];
 
         const hogriskUid = 'hogrisk-sub-body';
+        const hogriskTemplate = typId === 'kund' ? this._hogriskBranschRiskRecord() : null;
+        const hogriskBadge = hogriskTemplate
+            ? (riskBadge(hogriskTemplate) || `<span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>`)
+            : `<span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>`;
         const hogriskViewHtml = (typId === 'kund' && valdaHogrisk.length > 0) ? `
             <div class="tjanst-collapsible-item" onclick="customerCardManager.toggleTjanstDetails('${hogriskUid}')">
                 <div class="tjanst-collapsible-header">
                     <span class="risker-vald-namn"><i class="fas fa-industry" style="color:#ef4444;margin-right:0.4rem;font-size:0.85em;"></i>Kunden verkar i en högriskbransch</span>
                     <div style="display:flex;align-items:center;gap:0.5rem;">
-                        <span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>
+                        ${hogriskBadge}
                         <i class="fas fa-chevron-down tjanst-chevron" id="chevron-${hogriskUid}"></i>
                     </div>
                 </div>
@@ -6804,6 +6809,24 @@ class CustomerCardManager {
             .map(cb => cb.value);
         nyaChecked.forEach(id => allChecked.add(id));
 
+        let nyaHogrisk = null;
+        if (typId === 'kund') {
+            const fromBoxes = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
+                .map(cb => cb.value);
+            const HS = window.HogriskSni;
+            nyaHogrisk = HS
+                ? HS.mergeLabels(fromBoxes, this._hogriskSniBranscher())
+                : Array.from(new Set(fromBoxes.concat(this._hogriskSniBranscher())));
+            const hogriskRecs = (this._allaRisker || []).filter((r) => {
+                const namn = (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || '';
+                return window.KundRiskprofil && KundRiskprofil.isHogriskBranschNamn
+                    ? KundRiskprofil.isHogriskBranschNamn(namn)
+                    : /h[öo]griskbransch/i.test(namn);
+            });
+            if (nyaHogrisk.length) hogriskRecs.forEach((r) => allChecked.add(r.id));
+            else hogriskRecs.forEach((r) => allChecked.delete(r.id));
+        }
+
         const totalChecked = [...allChecked];
 
         const saveBtn = document.querySelector(`#risker-edit-${typId} .btn-primary`);
@@ -6814,16 +6837,7 @@ class CustomerCardManager {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
             const fieldsToSave = { 'risker kopplat till tjänster': totalChecked };
-
-            // Spara högriskbranscher om det är kund-kortet
-            let nyaHogrisk = null;
-            if (typId === 'kund') {
-                const fromBoxes = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
-                    .map(cb => cb.value);
-                const HS = window.HogriskSni;
-                nyaHogrisk = HS
-                    ? HS.mergeLabels(fromBoxes, this._hogriskSniBranscher())
-                    : Array.from(new Set(fromBoxes.concat(this._hogriskSniBranscher())));
+            if (typId === 'kund' && nyaHogrisk !== null) {
                 fieldsToSave['Kunden verkar i en högriskbransch'] = nyaHogrisk;
             }
 
@@ -7227,21 +7241,47 @@ class CustomerCardManager {
             konsekvensEfter: t.konsekvensEfter
         }));
         const linked = new Set(this._linkedRiskIds || this.customerData?.fields?.['risker kopplat till tjänster'] || []);
-        const riskfaktorer = (this._allaRisker || [])
-            .filter((r) => linked.has(r.id))
-            .map((r) => {
-                const scored = window.RiskSkala && RiskSkala.readOvrigRisk
-                    ? RiskSkala.readOvrigRisk(r.fields || {})
-                    : {};
-                return {
-                    namn: (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || r.namn || '',
-                    residualProduct: scored.residualProduct,
-                    residualLevel: scored.residualLevel,
-                    sannolikhetEfter: scored.sannolikhetEfter,
-                    konsekvensEfter: scored.konsekvensEfter
-                };
-            });
+        const hogriskValda = this._hogriskBranschValda();
+        const risker = (this._allaRisker || []).filter((r) => {
+            if (linked.has(r.id)) return true;
+            if (!hogriskValda.length || !KP.isHogriskBranschNamn) return false;
+            const namn = (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || r.namn || '';
+            return KP.isHogriskBranschNamn(namn);
+        });
+        const riskfaktorer = risker.map((r) => {
+            const scored = window.RiskSkala && RiskSkala.readOvrigRisk
+                ? RiskSkala.readOvrigRisk(r.fields || {})
+                : {};
+            return {
+                namn: (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || r.namn || '',
+                residualProduct: scored.residualProduct,
+                residualLevel: scored.residualLevel,
+                sannolikhetEfter: scored.sannolikhetEfter,
+                konsekvensEfter: scored.konsekvensEfter
+            };
+        });
         return KP.beraknaForeslagenNiva({ tjanster, riskfaktorer });
+    }
+
+    _hogriskBranschValda() {
+        const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+        const fromField = fmtList(this.customerData?.fields?.['Kunden verkar i en högriskbransch'])
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && v !== '---');
+        const fromSni = this._hogriskSniBranscher ? this._hogriskSniBranscher() : [];
+        return Array.from(new Set([...fromField, ...fromSni]));
+    }
+
+    _hogriskBranschRiskRecord() {
+        const KP = window.KundRiskprofil;
+        const records = this._allaRisker || [];
+        if (KP && KP.findHogriskBranschRecords) {
+            return KP.findHogriskBranschRecords(records)[0] || null;
+        }
+        return records.find((r) => {
+            const namn = (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || '';
+            return /h[öo]griskbransch/i.test(namn);
+        }) || null;
     }
 
     _readRiskprofilFromFields(f) {

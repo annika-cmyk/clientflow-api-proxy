@@ -5256,9 +5256,15 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
     fetchAirtableRecordsByIds(token, baseId, RISK_ASSESSMENT_TABLE, tjanstIds, { concurrency: 8 }),
     fetchAirtableRecordsByIds(token, baseId, OVRIGA_RISKER_TABLE_ID, riskIds, { concurrency: 8 })
   ]);
+  let risker = riskRecs;
+  if (KundRiskprofil.hasHogriskBranschVal(f)) {
+    const byraId = f['Byrå ID'] || f.Byrå || '';
+    const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+    risker = KundRiskprofil.mergeHogriskBranschRisker(f, riskRecs, byraRisker);
+  }
   return {
     tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
-    riskfaktorer: KundRiskprofil.itemsFromRiskRecords(riskRecs)
+    riskfaktorer: KundRiskprofil.itemsFromRiskRecords(risker)
   };
 }
 
@@ -5275,6 +5281,22 @@ async function loadForeslagenRecordMaps(records, token, baseId) {
     fetchAirtableRecordsByIds(token, baseId, RISK_ASSESSMENT_TABLE, ids.tjanstIds, { concurrency: 8 }),
     fetchAirtableRecordsByIds(token, baseId, OVRIGA_RISKER_TABLE_ID, riskIds, { concurrency: 8 })
   ]);
+  const byraIds = [...new Set((records || [])
+    .filter((rec) => KundRiskprofil.hasHogriskBranschVal(rec.fields || {}))
+    .map((rec) => String((rec.fields || {})['Byrå ID'] || (rec.fields || {}).Byrå || '').trim())
+    .filter(Boolean))];
+  const extraHogrisk = [];
+  for (const byraId of byraIds) {
+    const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+    extraHogrisk.push(...KundRiskprofil.findHogriskBranschRecords(byraRisker));
+  }
+  const seenRisk = new Set(riskfaktorRecords.map((r) => r && r.id).filter(Boolean));
+  extraHogrisk.forEach((r) => {
+    if (r && r.id && !seenRisk.has(r.id)) {
+      seenRisk.add(r.id);
+      riskfaktorRecords.push(r);
+    }
+  });
   return { tjanstRecords, riskfaktorRecords };
 }
 
