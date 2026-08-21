@@ -20013,16 +20013,15 @@ REGLER:
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 
-BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN:
-Använd byråns profil för att kalibrera den sammanvägda risknivån.
-Exempel på hur profilen påverkar:
+BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
+Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
+Skriv INTE in byråns storlek, personal, kapacitet eller andra profiluppgifter i fältet beskrivning.
+Exempel på hur profilen påverkar S×K och övriga fält:
 - Låg andel internationella kunder → minska risken för hot kopplade till gränsöverskridande transaktioner och utlandsbetalningar
 - Hög andel kontantintensiva kunder → öka risken för kontantrelaterade hot
 - Tjänster erbjuds på distans → öka risken kopplad till leveranssätt
 - Kundstock med enkel bolagsstruktur → minska risken för komplexa ägarstrukturrelaterade hot
 - Specifika branscher i kundstocken → lyft fram branschspecifika hot om de är relevanta
-
-Motivera alltid i beskrivningen hur byråprofilen påverkar den sammanvägda riskbedömningen för just denna tjänst.
 
 KÄLLOR ATT UTGÅ FRÅN:
 - Polismyndigheten / Finanspolisen (polisen.se)
@@ -20038,7 +20037,7 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-3 meningar om tjänsten och den inneboende risken. Inkludera en mening om hur byråns profil påverkar den inneboende risknivån. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "2-3 meningar om tjänsten och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
@@ -20216,14 +20215,14 @@ ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
 ${befintligt.ptTfRelevans ? `Befintlig PT/TF-relevans: ${befintligt.ptTfRelevans}` : ''}
 
-Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder.
+Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om riskfaktorn och den inneboende risken. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "2-4 meningar om riskfaktorn och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
   "ptTfRelevans": "PT, TF eller Båda",
   "sannolikhet": 1,
   "konsekvens": 1,
