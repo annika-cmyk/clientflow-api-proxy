@@ -58,6 +58,7 @@ const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const RiskSkala = require('./public/js/risk-skala');
+const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
@@ -8924,29 +8925,20 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
   const isYearUppdrag = typ === 'Bokslut' || typ === 'Deklaration'
     || freqLow.includes('årsvis') || freqLow.includes('år');
   if (isYearUppdrag) {
-    const start0 = toIsoDate(f['Startdatum'] || '');
-    let cur = deadline0;
-    for (let guard = 0; guard < 40; guard++) {
-      if (!cur) break;
-      // Första körningen skapas alltid; efterföljande (årsvis) bara inom horisonten.
-      if (guard > 0 && cur > horizonEnd) break;
-
-      const periodKey = cur.slice(0, 4);
-      const startIso = (guard === 0 && start0)
-        ? start0
-        : (addYearsIso(cur, -1) || start0 || undefined);
-
+    const yearlyRuns = yearlyRunsThroughHorizon({
+      startIso: toIsoDate(f['Startdatum'] || ''),
+      deadlineIso: deadline0,
+      freq,
+      horizonEnd
+    });
+    for (const run of yearlyRuns) {
       // eslint-disable-next-line no-await-in-loop
       await createRun({
-        periodKey,
-        periodLabel: periodKey,
-        deadlineIso: cur,
-        startIso
+        periodKey: run.periodKey,
+        periodLabel: run.periodLabel,
+        deadlineIso: run.deadlineIso,
+        startIso: run.startIso
       });
-
-      // Engång / saknad årsvis-frekvens: bara en körning
-      if (!freqLow.includes('årsvis') && !freqLow.includes('år')) break;
-      cur = calcNextDeadline(cur, freq) || '';
     }
     return { created, deduped, skipped: false, errors };
   }

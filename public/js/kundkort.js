@@ -1484,7 +1484,11 @@ class CustomerCardManager {
             for (let guard = 0; guard < 36; guard++) {
                 if (cursor > monthMax) break;
                 if (cursor > end) break;
-                if (cursor >= monthMin) map.set(monthKey(cursor), deadlineIso);
+                if (cursor >= monthMin) {
+                    const key = monthKey(cursor);
+                    const prev = map.get(key);
+                    if (!prev || String(deadlineIso) < String(prev)) map.set(key, deadlineIso);
+                }
                 cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
             }
         };
@@ -1951,25 +1955,35 @@ class CustomerCardManager {
                 const instMap = instByTypeMonth.get(t) || new Map();
                 let instDeadline = instMap.get(mk) || '';
                 let prefillPeriodKey = defaultPeriodKey;
-                if (isLoneTyp(t) && instDeadline && window.LonePeriod) {
+                let runRec = null;
+                const yearlyTyp = (t === 'Bokslut' || t === 'Deklaration');
+                const overdueYearly = yearlyTyp ? findOverdueRun(t) : null;
+                if (overdueYearly) {
+                    runRec = overdueYearly;
+                    instDeadline = String(overdueYearly.fields?.['Deadline'] || '').trim() || instDeadline;
+                    prefillPeriodKey = String(overdueYearly.fields?.['PeriodKey'] || '').trim()
+                        || yearKeyForMonth(String(instDeadline || '').slice(0, 7))
+                        || prefillPeriodKey;
+                } else if (isLoneTyp(t) && instDeadline && window.LonePeriod) {
                     prefillPeriodKey = LonePeriod.periodKeyFromDeadline(instDeadline, t) || defaultPeriodKey;
                 } else if (t === 'Löneuppdrag' && instDeadline) {
                     const prev = addMonthsIso(instDeadline, -1);
                     prefillPeriodKey = prev ? prev.slice(0, 7) : defaultPeriodKey;
-                } else if ((t === 'Bokslut' || t === 'Deklaration') && instDeadline) {
+                } else if (yearlyTyp && instDeadline) {
                     // Matcha körning via deadline-år (inte visningsmånadens år)
                     prefillPeriodKey = yearKeyForMonth(instDeadline.slice(0, 7)) || defaultPeriodKey;
                 }
-                let runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
-                if (!runRec && (t === 'Bokslut' || t === 'Deklaration')) {
-                    const openRun = (Array.isArray(runRecords) ? runRecords : []).find((rr) => {
+                if (!runRec) runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
+                if (!runRec && yearlyTyp) {
+                    const openRuns = (Array.isArray(runRecords) ? runRecords : []).filter((rr) => {
                         if (String(rr?.fields?.['Typ'] || '').trim() !== t) return false;
                         const dl = toDateStr(rr?.fields?.['Deadline'] || '');
                         const st = toDateStr(rr?.fields?.['Startdatum'] || '');
                         if (instDeadline && dl && dl.slice(0, 10) === instDeadline.slice(0, 10)) return true;
                         if (st && dl && mk >= st.slice(0, 7) && mk <= dl.slice(0, 7)) return true;
                         return false;
-                    });
+                    }).sort((a, b) => String(a?.fields?.['Deadline'] || '').localeCompare(String(b?.fields?.['Deadline'] || '')));
+                    const openRun = openRuns[0] || null;
                     if (openRun) {
                         runRec = openRun;
                         prefillPeriodKey = String(openRun?.fields?.['PeriodKey'] || '').trim()
