@@ -7992,9 +7992,12 @@ class CustomerCardManager {
             : { text: String(raw || '').trim(), label: String(raw || '').trim(), url: '', host: '' };
         if (!resolved.text && !resolved.url) return '';
         if (resolved.url) {
-            const name = this._esc(resolved.label || resolved.text || resolved.host);
-            const host = resolved.host ? ` <span class="threat-kalla-host">${this._esc(resolved.host)}</span>` : '';
-            return `<div class="threat-kalla"><span class="threat-kalla-label">Källa</span><a class="threat-kalla-link" href="${this._esc(resolved.url)}" target="_blank" rel="noopener noreferrer">${name} ↗${host}</a></div>`;
+            const display = (typeof AmlKalla !== 'undefined' && AmlKalla.formatKallaDisplay)
+                ? AmlKalla.formatKallaDisplay(resolved)
+                : { linkText: resolved.label || resolved.text || resolved.host, url: resolved.url };
+            const page = resolved.page ? ` · ${this._esc(resolved.page)}` : '';
+            const path = resolved.path ? ` <span class="threat-kalla-host">${this._esc(resolved.path)}</span>` : (resolved.host ? ` <span class="threat-kalla-host">${this._esc(resolved.host)}</span>` : '');
+            return `<div class="threat-kalla"><span class="threat-kalla-label">Källa</span><a class="threat-kalla-link" href="${this._esc(display.url)}" target="_blank" rel="noopener noreferrer">${this._esc(resolved.label || display.linkText)}${page} ↗${path}</a></div>`;
         }
         return `<div class="threat-kalla"><span class="threat-kalla-label">Källa</span><span class="threat-kalla-text">${this._esc(resolved.text)}</span></div>`;
     }

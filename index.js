@@ -72,6 +72,7 @@ const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
+const AmlKalla = require('./public/js/aml-kalla');
 const AtgardKonkret = require('./public/js/atgard-konkret');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
@@ -20298,7 +20299,8 @@ REGLER:
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
 - Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
-- Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
+- Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot.
+${AmlKalla.KALLA_AI_RULES}
 - TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", om du inte lämnar en tjänstespecifik tfMotivering. Defaulta inte till enbart PT.
 - Föredra ett konkret TF-hot när tjänsten kan användas för att flytta, dölja eller legitimera medel (de flesta redovisnings- och skattetjänster). Utgå från kända TF-tillvägagångssätt hos FATF, Säpo, Polisen eller Samordningsfunktionen.
 - Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
@@ -20336,7 +20338,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — Undersida — https://.../undersida" } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör." } ],
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,

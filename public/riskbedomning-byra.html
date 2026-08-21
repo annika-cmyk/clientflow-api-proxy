@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260821i">
+    <link rel="stylesheet" href="styles.css?v=20260821k">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -171,13 +171,13 @@
                             </button>
                             <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                         </div>
-                        <div id="tjanst-ai-review" class="ai-review" hidden></div>
+                        <div id="tjanst-ai-summary" class="ai-review-summary" hidden></div>
 
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
-                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt</button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot <span class="tjanst-tab-count" data-count-for="hot">0</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span></button>
+                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span> <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span> <span class="tjanst-tab-ai" data-ai-for="atgard" hidden>AI</span></button>
                         </nav>
 
                         <div class="tjanst-modal-body">
@@ -185,6 +185,7 @@
                                 <label for="tjanst-beskrivning">Tjänstebeskrivning och inneboende risk</label>
                                 <p class="tjanst-panel-hint">Beskriv tjänsten och den risk den utgör i sig — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
                                 <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär och vilken risk den utgör i sig — inte byrån, personal eller era kontroller."></textarea>
+                                <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
                                 <div id="tjanst-tf-oversikt-flag" class="tf-missing-banner tf-missing-banner-compact" hidden></div>
                             </section>
 
@@ -202,6 +203,7 @@
                                     <p class="tjanst-panel-hint">Förklara varför TF-analysen bedöms tillräckligt täckt av PT-analysen för just den här tjänsten. Minst 20 tecken.</p>
                                     <textarea id="tjanst-tf-motivering" name="tfMotivering" rows="4" placeholder="Varför räcker PT-analysen för finansiering av terrorism i den här tjänsten?"></textarea>
                                 </div>
+                                <div id="tjanst-ai-hot" class="ai-review ai-review--inline" hidden></div>
                                 <div id="hot-empty" class="tjanst-empty">Inga hot ännu.</div>
                                 <div id="hot-list" class="dyn-list"></div>
                             </section>
@@ -214,6 +216,7 @@
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="sarbarhet"><i class="fas fa-plus"></i> Lägg till</button>
                                 </div>
+                                <div id="tjanst-ai-sarbarhet" class="ai-review ai-review--inline" hidden></div>
                                 <div id="sarbarhet-empty" class="tjanst-empty">Inga sårbarheter ännu.</div>
                                 <div id="sarbarhet-list" class="dyn-list"></div>
                             </section>
@@ -226,6 +229,7 @@
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="atgard"><i class="fas fa-plus"></i> Lägg till</button>
                                 </div>
+                                <div id="tjanst-ai-atgard" class="ai-review ai-review--inline" hidden></div>
                                 <div id="atgard-empty" class="tjanst-empty">Inga åtgärder ännu.</div>
                                 <div id="atgard-list" class="dyn-list"></div>
                                 <div class="tjanst-residual-bar">
@@ -293,11 +297,11 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
-    <script src="js/aml-kalla.js?v=1"></script>
+    <script src="js/aml-kalla.js?v=2"></script>
     <script src="js/risk-skala.js?v=7"></script>
     <script src="js/tjanst-tf-tackning.js?v=1"></script>
     <script src="js/atgard-konkret.js?v=2"></script>
-    <script src="js/ai-falt-granskning.js?v=5"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=14"></script>
+    <script src="js/ai-falt-granskning.js?v=7"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=16"></script>
 </body>
 </html>

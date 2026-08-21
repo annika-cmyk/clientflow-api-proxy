@@ -12814,6 +12814,98 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .btn-ai:disabled { opacity: 0.7; cursor: progress; }
 .btn-ai.loading i { animation: spin 1s linear infinite; }
 
+.ai-review-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0 0 0.75rem;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid #c5dce0;
+    border-radius: 10px;
+    background: #f3fafb;
+}
+.ai-review-summary p {
+    margin: 0;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: #134e4a;
+}
+.ai-review-summary a {
+    color: #13505c;
+    font-weight: 700;
+}
+.tjanst-tab-ai {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.25rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: #13505c;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.ai-review--inline {
+    margin: 0.75rem 0 0;
+}
+.ai-review-diff {
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #dbe4ee;
+    font-size: 0.86rem;
+    line-height: 1.5;
+    color: #0f172a;
+}
+.ai-review-diff del {
+    background: #fee2e2;
+    color: #991b1b;
+    text-decoration: line-through;
+    padding: 0 0.12em;
+}
+.ai-review-diff ins {
+    background: #dcfce7;
+    color: #166534;
+    text-decoration: none;
+    padding: 0 0.12em;
+}
+.ai-field-mark {
+    margin: 0.45rem 0 0.15rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 8px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+}
+.ai-field-mark-comment {
+    margin: 0 0 0.4rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: #1e3a5f;
+}
+#tjanst-beskrivning.is-ai-change,
+#tjanst-tf-motivering.is-ai-change,
+.dyn-card.is-ai-change .dyn-besk {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+.dyn-card.is-ai-change {
+    border-color: #93c5fd;
+    background: #f8fbff;
+}
+.ai-review-item-changed {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #9a3412;
+    font-size: 0.68rem;
+    font-weight: 750;
+}
+
 .ai-review {
     margin: 0.75rem 0 0;
     padding: 0.85rem 0.95rem;
@@ -13229,16 +13321,31 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .dyn-card .dyn-kalla:focus { outline: none; }
 
+.dyn-card .dyn-kalla-row {
+    flex-wrap: wrap;
+}
 .dyn-card .dyn-kalla-link {
-    flex-shrink: 0;
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-top: 0.15rem;
     font-size: 13px;
     font-weight: 600;
-    white-space: nowrap;
     color: #13505c;
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    text-decoration: none;
 }
-
+.dyn-card .dyn-kalla-name { text-decoration: underline; text-underline-offset: 2px; }
+.dyn-card .dyn-kalla-page {
+    font-weight: 700;
+    color: #0f172a;
+}
+.dyn-card .dyn-kalla-path {
+    font-size: 12px;
+    font-weight: 500;
+    color: #475569;
+    word-break: break-all;
+}
 .dyn-card .dyn-kalla-link:hover { color: #0c3d46; }
 
 .dyn-row-header .dyn-remove {

@@ -562,6 +562,131 @@ class RiskAssessmentManager {
     }
 
     // ---- Modal: dynamiska rader (hopfällbara kort) ----
+    tjanstAiHosts() {
+        return {
+            oversikt: document.getElementById('tjanst-ai-oversikt'),
+            hot: document.getElementById('tjanst-ai-hot'),
+            sarbarhet: document.getElementById('tjanst-ai-sarbarhet'),
+            atgard: document.getElementById('tjanst-ai-atgard')
+        };
+    }
+
+    clearTjanstAiSummary() {
+        const bar = document.getElementById('tjanst-ai-summary');
+        if (bar) {
+            bar.hidden = true;
+            bar.innerHTML = '';
+        }
+        document.querySelectorAll('.tjanst-tab-ai').forEach((el) => { el.hidden = true; });
+        this.clearTjanstFormAiMarks();
+    }
+
+    clearTjanstFormAiMarks() {
+        document.querySelectorAll('.ai-field-mark').forEach((el) => el.remove());
+        document.querySelectorAll('.is-ai-change').forEach((el) => el.classList.remove('is-ai-change'));
+    }
+
+    insertAiFieldMark(field, html) {
+        if (!field || !html) return;
+        field.classList.add('is-ai-change');
+        const mark = document.createElement('div');
+        mark.className = 'ai-field-mark';
+        mark.innerHTML = html;
+        field.insertAdjacentElement('afterend', mark);
+    }
+
+    markTjanstFormAi(poster, befintligt) {
+        this.clearTjanstFormAiMarks();
+        const Ai = window.AiFaltGranskning;
+        if (!Ai) return;
+        const items = (Array.isArray(poster) ? poster : [])
+            .map((item) => Ai.decoratePoster(item, befintligt || {}))
+            .filter((item) => item && item.andra && item.klass && item.klass.key !== 'ingen');
+        items.forEach((item) => {
+            if (item.falt === 'tjanstebeskrivning') {
+                const field = document.getElementById('tjanst-beskrivning');
+                const diff = Ai.wordDiffHtml(item.nuvarande, item.forslag);
+                this.insertAiFieldMark(field, `${item.kommentar ? `<p class="ai-field-mark-comment">${this.esc(item.kommentar)}</p>` : ''}<p class="ai-review-diff">${diff}</p>`);
+            } else if (item.falt === 'tfMotivering') {
+                const field = document.getElementById('tjanst-tf-motivering');
+                const diff = Ai.wordDiffHtml(item.nuvarande, item.forslag);
+                this.insertAiFieldMark(field, `${item.kommentar ? `<p class="ai-field-mark-comment">${this.esc(item.kommentar)}</p>` : ''}<p class="ai-review-diff">${diff}</p>`);
+            } else if (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder') {
+                this.markTjanstListAi(item);
+            }
+        });
+    }
+
+    markTjanstListAi(item) {
+        const Ai = window.AiFaltGranskning;
+        if (!Ai) return;
+        const listId = item.falt === 'hot' ? 'hot-list' : item.falt === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
+        const changes = Ai.listItemChanges(item.nuvarande, item.forslag);
+        const changedByKey = new Map(changes.changed.map((row) => [Ai.itemKey(row.next), row]));
+        const addedKeys = new Set(changes.added.map(Ai.itemKey));
+        document.querySelectorAll(`#${listId} .dyn-row`).forEach((row) => {
+            const titel = row.querySelector('.dyn-titel')?.value.trim() || '';
+            const besk = row.querySelector('.dyn-besk')?.value.trim() || '';
+            const key = Ai.itemKey({ titel, beskrivning: besk });
+            const change = changedByKey.get(key);
+            if (!change) return;
+            row.classList.add('is-ai-change');
+            row.classList.remove('is-collapsed');
+            const field = row.querySelector('.dyn-besk');
+            const parts = [];
+            if (change.prev.beskrivning !== change.next.beskrivning) {
+                parts.push(`<p class="ai-review-diff">${Ai.wordDiffHtml(change.prev.beskrivning || '', change.next.beskrivning || '')}</p>`);
+            }
+            if (item.falt === 'hot') {
+                const prevKalla = change.prev.kalla || change.prev.källa || '';
+                const nextKalla = change.next.kalla || change.next.källa || '';
+                if (prevKalla !== nextKalla) {
+                    parts.push(`<p class="ai-review-diff">${Ai.wordDiffHtml(prevKalla, nextKalla)}</p>`);
+                }
+            }
+            this.insertAiFieldMark(field, parts.join(''));
+        });
+        if (addedKeys.size) {
+            const host = this.tjanstAiHosts()[item.falt === 'sarbarheter' ? 'sarbarhet' : item.falt === 'atgarder' ? 'atgard' : 'hot'];
+            if (host) host.dataset.aiAdded = String(addedKeys.size);
+        }
+    }
+
+    updateTjanstAiSummary(counts) {
+        const labels = { oversikt: 'Översikt', hot: 'Hot', sarbarhet: 'Sårbarheter', atgard: 'Åtgärder' };
+        const present = Object.keys(labels).filter((key) => (counts && counts[key]) > 0);
+        document.querySelectorAll('.tjanst-tab-ai').forEach((el) => {
+            const key = el.getAttribute('data-ai-for');
+            const n = (counts && counts[key]) || 0;
+            el.hidden = n < 1;
+            el.textContent = n > 1 ? `AI ${n}` : 'AI';
+        });
+        const bar = document.getElementById('tjanst-ai-summary');
+        if (!bar) return;
+        if (!present.length) {
+            bar.hidden = true;
+            bar.innerHTML = '';
+            return;
+        }
+        bar.hidden = false;
+        bar.innerHTML = `
+            <p>AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}. De syns på respektive flik, med markering av vad som ändras.</p>
+            <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all-tabs>Avfärda alla</button>
+        `;
+        bar.onclick = (ev) => {
+            const link = ev.target.closest('[data-goto-tab]');
+            if (link) {
+                ev.preventDefault();
+                this.setTjanstTab(link.getAttribute('data-goto-tab'));
+                return;
+            }
+            if (ev.target.closest('[data-ai-dismiss-all-tabs]')) {
+                if (window.AiFaltGranskning) AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
+                this.clearTjanstAiSummary();
+            }
+        };
+    }
+
     setTjanstTab(tabId) {
         const id = tabId || 'oversikt';
         document.querySelectorAll('.tjanst-tab').forEach((tab) => {
@@ -628,18 +753,23 @@ class RiskAssessmentManager {
             const val = kallaInput.value.trim();
             const resolved = (typeof AmlKalla !== 'undefined' && AmlKalla.resolveKalla)
                 ? AmlKalla.resolveKalla(val)
-                : { url: this.isKallaUrl(val) ? val : '', host: '', label: val };
-            if (resolved.url) {
-                kallaLink.href = resolved.url;
+                : { url: this.isKallaUrl(val) ? val : '', host: '', label: val, page: '', path: '' };
+            const display = (typeof AmlKalla !== 'undefined' && AmlKalla.formatKallaDisplay)
+                ? AmlKalla.formatKallaDisplay(resolved)
+                : { linkText: resolved.host || resolved.label || 'Öppna webbplats', url: resolved.url, title: resolved.url };
+            if (display.url) {
+                kallaLink.href = display.url;
                 kallaLink.hidden = false;
-                kallaLink.textContent = (resolved.host || resolved.label || 'Öppna webbplats') + ' ↗';
-                kallaLink.title = resolved.url;
+                const page = resolved.page ? `<span class="dyn-kalla-page">${this.esc(resolved.page)}</span>` : '';
+                const path = resolved.path ? `<span class="dyn-kalla-path">${this.esc(resolved.path)}</span>` : '';
+                kallaLink.innerHTML = `<span class="dyn-kalla-name">${this.esc(resolved.label || display.linkText)}</span>${page}${path}`;
+                kallaLink.title = display.title || display.url;
                 row.classList.add('has-kalla-link');
             } else {
                 kallaLink.removeAttribute('href');
                 kallaLink.removeAttribute('title');
                 kallaLink.hidden = true;
-                kallaLink.textContent = 'Öppna webbplats ↗';
+                kallaLink.innerHTML = '';
                 row.classList.remove('has-kalla-link');
             }
         };
@@ -674,8 +804,8 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-kalla-row">
                 <span class="dyn-kalla-label">Källa</span>
-                <input type="text" class="dyn-kalla" placeholder="Myndighet eller webbadress, t.ex. Skatteverket" value="${this.esc(kalla)}" aria-label="Källa">
-                <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden>Öppna webbplats ↗</a>
+                <input type="text" class="dyn-kalla" placeholder="Myndighet — undersida — https://…" value="${this.esc(kalla)}" aria-label="Källa">
+                <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
@@ -850,7 +980,10 @@ class RiskAssessmentManager {
         const tfEl = document.getElementById('tjanst-tf-motivering');
         if (tfEl) tfEl.value = '';
         this.updateTfBanner();
-        if (window.AiFaltGranskning) AiFaltGranskning.hideReview(document.getElementById('tjanst-ai-review'));
+        if (window.AiFaltGranskning) {
+            AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
+            this.clearTjanstAiSummary();
+        }
     }
 
     fillModal(risk) {
@@ -1083,12 +1216,27 @@ class RiskAssessmentManager {
                     : (Ai.ensureAnalysisPosters('tjanst', befintligt, data, []).concat(
                         Ai.ensureTfCoveragePosters(befintligt, data, [])
                     ));
-                Ai.renderReview(document.getElementById('tjanst-ai-review'), poster, {
+                const items = Ai.renderReviewByHosts(this.tjanstAiHosts(), poster, {
+                    kind: 'tjanst',
                     befintligt,
-                    onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag)
+                    onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag),
+                    onDismiss: () => this.markTjanstFormAi(
+                        Object.values(this.tjanstAiHosts()).flatMap((host) => host && host._aiPoster ? host._aiPoster : []),
+                        {
+                            tjanstebeskrivning: document.getElementById('tjanst-beskrivning')?.value.trim() || '',
+                            tfMotivering: document.getElementById('tjanst-tf-motivering')?.value.trim() || '',
+                            hot: this.collectHot(),
+                            sarbarheter: this.collectSarbarhet(),
+                            atgarder: this.collectAtgard()
+                        }
+                    ),
+                    onTabCounts: (counts) => this.updateTjanstAiSummary(counts)
                 });
-                this.showNotification(poster.length
-                    ? 'AI har gjort en egen analys. Jämför med era texter och kopiera in det ni vill använda.'
+                this.markTjanstFormAi(items, befintligt);
+                const firstTab = items[0] && Ai.tabForFalt(items[0].falt, 'tjanst');
+                if (firstTab) this.setTjanstTab(firstTab);
+                this.showNotification(items.length
+                    ? 'AI har gjort en egen analys. Förslagen ligger på respektive flik. Jämför och kopiera in det ni vill använda.'
                     : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyTjanstAiAll(data);

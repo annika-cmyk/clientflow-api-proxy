@@ -419,7 +419,25 @@
     return html;
   }
 
-  function listItemEditorHtml(falt, item, isNew) {
+  function listItemChanges(current, forslag) {
+    const added = addedListItems(current, forslag);
+    const removed = removedListItems(current, forslag);
+    const curByKey = new Map();
+    asList(current).forEach((item) => {
+      const key = itemKey(item);
+      if (key) curByKey.set(key, item);
+    });
+    const changed = asList(forslag).reduce((acc, item) => {
+      const prev = curByKey.get(itemKey(item));
+      if (prev && listItemSignature(prev) !== listItemSignature(item)) {
+        acc.push({ prev, next: item });
+      }
+      return acc;
+    }, []);
+    return { added, removed, changed };
+  }
+
+  function listItemEditorHtml(falt, item, isNew, prev) {
     const typ = item.typ || 'PT';
     const kat = item.kategori || 'Verksamhet';
     const extra = falt === 'hot'
@@ -436,15 +454,25 @@
             <option${kat === 'Geografi' ? ' selected' : ''}>Geografi</option>
           </select>`
         : '';
+    const descChanged = !isNew && prev && fold(prev.beskrivning) !== fold(item.beskrivning);
+    const kallaChanged = !isNew && prev && falt === 'hot'
+      && fold(prev.kalla || prev.källa) !== fold(item.kalla || item.källa);
+    const descDiff = descChanged
+      ? `<p class="ai-review-diff" data-ai-item-diff>${wordDiffHtml(prev.beskrivning || '', item.beskrivning || '')}</p>`
+      : '';
+    const kallaDiff = kallaChanged
+      ? `<p class="ai-review-diff" data-ai-kalla-diff>${wordDiffHtml(prev.kalla || prev.källa || '', item.kalla || item.källa || '')}</p>`
+      : '';
     return `
-      <div class="ai-review-item"${isNew ? ' data-ai-new' : ''} data-ai-item>
+      <div class="ai-review-item"${isNew ? ' data-ai-new' : ''}${descChanged || kallaChanged ? ' data-ai-changed' : ''} data-ai-item>
         <div class="ai-review-item-head">
-          ${isNew ? '<span class="ai-review-item-new">Ny</span>' : ''}
+          ${isNew ? '<span class="ai-review-item-new">Ny</span>' : descChanged || kallaChanged ? '<span class="ai-review-item-changed">Ändrad</span>' : ''}
           ${extra}
           <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
         </div>
+        ${descDiff}
         <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
-        ${falt === 'hot' ? `<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
+        ${falt === 'hot' ? `${kallaDiff}<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
       </div>
     `;
   }
@@ -462,7 +490,14 @@
     }
     if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
       const added = new Set(addedListItems(item.nuvarande, item.forslag).map(itemKey));
-      const rows = asList(item.forslag).map((row) => listItemEditorHtml(falt, row, added.has(itemKey(row))));
+      const curByKey = new Map();
+      asList(item.nuvarande).forEach((row) => {
+        const key = itemKey(row);
+        if (key) curByKey.set(key, row);
+      });
+      const rows = asList(item.forslag).map((row) => (
+        listItemEditorHtml(falt, row, added.has(itemKey(row)), curByKey.get(itemKey(row)))
+      ));
       return `<div class="ai-review-items">${rows.join('')}</div>`;
     }
     if (falt === 'ptTfRelevans') {
@@ -615,65 +650,136 @@
     if (!host) return;
     host.hidden = true;
     host.innerHTML = '';
+    host._aiPoster = [];
   }
 
-  function renderReview(host, poster, handlers) {
-    if (!host) return;
-    const rawItems = Array.isArray(poster) ? poster : [];
-    const befintligt = (handlers && handlers.befintligt) || {};
-    const items = rawItems
+  const TJANST_TAB_FOR_FALT = {
+    tjanstebeskrivning: 'oversikt',
+    sxk: 'oversikt',
+    hot: 'hot',
+    tfMotivering: 'hot',
+    sarbarheter: 'sarbarhet',
+    atgarder: 'atgard',
+    residual: 'atgard'
+  };
+
+  const OVRIG_HOST_FOR_FALT = {
+    beskrivning: 'beskrivning',
+    ptTfRelevans: 'beskrivning',
+    sxk: 'sxk',
+    atgard: 'atgard',
+    residual: 'atgard'
+  };
+
+  function tabForFalt(falt, kind) {
+    if (kind === 'ovrig') return OVRIG_HOST_FOR_FALT[falt] || 'beskrivning';
+    return TJANST_TAB_FOR_FALT[falt] || 'oversikt';
+  }
+
+  function tokenizeWords(text) {
+    return String(text || '').split(/(\s+)/).filter((t) => t.length);
+  }
+
+  function wordDiffTokens(before, after) {
+    const a = tokenizeWords(before);
+    const b = tokenizeWords(after);
+    const m = a.length;
+    const n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    const out = [];
+    let i = m;
+    let j = n;
+    while (i > 0 && j > 0) {
+      if (a[i - 1] === b[j - 1]) {
+        out.push({ t: 'eq', v: a[i - 1] });
+        i--;
+        j--;
+      } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+        out.push({ t: 'del', v: a[i - 1] });
+        i--;
+      } else {
+        out.push({ t: 'ins', v: b[j - 1] });
+        j--;
+      }
+    }
+    while (i > 0) out.push({ t: 'del', v: a[--i] });
+    while (j > 0) out.push({ t: 'ins', v: b[--j] });
+    return out.reverse();
+  }
+
+  function wordDiffHtml(before, after) {
+    const left = trimStr(before);
+    const right = trimStr(after);
+    if (!left && !right) return '';
+    if (!left) return `<ins>${esc(right)}</ins>`;
+    if (!right) return `<del>${esc(left)}</del>`;
+    if (fold(left) === fold(right)) return esc(left);
+    return wordDiffTokens(left, right).map((part) => {
+      if (/^\s+$/.test(part.v)) return esc(part.v);
+      if (part.t === 'del') return `<del>${esc(part.v)}</del>`;
+      if (part.t === 'ins') return `<ins>${esc(part.v)}</ins>`;
+      return esc(part.v);
+    }).join('');
+  }
+
+  function visibleDecorated(poster, befintligt) {
+    return (Array.isArray(poster) ? poster : [])
       .map((item) => decoratePoster(item, befintligt))
       .filter(isVisibleReviewItem);
-    if (!items.length) {
-      hideReview(host);
-      return;
-    }
+  }
+
+  function reviewCardHtml(item) {
+    const klass = item.klass || { key: 'ingen', label: 'Ingen ändring' };
+    const hasCurrent = !isEmptyCurrent(item.falt, item.nuvarande);
+    const currentPreview = hasCurrent ? formatForslagPreview(item.falt, item.nuvarande) : '';
+    const forslagPreview = item.andra ? formatForslagPreview(item.falt, item.forslag) : '';
+    const canDiff = item.andra && hasCurrent && typeof currentPreview === 'string' && typeof forslagPreview === 'string'
+      && item.falt !== 'hot' && item.falt !== 'sarbarheter' && item.falt !== 'atgarder'
+      && item.falt !== 'sxk' && item.falt !== 'residual' && item.falt !== 'ptTfRelevans';
+    const diffHtml = canDiff ? wordDiffHtml(currentPreview, forslagPreview) : '';
+    return `
+      <article class="ai-review-card" data-falt="${esc(item.falt)}">
+        <div class="ai-review-card-head">
+          <h5>${esc(item.etikett)}</h5>
+          <span class="ai-review-kind is-${esc(klass.key)}">${esc(klass.label)}</span>
+        </div>
+        ${item.kommentar ? `<p class="ai-review-comment">${esc(item.kommentar)}</p>` : ''}
+        ${diffHtml ? `
+          <div class="ai-review-col">
+            <span class="ai-review-col-label">Ändring i texten</span>
+            <p class="ai-review-diff">${diffHtml}</p>
+          </div>
+        ` : ''}
+        ${hasCurrent ? `
+          <div class="ai-review-col">
+            <span class="ai-review-col-label">Nuvarande</span>
+            <pre class="ai-review-current">${esc(currentPreview)}</pre>
+          </div>
+        ` : '<p class="ai-review-ok">Fältet är tomt i dag — det här är ett tillägg.</p>'}
+        ${item.andra ? `
+          <div class="ai-review-col">
+            <span class="ai-review-col-label">Förslag (redigerbart)</span>
+            ${forslagEditorHtml(item)}
+          </div>
+        ` : '<p class="ai-review-ok">Ingen ändring föreslagen.</p>'}
+        <div class="ai-review-actions">
+          ${item.andra ? '<button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>' : ''}
+          <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function bindReviewHost(host, handlers) {
     const onApply = handlers && handlers.onApply;
     const onDismiss = handlers && handlers.onDismiss;
     const onDismissAll = handlers && handlers.onDismissAll;
-    host.hidden = false;
-    host.innerHTML = `
-      <div class="ai-review-head">
-        <div>
-          <strong>AI:s egen analys</strong>
-          <p>AI har tagit fram kompletta egna förslag. Jämför med nuvarande text, redigera och kopiera in det du vill behålla. Inget skrivs över förrän du väljer.</p>
-        </div>
-        <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
-      </div>
-      <div class="ai-review-list">
-        ${items.map((item) => {
-          const klass = item.klass || { key: 'ingen', label: 'Ingen ändring' };
-          const hasCurrent = !isEmptyCurrent(item.falt, item.nuvarande);
-          const currentPreview = hasCurrent ? formatForslagPreview(item.falt, item.nuvarande) : '';
-          return `
-            <article class="ai-review-card" data-falt="${esc(item.falt)}">
-              <div class="ai-review-card-head">
-                <h5>${esc(item.etikett)}</h5>
-                <span class="ai-review-kind is-${esc(klass.key)}">${esc(klass.label)}</span>
-              </div>
-              ${item.kommentar ? `<p class="ai-review-comment">${esc(item.kommentar)}</p>` : ''}
-              ${hasCurrent ? `
-                <div class="ai-review-col">
-                  <span class="ai-review-col-label">Nuvarande</span>
-                  <pre class="ai-review-current">${esc(currentPreview)}</pre>
-                </div>
-              ` : '<p class="ai-review-ok">Fältet är tomt i dag — det här är ett tillägg.</p>'}
-              ${item.andra ? `
-                <div class="ai-review-col">
-                  <span class="ai-review-col-label">Förslag (redigerbart)</span>
-                  ${forslagEditorHtml(item)}
-                </div>
-              ` : '<p class="ai-review-ok">Ingen ändring föreslagen.</p>'}
-              <div class="ai-review-actions">
-                ${item.andra ? '<button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>' : ''}
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
-              </div>
-            </article>
-          `;
-        }).join('')}
-      </div>
-    `;
-    host._aiPoster = items;
+    const onEmpty = handlers && handlers.onEmpty;
     host.onclick = (ev) => {
       const applyBtn = ev.target.closest('[data-ai-apply]');
       const dismissBtn = ev.target.closest('[data-ai-dismiss]');
@@ -690,10 +796,89 @@
       if (applyBtn && row && onApply) {
         onApply(Object.assign({}, row, { forslag: readEditedForslag(card, row) }));
       }
-      if ((applyBtn || dismissBtn) && onDismiss) onDismiss(row);
       if (applyBtn || dismissBtn) card.remove();
-      if (!host.querySelector('.ai-review-card')) hideReview(host);
+      host._aiPoster = (host._aiPoster || []).filter((p) => host.querySelector(`[data-falt="${p.falt}"]`));
+      if ((applyBtn || dismissBtn) && onDismiss) onDismiss(row);
+      if (!host.querySelector('.ai-review-card')) {
+        hideReview(host);
+        if (onEmpty) onEmpty(host);
+      }
     };
+  }
+
+  function renderReview(host, poster, handlers) {
+    if (!host) return;
+    const items = visibleDecorated(poster, (handlers && handlers.befintligt) || {});
+    if (!items.length) {
+      hideReview(host);
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="ai-review-head">
+        <div>
+          <strong>AI:s egen analys</strong>
+          <p>AI har tagit fram kompletta egna förslag. Jämför med nuvarande text, redigera och kopiera in det du vill behålla. Inget skrivs över förrän du väljer.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
+      </div>
+      <div class="ai-review-list">
+        ${items.map(reviewCardHtml).join('')}
+      </div>
+    `;
+    host._aiPoster = items;
+    bindReviewHost(host, handlers || {});
+  }
+
+  function renderReviewByHosts(hostMap, poster, handlers) {
+    const opts = handlers || {};
+    const items = visibleDecorated(poster, opts.befintligt || {});
+    const grouped = {};
+    items.forEach((item) => {
+      const tab = tabForFalt(item.falt, opts.kind);
+      if (!grouped[tab]) grouped[tab] = [];
+      grouped[tab].push(item);
+    });
+    const map = hostMap || {};
+    Object.keys(map).forEach((tab) => {
+      const host = map[tab];
+      if (!host) return;
+      const rows = grouped[tab] || [];
+      if (!rows.length) {
+        hideReview(host);
+        return;
+      }
+      host.hidden = false;
+      host.classList.add('ai-review', 'ai-review--inline');
+      host.innerHTML = `<div class="ai-review-list">${rows.map(reviewCardHtml).join('')}</div>`;
+      host._aiPoster = rows;
+      bindReviewHost(host, {
+        onApply: opts.onApply,
+        onDismiss: opts.onDismiss,
+        onEmpty: () => {
+          if (opts.onTabCounts) {
+            const counts = {};
+            Object.keys(map).forEach((key) => {
+              const el = map[key];
+              counts[key] = el && el.querySelectorAll ? el.querySelectorAll('.ai-review-card').length : 0;
+            });
+            opts.onTabCounts(counts);
+          }
+        }
+      });
+    });
+    if (opts.onTabCounts) {
+      const counts = {};
+      Object.keys(map).forEach((key) => {
+        counts[key] = (grouped[key] || []).length;
+      });
+      opts.onTabCounts(counts);
+    }
+    return items;
+  }
+
+  function hideReviewHosts(hostMap) {
+    Object.keys(hostMap || {}).forEach((key) => hideReview(hostMap[key]));
   }
 
   const api = {
@@ -722,7 +907,14 @@
     mergeHotLists,
     hasForslag,
     renderReview,
-    hideReview
+    renderReviewByHosts,
+    hideReview,
+    hideReviewHosts,
+    tabForFalt,
+    wordDiffHtml,
+    listItemChanges,
+    itemKey,
+    TJANST_TAB_FOR_FALT
   };
 
   if (typeof module !== 'undefined' && module.exports) {
