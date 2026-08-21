@@ -77,6 +77,8 @@ const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning'
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
+  resolveByraAnalysVectorStoreId,
+  BYRA_ANALYS_KUNSKAPSBAS_RULES,
   resolveResponsesModel,
   buildResponsesPayload,
   extractResponsesText,
@@ -143,6 +145,8 @@ console.log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'SET' : 'NOT SET')
   console.log('  OPENAI_ASSISTANT_ID:', process.env.OPENAI_ASSISTANT_ID ? 'SET (används inte längre)' : 'NOT SET');
   console.log('  OPENAI_MODEL:', process.env.OPENAI_MODEL || 'gpt-4o');
   console.log('  OPENAI_VECTOR_STORE_ID:', process.env.OPENAI_VECTOR_STORE_ID ? 'SET' : 'NOT SET');
+  console.log('  OPENAI_VECTOR_STORE_ID_BYRA_S4:', process.env.OPENAI_VECTOR_STORE_ID_BYRA_S4 ? 'SET' : 'NOT SET');
+  console.log('  OPENAI_VECTOR_STORE_ID_TJANST:', process.env.OPENAI_VECTOR_STORE_ID_TJANST ? 'SET' : 'NOT SET');
 console.log('  DILISENSE_API_KEY:', process.env.DILISENSE_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_API_KEY:', process.env.MINIBOK_API_KEY ? 'SET' : 'NOT SET');
 console.log('  MINIBOK_WEBHOOK_URL:', process.env.MINIBOK_WEBHOOK_URL ? 'SET' : 'NOT SET');
@@ -1186,7 +1190,7 @@ function getAuthHeaderForInternalRequests(req) {
 /**
  * All AI i ClientFlow går via OpenAI Responses API (Assistants API stängs 26 aug 2026).
  * Modell: OPENAI_MODEL (standard gpt-4o). File_search bara när rutten skickar vectorStoreId
- * (chatt och sektion 4). Chattens threadId är conversation-id (conv_...).
+ * (chatt, sektion 4, byråns tjänster och övriga riskfaktorer). Chattens threadId är conversation-id (conv_...).
  */
 function formatOpenAIAssistantError(err, step) {
   const status = err.response && err.response.status;
@@ -20241,6 +20245,8 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
+  const byraAnalysVector = resolveByraAnalysVectorStoreId();
+  const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
 
   const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
@@ -20259,7 +20265,7 @@ REGLER:
 - tfMotivering bara när ett separat TF-hot verkligen inte är relevant. Då 2–4 tjänstespecifika meningar. Om minst ett TF-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
-${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
+${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
 Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
 Skriv INTE in byråns storlek, personal, kapacitet eller andra profiluppgifter i fältet beskrivning.
@@ -20377,6 +20383,7 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
       userPrompt,
       {
         instructions: systemPrompt,
+        vectorStoreId: byraAnalysVector,
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-byra-tjanst', user: req.user?.email || '' }
@@ -20477,6 +20484,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
   const reviewMode = AiFaltGranskning.hasExistingOvrigContent(befintligt);
   const existingBlock = AiFaltGranskning.formatOvrigExistingBlock(befintligt);
+  const byraAnalysVector = resolveByraAnalysVectorStoreId();
+  const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
@@ -20489,7 +20498,7 @@ ${existingBlock ? `\n${existingBlock}\n` : ''}
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
-${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
+${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
@@ -20545,8 +20554,11 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       openaiKey,
       prompt,
       {
-        instructions: 'Du är en AML/KYC-specialist. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.',
-        maxWaitMs: 120000,
+        instructions: byraAnalysVector
+          ? 'Du är en AML/KYC-specialist. Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.'
+          : 'Du är en AML/KYC-specialist. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.',
+        vectorStoreId: byraAnalysVector,
+        maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-ovriga-riskfaktor', user: req.user?.email || '' }
       },
