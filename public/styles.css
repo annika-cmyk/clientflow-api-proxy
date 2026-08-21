@@ -5308,7 +5308,8 @@ body.sidebar-collapsed .logout-btn {
 .risker-vald-namn { font-size: 0.88rem; font-weight: 600; color: var(--title-text); }
 .tjanst-collapsible-item { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; }
 .tjanst-collapsible-item:hover { background: var(--line); }
-.tjanst-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.tjanst-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.risk-skala-pills { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; justify-content: flex-end; }
 .tjanst-chevron { font-size: 0.75rem; color: var(--ink-3); transition: transform 0.2s; flex-shrink: 0; }
 .tjanst-collapsible-body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .risker-vald-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); margin-top: 0.9rem; margin-bottom: 0.45rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--line); }

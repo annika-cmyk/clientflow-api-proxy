@@ -6618,10 +6618,7 @@ class CustomerCardManager {
     }
 
     _renderRiskerForTyp(container, risker, linkedIds, typId) {
-        const riskBadge = (nivå) => {
-            if (!nivå) return '';
-            return this._riskPillHtml(nivå);
-        };
+        const riskBadge = (r) => this._riskSkalaPillsHtml(this._scoredFromOvrigRisk(r));
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
         const sniHogrisk = typId === 'kund' ? this._hogriskSniBranscher() : [];
@@ -6696,7 +6693,7 @@ class CustomerCardManager {
                     <div class="tjanst-collapsible-header">
                         <span class="risker-vald-namn">${r.fields['Riskfaktor'] || ''}</span>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
-                            ${r.fields['Riskbedömning'] ? riskBadge(r.fields['Riskbedömning']) : ''}
+                            ${riskBadge(r)}
                             ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
                         </div>
                     </div>
@@ -6733,7 +6730,7 @@ class CustomerCardManager {
                             <span class="risker-check-label">
                                 <span class="risker-check-top">
                                     <span class="risker-check-namn">${r.fields['Riskfaktor'] || ''}</span>
-                                    ${riskBadge(r.fields['Riskbedömning'] || '')}
+                                    ${riskBadge(r)}
                                 </span>
                                 ${r.fields['Beskrivning'] ? `<span class="risker-check-desc">${r.fields['Beskrivning']}</span>` : ''}
                             </span>
@@ -7144,6 +7141,59 @@ class CustomerCardManager {
         if (!label) return '';
         const cls = (window.RiskSkala && RiskSkala.riskPillClass(niva)) || 'risk-pill--normal';
         return `<span class="risk-pill ${cls}">${label}${withSuffix ? ' risk' : ''}</span>`;
+    }
+
+    _scoredFromTjanst(t) {
+        if (!t) return {};
+        if (window.RiskSkala && t.fields && RiskSkala.readTjanstRisk) {
+            return RiskSkala.readTjanstRisk(t.fields);
+        }
+        if (window.RiskSkala) {
+            const inherent = RiskSkala.assessRisk(t.sannolikhet, t.konsekvens);
+            const residual = RiskSkala.assessRisk(t.sannolikhetEfter, t.konsekvensEfter);
+            return {
+                level: inherent.level || this._riskLabel(t.riskbedomning) || '',
+                badge: inherent.badge || this._riskLabel(t.riskbedomning) || '',
+                residualLevel: residual.level || this._riskLabel(t.residualrisk) || '',
+                residualBadge: residual.badge || this._riskLabel(t.residualrisk) || '',
+                product: inherent.product != null ? inherent.product : t.riskProduct,
+                residualProduct: residual.product != null ? residual.product : t.residualProduct
+            };
+        }
+        return {
+            level: t.riskbedomning || '',
+            residualLevel: t.residualrisk || ''
+        };
+    }
+
+    _scoredFromOvrigRisk(r) {
+        const fields = (r && r.fields) || r || {};
+        if (window.RiskSkala && RiskSkala.readOvrigRisk) return RiskSkala.readOvrigRisk(fields);
+        return { level: fields['Riskbedömning'] || '', residualLevel: '' };
+    }
+
+    _riskSkalaPillsHtml(scored) {
+        const src = scored || {};
+        const S = window.RiskSkala;
+        const inherent = this._riskLabel(src.level);
+        const residual = this._riskLabel(src.residualLevel);
+        if (!inherent && !residual) return '';
+        const badges = S && S.listBadgeLabels ? S.listBadgeLabels(src) : {
+            inneboende: inherent ? `Inneboende risk: ${inherent}` : '',
+            residual: residual ? `Residualrisk: ${residual}` : '',
+            inneboendeTitle: '',
+            residualTitle: ''
+        };
+        const parts = [];
+        if (inherent) {
+            const cls = (S && S.riskPillClass(inherent)) || 'risk-pill--normal';
+            parts.push(`<span class="risk-pill ${cls}" title="${this._esc(badges.inneboendeTitle || badges.inneboende)}">${this._esc(badges.inneboende)}</span>`);
+        }
+        if (residual) {
+            const cls = (S && S.riskPillClass(residual)) || 'risk-pill--normal';
+            parts.push(`<span class="risk-pill ${cls}" title="${this._esc(badges.residualTitle || badges.residual)}">${this._esc(badges.residual)}</span>`);
+        }
+        return `<span class="risk-skala-pills">${parts.join('')}</span>`;
     }
 
     _riskNivaButtonsHtml(riskniva, kind) {
@@ -7981,7 +8031,8 @@ class CustomerCardManager {
         const merged = [];
         for (const arr of buckets.values()) {
             arr.sort((a, b) => {
-                const dr = this._tjanstRiskRank(b.riskbedomning) - this._tjanstRiskRank(a.riskbedomning);
+                const dr = this._tjanstRiskRank(b.residualrisk || b.riskbedomning)
+                    - this._tjanstRiskRank(a.residualrisk || a.riskbedomning);
                 if (dr !== 0) return dr;
                 return String(a.id).localeCompare(String(b.id));
             });
@@ -8127,10 +8178,7 @@ class CustomerCardManager {
             return;
         }
 
-        const riskBadge = (nivå) => {
-            if (!nivå) return '';
-            return this._riskPillHtml(nivå);
-        };
+        const riskBadge = (t) => this._riskSkalaPillsHtml(this._scoredFromTjanst(t));
 
         // Gruppera per TJÄNSTTYP
         const grupper = {};
@@ -8154,7 +8202,7 @@ class CustomerCardManager {
                     <div class="tjanst-collapsible-header">
                         <span class="risker-vald-namn">${this._esc(t.namn)}</span>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
-                            ${t.riskbedomning ? riskBadge(t.riskbedomning) : ''}
+                            ${riskBadge(t)}
                             ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
                         </div>
                     </div>
@@ -8176,7 +8224,7 @@ class CustomerCardManager {
                         <span class="risker-check-label">
                             <span class="risker-check-top">
                                 <span class="risker-check-namn">${this._esc(t.namn)}</span>
-                                ${riskBadge(t.riskbedomning)}
+                                ${riskBadge(t)}
                             </span>
                         </span>
                     </label>
