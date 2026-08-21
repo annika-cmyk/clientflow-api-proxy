@@ -370,6 +370,11 @@ class RiskFactorsManager {
         el.textContent = text;
         const pill = (window.RiskSkala && level) ? RiskSkala.riskPillClass(level) : '';
         el.className = 'tjanst-risk-badge' + (pill ? ` ${pill}` : ' is-empty');
+        if (id.indexOf('residual') !== -1) {
+            el.title = (window.RiskSkala && RiskSkala.RESIDUAL_BEGREPP) || '';
+        } else {
+            el.title = (window.RiskSkala && RiskSkala.INNEBOENDE_BEGREPP) || '';
+        }
     }
 
     updateRiskBadges(mode) {
@@ -423,6 +428,12 @@ class RiskFactorsManager {
         const riskLevelClass = this.getRiskLevelClass(riskLevel);
         const residualLevel = scored.residualLevel || '';
         const residualClass = residualLevel ? this.getRiskLevelClass(residualLevel) : '';
+        const badges = (window.RiskSkala && RiskSkala.listBadgeLabels(scored)) || {
+            inneboende: scored.badge || riskLevel,
+            residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : '',
+            inneboendeTitle: '',
+            residualTitle: ''
+        };
         const isChecked = risk.fields['Aktuell'] === true;
         const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
         const riskFactor = risk.fields['Riskfaktor'] || '';
@@ -441,8 +452,8 @@ class RiskFactorsManager {
                         <div class="risk-item-info">
                             <h4 class="risk-task-name">${riskFactor} ${tfTag}</h4>
                             <div class="risk-meta-info">
-                                <span class="risk-level-badge ${riskLevelClass}">${scored.badge || riskLevel}</span>
-                                ${residualLevel ? `<span class="risk-level-badge ${residualClass}">Residual ${scored.residualBadge}</span>` : ''}
+                                <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
+                                ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
                                 ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
                             </div>
                         </div>
@@ -493,6 +504,15 @@ class RiskFactorsManager {
                 </div>
             </div>
         `;
+    }
+
+    esc(text) {
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     formatDescription(text) {

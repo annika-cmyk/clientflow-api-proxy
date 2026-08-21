@@ -239,14 +239,34 @@
         };
     }
 
+    var INNEBOENDE_BEGREPP =
+        'Inneboende risk är risken i tjänsten eller faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).';
+    var RESIDUAL_BEGREPP =
+        'Residualrisk är risken som är kvar efter åtgärderna. Den räknas också som S×K, men med sannolikhet och konsekvens när åtgärderna är på plats.';
+
     function formatInneboendeBadge(assessment) {
         if (!assessment || !assessment.level) return 'Inneboende risk: Ej satt';
-        return 'Inneboende risk: ' + assessment.badge;
+        return 'Inneboende risk: ' + (assessment.badge || assessment.level);
     }
 
     function formatResidualBadge(assessment) {
         if (!assessment || !assessment.level) return 'Residualrisk: Ej satt';
-        return 'Residualrisk: ' + assessment.badge;
+        return 'Residualrisk: ' + (assessment.badge || assessment.level);
+    }
+
+    function listBadgeLabels(scored) {
+        var residualLevel = scored && scored.residualLevel;
+        return {
+            inneboende: formatInneboendeBadge(scored),
+            residual: residualLevel
+                ? formatResidualBadge({
+                    level: residualLevel,
+                    badge: scored.residualBadge
+                })
+                : '',
+            inneboendeTitle: INNEBOENDE_BEGREPP,
+            residualTitle: RESIDUAL_BEGREPP
+        };
     }
 
     function scoresFromLegacyLevel(raw) {
@@ -455,8 +475,11 @@
         toScore: toScore,
         levelFromProduct: levelFromProduct,
         assessRisk: assessRisk,
+        INNEBOENDE_BEGREPP: INNEBOENDE_BEGREPP,
+        RESIDUAL_BEGREPP: RESIDUAL_BEGREPP,
         formatInneboendeBadge: formatInneboendeBadge,
         formatResidualBadge: formatResidualBadge,
+        listBadgeLabels: listBadgeLabels,
         scoresFromLegacyLevel: scoresFromLegacyLevel,
         scoreOptionHtml: scoreOptionHtml,
         parseRiskPoang: parseRiskPoang,

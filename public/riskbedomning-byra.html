@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260821d">
+    <link rel="stylesheet" href="styles.css?v=20260821f">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -38,6 +38,10 @@
                             <p>
                                 Syftet är att skydda både byrån och kunden – och att följa lagens krav på riskbaserat arbetssätt.
                             </p>
+                            <div class="risk-begrepp">
+                                <p><strong>Inneboende risk</strong> är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K). På listan är det den första brickan, märkt Inneboende risk.</p>
+                                <p><strong>Residualrisk</strong> är risken som är kvar efter åtgärderna. Den räknas också som S×K, men med sannolikhet och konsekvens när åtgärderna är på plats. På listan är det den andra brickan, märkt Residualrisk.</p>
+                            </div>
                             <p class="risk-header-note">
                                 <strong>Observera:</strong> ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns ansvar att anpassa
                                 och komplettera innehållet utifrån sin egen verksamhet. Inga digitala verktyg eller mallar kan garantera att alla
@@ -122,7 +126,7 @@
                     <div class="modal-header">
                         <div>
                             <h3 id="tjanst-modal-title">Lägg till tjänst</h3>
-                            <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens syns alltid. Inneboende risk räknas som S×K.</p>
+                            <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärder.</p>
                         </div>
                         <button class="modal-close" type="button" onclick="closeModal('tjanst-modal')">
                             <i class="fas fa-times"></i>
@@ -159,8 +163,9 @@
                                         <option value="5">5</option>
                                     </select>
                                 </div>
-                                <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
+                                <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status" title="Inneboende risk är risken i tjänsten i sig, innan era åtgärder. Räknas som S×K.">Inneboende risk: Ej satt</div>
                             </div>
+                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                             <button type="button" id="ai-suggest-btn" class="btn btn-ai">
                                 <i class="fas fa-wand-magic-sparkles"></i>
                                 <span class="ai-btn-label">Generera med AI</span>
@@ -225,8 +230,8 @@
                                 <div id="atgard-list" class="dyn-list"></div>
                                 <div class="tjanst-residual-bar">
                                     <div>
-                                        <p class="tjanst-residual-title">Risk efter åtgärder</p>
-                                        <p class="tjanst-panel-hint">Bedöm sannolikhet och konsekvens igen när åtgärderna ovan är på plats.</p>
+                                        <p class="tjanst-residual-title">Residualrisk (efter åtgärder)</p>
+                                        <p class="tjanst-panel-hint">Residualrisk är risken som är kvar när åtgärderna ovan är på plats. Sätt sannolikhet och konsekvens efter åtgärder — det är också S×K.</p>
                                     </div>
                                     <div class="tjanst-risk-scores tjanst-residual-scores">
                                         <div class="form-group">
@@ -289,9 +294,9 @@
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/aml-kalla.js?v=1"></script>
-    <script src="js/risk-skala.js?v=4"></script>
+    <script src="js/risk-skala.js?v=6"></script>
     <script src="js/tjanst-tf-tackning.js?v=1"></script>
     <script src="js/ai-falt-granskning.js?v=1"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=9"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=10"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Övriga riskfaktorer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260821c">
+    <link rel="stylesheet" href="styles.css?v=20260821f">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -37,6 +37,10 @@
                             <p>
                                 Syftet är att skydda både byrån och kunden – och att följa lagens krav på riskbaserat arbetssätt.
                             </p>
+                            <div class="risk-begrepp">
+                                <p><strong>Inneboende risk</strong> är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K). På listan är det den första brickan, märkt Inneboende risk.</p>
+                                <p><strong>Residualrisk</strong> är risken som är kvar efter åtgärderna. Den räknas också som S×K, men med sannolikhet och konsekvens när åtgärderna är på plats. På listan är det den andra brickan, märkt Residualrisk.</p>
+                            </div>
                             <p class="risk-header-note">
                                 <strong>Observera:</strong> ClientFlow ger stöd och mallar för riskbedömning, men det är alltid byråns ansvar att anpassa
                                 och komplettera innehållet utifrån sin egen verksamhet. Inga digitala verktyg eller mallar kan garantera att alla
@@ -119,7 +123,10 @@
             <div id="add-risk-modal" class="modal" style="display: none;">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h3>Lägg till ny riskfaktor</h3>
+                        <div>
+                            <h3>Lägg till ny riskfaktor</h3>
+                            <p class="tjanst-modal-kicker">Beskrivning, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärd.</p>
+                        </div>
                         <button class="modal-close" onclick="closeModal('add-risk-modal')">
                             <i class="fas fa-times"></i>
                         </button>
@@ -162,6 +169,7 @@
                                 </button>
                                 <div id="add-ai-review" class="ai-review" hidden></div>
                             </div>
+                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                             <div class="tjanst-risk-scores">
                                 <div class="form-group">
                                     <label for="sannolikhet">Sannolikhet (1–5)</label>
@@ -190,6 +198,7 @@
                         </section>
                         <section class="risk-sxk-section">
                             <h4>Residualrisk (efter åtgärd)</h4>
+                            <p class="tjanst-panel-hint">Residualrisk är risken som är kvar när åtgärden är på plats. Sätt sannolikhet och konsekvens efter åtgärd — det är också S×K.</p>
                             <div class="form-group">
                                 <label for="action">Åtgärd *</label>
                                 <p class="tjanst-panel-hint">Byråns kontroller, rutiner och åtgärder. Hör hit — inte i beskrivningen.</p>
@@ -238,7 +247,10 @@
             <div id="edit-risk-modal" class="modal" style="display: none;">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h3>Redigera riskfaktor</h3>
+                        <div>
+                            <h3>Redigera riskfaktor</h3>
+                            <p class="tjanst-modal-kicker">Beskrivning, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärd.</p>
+                        </div>
                         <button class="modal-close" onclick="closeModal('edit-risk-modal')">
                             <i class="fas fa-times"></i>
                         </button>
@@ -282,6 +294,7 @@
                                 </button>
                                 <div id="edit-ai-review" class="ai-review" hidden></div>
                             </div>
+                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                             <div class="tjanst-risk-scores">
                                 <div class="form-group">
                                     <label for="edit-sannolikhet">Sannolikhet (1–5)</label>
@@ -311,6 +324,7 @@
                         </section>
                         <section class="risk-sxk-section">
                             <h4>Residualrisk (efter åtgärd)</h4>
+                            <p class="tjanst-panel-hint">Residualrisk är risken som är kvar när åtgärden är på plats. Sätt sannolikhet och konsekvens efter åtgärd — det är också S×K.</p>
                             <div class="form-group">
                                 <label for="edit-action">Åtgärd *</label>
                                 <p class="tjanst-panel-hint">Byråns kontroller, rutiner och åtgärder. Hör hit — inte i beskrivningen.</p>
@@ -370,8 +384,8 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
-    <script src="js/risk-skala.js?v=3"></script>
+    <script src="js/risk-skala.js?v=6"></script>
     <script src="js/ai-falt-granskning.js?v=1"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=4"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=5"></script>
 </body>
 </html>

@@ -289,6 +289,12 @@ class RiskAssessmentManager {
         const riskLevelClass = this.getRiskLevelClass(riskLevel);
         const residualLevel = scored.residualLevel || '';
         const residualClass = residualLevel ? this.getRiskLevelClass(residualLevel) : '';
+        const badges = (window.RiskSkala && RiskSkala.listBadgeLabels(scored)) || {
+            inneboende: scored.badge || riskLevel,
+            residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : '',
+            inneboendeTitle: '',
+            residualTitle: ''
+        };
         const isChecked = f['Aktuell'] === true;
         const taskName = f['Task Name'] || 'Namnlös tjänst';
 
@@ -401,8 +407,8 @@ class RiskAssessmentManager {
                         <div class="risk-item-info">
                             <h4 class="risk-task-name">${this.esc(taskName)}</h4>
                             <div class="risk-meta-info">
-                                <span class="risk-level-badge ${riskLevelClass}">${this.esc(scored.badge || riskLevel)}</span>
-                                ${residualLevel ? `<span class="risk-level-badge ${residualClass}">Residual ${this.esc(scored.residualBadge)}</span>` : ''}
+                                <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
+                                ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
                                 ${(window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(f)) ? '<span class="tf-missing-pill"><span class="tf-missing-dot" aria-hidden="true"></span>TF saknas</span>' : ''}
                             </div>
                         </div>
@@ -764,6 +770,11 @@ class RiskAssessmentManager {
         el.textContent = text;
         const pill = (window.RiskSkala && level) ? RiskSkala.riskPillClass(level) : '';
         el.className = 'tjanst-risk-badge' + (pill ? ` ${pill}` : ' is-empty');
+        if (id.indexOf('residual') !== -1) {
+            el.title = (window.RiskSkala && RiskSkala.RESIDUAL_BEGREPP) || '';
+        } else {
+            el.title = (window.RiskSkala && RiskSkala.INNEBOENDE_BEGREPP) || '';
+        }
     }
 
     updateRiskBadges() {
