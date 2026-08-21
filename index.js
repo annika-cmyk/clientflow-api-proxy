@@ -78,7 +78,7 @@ const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
 const AmlKalla = require('./public/js/aml-kalla');
 const AtgardKonkret = require('./public/js/atgard-konkret');
 const HotAmlTf = require('./public/js/hot-aml-tf');
-const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
+const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord, sortOvriga } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
@@ -5155,15 +5155,22 @@ async function fetchAirtableByByraId(table, byraId, token, baseId) {
   return records;
 }
 
-async function compiledIdentifieradeForByra(byraId, token, baseId) {
+async function identifieradeRiskerForByra(byraId, token, baseId) {
   const [tjanstRecs, ovrigaRecs] = await Promise.all([
     fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId),
     fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId)
   ]);
-  return compileIdentifieradeRisker({
-    tjanster: tjanstRecs.map(mapByraTjanstRecord).filter((t) => t.namn),
-    ovriga: ovrigaRecs.map(mapOvrigRiskRecord).filter((r) => r.namn || r.beskrivning)
-  });
+  const tjanster = tjanstRecs.map(mapByraTjanstRecord).filter((t) => t.namn);
+  const ovriga = sortOvriga(ovrigaRecs.map(mapOvrigRiskRecord).filter((r) => r.namn || r.beskrivning));
+  return {
+    tjanster,
+    ovriga,
+    compiled: compileIdentifieradeRisker({ tjanster, ovriga })
+  };
+}
+
+async function compiledIdentifieradeForByra(byraId, token, baseId) {
+  return (await identifieradeRiskerForByra(byraId, token, baseId)).compiled;
 }
 
 function isAirtableRecordIdStr(s) {
@@ -10967,8 +10974,11 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     const riskKey = '4. Identifierade Risker och Sårbarheter';
     const referral = referralIdentifieradeRisker();
     let compiledRisker = '';
+    let identifieradeSource = { tjanster: [], ovriga: [] };
     try {
-      compiledRisker = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
+      const live = await identifieradeRiskerForByra(byraId, airtableAccessToken, airtableBaseId);
+      compiledRisker = live.compiled;
+      identifieradeSource = { tjanster: live.tjanster, ovriga: live.ovriga };
       const stored = typeof record.fields[riskKey] === 'string' ? record.fields[riskKey] : '';
       // Behåll kompilerad text i Airtable för Minibok/integrationer, men formuläret får bara hänvisningen.
       if (compiledRisker && compiledRisker !== stored) {
@@ -10993,7 +11003,8 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
       fields,
       id: record.id,
       identifieradeRiskerLive: true,
-      identifieradeRiskerCompiled: compiledRisker
+      identifieradeRiskerCompiled: compiledRisker,
+      identifieradeRiskerSource: identifieradeSource
     });
   } catch (error) {
     console.error('❌ GET /api/byra-rutiner:', error.response?.data || error.message);

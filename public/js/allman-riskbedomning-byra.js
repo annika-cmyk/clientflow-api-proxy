@@ -448,6 +448,10 @@
       initPreviews(canEdit);
       initCards(canEdit);
       initCardSaveButtons(canEdit);
+      var live = getEl('identifierade-risker-live');
+      if (live && window.IdentifieradeRiskerView) {
+        IdentifieradeRiskerView.mount(live, data.identifieradeRiskerSource || { tjanster: [], ovriga: [] });
+      }
       if (content) content.style.display = 'block';
       var headerActions = getEl('allman-risk-header-actions');
       if (headerActions) headerActions.style.display = 'flex';

@@ -12393,6 +12393,32 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     max-height: 6000px;
 }
 
+.identifierade-live {
+    margin-top: 1rem;
+}
+.identifierade-group-title {
+    margin: 1.25rem 0 0.65rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--title-text);
+}
+.identifierade-kort .identifierade-group-title:first-child {
+    margin-top: 0;
+}
+.identifierade-empty {
+    margin: 0.5rem 0 0;
+    color: var(--text);
+    line-height: 1.5;
+}
+.identifierade-live .risk-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.identifierade-live .risk-item-footer {
+    justify-content: flex-start;
+}
+
 /* Generella taggar */
 .tag {
     display: inline-block;

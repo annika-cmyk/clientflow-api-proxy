@@ -297,24 +297,35 @@
       const compiledIdentifierade = typeof data.identifieradeRiskerCompiled === 'string'
         ? data.identifieradeRiskerCompiled
         : '';
+      const identifieradeSource = data.identifieradeRiskerSource && typeof data.identifieradeRiskerSource === 'object'
+        ? data.identifieradeRiskerSource
+        : null;
       const html = [];
       for (const { key, label } of LABELS) {
-        const val = key === '4. Identifierade Risker och Sårbarheter' && compiledIdentifierade
-          ? compiledIdentifierade
-          : getField(fields, key);
         if (key === 'Antal anställda' || key === 'Omsättning' || key === 'Antal kundföretag') {
           continue; // visas tillsammans
         }
         if (key === 'Uppdaterad datum') {
+          const val = getField(fields, key);
           html.push(statData
             ? renderStatistikSection(statData)
             : '<div class="dokumentation-field dokumentation-statistik"><strong>Statistik för riskbedömning</strong><div class="dokumentation-value"><p class="section-desc" style="color:#94a3b8;">Kunde inte ladda statistiken.</p></div></div>');
           html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
           continue;
         }
+        if (key === '4. Identifierade Risker och Sårbarheter') {
+          const View = window.IdentifieradeRiskerView;
+          const cards = View && identifieradeSource ? View.render(identifieradeSource) : '';
+          const body = cards || (compiledIdentifierade ? markdownToHtml(compiledIdentifierade) : '—');
+          html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value identifierade-live">${body}</div></div>`);
+          continue;
+        }
+        const val = getField(fields, key);
         html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? markdownToHtml(val) : '—'}</div></div>`);
       }
       getEl('riskbedomning-view').innerHTML = html.join('');
+      const live = getEl('riskbedomning-view').querySelector('.identifierade-live');
+      if (live && window.IdentifieradeRiskerView) IdentifieradeRiskerView.bind(live);
     } catch (err) {
       console.error('Dokumentation load:', err);
       getEl('riskbedomning-view').innerHTML = '<p class="section-desc" style="color:#94a3b8;">Kunde inte ladda riskbedömningen.</p>';
