@@ -28,9 +28,8 @@
         const manual = fields['Flik klar - Riskbedömning'];
         if (manual === true) return true;
         if (manual === false) return false;
-        const inneboende = (fields['Kund inneboende riskprofil'] || '').toString().trim();
         const residual = (fields['Riskniva'] || fields['sammanlagd risk'] || '').toString().trim();
-        return !!(inneboende && residual);
+        return !!residual;
     }
 
     function isKycFormularKlar(fields, savedKyc) {

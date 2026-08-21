@@ -1784,8 +1784,8 @@ async function buildAiChatKundContext(customerId, reqUser) {
       `Omsättning: ${f['Omsättning'] || '–'}`,
       `SNI/bransch: ${arr(f['SNI kod'] || f['SNI-koder'] || f['SNI-kod'] || f['SNI-bransch'] || f['Bransch']) || '–'}`,
       `Tjänster: ${tjanster.length ? tjanster.join('; ') : '–'}`,
-      `Inneboende riskprofil: ${f['Kund inneboende riskprofil'] || '–'}`,
-      `Residual riskprofil: ${f['Riskniva'] || f['sammanlagd risk'] || '–'}`,
+      `Bedömd residual: ${f['Riskniva'] || f['sammanlagd risk'] || '–'}`,
+      `Beräknad residual: ${f['Kund föreslagen nivå'] || '–'}`,
       `Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}`,
       `Internationell handel (KYC): ${kyc.internationellHandel || '–'}`,
       `PEP-status: ${arr(f['PEP']) || '–'}`,
@@ -2423,7 +2423,7 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   {
     name: 'Kund inneboende riskprofil',
     type: 'singleSelect',
-    description: 'Explicit vald inneboende kundriskprofil (Låg–Oacceptabel). Inte S×K.',
+    description: 'Historiskt fält. Inneboende kundprofil används inte längre — värdet arkiveras i audit-loggen.',
     options: {
       choices: [
         { name: 'Låg' },
@@ -6136,6 +6136,14 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
     } catch (e) {
       console.warn('⚠️ Kunde inte beräkna föreslagen kundnivå vid GET:', e.message);
     }
+    actorForRequest(req, userData).then((actor) => auditHooks.logInneboendeArchived({
+      write: writeAuditEvent,
+      service: getAuditService(),
+      actor: actor || auditLog.SYSTEM_ACTORS.system,
+      byraId: (customerRecord.fields && customerRecord.fields['Byrå ID']) || userData.byraId || '',
+      customerId: customerRecord.id,
+      fields: customerRecord.fields || {}
+    })).catch((err) => console.warn('audit-log inneboende-arkiv GET:', err.message));
 
     const duration = Date.now() - startTime;
 
@@ -6461,6 +6469,14 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const aiAudit = req.body && req.body.aiAudit;
     actorForRequest(req, userData).then(async (actor) => {
       const byraId = afterFields['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || userData.byraId || '';
+      await auditHooks.logInneboendeArchived({
+        write: writeAuditEvent,
+        service: getAuditService(),
+        actor: actor || auditLog.SYSTEM_ACTORS.system,
+        byraId,
+        customerId: id,
+        fields: customerRecord.fields || {}
+      });
       await auditHooks.logCustomerRiskChange({
         write: writeAuditEvent,
         actor,
@@ -6981,9 +6997,9 @@ function buildKundRiskbedomningPdfHtml(data) {
 
       <h2>Kundens riskprofil</h2>
       <p>
-        <span class="niva niva-${data.inneboendeClass || 'normal'}">Inneboende ${esc(data.inneboendeLabel || 'Ej vald')}</span>
-        <span class="niva niva-${data.residualClass || data.nivaClass}" style="margin-left:8px;">Residual ${esc(data.residualLabel || data.nivaLabel || 'Ej vald')}</span>
+        <span class="niva niva-${data.residualClass || data.nivaClass}">Residual ${esc(data.residualLabel || data.nivaLabel || 'Ej vald')}</span>
       </p>
+      ${data.foreslagenLabel ? `<p>Beräknad residual risk: ${esc(data.foreslagenLabel)}${data.foreslagenDrivande ? `, drivs av: ${esc(data.foreslagenDrivande)}` : ''}</p>` : ''}
 
       ${data.motivering ? section('Motivering', nl2br(data.motivering)) : ''}
 
@@ -7183,11 +7199,13 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const nivaCanon = RiskSkala.riskLabelSv(sammanlagdRisk);
     const nivaLabel = nivaCanon ? `${nivaCanon} risk` : (sammanlagdRisk || 'Ej angiven');
     const nivaClass = RiskSkala.riskCss(sammanlagdRisk);
-    const inneboendeRaw = f['Kund inneboende riskprofil'] || '';
-    const inneboendeLabel = RiskSkala.riskLabelSv(inneboendeRaw) || inneboendeRaw || 'Ej vald';
-    const inneboendeClass = RiskSkala.riskCss(inneboendeRaw) || 'normal';
     const residualLabel = nivaCanon || 'Ej vald';
     const residualClass = nivaClass || 'normal';
+    const foreslagenRaw = f['Kund föreslagen nivå'] || '';
+    const foreslagenLabel = RiskSkala.riskLabelSv(foreslagenRaw) || foreslagenRaw || '';
+    const foreslagenDrivande = String(f['Kund föreslagen drivande faktor'] || '')
+      .replace(/^(riskfaktor|tjänst):\s*/i, '')
+      .replace(/\s*\(residual\s*S×K\s*(\d+)\)\s*$/i, ' (S×K $1)');
 
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
     const {
@@ -7282,7 +7300,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const riskData = {
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
-      inneboendeLabel, inneboendeClass, residualLabel, residualClass,
+      residualLabel, residualClass, foreslagenLabel, foreslagenDrivande,
       verksamhet: pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
@@ -20038,7 +20056,6 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     if (String(transaktionerAndraLander).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
 
     const sparadRiskniva = f['Riskniva'] || '';
-    const sparadInneboende = f['Kund inneboende riskprofil'] || '';
     const sparadBedomning = (f['Byrans riskbedomning'] || '').trim();
     const sparadeAtgarder = (f['Atgarder riskbedomning'] || '').trim();
     const harSparadBedomning = sparadBedomning.length > 0 || sparadeAtgarder.length > 0;
@@ -20076,8 +20093,7 @@ Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbed
 Väg in all tillgänglig information — varje ifyllt fält och varje vald riskfaktor bidrar till helhetsbilden av kunden.
 ${harSparadBedomning ? `
 BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Använd dem som utgångspunkt men KORRIGERA allt som strider mot aktuellt underlag nedan (t.ex. påståenden om "inga internationella transaktioner" om geografiska/import-export-faktorer är valda). Behåll bara formuleringar som fortfarande stämmer.
-- Sparad inneboende riskprofil: ${sparadInneboende || '–'}
-- Sparad residual riskprofil: ${sparadRiskniva || '–'}
+- Sparad bedömd residual: ${sparadRiskniva || '–'}
 - Sparad motivering: ${sparadBedomning || '–'}
 - Sparade åtgärder: ${sparadeAtgarder || '–'}
 ` : ''}
@@ -20102,7 +20118,7 @@ Väg in detta när du bedömer kundens risk; generalisera inte från tjänster s
 ${byraValdaTjansterDetaljText}
 
 BERÄKNAD FÖRESLAGEN NIVÅ (maskinell startpunkt — CFA väljer den slutgiltiga nivån): ${foreslagenNivaText}
-- Föreslå INTE egna värden för inneboendeRiskprofil eller residualRiskprofil.
+- Föreslå INTE egna värden för residualRiskprofil eller bedömdRisk.
 - Om användaren redan avvikit: ${användarenAvviker ? 'JA — du får formulera avvikelseMotivering utifrån underlaget, inte besluta om avvikelsen.' : 'NEJ — lämna avvikelseMotivering tom.'}
 
 ${KundRiskprofil.AI_RULES}
@@ -20169,7 +20185,7 @@ FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
 - Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
 
 RISKNIVÅ — DEN BERÄKNADE STARTPUNKTEN ÄR REDAN SATT (${foreslagenNivaText}).
-- Sätt INTE inneboendeRiskprofil eller residualRiskprofil i JSON-svaret.
+- Sätt INTE residualRiskprofil eller bedömdRisk i JSON-svaret.
 - Beskriv faktorerna i riskbedomning. Avsluta inte med en nivåslutsats.
 
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
@@ -20311,7 +20327,7 @@ Svara EXAKT i detta JSON-format (inget annat):
 Utan UI-termer (kryss/bockat/markerat/flik/formulär). Hitta inte på nya fakta.
 Skriv INTE "den sammantagna riskbedömningen är [nivå]" i riskbedomning.
 Returnera EXAKT JSON: {"riskbedomning":"...","atgarder":"...","avvikelseMotivering":""}.
-Föreslå INTE inneboendeRiskprofil eller residualRiskprofil.
+Föreslå INTE residualRiskprofil eller bedömdRisk.
 
 NUVARANDE SVAR ATT FÖRBÄTTRA:
 ${clip(aiText, 4000)}

@@ -1,5 +1,5 @@
 /**
- * Lista kunder som saknar explicit vald inneboende- och/eller residualriskprofil.
+ * Lista kunder som saknar explicit vald bedömd residualrisk.
  * Gissar inte nivåer från gammal fritext — Annika sätter värdena manuellt.
  *
  * Kör: node scripts/kund-riskprofil-rapport.js
@@ -56,7 +56,6 @@ async function main() {
   const records = await fetchAll(baseId, token, tableId);
   const missing = records.map((rec) => {
     const f = rec.fields || {};
-    const inneboende = KundRiskprofil.readInneboende(f);
     const residual = KundRiskprofil.readResidual(f);
     const motivering = KundRiskprofil.readMotivering(f) || String(f.Motivering || '').trim();
     return {
@@ -64,14 +63,11 @@ async function main() {
       namn: f.Namn || f['Företagsnamn'] || '',
       orgnr: f.Orgnr || f.Organisationsnummer || '',
       byraId: f['Byrå ID'] || '',
-      inneboende: inneboende || '',
       residual: residual || '',
-      saknarInneboende: !inneboende,
       saknarResidual: !residual,
-      legacyOversyn: KundRiskprofil.needsLegacyReview(f),
       motiveringUtdrag: clip(motivering, 180)
     };
-  }).filter((row) => row.saknarInneboende || row.saknarResidual);
+  }).filter((row) => row.saknarResidual);
 
   missing.sort((a, b) => {
     const ha = isHighlight(a) ? 0 : 1;
@@ -84,7 +80,6 @@ async function main() {
     generatedAt: new Date().toISOString(),
     totaltKunder: records.length,
     saknarExplicitProfil: missing.length,
-    saknarInneboende: missing.filter((r) => r.saknarInneboende).length,
     saknarResidual: missing.filter((r) => r.saknarResidual).length,
     prioriterade: missing.filter(isHighlight),
     kunder: missing

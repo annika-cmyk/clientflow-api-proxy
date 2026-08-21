@@ -1,6 +1,6 @@
 /**
- * Kundens riskprofil: explicit vald inneboende- och residualnivå + fritextmotivering.
- * Ingen S×K-produkt — till skillnad från tjänster och övriga riskfaktorer.
+ * Kundens riskprofil: beräknad residual (startpunkt) + byråns bedömda residual.
+ * Inneboende risk sätts på tjänster/riskfaktorer, inte som ett separat kundval.
  */
 (function (global) {
   var RiskSkala = (typeof module !== 'undefined' && module.exports)
@@ -20,12 +20,13 @@
 
   var SAMMANTAGEN_RE = /den\s+sammantagna\s+riskbedömningen\s+är|sammantagen\s+riskbedömning\s+är|den\s+sammanlagda\s+risk(?:nivån|bedömningen)\s+är/i;
 
-  var AI_RULES = `KUNDENS RISKPROFIL — beräknad startpunkt + mänskligt val:
-- Föreslå INTE inneboendeRiskprofil eller residualRiskprofil. Den maskinella startpunkten är den beräknade föreslagna nivån (högsta residual-S×K bland valda tjänster och riskfaktorer).
-- residualRiskprofil och inneboendeRiskprofil är CFA:s aktiva val. Du får inte själv besluta att avvika från förslaget.
+  var AI_RULES = `KUNDENS RISKPROFIL — beräknad residual + byråns bedömda risk:
+- Föreslå INTE residualRiskprofil eller bedömdRisk. Den maskinella startpunkten är den beräknade residualnivån (högsta residual-S×K bland valda tjänster och riskfaktorer).
+- Residual/bedömd risk är CFA:s aktiva val. Du får inte själv besluta att avvika från förslaget.
+- Inneboende risk finns bara på tjänster och riskfaktorer — inte som ett separat kundval.
 - riskbedomning (motivering) ska beskriva VILKA faktorer som identifierats och VARFÖR de är riskhöjande eller risksänkande. Avsluta INTE med en sammanfattande nivåmening.
 - FÖRBJUDET i riskbedomning: "den sammantagna riskbedömningen är [nivå]", "sammanlagd risknivå är", eller liknande.
-- Om användaren redan har avvikit från den beräknade nivån: du får hjälpa till att formulera avvikelseMotivering utifrån det användaren redan skrivit. Hitta inte på en avvikelse.`;
+- Om användaren redan har avvikit från den beräknade residualen: du får hjälpa till att formulera avvikelseMotivering utifrån det användaren redan skrivit. Hitta inte på en avvikelse.`;
 
   function trimStr(v) {
     return v == null ? '' : String(v).trim();
@@ -52,12 +53,16 @@
     return labelOf(fieldStr(fields, FIELDS.RESIDUAL) || fieldStr(fields, FIELDS.RESIDUAL_LEGACY) || fieldStr(fields, 'Risknivå'));
   }
 
+  function readBedomd(fields) {
+    return readResidual(fields);
+  }
+
   function readMotivering(fields) {
     return fieldStr(fields, FIELDS.MOTIVERING);
   }
 
   function hasExplicitProfiles(fields) {
-    return !!(readInneboende(fields) && readResidual(fields));
+    return !!readResidual(fields);
   }
 
   function isPublicerbar(fields) {
@@ -67,9 +72,8 @@
     return hasExplicitProfiles(fields);
   }
 
-  function needsLegacyReview(fields) {
-    if (readInneboende(fields)) return false;
-    return !!(readResidual(fields) || readMotivering(fields) || fieldStr(fields, 'Motivering'));
+  function needsLegacyReview() {
+    return false;
   }
 
   function hasSammantagenSlutsats(text) {
@@ -89,7 +93,7 @@
 
   function slutsatsVarning(text) {
     return hasSammantagenSlutsats(text)
-      ? 'Motiveringen innehåller en sammanfattande nivåmening. Nivån ska bara väljas i fälten inneboende/residual.'
+      ? 'Motiveringen innehåller en sammanfattande nivåmening. Nivån ska bara väljas som bedömd residualrisk.'
       : '';
   }
 
@@ -310,7 +314,7 @@
   function floorWarning(residual, floor) {
     if (!floor || !floor.level || !residualBelowFloor(residual, floor.level)) return '';
     var tjanst = floor.namn ? 'tjänsten ' + floor.namn : 'en vald tjänst';
-    return 'Vald residual (' + residual + ') ligger under ' + tjanst + ' (' + floor.level + '). Det är tillåtet men ska vara ett medvetet val.';
+    return 'Bedömd residual (' + residual + ') ligger under ' + tjanst + ' (' + floor.level + '). Det är tillåtet men ska vara ett medvetet val.';
   }
 
   function normalizeAiPayload(raw, opts) {
@@ -343,6 +347,7 @@
     AI_RULES: AI_RULES,
     readInneboende: readInneboende,
     readResidual: readResidual,
+    readBedomd: readBedomd,
     readMotivering: readMotivering,
     readAtgarder: readAtgarder,
     readForeslagen: readForeslagen,
