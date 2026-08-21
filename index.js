@@ -7080,16 +7080,7 @@ function buildKundRiskbedomningPdfHtml(data) {
   const nl2br = (s) => pdfNl2br(s);
   const section = (title, body) => body ? `<h2>${title}</h2><div class="section">${body}</div>` : '';
 
-  const bulletList = (items, emptyLabel) => {
-    const list = (items || []).filter(Boolean);
-    if (!list.length) {
-      if (emptyLabel) {
-        return `<p><span class="chip chip-pos">${esc(emptyLabel)}</span></p>`;
-      }
-      return '<p>—</p>';
-    }
-    return `<ul style="margin:0;padding-left:1.2rem;">${list.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
-  };
+  const bulletList = (items, emptyLabel) => KundRiskprofil.pdfBulletList(items, emptyLabel, esc);
 
   const rf = data.riskfaktorer || {};
   const riskfaktorerHtml = `
@@ -7130,6 +7121,8 @@ function buildKundRiskbedomningPdfHtml(data) {
     .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
     .chip-neg{background:#fee2e2;color:#991b1b;}
     .chip-pos{background:#dcfce7;color:#166534;}
+    .chip-bidrar{background:#ffedd5;color:#9a3412;}
+    .sxk{color:#64748b;font-size:8pt;}
     .tjanst{margin:10px 0;padding:8px;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0;}
     .tjanst-namn{font-weight:600;}
     .tjanst-meta{font-size:8pt;color:#64748b;margin-top:4px;}
@@ -7229,14 +7222,15 @@ async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseI
   let offset = null;
   do {
     let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}?filterByFormula=${formula}`
-      + `&fields[]=Task%20Name&pageSize=100`;
+      + `&fields[]=Task%20Name&fields[]=${encodeURIComponent('Riskpoäng')}&fields[]=${encodeURIComponent('Riskbedömning')}&fields[]=${encodeURIComponent('Samspelsexempel')}&pageSize=100`;
     if (offset) url += `&offset=${offset}`;
     const r = await axios.get(url, {
       headers: { Authorization: `Bearer ${airtableAccessToken}` }
     });
     all = all.concat((r.data.records || []).map((rec) => ({
       id: rec.id,
-      namn: (rec.fields['Task Name'] || '').trim()
+      namn: (rec.fields['Task Name'] || '').trim(),
+      fields: rec.fields
     })));
     offset = r.data.offset;
   } while (offset);
@@ -7249,7 +7243,7 @@ async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseI
  */
 async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedRaw) {
   const linked = Array.isArray(linkedRaw) ? linkedRaw : [];
-  const empty = { namn: [], allowedKeys: new Set(), linkedTjanstIdSet: new Set(), allByraKeys: new Set() };
+  const empty = { namn: [], items: [], allowedKeys: new Set(), linkedTjanstIdSet: new Set(), allByraKeys: new Set() };
   if (!linked.length) return empty;
 
   const byraRowsForKeys = byraId
@@ -7272,7 +7266,14 @@ async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId
       namn.push(s);
     }
     namn.sort((a, b) => a.localeCompare(b, 'sv'));
-    return { namn, allowedKeys: new Set(namn.map(normTjanstKey)), linkedTjanstIdSet: new Set(), allByraKeys };
+    const matched = dedupedForKeys.filter((t) => namn.some((n) => normTjanstKey(n) === normTjanstKey(t.namn)));
+    return {
+      namn,
+      items: KundRiskprofil.itemsFromTjanstRecords(matched),
+      allowedKeys: new Set(namn.map(normTjanstKey)),
+      linkedTjanstIdSet: new Set(),
+      allByraKeys
+    };
   }
 
   const linkedSet = new Set(linked.filter(isAirtableRecordIdStr));
@@ -7280,7 +7281,13 @@ async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId
   const aktiv = deduped.filter((t) => (t.mergedIds || [t.id]).some((id) => linkedSet.has(id)));
   const namn = aktiv.map((t) => t.namn).filter(Boolean);
   const allowedKeys = new Set(namn.map(normTjanstKey));
-  return { namn, allowedKeys, linkedTjanstIdSet: linkedSet, allByraKeys };
+  return {
+    namn,
+    items: KundRiskprofil.itemsFromTjanstRecords(aktiv),
+    allowedKeys,
+    linkedTjanstIdSet: linkedSet,
+    allByraKeys
+  };
 }
 
 function riskPosterIsByraTjanstTemplate(riskfaktor, allowedKeys, allByraKeys) {
@@ -7355,6 +7362,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
     const {
       namn: tjansterNamn,
+      items: tjansterItems,
       allowedKeys: allowedTjanstKeys,
       linkedTjanstIdSet,
       allByraKeys
@@ -7366,14 +7374,40 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       return !allByraKeys.has(k) || allowedTjanstKeys.has(k);
     });
 
+    const katalog = await loadByraRiskhojandeKatalog(f, airtableAccessToken, airtableBaseId);
+    let extraRiskRecords = [];
+    if (KundRiskprofil.hasHogriskBranschVal(f) || KundRiskprofil.hasRiskhojandeVal(f)) {
+      extraRiskRecords = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId);
+    }
+
+    const hogriskScored = KundRiskprofil.itemsFromRiskRecords(
+      KundRiskprofil.findHogriskBranschRecords(extraRiskRecords)
+    )[0] || null;
+    const hogriskNamn = pdfRiskFactorNames(f['Kunden verkar i en högriskbransch']);
+    const riskhojNamn = pdfRiskFactorNames(filterRiskChipList(f['Riskhöjande faktorer övrigt']))
+      .map((namn) => KundRiskprofil.canonicalRiskhojandeLabel(namn));
+    const riskhojChecked = KundRiskprofil.riskhojandeVal(f);
+    const riskhojItemsByNamn = new Map(
+      KundRiskprofil.itemsFromRiskhojandeFlags(f, extraRiskRecords, katalog)
+        .map((item) => [normTjanstKey(item.namn), item])
+    );
+
     const riskfaktorer = {
-      tjanster: tjansterNamn,
+      tjanster: (tjansterItems && tjansterItems.length)
+        ? tjansterItems.map((item) => Object.assign({ namn: item.namn }, KundRiskprofil.residualDisplayOf(item)))
+        : tjansterNamn,
       geografiska: [],
-      kund: pdfRiskFactorNames(f['Kunden verkar i en högriskbransch']),
+      kund: KundRiskprofil.withSharedResidual(hogriskNamn, hogriskScored),
       distribution: [],
       verksamhet: [],
-      riskhojOvrigt: pdfRiskFactorNames(filterRiskChipList(f['Riskhöjande faktorer övrigt']))
-        .map((namn) => KundRiskprofil.canonicalRiskhojandeLabel(namn)),
+      riskhojOvrigt: riskhojNamn.map((namn) => {
+        const scored = riskhojItemsByNamn.get(normTjanstKey(namn));
+        const d = KundRiskprofil.residualDisplayOf(scored || { namn });
+        return Object.assign(d, {
+          namn,
+          markKind: KundRiskprofil.markKindForRiskhojande(namn, riskhojChecked, katalog)
+        });
+      }),
       risksankande: pdfRiskFactorNames(pdfFmtList(f['Risksänkande faktorer']))
     };
 
@@ -7398,10 +7432,11 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         if (riskfaktor.toLowerCase().includes('högriskbransch')) continue;
         const key = PDF_RISK_TYP_MAP[typ];
         if (!key) continue;
-        riskfaktorer[key].push(riskfaktor);
+        const scored = KundRiskprofil.residualDisplayOf(KundRiskprofil.itemsFromRiskRecords([rec])[0] || { namn: riskfaktor });
+        riskfaktorer[key].push(Object.assign(scored, { namn: riskfaktor }));
       }
       for (const key of ['geografiska', 'kund', 'distribution', 'verksamhet']) {
-        riskfaktorer[key].sort((a, b) => a.localeCompare(b, 'sv'));
+        riskfaktorer[key].sort((a, b) => String(a.namn || a).localeCompare(String(b.namn || b), 'sv'));
       }
     }
 

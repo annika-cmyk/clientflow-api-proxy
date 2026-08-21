@@ -7115,7 +7115,8 @@ class CustomerCardManager {
                             ? KundRiskprofil.markKindForRiskhojande(label, displayValda, this._riskhojKatalog)
                             : '';
                         const extra = kind === 'GOLV_HOG' ? ' riskf-chip--golv-hog' : (kind === 'BIDRAR_VID_KOMBINATION' ? ' riskf-chip--bidrar-golv' : '');
-                        return `<span class="${chipClass}${extra}">${this._esc(label)}</span>`;
+                        const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(label) : '';
+                        return `<span class="${chipClass}${extra}">${this._esc(label)}${residual}</span>`;
                     }).filter(Boolean).join('')}</div>`
                     : '<span class="missing-data">Inga valda</span>');
 
@@ -7134,6 +7135,7 @@ class CustomerCardManager {
                     const kind = markKind(alt);
                     const golv = kind === 'GOLV_HOG';
                     const kombi = kind === 'BIDRAR_VID_KOMBINATION';
+                    const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(alt) : '';
                     const mark = golv
                         ? '<em class="riskf-golv-mark">Hög-golv</em>'
                         : (kombi ? '<em class="riskf-bidrar-mark">Bidrar till Hög-golv</em>' : '');
@@ -7142,7 +7144,7 @@ class CustomerCardManager {
                         <input type="checkbox" name="riskf-${id}" value="${this._esc(alt)}" ${isCheckedAlt(alt) ? 'checked' : ''}
                             onchange="customerCardManager.updateRiskfaktorChips('${id}', this)">
                         <span class="tjanst-check-box"></span>
-                        <span class="tjanst-check-label">${this._esc(alt)}${mark}</span>
+                        <span class="tjanst-check-label">${this._esc(alt)}${residual}${mark}</span>
                     </label>`;
                 }).join('')}
                </div>${hint}`;
@@ -7300,6 +7302,26 @@ class CustomerCardManager {
         return KP.applyRiskhojandeGolv
             ? KP.applyRiskhojandeGolv(base, fields, this._riskhojKatalog)
             : base;
+    }
+
+    _riskhojandeResidualItem(namn) {
+        const KP = window.KundRiskprofil;
+        if (!KP || !KP.itemsFromRiskhojandeFlags) return null;
+        const items = KP.itemsFromRiskhojandeFlags(
+            { 'Riskhöjande faktorer övrigt': [namn] },
+            this._allaRisker || [],
+            this._riskhojKatalog
+        );
+        return items[0] || null;
+    }
+
+    _riskhojandeResidualMark(namn) {
+        const item = this._riskhojandeResidualItem(namn);
+        const d = window.KundRiskprofil && KundRiskprofil.residualDisplayOf
+            ? KundRiskprofil.residualDisplayOf(item)
+            : null;
+        if (!d || !d.residualLevel) return '';
+        return `<em class="riskf-residual-mark">Residual ${this._esc(d.residualLevel)}</em>`;
     }
 
     _canonicalRiskhojandeLabel(namn) {
@@ -7906,7 +7928,9 @@ class CustomerCardManager {
             const kombi = kind === 'BIDRAR_VID_KOMBINATION';
             label.classList.toggle('riskf-check-item--golv-hog', golv);
             label.classList.toggle('riskf-check-item--bidrar-golv', kombi);
-            textEl.querySelectorAll('.riskf-golv-mark, .riskf-bidrar-mark').forEach((n) => n.remove());
+            textEl.querySelectorAll('.riskf-golv-mark, .riskf-bidrar-mark, .riskf-residual-mark').forEach((n) => n.remove());
+            const residual = this._riskhojandeResidualMark(cb.value);
+            if (residual) textEl.insertAdjacentHTML('beforeend', residual);
             if (golv) textEl.insertAdjacentHTML('beforeend', '<em class="riskf-golv-mark">Hög-golv</em>');
             else if (kombi) textEl.insertAdjacentHTML('beforeend', '<em class="riskf-bidrar-mark">Bidrar till Hög-golv</em>');
         });
@@ -7980,7 +8004,8 @@ class CustomerCardManager {
                                     ? KundRiskprofil.markKindForRiskhojande(v, list, this._riskhojKatalog)
                                     : '';
                                 const extra = kind === 'GOLV_HOG' ? ' riskf-chip--golv-hog' : (kind === 'BIDRAR_VID_KOMBINATION' ? ' riskf-chip--bidrar-golv' : '');
-                                return `<span class="${cls}${extra}">${this._esc(v)}</span>`;
+                                const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(v) : '';
+                                return `<span class="${cls}${extra}">${this._esc(v)}${residual}</span>`;
                             }).join('')}</div>`
                             : '<span class="missing-data">Inga valda</span>';
                     }

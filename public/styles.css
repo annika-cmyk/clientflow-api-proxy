@@ -5267,6 +5267,7 @@ body.sidebar-collapsed .logout-btn {
 .riskf-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
 .riskf-check-item--golv-hog { border-color: #ef4444; background: #fef2f2; }
 .riskf-check-item--golv-hog:hover { background: #fee2e2; border-color: #dc2626; }
+.riskf-residual-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #334155; letter-spacing: 0.02em; }
 .riskf-golv-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #991b1b; letter-spacing: 0.02em; text-transform: uppercase; }
 .riskf-chip--golv-hog { box-shadow: inset 3px 0 0 #ef4444; }
 .riskf-check-item--bidrar-golv { border-color: #f59e0b; background: #fffbeb; }

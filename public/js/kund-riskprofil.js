@@ -383,6 +383,94 @@
     }).filter(Boolean);
   }
 
+  function residualDisplayOf(item) {
+    if (item == null) return { namn: '', residualLevel: '', residualProduct: null };
+    if (typeof item === 'string') {
+      return { namn: trimStr(item), residualLevel: '', residualProduct: null };
+    }
+    var namn = trimStr(item.namn || item.titel || item.title || item.Riskfaktor || '');
+    var product = residualProductOf(item);
+    var level = labelOf(item.residualLevel || item.residualrisk || item.residual || item.level || '');
+    if (!level && product != null && RiskSkala && RiskSkala.levelFromProduct) {
+      var mapped = RiskSkala.levelFromProduct(product);
+      level = mapped && mapped.label ? mapped.label : '';
+    }
+    return {
+      namn: namn,
+      residualLevel: level,
+      residualProduct: product
+    };
+  }
+
+  function formatPdfResidualLine(item, extraMark) {
+    var d = residualDisplayOf(item);
+    if (!d.namn) return '';
+    var parts = [];
+    if (d.residualLevel) {
+      var sxk = d.residualProduct != null && isFinite(Number(d.residualProduct))
+        ? ' (S×K ' + Number(d.residualProduct) + ')'
+        : '';
+      parts.push('Residual ' + d.residualLevel + sxk);
+    }
+    if (extraMark === RISKHOJANDE_KLASS.GOLV_HOG || (item && item.markKind === RISKHOJANDE_KLASS.GOLV_HOG)) {
+      parts.push('Hög-golv');
+    } else if (extraMark === RISKHOJANDE_KLASS.BIDRAR || (item && item.markKind === RISKHOJANDE_KLASS.BIDRAR)) {
+      parts.push('Bidrar till Hög-golv');
+    }
+    return parts.length ? d.namn + ' — ' + parts.join(' · ') : d.namn;
+  }
+
+  function pdfNivaClass(level) {
+    return (RiskSkala && RiskSkala.riskCss && RiskSkala.riskCss(level)) || 'normal';
+  }
+
+  function pdfRiskItemLi(item, esc) {
+    var escape = typeof esc === 'function' ? esc : function (s) { return String(s == null ? '' : s); };
+    var d = residualDisplayOf(item);
+    if (!d.namn) return '';
+    var mark = (item && item.markKind) || '';
+    var html = escape(d.namn);
+    if (d.residualLevel) {
+      html += ' <span class="niva niva-' + pdfNivaClass(d.residualLevel) + '">Residual ' + escape(d.residualLevel) + '</span>';
+      if (d.residualProduct != null && isFinite(Number(d.residualProduct))) {
+        html += ' <span class="sxk">S×K ' + escape(String(d.residualProduct)) + '</span>';
+      }
+    }
+    if (mark === RISKHOJANDE_KLASS.GOLV_HOG) {
+      html += ' <span class="chip chip-neg">Hög-golv</span>';
+    } else if (mark === RISKHOJANDE_KLASS.BIDRAR) {
+      html += ' <span class="chip chip-bidrar">Bidrar till Hög-golv</span>';
+    }
+    return '<li>' + html + '</li>';
+  }
+
+  function pdfBulletList(items, emptyLabel, esc) {
+    var escape = typeof esc === 'function' ? esc : function (s) { return String(s == null ? '' : s); };
+    var list = (Array.isArray(items) ? items : []).map(function (item) {
+      return typeof item === 'string' ? { namn: item } : item;
+    }).filter(function (item) {
+      return item && trimStr(item.namn);
+    });
+    if (!list.length) {
+      if (emptyLabel) return '<p><span class="chip chip-pos">' + escape(emptyLabel) + '</span></p>';
+      return '<p>—</p>';
+    }
+    return '<ul style="margin:0;padding-left:1.2rem;">' + list.map(function (item) {
+      return pdfRiskItemLi(item, escape);
+    }).join('') + '</ul>';
+  }
+
+  function withSharedResidual(names, residualItem, extra) {
+    var d = residualDisplayOf(residualItem);
+    return (Array.isArray(names) ? names : []).map(function (namn) {
+      return Object.assign({
+        namn: trimStr(namn),
+        residualLevel: d.residualLevel,
+        residualProduct: d.residualProduct
+      }, extra || {});
+    }).filter(function (item) { return item.namn; });
+  }
+
   function formatDrivandeFaktor(kind, namn, product) {
     var prefix = kind === 'tjänst' ? 'tjänst' : 'riskfaktor';
     var name = trimStr(namn) || 'okänd post';
@@ -677,6 +765,11 @@
     applyRiskhojandeGolv: applyRiskhojandeGolv,
     golvSkulleHojaBedomd: golvSkulleHojaBedomd,
     itemsFromRiskhojandeFlags: itemsFromRiskhojandeFlags,
+    residualDisplayOf: residualDisplayOf,
+    formatPdfResidualLine: formatPdfResidualLine,
+    pdfRiskItemLi: pdfRiskItemLi,
+    pdfBulletList: pdfBulletList,
+    withSharedResidual: withSharedResidual,
     isIngaLabel: isIngaLabel,
     exclusiveIngaCheck: exclusiveIngaCheck,
     marksForRiskhojandeVal: marksForRiskhojandeVal,
