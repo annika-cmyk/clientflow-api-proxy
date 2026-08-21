@@ -6348,6 +6348,33 @@ body.sidebar-collapsed .logout-btn {
     padding-top: 0.75rem;
     border-top: 1px solid var(--line);
 }
+.document-drop-hint {
+    margin: 0.7rem 2.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--ink-3, #64748b);
+}
+.document-drop-hint-global {
+    margin: 0.45rem 0 0;
+    font-size: 0.8rem;
+    color: var(--ink-3, #64748b);
+}
+#dokumentation.is-drop-target .documentation-content,
+.documentation-card.is-drop-target,
+.upload-doc-drop.is-drop-target {
+    outline: 2px dashed var(--accent, #0f766e);
+    outline-offset: 2px;
+    background: rgba(15, 118, 110, 0.06);
+}
+.documentation-card.is-drop-target .document-drop-hint,
+#dokumentation.is-drop-target .document-drop-hint-global {
+    color: var(--accent, #0f766e);
+    font-weight: 600;
+}
+.upload-doc-drop {
+    border: 1px dashed var(--line, #e2e8f0);
+    border-radius: 8px;
+    padding: 0.75rem 0.85rem;
+}
 
 /* Samarbete-fliken – sektioner för mindre rörighet */
 .samarbete-section-label {

@@ -1084,6 +1084,7 @@ class CustomerCardManager {
                 this.loadAvvikelser();
                 break;
             case 'dokumentation':
+                this.bindDokumentationDrop(document.getElementById('dokumentation'));
                 this.loadDocuments();
                 break;
             case 'samarbete':
@@ -10008,12 +10009,13 @@ class CustomerCardManager {
                 ? `<ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
                 : `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
             return `
-                    <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
+                    <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc" data-doc-category="${this.escapeDocHtml(cat)}">
                         <div class="collapsible-header">
                             <div class="collapsible-title"><i class="fas ${icon}"></i> ${safeLabel}</div>
                         </div>
                         <div class="collapsible-body">
                             ${listHtml}
+                            <p class="document-drop-hint">Släpp filer här för att ladda upp till ${safeLabel}</p>
                             <button class="card-edit-fab" title="Ladda upp dokument till denna kategori" onclick="event.stopPropagation(); customerCardManager.uploadDocument('${cat}')">
                                 <i class="fas fa-pencil-alt"></i>
                             </button>
@@ -10028,8 +10030,10 @@ class CustomerCardManager {
                     <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
                         <i class="fas fa-upload"></i> Ladda upp dokument
                     </button>
+                    <p class="document-drop-hint-global">Du kan också dra filer hit, eller släppa dem på en kategori.</p>
                 </div>
             </div>`;
+        this.bindDokumentationDrop(document.getElementById('dokumentation') || content);
     }
 
     getCategoryLabel(cat) {
@@ -12474,11 +12478,81 @@ class CustomerCardManager {
         }
     }
 
+    bindDokumentationDrop(root) {
+        const dropApi = window.DokumentDrop;
+        if (!root || !dropApi || root._docDropBound) return;
+        root._docDropBound = true;
+        const clearHighlight = () => {
+            root.classList.remove('is-drop-target');
+            root.querySelectorAll('.is-drop-target').forEach((el) => el.classList.remove('is-drop-target'));
+        };
+        const highlight = (event) => {
+            if (!dropApi.hasFileDrag(event.dataTransfer)) return;
+            event.preventDefault();
+            const card = event.target.closest?.('[data-doc-category]');
+            root.classList.toggle('is-drop-target', !card);
+            root.querySelectorAll('[data-doc-category]').forEach((el) => {
+                el.classList.toggle('is-drop-target', el === card);
+            });
+        };
+        root.addEventListener('dragenter', highlight);
+        root.addEventListener('dragover', (event) => {
+            if (!dropApi.hasFileDrag(event.dataTransfer)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+            highlight(event);
+        });
+        root.addEventListener('dragleave', (event) => {
+            if (!dropApi.hasFileDrag(event.dataTransfer)) return;
+            const next = event.relatedTarget;
+            if (next && root.contains(next)) return;
+            clearHighlight();
+        });
+        root.addEventListener('drop', (event) => {
+            if (!dropApi.hasFileDrag(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            clearHighlight();
+            const { accepted, rejected } = dropApi.collectDroppedFiles(event.dataTransfer.files);
+            if (rejected.length) {
+                this.showNotification(dropApi.formatRejectedMessage(rejected), 'warning');
+            }
+            if (!accepted.length) return;
+            const category = dropApi.categoryFromDropTarget(event.target, root);
+            this.handleDroppedDocuments(accepted, category);
+        });
+    }
+
+    assignFilesToInput(input, files) {
+        if (!input) return false;
+        const list = Array.from(files || []);
+        try {
+            if (typeof DataTransfer === 'undefined') throw new Error('no DataTransfer');
+            const dt = new DataTransfer();
+            list.forEach((file) => dt.items.add(file));
+            input.files = dt.files;
+            return input.files.length === list.length;
+        } catch (_) {
+            this._pendingUploadFiles = list;
+            return false;
+        }
+    }
+
+    handleDroppedDocuments(files, category) {
+        if (category) {
+            this.closeUploadDocumentModal();
+            this.uploadDocumentFiles(files, category);
+            return;
+        }
+        this.showUploadDocumentModal(undefined, files);
+    }
+
     uploadDocument(preselectedCategory) {
         this.showUploadDocumentModal(preselectedCategory);
     }
 
-    showUploadDocumentModal(preselectedCategory) {
+    showUploadDocumentModal(preselectedCategory, presetFiles) {
+        this.closeUploadDocumentModal();
         const modalHTML = `
             <div id="upload-document-modal" class="modal-overlay">
                 <div class="modal-content modal-large">
@@ -12490,10 +12564,10 @@ class CustomerCardManager {
                     </div>
                     <div class="modal-body">
                         <form id="upload-document-form">
-                            <div class="form-group">
+                            <div class="form-group upload-doc-drop" id="upload-doc-drop">
                                 <label for="upload-doc-file">Filer *</label>
-                                <input type="file" id="upload-doc-file" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple required>
-                                <p class="bv-verksam-hint" id="upload-doc-file-hint" style="margin-top:0.4rem;">Du kan välja flera filer. Alla sparas i vald kategori.</p>
+                                <input type="file" id="upload-doc-file" name="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple>
+                                <p class="bv-verksam-hint" id="upload-doc-file-hint" style="margin-top:0.4rem;">Dra filer hit eller välj flera filer. Alla sparas i vald kategori.</p>
                                 <ul id="upload-doc-file-list" class="document-list" style="margin-top:0.5rem;"></ul>
                             </div>
                             <div class="form-group">
@@ -12530,12 +12604,48 @@ class CustomerCardManager {
         const customWrap = document.getElementById('upload-doc-custom-wrap');
         const fileInput = document.getElementById('upload-doc-file');
         const fileList = document.getElementById('upload-doc-file-list');
-        const renderFileList = () => {
+        const dropZone = document.getElementById('upload-doc-drop');
+        const renderFileList = (files) => {
             if (!fileList) return;
-            const files = Array.from(fileInput?.files || []);
-            fileList.innerHTML = files.map((f) => `<li class="document-list-item">${this.escapeDocHtml(f.name)}</li>`).join('');
+            const list = Array.from(files || fileInput?.files || this._pendingUploadFiles || []);
+            fileList.innerHTML = list.map((f) => `<li class="document-list-item">${this.escapeDocHtml(f.name)}</li>`).join('');
         };
-        if (fileInput) fileInput.addEventListener('change', renderFileList);
+        const applyFiles = (files) => {
+            const dropApi = window.DokumentDrop;
+            const collected = dropApi ? dropApi.collectDroppedFiles(files) : { accepted: Array.from(files || []), rejected: [] };
+            if (collected.rejected.length && dropApi) {
+                this.showNotification(dropApi.formatRejectedMessage(collected.rejected), 'warning');
+            }
+            if (!collected.accepted.length) return;
+            this.assignFilesToInput(fileInput, collected.accepted);
+            renderFileList(collected.accepted);
+        };
+        if (fileInput) fileInput.addEventListener('change', () => renderFileList());
+        if (Array.isArray(presetFiles) && presetFiles.length) applyFiles(presetFiles);
+        if (dropZone) {
+            const dropApi = window.DokumentDrop;
+            dropZone.addEventListener('dragenter', (e) => {
+                if (!dropApi?.hasFileDrag(e.dataTransfer)) return;
+                e.preventDefault();
+                dropZone.classList.add('is-drop-target');
+            });
+            dropZone.addEventListener('dragover', (e) => {
+                if (!dropApi?.hasFileDrag(e.dataTransfer)) return;
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+                dropZone.classList.add('is-drop-target');
+            });
+            dropZone.addEventListener('dragleave', (e) => {
+                if (e.relatedTarget && dropZone.contains(e.relatedTarget)) return;
+                dropZone.classList.remove('is-drop-target');
+            });
+            dropZone.addEventListener('drop', (e) => {
+                if (!dropApi?.hasFileDrag(e.dataTransfer)) return;
+                e.preventDefault();
+                dropZone.classList.remove('is-drop-target');
+                applyFiles(e.dataTransfer.files);
+            });
+        }
         if (catSelect && customWrap) {
             if (preselectedCategory && catSelect.querySelector(`option[value="${preselectedCategory}"]`)) {
                 catSelect.value = preselectedCategory;
@@ -12563,23 +12673,32 @@ class CustomerCardManager {
         const categorySelect = document.getElementById('upload-doc-category');
         const customInput = document.getElementById('upload-doc-custom');
         const submitBtn = document.getElementById('upload-doc-submit');
-        if (!fileInput?.files?.length || !categorySelect) return;
-        const files = Array.from(fileInput.files);
-        const category = categorySelect.value;
-        const customCategory = (customInput?.value || '').trim();
+        const files = (fileInput?.files?.length ? Array.from(fileInput.files) : (this._pendingUploadFiles || []));
+        if (!files.length || !categorySelect) {
+            this.showNotification('Välj minst en fil att ladda upp.', 'error');
+            return;
+        }
+        await this.uploadDocumentFiles(files, categorySelect.value, (customInput?.value || '').trim(), { submitBtn });
+    }
+
+    async uploadDocumentFiles(files, category, customCategory, { submitBtn } = {}) {
+        const list = Array.from(files || []);
+        if (!list.length || !category) return;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        this._pendingUploadFiles = null;
+        this.showNotification(list.length === 1 ? `Laddar upp ${list[0].name}...` : `Laddar upp ${list.length} dokument...`, 'info');
 
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp 1/${files.length}...`;
+            submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp 1/${list.length}...`;
         }
         const errors = [];
         let uploaded = 0;
         try {
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
+            for (let i = 0; i < list.length; i++) {
+                const file = list[i];
                 if (submitBtn) {
-                    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp ${i + 1}/${files.length}...`;
+                    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Laddar upp ${i + 1}/${list.length}...`;
                 }
                 try {
                     const base64 = await this.fileToBase64(file);
@@ -12617,7 +12736,7 @@ class CustomerCardManager {
         } catch (err) {
             this.showNotification('Kunde inte ladda upp: ' + (err.message || 'Okänt fel'), 'error');
         } finally {
-            const btn = document.getElementById('upload-doc-submit');
+            const btn = submitBtn || document.getElementById('upload-doc-submit');
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-upload"></i> Ladda upp';
