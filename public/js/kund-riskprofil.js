@@ -129,6 +129,8 @@
 
   var RISKHOJANDE_DEFAULT_PRODUCT = 12;
   var RISKHOJANDE_GOLV_PRODUCT = 16;
+  var STRUKTUR_FORHOJD_MIN = 10;
+  var OACCEPTABEL_GOLV_PRODUCT = 20;
   var RISKHOJANDE_KLASS = {
     GOLV_HOG: 'GOLV_HOG',
     BIDRAR: 'BIDRAR_VID_KOMBINATION',
@@ -234,11 +236,76 @@
     return null;
   }
 
-  function applyRiskhojandeGolv(result, fields, katalog) {
+  function isRiskhojandeFlagItem(item) {
+    return !!(item && item.source === 'riskhojande');
+  }
+
+  function struktureradeForhojda(poster, fields) {
+    var flagNames = {};
+    riskhojandeVal(fields).forEach(function (namn) {
+      flagNames[foldNamn(namn)] = true;
+    });
+    return (Array.isArray(poster) ? poster : []).filter(function (item) {
+      if (!item || isRiskhojandeFlagItem(item)) return false;
+      var namn = foldNamn(item.namn);
+      if (namn && flagNames[namn]) return false;
+      var product = residualProductOf(item);
+      if (product != null && isFinite(product)) return product >= STRUKTUR_FORHOJD_MIN;
+      return rankOf(item.residualLevel || item.level || '') >= 3;
+    });
+  }
+
+  function joinSvOch(names) {
+    var list = (names || []).map(trimStr).filter(Boolean);
+    if (!list.length) return 'okända poster';
+    if (list.length === 1) return list[0];
+    if (list.length === 2) return list[0] + ' och ' + list[1];
+    return list.slice(0, -1).join(', ') + ' och ' + list[list.length - 1];
+  }
+
+  function formatOacceptabelDrivande(hogGolv, struktur) {
+    var tagg = trimStr(hogGolv && hogGolv.namn) || 'varningstecken';
+    var poster = joinSvOch((struktur || []).map(function (item) { return item.namn; }));
+    return 'Golv Oacceptabel: ' + tagg + ' kombinerat med förhöjd/hög risk i ' + poster;
+  }
+
+  function applyOacceptabelGolv(result, fields) {
+    var base = result || { niva: '', product: null, drivandeFaktor: '', drivande: null, poster: [] };
+    var hog = base.golv;
+    if (!hog || hog.niva !== 'Hög') return base;
+    var struktur = struktureradeForhojda(base.poster, fields);
+    if (struktur.length < 2) return base;
+    var golv = {
+      niva: 'Oacceptabel',
+      product: OACCEPTABEL_GOLV_PRODUCT,
+      namn: hog.namn,
+      drivandeFaktor: formatOacceptabelDrivande(hog, struktur),
+      kalla: (hog.kalla || []).concat(struktur.map(function (item) { return item.namn; })),
+      skikt: 'OACCEPTABEL',
+      struktur: struktur
+    };
+    if (rankOf(base.niva) > rankOf(golv.niva)) {
+      return Object.assign({}, base, { golv: golv, hogGolv: hog });
+    }
+    return {
+      niva: golv.niva,
+      product: Math.max(Number(base.product) || 0, golv.product),
+      drivandeFaktor: golv.drivandeFaktor,
+      drivande: { kind: 'riskfaktor', namn: golv.namn, product: golv.product, level: golv.niva },
+      poster: base.poster || [],
+      golv: golv,
+      hogGolv: hog
+    };
+  }
+
+  function applyHogGolv(result, fields, katalog) {
     var base = result || { niva: '', product: null, drivandeFaktor: '', drivande: null, poster: [] };
     var golv = beraknaRiskhojandeGolv(fields, katalog);
     if (!golv) return base;
-    if (rankOf(base.niva) > rankOf(golv.niva)) return base;
+    golv.skikt = 'HOG';
+    if (rankOf(base.niva) > rankOf(golv.niva)) {
+      return Object.assign({}, base, { golv: golv });
+    }
     return {
       niva: golv.niva,
       product: Math.max(Number(base.product) || 0, golv.product),
@@ -249,15 +316,35 @@
     };
   }
 
-  function golvSkulleHojaBedomd(fields, katalog) {
-    var golv = beraknaRiskhojandeGolv(fields, katalog);
-    if (!golv) return null;
+  function applyRiskhojandeGolv(result, fields, katalog) {
+    return applyOacceptabelGolv(applyHogGolv(result, fields, katalog), fields);
+  }
+
+  function golvSkulleHojaBedomd(fields, katalog, opts) {
+    var base = (opts && opts.base) || {
+      niva: '',
+      product: null,
+      drivandeFaktor: '',
+      drivande: null,
+      poster: (opts && opts.poster) || []
+    };
+    if (opts && (opts.tjanster || opts.riskfaktorer)) {
+      base = beraknaForeslagenNiva({
+        tjanster: opts.tjanster,
+        riskfaktorer: (opts.riskfaktorer || []).concat(
+          itemsFromRiskhojandeFlags(fields, opts.extraRecords, katalog)
+        )
+      });
+    }
+    var calc = applyRiskhojandeGolv(base, fields, katalog);
+    if (!calc.golv) return null;
     var bedomd = readResidual(fields);
-    if (!bedomd || rankOf(bedomd) < rankOf(golv.niva)) {
+    if (!bedomd || rankOf(bedomd) < rankOf(calc.niva)) {
       return {
-        golvNiva: golv.niva,
+        golvNiva: calc.niva,
         bedomd: bedomd || '',
-        drivandeFaktor: golv.drivandeFaktor
+        drivandeFaktor: calc.drivandeFaktor,
+        skikt: (calc.golv && calc.golv.skikt) || ''
       };
     }
     return null;
@@ -370,12 +457,14 @@
         var fromRec = itemsFromRiskRecords([rec])[0];
         if (fromRec && fromRec.residualProduct != null) {
           fromRec.namn = namn;
+          fromRec.source = 'riskhojande';
           return fromRec;
         }
       }
       var isGolv = klass === RISKHOJANDE_KLASS.GOLV_HOG;
       return {
         kind: 'riskfaktor',
+        source: 'riskhojande',
         namn: namn,
         residualProduct: isGolv ? RISKHOJANDE_GOLV_PRODUCT : RISKHOJANDE_DEFAULT_PRODUCT,
         residualLevel: isGolv ? 'Hög' : 'Förhöjd'
@@ -493,9 +582,12 @@
         }
         items.push({
           kind: item.kind || kind,
+          source: item.source || '',
           namn: trimStr(item.namn || item.titel || item.title || item.Riskfaktor || ''),
           product: product,
-          level: level
+          level: level,
+          residualProduct: product,
+          residualLevel: level
         });
       });
     }
@@ -752,6 +844,8 @@
     mergeHogriskBranschRisker: mergeHogriskBranschRisker,
     RISKHOJANDE_DEFAULT_PRODUCT: RISKHOJANDE_DEFAULT_PRODUCT,
     RISKHOJANDE_GOLV_PRODUCT: RISKHOJANDE_GOLV_PRODUCT,
+    STRUKTUR_FORHOJD_MIN: STRUKTUR_FORHOJD_MIN,
+    OACCEPTABEL_GOLV_PRODUCT: OACCEPTABEL_GOLV_PRODUCT,
     RISKHOJANDE_KLASS: RISKHOJANDE_KLASS,
     DEFAULT_RISKHOJANDE_KATALOG: DEFAULT_RISKHOJANDE_KATALOG,
     canonicalRiskhojandeLabel: canonicalRiskhojandeLabel,
@@ -762,7 +856,11 @@
     mergeRiskhojandeKatalog: mergeRiskhojandeKatalog,
     klassForRiskhojande: klassForRiskhojande,
     beraknaRiskhojandeGolv: beraknaRiskhojandeGolv,
+    applyHogGolv: applyHogGolv,
+    applyOacceptabelGolv: applyOacceptabelGolv,
     applyRiskhojandeGolv: applyRiskhojandeGolv,
+    struktureradeForhojda: struktureradeForhojda,
+    formatOacceptabelDrivande: formatOacceptabelDrivande,
     golvSkulleHojaBedomd: golvSkulleHojaBedomd,
     itemsFromRiskhojandeFlags: itemsFromRiskhojandeFlags,
     residualDisplayOf: residualDisplayOf,

@@ -6227,6 +6227,30 @@ body.sidebar-collapsed .logout-btn {
     white-space: pre-wrap;
     color: #78350f;
 }
+.ai-rb-golv-badge {
+    display: inline-block;
+    margin: 0 0.4rem 0.35rem 0;
+    padding: 0.18rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+.ai-rb-golv-badge--hog {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+.ai-rb-golv-badge--oacceptabel {
+    background: #3b0764;
+    color: #f5d0fe;
+    border: 1px solid #7e22ce;
+}
+.ai-rb-title-badges .ai-rb-golv-badge {
+    margin: 0 0 0 0.4rem;
+}
 .ai-rb-floor-warn,
 .ai-rb-slutsats-warn {
     margin: 0.4rem 0 0.75rem;

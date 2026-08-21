@@ -6828,6 +6828,53 @@ app.get('/api/kund-riskprofil/riskhojande-golv-rapport', authenticateToken, asyn
   }
 });
 
+app.get('/api/kund-riskprofil/oacceptabel-golv-rapport', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const byraKatalog = await loadByraRiskhojandeKatalog(
+      { 'Byrå ID': userData.byraId || '' },
+      airtableAccessToken,
+      airtableBaseId
+    );
+    const flagged = records.filter((rec) => KundRiskprofil.beraknaRiskhojandeGolv(rec.fields || {}, byraKatalog));
+    const kunder = [];
+    for (const rec of flagged) {
+      const f = rec.fields || {};
+      // eslint-disable-next-line no-await-in-loop
+      const calc = await computeKundForeslagen(f, airtableAccessToken, airtableBaseId);
+      if (!calc.golv || calc.golv.skikt !== 'OACCEPTABEL') continue;
+      const bedomd = KundRiskprofil.readResidual(f);
+      kunder.push({
+        id: rec.id,
+        namn: f.Namn || f['Företagsnamn'] || '',
+        orgnr: f.Orgnr || f.Organisationsnummer || '',
+        bedomd,
+        foreslagen: calc.niva,
+        drivandeFaktor: calc.drivandeFaktor,
+        avviker: KundRiskprofil.residualAvvikerFranForeslagen(bedomd, calc.niva),
+        flaggor: KundRiskprofil.riskhojandeVal(f)
+      });
+    }
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      antal: kunder.length,
+      granskadeMedHogGolv: flagged.length,
+      kunder
+    });
+  } catch (error) {
+    console.error('GET oacceptabel-golv-rapport:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa Oacceptabel-golvrapporten' });
+  }
+});
+
 app.get('/api/riskaptit/policy', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
