@@ -422,7 +422,7 @@ class RiskFactorsManager {
         if (wrap) wrap.classList.toggle('is-vague', vague);
         if (warn) {
             warn.hidden = !vague;
-            warn.textContent = vague ? A.HINT : '';
+            warn.textContent = vague ? (check.error || A.HINT) : '';
         }
         return check;
     }

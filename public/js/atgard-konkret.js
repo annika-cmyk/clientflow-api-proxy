@@ -57,19 +57,39 @@
   }
 
   var VAGUE_RE = /\b(inför|införa|införs|öka|ökar|stärk|stärka|förbättra|se över|överväg|överväga|rekommendera|rekommenderas|bör|borde|skulle kunna|ska införas|kommer att införas|behöver införas|behöver stärkas|behöver förbättras)\b/i;
-  var IMPLEMENTED_WORD_RE = /\b(införd|införda|på plats|ingår i rutin|ingår i rutinen)\b/i;
-  var CONCRETE_VERB_RE = /\b(dokumenteras|dokumenterar|dokumentera|granskas|granskar|granska|kontrolleras|kontrollerar|kontrollera|stäms av|stämmer av|avstäms|sparas|sparar|arkiveras|arkiverar|signeras|signerar|loggas|registreras|följs upp|följer upp|utförs|utför|används|använder|förvaras|bokförs|bokför|attesteras|verifieras|matchas|görs|gör|körs|tas fram|lämnas in|informerar|informera|innehåller|övervakar|övervaka)\b/i;
-  var PLACE_RE = /\b(i|via|med)\s+\S{3,}|\b(fortnox|visma|bokslutsprogram|bokföringsprogram|bokföringsprogrammet|sie|klientmapp|klientpärm|sharepoint|bankid|kyc-flik|checklista|mall|rutin|uppdrag|körning)\b/i;
+  var IMPLEMENTED_WORD_RE = /\b(införd|införda|på plats|ingår i rutin|ingår i rutinen|har implementerat|har infört|vi har)\b/i;
+  var CONCRETE_VERB_RE = /\b(dokumenteras|dokumenterar|dokumentera|granskas|granskar|granska|kontrolleras|kontrollerar|kontrollera|stäms av|stämmer av|avstäms|sparas|sparar|arkiveras|arkiverar|signeras|signerar|loggas|registreras|följs upp|följer upp|utförs|utför|används|använder|förvaras|bokförs|bokför|attesteras|verifieras|matchas|görs|gör|körs|tas fram|lämnas in|informerar|informera|innehåller|övervakar|övervaka|implementerat|implementerar|automatiserar|automatisera)\b/i;
+  var PLACE_RE = /\b(i|via|med)\s+\S{3,}|\b(fortnox|visma|bokslutsprogram|bokföringsprogram|bokföringsprogrammet|sie|klientmapp|klientpärm|sharepoint|bankid|kyc-flik|checklista|mall|rutin|uppdrag|körning|minibok|programvara)\b/i;
   var WHO_RE = /\b(klientansvarig|redovisningskonsult|medarbetare|ansvarig|byrån|vi|vår|våra|oss)\b/i;
   var PLAN_RE = /\b(planerad|planerat|planeras|tidplan|beslutad|ska vara på plats|införs den|införs från|från den|fr\.o\.m|f\.o\.m|senast)\b/i;
   var DATE_RE = /\b(20\d{2}|q[1-4]\s*20\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|januari|februari|mars|april|juni|juli|augusti|september|oktober|november|december)\b/i;
 
+  function vagueTrigger(text) {
+    var m = normalize(text).match(VAGUE_RE);
+    return m ? m[1] : '';
+  }
+
   function isVagueIntent(text) {
     var n = normalize(text);
-    if (IMPLEMENTED_WORD_RE.test(n) && !/\b(inför|införa|införs)\b/.test(n.replace(/\b(införd|införda)\b/g, ''))) {
-      return VAGUE_RE.test(n.replace(/\b(införd|införda|på plats)\b/g, ''));
+    if (!vagueTrigger(n)) return false;
+    if (/\bför att\s+(förbättra|öka|stärka|automatisera)\b/.test(n) && IMPLEMENTED_WORD_RE.test(n)) {
+      return false;
     }
-    return VAGUE_RE.test(n);
+    if (IMPLEMENTED_WORD_RE.test(n) && !/\b(inför|införa|införs)\b/.test(n.replace(/\b(införd|införda)\b/g, ''))) {
+      return VAGUE_RE.test(n.replace(/\b(införd|införda|på plats|har implementerat|har infört|vi har)\b/g, ''));
+    }
+    return true;
+  }
+
+  function rejectMessage(titel, reason, trigger) {
+    var head = titel ? '«' + titel + '»: ' : '';
+    if (reason === 'kort') {
+      return head + 'Åtgärden är för kort. Skriv vad ni faktiskt gör, eller en plan med när, vem och var.';
+    }
+    if (trigger) {
+      return head + 'Ordet «' + trigger + '» läses som en avsikt (inför/öka/förbättra/bör), inte som något ni redan gör. Skriv vad som faktiskt görs, till exempel: «Avstämningar görs automatiskt i Minibok.»';
+    }
+    return head + SAVE_ERROR;
   }
 
   function isConcretePractice(text) {
@@ -94,15 +114,22 @@
     if (!text) return { ok: true, empty: true };
 
     if (beskrivning.length < MIN_BESKRIVNING && text.length < MIN_BESKRIVNING + 8) {
-      return { ok: false, reason: 'kort', error: SAVE_ERROR };
+      return { ok: false, reason: 'kort', error: rejectMessage(titel, 'kort', ''), titel: titel };
     }
 
     var concrete = isConcretePractice(text);
     var planned = isClearPlan(text);
     var vague = isVagueIntent(text);
+    var trigger = vagueTrigger(text);
 
     if (vague && !concrete && !planned) {
-      return { ok: false, reason: 'vag-avsikt', error: SAVE_ERROR, titel: titel };
+      return {
+        ok: false,
+        reason: 'vag-avsikt',
+        trigger: trigger,
+        error: rejectMessage(titel, 'vag-avsikt', trigger),
+        titel: titel
+      };
     }
     if (concrete && !vague) return { ok: true, kind: 'inford' };
     if (planned) return { ok: true, kind: 'planerad' };
@@ -121,10 +148,11 @@
       if (!check.ok) {
         return {
           ok: false,
-          error: SAVE_ERROR,
+          error: check.error || SAVE_ERROR,
           index: i,
           titel: check.titel || '',
-          reason: check.reason
+          reason: check.reason,
+          trigger: check.trigger || ''
         };
       }
     }

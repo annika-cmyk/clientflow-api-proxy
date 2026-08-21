@@ -861,8 +861,9 @@ class RiskAssessmentManager {
         });
         const vague = check.empty ? false : check.ok === false;
         row.classList.toggle('is-vague', vague);
+        if (vague) row.classList.remove('is-collapsed');
         warn.hidden = !vague;
-        warn.textContent = vague ? A.HINT : '';
+        warn.textContent = vague ? (check.error || A.HINT) : '';
     }
 
     collectAtgard() {
