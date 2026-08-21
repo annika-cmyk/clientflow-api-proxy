@@ -2351,7 +2351,17 @@ const KUNDDATA_BEHORIGHET_FIELDS = [
   { name: 'Klientansvarig', type: 'singleLineText', description: 'Klientansvarig på byrån (namn)' },
   { name: 'Användare', type: 'singleLineText', description: 'Behöriga byråanvändare (Airtable record-id, kommaseparerade)' }
 ];
+const KUNDDATA_OPTIONAL_FIELDS = [
+  {
+    name: 'Uppdragsavtal UTFÖRD DATUM',
+    type: 'date',
+    description: 'Datum då uppdragsavtalet utanför ClientFlow utfördes',
+    options: { dateFormat: { name: 'iso' } }
+  }
+];
+const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
+let kunddataOptionalFieldsEnsured = false;
 
 async function ensureKunddataBehorighetFields(airtableToken, baseId) {
   if (kunddataBehorighetFieldsEnsured) return { ok: true, created: [], existing: KUNDDATA_BEHORIGHET_FIELDS.map((f) => f.name) };
@@ -2387,6 +2397,44 @@ async function ensureKunddataBehorighetFields(airtableToken, baseId) {
   } catch (err) {
     const msg = err.response?.data?.error?.message || err.message;
     console.warn('ensureKunddataBehorighetFields:', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+async function ensureKunddataOptionalFields(airtableToken, baseId) {
+  if (kunddataOptionalFieldsEnsured) return { ok: true, created: [], existing: KUNDDATA_OPTIONAL_FIELDS.map((f) => f.name) };
+  const tableId = kunddataTableId();
+  if (!airtableToken) return { ok: false, error: 'Token saknas' };
+  try {
+    const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+      headers: { Authorization: `Bearer ${airtableToken}` },
+      timeout: 10000
+    });
+    const kundTable = (metaRes.data?.tables || []).find((t) => t.id === tableId || t.name === 'KUNDDATA');
+    if (!kundTable) return { ok: false, error: 'KUNDDATA-tabellen hittades inte' };
+    const existingNames = new Set((kundTable.fields || []).map((f) => f.name || ''));
+    const created = [];
+    const existing = [];
+    for (const fieldDef of KUNDDATA_OPTIONAL_FIELDS) {
+      if (existingNames.has(fieldDef.name)) {
+        existing.push(fieldDef.name);
+        continue;
+      }
+      await axios.post(
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${kundTable.id}/fields`,
+        fieldDef,
+        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+      );
+      created.push(fieldDef.name);
+      console.log(`✅ Valfritt fält skapades i KUNDDATA: ${fieldDef.name}`);
+    }
+    if (created.length + existing.length === KUNDDATA_OPTIONAL_FIELDS.length) {
+      kunddataOptionalFieldsEnsured = true;
+    }
+    return { ok: true, created, existing };
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.warn('ensureKunddataOptionalFields:', msg);
     return { ok: false, error: msg };
   }
 }
@@ -5812,6 +5860,7 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     }
     const skipped = [];
     let createdMissingBehorighet = false;
+    let createdMissingOptional = false;
     let retriedAnvandareType = false;
     let airtableRes;
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -5825,6 +5874,11 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
           if (!createdMissingBehorighet && (unknown === 'Klientansvarig' || unknown === 'Användare')) {
             createdMissingBehorighet = true;
             const ensured = await ensureKunddataBehorighetFields(airtableAccessToken, airtableBaseId);
+            if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
+          }
+          if (!createdMissingOptional && KUNDDATA_OPTIONAL_FIELD_BY_NAME[unknown]) {
+            createdMissingOptional = true;
+            const ensured = await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
             if (ensured.ok && (ensured.created || []).includes(unknown)) continue;
           }
           delete payload[unknown];

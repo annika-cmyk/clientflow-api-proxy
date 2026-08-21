@@ -46,11 +46,19 @@
     return have || kycDateIso(todayIso);
   }
 
-  function kycUtanforBannerText(dateIso) {
+  function utanforBannerText(noun, dateIso) {
     const d = kycDateIso(dateIso);
     return d
-      ? `KYC-formulär finns utanför ClientFlow. Utförd ${d}.`
-      : 'KYC-formulär finns utanför ClientFlow.';
+      ? `${noun} finns utanför ClientFlow. Utförd ${d}.`
+      : `${noun} finns utanför ClientFlow.`;
+  }
+
+  function kycUtanforBannerText(dateIso) {
+    return utanforBannerText('KYC-formulär', dateIso);
+  }
+
+  function uppdragsavtalUtanforBannerText(dateIso) {
+    return utanforBannerText('Uppdragsavtalet', dateIso);
   }
 
   const api = {
@@ -60,7 +68,9 @@
     kycInleedBoxStatus,
     kycDateIso,
     defaultKycUtanforDate,
-    kycUtanforBannerText
+    utanforBannerText,
+    kycUtanforBannerText,
+    uppdragsavtalUtanforBannerText
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -796,15 +796,42 @@ class CustomerCardManager {
     }
 
     async setUppdragsavtalUtanforClientFlow(checked) {
-        const ok = (await this._patchKunddataFields({ 'Uppdragsavtal utanför ClientFlow': !!checked })).ok;
+        const kycUi = window.KycStatusUi || {};
+        const dateEl = document.getElementById('kund-ua-utanfor-datum');
+        const existing = kycUi.kycDateIso
+            ? kycUi.kycDateIso(this.customerData?.fields?.['Uppdragsavtal UTFÖRD DATUM'])
+            : '';
+        const today = new Date().toLocaleDateString('sv-SE');
+        const date = kycUi.defaultKycUtanforDate
+            ? kycUi.defaultKycUtanforDate((dateEl && dateEl.value) || existing, checked, today)
+            : ((dateEl && dateEl.value) || existing || (checked ? today : ''));
+        const fields = { 'Uppdragsavtal utanför ClientFlow': !!checked };
+        if (checked && date) fields['Uppdragsavtal UTFÖRD DATUM'] = date;
+        const ok = (await this._patchKunddataFields(fields)).ok;
         if (ok) {
             const cb = document.getElementById('kund-ua-utanfor-avtal-cf');
             if (cb) cb.checked = !!checked;
+            if (dateEl && date) dateEl.value = date;
             this.showNotification(checked ? 'Uppdragsavtal utanför ClientFlow registrerat.' : 'Markering borttagen.', 'success');
             this.loadUppdragsavtal();
         } else {
             const cb = document.getElementById('kund-ua-utanfor-avtal-cf');
             if (cb) cb.checked = !checked;
+        }
+    }
+
+    async setUppdragsavtalUtanforDatum(value) {
+        const kycUi = window.KycStatusUi || {};
+        const date = kycUi.kycDateIso ? kycUi.kycDateIso(value) : String(value || '').trim();
+        if (value && !date) return;
+        if (!date) return;
+        const ok = (await this._patchKunddataFields({ 'Uppdragsavtal UTFÖRD DATUM': date })).ok;
+        if (ok) {
+            this.showNotification('Avtalsdatum sparat.', 'success');
+            const banner = document.getElementById('ua-utanfor-status-banner');
+            if (banner && kycUi.uppdragsavtalUtanforBannerText) {
+                banner.innerHTML = `<i class="fas fa-check-circle"></i> ${this._esc(kycUi.uppdragsavtalUtanforBannerText(date))}`;
+            }
         }
     }
 
@@ -8962,13 +8989,24 @@ class CustomerCardManager {
         const isNew = !avtal;
         const kundFields = this.customerData?.fields || {};
         const uaUtanfor = this._fieldIsChecked(kundFields, 'Uppdragsavtal utanför ClientFlow');
+        const kycUi = window.KycStatusUi || {};
+        const uaUtfordDatum = kycUi.kycDateIso
+            ? kycUi.kycDateIso(kundFields['Uppdragsavtal UTFÖRD DATUM'])
+            : String(kundFields['Uppdragsavtal UTFÖRD DATUM'] || '').slice(0, 10);
         const uaUtanforHtml = this._renderExternClientFlowOption({
             id: 'kund-ua-utanfor-avtal-cf',
             checked: uaUtanfor,
             label: 'Uppdragsavtal utanför ClientFlow',
             hint: 'Fliken Uppdragsavtal markeras som klar när detta är valt.',
-            onChangeHandler: 'setUppdragsavtalUtanforClientFlow'
+            onChangeHandler: 'setUppdragsavtalUtanforClientFlow',
+            dateId: 'kund-ua-utanfor-datum',
+            dateValue: uaUtfordDatum,
+            dateLabel: 'Avtalsdatum',
+            onDateHandler: 'setUppdragsavtalUtanforDatum'
         });
+        const uaUtanforBannerText = kycUi.uppdragsavtalUtanforBannerText
+            ? kycUi.uppdragsavtalUtanforBannerText(uaUtfordDatum)
+            : 'Uppdragsavtalet finns utanför ClientFlow.';
 
         const today = new Date().toISOString().split('T')[0];
         const fmtDate = (d) => d ? d.split('T')[0] : '';
@@ -9061,9 +9099,9 @@ class CustomerCardManager {
 
                 <!-- STATUS-BANNER -->
                 ${uaUtanfor ? `
-                <div class="uppdrag-banner uppdrag-banner--ok">
+                <div class="uppdrag-banner uppdrag-banner--ok" id="ua-utanfor-status-banner">
                     <i class="fas fa-check-circle"></i>
-                    Uppdragsavtalet finns utanför ClientFlow.
+                    ${esc(uaUtanforBannerText)}
                 </div>` : isNew ? `
                 <div class="uppdrag-banner uppdrag-banner--ny">
                     <i class="fas fa-info-circle"></i>
@@ -9294,6 +9332,7 @@ class CustomerCardManager {
                 </form>
             </div>
         `;
+        if (window.DateInput) DateInput.bindDateInputs(container);
     }
 
     async saveUppdragsavtal(avtalId) {
