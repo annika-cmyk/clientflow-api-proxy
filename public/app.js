@@ -23,6 +23,10 @@ class ClientFlowApp {
             this.loadRiskbedomningList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskbedomningList());
         }
+        if (document.getElementById('riskaptit-list')) {
+            this.loadRiskaptitList();
+            window.addEventListener('clientflow:authReady', () => this.loadRiskaptitList());
+        }
         if (document.getElementById('my-tasks-list')) {
             this.loadMyTasks();
             window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
@@ -103,6 +107,10 @@ class ClientFlowApp {
         const refreshRiskbedomning = document.getElementById('refresh-riskbedomning');
         if (refreshRiskbedomning) {
             refreshRiskbedomning.addEventListener('click', () => this.loadRiskbedomningList());
+        }
+        const refreshRiskaptit = document.getElementById('refresh-riskaptit');
+        if (refreshRiskaptit) {
+            refreshRiskaptit.addEventListener('click', () => this.loadRiskaptitList());
         }
         const refreshMyTasks = document.getElementById('refresh-my-tasks');
         if (refreshMyTasks) {
@@ -594,6 +602,62 @@ class ClientFlowApp {
         } catch (error) {
             console.error('Fel vid laddning av kunder utan riskbedömning:', error);
             this.updateDashboardCount('riskbedomning', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadRiskaptitList() {
+        const container = document.getElementById('riskaptit-list');
+        if (!container) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('riskaptit', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+        try {
+            const response = await fetch(`${this.baseUrl}/api/riskaptit/rapport`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const kunder = Array.isArray(data.kunder) ? data.kunder : [];
+            this.updateDashboardCount('riskaptit', kunder.length);
+            if (!kunder.length) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga kunder kräver riskaptitbeslut just nu.</p>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${kunder.map((c) => `
+                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(c.namn || 'Namn saknas')}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${c.orgnr ? `<span class="kundlista-orgnr">${this.escapeHtml(c.orgnr)}</span>` : ''}
+                                <span class="kundlista-bolagsform">${this.escapeHtml(c.statusLabel || c.status || '')}</span>
+                                ${c.niva ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.niva)}</span>` : ''}
+                            </div>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>
+                    `).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av riskaptitrapport:', error);
+            this.updateDashboardCount('riskaptit', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>

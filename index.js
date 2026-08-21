@@ -94,6 +94,7 @@ const auditLog = require('./lib/audit-log');
 const auditLogAirtable = require('./lib/audit-log-airtable');
 const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
+const Riskaptit = require('./lib/riskaptit');
 const avvikelseStatus = require('./lib/avvikelse-status');
 const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
 const docsignInvite = require('./lib/docsign-invite');
@@ -2398,7 +2399,14 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     name: personRegister.PERSONHISTORIK_FIELD,
     type: 'multilineText',
     description: 'JSON-historik över företrädare och verkliga huvudmän (personnummer/orgnr, roller, från/till).'
-  }
+  },
+  { name: Riskaptit.FIELDS.STATUS, type: 'singleLineText', description: 'Inom_aptit | Kräver_beslut | Överskriden' },
+  { name: Riskaptit.FIELDS.BESLUT_DATUM, type: 'date', description: 'Datum för senaste riskaptitbeslut', options: { dateFormat: { name: 'iso' } } },
+  { name: Riskaptit.FIELDS.BESLUT_AV, type: 'singleLineText', description: 'Aktör som registrerade riskaptitbeslutet' },
+  { name: Riskaptit.FIELDS.BESLUT_MOTIVERING, type: 'multilineText', description: 'Motivering till riskaptitbeslutet' },
+  { name: Riskaptit.FIELDS.BESLUT_UTFALL, type: 'singleLineText', description: 'Fortsätter_med_skärpta_åtgärder | Avslutas | Avstår_nytt_uppdrag' },
+  { name: Riskaptit.FIELDS.BESLUT_RISKBILD, type: 'singleLineText', description: 'Riskbild som det senaste beslutet gäller' },
+  { name: Riskaptit.FIELDS.HISTORIK, type: 'multilineText', description: 'JSON-historik över tidigare riskaptitbeslut' }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -6172,6 +6180,13 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (Object.keys(payload).some((key) => isRiskSelectFieldName(key))) {
       await ensureRiskSkalaSelectChoices(airtableAccessToken, airtableBaseId, 'KUNDDATA');
     }
+    const riskaptitTransition = Riskaptit.applyOnRiskChange({
+      previousFields: customerRecord.fields || {},
+      incomingFields: payload
+    });
+    if (Riskaptit.incomingTouchesRisk(payload) && riskaptitTransition.writeFields) {
+      Object.assign(payload, riskaptitTransition.writeFields);
+    }
     if (Object.prototype.hasOwnProperty.call(payload, 'Användare')) {
       const existingAnvandare = customerRecord.fields?.['Användare'];
       const ids = access.parseAnvandareIds(payload['Användare']);
@@ -6233,6 +6248,19 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         motivering: afterFields['Byrans riskbedomning'] || req.body?.motivering || '',
         trigger: req.body?.riskTrigger || 'manuell_ändring'
       });
+      if (Riskaptit.incomingTouchesRisk(payload) && riskaptitTransition.statusChanged) {
+        await auditHooks.logRiskaptitStatusChange({
+          write: writeAuditEvent,
+          actor,
+          byraId,
+          customerId: id,
+          beforeStatus: riskaptitTransition.previous.status,
+          afterStatus: riskaptitTransition.next.status,
+          niva: riskaptitTransition.next.niva,
+          pictureKey: riskaptitTransition.next.pictureKey,
+          trigger: req.body?.riskTrigger || 'risknivå_ändrad'
+        });
+      }
       if (aiAudit && aiAudit.logId) {
         await auditHooks.logAiSaved({
           service: getAuditService(),
@@ -6257,6 +6285,130 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     const message = airtableErr?.message || error.message || 'Okänt fel';
     res.status(status).json({ error: message, details: airtableErr });
   }
+});
+
+app.post('/api/kunddata/:id/riskaptit-beslut', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = kunddataTableId();
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const loaded = await loadKunddataRecordForUser(req, id).catch((err) => {
+      throw err;
+    });
+    const customerRecord = loaded.customerRecord || loaded;
+    const fields = customerRecord.fields || {};
+    const actor = await actorForRequest(req, userData);
+    const registered = Riskaptit.registerBeslut({
+      fields,
+      utfall: req.body && req.body.utfall,
+      motivering: req.body && req.body.motivering,
+      actor: (actor && actor.actorName) || req.user.email,
+      nowIso: new Date().toISOString()
+    });
+    if (!registered.ok) {
+      return res.status(400).json({ error: registered.error });
+    }
+    await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
+    const airtableRes = await axios.patch(
+      url,
+      { fields: registered.writeFields, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    const afterFields = airtableRes.data.fields || { ...fields, ...registered.writeFields };
+    const byraId = afterFields['Byrå ID'] || fields['Byrå ID'] || userData.byraId || '';
+    await auditHooks.logRiskaptitBeslut({
+      write: writeAuditEvent,
+      actor,
+      byraId,
+      customerId: id,
+      utfall: registered.writeFields[Riskaptit.FIELDS.BESLUT_UTFALL],
+      motivering: registered.writeFields[Riskaptit.FIELDS.BESLUT_MOTIVERING],
+      niva: registered.niva,
+      pictureKey: registered.pictureKey,
+      previousUtfall: registered.previousDecision && registered.previousDecision.utfall
+    });
+    if (registered.status !== Riskaptit.evaluateCustomer(fields).status) {
+      await auditHooks.logRiskaptitStatusChange({
+        write: writeAuditEvent,
+        actor,
+        byraId,
+        customerId: id,
+        beforeStatus: Riskaptit.evaluateCustomer(fields).status,
+        afterStatus: registered.status,
+        niva: registered.niva,
+        pictureKey: registered.pictureKey,
+        trigger: 'riskaptit_beslut_registrerat'
+      });
+    }
+    res.json({
+      success: true,
+      record: airtableRes.data,
+      riskaptit: registered.evaluation
+    });
+  } catch (error) {
+    const status = error.status || error.response?.status || 500;
+    console.error('POST riskaptit-beslut:', error.message);
+    res.status(status).json({ error: error.message || 'Kunde inte spara beslutet' });
+  }
+});
+
+app.get('/api/riskaptit/rapport', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const rows = records.map((rec) => {
+      const f = rec.fields || {};
+      const ev = Riskaptit.evaluateCustomer(f);
+      return {
+        id: rec.id,
+        namn: f.Namn || f['Företagsnamn'] || '',
+        orgnr: f.Orgnr || f.Organisationsnummer || '',
+        kundstatus: f.Kundstatus || '',
+        niva: ev.niva,
+        status: ev.status,
+        statusLabel: ev.statusLabel,
+        hasDecision: ev.hasDecision,
+        hasValidDecision: ev.hasValidDecision,
+        beslutUtfall: ev.beslutUtfall,
+        beslutDatum: ev.beslutDatum
+      };
+    }).filter((row) => row.status === Riskaptit.STATUS.KRAVER || row.status === Riskaptit.STATUS.OVER);
+    rows.sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'Överskriden' ? -1 : 1;
+      return String(a.namn).localeCompare(String(b.namn), 'sv');
+    });
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      policyBands: Riskaptit.sxkBands(),
+      kraverBeslut: rows.filter((r) => r.status === Riskaptit.STATUS.KRAVER).length,
+      overskriden: rows.filter((r) => r.status === Riskaptit.STATUS.OVER).length,
+      kunder: rows
+    });
+  } catch (error) {
+    console.error('GET riskaptit/rapport:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa rapporten' });
+  }
+});
+
+app.get('/api/riskaptit/policy', authenticateToken, (_req, res) => {
+  res.json({
+    success: true,
+    text: Riskaptit.policyText(),
+    bands: Riskaptit.sxkBands()
+  });
 });
 
 async function loadKunddataRecordForUser(req, id) {
@@ -18376,6 +18528,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
+    htmlParts.push(`<h3>9. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText())}</div>`);
     const uppdateradDatum = getByraField('Uppdaterad datum') || '';
     htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
 
@@ -18476,21 +18629,42 @@ async function saveDilisenseTraffarToKund(token, baseId, kundId, hits, mode = 'm
   const field = 'Antal träffar PEP och sanktionslistor';
   try {
     let value = n;
-    if (mode === 'max' || mode === 'add') {
-      const custRes = await axios.get(
-        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const existing = Number(custRes.data?.fields?.[field]);
-      if (!Number.isNaN(existing)) {
-        value = mode === 'add' ? existing + n : Math.max(existing, n);
-      }
+    let beforeFields = {};
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    beforeFields = custRes.data?.fields || {};
+    const existing = Number(beforeFields[field]);
+    if ((mode === 'max' || mode === 'add') && !Number.isNaN(existing)) {
+      value = mode === 'add' ? existing + n : Math.max(existing, n);
     }
+    const incoming = { [field]: value };
+    const transition = Riskaptit.applyOnRiskChange({
+      previousFields: beforeFields,
+      incomingFields: incoming
+    });
+    const patchFields = { ...incoming };
+    if (transition.writeFields) Object.assign(patchFields, transition.writeFields);
     await axios.patch(
       `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE}/${kundId}`,
-      { fields: { [field]: value } },
+      { fields: patchFields, typecast: true },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
+    if (transition.statusChanged) {
+      const byraId = beforeFields['Byrå ID'] || '';
+      await auditHooks.logRiskaptitStatusChange({
+        write: writeAuditEvent,
+        actor: auditLog.SYSTEM_ACTORS.dilisense,
+        byraId,
+        customerId: kundId,
+        beforeStatus: transition.previous.status,
+        afterStatus: transition.next.status,
+        niva: transition.next.niva,
+        pictureKey: transition.next.pictureKey,
+        trigger: 'screening_träff'
+      });
+    }
     return true;
   } catch (err) {
     console.warn('Kunde inte spara Dilisense-träffar:', err.response?.data || err.message);

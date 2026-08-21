@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Kundlista</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=3.10">
+    <link rel="stylesheet" href="styles.css?v=3.25">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="kundlista-page">
@@ -19,6 +19,12 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>KUNDLISTA</h1>
+                        <div class="risk-stats kundlista-riskaptit-stats">
+                            <button type="button" class="stat-item riskaptit-stat" id="riskaptit-filter-btn" aria-pressed="false">
+                                <i class="fas fa-exclamation-triangle text-warning"></i>
+                                <span id="riskaptit-count">0</span> kunder kräver riskaptitbeslut
+                            </button>
+                        </div>
                     </div>
                 </header>
 
@@ -70,7 +76,9 @@
     <script src="js/ai-chat.js?v=2.4"></script>
     <script src="js/hogrisk-sni.js?v=1.0"></script>
     <script src="app.js?v=2.4"></script>
+    <script src="js/risk-skala.js?v=1"></script>
+    <script src="js/riskaptit.js?v=1"></script>
     <script src="js/kund-compliance.js?v=1.1"></script>
-    <script src="js/kundlista.js?v=2.7"></script>
+    <script src="js/kundlista.js?v=2.8"></script>
 </body>
 </html>
