@@ -57,6 +57,7 @@ const {
 const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
+const RiskSkala = require('./public/js/risk-skala');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
@@ -6127,9 +6128,11 @@ function buildKundRiskbedomningPdfHtml(data) {
     h3{font-size:10pt;margin-top:12px;color:#334155;}
     .section{margin:10px 0;}
     .niva{display:inline-block;padding:4px 12px;border-radius:4px;font-weight:700;}
-    .niva-lag{background:#dcfce7;color:#166534;}
-    .niva-medel{background:#fef9c3;color:#854d0e;}
-    .niva-hog{background:#fee2e2;color:#991b1b;}
+    .niva-low,.niva-lag{background:#dcfce7;color:#166534;}
+    .niva-normal,.niva-medel{background:#e0f2fe;color:#075985;}
+    .niva-elevated{background:#fef9c3;color:#854d0e;}
+    .niva-high,.niva-hog{background:#fee2e2;color:#991b1b;}
+    .niva-unacceptable{background:#3b0764;color:#f5d0fe;}
     .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;}
     .chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:8pt;}
     .chip-neg{background:#fee2e2;color:#991b1b;}
@@ -6342,8 +6345,9 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const datumIso = new Date().toISOString().split('T')[0];
     const exportStamp = new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' });
 
-    const nivaLabel = { 'Lag': 'Låg risk', 'Låg': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk', 'Hög': 'Hög risk' }[sammanlagdRisk] || sammanlagdRisk || 'Ej angiven';
-    const nivaClass = { 'Lag': 'lag', 'Låg': 'lag', 'Medel': 'medel', 'Hog': 'hog', 'Hög': 'hog' }[sammanlagdRisk] || 'medel';
+    const nivaCanon = RiskSkala.riskLabelSv(sammanlagdRisk);
+    const nivaLabel = nivaCanon ? `${nivaCanon} risk` : (sammanlagdRisk || 'Ej angiven');
+    const nivaClass = RiskSkala.riskCss(sammanlagdRisk);
 
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
     const {
@@ -11971,7 +11975,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
     } while (offset);
     allRecords = access.filterRecordsForUser(userData, allRecords);
 
-    const riskniva = { Låg: 0, Medel: 0, Hög: 0, Övrigt: 0 };
+    const riskniva = RiskSkala.emptyCounts();
     const tjänstAntal = {};
     const högriskbranschAntal = {};
     const riskfaktorIdAntal = {};
@@ -11981,10 +11985,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
     for (const rec of allRecords) {
       const f = rec.fields || {};
       const rn = (f['Riskniva'] || '').trim();
-      if (rn === 'Lag' || rn === 'Låg') riskniva['Låg']++;
-      else if (rn === 'Medel') riskniva['Medel']++;
-      else if (rn === 'Hog' || rn === 'Hög') riskniva['Hög']++;
-      else if (rn) riskniva['Övrigt']++;
+      if (rn) RiskSkala.countRisk(riskniva, rn);
 
       const tjanstIds = f['Kundens utvalda tjänster'];
       if (Array.isArray(tjanstIds)) {
@@ -18516,17 +18517,14 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             });
             if (ok.length > 0) {
               tjansterText = ok.map((x) => x.namn).join(', ');
-              // Låg/Medel: bara namn + nivå. Hög: full byråanalys (beskrivning, hot, åtgärder).
-              const isHogRiskTjanst = (riskRaw) => {
-                const r = String(riskRaw || '').trim().toLowerCase();
-                return r === 'hog' || r === 'hög' || r === 'high' || r.startsWith('hög') || r.startsWith('hog');
-              };
+              // Låg/Normal: bara namn + nivå. Hög/Oacceptabel: full byråanalys.
+              const isHogRiskTjanst = (riskRaw) => RiskSkala.isHighOrAbove(riskRaw);
               const kortLista = [];
               const hogFull = [];
               for (const { namn, tf } of ok) {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
                 const risk = (tf['Riskbedömning'] || '').trim();
-                const riskLabel = risk || 'Ej angiven';
+                const riskLabel = RiskSkala.riskLabelSv(risk) || risk || 'Ej angiven';
                 const kort = `  • ${namn}${typ ? ` (${typ})` : ''} — risknivå: ${riskLabel}`;
                 if (!isHogRiskTjanst(risk)) {
                   kortLista.push(kort);
@@ -18780,8 +18778,8 @@ REGLER FÖR TJÄNSTER (KRITISKT — BROTT MOT DESSA REGLER GER FELAKTIG RISKBED�
 - Fältet "Syfte med affärsförbindelsen" är fritext; det får inte ersätta tjänstlistan om de säger olika — prioritera tjänstlistan + beskrivningarna.
 
 BYRÅNS ANALYS AV VALDA TJÄNSTER (endast tjänster som finns i TJÄNSTLISTA ovan — samma poster som "Kundens utvalda tjänster"):
-- Tjänster med Låg/Medel risk: endast namn + risknivå anges (ingen detaljtext behövs).
-- Tjänster med Hög risk: full byråanalys (beskrivning, hot, sårbarheter, åtgärder) ingår.
+- Tjänster med Låg/Normal/Förhöjd risk: endast namn + risknivå anges (ingen detaljtext behövs).
+- Tjänster med Hög eller Oacceptabel risk: full byråanalys (beskrivning, hot, sårbarheter, åtgärder) ingår.
 Väg in detta när du bedömer kundens risk; generalisera inte från tjänster som inte är valda för kunden.
 ${byraValdaTjansterDetaljText}
 
@@ -18846,18 +18844,22 @@ FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
 - Prioritetsordning för verksamhetsbild: (1) Byråns beskrivning av kunden, (2) Ytterligare beskrivning, (3) Kommentar till riskfaktorer, (4) Bolagsverkets verksamhetsbeskrivning, (5) SNI först som komplement.
 - Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
 
-RISKNIVÅ — ANVÄND "Lag" ENDAST NÄR DET ÄR TYDLIGT MOTIVERAT:
-- Sätt "Lag" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver "Medel" eller "Hog", och tjänster/exponering är okontroversiella utifrån underlaget.
-- Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj "Medel" eller "Hog" — inte "Lag".
+RISKNIVÅ — ANVÄND FEMGRADIG SKALA (Låg, Normal, Förhöjd, Hög, Oacceptabel):
+- Sätt "Låg" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver högre nivå, och tjänster/exponering är okontroversiella utifrån underlaget.
+- "Normal" är standard för en typisk redovisningskund utan särskilda riskhöjande faktorer. Skriv inte "Medel".
+- "Förhöjd" när minst en tydlig riskhöjande faktor finns men inte räcker för hög.
+- "Hög" vid PEP Förhöjd, flera samverkande faktorer eller allvarlig enskild faktor.
+- "Oacceptabel" när byrån bör avstå från eller avveckla affärsförbindelsen.
+- Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj minst "Normal" — inte "Låg".
 
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
-1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd", ska kundens sammanlagda risknivå vara "Hog" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Medel" på PEP-faktorn ska sammanlagd risk vara minst "Medel". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
+1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska kundens sammanlagda risknivå vara "Hög" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Normal" på PEP-faktorn ska sammanlagd risk vara minst "Normal". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
 
 1b. INTERNATIONELL EXPONERING / GEOGRAFI / IMPORT-EXPORT (KRITISKT):
    - Om någon vald riskfaktor är "Utanför EU", "Kunder med import/export", annan import/export-faktor, eller har nivå "Förhöjd"/"Hög" under Geografiska riskfaktorer eller riskfaktorer kopplat till kund med internationell koppling: du FÅR INTE skriva att det saknas indikationer på internationella transaktioner.
    - Sådana faktorer MÅSTE nämnas uttryckligen bland riskhöjande faktorer i riskbedömningstexten.
-   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": sammanlagd risknivå ska vara minst "Medel" (ofta "Hog" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
+   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": sammanlagd risknivå ska vara minst "Normal" (ofta "Förhöjd" eller "Hög" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
    - Om fältet "Transaktioner med andra länder" eller KYC "Internationell handel" är tomt/Nej men valda riskfaktorer visar internationell exponering: prioritera de valda riskfaktorerna.
 
 2. ÅTGÄRDER — detta är kritiskt:
@@ -18867,9 +18869,10 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
    - PROPORTIONALITET / ARBETSINSATS: Åtgärderna ska vara rimliga för en redovisningsbyrå. Vi ska inte agera “polis” eller skapa onödigt merarbete.
      Välj hellre 1-3 högsignal-kontroller med låg insats än många breda kontroller. Sikta på åtgärder som normalt tar totalt ca 10–30 minuter att genomföra och dokumentera.
      Förbjudna formuleringar/krav: “övervakning i realtid”, “kontinuerlig övervakning”, “granska alla transaktioner”, eller andra åtgärder som kräver löpande manuellt arbete utan tydlig nytta.
-   - "Hog": Lista 3-5 åtgärder enligt formatkravet ovan, specifikt anpassade till just denna kunds riskbild (bransch, identifierade riskfaktorer, geografik, PEP, tjänster enligt TJÄNSTLISTA m.m.). Varje punkt ska kunna motiveras utifrån denna kund — generiska mallar är FÖRBJUDNA.
-   - "Medel": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
-   - "Lag": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
+   - "Hög" och "Oacceptabel": Lista 3-5 åtgärder enligt formatkravet ovan, specifikt anpassade till just denna kunds riskbild (bransch, identifierade riskfaktorer, geografik, PEP, tjänster enligt TJÄNSTLISTA m.m.). Vid Oacceptabel ska första punkten vara att avstå från eller avveckla uppdraget. Varje punkt ska kunna motiveras utifrån denna kund — generiska mallar är FÖRBJUDNA.
+   - "Förhöjd": 1-3 åtgärder enligt formatkravet.
+   - "Normal": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
+   - "Låg": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
 
    SÄRSKILT vid "sanktionslistor/PEP": Om du föreslår kontroller ska du ange exakt vilka källor som kontrolleras (minst två av):
    - EU:s konsoliderade sanktionslista
@@ -18896,9 +18899,9 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
 Svara EXAKT i detta JSON-format (inget annat):
 {
-  "riskniva": "Lag" eller "Medel" eller "Hog",
+  "riskniva": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
   "riskbedomning": "5-10 meningar som motiverar risknivån konkret enligt strukturen ovan.",
-  "atgarder": "Punkter med bindestreck (-) vid Hog eller specifik risk, annars exakt tom sträng."
+  "atgarder": "Punkter med bindestreck (-) vid Förhöjd/Hög/Oacceptabel eller specifik risk, annars exakt tom sträng."
 }`;
 
     const extractFirstJsonObject = (text) => {
@@ -18994,7 +18997,7 @@ Svara EXAKT i detta JSON-format (inget annat):
     if (!result || isLowQualityRiskText(result.riskbedomning)) {
       const rewritePrompt = `Skriv om riskbedömningen till tydlig svenska enligt PVML.
 Utan UI-termer (kryss/bockat/markerat/flik/formulär). Hitta inte på nya fakta.
-Returnera EXAKT JSON: {"riskniva":"Lag|Medel|Hog","riskbedomning":"...","atgarder":"..."}.
+Returnera EXAKT JSON: {"riskniva":"Låg|Normal|Förhöjd|Hög|Oacceptabel","riskbedomning":"...","atgarder":"..."}.
 
 NUVARANDE SVAR ATT FÖRBÄTTRA:
 ${clip(aiText, 4000)}
@@ -19024,7 +19027,7 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 
     res.json({
-      riskniva: result.riskniva || 'Medel',
+      riskniva: RiskSkala.riskLabelSv(result.riskniva) || 'Normal',
       riskbedomning: result.riskbedomning || '',
       atgarder: result.atgarder || ''
     });
@@ -19059,7 +19062,7 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
   const befintligt = req.body?.befintligt || {};
 
-  const riskniva = (befintligt.riskniva || '').toString().trim() || 'Medel';
+  const riskniva = RiskSkala.riskLabelSv(befintligt.riskniva) || (befintligt.riskniva || '').toString().trim() || 'Normal';
 
   let byraProfil = null;
   try {
@@ -19119,9 +19122,10 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 }
 
 ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
-- hot: 2 (Låg), 3 (Medel), 4 (Hög)
-- sarbarheter: 2 (Låg), 2 (Medel), 3 (Hög)
-- atgarder: 3 (Låg), 4 (Medel), 5 (Hög)`;
+- hot: 2 (Låg), 3 (Normal), 3 (Förhöjd), 4 (Hög), 4 (Oacceptabel)
+- sarbarheter: 2 (Låg), 2 (Normal), 3 (Förhöjd), 3 (Hög), 3 (Oacceptabel)
+- atgarder: 3 (Låg), 4 (Normal), 4 (Förhöjd), 5 (Hög), 5 (Oacceptabel)
+RISKNIVÅ ska vara exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal.`;
 
   const userPrompt = `Tjänst: ${namn}
 Risknivå: ${riskniva}
@@ -19158,12 +19162,7 @@ ${byraProfilUserBlock}${befintligtBlock}`;
     return JSON.parse(candidate);
   };
 
-  const normRisk = (v) => {
-    const t = (v || '').toString().trim().toLowerCase();
-    if (t.startsWith('hög') || t.startsWith('hog') || t === 'high') return 'Hög';
-    if (t.startsWith('låg') || t.startsWith('lag') || t === 'low') return 'Låg';
-    return 'Medel';
-  };
+  const normRisk = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
   const normHotTyp = (v) => ((v || '').toString().trim().toUpperCase() === 'TF' ? 'TF' : 'PT');
   const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
   // Frontend-dropdownen har 4 kategorier. Prompten kan föreslå fler (t.ex.
@@ -19266,9 +19265,11 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
   "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån.",
-  "riskbedomning": "Låg, Medel eller Förhöjd",
+  "riskbedomning": "Låg, Normal, Förhöjd, Hög eller Oacceptabel",
   "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."
-}`;
+}
+
+RISKNIVÅ ska vara exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal.`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -19299,12 +19300,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
     const candidate = extractFirstJsonObject(cleaned) || extractFirstJsonObject(rawText) || cleaned || rawText || '';
     return JSON.parse(candidate);
   };
-  const normRiskfaktorNiva = (v) => {
-    const t = (v || '').toString().trim().toLowerCase();
-    if (t.startsWith('förhöjd') || t.startsWith('forhojd') || t === 'hog' || t === 'hög') return 'Förhöjd';
-    if (t.startsWith('låg') || t.startsWith('lag') || t === 'low') return 'Låg';
-    return 'Medel';
-  };
+  const normRiskfaktorNiva = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
@@ -19370,7 +19366,7 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
     const statistikText = [
       'STATISTIK FÖR RISKBEDÖMNING:',
       `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
-      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Normal ${statistik.riskniva?.Normal ?? statistik.riskniva?.Medel ?? 0}, Förhöjd ${statistik.riskniva?.Förhöjd ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}, Oacceptabel ${statistik.riskniva?.Oacceptabel ?? 0}`,
       statistik.tjänster && statistik.tjänster.length
         ? '- Tjänster: ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
         : '',
@@ -19389,7 +19385,7 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "8. Värdering av sammantagen risk" i en allmän riskbedömning (PVML, Penningtvättslagen).
 Baserat på statistik, identifierade risker och sårbarheter samt tjänsteanalyser ska du sammanfatta byråns sammantagna risknivå och motivera den. Följ Länsstyrelsens vägledning och råd (t.ex. "Ett riskbaserat förhållningssätt").
-Skriv på svenska. Var professionell och konkret. Ge en tydlig slutsats om den sammantagna risken (t.ex. normal, förhöjd, betydande) och motivera utifrån underlagen.`;
+Skriv på svenska. Var professionell och konkret. Börja med raden "Sammantagen risknivå: [nivå]" där nivån är exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal. Motivera därefter varför just den nivån.`;
 
     const userPrompt = `Skriv stycket "8. Värdering av sammantagen risk" för byråns allmänna riskbedömning.
 
@@ -19520,7 +19516,7 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
     const statistikText = [
       'STATISTIK FÖR RISKBEDÖMNING (byråns kunder):',
       `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
-      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Normal ${statistik.riskniva?.Normal ?? statistik.riskniva?.Medel ?? 0}, Förhöjd ${statistik.riskniva?.Förhöjd ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}, Oacceptabel ${statistik.riskniva?.Oacceptabel ?? 0}`,
       statistik.tjänster && statistik.tjänster.length
         ? '- Tjänster (antal kunder): ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
         : '',
@@ -19723,7 +19719,7 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
     const statistikText = [
       'STATISTIK:',
       `- Antal kunder: ${statistik.antalKunder ?? '–'}`,
-      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Medel ${statistik.riskniva?.Medel ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}`,
+      `- Risknivåer: Låg ${statistik.riskniva?.Låg ?? 0}, Normal ${statistik.riskniva?.Normal ?? statistik.riskniva?.Medel ?? 0}, Förhöjd ${statistik.riskniva?.Förhöjd ?? 0}, Hög ${statistik.riskniva?.Hög ?? 0}, Oacceptabel ${statistik.riskniva?.Oacceptabel ?? 0}`,
       statistik.tjänster && statistik.tjänster.length
         ? '- Tjänster (antal kunder per tjänst): ' + statistik.tjänster.map(t => `${t.namn} (${t.antal})`).join(', ')
         : '',

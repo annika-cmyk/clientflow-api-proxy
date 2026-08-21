@@ -347,11 +347,11 @@ class RiskFactorsManager {
     }
 
     createRiskItem(risk) {
-        const riskLevelClass = this.getRiskLevelClass(risk.fields['Riskbedömning'] || 'Medel');
+        const riskLevelClass = this.getRiskLevelClass(risk.fields['Riskbedömning'] || 'Normal');
         const isChecked = risk.fields['Aktuell'] === true;
         const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
         const riskFactor = risk.fields['Riskfaktor'] || '';
-        const riskLevel = risk.fields['Riskbedömning'] || 'Medel';
+        const riskLevel = (window.RiskSkala && RiskSkala.riskLabelSv(risk.fields['Riskbedömning'])) || risk.fields['Riskbedömning'] || 'Normal';
         const approvalDate = risk.fields['Riskbedömning godkänd datum'] || '';
         
         return `
@@ -425,12 +425,7 @@ class RiskFactorsManager {
     }
 
     getRiskLevelClass(level) {
-        switch (level) {
-            case 'Förhöjd': return 'risk-high';
-            case 'Medel': return 'risk-medium';
-            case 'Låg': return 'risk-low';
-            default: return 'risk-medium';
-        }
+        return (window.RiskSkala && RiskSkala.riskItemClass(level)) || 'risk-normal';
     }
 
     toggleRiskItem(headerElement) {
@@ -530,8 +525,8 @@ class RiskFactorsManager {
                 }
             }
             
-            // Risk level filter
-            if (riskFilter && fields['Riskbedömning'] !== riskFilter) {
+            // Risk level filter (Medel räknas som Normal)
+            if (riskFilter && !(window.RiskSkala ? RiskSkala.sameLevel(fields['Riskbedömning'], riskFilter) : fields['Riskbedömning'] === riskFilter)) {
                 return false;
             }
             
@@ -572,9 +567,9 @@ class RiskFactorsManager {
     }
 
     updateStats() {
-        const highRiskCount = this.filteredRisks.filter(risk => 
-            risk.fields['Riskbedömning'] === 'Förhöjd'
-        ).length;
+        const highRiskCount = this.filteredRisks.filter(risk => (
+            window.RiskSkala ? RiskSkala.isElevatedOrAbove(risk.fields['Riskbedömning']) : ['Förhöjd', 'Hög', 'Oacceptabel'].includes(risk.fields['Riskbedömning'])
+        )).length;
         const completedCount = this.filteredRisks.filter(risk => 
             risk.fields['Aktuell'] === true
         ).length;
@@ -621,7 +616,10 @@ class RiskFactorsManager {
             }
             const data = await response.json();
             if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
-            if (data.riskbedomning) document.getElementById(`${prefix}risk-assessment`).value = data.riskbedomning;
+            if (data.riskbedomning) {
+                const niva = (window.RiskSkala && RiskSkala.riskLabelSv(data.riskbedomning)) || data.riskbedomning;
+                document.getElementById(`${prefix}risk-assessment`).value = niva;
+            }
             if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
             this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
@@ -656,7 +654,7 @@ class RiskFactorsManager {
         
         document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
-        document.getElementById('edit-risk-assessment').value = fields['Riskbedömning'] || '';
+        document.getElementById('edit-risk-assessment').value = (window.RiskSkala && RiskSkala.riskLabelSv(fields['Riskbedömning'])) || fields['Riskbedömning'] || '';
         document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
 
         document.getElementById('edit-risk-modal').style.display = 'flex';
@@ -680,7 +678,7 @@ class RiskFactorsManager {
             'Byrå ID': userByraId,
             'Riskfaktor': formData.get('risk-factor'),
             'Beskrivning': formData.get('description'),
-            'Riskbedömning': formData.get('risk-assessment'),
+            'Riskbedömning': (window.RiskSkala && RiskSkala.riskLabelSv(formData.get('risk-assessment'))) || formData.get('risk-assessment'),
             'Åtgjärd': formData.get('action'),
             'Aktuell': true
         };
@@ -726,7 +724,7 @@ class RiskFactorsManager {
             'Byrå ID': userByraId,
             'Riskfaktor': formData.get('risk-factor'),
             'Beskrivning': formData.get('description'),
-            'Riskbedömning': formData.get('risk-assessment'),
+            'Riskbedömning': (window.RiskSkala && RiskSkala.riskLabelSv(formData.get('risk-assessment'))) || formData.get('risk-assessment'),
             'Åtgjärd': formData.get('action')
         };
 

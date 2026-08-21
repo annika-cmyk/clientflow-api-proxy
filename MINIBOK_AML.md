@@ -22,7 +22,7 @@ Auth: `Authorization: Bearer {MINIBOK_API_KEY}` + `X-User-Email` / `?userEmail=`
 
 | API | Airtable |
 |-----|----------|
-| `overallRisk` | `Riskniva` / `sammanlagd risk` → low\|medium\|high |
+| `overallRisk` | `Riskniva` / `sammanlagd risk` → low\|normal\|elevated\|high\|unacceptable (Medel→normal) |
 | `expectedTurnoverRange` | `Omsättning` |
 | `assessedAt` | `Riskbedömning utförd datum` |
 | `approvedAt` | `Kundens riskbedömning godkänd` |
