@@ -13767,3 +13767,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.85rem 1rem;
     margin: 0.4rem 0 0;
 }
+.byra-card-view .riskaptit-policy-text {
+    background: transparent;
+    border: none;
+    padding: 0.65rem 0 0;
+    margin: 0;
+}

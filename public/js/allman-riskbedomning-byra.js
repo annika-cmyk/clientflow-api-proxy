@@ -147,17 +147,9 @@
     return m[3] + ' ' + mo + ' ' + m[1];
   }
 
-  function identifieradeRiskerReferralHtml() {
-    return '<div class="byra-card-formatted"><p>Identifierade risker och sårbarheter fylls i på Byråns tjänster och Övriga riskfaktorer. Hela underlaget från de sidorna visas i Dokumentationen och i den exporterade PDF:en till Länsstyrelsen.</p></div>';
-  }
-
   function updateCardView(card) {
-    if (card.getAttribute('data-field-id') === 'fld-identifierade-risker') {
-      var liveView = card.querySelector('.byra-card-value');
-      if (liveView) liveView.innerHTML = identifieradeRiskerReferralHtml();
-      return;
-    }
     var fid = card.getAttribute('data-field-id');
+    if (fid === 'fld-identifierade-risker' || fid === 'fld-riskaptit-policy') return;
     if (fid) {
       var el = getEl(fid);
       var m = FIELD_MAP.find(function (x) { return x.id === fid; });
@@ -541,9 +533,7 @@
   function fillRiskaptitPolicy() {
     var text = (window.Riskaptit && Riskaptit.policyText) ? Riskaptit.policyText() : '';
     var pre = getEl('fld-riskaptit-policy');
-    var view = getEl('fld-riskaptit-policy-view');
     if (pre) pre.textContent = text;
-    if (view) view.textContent = text;
   }
 
   function init() {
