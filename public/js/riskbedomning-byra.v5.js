@@ -1059,6 +1059,7 @@ class RiskAssessmentManager {
                     ? data.granskning.poster
                     : (Ai.fallbackPosters('tjanst', data).filter((p) => Ai.filledTjanstKeys(befintligt).includes(p.falt)));
                 Ai.renderReview(document.getElementById('tjanst-ai-review'), poster, {
+                    befintligt,
                     onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag)
                 });
                 this.showNotification(poster.length

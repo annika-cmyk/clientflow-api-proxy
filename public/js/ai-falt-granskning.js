@@ -279,6 +279,174 @@
     return trimStr(forslag);
   }
 
+  function currentValueFor(falt, befintligt) {
+    const o = befintligt || {};
+    if (falt === 'tjanstebeskrivning') return trimStr(o.tjanstebeskrivning);
+    if (falt === 'tfMotivering') return trimStr(o.tfMotivering);
+    if (falt === 'beskrivning') return trimStr(o.beskrivning);
+    if (falt === 'atgard') return trimStr(o.atgard);
+    if (falt === 'ptTfRelevans') return trimStr(o.ptTfRelevans);
+    if (falt === 'hot') return asList(o.hot);
+    if (falt === 'sarbarheter') return asList(o.sarbarheter);
+    if (falt === 'atgarder') return asList(o.atgarder);
+    if (falt === 'sxk') return { sannolikhet: o.sannolikhet, konsekvens: o.konsekvens };
+    if (falt === 'residual') return { sannolikhet: o.sannolikhetEfter, konsekvens: o.konsekvensEfter };
+    return '';
+  }
+
+  function isEmptyCurrent(falt, current) {
+    if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') return !hasListItems(current);
+    if (falt === 'sxk' || falt === 'residual') {
+      return !(current && (isFilledScore(current.sannolikhet) || isFilledScore(current.konsekvens)));
+    }
+    return !isFilledText(current);
+  }
+
+  function itemKey(item) {
+    return fold((item && (item.titel || item.namn || item.beskrivning)) || '');
+  }
+
+  function addedListItems(current, forslag) {
+    const have = new Set(asList(current).map(itemKey).filter(Boolean));
+    return asList(forslag).filter((item) => {
+      const key = itemKey(item);
+      return key && !have.has(key);
+    });
+  }
+
+  function removedListItems(current, forslag) {
+    const next = new Set(asList(forslag).map(itemKey).filter(Boolean));
+    return asList(current).filter((item) => {
+      const key = itemKey(item);
+      return key && !next.has(key);
+    });
+  }
+
+  function classifyAndring(falt, current, forslag, andra) {
+    if (!andra) return { key: 'ingen', label: 'Ingen ändring' };
+    if (isEmptyCurrent(falt, current)) return { key: 'lagg-till', label: 'Lägger till' };
+    if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
+      const added = addedListItems(current, forslag);
+      const removed = removedListItems(current, forslag);
+      if (added.length && !removed.length) {
+        return {
+          key: 'lagg-till',
+          label: added.length === 1 ? 'Lägger till en faktor' : 'Lägger till faktorer'
+        };
+      }
+      if (added.length && removed.length) return { key: 'andra', label: 'Ändrar och lägger till' };
+      return { key: 'andra', label: 'Ändrar lista' };
+    }
+    return { key: 'andra', label: 'Ändrar nuvarande text' };
+  }
+
+  function decoratePoster(item, befintligt) {
+    const nuvarande = currentValueFor(item.falt, befintligt);
+    return Object.assign({}, item, {
+      nuvarande,
+      klass: classifyAndring(item.falt, nuvarande, item.forslag, item.andra)
+    });
+  }
+
+  function scoreSelectHtml(name, selected) {
+    const cur = String(selected == null ? '' : selected);
+    let html = `<select data-ai-${name} aria-label="${name === 's' ? 'Sannolikhet' : 'Konsekvens'}">`;
+    html += '<option value="">Ej satt</option>';
+    for (let i = 1; i <= 5; i++) {
+      html += `<option value="${i}"${cur === String(i) ? ' selected' : ''}>${i}</option>`;
+    }
+    html += '</select>';
+    return html;
+  }
+
+  function listItemEditorHtml(falt, item, isNew) {
+    const typ = item.typ || 'PT';
+    const kat = item.kategori || 'Verksamhet';
+    const extra = falt === 'hot'
+      ? `<select data-ai-typ aria-label="PT eller TF">
+          <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
+          <option value="TF"${typ === 'TF' ? ' selected' : ''}>TF</option>
+          <option value="Båda"${typ === 'Båda' ? ' selected' : ''}>Båda</option>
+        </select>`
+      : falt === 'sarbarheter'
+        ? `<select data-ai-kat aria-label="Kategori">
+            <option${kat === 'Verksamhet' ? ' selected' : ''}>Verksamhet</option>
+            <option${kat === 'Kunder' ? ' selected' : ''}>Kunder</option>
+            <option${kat === 'Distribution' ? ' selected' : ''}>Distribution</option>
+            <option${kat === 'Geografi' ? ' selected' : ''}>Geografi</option>
+          </select>`
+        : '';
+    return `
+      <div class="ai-review-item"${isNew ? ' data-ai-new' : ''} data-ai-item>
+        <div class="ai-review-item-head">
+          ${isNew ? '<span class="ai-review-item-new">Ny</span>' : ''}
+          ${extra}
+          <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
+        </div>
+        <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
+        ${falt === 'hot' ? `<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
+      </div>
+    `;
+  }
+
+  function forslagEditorHtml(item) {
+    const falt = item.falt;
+    if (falt === 'sxk' || falt === 'residual') {
+      const s = item.forslag && typeof item.forslag === 'object' ? item.forslag : {};
+      return `
+        <div class="ai-review-scores">
+          <label>Sannolikhet ${scoreSelectHtml('s', s.sannolikhet)}</label>
+          <label>Konsekvens ${scoreSelectHtml('k', s.konsekvens)}</label>
+        </div>
+      `;
+    }
+    if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
+      const added = new Set(addedListItems(item.nuvarande, item.forslag).map(itemKey));
+      const rows = asList(item.forslag).map((row) => listItemEditorHtml(falt, row, added.has(itemKey(row))));
+      return `<div class="ai-review-items">${rows.join('')}</div>`;
+    }
+    if (falt === 'ptTfRelevans') {
+      const cur = trimStr(item.forslag) || 'PT';
+      return `
+        <select data-ai-forslag>
+          <option value="PT"${cur === 'PT' ? ' selected' : ''}>PT</option>
+          <option value="TF"${cur === 'TF' ? ' selected' : ''}>TF</option>
+          <option value="Båda"${cur === 'Båda' ? ' selected' : ''}>Båda</option>
+        </select>
+      `;
+    }
+    const text = trimStr(item.forslag);
+    const rows = Math.min(12, Math.max(4, text.split('\n').length + 1));
+    return `<textarea class="ai-review-forslag-edit" data-ai-forslag rows="${rows}">${esc(text)}</textarea>`;
+  }
+
+  function readEditedForslag(card, row) {
+    if (!card || !row) return row && row.forslag;
+    const falt = row.falt;
+    if (falt === 'sxk' || falt === 'residual') {
+      return {
+        sannolikhet: card.querySelector('[data-ai-s]')?.value || '',
+        konsekvens: card.querySelector('[data-ai-k]')?.value || ''
+      };
+    }
+    if (falt === 'hot' || falt === 'sarbarheter' || falt === 'atgarder') {
+      return [...card.querySelectorAll('[data-ai-item]')].map((el) => {
+        const item = {
+          titel: (el.querySelector('[data-ai-titel]')?.value || '').trim(),
+          beskrivning: (el.querySelector('[data-ai-beskrivning]')?.value || '').trim()
+        };
+        if (falt === 'hot') {
+          item.typ = el.querySelector('[data-ai-typ]')?.value || 'PT';
+          item.kalla = (el.querySelector('[data-ai-kalla]')?.value || '').trim();
+        }
+        if (falt === 'sarbarheter') item.kategori = el.querySelector('[data-ai-kat]')?.value || 'Verksamhet';
+        return item;
+      }).filter((item) => item.titel || item.beskrivning || item.kalla);
+    }
+    const field = card.querySelector('[data-ai-forslag]');
+    return field ? String(field.value || '').trim() : row.forslag;
+  }
+
   function fallbackPosters(kind, generated) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const keys = kind === 'ovrig' ? Object.keys(OVRIG_FALT) : Object.keys(TJANST_FALT);
@@ -311,7 +479,9 @@
 
   function renderReview(host, poster, handlers) {
     if (!host) return;
-    const items = Array.isArray(poster) ? poster : [];
+    const rawItems = Array.isArray(poster) ? poster : [];
+    const befintligt = (handlers && handlers.befintligt) || {};
+    const items = rawItems.map((item) => decoratePoster(item, befintligt));
     if (!items.length) {
       hideReview(host);
       return;
@@ -324,18 +494,34 @@
       <div class="ai-review-head">
         <div>
           <strong>AI har tittat på era texter</strong>
-          <p>Kopiera in ett ändringsförslag eller avfärda det. Befintliga fält skrivs inte över förrän du väljer.</p>
+          <p>Jämför med nuvarande text, redigera förslaget och kopiera in det — eller avfärda. Inget skrivs över förrän du väljer.</p>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
       </div>
       <div class="ai-review-list">
         ${items.map((item) => {
-          const preview = item.andra ? formatForslagPreview(item.falt, item.forslag) : '';
+          const klass = item.klass || { key: 'ingen', label: 'Ingen ändring' };
+          const hasCurrent = !isEmptyCurrent(item.falt, item.nuvarande);
+          const currentPreview = hasCurrent ? formatForslagPreview(item.falt, item.nuvarande) : '';
           return `
             <article class="ai-review-card" data-falt="${esc(item.falt)}">
-              <h5>${esc(item.etikett)}</h5>
+              <div class="ai-review-card-head">
+                <h5>${esc(item.etikett)}</h5>
+                <span class="ai-review-kind is-${esc(klass.key)}">${esc(klass.label)}</span>
+              </div>
               ${item.kommentar ? `<p class="ai-review-comment">${esc(item.kommentar)}</p>` : ''}
-              ${preview ? `<pre class="ai-review-forslag">${esc(preview)}</pre>` : '<p class="ai-review-ok">Ingen ändring föreslagen.</p>'}
+              ${hasCurrent ? `
+                <div class="ai-review-col">
+                  <span class="ai-review-col-label">Nuvarande</span>
+                  <pre class="ai-review-current">${esc(currentPreview)}</pre>
+                </div>
+              ` : '<p class="ai-review-ok">Fältet är tomt i dag — det här är ett tillägg.</p>'}
+              ${item.andra ? `
+                <div class="ai-review-col">
+                  <span class="ai-review-col-label">Förslag (redigerbart)</span>
+                  ${forslagEditorHtml(item)}
+                </div>
+              ` : '<p class="ai-review-ok">Ingen ändring föreslagen.</p>'}
               <div class="ai-review-actions">
                 ${item.andra ? '<button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>' : ''}
                 <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
@@ -359,7 +545,9 @@
       if (!card) return;
       const falt = card.getAttribute('data-falt');
       const row = (host._aiPoster || []).find((p) => p.falt === falt);
-      if (applyBtn && row && onApply) onApply(row);
+      if (applyBtn && row && onApply) {
+        onApply(Object.assign({}, row, { forslag: readEditedForslag(card, row) }));
+      }
       if ((applyBtn || dismissBtn) && onDismiss) onDismiss(row);
       if (applyBtn || dismissBtn) card.remove();
       if (!host.querySelector('.ai-review-card')) hideReview(host);
@@ -381,6 +569,10 @@
     normalizeGranskning,
     generatedValueFor,
     formatForslagPreview,
+    currentValueFor,
+    classifyAndring,
+    decoratePoster,
+    readEditedForslag,
     fallbackPosters,
     hasForslag,
     renderReview,
