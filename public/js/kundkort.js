@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.47', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.55', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -10185,6 +10185,12 @@ class CustomerCardManager {
             const cat = list[0]?.category || (label === historikLabel ? 'historik' : 'ovrigt');
             const icon = categoryIcons[cat] || 'fa-file-alt';
             const safeLabel = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const exportable = list.filter((doc) => doc.sourceField != null && doc.sourceIndex != null);
+            const selectAll = exportable.length
+                ? `<label class="document-export-all" onclick="event.stopPropagation()">
+                        <input type="checkbox" class="document-export-check-all"> Markera alla
+                   </label>`
+                : '';
             const listHtml = list.length
                 ? `<ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
                 : `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
@@ -10192,6 +10198,7 @@ class CustomerCardManager {
                     <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc" data-doc-category="${this.escapeDocHtml(cat)}">
                         <div class="collapsible-header">
                             <div class="collapsible-title"><i class="fas ${icon}"></i> ${safeLabel}</div>
+                            ${selectAll}
                         </div>
                         <div class="collapsible-body">
                             ${listHtml}
@@ -10210,10 +10217,14 @@ class CustomerCardManager {
                     <button class="btn btn-ghost btn-sm" onclick="customerCardManager.uploadDocument()">
                         <i class="fas fa-upload"></i> Ladda upp dokument
                     </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="documents-export-zip" disabled onclick="customerCardManager.exportSelectedDocumentsZip()">
+                        <i class="fas fa-file-archive"></i> Exportera valda som ZIP<span class="documents-export-count"></span>
+                    </button>
                     <p class="document-drop-hint-global">Du kan också dra filer hit, eller släppa dem på en kategori.</p>
                 </div>
             </div>`;
         this.bindDokumentationDrop(document.getElementById('dokumentation') || content);
+        this.bindDocumentExportChecks(content);
     }
 
     getCategoryLabel(cat) {
@@ -11307,8 +11318,14 @@ class CustomerCardManager {
         const nameHtml = canOpen
             ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
             : `<span class="document-list-name">${safeNamn}</span>`;
+        const checkHtml = hasSource
+            ? `<label class="document-export-pick" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="document-export-check" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" aria-label="Välj ${safeNamn} för export">
+               </label>`
+            : `<span class="document-export-pick document-export-pick--empty"></span>`;
         return `
             <li class="document-list-item">
+                ${checkHtml}
                 <i class="fas fa-file-pdf document-list-icon"></i>
                 <div class="document-list-info">
                     ${nameHtml}
@@ -11322,6 +11339,96 @@ class CustomerCardManager {
                 </div>
             </li>
         `;
+    }
+
+    bindDocumentExportChecks(root) {
+        if (!root) return;
+        const update = () => {
+            const n = root.querySelectorAll('.document-export-check:checked').length;
+            const btn = root.querySelector('#documents-export-zip');
+            const count = root.querySelector('.documents-export-count');
+            if (btn) btn.disabled = n === 0;
+            if (count) count.textContent = n ? ` (${n})` : '';
+        };
+        root.querySelectorAll('.document-export-check-all').forEach((el) => {
+            el.addEventListener('click', (e) => e.stopPropagation());
+            el.addEventListener('change', () => {
+                const card = el.closest('.documentation-card');
+                (card || root).querySelectorAll('.document-export-check').forEach((box) => {
+                    box.checked = el.checked;
+                });
+                el.indeterminate = false;
+                update();
+            });
+        });
+        root.querySelectorAll('.document-export-check').forEach((el) => {
+            el.addEventListener('click', (e) => e.stopPropagation());
+            el.addEventListener('change', () => {
+                const card = el.closest('.documentation-card');
+                const master = card && card.querySelector('.document-export-check-all');
+                if (master) {
+                    const boxes = [...card.querySelectorAll('.document-export-check')];
+                    const checked = boxes.filter((box) => box.checked).length;
+                    master.checked = boxes.length > 0 && checked === boxes.length;
+                    master.indeterminate = checked > 0 && checked < boxes.length;
+                }
+                update();
+            });
+        });
+        update();
+    }
+
+    async exportSelectedDocumentsZip() {
+        const checks = Array.from(document.querySelectorAll('#documents-content .document-export-check:checked'));
+        const items = checks.map((box) => ({
+            sourceField: box.getAttribute('data-source-field') || '',
+            sourceIndex: parseInt(box.getAttribute('data-source-index'), 10)
+        })).filter((item) => item.sourceField && Number.isInteger(item.sourceIndex));
+        if (!items.length) {
+            this.showNotification('Välj minst ett dokument att exportera.', 'error');
+            return;
+        }
+        const btn = document.getElementById('documents-export-zip');
+        const orig = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Exporterar ${items.length}...`;
+        }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const opts = getAuthOptsKundkort();
+            const res = await fetch(`${baseUrl}/api/documents/zip`, {
+                method: 'POST',
+                ...opts,
+                headers: { ...(opts.headers || {}), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: this.customerId, items })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const blob = await res.blob();
+            const skipped = parseInt(res.headers.get('X-Zip-Skipped') || '0', 10);
+            const apiName = (res.headers.get('Content-Disposition') || '').match(/filename\*?=(?:UTF-8'')?["']?([^";]+)/i);
+            const filename = apiName ? decodeURIComponent(apiName[1]) : 'dokument.zip';
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            this.showNotification(skipped ? `ZIP nedladdad. ${skipped} filer hoppades över.` : 'ZIP nedladdad.', skipped ? 'warning' : 'success');
+        } catch (err) {
+            console.error('❌ Exportera dokument-ZIP:', err);
+            this.showNotification('Kunde inte exportera: ' + (err.message || 'Okänt fel'), 'error');
+        } finally {
+            if (btn) btn.innerHTML = orig;
+            const root = document.getElementById('documents-content');
+            const n = root ? root.querySelectorAll('.document-export-check:checked').length : 0;
+            if (btn) btn.disabled = n === 0;
+            const count = root && root.querySelector('.documents-export-count');
+            if (count) count.textContent = n ? ` (${n})` : '';
+        }
     }
 
     previewDocumentFromBtn(btn) {

@@ -6314,7 +6314,13 @@ body.sidebar-collapsed .logout-btn {
 }
 .dokumentation-page-header .risk-header-content { flex: 1; min-width: 12rem; }
 .dokumentation-page-desc { margin: 0.35rem 0 0; max-width: 36rem; }
-.dokumentation-header-actions { flex-shrink: 0; }
+.dokumentation-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+}
 .dokumentation-export-history { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
 .dokumentation-section { margin-bottom: 2rem; }
 .dokumentation-riskbedomning-view {
@@ -6367,9 +6373,51 @@ body.sidebar-collapsed .logout-btn {
 }
 .nav-action-item a { cursor: pointer; }
 .document-list-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 0.85rem;
     margin-top: 1rem;
     padding-top: 0.75rem;
     border-top: 1px solid var(--line);
+}
+.document-list-actions .document-drop-hint-global {
+    flex: 1 1 100%;
+}
+.document-export-pick {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.25rem;
+}
+.document-export-pick input,
+.document-export-all input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--accent, #0f766e);
+    cursor: pointer;
+}
+.document-export-pick--empty {
+    visibility: hidden;
+}
+.document-export-all {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--ink-3, #64748b);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+.document-export-all:hover {
+    color: var(--title-text, #1e293b);
+}
+.documents-export-count {
+    font-weight: 600;
 }
 .document-drop-hint {
     margin: 0.7rem 2.5rem 0 0;

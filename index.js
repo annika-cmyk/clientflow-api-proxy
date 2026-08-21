@@ -78,6 +78,7 @@ const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
 const documentPreview = require('./lib/document-preview');
+const dokumentZip = require('./lib/dokument-zip');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
@@ -149,7 +150,7 @@ app.use((req, res, next) => {
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, credentials, X-User-Email, X-Api-Key, X-Clientflow-Secret');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Dokumentation-Saved');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Dokumentation-Saved, X-Zip-Included, X-Zip-Skipped');
     res.setHeader('Access-Control-Allow-Credentials', allowOrigin ? 'true' : 'false');
     
     // Hantera preflight requests
@@ -7046,6 +7047,132 @@ app.get('/api/documents/file', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('\u274c GET documents/file:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte hämta dokumentet' });
+  }
+});
+
+async function downloadZipAttachment(url) {
+  const fileRes = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: dokumentZip.DOWNLOAD_TIMEOUT_MS,
+    maxContentLength: dokumentZip.FILE_MAX_BYTES,
+    maxBodyLength: dokumentZip.FILE_MAX_BYTES
+  });
+  return Buffer.from(fileRes.data);
+}
+
+// POST /api/documents/zip – Exportera valda kunddokument som ZIP
+app.post('/api/documents/zip', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.body?.customerId;
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!customerId) return res.status(400).json({ error: 'customerId saknas' });
+    if (!items.length) return res.status(400).json({ error: 'Välj minst ett dokument' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const { customerRecord } = await assertCustomerAccess(req, customerId, {
+      airtableAccessToken,
+      baseId: airtableBaseId
+    });
+    const fields = customerRecord.fields || {};
+    const { resolved, missing } = dokumentZip.resolveSelectedAttachments(fields, items);
+    const planned = dokumentZip.planZipEntries({
+      files: resolved,
+      maxFiles: dokumentZip.CUSTOMER_MAX_FILES,
+      maxBytes: dokumentZip.CUSTOMER_MAX_BYTES
+    });
+    planned.skipped.push(...missing.map((m) => ({ filename: m.filename, reason: 'hittades inte' })));
+    const assigned = dokumentZip.assignZipPaths(planned.included);
+    const assembled = await dokumentZip.assembleZipFiles({
+      planned: { included: assigned, skipped: planned.skipped },
+      fetchBuffer: (file) => downloadZipAttachment(file.url),
+      deadlineMs: dokumentZip.CUSTOMER_DEADLINE_MS
+    });
+    if (assembled.error) return res.status(400).json({ error: assembled.error, skipped: assembled.skipped });
+
+    const kundNamn = dokumentZip.sanitizeZipPart(fields.Namn || fields['Företagsnamn'] || 'kund', 'kund');
+    const filename = `Dokument-${kundNamn}-${dokumentZip.dateStamp()}.zip`;
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': dokumentZip.attachmentZipDisposition(filename),
+      'Cache-Control': 'no-store',
+      'X-Zip-Included': String(assembled.included),
+      'X-Zip-Skipped': String((assembled.skipped || []).length)
+    });
+    res.send(assembled.buffer);
+  } catch (error) {
+    console.error('❌ POST documents/zip:', error.message);
+    res.status(error.status || 500).json({ error: error.message || 'Kunde inte exportera dokument' });
+  }
+});
+
+// POST /api/byra/dokument-zip – Exportera byråns PDF:er och alla kunddokument som ZIP
+app.post('/api/byra/dokument-zip', authenticateToken, async (req, res) => {
+  try {
+    const loaded = await loadUserByraerRecord(req);
+    const customers = await fetchKunddataRecordsForUser(
+      loaded.userData,
+      loaded.airtableAccessToken,
+      loaded.airtableBaseId
+    );
+    const files = [];
+    (customers || []).forEach((record) => {
+      const kundNamn = dokumentZip.sanitizeZipPart(
+        record.fields?.Namn || record.fields?.['Företagsnamn'] || record.id,
+        'kund'
+      );
+      dokumentZip.listCustomerAttachmentRefs(record.fields || {}).forEach((item) => {
+        files.push({
+          ...item,
+          folder: `${kundNamn}/${item.folder}`
+        });
+      });
+    });
+    const byraAtts = loaded.record?.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
+    byraAtts.forEach((att, index) => {
+      if (!att || !att.url) return;
+      files.push({
+        sourceField: DOKUMENTATION_PDF_FILES_FIELD,
+        sourceIndex: index,
+        filename: att.filename || 'dokument.pdf',
+        url: att.url,
+        size: Number(att.size) || 0,
+        folder: 'Byrans dokumentation'
+      });
+    });
+    if (!files.length) return res.status(400).json({ error: 'Inga dokument att exportera' });
+
+    const planned = dokumentZip.planZipEntries({
+      files,
+      maxFiles: dokumentZip.BYRA_MAX_FILES,
+      maxBytes: dokumentZip.BYRA_MAX_BYTES
+    });
+    const assigned = dokumentZip.assignZipPaths(planned.included);
+    const assembled = await dokumentZip.assembleZipFiles({
+      planned: { included: assigned, skipped: planned.skipped },
+      fetchBuffer: (file) => downloadZipAttachment(file.url),
+      deadlineMs: dokumentZip.BYRA_DEADLINE_MS
+    });
+    if (assembled.error) return res.status(400).json({ error: assembled.error, skipped: assembled.skipped });
+
+    const byraNamn = dokumentZip.sanitizeZipPart(
+      loaded.record?.fields?.Namn || loaded.record?.fields?.['Byrånamn'] || 'byra',
+      'byra'
+    );
+    const filename = `Byrans-dokument-${byraNamn}-${dokumentZip.dateStamp()}.zip`;
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': dokumentZip.attachmentZipDisposition(filename),
+      'Cache-Control': 'no-store',
+      'X-Zip-Included': String(assembled.included),
+      'X-Zip-Skipped': String((assembled.skipped || []).length)
+    });
+    res.send(assembled.buffer);
+  } catch (error) {
+    console.error('❌ POST byra/dokument-zip:', error.message);
+    res.status(error.status || 500).json({ error: error.message || 'Kunde inte exportera byråns dokument' });
   }
 });
 

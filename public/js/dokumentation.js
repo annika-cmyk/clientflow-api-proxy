@@ -449,8 +449,57 @@
     }
   }
 
+  async function exportAllDokumentationZip() {
+    if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+      alert('Du måste logga in för att exportera.');
+      return;
+    }
+    if (!window.confirm('Exportera byråns PDF:er och alla kunddokument som ZIP? Det kan ta en stund om byrån har många filer.')) {
+      return;
+    }
+    const btn = getEl('btn-export-dokumentation-zip');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Samlar dokument...';
+    }
+    try {
+      const opts = getAuthOpts();
+      const res = await fetch(getBaseUrl() + '/api/byra/dokument-zip', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { ...(opts.headers || {}) }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(function () { return {}; });
+        throw new Error(err.error || err.message || 'Kunde inte exportera ZIP');
+      }
+      const blob = await res.blob();
+      const apiFilename = parseFilenameFromResponse(res);
+      const skipped = parseInt(res.headers.get('X-Zip-Skipped') || '0', 10);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = apiFilename || ('Byrans-dokument-' + new Date().toISOString().slice(0, 10) + '.zip');
+      a.click();
+      URL.revokeObjectURL(url);
+      if (skipped) {
+        alert('ZIP nedladdad. ' + skipped + ' filer hoppades över på grund av storlek eller tidsgräns. Se _oversikt-hoppade.txt i zip-filen.');
+      }
+    } catch (err) {
+      console.error('Dokumentation ZIP:', err);
+      alert('Kunde inte exportera: ' + (err.message || 'Okänt fel'));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+  }
+
   window.dokumentationExportPdf = exportDokumentationPdf;
   window.exportLansstyrelsenPdf = exportDokumentationPdf;
+  window.dokumentationExportZip = exportAllDokumentationZip;
 
   function formatDoldDatum(iso) {
     if (!iso) return '';
@@ -531,6 +580,8 @@
   function initExportButton() {
     const btn = getEl('btn-export-dokumentation');
     if (btn) btn.addEventListener('click', exportDokumentationPdf);
+    const zipBtn = getEl('btn-export-dokumentation-zip');
+    if (zipBtn) zipBtn.addEventListener('click', exportAllDokumentationZip);
   }
 
   /** Kör load() när auth är klar – annars kan getCurrentUser() vara null eftersom checkAuthStatus() är asynkron. */
