@@ -73,6 +73,7 @@ const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
+const personRegister = require('./lib/person-register');
 const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
@@ -2366,6 +2367,11 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     type: 'date',
     description: 'Datum då uppdragsavtalet utanför ClientFlow utfördes',
     options: { dateFormat: { name: 'iso' } }
+  },
+  {
+    name: personRegister.PERSONHISTORIK_FIELD,
+    type: 'multilineText',
+    description: 'JSON-historik över företrädare och verkliga huvudmän (personnummer/orgnr, roller, från/till).'
   }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
@@ -5695,6 +5701,60 @@ app.get('/api/kunddata/dolda', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/personregister?q= – sök företrädare och VH på personnummer/orgnr (alla kunder, 5 år)
+app.get('/api/personregister', authenticateToken, async (req, res) => {
+  try {
+    const query = String(req.query.q || req.query.query || '').trim();
+    const parsed = personRegister.classifyQuery(query);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error, people: [] });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const customers = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    const uppdrag = [];
+    if (byraIdClean) {
+      const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent('Uppdrag');
+      const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+      const headers = { Authorization: `Bearer ${airtableAccessToken}` };
+      const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const num = parseInt(byraIdClean, 10);
+      const byraFormula = Number.isNaN(num)
+        ? `OR({Byrå ID}="${esc(byraIdClean)}")`
+        : `OR({Byrå ID}="${esc(byraIdClean)}",{Byrå ID}=${num})`;
+      let offset = null;
+      try {
+        do {
+          const params = { pageSize: 100, filterByFormula: byraFormula };
+          if (offset) params.offset = offset;
+          const r = await axios.get(url, { headers, params, timeout: 20000 });
+          (r.data.records || []).forEach((rec) => uppdrag.push(rec));
+          offset = r.data.offset || null;
+        } while (offset);
+      } catch (e) {
+        console.warn('GET /api/personregister: kunde inte hämta uppdrag:', e.message);
+      }
+    }
+
+    const result = personRegister.searchPersonRegister({
+      customers,
+      uppdrag,
+      query,
+      years: personRegister.DEFAULT_YEARS
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json(result);
+  } catch (error) {
+    console.error('❌ GET /api/personregister:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte söka i registret' });
+  }
+});
+
 // GET /api/kunddata/:id - Hämta en specifik kund baserat på ID (måste komma före /api/kunddata)
 app.get('/api/hogrisk-sni', authenticateToken, async (req, res) => {
   try {
@@ -5969,6 +6029,18 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
           });
         }
       }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, 'Kontaktpersoner')
+      || Object.prototype.hasOwnProperty.call(cleanedFields, 'Befattningshavare')) {
+      const mergedPeopleFields = { ...(customerRecord.fields || {}), ...cleanedFields };
+      const currentPeople = personRegister.parseKontaktPersoner(mergedPeopleFields);
+      cleanedFields[personRegister.PERSONHISTORIK_FIELD] = JSON.stringify(
+        personRegister.mergePersonhistorik(
+          customerRecord.fields?.[personRegister.PERSONHISTORIK_FIELD],
+          currentPeople
+        )
+      );
     }
 
     const sniChanged = ['SNI kod', 'SNI-koder', 'SNI-kod'].some((k) => Object.prototype.hasOwnProperty.call(cleanedFields, k));

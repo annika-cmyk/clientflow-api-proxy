@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Personregister</title>
+    <link rel="stylesheet" href="styles.css?v=3.22">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="personregister-page">
+
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>Personregister</h1>
+                        <p class="section-desc">Sök på personnummer eller organisationsnummer bland företrädare och verkliga huvudmän – även på dolda och avslutade kunder. Resultatet visar bolag och uppdrag under de senaste fem åren.</p>
+                    </div>
+                </header>
+
+                <form id="personregister-form" class="personregister-search" autocomplete="off">
+                    <label class="visually-hidden" for="personregister-q">Personnummer eller organisationsnummer</label>
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <input
+                        type="search"
+                        id="personregister-q"
+                        name="q"
+                        inputmode="numeric"
+                        placeholder="Personnummer eller organisationsnummer"
+                        required
+                    >
+                    <button type="submit" class="btn btn-primary" id="personregister-submit">
+                        <i class="fas fa-search"></i> Sök
+                    </button>
+                </form>
+
+                <p id="personregister-status" class="personregister-status"></p>
+                <div id="personregister-results"></div>
+            </div>
+        </main>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; 2024 ClientFlow. Alla rättigheter förbehållna.</p>
+        </div>
+    </footer>
+
+    <script src="js/config.js?v=2.1"></script>
+    <script src="js/auth.js?v=2.1"></script>
+    <script src="js/navigation.js?v=2.1"></script>
+    <script src="js/components.js?v=2.1"></script>
+    <script src="js/ai-chat.js?v=2.4"></script>
+    <script src="app.js?v=2.2"></script>
+    <script src="js/personregister.js?v=1"></script>
+</body>
+</html>
