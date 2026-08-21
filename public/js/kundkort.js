@@ -5071,7 +5071,7 @@ class CustomerCardManager {
 
         const rowsHtml = diffs.length ? diffs.map((d) => `
             <label class="uppdrag-riskbox-toggle" style="align-items:flex-start; font-weight:600;">
-                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}">
+                <input type="checkbox" class="bv-diff-cb" value="${this._esc(d.key)}" checked>
                 <div style="display:grid; gap:0.15rem;">
                     <div style="color:#0f172a;">${this._esc(d.key)}</div>
                     <div class="uppdrag-muted">Nu: ${this._esc(d.prev || '—')}</div>
