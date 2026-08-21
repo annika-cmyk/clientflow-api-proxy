@@ -797,6 +797,7 @@ class RiskFactorsManager {
                     ? data.granskning.poster
                     : (Ai.fallbackPosters('ovrig', data).filter((p) => Ai.filledOvrigKeys(befintligt).includes(p.falt)));
                 Ai.renderReview(reviewHost, poster, {
+                    befintligt,
                     onApply: (row) => this.applyOvrigAiField(prefix, row.falt, row.forslag)
                 });
                 this.showNotification(poster.length
