@@ -32,8 +32,9 @@
     statusEjKlara: document.getElementById('uppdrag-status-ej-klara')
   };
 
-  const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+  const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration', 'Övriga'];
   const LONE_TAB = 'Löneuppdrag';
+  const OVRIGA_TAB = 'Övriga';
 
   function isLoneTyp(typ) {
     return !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
@@ -45,9 +46,26 @@
       : String(typ || '');
   }
 
+  function isOvrigaTyp(typ) {
+    const t = String(typ || '').trim();
+    if (!t) return false;
+    if (window.UppdragTyp && UppdragTyp.isStandardUppdragTyp) {
+      return !UppdragTyp.isStandardUppdragTyp(t);
+    }
+    return t === 'Eget uppdrag';
+  }
+
+  function uppdragDisplayName(typ, fields) {
+    if (window.UppdragTyp && UppdragTyp.uppdragDisplayName) {
+      return UppdragTyp.uppdragDisplayName(typ, fields);
+    }
+    return typDisplayLabel(typ);
+  }
+
   function matchesActiveType(typ) {
     const t = String(typ || '').trim();
     if (activeType === LONE_TAB) return isLoneTyp(t);
+    if (activeType === OVRIGA_TAB) return isOvrigaTyp(t);
     return t === activeType;
   }
 
@@ -126,7 +144,8 @@
     const start = new Date(nextD.getTime());
     if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
     else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
-    else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+    else     if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+    else if (freq.includes('veck')) start.setDate(start.getDate() - 7);
     else start.setMonth(start.getMonth() - 1);
     return doneD >= start && doneD < nextD;
   }
@@ -167,6 +186,7 @@
     if (f.includes('kvartal')) return 3;
     if (f.includes('månad')) return 1;
     if (f.includes('årsvis')) return 12;
+    if (f.includes('veck')) return 0;
     if (f.includes('engång')) return 0;
     return 1;
   }
@@ -187,6 +207,7 @@
   function getModeForUppdrag(typ, freqStr) {
     const tt = (typ || '').toString().trim();
     const ff = (freqStr || '').toString().toLowerCase();
+    if (ff.includes('veck')) return 'week';
     if (tt === 'Momsredovisning') {
       if (ff.includes('kvartal')) return 'quarter';
       if (ff.includes('år')) return 'year';
@@ -234,6 +255,7 @@
       const pk = MomsPeriod.periodKeyFromDeadlineYm(dl.slice(0, 7), freq);
       if (pk) return pk;
     }
+    if (mode === 'week') return dl;
     if (mode === 'quarter') return quarterKeyForMonth(dl.slice(0, 7));
     if (mode === 'year') return yearKeyForMonth(dl.slice(0, 7));
     if (isLoneTyp(typ) && window.LonePeriod) {
@@ -260,6 +282,7 @@
         return `${y}-${String(endMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       }
     }
+    if (mode === 'week' && /^\d{4}-\d{2}-\d{2}$/.test(pk)) return pk;
     if (mode === 'year' && /^\d{4}$/.test(pk)) {
       const day = dayFromDeadlinePattern(refDeadline);
       const month = String(refDeadline || '').slice(5, 7);
@@ -410,6 +433,29 @@
       }
     }
 
+    if (String(freq || '').toLowerCase().includes('veck')) {
+      if (refDeadline) {
+        const addDays = (iso, n) => {
+          const s = toDateStr(iso);
+          if (!s) return '';
+          const [y, mo, da] = s.split('-').map(Number);
+          const dt = new Date(y, mo - 1, da + n);
+          return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        };
+        let d = refDeadline;
+        let s = refStart || d;
+        for (let guard = 0; guard < 60; guard++) {
+          if (!d) break;
+          const dlMonth = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, 1);
+          if (dlMonth > monthMax) break;
+          addRun(d, d, s, d);
+          d = addDays(d, 7);
+          s = addDays(s, 7);
+        }
+      }
+      return Array.from(runs.values());
+    }
+
     const step = monthsStepFromFreq(freq);
     if (step === 0) {
       if (refDeadline) {
@@ -501,7 +547,10 @@
       const kid = String(x?.record?.id || '');
       const mk = String(x?.month || '');
       if (!kid || !mk) continue;
-      const mapKey = `${kid}:${mk}`;
+      const freq = String(x?.record?.fields?.['Frekvens'] || '').toLowerCase();
+      const mapKey = freq.includes('veck')
+        ? `${kid}:${mk}:${x.periodKey || x.deadline || ''}`
+        : `${kid}:${mk}`;
       const prev = best.get(mapKey);
       if (!prev) {
         best.set(mapKey, x);
@@ -628,21 +677,28 @@
     return { riskOn, riskValda, done };
   }
 
-  async function savePtlUnderlagOnly(customerId, typ, uploadedItems) {
+  async function savePtlUnderlagOnly(customerId, typ, uploadedItems, uppdragId) {
     // merge uploaded into existing record (first fetch from current allRecords)
-    const rec = allRecords.find(r => String(r?.fields?.['Kund ID'] || '') === String(customerId) && String(r?.fields?.['Typ'] || '') === String(typ));
+    const id = String(uppdragId || '').trim();
+    const rec = (id && allRecords.find((r) => String(r?.id || '') === id))
+      || allRecords.find(r => String(r?.fields?.['Kund ID'] || '') === String(customerId) && String(r?.fields?.['Typ'] || '') === String(typ));
     const existing = safeJson((rec?.fields?.['PTL Underlag'] || '').toString().trim(), []);
     const merged = (Array.isArray(uploadedItems) ? uploadedItems : []).concat(Array.isArray(existing) ? existing : []).slice(0, 200);
     const res = await fetch(`${baseUrl}/api/uppdrag`, {
       method: 'POST',
       ...getAuthOpts(),
-      body: JSON.stringify({ customerId, typ, fields: { 'PTL Underlag': JSON.stringify(merged) } })
+      body: JSON.stringify({
+        customerId,
+        typ,
+        fields: { 'PTL Underlag': JSON.stringify(merged) },
+        ...(id || rec?.id ? { uppdragId: id || rec.id } : {})
+      })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  function showCompleteModal({ customerId, typ, fields, periodKey, runFields, runId, doneAtgarder }) {
+  function showCompleteModal({ customerId, typ, fields, periodKey, runFields, runId, doneAtgarder, uppdragId }) {
     const existing = document.getElementById('uppdrag-complete-modal');
     if (existing) existing.remove();
 
@@ -659,7 +715,7 @@
     modal.innerHTML = `
       <div class="modal-box" style="max-width:720px; width:96vw; max-height:90vh;">
         <div class="modal-header">
-          <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${esc(typDisplayLabel(typ))}</h3>
+          <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${esc(uppdragDisplayName(typ, fields))}</h3>
           <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body" style="overflow:auto;">
@@ -729,7 +785,7 @@
               if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
               uploaded.push({ filename, uploadedAt: new Date().toISOString() });
             }
-            await savePtlUnderlagOnly(customerId, typ, uploaded);
+            await savePtlUnderlagOnly(customerId, typ, uploaded, uppdragId);
           }
         }
 
@@ -741,6 +797,7 @@
             typ,
             note,
             ...(periodKey ? { periodKey: String(periodKey).trim() } : {}),
+            ...(uppdragId ? { uppdragId } : {}),
             ...(done.length ? { riskAtgarder: done } : (riskValda.length ? { riskAtgarder: riskValda.map((text) => ({ text })) } : {}))
           })
         });
@@ -760,7 +817,9 @@
       ? 'Deadline'
       : (activeType === LONE_TAB
         ? 'Lönekörning'
-        : (activeType === 'Momsredovisning' ? 'Momsperiod' : (activeType === 'Bokslut' ? 'Bokslut' : 'Deklaration')));
+        : (activeType === 'Momsredovisning' ? 'Momsperiod'
+          : (activeType === 'Bokslut' ? 'Bokslut'
+            : (activeType === 'Deklaration' ? 'Deklaration' : 'Uppdrag'))));
     if (els.colRun) els.colRun.textContent = runLabel;
 
     const instances = (viewMode === 'open') ? buildOpenInstances(allRecords) : buildInstances(allRecords);
@@ -794,10 +853,13 @@
         : (modeForPrefill === 'year')
           ? yearKeyForMonth(x.month)
           : x.month);
+      const customName = isOvrigaTyp(x.typ) ? uppdragDisplayName(x.typ, f) : '';
       const runName = (x.typ === 'Momsredovisning' && window.MomsPeriod)
         ? MomsPeriod.runTitle(periodKey, MomsPeriod.inferFreq(freq, periodKey, null), x.month)
-        : String(x.periodLabel || '').trim();
-      const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning') && runName;
+        : (customName
+          ? (String(x.periodLabel || x.deadline || '').trim() ? `${customName} · ${String(x.periodLabel || x.deadline).slice(0, 10)}` : customName)
+          : String(x.periodLabel || '').trim());
+      const showRunName = (isLoneTyp(x.typ) || x.typ === 'Momsredovisning' || isOvrigaTyp(x.typ)) && runName;
       const runStatus = runStatusForInstance(x);
       const isKlar = done || runStatus === 'Klar';
       const attention = attentionForInstance(x, runStatus, done);
@@ -955,13 +1017,14 @@
         const doneBtn = row.querySelector('[data-action="done"]');
         const periodKey = doneBtn?.getAttribute('data-period-key') || '';
         const rowTyp = doneBtn?.getAttribute('data-typ') || row.getAttribute('data-typ') || activeType;
-        const rec = allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(rowTyp));
+        const inst = filtered.find((it) => String(it.key) === String(key));
+        const rec = (inst?.record)
+          || allRecords.find(x => String(x?.fields?.['Kund ID'] || '') === String(customerId) && String(x?.fields?.['Typ'] || '') === String(rowTyp));
         const runId = doneBtn?.getAttribute('data-run-id') || '';
         const box = tbodyEl.querySelector(`[data-risk-box="${CSS.escape(key)}"]`);
         const checkedFromDom = box
           ? Array.from(box.querySelectorAll('input[data-action="toggle-risk-atgard"]:checked')).map((i) => ({ text: i.value }))
           : [];
-        const inst = filtered.find((it) => String(it.key) === String(key));
         const runFields = inst?.runRec?.fields || {};
         const { riskOn, riskValda, done: storedDone } = getRiskState(rec?.fields || {}, runFields);
         const doneAtgarder = checkedFromDom.length ? checkedFromDom : storedDone;
@@ -978,7 +1041,8 @@
           periodKey,
           runFields,
           runId,
-          doneAtgarder
+          doneAtgarder,
+          uppdragId: rec?.id || ''
         });
       });
     });
@@ -1163,6 +1227,7 @@
     if (els.title) els.title.textContent = (activeType === 'Momsredovisning') ? 'Momsuppdrag'
       : (activeType === 'Bokslut') ? 'Bokslutsuppdrag'
       : (activeType === 'Deklaration') ? 'Deklarationsuppdrag'
+      : (activeType === OVRIGA_TAB) ? 'Övriga uppdrag'
       : 'Löneuppdrag';
     if (els.month) els.month.textContent = monthLabel(monthCursor);
   }

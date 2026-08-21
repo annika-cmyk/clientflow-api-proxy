@@ -59,6 +59,8 @@ const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const RiskSkala = require('./public/js/risk-skala');
 const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
+const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
+const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
@@ -8408,7 +8410,17 @@ const UPPDRAG_TYP_CHOICES = [
   { name: LONE_TYP_EFTERHAND },
   { name: 'Momsredovisning' },
   { name: 'Bokslut' },
-  { name: 'Deklaration' }
+  { name: 'Deklaration' },
+  { name: UppdragTyp.EGET_UPPDRAG_TYP }
+];
+
+const UPPDRAG_FREKVENS_CHOICES = [
+  { name: 'Veckovis' },
+  { name: 'Varje månad' },
+  { name: 'Varje kvartal' },
+  { name: 'Årsvis' },
+  { name: 'Årsvis med deklaration' },
+  { name: 'Engång' }
 ];
 
 function isLoneUppdragTyp(typ) {
@@ -8773,6 +8785,7 @@ function toIsoDateOnly(v) {
 async function ensureUppdragRunsSchema(airtableAccessToken, baseId) {
   try {
     await ensureUppdragTypChoices(airtableAccessToken, baseId);
+    await ensureUppdragFrekvensChoices(airtableAccessToken, baseId);
     await ensureUppdragStatusChoices(airtableAccessToken, baseId);
     await ensureUppdragRunsTypChoices(airtableAccessToken, baseId);
     await ensureUppdragRunsStatusChoices(airtableAccessToken, baseId);
@@ -9007,6 +9020,24 @@ async function ensureRunsAheadForUppdrag(uppdragRec, ctx) {
       const deadlineIso = `${ym}-${String(dayClamped).padStart(2, '0')}`;
       // eslint-disable-next-line no-await-in-loop
       await createRun({ periodKey: ym, periodLabel: monthLabelSv(ym), deadlineIso });
+    }
+    return { created, deduped, skipped: false, errors };
+  }
+
+  if (isWeeklyFreq(freq)) {
+    const weeklyRuns = weeklyRunsThroughHorizon({
+      startIso: toIsoDate(f['Startdatum'] || ''),
+      deadlineIso: deadline0,
+      horizonEnd
+    });
+    for (const run of weeklyRuns) {
+      // eslint-disable-next-line no-await-in-loop
+      await createRun({
+        periodKey: run.periodKey,
+        periodLabel: run.periodLabel,
+        deadlineIso: run.deadlineIso,
+        startIso: run.startIso
+      });
     }
     return { created, deduped, skipped: false, errors };
   }
@@ -14566,7 +14597,7 @@ const UPPDRAG_REQUIRED_FIELDS = [
   { name: 'Byrå ID', type: 'singleLineText', description: 'Byrå-id för dataseparering' },
   { name: 'Typ', type: 'singleSelect', options: { choices: UPPDRAG_TYP_CHOICES } },
   { name: 'Namn', type: 'singleLineText', description: 'Valfritt namn på uppdraget' },
-  { name: 'Frekvens', type: 'singleSelect', options: { choices: [{ name: 'Varje månad' }, { name: 'Varje kvartal' }, { name: 'Årsvis' }, { name: 'Årsvis med deklaration' }, { name: 'Engång' }] } },
+  { name: 'Frekvens', type: 'singleSelect', options: { choices: UPPDRAG_FREKVENS_CHOICES } },
   { name: 'Startdatum', type: 'date', description: 'Tidigast datum uppdraget ska börja synas i att-göra', options: { dateFormat: { name: 'iso' } } },
   { name: 'Första period', type: 'singleLineText', description: 'Första momsperiod (YYYY-MM eller YYYY-Qn) – sätts vid upplägg av moms' },
   { name: 'Nästa deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
@@ -15151,6 +15182,36 @@ async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
   }
 }
 
+async function ensureUppdragFrekvensChoices(airtableToken, baseId, tableMeta) {
+  try {
+    const t = tableMeta || await getUppdragTableMeta(airtableToken, baseId);
+    if (!t || !t.id) return { ok: false, reason: 'Tabell saknas' };
+    const freqField = (t.fields || []).find(f => (f.name || '').trim() === 'Frekvens');
+    if (!freqField || !freqField.id) return { ok: false, reason: 'Fältet "Frekvens" saknas' };
+    if ((freqField.type || '') !== 'singleSelect') return { ok: true, updated: false, skipped: 'not_select' };
+
+    const desired = UPPDRAG_FREKVENS_CHOICES.map(c => c.name);
+    const current = (freqField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
+    const missing = desired.filter(x => !current.includes(x));
+    if (!missing.length) return { ok: true, updated: false };
+
+    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${freqField.id}`;
+    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+    await axios.patch(patchUrl, {
+      name: 'Frekvens',
+      type: 'singleSelect',
+      options: { choices }
+    }, {
+      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return { ok: true, updated: true, added: missing };
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return { ok: false, reason: msg || 'Kunde inte uppdatera frekvens-val' };
+  }
+}
+
 async function ensureUppdragRunsTypChoices(airtableToken, baseId, tableMeta) {
   try {
     const t = tableMeta || await getUppdragRunsTableMeta(airtableToken, baseId);
@@ -15495,7 +15556,19 @@ function calcNextDeadline(currentIso, freq) {
   if (f.includes('kvartal')) return addMonthsIso(currentIso, 3);
   if (f.includes('månad')) return addMonthsIso(currentIso, 1);
   if (f.includes('årsvis')) return addYearsIso(currentIso, 1);
+  if (f.includes('veck')) return addDaysIsoOnly(currentIso, 7);
   return null;
+}
+
+function addDaysIsoOnly(dateIso, days) {
+  const s = String(dateIso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + (Number(days) || 0));
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
 }
 
 function buildUppdragFilterFormulas(customerId, typ) {
@@ -15516,6 +15589,34 @@ function buildUppdragFilterFormulas(customerId, typ) {
     }
   }
   return both.concat(custOnly.map(f => `AND(${f}, {Typ}='${t}')`));
+}
+
+async function fetchUppdragRecordByIdOrTyp({ airtableAccessToken, tableIdOrName, customerId, typ, uppdragId }) {
+  const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
+  const existingId = String(uppdragId || '').trim();
+  if (existingId) {
+    try {
+      const one = await axios.get(`${url}/${existingId}`, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` },
+        timeout: 15000
+      });
+      const rec = one.data || null;
+      if (rec && customerId && String(rec.fields?.['Kund ID'] || '') !== String(customerId)) {
+        return null;
+      }
+      return rec;
+    } catch (e) {
+      if (e.response?.status !== 404) throw e;
+    }
+  }
+  if (UppdragTyp.isEgetUppdragTyp(typ)) return null;
+  const existingRes = await airtableListWithFormulaFallback({
+    url,
+    headers: { Authorization: `Bearer ${airtableAccessToken}` },
+    baseParams: { maxRecords: 1 },
+    formulas: buildUppdragFilterFormulas(customerId, typ)
+  });
+  return (existingRes.data.records || [])[0] || null;
 }
 
 async function airtableListWithFormulaFallback({ url, headers, baseParams, formulas }) {
@@ -15982,8 +16083,12 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
-    const { customerId, typ, fields: rawFields } = req.body || {};
+    const { customerId, typ, fields: rawFields, uppdragId } = req.body || {};
     if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
+    try {
+      await ensureUppdragTypChoices(airtableAccessToken, airtableBaseId);
+      await ensureUppdragFrekvensChoices(airtableAccessToken, airtableBaseId);
+    } catch (_) {}
 
     const userData = await getUser(req.user.email);
     const byraId = userData?.byraId ? String(userData.byraId).replace(/,/g, '') : '';
@@ -15994,13 +16099,27 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     }
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
-    const existingRes = await airtableListWithFormulaFallback({
-      url,
-      headers: { Authorization: `Bearer ${airtableAccessToken}` },
-      baseParams: { maxRecords: 1 },
-      formulas: buildUppdragFilterFormulas(customerId, typ)
-    });
-    const existing = (existingRes.data.records || [])[0];
+    let existing = null;
+    const existingId = String(uppdragId || '').trim();
+    if (existingId) {
+      try {
+        const one = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}/${existingId}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
+        );
+        existing = one.data || null;
+      } catch (e) {
+        if (e.response?.status !== 404) throw e;
+      }
+    } else if (!UppdragTyp.isEgetUppdragTyp(typ)) {
+      const existingRes = await airtableListWithFormulaFallback({
+        url,
+        headers: { Authorization: `Bearer ${airtableAccessToken}` },
+        baseParams: { maxRecords: 1 },
+        formulas: buildUppdragFilterFormulas(customerId, typ)
+      });
+      existing = (existingRes.data.records || [])[0] || null;
+    }
 
     // Normalisera inkommande fält (frontend kan ha äldre/fel fältnamn)
     const normalizedFields = { ...(rawFields || {}) };
@@ -16012,6 +16131,10 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     if (ptlLegacyKey) delete normalizedFields[ptlLegacyKey];
 
     normalizeMomsUppdragFields(typ, normalizedFields);
+    if (UppdragTyp.isEgetUppdragTyp(typ) && !existing) {
+      const namn = String(normalizedFields['Namn'] || '').trim();
+      if (!namn) return res.status(400).json({ error: 'Ange ett namn på det egna uppdraget' });
+    }
 
     const grantAssignedUsers = async () => {
       const names = [
@@ -16260,19 +16383,23 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
-    const { customerId, typ, note, doneAt, periodKey: periodKeyRaw, riskAtgarder: riskAtgarderRaw } = req.body || {};
+    const { customerId, typ, note, doneAt, periodKey: periodKeyRaw, riskAtgarder: riskAtgarderRaw, uppdragId } = req.body || {};
     if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
     const doneIso = (doneAt && /^\d{4}-\d{2}-\d{2}$/.test(String(doneAt))) ? String(doneAt) : new Date().toISOString().slice(0, 10);
 
-    const url = `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`;
-    const existingRes = await airtableListWithFormulaFallback({
-      url,
-      headers: { Authorization: `Bearer ${airtableAccessToken}` },
-      baseParams: { maxRecords: 1 },
-      formulas: buildUppdragFilterFormulas(customerId, typ)
+    const existing = await fetchUppdragRecordByIdOrTyp({
+      airtableAccessToken,
+      tableIdOrName,
+      customerId,
+      typ,
+      uppdragId
     });
-    const existing = (existingRes.data.records || [])[0];
-    if (!existing) return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+    if (!existing) {
+      if (UppdragTyp.isEgetUppdragTyp(typ) && !String(uppdragId || '').trim()) {
+        return res.status(400).json({ error: 'uppdragId krävs för eget uppdrag' });
+      }
+      return res.status(404).json({ error: 'Uppdrag saknas för kund+typ (skapa uppdraget först)' });
+    }
 
     const f = existing.fields || {};
     const freq = f['Frekvens'] || '';
@@ -16302,6 +16429,7 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
     const getModeForUppdrag = (typStr, freqStr) => {
       const tt = String(typStr || '').trim();
       const ff = String(freqStr || '').toLowerCase();
+      if (ff.includes('veck')) return 'week';
       if (tt === 'Momsredovisning') {
         if (ff.includes('kvartal')) return 'quarter';
         if (ff.includes('år')) return 'year';
@@ -16315,6 +16443,7 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
     const periodKeyFromDeadline = (() => {
       const dl = toDateStr(currentDeadline || doneIso);
       if (!dl) return '';
+      if (mode === 'week') return dl;
       if (mode === 'quarter') return quarterKey(dl);
       if (mode === 'year') return yearKey(dl);
       if (isLoneUppdragTyp(typ)) {
@@ -16324,6 +16453,7 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
     })();
     const periodKeyValid = (pk) => {
       if (!pk) return false;
+      if (mode === 'week') return /^\d{4}-\d{2}-\d{2}$/.test(pk);
       if (mode === 'quarter') return /^\d{4}-Q[1-4]$/.test(pk);
       if (mode === 'year') return /^\d{4}$/.test(pk);
       return /^\d{4}-\d{2}$/.test(pk);

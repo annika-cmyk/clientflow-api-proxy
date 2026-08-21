@@ -1400,9 +1400,14 @@ class CustomerCardManager {
         });
 
         const ALL_TYPES = ['Löneuppdrag innevarande', 'Löneuppdrag efterhand', 'Momsredovisning', 'Bokslut', 'Deklaration'];
+        const EGET_TYP = (window.UppdragTyp && UppdragTyp.EGET_UPPDRAG_TYP) || 'Eget uppdrag';
+        const isEgetTyp = (typ) => !!(window.UppdragTyp && UppdragTyp.isEgetUppdragTyp(typ));
+        const uppdragNamn = (typ, fields) => (window.UppdragTyp && UppdragTyp.uppdragDisplayName)
+            ? UppdragTyp.uppdragDisplayName(typ, fields)
+            : this._uppdragTypLabel(typ);
         const isLoneTyp = (typ) => !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
         const _recByType = new Map();
-        records.forEach(r => { const t = (r.fields?.['Typ'] || '').toString().trim(); if (t) _recByType.set(t, r); });
+        records.forEach(r => { const t = (r.fields?.['Typ'] || '').toString().trim(); if (t && !isEgetTyp(t)) _recByType.set(t, r); });
         const byType = (typ) => _recByType.get(typ) || null;
         const riskAtgarder = this._getRiskAtgarderList();
 
@@ -1415,11 +1420,27 @@ class CustomerCardManager {
         if (legacyLone && !existingTypes.includes('Löneuppdrag')) existingTypes.unshift('Löneuppdrag');
         records.forEach((r) => {
             const t = String(r?.fields?.['Typ'] || '').trim();
-            if (t && !existingTypes.includes(t)) existingTypes.push(t);
+            if (t && !isEgetTyp(t) && !existingTypes.includes(t)) existingTypes.push(t);
         });
         const missingTypes = ALL_TYPES.filter(t => !byType(t));
+        const assignmentEntries = [];
+        const seenAssign = new Set();
+        const addAssign = (typ, rec) => {
+            if (!rec?.id || seenAssign.has(rec.id)) return;
+            seenAssign.add(rec.id);
+            assignmentEntries.push({
+                typ,
+                rec,
+                key: isEgetTyp(typ) ? rec.id : typ
+            });
+        };
+        existingTypes.forEach((t) => addAssign(t, byType(t)));
+        records.forEach((r) => {
+            const t = String(r?.fields?.['Typ'] || '').trim();
+            if (t) addAssign(t, r);
+        });
 
-        const addDisabled = missingTypes.length ? '' : 'disabled';
+        const addDisabled = '';
 
         // ============================
         // Uppdrag (översikt) – kundvy
@@ -1445,6 +1466,7 @@ class CustomerCardManager {
             if (f.includes('kvartal')) return 3;
             if (f.includes('månad')) return 1;
             if (f.includes('årsvis')) return 12;
+            if (f.includes('veck')) return 0;
             if (f.includes('engång')) return 0;
             return 1;
         };
@@ -1464,6 +1486,7 @@ class CustomerCardManager {
             if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
             else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
             else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+            else if (freq.includes('veck')) start.setDate(start.getDate() - 7);
             else start.setMonth(start.getMonth() - 1);
             return doneD >= start && doneD < nextD;
         };
@@ -1476,7 +1499,12 @@ class CustomerCardManager {
         // Bygg upp instanser för perioden [monthMin..monthMax]
         // Viktigt: visa uppdraget när det är "öppet" (periodstart -> deadline-månad),
         // inte bara i deadline-månaden.
-        const instByTypeMonth = new Map(); // typ -> Map(monthKey -> deadlineIso)
+        const instByTypeMonth = new Map(); // assignKey -> Map(monthKey -> deadlineIso)
+        const instAssignKey = (fields, rec) => {
+            const typ = String(fields?.['Typ'] || '').trim();
+            if (isEgetTyp(typ)) return String(fields?.['Uppdrag ID'] || rec?.id || '').trim() || typ;
+            return typ;
+        };
         const addOpenMonthsToInstMap = (map, startYm, endYm, deadlineIso) => {
             if (!startYm || !endYm || !deadlineIso) return;
             let cursor = new Date(Number(startYm.slice(0, 4)), Number(startYm.slice(5, 7)) - 1, 1);
@@ -1499,6 +1527,7 @@ class CustomerCardManager {
             const f = r.fields || {};
             const typ = String(f['Typ'] || '').trim();
             if (!typ) continue;
+            const mapKey = instAssignKey(f, r);
             const deadline0 = toDateStr(f['Deadline'] || f['Nästa deadline'] || '');
             if (!deadline0) continue;
             if (typ === 'Momsredovisning' && window.MomsPeriod) {
@@ -1507,22 +1536,22 @@ class CustomerCardManager {
                     const pk = String(f['PeriodKey'] || '').trim() || MomsPeriod.inferFirstPeriod(f, momsFreq);
                     const win = pk ? MomsPeriod.workWindowYm(pk, momsFreq) : null;
                     if (win) {
-                        const map = instByTypeMonth.get(typ) || new Map();
+                        const map = instByTypeMonth.get(mapKey) || new Map();
                         addOpenMonthsToInstMap(map, win.startYm, win.deadlineYm, deadline0);
-                        instByTypeMonth.set(typ, map);
+                        instByTypeMonth.set(mapKey, map);
                         continue;
                     }
                 }
             }
             const start0 = toDateStr(f['Startdatum'] || '');
             if (start0 && deadline0) {
-                const map = instByTypeMonth.get(typ) || new Map();
+                const map = instByTypeMonth.get(mapKey) || new Map();
                 addOpenMonthsToInstMap(map, start0.slice(0, 7), deadline0.slice(0, 7), deadline0);
-                instByTypeMonth.set(typ, map);
+                instByTypeMonth.set(mapKey, map);
                 continue;
             }
             const step = monthsStepFromFreq(f['Frekvens']);
-            const map = instByTypeMonth.get(typ) || new Map();
+            const map = instByTypeMonth.get(mapKey) || new Map();
             if (step === 0) {
                 // Engång: visa från innevarande månad fram till deadline-månaden
                 const endMonth = deadline0.slice(0, 7);
@@ -1534,7 +1563,7 @@ class CustomerCardManager {
                     if (cursor >= monthMin) map.set(monthKey(cursor), deadline0);
                     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
                 }
-                instByTypeMonth.set(typ, map);
+                instByTypeMonth.set(mapKey, map);
                 continue;
             }
             // Öppen-period: från periodstart (deadline - step) fram till deadline-månaden
@@ -1550,7 +1579,7 @@ class CustomerCardManager {
                 if (cursor >= monthMin) map.set(monthKey(cursor), deadline0);
                 cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
             }
-            instByTypeMonth.set(typ, map);
+            instByTypeMonth.set(mapKey, map);
         }
 
         const todayForEnded = (() => {
@@ -1567,6 +1596,7 @@ class CustomerCardManager {
             const f = rec.fields || {};
             const typ = String(f['Typ'] || '').trim();
             if (!typ) return '';
+            const rowKey = isEgetTyp(typ) ? rec.id : typ;
             const ended = this._isUppdragEnded(f, todayForEnded);
             const statusLabel = ended ? 'Avslutad' : (String(f['Status'] || 'Aktiv').trim() || 'Aktiv');
             const avslutas = String(f['Avslutas'] || '').slice(0, 10);
@@ -1574,11 +1604,11 @@ class CustomerCardManager {
             const ansvarig = String(f['Ansvarig'] || '—').trim() || '—';
             const nextDl = String(f['Nästa deadline'] || '').slice(0, 10);
             const statusClass = ended ? 'is-ended' : 'is-active';
-            const isOpen = openAllaTyp === typ;
-            const kortHtml = this._renderUppdragKortByTyp(typ, rec, byraUsers, riskAtgarder, { embed: true });
+            const isOpen = openAllaTyp === rowKey;
+            const kortHtml = this._renderUppdragKortByTyp(typ, rec, byraUsers, riskAtgarder, { embed: true, assignKey: rowKey });
             return `
-                <tr class="uppdrag-alla-row ${ended ? 'is-ended' : ''} ${isOpen ? 'is-open' : ''}" data-kund-alla-typ="${this._esc(typ)}" data-kund-action="toggle-alla-uppdrag">
-                    <td><strong>${this._esc(this._uppdragTypLabel(typ))}</strong></td>
+                <tr class="uppdrag-alla-row ${ended ? 'is-ended' : ''} ${isOpen ? 'is-open' : ''}" data-kund-alla-typ="${this._esc(rowKey)}" data-kund-action="toggle-alla-uppdrag">
+                    <td><strong>${this._esc(uppdragNamn(typ, f))}</strong></td>
                     <td>${this._esc(freq)}</td>
                     <td>
                         <span class="uppdrag-alla-status ${statusClass}">${this._esc(statusLabel)}</span>
@@ -1587,15 +1617,15 @@ class CustomerCardManager {
                     <td>${this._esc(ansvarig)}</td>
                     <td>${nextDl ? this._esc(nextDl) : '—'}</td>
                     <td class="uppdragboard-arrow" style="text-align:right;">
-                        <button type="button" class="btn btn-ghost btn-sm" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(typ)}">
+                        <button type="button" class="btn btn-ghost btn-sm" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(rowKey)}">
                             <i class="fas fa-pen"></i> Redigera
                         </button>
-                        <button type="button" class="uppdragboard-expandbtn" title="Visa grunduppdrag" aria-label="Visa grunduppdrag" data-kund-action="toggle-alla-uppdrag" data-kund-alla-typ="${this._esc(typ)}">
+                        <button type="button" class="uppdragboard-expandbtn" title="Visa grunduppdrag" aria-label="Visa grunduppdrag" data-kund-action="toggle-alla-uppdrag" data-kund-alla-typ="${this._esc(rowKey)}">
                             <i class="fas fa-chevron-down"></i>
                         </button>
                     </td>
                 </tr>
-                <tr class="uppdrag-alla-details" data-kund-alla-details-for="${this._esc(typ)}" style="${isOpen ? '' : 'display:none;'}">
+                <tr class="uppdrag-alla-details" data-kund-alla-details-for="${this._esc(rowKey)}" style="${isOpen ? '' : 'display:none;'}">
                     <td colspan="6">${kortHtml}</td>
                 </tr>
             `;
@@ -1757,6 +1787,7 @@ class CustomerCardManager {
             const getModeForUppdrag = (typ, freqStr) => {
                 const tt = (typ || '').toString().trim();
                 const ff = (freqStr || '').toString().toLowerCase();
+                if (ff.includes('veck')) return 'week';
                 if (tt === 'Momsredovisning') {
                     if (ff.includes('kvartal')) return 'quarter';
                     if (ff.includes('år')) return 'year';
@@ -1838,9 +1869,11 @@ class CustomerCardManager {
             };
 
             const KV = window.KoringVisibility || null;
-            const findOverdueRun = (typ) => {
+            const findOverdueRun = (typ, uppdragId) => {
+                const uid = String(uppdragId || '').trim();
                 const list = (Array.isArray(runRecords) ? runRecords : []).filter((rr) => {
                     if (String(rr?.fields?.['Typ'] || '').trim() !== typ) return false;
+                    if (uid && String(rr?.fields?.['Uppdrag ID'] || '').trim() !== uid) return false;
                     return !!(KV && KV.isOverdueNotDone(rr.fields, todayIso));
                 });
                 list.sort((a, b) => String(a?.fields?.['Deadline'] || '').localeCompare(String(b?.fields?.['Deadline'] || '')));
@@ -1853,13 +1886,16 @@ class CustomerCardManager {
             };
 
             let rowContexts = [];
-            existingTypes.forEach((t) => {
-                const rec = byType(t);
+            assignmentEntries.forEach((entry) => {
+                const t = entry.typ;
+                const rec = entry.rec;
+                const assignKey = entry.key;
                 if (!rec) {
-                    console.warn('[UppdragBoard] byType returnerade null för typ:', t, '– records:', records.length, records.map(r => r?.fields?.['Typ']));
+                    console.warn('[UppdragBoard] saknar uppdragspost för typ:', t);
                     return;
                 }
                 const f = rec.fields || {};
+                const uppdragId = String(rec.id || '').trim();
                 if (this._isUppdragEnded(f, todayIso)) return;
                 const freqRaw = (f['Frekvens'] || '').toString().trim();
                 const freq = freqRaw || '—';
@@ -1952,12 +1988,43 @@ class CustomerCardManager {
                     return;
                 }
 
-                const instMap = instByTypeMonth.get(t) || new Map();
+                const isWeekly = String(freqRaw || '').toLowerCase().includes('veck');
+                if (isWeekly && Array.isArray(runRecords) && runRecords.length) {
+                    const visibleWeekly = runRecords.filter((rr) => {
+                        if (String(rr?.fields?.['Typ'] || '').trim() !== t) return false;
+                        if (isEgetTyp(t) && String(rr?.fields?.['Uppdrag ID'] || '').trim() !== uppdragId) return false;
+                        if (KV && KV.isDoneStatus && KV.isDoneStatus(rr?.fields?.Status)) return false;
+                        const dl = toDateStr(rr?.fields?.['Deadline'] || '');
+                        const st = toDateStr(rr?.fields?.['Startdatum'] || '');
+                        const inMonth = (st && dl && mk >= st.slice(0, 7) && mk <= dl.slice(0, 7))
+                            || (dl && dl.slice(0, 7) === mk);
+                        const overdue = !!(KV && KV.isOverdueNotDone(rr.fields, todayIso));
+                        return inMonth || overdue;
+                    });
+                    visibleWeekly.sort((a, b) => String(a?.fields?.['Deadline'] || '').localeCompare(String(b?.fields?.['Deadline'] || '')));
+                    if (visibleWeekly.length) {
+                        visibleWeekly.forEach((rr) => {
+                            const pk = String(rr?.fields?.['PeriodKey'] || rr?.fields?.['Deadline'] || '').trim();
+                            const dl = String(rr?.fields?.['Deadline'] || '').trim();
+                            rowContexts.push({
+                                t, rec, f, freq,
+                                boardKey: `${assignKey}|||${pk}`,
+                                displayTitle: `${uppdragNamn(t, f)}${dl ? ` · ${dl.slice(0, 10)}` : ''}`,
+                                instDeadline: dl,
+                                prefillPeriodKey: pk,
+                                runRec: rr
+                            });
+                        });
+                        return;
+                    }
+                }
+
+                const instMap = instByTypeMonth.get(assignKey) || instByTypeMonth.get(t) || new Map();
                 let instDeadline = instMap.get(mk) || '';
                 let prefillPeriodKey = defaultPeriodKey;
                 let runRec = null;
                 const yearlyTyp = (t === 'Bokslut' || t === 'Deklaration');
-                const overdueYearly = yearlyTyp ? findOverdueRun(t) : null;
+                const overdueYearly = (yearlyTyp || isEgetTyp(t)) ? findOverdueRun(t, isEgetTyp(t) ? uppdragId : '') : null;
                 if (overdueYearly) {
                     runRec = overdueYearly;
                     instDeadline = String(overdueYearly.fields?.['Deadline'] || '').trim() || instDeadline;
@@ -1974,9 +2041,10 @@ class CustomerCardManager {
                     prefillPeriodKey = yearKeyForMonth(instDeadline.slice(0, 7)) || defaultPeriodKey;
                 }
                 if (!runRec) runRec = runByTypPeriod.get(`${t}|||${prefillPeriodKey}`) || null;
-                if (!runRec && yearlyTyp) {
+                if (!runRec && (yearlyTyp || isEgetTyp(t))) {
                     const openRuns = (Array.isArray(runRecords) ? runRecords : []).filter((rr) => {
                         if (String(rr?.fields?.['Typ'] || '').trim() !== t) return false;
+                        if (isEgetTyp(t) && String(rr?.fields?.['Uppdrag ID'] || '').trim() !== uppdragId) return false;
                         const dl = toDateStr(rr?.fields?.['Deadline'] || '');
                         const st = toDateStr(rr?.fields?.['Startdatum'] || '');
                         if (instDeadline && dl && dl.slice(0, 10) === instDeadline.slice(0, 10)) return true;
@@ -1994,7 +2062,7 @@ class CustomerCardManager {
                 const runOpen = !!(instDeadline || (runRec && KV && KV.isRunOpenInMonth(runRec.fields, mk)));
                 const runOverdue = !!(runRec && KV && KV.isOverdueNotDone(runRec.fields, todayIso));
                 if (!runOpen && !runOverdue) {
-                    const overdueRun = findOverdueRun(t);
+                    const overdueRun = findOverdueRun(t, isEgetTyp(t) ? uppdragId : '');
                     if (overdueRun) {
                         runRec = overdueRun;
                         instDeadline = String(overdueRun.fields?.['Deadline'] || '').trim();
@@ -2008,12 +2076,12 @@ class CustomerCardManager {
                 }
                 rowContexts.push({
                     t, rec, f, freq,
-                    boardKey: t,
+                    boardKey: assignKey,
                     displayTitle: (t === 'Momsredovisning' && window.MomsPeriod)
                         ? MomsPeriod.runTitle(prefillPeriodKey || defaultPeriodKey, MomsPeriod.inferFreq(freq, prefillPeriodKey || defaultPeriodKey, runRecords), mk)
                         : ((isLoneTyp(t) && window.LonePeriod && prefillPeriodKey)
                             ? (LonePeriod.displayLabel(prefillPeriodKey, t) || LonePeriod.typDisplayLabel(t))
-                            : (window.LonePeriod ? LonePeriod.typDisplayLabel(t) : t)),
+                            : uppdragNamn(t, f)),
                     instDeadline,
                     prefillPeriodKey,
                     runRec
@@ -2401,6 +2469,7 @@ class CustomerCardManager {
                             data-kund-typ="${this._esc(t)}"
                             data-kund-period="${this._esc(String(prefillPeriodKey || ''))}"
                             data-kund-run-id="${this._esc(runId)}"
+                            data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
                             data-kund-board-key="${this._esc(boardKey)}"
                             title="${this._esc(doneBtnTitle)}"
                             aria-label="${this._esc(doneBtnTitle)}">
@@ -2643,8 +2712,11 @@ class CustomerCardManager {
                     const typ = klarBtn.getAttribute('data-kund-typ') || '';
                     const periodKey = klarBtn.getAttribute('data-kund-period') || '';
                     const runId = klarBtn.getAttribute('data-kund-run-id') || '';
+                    const uppdragId = klarBtn.getAttribute('data-kund-uppdrag-id') || '';
                     const boardKey = klarBtn.getAttribute('data-kund-board-key') || typ;
-                    const rec = _recByType.get(typ) || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
+                    const rec = (uppdragId && records.find(x => String(x.id) === String(uppdragId)))
+                        || _recByType.get(typ)
+                        || records.find(x => String(x?.fields?.['Typ'] || '') === String(typ));
                     const runRec = runId ? (runRecords || []).find(x => String(x.id) === String(runId)) : null;
                     const required = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
                     const box = container.querySelector(`[data-kund-risk-box="${CSS.escape(boardKey)}"]`);
@@ -2661,8 +2733,9 @@ class CustomerCardManager {
                         this.showNotification('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.', 'error');
                         return;
                     }
-                    const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
-                    this._showCompleteUppdragModal(root, typ, { periodKey, runId, requiredAtgarder: required, doneAtgarder: done, boardKey });
+                    const root = document.querySelector(`[data-uppdrag-key="${CSS.escape(uppdragId || typ)}"]`)
+                        || document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
+                    this._showCompleteUppdragModal(root, typ, { periodKey, runId, requiredAtgarder: required, doneAtgarder: done, boardKey, uppdragId: uppdragId || rec?.id || '' });
                     return;
                 }
 
@@ -3025,8 +3098,11 @@ class CustomerCardManager {
         if (addBtn) addBtn.addEventListener('click', onAdd);
 
         // Bind events (save / complete) for each card
-        existingTypes.forEach((typ) => {
-            const root = document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
+        assignmentEntries.forEach((entry) => {
+            const typ = entry.typ;
+            const assignKey = entry.key;
+            const root = document.querySelector(`[data-uppdrag-key="${CSS.escape(assignKey)}"]`)
+                || document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"]`);
             if (!root) return;
             const saveBtn = root.querySelector('[data-action="save"]');
             const doneBtn = root.querySelector('[data-action="done"]');
@@ -3036,7 +3112,7 @@ class CustomerCardManager {
             if (doneHeaderBtn) doneHeaderBtn.addEventListener('click', () => this._showCompleteUppdragModal(root, typ));
 
             // Live-sync header meta when user edits
-            ['Frekvens', 'Nästa deadline', 'Ansvarig', 'Klientansvarig'].forEach((field) => {
+            ['Frekvens', 'Nästa deadline', 'Ansvarig', 'Klientansvarig', 'Namn'].forEach((field) => {
                 const el = root.querySelector(`[data-field="${CSS.escape(field)}"]`);
                 if (el) el.addEventListener('change', () => this._syncUppdragHeaderMeta(root));
                 if (el && el.tagName === 'INPUT') el.addEventListener('input', () => this._syncUppdragHeaderMeta(root));
@@ -3322,6 +3398,7 @@ class CustomerCardManager {
         if (freq.includes('kvartal')) start.setMonth(start.getMonth() - 3);
         else if (freq.includes('månad')) start.setMonth(start.getMonth() - 1);
         else if (freq.includes('årsvis')) start.setFullYear(start.getFullYear() - 1);
+        else if (freq.includes('veck')) start.setDate(start.getDate() - 7);
         else start.setMonth(start.getMonth() - 1);
 
         return doneD >= start && doneD < nextD;
@@ -3331,7 +3408,7 @@ class CustomerCardManager {
         const existing = document.getElementById('uppdrag-complete-modal');
         if (existing) existing.remove();
 
-        const rec = (this._uppdragRecords || []).find(r => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim());
+        const rec = this._findUppdragRecord(typ, extra.uppdragId || root?.dataset?.uppdragId);
         const requiredAtgarder = Array.isArray(extra.requiredAtgarder)
             ? extra.requiredAtgarder
             : this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
@@ -3353,7 +3430,7 @@ class CustomerCardManager {
         modal.innerHTML = `
             <div class="modal-box" style="max-width:720px; width:96vw; max-height:90vh;">
                 <div class="modal-header">
-                    <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${this._esc(this._uppdragTypLabel(typ))}</h3>
+                    <h3><i class="fas fa-check-circle"></i> Klarmarkera: ${this._esc(this._uppdragDisplayName(typ, rec?.fields))}</h3>
                     <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-complete-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body" style="overflow:auto;">
@@ -3421,7 +3498,7 @@ class CustomerCardManager {
                             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                             uploaded.push({ filename, uploadedAt: new Date().toISOString() });
                         }
-                        await this._saveUppdragPtlUnderlagOnly(typ, uploaded);
+                        await this._saveUppdragPtlUnderlagOnly(typ, uploaded, extra.uppdragId || root?.dataset?.uppdragId || rec?.id || '');
                     }
                 }
 
@@ -3430,7 +3507,8 @@ class CustomerCardManager {
                 await this._completeUppdragFromCard(root, typ, {
                     noteOverride: note,
                     periodKey,
-                    riskAtgarder: doneAtgarder
+                    riskAtgarder: doneAtgarder,
+                    uppdragId: extra.uppdragId || root?.dataset?.uppdragId || rec?.id || ''
                 });
             } catch (e) {
                 this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
@@ -3531,12 +3609,16 @@ class CustomerCardManager {
         });
     }
 
-    async _saveUppdragPtlUnderlagOnly(typ, uploadedItems) {
+    async _saveUppdragPtlUnderlagOnly(typ, uploadedItems, uppdragId) {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         const customerId = this.customerId || this.currentCustomerId;
+        const id = String(uppdragId || '').trim();
         let existing = [];
         try {
-            existing = JSON.parse(document.querySelector(`[data-uppdrag-typ="${CSS.escape(typ)}"] [data-uppdrag-ptl-underlag]`)?.value || '[]');
+            const sel = id
+                ? `[data-uppdrag-id="${CSS.escape(id)}"] [data-uppdrag-ptl-underlag]`
+                : `[data-uppdrag-typ="${CSS.escape(typ)}"] [data-uppdrag-ptl-underlag]`;
+            existing = JSON.parse(document.querySelector(sel)?.value || '[]');
         } catch (_) { existing = []; }
         if (!Array.isArray(existing)) existing = [];
         const merged = uploadedItems.concat(existing).slice(0, 200);
@@ -3546,7 +3628,8 @@ class CustomerCardManager {
             body: JSON.stringify({
                 customerId,
                 typ,
-                fields: { 'PTL Underlag': JSON.stringify(merged) }
+                fields: { 'PTL Underlag': JSON.stringify(merged) },
+                ...(id ? { uppdragId: id } : {})
             })
         });
         const data = await res.json().catch(() => ({}));
@@ -3574,11 +3657,6 @@ class CustomerCardManager {
     }
 
     _showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder }) {
-        if (!missingTypes || missingTypes.length === 0) {
-            this.showNotification('Alla uppdrag är redan upplagda på kunden', 'info');
-            return;
-        }
-
         const existing = document.getElementById('uppdrag-setup-modal');
         if (existing) existing.remove();
 
@@ -3598,10 +3676,11 @@ class CustomerCardManager {
             </label>`;
         }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
 
-        const typeOptionsHtml = missingTypes.map(t => {
+        const egetTyp = (window.UppdragTyp && UppdragTyp.EGET_UPPDRAG_TYP) || 'Eget uppdrag';
+        const typeOptionsHtml = (missingTypes || []).map(t => {
             const label = this._uppdragTypLabel(t);
             return `<option value="${this._esc(t)}">${this._esc(label)}</option>`;
-        }).join('');
+        }).join('') + `<option value="${this._esc(egetTyp)}">Eget uppdrag (fritext)</option>`;
 
         modal.innerHTML = `
             <div class="modal-box" style="max-width:760px; width:96vw; max-height:90vh;">
@@ -3614,6 +3693,10 @@ class CustomerCardManager {
                         <div class="lead-field">
                             <label>Typ av uppdrag *</label>
                             <select class="form-control" id="uppdrag-new-typ">${typeOptionsHtml}</select>
+                        </div>
+                        <div class="lead-field uppdrag-span-full" id="uppdrag-new-namn-wrap" style="display:none;">
+                            <label>Namn *</label>
+                            <input class="kunduppgifter-input" type="text" id="uppdrag-new-namn" placeholder="t.ex. Styrelsemöte, Budget, Årsredovisning">
                         </div>
                         <div class="lead-field">
                             <label>Klientansvarig *</label>
@@ -3694,9 +3777,11 @@ class CustomerCardManager {
 
         const isLoneTypLocal = (typ) => !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
         const setFreqOptions = (typ) => {
-            const choices = (typ === 'Momsredovisning')
-                ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
-                : (isLoneTypLocal(typ) ? ['Varje månad'] : ['Årsvis', 'Engång']);
+            const choices = (window.UppdragTyp && UppdragTyp.frekvensChoicesForTyp)
+                ? UppdragTyp.frekvensChoicesForTyp(typ, isLoneTypLocal(typ))
+                : (typ === 'Momsredovisning'
+                    ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration', 'Veckovis', 'Engång']
+                    : (isLoneTypLocal(typ) ? ['Varje månad'] : ['Veckovis', 'Varje månad', 'Varje kvartal', 'Årsvis', 'Engång']));
             freqEl.innerHTML = choices.map(c => `<option value="${this._esc(c)}">${this._esc(c)}</option>`).join('');
         };
 
@@ -3817,8 +3902,11 @@ class CustomerCardManager {
                 : '—';
         };
 
+        const namnWrap = document.getElementById('uppdrag-new-namn-wrap');
         const syncExtra = () => {
             const t = typEl.value;
+            const isEget = !!(window.UppdragTyp && UppdragTyp.isEgetUppdragTyp(t));
+            if (namnWrap) namnWrap.style.display = isEget ? 'block' : 'none';
             setFreqOptions(t);
             declWrap.style.display = (t === 'Deklaration') ? 'block' : 'none';
             const isLone = isLoneTypLocal(t);
@@ -3829,6 +3917,11 @@ class CustomerCardManager {
             }
             if (t === 'Deklaration' && dekRowsEl && dekRowsEl.children.length === 0) {
                 addDekRow({ typ: 'NE', text: '' });
+            }
+            if (isEget) {
+                const today = new Date().toISOString().slice(0, 10);
+                if (startEl && !startEl.value) startEl.value = today;
+                if (deadlineEl && !deadlineEl.value) deadlineEl.value = today;
             }
         };
         typEl.addEventListener('change', syncExtra);
@@ -3858,6 +3951,10 @@ class CustomerCardManager {
                 const rutin = document.getElementById('uppdrag-new-rutin').value || '';
 
                 if (!typ) throw new Error('Välj typ');
+                const namn = (document.getElementById('uppdrag-new-namn')?.value || '').trim();
+                if ((window.UppdragTyp && UppdragTyp.isEgetUppdragTyp(typ)) && !namn) {
+                    throw new Error('Ange ett namn på uppdraget');
+                }
                 if (!klientansvarig) throw new Error('Välj klientansvarig');
                 if (!ansvarig) throw new Error('Välj handläggare');
                 if (!frekvens) throw new Error('Välj frekvens');
@@ -3892,6 +3989,7 @@ class CustomerCardManager {
                     'Status': 'Aktiv'
                 };
                 if (forstaPeriod) fields['Första period'] = forstaPeriod;
+                if (namn) fields['Namn'] = namn;
 
                 if (typ === 'Deklaration') {
                     const rows = Array.from(document.querySelectorAll('#uppdrag-dek-rows .uppdrag-dek-row')).map(r => ({
@@ -3957,7 +4055,8 @@ class CustomerCardManager {
             try { row.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
         }
         if (nextOpen && opts.edit) {
-            const target = details.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
+            const target = details.querySelector(`[data-uppdrag-key="${CSS.escape(t)}"]`)
+                || details.querySelector(`[data-uppdrag-typ="${CSS.escape(t)}"]`);
             if (target && target.dataset.uppdragEditing !== '1') {
                 target.querySelector('[data-action="toggle-edit"]')?.click();
             }
@@ -4007,10 +4106,17 @@ class CustomerCardManager {
         const userOptHtml = this._userSelectOptions(byraUsers, ansvarig, 'Välj handläggare');
         const klientansvarigOptHtml = this._userSelectOptions(byraUsers, klientansvarig, 'Välj klientansvarig');
 
-        const freqChoices = typ === 'Momsredovisning'
-            ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration']
-            : (isLoneKort ? ['Varje månad'] : ['Årsvis', 'Engång']);
+        const freqChoices = (window.UppdragTyp && UppdragTyp.frekvensChoicesForTyp)
+            ? UppdragTyp.frekvensChoicesForTyp(typ, isLoneKort).slice()
+            : (typ === 'Momsredovisning'
+                ? ['Varje månad', 'Varje kvartal', 'Årsvis', 'Årsvis med deklaration', 'Veckovis', 'Engång']
+                : (isLoneKort ? ['Varje månad'] : ['Veckovis', 'Varje månad', 'Varje kvartal', 'Årsvis', 'Engång']));
+        if (freq && !freqChoices.includes(freq)) freqChoices.unshift(freq);
         const freqHtml = freqChoices.map(c => `<option value="${this._esc(c)}" ${String(c) === String(freq) ? 'selected' : ''}>${this._esc(c)}</option>`).join('');
+        const isEgetKort = !!(window.UppdragTyp && UppdragTyp.isEgetUppdragTyp(typ));
+        const displayNamn = this._uppdragDisplayName(typ, f);
+        const namnValue = String(f['Namn'] || '').trim();
+        const assignKey = extra.assignKey || recId || typ;
 
         const lastUnderlagPeriod = (f['Senast underlagsutskick period'] || '').toString().trim();
         const lastUnderlagInfo = lastUnderlagPeriod
@@ -4125,12 +4231,12 @@ class CustomerCardManager {
         const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
         const embed = !!extra.embed;
         const cardOpen = embed
-            ? `<div class="uppdrag-card uppdrag-card--embed" data-uppdrag-typ="${this._esc(typ)}">
+            ? `<div class="uppdrag-card uppdrag-card--embed" data-uppdrag-typ="${this._esc(typ)}" data-uppdrag-key="${this._esc(assignKey)}" data-uppdrag-id="${this._esc(recId)}">
                     <button type="button" class="uppdrag-edit-btn" hidden data-action="toggle-edit" aria-hidden="true"></button>`
-            : `<div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}">
+            : `<div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}" data-uppdrag-key="${this._esc(assignKey)}" data-uppdrag-id="${this._esc(recId)}">
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
                     <div class="uppdrag-header">
-                        <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(this._uppdragTypLabel(typ))}</span></div>
+                        <div class="collapsible-title"><i class="fas ${icon}"></i><span>${this._esc(displayNamn)}</span></div>
                         <div class="uppdrag-header-meta">
                             <span class="uppdrag-meta-chip"><i class="fas fa-redo"></i> <span data-uppdrag-meta="Frekvens">${headerFreq}</span></span>
                             <span class="uppdrag-meta-chip"><i class="fas fa-calendar-alt"></i> <span data-uppdrag-meta="Nästa deadline">${headerDeadline}</span></span>
@@ -4154,6 +4260,11 @@ class CustomerCardManager {
 
                     <div class="uppdrag-view" data-uppdrag-mode="view">
                         <div class="uppdrag-view-top">
+                            ${isEgetKort ? `
+                            <div class="uppdrag-view-field">
+                                <div class="uppdrag-view-label">Namn</div>
+                                <div class="uppdrag-view-text">${this._esc(displayNamn)}</div>
+                            </div>` : ''}
                             <div class="uppdrag-startdatum">
                                 <div class="uppdrag-startdatum-label">Startdatum</div>
                                 <div class="uppdrag-startdatum-value">${startdatum ? this._esc(String(startdatum)) : '–'}</div>
@@ -4190,6 +4301,11 @@ class CustomerCardManager {
 
                     <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
                         <div class="lead-fields uppdrag-lead-fields">
+                            ${isEgetKort ? `
+                            <div class="lead-field uppdrag-span-full">
+                                <label>Namn</label>
+                                <input class="kunduppgifter-input" type="text" data-field="Namn" value="${this._esc(namnValue)}" placeholder="t.ex. Styrelsemöte, Budget">
+                            </div>` : ''}
                             <div class="lead-field">
                                 <label>Frekvens</label>
                                 <select class="form-control" data-field="Frekvens">${freqHtml}</select>
@@ -4367,10 +4483,16 @@ class CustomerCardManager {
                 fields['Deklaration rader'] = JSON.stringify(rows);
             }
 
+            if (window.UppdragTyp && UppdragTyp.isEgetUppdragTyp(typ)) {
+                const namn = String(getVal('Namn')?.value || '').trim();
+                if (!namn) throw new Error('Ange ett namn på uppdraget');
+                fields['Namn'] = namn;
+            }
+            const uppdragId = String(root?.dataset?.uppdragId || '').trim();
             const res = await fetch(`${baseUrl}/api/uppdrag`, {
                 method: 'POST',
                 ...opts,
-                body: JSON.stringify({ customerId, typ, fields })
+                body: JSON.stringify({ customerId, typ, fields, ...(uppdragId ? { uppdragId } : {}) })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -4398,7 +4520,7 @@ class CustomerCardManager {
             const customerId = this.customerId || this.currentCustomerId;
             if (!customerId) throw new Error('Saknar customerId');
 
-            const rec = (this._uppdragRecords || []).find(r => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim());
+            const rec = this._findUppdragRecord(typ, options.uppdragId || root?.dataset?.uppdragId);
             const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(rec?.fields || {});
             let riskValda = Array.isArray(options.riskAtgarder) ? options.riskAtgarder : [];
             if (root) {
@@ -4412,6 +4534,7 @@ class CustomerCardManager {
 
             const note = (options.noteOverride != null) ? String(options.noteOverride) : (root?.querySelector('[data-field="_note"]')?.value || '');
             const periodKey = String(options.periodKey != null ? options.periodKey : this._getUppdragPeriodKeyForComplete(typ)).trim();
+            const uppdragId = String(options.uppdragId || root?.dataset?.uppdragId || rec?.id || '').trim();
             const res = await fetch(`${baseUrl}/api/uppdrag/complete`, {
                 method: 'POST',
                 ...opts,
@@ -4420,6 +4543,7 @@ class CustomerCardManager {
                     typ,
                     note,
                     ...(periodKey ? { periodKey } : {}),
+                    ...(uppdragId ? { uppdragId } : {}),
                     ...(riskValda.length ? { riskAtgarder: riskValda } : {})
                 })
             });
@@ -5935,6 +6059,23 @@ class CustomerCardManager {
         return (window.LonePeriod && LonePeriod.typDisplayLabel)
             ? LonePeriod.typDisplayLabel(typ)
             : String(typ || '');
+    }
+
+    _uppdragDisplayName(typ, fields) {
+        if (window.UppdragTyp && UppdragTyp.uppdragDisplayName) {
+            return UppdragTyp.uppdragDisplayName(typ, fields);
+        }
+        return this._uppdragTypLabel(typ);
+    }
+
+    _findUppdragRecord(typ, uppdragId) {
+        const id = String(uppdragId || '').trim();
+        const records = this._uppdragRecords || [];
+        if (id) {
+            const byId = records.find((r) => String(r?.id || '') === id);
+            if (byId) return byId;
+        }
+        return records.find((r) => String(r?.fields?.['Typ'] || '').trim() === String(typ || '').trim()) || null;
     }
 
     _kycStatusIcon(fältnamn, värde, iconClass) {
