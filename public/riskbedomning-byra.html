@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260819c">
+    <link rel="stylesheet" href="styles.css?v=20260821a">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -122,7 +122,7 @@
                     <div class="modal-header">
                         <div>
                             <h3 id="tjanst-modal-title">Lägg till tjänst</h3>
-                            <p class="tjanst-modal-kicker">Namn och risk syns alltid. Resten är uppdelat i flikar.</p>
+                            <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens syns alltid. Inneboende risk räknas som S×K.</p>
                         </div>
                         <button class="modal-close" type="button" onclick="closeModal('tjanst-modal')">
                             <i class="fas fa-times"></i>
@@ -136,16 +136,30 @@
                                 <label for="tjanst-name">Tjänstens namn *</label>
                                 <input type="text" id="tjanst-name" name="task-name" placeholder="t.ex. Löpande bokföring" required>
                             </div>
-                            <div class="form-group tjanst-risk-field">
-                                <label for="tjanst-risk-level">Risknivå</label>
-                                <select id="tjanst-risk-level" name="risk-level">
-                                    <option value="">Ej satt</option>
-                                    <option value="Låg">Låg</option>
-                                    <option value="Normal">Normal</option>
-                                    <option value="Förhöjd">Förhöjd</option>
-                                    <option value="Hög">Hög</option>
-                                    <option value="Oacceptabel">Oacceptabel</option>
-                                </select>
+                            <div class="tjanst-risk-scores">
+                                <div class="form-group">
+                                    <label for="tjanst-sannolikhet" title="Hur troligt är det att något av de listade hoten realiseras, givet sårbarheterna">Sannolikhet (1–5)</label>
+                                    <select id="tjanst-sannolikhet" name="sannolikhet">
+                                        <option value="">Ej satt</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="tjanst-konsekvens" title="Hur allvarlig är skadan om det händer">Konsekvens (1–5)</label>
+                                    <select id="tjanst-konsekvens" name="konsekvens">
+                                        <option value="">Ej satt</option>
+                                        <option value="1">1</option>
+                                        <option value="2">2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                    </select>
+                                </div>
+                                <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
                             </div>
                             <button type="button" id="ai-suggest-btn" class="btn btn-ai">
                                 <i class="fas fa-wand-magic-sparkles"></i>
@@ -201,6 +215,37 @@
                                 </div>
                                 <div id="atgard-empty" class="tjanst-empty">Inga åtgärder ännu.</div>
                                 <div id="atgard-list" class="dyn-list"></div>
+                                <div class="tjanst-residual-bar">
+                                    <div>
+                                        <p class="tjanst-residual-title">Risk efter åtgärder</p>
+                                        <p class="tjanst-panel-hint">Bedöm sannolikhet och konsekvens igen när åtgärderna ovan är på plats.</p>
+                                    </div>
+                                    <div class="tjanst-risk-scores tjanst-residual-scores">
+                                        <div class="form-group">
+                                            <label for="tjanst-sannolikhet-efter">Sannolikhet efter åtgärder (1–5)</label>
+                                            <select id="tjanst-sannolikhet-efter" name="sannolikhet-efter">
+                                                <option value="">Ej satt</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="tjanst-konsekvens-efter">Konsekvens efter åtgärder (1–5)</label>
+                                            <select id="tjanst-konsekvens-efter" name="konsekvens-efter">
+                                                <option value="">Ej satt</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                            </select>
+                                        </div>
+                                        <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                                    </div>
+                                </div>
                             </section>
                         </div>
 
@@ -233,7 +278,7 @@
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/aml-kalla.js?v=1"></script>
-    <script src="js/risk-skala.js?v=1"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=4"></script>
+    <script src="js/risk-skala.js?v=2"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=5"></script>
 </body>
 </html>

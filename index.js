@@ -18844,8 +18844,11 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
               const hogFull = [];
               for (const { namn, tf } of ok) {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
-                const risk = (tf['Riskbedömning'] || '').trim();
-                const riskLabel = RiskSkala.riskLabelSv(risk) || risk || 'Ej angiven';
+                const scored = RiskSkala.readTjanstRisk(tf);
+                const risk = scored.level || (tf['Riskbedömning'] || '').trim();
+                const riskLabel = scored.badge
+                  ? `${scored.badge}${scored.residualLevel ? `; residual ${scored.residualBadge}` : ''}`
+                  : (RiskSkala.riskLabelSv(risk) || risk || 'Ej angiven');
                 const kort = `  • ${namn}${typ ? ` (${typ})` : ''} — risknivå: ${riskLabel}`;
                 if (!isHogRiskTjanst(risk)) {
                   kortLista.push(kort);
@@ -19383,7 +19386,12 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
   const befintligt = req.body?.befintligt || {};
 
-  const riskniva = RiskSkala.riskLabelSv(befintligt.riskniva) || (befintligt.riskniva || '').toString().trim() || 'Normal';
+  const inherentIn = RiskSkala.assessRisk(befintligt.sannolikhet, befintligt.konsekvens);
+  const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
+  const riskniva = inherentIn.level
+    || RiskSkala.riskLabelSv(befintligt.riskniva)
+    || (befintligt.riskniva || '').toString().trim()
+    || '';
 
   let byraProfil = null;
   try {
@@ -19401,7 +19409,7 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
-Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, risknivå och byråns faktiska verksamhetsprofil.
+Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, sannolikhet/konsekvens och byråns faktiska verksamhetsprofil.
 
 REGLER:
 - Håll dig strikt till tjänstens domän
@@ -19437,6 +19445,10 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
   "beskrivning": "2-3 meningar om tjänsten och byråns roll. Inkludera en mening om hur byråns profil påverkar den sammanvägda risknivån.",
+  "sannolikhet": 1,
+  "konsekvens": 1,
+  "sannolikhetEfter": 1,
+  "konsekvensEfter": 1,
   "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]
@@ -19446,10 +19458,16 @@ ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 - hot: 2 (Låg), 3 (Normal), 3 (Förhöjd), 4 (Hög), 4 (Oacceptabel)
 - sarbarheter: 2 (Låg), 2 (Normal), 3 (Förhöjd), 3 (Hög), 3 (Oacceptabel)
 - atgarder: 3 (Låg), 4 (Normal), 4 (Förhöjd), 5 (Hög), 5 (Oacceptabel)
-RISKNIVÅ ska vara exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal.`;
+SANNOLIKHET och KONSEKVENS är heltal 1–5 (1 mycket låg, 5 mycket hög).
+- sannolikhet: hur troligt att något av de listade hoten realiseras, givet sårbarheterna.
+- konsekvens: hur allvarlig skadan blir om det händer.
+- sannolikhetEfter / konsekvensEfter: samma bedömning efter de föreslagna åtgärderna (residualrisk).
+Returnera bara talen. Inneboende risk och residualrisk räknas som S×K mot skalan Låg/Normal/Förhöjd/Hög/Oacceptabel.`;
 
   const userPrompt = `Tjänst: ${namn}
-Risknivå: ${riskniva}
+${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.sannolikhet}, konsekvens ${inherentIn.konsekvens} → ${inherentIn.badge}` : 'Ingen inneboende S×K är satt — föreslå sannolikhet och konsekvens.'}
+${residualIn.level ? `Befintlig residualbedömning: sannolikhet ${residualIn.sannolikhet}, konsekvens ${residualIn.konsekvens} → ${residualIn.badge}` : ''}
+${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` : ''}
 
 ${byraProfilUserBlock}${befintligtBlock}`;
 
@@ -19533,9 +19551,21 @@ ${byraProfilUserBlock}${befintligtBlock}`;
       .map(a => ({ titel: cleanStr(a?.titel ?? a?.namn), beskrivning: cleanStr(a?.beskrivning) }))
       .filter(a => a.titel || a.beskrivning) : [];
 
+    const inherentOut = RiskSkala.assessRisk(result.sannolikhet, result.konsekvens);
+    const residualOut = RiskSkala.assessRisk(result.sannolikhetEfter, result.konsekvensEfter);
+    const fallbackLevel = inherentOut.level || normRisk(result.riskniva || riskniva);
+    const fallbackScores = inherentOut.level ? inherentOut : RiskSkala.assessRisk(
+      RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
+      RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
+    );
+
     res.json({
       tjanstebeskrivning: cleanStr(result.beskrivning ?? result.tjanstebeskrivning),
-      riskniva: normRisk(result.riskniva || riskniva),
+      sannolikhet: fallbackScores.sannolikhet,
+      konsekvens: fallbackScores.konsekvens,
+      sannolikhetEfter: residualOut.sannolikhet,
+      konsekvensEfter: residualOut.konsekvens,
+      riskniva: fallbackScores.level || fallbackLevel,
       hot,
       sarbarheter,
       atgarder
