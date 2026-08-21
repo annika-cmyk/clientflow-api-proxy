@@ -58,9 +58,9 @@
 
   var VAGUE_RE = /\b(inför|införa|införs|öka|ökar|stärk|stärka|förbättra|se över|överväg|överväga|rekommendera|rekommenderas|bör|borde|skulle kunna|ska införas|kommer att införas|behöver införas|behöver stärkas|behöver förbättras)\b/i;
   var IMPLEMENTED_WORD_RE = /\b(införd|införda|på plats|ingår i rutin|ingår i rutinen)\b/i;
-  var CONCRETE_VERB_RE = /\b(dokumenteras|granskas|kontrolleras|stäms av|avstäms|sparas|arkiveras|signeras|loggas|registreras|följs upp|utförs|används|förvaras|bokförs|attesteras|verifieras|matchas|görs|körs|tas fram|lämnas in)\b/i;
-  var PLACE_RE = /\b(i|via|med)\s+\S{3,}|\b(fortnox|visma|bokslutsprogram|bokföringsprogram|sie|klientmapp|klientpärm|sharepoint|bankid|kyc-flik|checklista|mall|rutin|uppdrag|körning)\b/i;
-  var WHO_RE = /\b(klientansvarig|redovisningskonsult|medarbetare|ansvarig|byrån|vi)\b/i;
+  var CONCRETE_VERB_RE = /\b(dokumenteras|dokumenterar|dokumentera|granskas|granskar|granska|kontrolleras|kontrollerar|kontrollera|stäms av|stämmer av|avstäms|sparas|sparar|arkiveras|arkiverar|signeras|signerar|loggas|registreras|följs upp|följer upp|utförs|utför|används|använder|förvaras|bokförs|bokför|attesteras|verifieras|matchas|görs|gör|körs|tas fram|lämnas in|informerar|informera|innehåller|övervakar|övervaka)\b/i;
+  var PLACE_RE = /\b(i|via|med)\s+\S{3,}|\b(fortnox|visma|bokslutsprogram|bokföringsprogram|bokföringsprogrammet|sie|klientmapp|klientpärm|sharepoint|bankid|kyc-flik|checklista|mall|rutin|uppdrag|körning)\b/i;
+  var WHO_RE = /\b(klientansvarig|redovisningskonsult|medarbetare|ansvarig|byrån|vi|vår|våra|oss)\b/i;
   var PLAN_RE = /\b(planerad|planerat|planeras|tidplan|beslutad|ska vara på plats|införs den|införs från|från den|fr\.o\.m|f\.o\.m|senast)\b/i;
   var DATE_RE = /\b(20\d{2}|q[1-4]\s*20\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|januari|februari|mars|april|juni|juli|augusti|september|oktober|november|december)\b/i;
 
@@ -101,12 +101,14 @@
     var planned = isClearPlan(text);
     var vague = isVagueIntent(text);
 
+    if (vague && !concrete && !planned) {
+      return { ok: false, reason: 'vag-avsikt', error: SAVE_ERROR, titel: titel };
+    }
     if (concrete && !vague) return { ok: true, kind: 'inford' };
-    if (planned && concrete) return { ok: true, kind: 'planerad' };
-    if (planned && !vague) return { ok: true, kind: 'planerad' };
-    if (vague && !concrete) return { ok: false, reason: 'vag-avsikt', error: SAVE_ERROR, titel: titel };
-    if (!concrete && !planned) return { ok: false, reason: 'saknar-hur', error: SAVE_ERROR, titel: titel };
-    return { ok: true, kind: concrete ? 'inford' : 'planerad' };
+    if (planned) return { ok: true, kind: 'planerad' };
+    // Vanlig löptext om vad som görs (aktiv form, infinitiv, "vi informerar…")
+    // ska kunna sparas. Bara rena avsikter som «inför/öka/bör» stoppas.
+    return { ok: true, kind: concrete ? 'inford' : 'praktik' };
   }
 
   function validateAtgarder(list, opts) {
