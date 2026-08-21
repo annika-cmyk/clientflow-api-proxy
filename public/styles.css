@@ -6227,44 +6227,31 @@ body.sidebar-collapsed .logout-btn {
     color: #5b21b6;
     line-height: 1.45;
 }
-.ai-rb-foreslagen,
-.ai-rb-jamforelse {
+.ai-rb-kalla {
+    margin: 0 0 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+.ai-rb-kalla + .ai-rb-kalla {
+    margin-top: -0.45rem;
+}
+.ai-rb-avvikelse-kort {
+    margin: 0 0 0.85rem;
     padding: 0.65rem 0.8rem;
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
     border-radius: 8px;
-    margin-bottom: 0.5rem;
 }
-.ai-rb-jamforelse {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 0.45rem 0.65rem;
-    align-items: center;
+.ai-rb-avvikelse-kort .ai-rb-kalla {
+    margin-bottom: 0.35rem;
+    color: #9a3412;
 }
-.ai-rb-jamforelse-col {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    align-items: flex-start;
+.ai-rb-avvikelse-kort .ai-rb-kalla:last-child {
+    margin-bottom: 0;
 }
-.ai-rb-jamforelse-arrow {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #94a3b8;
-    line-height: 1;
-}
-.ai-rb-jamforelse .ai-rb-drivande {
-    grid-column: 1 / -1;
-}
-@media (max-width: 520px) {
-    .ai-rb-jamforelse {
-        grid-template-columns: 1fr;
-    }
-    .ai-rb-jamforelse-arrow { display: none; }
-}
-.ai-rb-drivande,
 .ai-rb-avvikelse-view {
-    margin-top: 0.4rem;
+    margin-top: 0.45rem;
     font-size: 0.78rem;
     color: #475569;
 }

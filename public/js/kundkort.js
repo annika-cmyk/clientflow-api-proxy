@@ -7268,51 +7268,51 @@ class CustomerCardManager {
         };
     }
 
-    _foreslagenHtml(foreslagen, drivande) {
-        const pill = foreslagen
-            ? this._riskPillHtml(foreslagen, false)
-            : '<span class="missing-data">Ingen S×K att utgå från</span>';
-        return `
-                        <div class="ai-rb-foreslagen">
-                            <span class="ai-rb-profil-kind">Föreslagen nivå (beräknad)</span>
-                            ${pill}
-                            ${drivande ? `<div class="ai-rb-drivande">Drivs av: ${this._esc(drivande)}</div>` : ''}
-                        </div>`;
+    _drivandeKort(drivande) {
+        const raw = String(drivande || '').trim();
+        if (!raw) return '';
+        return raw
+            .replace(/^(riskfaktor|tjänst):\s*/i, '')
+            .replace(/\s*\(residual\s*S×K\s*(\d+)\)\s*$/i, ' (S×K $1)');
     }
 
-    _riskCompareHtml(foreslagen, residual, drivande) {
+    _foreslagenHtml(foreslagen, drivande) {
+        const niva = this._riskLabel(foreslagen);
+        const kalla = this._drivandeKort(drivande);
+        const text = niva
+            ? `Beräknad startpunkt: ${niva}${kalla ? ` från ${kalla}` : ''}`
+            : 'Ingen beräknad startpunkt ännu — välj residual själv.';
+        return `<p class="ai-rb-kalla ai-rb-foreslagen">${this._esc(text)}</p>`;
+    }
+
+    _riskKallaHtml(foreslagen, residual, drivande, avvikelse) {
         const KP = window.KundRiskprofil;
+        const niva = this._riskLabel(foreslagen);
+        const kalla = this._drivandeKort(drivande);
         const avviker = KP && KP.residualAvvikerFranForeslagen(residual, foreslagen);
-        const riktning = avviker && KP ? KP.avvikelseRiktning(residual, foreslagen) : '';
-        const left = foreslagen
-            ? this._riskPillHtml(foreslagen, false)
-            : '<span class="missing-data">Ingen S×K</span>';
-        const right = residual
-            ? this._riskPillHtml(residual, false)
-            : '<span class="missing-data">Ej vald</span>';
+        if (!niva && !kalla) return '';
+        if (!avviker) {
+            const line = kalla ? `Beräknad från ${kalla}` : `Beräknad nivå: ${niva}`;
+            return `<p class="ai-rb-kalla">${this._esc(line)}</p>`;
+        }
+        const residualLabel = this._riskLabel(residual) || 'ej vald';
+        const riktning = KP.avvikelseRiktning(residual, foreslagen);
+        const riktningText = riktning === 'skärpt' ? ', skärpt' : riktning === 'lättat' ? ', lättat' : '';
         return `
-                        <div class="ai-rb-jamforelse">
-                            <div class="ai-rb-jamforelse-col">
-                                <span class="ai-rb-profil-kind">Föreslagen nivå (beräknad)</span>
-                                ${left}
-                            </div>
-                            <div class="ai-rb-jamforelse-arrow" aria-hidden="true">${avviker ? '→' : '='}</div>
-                            <div class="ai-rb-jamforelse-col">
-                                <span class="ai-rb-profil-kind">Vald residual</span>
-                                ${right}
-                                ${riktning ? `<span class="ai-rb-avvikelse-pil">${this._esc(riktning)}</span>` : ''}
-                            </div>
-                            ${drivande ? `<div class="ai-rb-drivande">Drivs av: ${this._esc(drivande)}</div>` : ''}
+                        <div class="ai-rb-avvikelse-kort">
+                            <p class="ai-rb-kalla">Avviker från beräknad ${this._esc(niva)} — satt till ${this._esc(residualLabel)}${riktningText}</p>
+                            ${kalla ? `<p class="ai-rb-kalla">Beräknad från ${this._esc(kalla)}</p>` : ''}
+                            ${avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Varför</span><div class="risker-vald-desc">${this._esc(avvikelse)}</div></div>` : ''}
                         </div>`;
     }
 
     _riskbedomningViewHtml(inneboende, residual, motivering, atgarder, opts = {}) {
         const legacy = !!opts.legacy;
-        const badges = `${this._riskCompareHtml(opts.foreslagen, residual, opts.drivande)}
-                        <div class="ai-rb-profil-row" id="ai-rb-niva-display">
+        const badges = `<div class="ai-rb-profil-row" id="ai-rb-niva-display">
+                            ${this._profilBadgeHtml('residual', residual)}
                             ${this._profilBadgeHtml('inneboende', inneboende)}
                         </div>
-                        ${opts.avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Motivering till avvikelse</span><div class="risker-vald-desc">${this._esc(opts.avvikelse)}</div></div>` : ''}`;
+                        ${this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse)}`;
         const legacyBox = (legacy && motivering)
             ? `<div class="ai-rb-legacy">Tidigare bedömning (ej uppdelad i inneboende/residual), kräver manuell översyn<div class="ai-rb-legacy-text">${this._esc(motivering)}</div></div>`
             : '';
