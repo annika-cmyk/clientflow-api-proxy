@@ -5257,14 +5257,18 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
     fetchAirtableRecordsByIds(token, baseId, OVRIGA_RISKER_TABLE_ID, riskIds, { concurrency: 8 })
   ]);
   let risker = riskRecs;
-  if (KundRiskprofil.hasHogriskBranschVal(f)) {
+  let extra = [];
+  if (KundRiskprofil.hasHogriskBranschVal(f) || KundRiskprofil.hasRiskhojandeVal(f)) {
     const byraId = f['Byrå ID'] || f.Byrå || '';
-    const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
-    risker = KundRiskprofil.mergeHogriskBranschRisker(f, riskRecs, byraRisker);
+    extra = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+    if (KundRiskprofil.hasHogriskBranschVal(f)) {
+      risker = KundRiskprofil.mergeHogriskBranschRisker(f, riskRecs, extra);
+    }
   }
   return {
     tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
     riskfaktorer: KundRiskprofil.itemsFromRiskRecords(risker)
+      .concat(KundRiskprofil.itemsFromRiskhojandeFlags(f, extra.concat(risker)))
   };
 }
 
@@ -7249,7 +7253,8 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       kund: pdfRiskFactorNames(f['Kunden verkar i en högriskbransch']),
       distribution: [],
       verksamhet: [],
-      riskhojOvrigt: pdfRiskFactorNames(filterRiskChipList(f['Riskhöjande faktorer övrigt'])),
+      riskhojOvrigt: pdfRiskFactorNames(filterRiskChipList(f['Riskhöjande faktorer övrigt']))
+        .map((namn) => KundRiskprofil.canonicalRiskhojandeLabel(namn)),
       risksankande: pdfRiskFactorNames(pdfFmtList(f['Risksänkande faktorer']))
     };
 

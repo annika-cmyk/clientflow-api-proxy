@@ -6551,7 +6551,7 @@ class CustomerCardManager {
                 ]);
                 const dataHoj = resHoj.ok ? await resHoj.json() : {};
                 const dataSank = resSank.ok ? await resSank.json() : {};
-                this._riskhojAlternativ = (dataHoj.choices || []).filter(c => c && c !== '---');
+                this._riskhojAlternativ = this._normalizeRiskhojAlternativ(dataHoj.choices || []);
                 this._risksankAlternativ = (dataSank.choices || []).filter(c => c && c !== '---');
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta riskfaktor-alternativ:', e.message);
@@ -7020,8 +7020,8 @@ class CustomerCardManager {
                 <!-- Redigerbara riskfaktorkort -->
 
                 ${this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
-                    f['Riskhöjande faktorer övrigt'],
-                    this._riskhojAlternativ?.length ? this._riskhojAlternativ : ['Inga','Kontanthantering','Kopplingar till andra länder, särskilt länder utanför EU','Svårt att få svar på frågor','Komplicerad struktur','Mkt ändringar i styrelse, adress eller firmateckning','Svårt att få kontakt med ägare/styrelse/huvudmän','Otydlig affärsmodell','Transaktioner utan tydligt syfte','Historik av brott eller ekonomisk misskötsel','Svårt att bekräfta identitet','Bristfälliga bokföringsrutiner','Företaget har många kunder på distans','Företaget har många kortvariga affärsrelationer'],
+                    this._normalizeRiskhojValda(f['Riskhöjande faktorer övrigt']),
+                    this._riskhojAlternativ?.length ? this._riskhojAlternativ : this._defaultRiskhojAlternativ(),
                     'multi', 'high', 'KYC genomgången - Riskhöjande faktorer övrigt', f['KYC genomgången - Riskhöjande faktorer övrigt'])}
 
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
@@ -7103,6 +7103,9 @@ class CustomerCardManager {
                     }).filter(Boolean).join('')}</div>`
                     : '<span class="missing-data">Inga valda</span>');
 
+        const hint = id === 'riskhojande-ovrigt'
+            ? '<p class="kyc-hint" style="margin-top:0.5rem;">Valda faktorer räknas in i beräknad residual — minst Förhöjd om faktorn saknar egen S×K på byrån.</p>'
+            : '';
         const editContent = typ === 'text'
             ? `<textarea id="riskf-input-${id}" class="kunduppgifter-input" rows="3">${värde || ''}</textarea>`
             : `<div class="riskf-checkgrid">
@@ -7113,7 +7116,7 @@ class CustomerCardManager {
                         <span class="tjanst-check-box"></span>
                         <span class="tjanst-check-label">${alt}</span>
                     </label>`).join('')}
-               </div>`;
+               </div>${hint}`;
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}"${kycFält ? ` data-kyc-field="${String(kycFält).replace(/"/g, '&quot;')}"` : ''}>
@@ -7260,7 +7263,67 @@ class CustomerCardManager {
                 konsekvensEfter: scored.konsekvensEfter
             };
         });
-        return KP.beraknaForeslagenNiva({ tjanster, riskfaktorer });
+        const flagItems = KP.itemsFromRiskhojandeFlags
+            ? KP.itemsFromRiskhojandeFlags(this.customerData?.fields || {}, this._allaRisker || [])
+            : [];
+        return KP.beraknaForeslagenNiva({ tjanster, riskfaktorer: riskfaktorer.concat(flagItems) });
+    }
+
+    _canonicalRiskhojandeLabel(namn) {
+        const KP = window.KundRiskprofil;
+        if (KP && KP.canonicalRiskhojandeLabel) return KP.canonicalRiskhojandeLabel(namn);
+        return String(namn || '').trim();
+    }
+
+    _normalizeRiskhojValda(värde) {
+        const seen = new Set();
+        const out = [];
+        const list = Array.isArray(värde) ? värde : (värde ? [värde] : []);
+        list.forEach((raw) => {
+            const label = this._canonicalRiskhojandeLabel(raw && raw.name ? raw.name : raw);
+            if (!label || label === '---') return;
+            const key = label.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(label);
+        });
+        return out;
+    }
+
+    _defaultRiskhojAlternativ() {
+        return this._normalizeRiskhojAlternativ([
+            'Inga',
+            'Kontanthantering',
+            'Kopplingar till andra länder, särskilt länder utanför EU',
+            'Svårt att få svar på frågor',
+            'Komplicerad struktur',
+            'Mkt ändringar i styrelse, adress eller firmateckning',
+            'Svårt att få kontakt med ägare/styrelse/huvudmän',
+            'Otydlig affärsmodell',
+            'Transaktioner utan tydligt syfte',
+            'Historik av brott eller ekonomisk misskötsel',
+            'Svårt att bekräfta identitet',
+            'Bristfälliga bokföringsrutiner',
+            'Företaget har många kunder på distans',
+            'Många byten av redovisningsbyråer'
+        ]);
+    }
+
+    _normalizeRiskhojAlternativ(list) {
+        const seen = new Set();
+        const out = [];
+        (Array.isArray(list) ? list : []).forEach((raw) => {
+            const label = this._canonicalRiskhojandeLabel(raw);
+            if (!label || label === '---') return;
+            const key = label.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(label);
+        });
+        if (!out.some((x) => /många byten av redovisningsbyråer/i.test(x))) {
+            out.push('Många byten av redovisningsbyråer');
+        }
+        return out;
     }
 
     _hogriskBranschValda() {
@@ -7791,6 +7854,9 @@ class CustomerCardManager {
         } else {
             värde = [...document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]:checked`)]
                 .map(cb => cb.value);
+            if (id === 'riskhojande-ovrigt') {
+                värde = this._normalizeRiskhojValda(värde);
+            }
         }
 
         const saveBtn = document.querySelector(`#riskf-edit-${id} .btn-primary`);
@@ -7811,7 +7877,12 @@ class CustomerCardManager {
             }
 
             // Uppdatera customerData lokalt
-            if (this.customerData?.fields) this.customerData.fields[fältnamn] = värde;
+            const saved = await response.json().catch(() => ({}));
+            if (saved.record?.fields && this.customerData?.fields) {
+                Object.assign(this.customerData.fields, saved.record.fields);
+            } else if (this.customerData?.fields) {
+                this.customerData.fields[fältnamn] = värde;
+            }
 
             // Uppdatera view-innehållet direkt
             const viewEl = document.getElementById(`riskf-view-${id}`);
@@ -7829,13 +7900,14 @@ class CustomerCardManager {
                         const variant = viewEl.dataset.chipVariant || '';
                         const cls = variant === 'high' ? 'kyc-chip riskf-chip riskf-chip--high' : 'kyc-chip riskf-chip';
                         viewEl.innerHTML = list.length
-                            ? `<div class="riskf-chips">${list.map(v => `<span class="${cls}">${v}</span>`).join('')}</div>`
+                            ? `<div class="riskf-chips">${list.map(v => `<span class="${cls}">${this._esc(v)}</span>`).join('')}</div>`
                             : '<span class="missing-data">Inga valda</span>';
                     }
                 }
             }
 
             this.toggleRiskfaktorEdit(id);
+            if (id === 'riskhojande-ovrigt') this._refreshRiskprofilForeslagenUi();
             this.showNotification('Sparat!', 'success');
 
         } catch (error) {
@@ -7928,7 +8000,7 @@ class CustomerCardManager {
                     <div class="rb-factors">
                         ${riskHöjandeBlock('Högriskbransch', f['Kunden verkar i en högriskbransch'])}
                         ${riskHöjandeBlock('Riskhöjande – tjänster', f['Riskhöjande faktorer tjänster'])}
-                        ${riskHöjandeBlock('Riskhöjande – övrigt', f['Riskhöjande faktorer övrigt'])}
+                        ${riskHöjandeBlock('Riskhöjande – övrigt', this._normalizeRiskhojValda(f['Riskhöjande faktorer övrigt']))}
                         ${riskSänkandeBlock('Risksänkande faktorer', f['Risksänkande faktorer'])}
                     </div>
                     ${f['Kommentar till riskfaktorerna ovan'] ? `<p class="rb-comment"><i class="fas fa-comment-alt"></i> ${f['Kommentar till riskfaktorerna ovan']}</p>` : ''}

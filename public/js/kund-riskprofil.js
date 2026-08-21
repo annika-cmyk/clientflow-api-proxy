@@ -127,6 +127,72 @@
     return assessed && assessed.product != null ? assessed.product : null;
   }
 
+  var RISKHOJANDE_DEFAULT_PRODUCT = 12;
+
+  function canonicalRiskhojandeLabel(namn) {
+    var raw = trimStr(namn);
+    if (/kortvarig|kortsiktig|tillf[äa]llig aff[äa]rsrelation/i.test(raw)) {
+      return 'Många byten av redovisningsbyråer';
+    }
+    return raw;
+  }
+
+  function riskhojandeVal(fields) {
+    var raw = fields && fields['Riskhöjande faktorer övrigt'];
+    var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    var seen = {};
+    var out = [];
+    list.forEach(function (item) {
+      var v = canonicalRiskhojandeLabel(item && item.name ? item.name : item);
+      if (!v || v === '---' || v.toLowerCase() === 'inga') return;
+      var key = v.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(v);
+    });
+    return out;
+  }
+
+  function hasRiskhojandeVal(fields) {
+    return riskhojandeVal(fields).length > 0;
+  }
+
+  function foldNamn(s) {
+    return trimStr(s).toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function findRiskRecordByNamn(records, namn) {
+    var want = foldNamn(canonicalRiskhojandeLabel(namn));
+    if (!want) return null;
+    var found = null;
+    (Array.isArray(records) ? records : []).forEach(function (r) {
+      if (!r || found) return;
+      var f = r.fields || r;
+      var recNamn = foldNamn(canonicalRiskhojandeLabel(f.Riskfaktor || f['Riskfaktor'] || f.Namn || f.namn || r.namn || ''));
+      if (recNamn && recNamn === want) found = r;
+    });
+    return found;
+  }
+
+  function itemsFromRiskhojandeFlags(fields, extraRecords) {
+    return riskhojandeVal(fields).map(function (namn) {
+      var rec = findRiskRecordByNamn(extraRecords, namn);
+      if (rec) {
+        var fromRec = itemsFromRiskRecords([rec])[0];
+        if (fromRec && fromRec.residualProduct != null) {
+          fromRec.namn = namn;
+          return fromRec;
+        }
+      }
+      return {
+        kind: 'riskfaktor',
+        namn: namn,
+        residualProduct: RISKHOJANDE_DEFAULT_PRODUCT,
+        residualLevel: 'Förhöjd'
+      };
+    });
+  }
+
   function formatDrivandeFaktor(kind, namn, product) {
     var prefix = kind === 'tjänst' ? 'tjänst' : 'riskfaktor';
     var name = trimStr(namn) || 'okänd post';
@@ -295,7 +361,7 @@
     risker = mergeHogriskBranschRisker(f, risker, extra);
     return beraknaForeslagenNiva({
       tjanster: itemsFromTjanstRecords(tjanster),
-      riskfaktorer: itemsFromRiskRecords(risker)
+      riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra))
     });
   }
 
@@ -405,6 +471,11 @@
     hasHogriskBranschVal: hasHogriskBranschVal,
     findHogriskBranschRecords: findHogriskBranschRecords,
     mergeHogriskBranschRisker: mergeHogriskBranschRisker,
+    RISKHOJANDE_DEFAULT_PRODUCT: RISKHOJANDE_DEFAULT_PRODUCT,
+    canonicalRiskhojandeLabel: canonicalRiskhojandeLabel,
+    riskhojandeVal: riskhojandeVal,
+    hasRiskhojandeVal: hasRiskhojandeVal,
+    itemsFromRiskhojandeFlags: itemsFromRiskhojandeFlags,
     foreslagenFromLinkedRecords: foreslagenFromLinkedRecords,
     formatDrivandeFaktor: formatDrivandeFaktor,
     residualAvvikerFranForeslagen: residualAvvikerFranForeslagen,
