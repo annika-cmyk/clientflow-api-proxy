@@ -9,6 +9,7 @@
  *   - Sårbarheter                 (JSON-array: [{ kategori, titel, beskrivning }])
  *   - Samspelsexempel             (fri text)
  *   - Tjänstespecifika åtgärder   (JSON-array: [{ titel, beskrivning }])
+ *   - Riskpoäng                   (JSON: { sannolikhet, konsekvens, sannolikhetEfter, konsekvensEfter })
  *
  * Kräver: AIRTABLE_ACCESS_TOKEN (personal access token, scope schema.bases:write)
  *         och AIRTABLE_BASE_ID.
@@ -30,7 +31,8 @@ const NEW_FIELDS = [
   { name: 'Hot', type: 'multilineText' },
   { name: 'Sårbarheter', type: 'multilineText' },
   { name: 'Samspelsexempel', type: 'multilineText' },
-  { name: 'Tjänstespecifika åtgärder', type: 'multilineText' }
+  { name: 'Tjänstespecifika åtgärder', type: 'multilineText' },
+  { name: 'Riskpoäng', type: 'multilineText' }
 ];
 
 async function main() {

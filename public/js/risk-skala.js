@@ -196,6 +196,151 @@
         }).join('\n');
     }
 
+    // S×K (1–5) → femgradig skala. Samma trösklar för inneboende risk och residualrisk.
+    // 1–4 Låg, 5–9 Normal, 10–15 Förhöjd, 16–19 Hög, 20–25 Oacceptabel.
+    function toScore(value) {
+        if (value == null || value === '') return null;
+        var n = Number(value);
+        if (!Number.isInteger(n) || n < 1 || n > 5) return null;
+        return n;
+    }
+
+    function levelFromProduct(product) {
+        if (product == null || !isFinite(product)) return null;
+        if (product <= 4) return BY_KEY.low;
+        if (product <= 9) return BY_KEY.normal;
+        if (product <= 15) return BY_KEY.elevated;
+        if (product <= 19) return BY_KEY.high;
+        return BY_KEY.unacceptable;
+    }
+
+    function assessRisk(sannolikhet, konsekvens) {
+        var s = toScore(sannolikhet);
+        var k = toScore(konsekvens);
+        if (s == null || k == null) {
+            return {
+                sannolikhet: s,
+                konsekvens: k,
+                product: null,
+                level: '',
+                levelKey: '',
+                badge: ''
+            };
+        }
+        var product = s * k;
+        var level = levelFromProduct(product);
+        return {
+            sannolikhet: s,
+            konsekvens: k,
+            product: product,
+            level: level ? level.label : '',
+            levelKey: level ? level.key : '',
+            badge: level ? (level.label + ' (S×K ' + product + ')') : ''
+        };
+    }
+
+    function formatInneboendeBadge(assessment) {
+        if (!assessment || !assessment.level) return 'Inneboende risk: Ej satt';
+        return 'Inneboende risk: ' + assessment.badge;
+    }
+
+    function formatResidualBadge(assessment) {
+        if (!assessment || !assessment.level) return 'Residualrisk: Ej satt';
+        return 'Residualrisk: ' + assessment.badge;
+    }
+
+    function scoresFromLegacyLevel(raw) {
+        var key = normalizeRiskKey(raw);
+        if (key === 'low') return { sannolikhet: 2, konsekvens: 2 };
+        if (key === 'normal') return { sannolikhet: 3, konsekvens: 3 };
+        if (key === 'elevated') return { sannolikhet: 3, konsekvens: 4 };
+        if (key === 'high') return { sannolikhet: 4, konsekvens: 4 };
+        if (key === 'unacceptable') return { sannolikhet: 5, konsekvens: 5 };
+        return { sannolikhet: null, konsekvens: null };
+    }
+
+    function scoreOptionHtml(selected, opts) {
+        var emptyLabel = (opts && opts.emptyLabel) || 'Ej satt';
+        var selectedScore = toScore(selected);
+        var html = '<option value="">' + emptyLabel + '</option>';
+        for (var i = 1; i <= 5; i++) {
+            html += '<option value="' + i + '"' + (selectedScore === i ? ' selected' : '') + '>' + i + '</option>';
+        }
+        return html;
+    }
+
+    function looksLikeRiskPoang(obj) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+        return toScore(obj.sannolikhet ?? obj.s ?? obj.likelihood) != null
+            || toScore(obj.konsekvens ?? obj.k ?? obj.consequence) != null
+            || toScore(obj.sannolikhetEfter ?? obj.sEfter ?? obj.residualLikelihood) != null
+            || toScore(obj.konsekvensEfter ?? obj.kEfter ?? obj.residualConsequence) != null;
+    }
+
+    function normalizePoang(obj) {
+        var raw = obj || {};
+        return {
+            sannolikhet: toScore(raw.sannolikhet ?? raw.s ?? raw.likelihood),
+            konsekvens: toScore(raw.konsekvens ?? raw.k ?? raw.consequence),
+            sannolikhetEfter: toScore(raw.sannolikhetEfter ?? raw.sEfter ?? raw.residualLikelihood),
+            konsekvensEfter: toScore(raw.konsekvensEfter ?? raw.kEfter ?? raw.residualConsequence)
+        };
+    }
+
+    function parseRiskPoang(raw) {
+        if (!raw) return null;
+        if (typeof raw === 'object' && !Array.isArray(raw)) {
+            return looksLikeRiskPoang(raw) ? normalizePoang(raw) : null;
+        }
+        if (typeof raw !== 'string') return null;
+        var t = raw.trim();
+        if (!t) return null;
+        try {
+            var parsed = JSON.parse(t);
+            return looksLikeRiskPoang(parsed) ? normalizePoang(parsed) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function serializeRiskPoang(poang) {
+        var n = normalizePoang(poang || {});
+        return JSON.stringify({
+            sannolikhet: n.sannolikhet,
+            konsekvens: n.konsekvens,
+            sannolikhetEfter: n.sannolikhetEfter,
+            konsekvensEfter: n.konsekvensEfter
+        });
+    }
+
+    function readTjanstRisk(fields) {
+        var f = fields || {};
+        var stored = parseRiskPoang(f['Riskpoäng'] || f.Riskpoang);
+        if (!stored) stored = parseRiskPoang(f['Samspelsexempel']);
+        var legacy = String(f['Riskbedömning'] || '').trim();
+        var sannolikhet = stored && stored.sannolikhet;
+        var konsekvens = stored && stored.konsekvens;
+        if (sannolikhet == null || konsekvens == null) {
+            var inferred = scoresFromLegacyLevel(legacy);
+            if (sannolikhet == null) sannolikhet = inferred.sannolikhet;
+            if (konsekvens == null) konsekvens = inferred.konsekvens;
+        }
+        var inherent = assessRisk(sannolikhet, konsekvens);
+        var residual = assessRisk(stored && stored.sannolikhetEfter, stored && stored.konsekvensEfter);
+        return {
+            sannolikhet: inherent.sannolikhet,
+            konsekvens: inherent.konsekvens,
+            product: inherent.product,
+            level: inherent.level || riskLabelSv(legacy) || '',
+            badge: inherent.badge || riskLabelSv(legacy),
+            sannolikhetEfter: residual.sannolikhet,
+            konsekvensEfter: residual.konsekvens,
+            residualProduct: residual.product,
+            residualLevel: residual.level,
+            residualBadge: residual.badge
+        };
+    }
+
     var api = {
         LEVELS: LEVELS,
         DEFINITIONS: DEFINITIONS,
@@ -218,7 +363,17 @@
         isElevatedOrAbove: isElevatedOrAbove,
         definitionsHtml: definitionsHtml,
         definitionsPlain: definitionsPlain,
-        fold: fold
+        fold: fold,
+        toScore: toScore,
+        levelFromProduct: levelFromProduct,
+        assessRisk: assessRisk,
+        formatInneboendeBadge: formatInneboendeBadge,
+        formatResidualBadge: formatResidualBadge,
+        scoresFromLegacyLevel: scoresFromLegacyLevel,
+        scoreOptionHtml: scoreOptionHtml,
+        parseRiskPoang: parseRiskPoang,
+        serializeRiskPoang: serializeRiskPoang,
+        readTjanstRisk: readTjanstRisk
     };
 
     if (typeof module !== 'undefined' && module.exports) {
