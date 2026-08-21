@@ -246,12 +246,7 @@ class RiskAssessmentManager {
     }
 
     getRiskLevelClass(level) {
-        switch (level) {
-            case 'Hög': return 'risk-high';
-            case 'Medel': return 'risk-medium';
-            case 'Låg': return 'risk-low';
-            default: return 'risk-medium';
-        }
+        return (window.RiskSkala && RiskSkala.riskItemClass(level)) || 'risk-normal';
     }
 
     formatDescription(text) {
@@ -285,7 +280,7 @@ class RiskAssessmentManager {
 
     createRiskItem(risk) {
         const f = risk.fields || {};
-        const riskLevel = f['Riskbedömning'] || 'Medel';
+        const riskLevel = (window.RiskSkala && RiskSkala.riskLabelSv(f['Riskbedömning'])) || f['Riskbedömning'] || 'Normal';
         const riskLevelClass = this.getRiskLevelClass(riskLevel);
         const isChecked = f['Aktuell'] === true;
         const taskName = f['Task Name'] || 'Namnlös tjänst';
@@ -501,7 +496,7 @@ class RiskAssessmentManager {
                 if (byraFilter && riskByraId !== byraFilter) return false;
             }
 
-            if (riskFilter && fields['Riskbedömning'] !== riskFilter) return false;
+            if (riskFilter && !(window.RiskSkala ? RiskSkala.sameLevel(fields['Riskbedömning'], riskFilter) : fields['Riskbedömning'] === riskFilter)) return false;
 
             if (statusFilter) {
                 const isChecked = fields['Aktuell'] === true;
@@ -529,7 +524,9 @@ class RiskAssessmentManager {
     }
 
     updateStats() {
-        const highRiskCount = this.filteredRisks.filter(risk => risk.fields['Riskbedömning'] === 'Hög').length;
+        const highRiskCount = this.filteredRisks.filter(risk => (
+            window.RiskSkala ? RiskSkala.isHighOrAbove(risk.fields['Riskbedömning']) : risk.fields['Riskbedömning'] === 'Hög'
+        )).length;
         const completedCount = this.filteredRisks.filter(risk => risk.fields['Aktuell'] === true).length;
         const highEl = document.getElementById('high-risk-count');
         const compEl = document.getElementById('completed-count');
@@ -737,7 +734,7 @@ class RiskAssessmentManager {
         const f = risk.fields || {};
         document.getElementById('tjanst-record-id').value = risk.id;
         document.getElementById('tjanst-name').value = f['Task Name'] || '';
-        document.getElementById('tjanst-risk-level').value = f['Riskbedömning'] || '';
+        document.getElementById('tjanst-risk-level').value = (window.RiskSkala && RiskSkala.riskLabelSv(f['Riskbedömning'])) || f['Riskbedömning'] || '';
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
 
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
@@ -846,7 +843,7 @@ class RiskAssessmentManager {
             const data = await response.json();
 
             if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
-            if (data.riskniva) document.getElementById('tjanst-risk-level').value = data.riskniva;
+            if (data.riskniva) document.getElementById('tjanst-risk-level').value = (window.RiskSkala && RiskSkala.riskLabelSv(data.riskniva)) || data.riskniva;
 
             // Ersätt befintliga rader med AI-förslag
             ['hot-list', 'sarbarhet-list', 'atgard-list'].forEach(id => {
@@ -874,7 +871,7 @@ class RiskAssessmentManager {
     buildPayload() {
         return {
             'Task Name': document.getElementById('tjanst-name').value.trim(),
-            'Riskbedömning': document.getElementById('tjanst-risk-level').value || '',
+            'Riskbedömning': (window.RiskSkala && RiskSkala.riskLabelSv(document.getElementById('tjanst-risk-level').value)) || document.getElementById('tjanst-risk-level').value || '',
             'Tjänstebeskrivning': document.getElementById('tjanst-beskrivning').value.trim(),
             'Hot': JSON.stringify(this.collectHot()),
             'Sårbarheter': JSON.stringify(this.collectSarbarhet()),

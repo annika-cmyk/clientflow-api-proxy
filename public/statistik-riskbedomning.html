@@ -46,8 +46,15 @@
                         <div class="stat-card">
                             <div class="stat-icon"><i class="fas fa-balance-scale"></i></div>
                             <div class="stat-content">
-                                <h3>Medel risk</h3>
-                                <div class="stat-number stat-number--medium" id="stat-medel">–</div>
+                                <h3>Normal risk</h3>
+                                <div class="stat-number stat-number--normal" id="stat-normal">–</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-arrow-up"></i></div>
+                            <div class="stat-content">
+                                <h3>Förhöjd risk</h3>
+                                <div class="stat-number stat-number--elevated" id="stat-forhojd">–</div>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -55,6 +62,13 @@
                             <div class="stat-content">
                                 <h3>Hög risk</h3>
                                 <div class="stat-number stat-number--high" id="stat-hog">–</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-ban"></i></div>
+                            <div class="stat-content">
+                                <h3>Oacceptabel</h3>
+                                <div class="stat-number stat-number--unacceptable" id="stat-oacceptabel">–</div>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -121,6 +135,7 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
     <script src="app.js"></script>
-    <script src="js/statistik-riskbedomning.js"></script>
+    <script src="js/risk-skala.js?v=1"></script>
+    <script src="js/statistik-riskbedomning.js?v=2"></script>
 </body>
 </html>

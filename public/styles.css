@@ -4277,14 +4277,17 @@ body.sidebar-collapsed .logout-btn {
     transform: translateY(-2px);
 }
 
-.risk-item.risk-high {
+.risk-item.risk-high,
+.risk-item.risk-unacceptable {
     border-left: 0px solid #e74c3c;
 }
 
+.risk-item.risk-elevated,
 .risk-item.risk-medium {
     border-left: 0px solid var(--accent);
 }
 
+.risk-item.risk-normal,
 .risk-item.risk-low {
     border-left: 0px solid #27ae60;
 }
@@ -4337,9 +4340,20 @@ body.sidebar-collapsed .logout-btn {
     color: #e74c3c;
 }
 
+.risk-level.risk-unacceptable {
+    background: #3b0764;
+    color: #f5d0fe;
+}
+
+.risk-level.risk-elevated,
 .risk-level.risk-medium {
     background: var(--accent-tint);
     color: var(--accent);
+}
+
+.risk-level.risk-normal {
+    background: #e0f2fe;
+    color: #075985;
 }
 
 .risk-level.risk-low {
@@ -4902,6 +4916,15 @@ body.sidebar-collapsed .logout-btn {
     color: var(--ink-3);
 }
 
+.byra-riskskala-defs {
+    margin: 0.6rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #475569;
+}
+.byra-riskskala-defs li { margin: 0.15rem 0; }
+
 .byra-card-source-hint {
     margin: 0.85rem 0 0;
     font-size: 0.86rem;
@@ -5251,7 +5274,10 @@ body.sidebar-collapsed .logout-btn {
     flex-shrink: 0;
 }
 .risk-pill--high { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.risk-pill--unacceptable { background: #3b0764; color: #f5d0fe; border: 1px solid #c084fc; }
+.risk-pill--elevated,
 .risk-pill--medium { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.risk-pill--normal { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
 .risk-pill--low { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 
 /* ?? Riskbed?mning ????????????????????????????????????? */
@@ -5994,9 +6020,15 @@ body.sidebar-collapsed .logout-btn {
     transition: all 0.15s;
 }
 .ai-rb-niva-btn:hover { background: var(--line); }
+.ai-rb-niva-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.ai-rb-niva-btn.is-active.is-low,
 .ai-rb-niva-btn.is-active.is-lag  { background: #dcfce7; border-color: #16a34a; color: #15803d; }
-.ai-rb-niva-btn.is-active.is-medel { background: #fef9c3; border-color: #ca8a04; color: #a16207; }
+.ai-rb-niva-btn.is-active.is-normal,
+.ai-rb-niva-btn.is-active.is-medel { background: #e0f2fe; border-color: #0284c7; color: #075985; }
+.ai-rb-niva-btn.is-active.is-forhojd { background: #fef9c3; border-color: #ca8a04; color: #a16207; }
+.ai-rb-niva-btn.is-active.is-high,
 .ai-rb-niva-btn.is-active.is-hog  { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
+.ai-rb-niva-btn.is-active.is-oacceptabel { background: #3b0764; border-color: #7e22ce; color: #f5d0fe; }
 
 .ai-rb-ai-row {
     display: flex;
@@ -6730,9 +6762,20 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #e74c3c;
 }
 
+.risk-level-badge.risk-unacceptable {
+    background: #3b0764;
+    color: #f5d0fe;
+}
+
+.risk-level-badge.risk-elevated,
 .risk-level-badge.risk-medium {
     background: var(--accent-tint);
     color: var(--accent);
+}
+
+.risk-level-badge.risk-normal {
+    background: #e0f2fe;
+    color: #075985;
 }
 
 .risk-level-badge.risk-low {
@@ -12008,8 +12051,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .stat-card .stat-content h3 { margin: 0 0 0.35rem 0; font-size: 0.8rem; font-weight: 600; color: var(--text); }
 .stat-card .stat-number { font-size: 1.75rem; font-weight: 700; color: var(--title-text); }
 .stat-card .stat-number--low { color: var(--success); }
+.stat-card .stat-number--normal { color: #0284c7; }
 .stat-card .stat-number--medium { color: var(--warning); }
+.stat-card .stat-number--elevated { color: var(--warning); }
 .stat-card .stat-number--high { color: var(--error); }
+.stat-card .stat-number--unacceptable { color: #7e22ce; }
 .stat-card-clickable { cursor: pointer; transition: box-shadow 0.2s, background 0.2s; }
 .stat-card-clickable:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: #fafafa; }
 .statistik-riskfaktorer-kort { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1rem; }

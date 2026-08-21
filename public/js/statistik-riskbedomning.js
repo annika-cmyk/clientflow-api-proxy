@@ -26,8 +26,13 @@
 
     document.getElementById('stat-antal-kunder').textContent = n;
     document.getElementById('stat-lag').textContent = r['Låg'] || 0;
-    document.getElementById('stat-medel').textContent = r['Medel'] || 0;
+    const normalEl = document.getElementById('stat-normal') || document.getElementById('stat-medel');
+    if (normalEl) normalEl.textContent = r['Normal'] || r['Medel'] || 0;
+    const forhojdEl = document.getElementById('stat-forhojd');
+    if (forhojdEl) forhojdEl.textContent = r['Förhöjd'] || 0;
     document.getElementById('stat-hog').textContent = r['Hög'] || 0;
+    const oaccEl = document.getElementById('stat-oacceptabel');
+    if (oaccEl) oaccEl.textContent = r['Oacceptabel'] || 0;
     document.getElementById('stat-ovrigt').textContent = r['Övrigt'] || 0;
     const pepEl = document.getElementById('stat-pep-sanktion');
     if (pepEl) pepEl.textContent = typeof data.antalPepEllerSanktion === 'number' ? data.antalPepEllerSanktion : '–';

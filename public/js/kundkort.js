@@ -6249,8 +6249,7 @@ class CustomerCardManager {
     _renderRiskerForTyp(container, risker, linkedIds, typId) {
         const riskBadge = (nivå) => {
             if (!nivå) return '';
-            const map = { 'Hög': 'risk-pill--high', 'Förhöjd': 'risk-pill--high', 'Medel': 'risk-pill--medium', 'Låg': 'risk-pill--low', 'Normal': 'risk-pill--low' };
-            return `<span class="risk-pill ${map[nivå] || 'risk-pill--medium'}">${nivå}</span>`;
+            return this._riskPillHtml(nivå);
         };
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
@@ -6760,17 +6759,33 @@ class CustomerCardManager {
             </div>`;
     }
 
+    _riskLabel(niva) {
+        return (window.RiskSkala && RiskSkala.riskLabelSv(niva)) || niva || '';
+    }
+
+    _riskPillHtml(niva, withSuffix) {
+        const label = this._riskLabel(niva);
+        if (!label) return '';
+        const cls = (window.RiskSkala && RiskSkala.riskPillClass(niva)) || 'risk-pill--normal';
+        return `<span class="risk-pill ${cls}">${label}${withSuffix ? ' risk' : ''}</span>`;
+    }
+
+    _riskNivaButtonsHtml(riskniva) {
+        const current = this._riskLabel(riskniva);
+        const levels = (window.RiskSkala && RiskSkala.labels()) || ['Låg', 'Normal', 'Förhöjd', 'Hög', 'Oacceptabel'];
+        return levels.map((label) => {
+            const active = current === label;
+            const btnClass = (window.RiskSkala && RiskSkala.riskBtnClass(label)) || '';
+            return `<button type="button" class="ai-rb-niva-btn${active ? ' is-active ' + btnClass : ''}" data-riskniva="${label}" onclick="customerCardManager.setRiskniva('${label}')"><i class="fas fa-circle"></i> ${label}</button>`;
+        }).join('\n                                ');
+    }
+
     renderRiskbedomningAiCard(f) {
         const riskniva = f['Riskniva'] || '';
         const riskbedomning = f['Byrans riskbedomning'] || '';
         const atgarder = f['Atgarder riskbedomning'] || '';
 
-        const nivaBadge = (n) => {
-            if (!n) return '';
-            const map = { 'Lag': 'risk-pill--low', 'Medel': 'risk-pill--medium', 'Hog': 'risk-pill--high' };
-            const label = { 'Lag': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk' };
-            return `<span class="risk-pill ${map[n] || 'risk-pill--medium'}">${label[n] || n}</span>`;
-        };
+        const nivaBadge = (n) => n ? this._riskPillHtml(n, true) : '';
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="ai-riskbedomning-kort">
@@ -6805,15 +6820,7 @@ class CustomerCardManager {
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Sammanlagd risknivå</label>
                             <div class="ai-rb-niva-btns">
-                                <button class="ai-rb-niva-btn ${riskniva === 'Lag' ? 'is-active is-lag' : ''}" onclick="customerCardManager.setRiskniva('Lag')">
-                                    <i class="fas fa-circle"></i> Låg
-                                </button>
-                                <button class="ai-rb-niva-btn ${riskniva === 'Medel' ? 'is-active is-medel' : ''}" onclick="customerCardManager.setRiskniva('Medel')">
-                                    <i class="fas fa-circle"></i> Medel
-                                </button>
-                                <button class="ai-rb-niva-btn ${riskniva === 'Hog' ? 'is-active is-hog' : ''}" onclick="customerCardManager.setRiskniva('Hog')">
-                                    <i class="fas fa-circle"></i> Hög
-                                </button>
+                                ${this._riskNivaButtonsHtml(riskniva)}
                             </div>
                         </div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
@@ -6868,15 +6875,18 @@ class CustomerCardManager {
     }
 
     setRiskniva(nivå) {
+        const canonical = this._riskLabel(nivå) || nivå;
         document.querySelectorAll('.ai-rb-niva-btn').forEach(b => {
-            b.classList.remove('is-active', 'is-lag', 'is-medel', 'is-hog');
+            b.classList.remove('is-active', 'is-low', 'is-lag', 'is-normal', 'is-medel', 'is-forhojd', 'is-high', 'is-hog', 'is-oacceptabel');
         });
-        const map = { 'Lag': 'is-lag', 'Medel': 'is-medel', 'Hog': 'is-hog' };
         const btn = [...document.querySelectorAll('.ai-rb-niva-btn')]
-            .find(b => b.textContent.trim().startsWith(nivå === 'Lag' ? 'Låg' : nivå === 'Hog' ? 'Hög' : 'Medel'));
-        if (btn) btn.classList.add('is-active', map[nivå]);
-        // Spara valt värde som data-attribut
-        document.getElementById('ai-rb-edit').dataset.riskniva = nivå;
+            .find(b => (b.getAttribute('data-riskniva') || this._riskLabel(b.textContent)) === canonical);
+        if (btn) {
+            const btnClass = (window.RiskSkala && RiskSkala.riskBtnClass(canonical)) || '';
+            btn.classList.add('is-active', btnClass);
+        }
+        const edit = document.getElementById('ai-rb-edit');
+        if (edit) edit.dataset.riskniva = canonical;
     }
 
     async saveRiskbedomning() {
@@ -6920,12 +6930,7 @@ class CustomerCardManager {
     }
 
     _updateRiskbedomningView(riskniva, riskbedomning, atgarder) {
-        const nivaBadge = (n) => {
-            if (!n) return '<span class="missing-data">Ej bedömd</span>';
-            const map = { 'Lag': 'risk-pill--low', 'Medel': 'risk-pill--medium', 'Hog': 'risk-pill--high' };
-            const label = { 'Lag': 'Låg risk', 'Medel': 'Medel risk', 'Hog': 'Hög risk' };
-            return `<span class="risk-pill ${map[n] || 'risk-pill--medium'}">${label[n] || n}</span>`;
-        };
+        const nivaBadge = (n) => n ? this._riskPillHtml(n, true) : '<span class="missing-data">Ej bedömd</span>';
 
         const nivaDisplay = document.getElementById('ai-rb-niva-display');
         if (nivaDisplay) nivaDisplay.innerHTML = nivaBadge(riskniva);
@@ -7328,11 +7333,13 @@ class CustomerCardManager {
     }
 
     getRiskLevelClass(level) {
-        if (!level) return 'medium';
+        if (window.RiskSkala) return RiskSkala.riskCss(level);
+        if (!level) return 'normal';
         const l = level.toLowerCase();
-        if (l === 'hög' || l === 'förhöjd' || l === 'high') return 'high';
-        if (l === 'låg' || l === 'low' || l === 'normal') return 'low';
-        return 'medium';
+        if (l === 'hög' || l === 'high') return 'high';
+        if (l === 'förhöjd') return 'elevated';
+        if (l === 'låg' || l === 'low') return 'low';
+        return 'normal';
     }
 
     _normalizeTjanstNamn(namn) {
@@ -7345,7 +7352,8 @@ class CustomerCardManager {
     /** Högre siffra = högre risk (används vid sammanslagning av dubbletter i Airtable). */
     _tjanstRiskRank(riskbedomning) {
         const r = (riskbedomning || '').trim();
-        const order = { 'Hög': 4, 'Förhöjd': 3, 'Medel': 2, 'Låg': 1, 'Normal': 1 };
+        if (window.RiskSkala) return RiskSkala.riskRank(r);
+        const order = { 'Oacceptabel': 5, 'Hög': 4, 'Förhöjd': 3, 'Normal': 2, 'Medel': 2, 'Låg': 1 };
         return order[r] ?? 0;
     }
 
@@ -7512,8 +7520,7 @@ class CustomerCardManager {
 
         const riskBadge = (nivå) => {
             if (!nivå) return '';
-            const map = { 'Hög': 'risk-pill--high', 'Förhöjd': 'risk-pill--high', 'Medel': 'risk-pill--medium', 'Låg': 'risk-pill--low', 'Normal': 'risk-pill--low' };
-            return `<span class="risk-pill ${map[nivå] || 'risk-pill--medium'}">${nivå}</span>`;
+            return this._riskPillHtml(nivå);
         };
 
         // Gruppera per TJÄNSTTYP

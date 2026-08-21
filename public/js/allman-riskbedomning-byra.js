@@ -155,6 +155,13 @@
           view.textContent = raw;
         } else if (m && m.type === 'date') {
           view.textContent = raw === '—' ? '—' : formatDateForDisplay(raw);
+        } else if (m && m.id === 'fld-vardering-risk' && riskSkala()) {
+          var nivaEl = getEl('fld-sammantagen-niva');
+          var niva = riskSkala().riskLabelSv((nivaEl && nivaEl.value) || el.value);
+          var body = riskSkala().stripRiskLevelPrefix(el.value);
+          var badge = niva ? '<span class="risk-pill ' + riskSkala().riskPillClass(niva) + '">' + niva + '</span>' : '';
+          var textHtml = body && body !== '—' ? '<div class="byra-card-formatted">' + markdownToHtml(body) + '</div>' : '';
+          view.innerHTML = badge || textHtml ? badge + textHtml : '—';
         } else {
           view.innerHTML = raw === '—' ? '—' : '<div class="byra-card-formatted">' + markdownToHtml(raw) + '</div>';
         }
@@ -184,6 +191,33 @@
     if (edit) edit.style.display = 'block';
   }
 
+  function riskSkala() {
+    return window.RiskSkala || null;
+  }
+
+  function applySammantagenFromText(text) {
+    var skala = riskSkala();
+    var nivaEl = getEl('fld-sammantagen-niva');
+    var ta = getEl('fld-vardering-risk');
+    if (!nivaEl || !ta) return;
+    if (skala) {
+      var key = skala.normalizeRiskKey(text);
+      nivaEl.value = key ? skala.riskLabelSv(key) : '';
+      ta.value = skala.stripRiskLevelPrefix(text);
+    } else {
+      ta.value = text || '';
+    }
+  }
+
+  function composeVarderingText() {
+    var skala = riskSkala();
+    var nivaEl = getEl('fld-sammantagen-niva');
+    var ta = getEl('fld-vardering-risk');
+    var body = ta ? ta.value : '';
+    if (!skala || !nivaEl || !nivaEl.value) return body;
+    return skala.withRiskLevelPrefix(body, nivaEl.value);
+  }
+
   function populateForm(fields, canEdit) {
     FIELD_MAP.forEach(function (m) {
       var el = getEl(m.id);
@@ -194,6 +228,9 @@
       else if (m.type === 'date') el.value = val ? String(val).substring(0, 10) : '';
       else el.value = val == null ? '' : String(val);
     });
+    applySammantagenFromText(getEl('fld-vardering-risk') ? getEl('fld-vardering-risk').value : '');
+    var defs = getEl('byra-riskskala-defs');
+    if (defs && riskSkala()) defs.innerHTML = riskSkala().definitionsHtml();
     document.querySelectorAll('.byra-card').forEach(updateCardView);
   }
 
@@ -305,6 +342,7 @@
         if (m.type === 'number') { var n = parseFloat(String(val).trim()); val = isNaN(n) ? '' : String(n); }
         else if (m.type === 'date') val = String(val || '').trim().substring(0, 10);
         else val = String(val || '').trim();
+        if (m.id === 'fld-vardering-risk') val = composeVarderingText();
         var fields = {}; fields[m.airtable] = val;
         saveFields(fields, card);
       });
@@ -431,7 +469,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (res.ok && data.text) {
-          ta.value = data.text;
+          applySammantagenFromText(data.text);
           updateCardView(card);
         } else {
           alert(data.error || data.message || 'Kunde inte generera AI-förslag');

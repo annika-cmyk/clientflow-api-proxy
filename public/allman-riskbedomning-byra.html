@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Allmän riskbedömning byrå</title>
-    <link rel="stylesheet" href="styles.css?v=20260819d">
+    <link rel="stylesheet" href="styles.css?v=20260821a">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -200,6 +200,18 @@
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
                                 <label for="fld-vardering-risk">8. Värdering av sammantagen risk</label>
+                                <div class="form-group" style="margin-bottom:0.75rem;">
+                                    <label for="fld-sammantagen-niva">Sammantagen risknivå</label>
+                                    <select id="fld-sammantagen-niva" class="form-input form-select">
+                                        <option value="">Välj nivå</option>
+                                        <option value="Låg">Låg</option>
+                                        <option value="Normal">Normal</option>
+                                        <option value="Förhöjd">Förhöjd</option>
+                                        <option value="Hög">Hög</option>
+                                        <option value="Oacceptabel">Oacceptabel</option>
+                                    </select>
+                                    <ul class="byra-riskskala-defs" id="byra-riskskala-defs"></ul>
+                                </div>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -242,7 +254,8 @@
     <script src="js/auth.js"></script>
     <script src="js/navigation.js"></script>
     <script src="js/components.js"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=1.4"></script>
+    <script src="js/risk-skala.js?v=1"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=1.5"></script>
     <script src="app.js"></script>
 </body>
 </html>
