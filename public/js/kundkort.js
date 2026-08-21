@@ -7175,25 +7175,14 @@ class CustomerCardManager {
     _riskSkalaPillsHtml(scored) {
         const src = scored || {};
         const S = window.RiskSkala;
-        const inherent = this._riskLabel(src.level);
         const residual = this._riskLabel(src.residualLevel);
-        if (!inherent && !residual) return '';
+        if (!residual) return '';
         const badges = S && S.listBadgeLabels ? S.listBadgeLabels(src) : {
-            inneboende: inherent ? `Inneboende risk: ${inherent}` : '',
-            residual: residual ? `Residualrisk: ${residual}` : '',
-            inneboendeTitle: '',
-            residualTitle: ''
+            residual: `Residualrisk: ${residual}`,
+            residualTitle: 'Residualrisk är risken som är kvar efter åtgärderna.'
         };
-        const parts = [];
-        if (inherent) {
-            const cls = (S && S.riskPillClass(inherent)) || 'risk-pill--normal';
-            parts.push(`<span class="risk-pill ${cls}" title="${this._esc(badges.inneboendeTitle || badges.inneboende)}">${this._esc(badges.inneboende)}</span>`);
-        }
-        if (residual) {
-            const cls = (S && S.riskPillClass(residual)) || 'risk-pill--normal';
-            parts.push(`<span class="risk-pill ${cls}" title="${this._esc(badges.residualTitle || badges.residual)}">${this._esc(badges.residual)}</span>`);
-        }
-        return `<span class="risk-skala-pills">${parts.join('')}</span>`;
+        const cls = (S && S.riskPillClass(residual)) || 'risk-pill--normal';
+        return `<span class="risk-skala-pills"><span class="risk-pill ${cls}" title="${this._esc(badges.residualTitle || badges.residual)}">${this._esc(badges.residual)}</span></span>`;
     }
 
     _riskNivaButtonsHtml(riskniva, kind) {
