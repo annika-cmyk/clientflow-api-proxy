@@ -347,9 +347,13 @@
     function normalizePtTf(raw) {
         var t = fold(raw);
         if (!t) return '';
-        if (t === 'tf' || t === 'terrorfinansiering' || t.indexOf('terror') === 0) return 'TF';
-        if (t === 'bada' || t === 'pt/tf' || t === 'pttf' || t === 'bagge' || t === 'bada pt/tf') return 'Båda';
-        if (t === 'pt' || t === 'penningtvatt' || t.indexOf('penning') === 0) return 'PT';
+        var hasTf = t === 'tf' || /(^| )tf($| )/.test(t) || t.indexOf('terror') !== -1;
+        var hasPt = t === 'pt' || /(^| )pt($| )/.test(t) || t.indexOf('penning') !== -1;
+        if (t === 'bada' || t === 'pt/tf' || t === 'pttf' || t === 'bagge' || t.indexOf('bada') !== -1 || (hasTf && hasPt)) {
+            return 'Båda';
+        }
+        if (hasTf) return 'TF';
+        if (hasPt) return 'PT';
         return '';
     }
 

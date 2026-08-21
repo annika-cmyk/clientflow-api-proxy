@@ -20076,8 +20076,10 @@ REGLER:
 - Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
-- TF-TÄCKNING: överväg aktivt om minst ett TF-hot (finansiering av terrorism) är relevant för just denna tjänst. Defaulta inte till enbart PT. typ får vara "PT", "TF" eller "Båda".
-- Om inget TF-hot är relevant: lämna tfMotivering med 2–4 tjänstespecifika meningar om varför PT-analysen räcker. Hitta inte på ett TF-hot bara för att fylla kvoten. Om minst ett TF-hot finns: tfMotivering ska vara tom.
+- TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", om du inte lämnar en tjänstespecifik tfMotivering. Defaulta inte till enbart PT.
+- Föredra ett konkret TF-hot när tjänsten kan användas för att flytta, dölja eller legitimera medel (de flesta redovisnings- och skattetjänster). Utgå från kända TF-tillvägagångssätt hos FATF, Säpo, Polisen eller Samordningsfunktionen.
+- Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
+- tfMotivering bara när ett separat TF-hot verkligen inte är relevant. Då 2–4 tjänstespecifika meningar. Om minst ett TF-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
@@ -20136,7 +20138,7 @@ ${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.
 ${residualIn.level ? `Befintlig residualbedömning: sannolikhet ${residualIn.sannolikhet}, konsekvens ${residualIn.konsekvens} → ${residualIn.badge}` : ''}
 ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` : ''}
 
-${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
+${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -20169,7 +20171,13 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
   };
 
   const normRisk = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
-  const normHotTyp = (v) => RiskSkala.normalizePtTf(v) || 'PT';
+  const inferHotTyp = (h) => {
+    const fromTyp = RiskSkala.normalizePtTf(h?.typ);
+    if (fromTyp) return fromTyp;
+    const fromText = RiskSkala.normalizePtTf([h?.titel, h?.beskrivning].filter(Boolean).join(' '));
+    if (fromText === 'TF' || fromText === 'Båda') return fromText;
+    return 'PT';
+  };
   const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
   // Frontend-dropdownen har 4 kategorier. Prompten kan föreslå fler (t.ex.
   // "Leveranskanaler", "Produkter") – mappa dem till närmaste giltiga kategori.
@@ -20203,7 +20211,7 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
 
     const hot = Array.isArray(result.hot) ? result.hot
-      .map(h => ({ typ: normHotTyp(h?.typ), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
+      .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
       .filter(h => h.titel || h.beskrivning) : [];
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
@@ -20238,6 +20246,9 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
     if (reviewMode && !granskningPoster.length) {
       granskningPoster = AiFaltGranskning.fallbackPosters('tjanst', tjanstAiPayload, befintligt)
         .filter((p) => existingKeys.includes(p.falt));
+    }
+    if (reviewMode) {
+      granskningPoster = AiFaltGranskning.ensureTfCoveragePosters(befintligt, tjanstAiPayload, granskningPoster);
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const tjanstAiLog = await auditHooks.logAiGenerated({

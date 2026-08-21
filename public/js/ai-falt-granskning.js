@@ -30,7 +30,16 @@
 - andra=true bara när forslag SKILJER sig från det befintliga innehållet (annan text, andra S×K-tal, ny/borttagen/ändrad post).
 - Om du bara upprepar samma text eller samma lista: andra=false och forslag="" (eller tom lista).
 - Om texten är bra: andra=false och forslag="" (eller tom lista).
-- Föreslå ändring bara när det behövs (fel, saknad risk, nämner byrån i inneboende beskrivning, svag källa). Inte bara omformulering.`;
+- Föreslå ändring bara när det behövs (fel, saknad risk, nämner byrån i inneboende beskrivning, svag källa, saknad TF-täckning). Inte bara omformulering.
+- TF-LUCKA: Om tjänsten saknar TF-hot (typ TF eller Båda) och saknar TF-motivering är det ett måste. Sätt andra=true på hot med era befintliga poster PLUS minst ett nytt TF- eller Båda-hot, ELLER andra=true på tfMotivering. Lämna inte luckan utan förslag.`;
+
+  function getTjanstTfTackning() {
+    if (typeof global !== 'undefined' && global.TjanstTfTackning) return global.TjanstTfTackning;
+    if (typeof require === 'function') {
+      try { return require('./tjanst-tf-tackning'); } catch (_) { /* valfritt */ }
+    }
+    return null;
+  }
 
   function trimStr(v) {
     return v == null ? '' : String(v).trim();
@@ -133,6 +142,10 @@
     }
     if (keys.includes('tfMotivering')) {
       parts.push(`TF-motivering:\n${trimStr(o.tfMotivering)}`);
+    }
+    const Tf = getTjanstTfTackning();
+    if (Tf && Tf.tjanstSaknarTfTackning(o)) {
+      parts.push('TF-LUCKA: Inget TF-hot och ingen TF-motivering. Du MÅSTE föreslå minst ett TF- eller Båda-hot (prefererat) eller en tfMotivering.');
     }
     return parts.join('\n\n');
   }
@@ -495,6 +508,59 @@
     return field ? String(field.value || '').trim() : row.forslag;
   }
 
+  function mergeHotLists(current, incoming) {
+    const out = asList(current).map((item) => Object.assign({}, item));
+    const have = new Set(out.map(itemKey).filter(Boolean));
+    asList(incoming).forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const key = itemKey(item);
+      if (key && have.has(key)) {
+        const idx = out.findIndex((row) => itemKey(row) === key);
+        if (idx >= 0 && getTjanstTfTackning() && getTjanstTfTackning().isTfHot(item) && !getTjanstTfTackning().isTfHot(out[idx])) {
+          out[idx] = Object.assign({}, out[idx], item);
+        }
+        return;
+      }
+      out.push(Object.assign({}, item));
+      if (key) have.add(key);
+    });
+    return out;
+  }
+
+  function upsertPoster(list, row) {
+    const idx = list.findIndex((item) => item && item.falt === row.falt);
+    if (idx >= 0) list[idx] = Object.assign({}, list[idx], row);
+    else list.push(row);
+    return list;
+  }
+
+  function ensureTfCoveragePosters(befintligt, generated, posters) {
+    const Tf = getTjanstTfTackning();
+    const list = Array.isArray(posters) ? posters.slice() : [];
+    if (!Tf || !Tf.tjanstSaknarTfTackning(befintligt || {})) return list;
+    const genHot = generated && generated.hot;
+    const genMot = generated && generated.tfMotivering;
+    if (Tf.hasTfHot(genHot)) {
+      return upsertPoster(list, {
+        falt: 'hot',
+        etikett: TJANST_FALT.hot.etikett,
+        kommentar: 'Tjänsten saknade TF-hot. AI föreslår minst ett TF-hot som komplement till era befintliga hot.',
+        andra: true,
+        forslag: mergeHotLists(befintligt && befintligt.hot, genHot)
+      });
+    }
+    if (Tf.tfMotiveringOk(genMot)) {
+      return upsertPoster(list, {
+        falt: 'tfMotivering',
+        etikett: TJANST_FALT.tfMotivering.etikett,
+        kommentar: 'Tjänsten saknade TF-täckning. AI föreslår en motivering till varför PT-analysen räcker.',
+        andra: true,
+        forslag: trimStr(genMot)
+      });
+    }
+    return list;
+  }
+
   function fallbackPosters(kind, generated, befintligt) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const keys = kind === 'ovrig' ? Object.keys(OVRIG_FALT) : Object.keys(TJANST_FALT);
@@ -626,6 +692,8 @@
     decoratePoster,
     readEditedForslag,
     fallbackPosters,
+    ensureTfCoveragePosters,
+    mergeHotLists,
     hasForslag,
     renderReview,
     hideReview
