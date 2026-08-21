@@ -6206,6 +6206,10 @@ body.sidebar-collapsed .logout-btn {
     line-height: 1.5;
     color: #334155;
 }
+.dokumentation-statistik .stats-cards-row { margin-bottom: 1rem; }
+.dokumentation-statistik .statistik-sections { margin-top: 0; }
+.dokumentation-statistik .statistik-section { padding: 1rem; }
+.dokumentation-statistik .statistik-section-desc { margin-bottom: 0.85rem; }
 .dokumentation-value strong {
     font-size: 0.9rem;
     font-weight: 600;

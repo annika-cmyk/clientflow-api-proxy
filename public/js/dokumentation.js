@@ -179,6 +179,78 @@
     return formatAirtableValue(val);
   }
 
+  function namedCounts(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter(function (x) { return x && (x.namn || x.name); })
+      .map(function (x) {
+        return { namn: String(x.namn || x.name).trim(), antal: Number(x.antal) || 0 };
+      })
+      .filter(function (x) { return x.namn; });
+  }
+
+  function renderStatistikSection(data) {
+    const d = data || {};
+    const riskniva = d.riskniva || {};
+    const stat = {
+      antalKunder: Number(d.antalKunder) || 0,
+      lag: Number(riskniva['Låg']) || 0,
+      medel: Number(riskniva['Medel']) || 0,
+      hog: Number(riskniva['Hög']) || 0,
+      ovrigt: Number(riskniva['Övrigt']) || 0,
+      pep: Number(d.antalPepEllerSanktion) || 0,
+      tjanster: namedCounts(d.tjänster || d.tjanster),
+      hogrisk: namedCounts(d.högriskbransch || d.hogriskbransch),
+      riskKort: Array.isArray(d.riskfaktorerPerTyp) ? d.riskfaktorerPerTyp : []
+    };
+    function listHtml(rows, emptyText) {
+      if (!rows.length) return '<p class="stat-list-empty">' + escapeHtml(emptyText) + '</p>';
+      return '<div class="stat-list">' + rows.map(function (r) {
+        return '<div class="stat-list-row"><span class="stat-list-namn">' + escapeHtml(r.namn) +
+          '</span><span class="stat-list-antal">' + r.antal + ' kunder</span></div>';
+      }).join('') + '</div>';
+    }
+    const cards = [
+      { label: 'Antal kunder (byrån)', value: stat.antalKunder, icon: 'fa-users' },
+      { label: 'Låg risk', value: stat.lag, icon: 'fa-shield-alt', klass: 'stat-number--low' },
+      { label: 'Medel risk', value: stat.medel, icon: 'fa-balance-scale', klass: 'stat-number--medium' },
+      { label: 'Hög risk', value: stat.hog, icon: 'fa-exclamation-triangle', klass: 'stat-number--high' },
+      { label: 'Övrig risknivå', value: stat.ovrigt, icon: 'fa-question-circle' },
+      { label: 'PEP eller på sanktionslistor', value: stat.pep, icon: 'fa-user-secret' }
+    ].map(function (c) {
+      return '<div class="stat-card"><div class="stat-icon"><i class="fas ' + c.icon + '"></i></div>' +
+        '<div class="stat-content"><h3>' + escapeHtml(c.label) + '</h3>' +
+        '<div class="stat-number' + (c.klass ? ' ' + c.klass : '') + '">' + c.value + '</div></div></div>';
+    }).join('');
+    const riskHtml = stat.riskKort.length
+      ? '<div class="statistik-riskfaktorer-kort">' + stat.riskKort.map(function (kort) {
+        const namn = String((kort && kort.typ) || 'Övriga');
+        const antal = Number(kort && kort.antalKunder) || 0;
+        return '<div class="statistik-riskfaktor-kort"><h4><i class="fas fa-exclamation-circle"></i> ' +
+          escapeHtml(namn) + '</h4><div class="riskfaktor-kort-antal">' + antal +
+          ' kunder har denna typ</div>' + listHtml(namedCounts(kort && kort.riskfaktorer), 'Inga specifika riskfaktorer registrerade.') + '</div>';
+      }).join('') + '</div>'
+      : '<p class="stat-list-empty">Inga kunder med riskfaktorer registrerade.</p>';
+    return '<div class="dokumentation-field dokumentation-statistik"><strong>Statistik för riskbedömning</strong>' +
+      '<div class="dokumentation-value"><p class="statistik-section-desc">Siffror baserade på byråns kunder.</p>' +
+      '<div class="stats-cards-row">' + cards + '</div><div class="statistik-sections">' +
+      '<section class="statistik-section"><h3><i class="fas fa-cogs"></i> Kunder per tjänst</h3>' +
+      listHtml(stat.tjanster, 'Inga tjänster valda hos kunderna.') + '</section>' +
+      '<section class="statistik-section"><h3><i class="fas fa-industry"></i> Högriskbransch</h3>' +
+      listHtml(stat.hogrisk, 'Inga kunder med högriskbransch registrerad.') + '</section>' +
+      '<section class="statistik-section" style="grid-column:1/-1;"><h3><i class="fas fa-exclamation-circle"></i> Riskfaktorer per typ</h3>' +
+      riskHtml + '</section></div></div></div>';
+  }
+
+  async function fetchStatistik() {
+    try {
+      const res = await fetch(getBaseUrl() + '/api/statistik-riskbedomning', getAuthOpts());
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function load() {
     const loading = getEl('loading');
     const content = getEl('content');
@@ -192,7 +264,10 @@
     }
 
     try {
-      const res = await fetch(getBaseUrl() + '/api/byra-rutiner', getAuthOpts());
+      const [res, statData] = await Promise.all([
+        fetch(getBaseUrl() + '/api/byra-rutiner', getAuthOpts()),
+        fetchStatistik()
+      ]);
       if (!res.ok) throw new Error('Kunde inte hämta data');
       const data = await res.json();
       const fields = data.fields || data.record?.fields || (data.records && data.records[0] ? data.records[0].fields : null);
@@ -222,6 +297,9 @@
           continue; // visas tillsammans
         }
         if (key === 'Uppdaterad datum') {
+          html.push(statData
+            ? renderStatistikSection(statData)
+            : '<div class="dokumentation-field dokumentation-statistik"><strong>Statistik för riskbedömning</strong><div class="dokumentation-value"><p class="section-desc" style="color:#94a3b8;">Kunde inte ladda statistiken.</p></div></div>');
           html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
           continue;
         }
