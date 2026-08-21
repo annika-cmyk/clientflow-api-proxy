@@ -198,7 +198,7 @@
                 <select id="avvikelse-status" name="status" required>
                   <option value="Öppen">Öppen</option>
                   <option value="Under utredning">Under utredning</option>
-                  <option value="Rapporterad till FM">Rapporterad till Finanspolisen (FM)</option>
+                  <option value="Rapporterad till Finanspolisen (FM)">Rapporterad till Finanspolisen (FM)</option>
                   <option value="Avslutad">Avslutad</option>
                 </select>
               </div>

@@ -1,6 +1,13 @@
 // Byråns tjänster – riskbedömning per tjänst
 // Hanterar listning, AI-förslag och CRUD av byråns tjänster i tabellen
 // "Risker kopplad till tjänster".
+function riskAuthFetch(url, init) {
+    const base = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions())
+        || { credentials: 'include', headers: {} };
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, base.headers || {}, (init && init.headers) || {});
+    return fetch(url, Object.assign({}, base, init || {}, { credentials: 'include', headers }));
+}
+
 class RiskAssessmentManager {
     constructor() {
         this.gristBaseId = null;
@@ -183,9 +190,8 @@ class RiskAssessmentManager {
                 </div>
             `;
 
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments`, {
+                method: 'GET'
             });
 
             if (response.ok) {
@@ -1139,9 +1145,8 @@ class RiskAssessmentManager {
             const method = recordId ? 'PUT' : 'POST';
 
             let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
-            let response = await fetch(url, {
+            let response = await riskAuthFetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
             if (response.ok) this._lastAiAudit = null;
@@ -1156,9 +1161,8 @@ class RiskAssessmentManager {
                         delete body['Riskpoäng'];
                     }
                     delete body['TF-motivering'];
-                    response = await fetch(url, {
+                    response = await riskAuthFetch(url, {
                         method,
-                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body)
                     });
                 } else {
@@ -1205,9 +1209,8 @@ class RiskAssessmentManager {
         }
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 'Aktuell': newStatus })
             });
             if (response.ok) {
@@ -1226,7 +1229,7 @@ class RiskAssessmentManager {
         if (!confirm('Är du säker på att du vill ta bort denna tjänst?')) return;
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'DELETE'
             });
             if (response.ok) {

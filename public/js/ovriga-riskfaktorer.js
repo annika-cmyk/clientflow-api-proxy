@@ -1,4 +1,11 @@
 // Risk Factors Management System
+function riskAuthFetch(url, init) {
+    const base = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions())
+        || { credentials: 'include', headers: {} };
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, base.headers || {}, (init && init.headers) || {});
+    return fetch(url, Object.assign({}, base, init || {}, { credentials: 'include', headers }));
+}
+
 class RiskFactorsManager {
     constructor() {
         this.gristBaseId = null;
@@ -239,11 +246,8 @@ class RiskFactorsManager {
             `;
 
             // Load from Airtable via our API
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
+                method: 'GET'
             });
 
             if (response.ok) {
@@ -935,9 +939,8 @@ class RiskFactorsManager {
 
     async saveRiskFactor(url, method, payload) {
         let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
-        let response = await fetch(url, {
+        let response = await riskAuthFetch(url, {
             method,
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         if (response.ok) this._lastAiAudit = null;
@@ -951,9 +954,8 @@ class RiskFactorsManager {
                     delete body['Riskpoäng'];
                 }
                 if (/PT\/TF/i.test(raw)) delete body['PT/TF-relevans'];
-                response = await fetch(url, {
+                response = await riskAuthFetch(url, {
                     method,
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
             }
@@ -969,11 +971,8 @@ class RiskFactorsManager {
         const newStatus = !currentStatus;
         
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
                 body: JSON.stringify({
                     'Aktuell': newStatus
                 })
@@ -998,7 +997,7 @@ class RiskFactorsManager {
         }
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'DELETE'
             });
 

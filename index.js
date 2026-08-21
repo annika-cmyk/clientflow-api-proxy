@@ -94,6 +94,8 @@ const auditLog = require('./lib/audit-log');
 const auditLogAirtable = require('./lib/audit-log-airtable');
 const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
+const avvikelseStatus = require('./lib/avvikelse-status');
+const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
@@ -443,14 +445,18 @@ async function writeAuditEvent(input, options) {
 }
 
 async function actorForRequest(req, userData) {
-  if (userData) return auditLog.actorFromUser(userData, req);
-  if (req && req.user && req.user.email) {
+  if (!req || !req.user) {
+    return auditLog.requireHttpActor(null);
+  }
+  let actor = userData ? auditLog.actorFromUser(userData, req) : null;
+  if (!actor && req.user.email) {
     try {
       const loaded = await getAirtableUser(req.user.email);
-      if (loaded) return auditLog.actorFromUser(loaded, req);
-    } catch (_) { /* systemfallback */ }
+      if (loaded) actor = auditLog.actorFromUser(loaded, req);
+    } catch (_) { /* använd JWT-e-post */ }
+    if (!actor) actor = auditLog.actorFromUser(null, req);
   }
-  return auditLog.actorFromUser(null, req);
+  return auditLog.requireHttpActor(actor);
 }
 
 function mapApplicationUserRecord(r) {
@@ -5219,7 +5225,7 @@ function stripEmptyTjanstRiskSections(text) {
 }
 
 // GET /api/risk-assessments - Hämta alla riskbedömningar med pagination
-app.get('/api/risk-assessments', async (req, res) => {
+app.get('/api/risk-assessments', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -5293,7 +5299,7 @@ app.get('/api/risk-assessments', async (req, res) => {
 });
 
 // POST /api/risk-assessments - Skapa ny riskbedömning
-app.post('/api/risk-assessments', async (req, res) => {
+app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -5398,7 +5404,7 @@ app.post('/api/risk-assessments', async (req, res) => {
 });
 
 // PUT /api/risk-assessments/:id - Uppdatera riskbedömning
-app.put('/api/risk-assessments/:id', async (req, res) => {
+app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -5486,7 +5492,7 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
 });
 
 // PUT /api/risk-assessments/:id/approve - Godkänn riskbedömning
-app.put('/api/risk-assessments/:id/approve', async (req, res) => {
+app.put('/api/risk-assessments/:id/approve', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -5540,7 +5546,7 @@ app.put('/api/risk-assessments/:id/approve', async (req, res) => {
 });
 
 // DELETE /api/risk-assessments/:id - Ta bort riskbedömning
-app.delete('/api/risk-assessments/:id', async (req, res) => {
+app.delete('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -13274,7 +13280,7 @@ app.get('/api/kunddata/test', async (req, res) => {
 const RISK_FACTORS_TABLE = 'Risker kopplade till kunden';
 
 // GET /api/risk-factors - Hämta alla riskfaktorer med pagination
-app.get('/api/risk-factors', async (req, res) => {
+app.get('/api/risk-factors', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -13348,7 +13354,7 @@ app.get('/api/risk-factors', async (req, res) => {
 });
 
 // POST /api/risk-factors - Skapa ny riskfaktor
-app.post('/api/risk-factors', async (req, res) => {
+app.post('/api/risk-factors', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -13432,7 +13438,7 @@ app.post('/api/risk-factors', async (req, res) => {
 });
 
 // PUT /api/risk-factors/:id - Uppdatera riskfaktor
-app.put('/api/risk-factors/:id', async (req, res) => {
+app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -13519,7 +13525,7 @@ app.put('/api/risk-factors/:id', async (req, res) => {
 });
 
 // DELETE /api/risk-factors/:id - Ta bort riskfaktor
-app.delete('/api/risk-factors/:id', async (req, res) => {
+app.delete('/api/risk-factors/:id', authenticateToken, async (req, res) => {
   const startTime = Date.now();
   
   try {
@@ -14109,6 +14115,18 @@ app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
   }
 });
 
+if (!process.env.AVVIKELSE_STATUS_SKIP_MIGRATE && process.env.AIRTABLE_ACCESS_TOKEN) {
+  avvikelseStatusMigrate.migrateAvvikelseStatuses({
+    axios,
+    token: process.env.AIRTABLE_ACCESS_TOKEN,
+    baseId: process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'
+  }).then((out) => {
+    if (out && out.changed && out.changed.length) {
+      console.log('Avvikelse-status normaliserad:', out.changed.length, 'rader');
+    }
+  }).catch((err) => console.warn('Avvikelse-status migrering:', err.message));
+}
+
 const server = app.listen(PORT, () => {
   console.log(`🚀 API Proxy Service running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
@@ -14305,7 +14323,17 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
     const rappDatum = (avvikelseData.rapporteratDatum || '').trim();
     if (rappDatum) fields['Date 2'] = rappDatum;
     if (avvikelseData.beskrivning) fields['Förklararing'] = avvikelseData.beskrivning;
-    if (avvikelseData.status) fields['Status'] = avvikelseData.status;
+    if (avvikelseData.status) {
+      try {
+        fields['Status'] = avvikelseStatus.assertAvvikelseStatus(avvikelseData.status);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+          allowed: err.allowed || avvikelseStatus.AVVIKELSE_STATUS
+        });
+      }
+    }
     if (avvikelseData.orgnr) fields['orgnr'] = avvikelseData.orgnr;
     const foretagsnamn = (avvikelseData.foretagsnamn || '').trim();
     if (foretagsnamn) fields['Företagsnamn'] = foretagsnamn;
@@ -14382,9 +14410,19 @@ app.patch('/api/avvikelser/:id', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
     );
     const before = prevRes.data.fields || {};
-    const nextStatus = req.body?.status || before.Status;
     const fields = {};
-    if (req.body?.status) fields.Status = req.body.status;
+    if (req.body?.status) {
+      try {
+        fields.Status = avvikelseStatus.assertAvvikelseStatus(req.body.status);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+          allowed: err.allowed || avvikelseStatus.AVVIKELSE_STATUS
+        });
+      }
+    }
+    const nextStatus = fields.Status || before.Status;
     if (req.body?.rapporteratDatum) fields['Date 2'] = req.body.rapporteratDatum;
     if (req.body?.beskrivning) fields['Förklararing'] = req.body.beskrivning;
     const patched = await axios.patch(
@@ -20971,7 +21009,7 @@ app.post('/api/audit-log/:id/godkann', authenticateToken, async (req, res) => {
     if (gate.byraId && String(source.byraId) !== String(gate.byraId) && !access.isClientFlowAdmin(userData.role)) {
       return res.status(403).json({ error: 'Posten tillhör en annan byrå' });
     }
-    const actor = auditLog.actorFromUser(userData, req);
+    const actor = auditLog.requireHttpActor(auditLog.actorFromUser(userData, req));
     const row = await writeAuditEvent({
       actionType: 'ai_innehåll_godkänt_oredigerat',
       entityType: source.entityType,
@@ -21005,7 +21043,7 @@ app.post('/api/audit-log/screening-bedomning', authenticateToken, async (req, re
     const allowed = ['falsk_positiv', 'relevant', 'eskalerad'];
     if (!allowed.includes(bedömning)) return res.status(400).json({ error: 'Ogiltig bedömning' });
     await assertCustomerAccess(req, customerId, { userData });
-    const actor = auditLog.actorFromUser(userData, req);
+    const actor = auditLog.requireHttpActor(auditLog.actorFromUser(userData, req));
     const row = await writeAuditEvent({
       actionType: 'screening_träff_bedömd',
       entityType: 'kund',
