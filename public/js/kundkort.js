@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.41', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.46', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -11047,25 +11047,148 @@ class CustomerCardManager {
         const beskrivning = fields['Beskrivning'] || '';
         const safeNamn = this.escapeDocHtml(namn);
         const safeBeskr = this.escapeDocHtml(beskrivning);
+        const safeFilename = this.escapeDocHtml((doc.filename || namn || '').replace(/"/g, ''));
+        const hasSource = doc.sourceField != null && doc.sourceIndex != null;
+        const canOpen = !!(url || hasSource);
+        const previewAttrs = `data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${hasSource ? doc.sourceIndex : ''}" data-doc-name="${safeNamn}" data-filename="${safeFilename}" data-direct-url="${this.escapeDocHtml(url)}"`;
+        const previewBtn = canOpen
+            ? `<button type="button" class="btn btn-secondary btn-sm document-preview-btn" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)"><i class="fas fa-eye"></i> Visa</button>`
+            : `<button type="button" class="btn btn-secondary btn-sm" disabled><i class="fas fa-eye"></i> Visa</button>`;
         const downloadBtn = url
-            ? `<a href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm document-download-btn" download="${this.escapeDocHtml((doc.filename || namn || '').replace(/"/g, ''))}"><i class="fas fa-download"></i> Ladda ner</a>`
+            ? `<a href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm document-download-btn" download="${safeFilename}"><i class="fas fa-download"></i> Ladda ner</a>`
             : `<button class="btn btn-primary btn-sm" disabled><i class="fas fa-download"></i> Ladda ner</button>`;
-        const deleteBtn = (doc.sourceField != null && doc.sourceIndex != null)
+        const deleteBtn = hasSource
             ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
             : '';
+        const nameHtml = canOpen
+            ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
+            : `<span class="document-list-name">${safeNamn}</span>`;
         return `
             <li class="document-list-item">
                 <i class="fas fa-file-pdf document-list-icon"></i>
                 <div class="document-list-info">
-                    <span class="document-list-name">${safeNamn}</span>
+                    ${nameHtml}
                     <span class="document-list-meta">${safeBeskr ? safeBeskr + ' · ' : ''}${this.escapeDocHtml(datum)}</span>
                 </div>
                 <div class="document-list-buttons">
+                    ${previewBtn}
                     ${downloadBtn}
                     ${deleteBtn}
                 </div>
             </li>
         `;
+    }
+
+    previewDocumentFromBtn(btn) {
+        if (!btn) return;
+        this.previewDocument({
+            sourceField: btn.getAttribute('data-source-field') || '',
+            sourceIndex: btn.getAttribute('data-source-index'),
+            name: btn.getAttribute('data-doc-name') || 'Dokument',
+            filename: btn.getAttribute('data-filename') || '',
+            url: btn.getAttribute('data-direct-url') || ''
+        });
+    }
+
+    _guessPreviewType(filename, fallback) {
+        const name = String(filename || '').toLowerCase();
+        if (name.endsWith('.pdf')) return 'application/pdf';
+        if (name.endsWith('.png')) return 'image/png';
+        if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+        if (name.endsWith('.gif')) return 'image/gif';
+        if (name.endsWith('.webp')) return 'image/webp';
+        if (name.endsWith('.txt')) return 'text/plain';
+        return String(fallback || '').split(';')[0].trim() || 'application/octet-stream';
+    }
+
+    _canPreviewInline(type) {
+        return type === 'application/pdf' || type.startsWith('image/') || type === 'text/plain';
+    }
+
+    closeDocumentPreviewModal() {
+        const modal = document.getElementById('document-preview-modal');
+        if (modal && modal._objectUrl) {
+            try { URL.revokeObjectURL(modal._objectUrl); } catch (_) { /* ignore */ }
+        }
+        if (modal) modal.remove();
+    }
+
+    _ensureDocumentPreviewModal(name) {
+        this.closeDocumentPreviewModal();
+        const modal = document.createElement('div');
+        modal.id = 'document-preview-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box document-preview-box">
+                <div class="modal-header">
+                    <h3><i class="fas fa-eye"></i> <span id="document-preview-title">${this.escapeDocHtml(name || 'Dokument')}</span></h3>
+                    <button type="button" class="modal-close" title="Stäng" onclick="customerCardManager.closeDocumentPreviewModal()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body document-preview-body" id="document-preview-body">
+                    <p class="section-desc"><i class="fas fa-spinner fa-spin"></i> Öppnar dokumentet...</p>
+                </div>
+            </div>`;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) this.closeDocumentPreviewModal();
+        });
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    async previewDocument({ sourceField, sourceIndex, name, filename, url }) {
+        const title = name || filename || 'Dokument';
+        const modal = this._ensureDocumentPreviewModal(title);
+        const body = document.getElementById('document-preview-body');
+        try {
+            let blob = null;
+            const hasSource = sourceField && sourceIndex !== '' && sourceIndex != null;
+            if (hasSource && this.customerId) {
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const opts = getAuthOptsKundkort();
+                const headers = { ...(opts.headers || {}) };
+                delete headers['Content-Type'];
+                const res = await fetch(`${baseUrl}/api/documents/file?customerId=${encodeURIComponent(this.customerId)}&sourceField=${encodeURIComponent(sourceField)}&sourceIndex=${encodeURIComponent(sourceIndex)}`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${res.status}`);
+                }
+                blob = await res.blob();
+            } else if (url) {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                blob = await res.blob();
+            } else {
+                throw new Error('Ingen fil att visa');
+            }
+
+            const type = this._guessPreviewType(filename || title, blob.type);
+            const objectUrl = URL.createObjectURL(blob);
+            modal._objectUrl = objectUrl;
+            if (!body) return;
+            if (this._canPreviewInline(type)) {
+                if (type.startsWith('image/')) {
+                    body.innerHTML = `<img class="document-preview-image" src="${this.escapeDocHtml(objectUrl)}" alt="${this.escapeDocHtml(title)}">`;
+                } else if (type === 'text/plain') {
+                    const text = await blob.text();
+                    body.innerHTML = `<pre class="document-preview-text">${this.escapeDocHtml(text)}</pre>`;
+                } else {
+                    body.innerHTML = `<iframe class="document-preview-frame" title="${this.escapeDocHtml(title)}" src="${this.escapeDocHtml(objectUrl)}"></iframe>`;
+                }
+            } else {
+                body.innerHTML = `<p class="section-desc">Den här filtypen kan inte förhandsgranskas i webbläsaren.</p>
+                    <a class="btn btn-primary btn-sm" href="${this.escapeDocHtml(objectUrl)}" download="${this.escapeDocHtml(filename || title)}"><i class="fas fa-download"></i> Ladda ner</a>`;
+            }
+        } catch (err) {
+            console.error('❌ Förhandsgranska dokument:', err);
+            if (body) {
+                body.innerHTML = `<p class="section-desc">Kunde inte öppna dokumentet: ${this.escapeDocHtml(err.message || 'okänt fel')}</p>` +
+                    (url ? `<a class="btn btn-primary btn-sm" href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener"><i class="fas fa-download"></i> Ladda ner</a>` : '');
+            }
+        }
     }
 
     deleteDocumentFromBtn(btn) {

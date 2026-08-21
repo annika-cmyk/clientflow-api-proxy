@@ -63,6 +63,7 @@ const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identi
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
+const documentPreview = require('./lib/document-preview');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
@@ -6719,6 +6720,59 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('\u274c GET documents:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/documents/file – Strömma fil för förhandsgranskning (inline, inte nedladdning)
+app.get('/api/documents/file', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const customerId = req.query.customerId || req.query.customerid;
+    const sourceField = req.query.sourceField;
+    const sourceIndex = req.query.sourceIndex;
+    if (!customerId || !sourceField || sourceIndex == null) {
+      return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const att = documentPreview.pickAttachment(f, sourceField, sourceIndex);
+    if (!att) return res.status(404).json({ error: 'Dokumentet hittades inte' });
+
+    const fileRes = await axios.get(att.url, {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      maxContentLength: 40 * 1024 * 1024,
+      maxBodyLength: 40 * 1024 * 1024
+    });
+    const filename = att.filename || 'dokument';
+    const contentType = documentPreview.guessContentType(filename, fileRes.headers['content-type']);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': documentPreview.inlineContentDisposition(filename),
+      'Cache-Control': 'private, max-age=60',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.send(Buffer.from(fileRes.data));
+  } catch (error) {
+    console.error('\u274c GET documents/file:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte hämta dokumentet' });
   }
 });
 

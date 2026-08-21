@@ -6153,9 +6153,66 @@ body.sidebar-collapsed .logout-btn {
     gap: 0.5rem;
     flex-shrink: 0;
 }
-.document-list-item .document-download-btn {
+.document-list-item .document-download-btn,
+.document-list-item .document-preview-btn {
     padding: 0.35rem 0.7rem;
     font-size: 0.8rem;
+}
+.document-list-name--preview {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--title-text);
+    cursor: pointer;
+}
+.document-list-name--preview:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.document-preview-box {
+    max-width: 1100px;
+    width: 96vw;
+    height: 90vh;
+    max-height: 90vh;
+    overflow: hidden;
+}
+.document-preview-body {
+    padding: 0 !important;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+}
+.document-preview-body .section-desc {
+    padding: 1.25rem 1.5rem;
+}
+.document-preview-frame {
+    width: 100%;
+    flex: 1;
+    min-height: 70vh;
+    border: 0;
+    background: #f8fafc;
+}
+.document-preview-image {
+    max-width: 100%;
+    max-height: 75vh;
+    object-fit: contain;
+    margin: 0 auto;
+    display: block;
+}
+.document-preview-text {
+    margin: 0;
+    padding: 1.25rem 1.5rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-size: 0.9rem;
 }
 .document-list-item .document-delete-btn {
     padding: 0.35rem 0.5rem;
