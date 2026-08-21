@@ -170,6 +170,7 @@
     { key: '6. Utvärdering och Uppdatering', label: '6. Utvärdering och Uppdatering' },
     { key: '7. Kommunikation.', label: '7. Kommunikation' },
     { key: '8. Värdering av sammantagen risk', label: '8. Värdering av sammantagen risk' },
+    { key: '9. Riskaptit', label: '9. Riskaptit' },
     { key: 'Uppdaterad datum', label: 'Reviderad och godkänd' }
   ];
 
@@ -311,6 +312,14 @@
             ? renderStatistikSection(statData)
             : '<div class="dokumentation-field dokumentation-statistik"><strong>Statistik för riskbedömning</strong><div class="dokumentation-value"><p class="section-desc" style="color:#94a3b8;">Kunde inte ladda statistiken.</p></div></div>');
           html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
+          continue;
+        }
+        if (key === '9. Riskaptit') {
+          const val = getField(fields, key);
+          const text = (window.Riskaptit && Riskaptit.policyText)
+            ? Riskaptit.policyText(val)
+            : (val || '—');
+          html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${text && text !== '—' ? markdownToHtml(text) : '—'}</div></div>`);
           continue;
         }
         if (key === '4. Identifierade Risker och Sårbarheter') {

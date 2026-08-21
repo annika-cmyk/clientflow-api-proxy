@@ -227,11 +227,22 @@
                             </div>
                                 </div>
                             </div>
-                            <div class="byra-card byra-card--readonly" data-field-id="fld-riskaptit-policy">
-                                <div class="byra-card-view">
-                                    <div class="byra-card-label">9. Riskaptit</div>
-                                    <p class="byra-card-source-hint" style="margin-top:0;">Byrånivå-policy kopplad till samma S×K-band som beraknaRiskniva. Kundbeslut ligger på kundkortet, inte här.</p>
-                                    <pre id="fld-riskaptit-policy" class="riskaptit-policy-text"></pre>
+                            <div class="byra-card" data-field-id="fld-riskaptit-policy">
+                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                <div class="byra-card-edit">
+                            <div class="form-group full-width">
+                                <label for="fld-riskaptit-policy">9. Riskaptit</label>
+                                <p class="byra-card-source-hint">Kundbeslut ligger på kundkortet. Här beskriver ni byråns riskaptit.</p>
+                                <div class="byrarutiner-rich-field">
+                                    <div class="byrarutiner-format-toolbar">
+                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                    </div>
+                                    <textarea id="fld-riskaptit-policy" class="form-input form-textarea" rows="10" placeholder="Beskriv byråns riskaptit..."></textarea>
+                                </div>
+                            </div>
                                 </div>
                             </div>
                             <div class="byra-card" data-field-id="fld-uppdaterad-datum">
@@ -267,8 +278,8 @@
     <script src="js/risk-skala.js?v=7"></script>
     <script src="js/tjanst-tf-tackning.js?v=2"></script>
     <script src="js/identifierade-risker-view.js?v=2"></script>
-    <script src="js/riskaptit.js?v=1"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=1.9"></script>
+    <script src="js/riskaptit.js?v=2"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=2.0"></script>
     <script src="app.js"></script>
 </body>
 </html>

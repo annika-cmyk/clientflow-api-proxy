@@ -6828,12 +6828,24 @@ app.get('/api/kund-riskprofil/riskhojande-golv-rapport', authenticateToken, asyn
   }
 });
 
-app.get('/api/riskaptit/policy', authenticateToken, (_req, res) => {
-  res.json({
-    success: true,
-    text: Riskaptit.policyText(),
-    bands: Riskaptit.sxkBands()
-  });
+app.get('/api/riskaptit/policy', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    const custom = result && result.record && result.record.fields
+      ? result.record.fields[Riskaptit.POLICY_FIELD]
+      : '';
+    res.json({
+      success: true,
+      text: Riskaptit.policyText(custom),
+      bands: Riskaptit.sxkBands()
+    });
+  } catch (_) {
+    res.json({
+      success: true,
+      text: Riskaptit.policyText(),
+      bands: Riskaptit.sxkBands()
+    });
+  }
 });
 
 async function loadKunddataRecordForUser(req, id) {
@@ -11269,6 +11281,8 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Airtable token saknas' });
     }
 
+    ensureByraRiskaptitField(airtableAccessToken, airtableBaseId).catch(() => {});
+
     const userData = await getAirtableUser(req.user.email);
     if (!userData) {
       return res.status(404).json({ success: false, message: 'Användare hittades inte' });
@@ -11406,6 +11420,29 @@ async function getByraerTableMeta(airtableToken, baseId) {
     }) || null;
   } catch (_) {
     return null;
+  }
+}
+
+async function ensureByraRiskaptitField(airtableToken, baseId) {
+  const fieldName = Riskaptit.POLICY_FIELD || '9. Riskaptit';
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(fieldName)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: fieldName,
+        type: 'multilineText',
+        description: 'Byråns riskaptit-policy (avsnitt 9 i allmän riskbedömning).'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensureByraRiskaptitField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -13091,6 +13128,10 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
     }
 
     console.log('📋 PATCH byra-rutiner fält:', Object.keys(cleanedFields));
+
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, Riskaptit.POLICY_FIELD || '9. Riskaptit')) {
+      await ensureByraRiskaptitField(airtableAccessToken, airtableBaseId);
+    }
 
     let updated = null;
     for (const [k, v] of Object.entries(cleanedFields)) {
@@ -18826,7 +18867,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
-    htmlParts.push(`<h3>9. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText())}</div>`);
+    htmlParts.push(`<h3>9. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText(getByraField('9. Riskaptit')))}</div>`);
     const uppdateradDatum = getByraField('Uppdaterad datum') || '';
     htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
 

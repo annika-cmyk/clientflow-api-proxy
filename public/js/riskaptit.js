@@ -290,17 +290,21 @@
         };
     }
 
-    function policyText() {
-        return [
-            'Byråns riskaptit för kunder styrs av den explicit valda residualriskprofilen (Låg, Normal, Förhöjd, Hög, Oacceptabel) — inte av en S×K-produkt.',
-            '',
-            'kundResidualRiskprofil = Hög → riskaptitStatus = Kräver_beslut (om inte ett giltigt beslut finns för aktuell riskbild).',
-            'kundResidualRiskprofil = Oacceptabel → riskaptitStatus = Överskriden.',
-            '',
-            'Sannolikhet × konsekvens (beraknaRiskniva) används för tjänster och övriga riskfaktorer. Den högsta residualnivån bland kundens valda tjänster är ett golv och en rekommendation för kundens residualprofil, inte en automatisk beräkning.',
-            '',
-            'Kundspecifika beslut och historik registreras på kundkortet och i revisionsloggen (riskaptit_status_ändrad, riskaptit_beslut_registrerat), inte i detta byrådokument.'
-        ].join('\n');
+    var POLICY_FIELD = '9. Riskaptit';
+    var DEFAULT_POLICY_TEXT = [
+        'Byråns riskaptit för kunder styrs av den explicit valda residualriskprofilen (Låg, Normal, Förhöjd, Hög, Oacceptabel) — inte av en S×K-produkt.',
+        '',
+        'kundResidualRiskprofil = Hög → riskaptitStatus = Kräver_beslut (om inte ett giltigt beslut finns för aktuell riskbild).',
+        'kundResidualRiskprofil = Oacceptabel → riskaptitStatus = Överskriden.',
+        '',
+        'Sannolikhet × konsekvens (beraknaRiskniva) används för tjänster och övriga riskfaktorer. Den högsta residualnivån bland kundens valda tjänster är ett golv och en rekommendation för kundens residualprofil, inte en automatisk beräkning.',
+        '',
+        'Kundspecifika beslut och historik registreras på kundkortet och i revisionsloggen (riskaptit_status_ändrad, riskaptit_beslut_registrerat), inte i detta byrådokument.'
+    ].join('\n');
+
+    function policyText(custom) {
+        var t = String(custom == null ? '' : custom).trim();
+        return t || DEFAULT_POLICY_TEXT;
     }
 
     function nivaDisplayLabel(niva) {
@@ -330,6 +334,8 @@
         validateBeslut: validateBeslut,
         registerBeslut: registerBeslut,
         parseHistorik: parseHistorik,
+        POLICY_FIELD: POLICY_FIELD,
+        DEFAULT_POLICY_TEXT: DEFAULT_POLICY_TEXT,
         policyText: policyText,
         nivaDisplayLabel: nivaDisplayLabel,
         utfallLabel: utfallLabel

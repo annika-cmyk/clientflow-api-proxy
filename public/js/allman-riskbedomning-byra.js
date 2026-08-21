@@ -16,6 +16,7 @@
     { id: 'fld-utvardering', airtable: '6. Utvärdering och Uppdatering' },
     { id: 'fld-kommunikation-risk', airtable: '7. Kommunikation.' },
     { id: 'fld-vardering-risk', airtable: '8. Värdering av sammantagen risk' },
+    { id: 'fld-riskaptit-policy', airtable: '9. Riskaptit' },
     { id: 'fld-uppdaterad-datum', airtable: 'Uppdaterad datum', type: 'date' }
   ];
 
@@ -149,7 +150,7 @@
 
   function updateCardView(card) {
     var fid = card.getAttribute('data-field-id');
-    if (fid === 'fld-identifierade-risker' || fid === 'fld-riskaptit-policy') return;
+    if (fid === 'fld-identifierade-risker') return;
     if (fid) {
       var el = getEl(fid);
       var m = FIELD_MAP.find(function (x) { return x.id === fid; });
@@ -237,6 +238,10 @@
       else el.value = val == null ? '' : String(val);
     });
     applySammantagenFromText(getEl('fld-vardering-risk') ? getEl('fld-vardering-risk').value : '');
+    var riskaptitEl = getEl('fld-riskaptit-policy');
+    if (riskaptitEl && !String(riskaptitEl.value || '').trim() && window.Riskaptit && Riskaptit.policyText) {
+      riskaptitEl.value = Riskaptit.policyText();
+    }
     var defs = getEl('byra-riskskala-defs');
     if (defs && riskSkala()) defs.innerHTML = riskSkala().definitionsHtml();
     document.querySelectorAll('.byra-card').forEach(updateCardView);
@@ -534,18 +539,11 @@
     });
   }
 
-  function fillRiskaptitPolicy() {
-    var text = (window.Riskaptit && Riskaptit.policyText) ? Riskaptit.policyText() : '';
-    var pre = getEl('fld-riskaptit-policy');
-    if (pre) pre.textContent = text;
-  }
-
   function init() {
     load();
     initFormatToolbars();
     initAiBeskrivning();
     initAiVarderingRisk();
-    fillRiskaptitPolicy();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
