@@ -1033,28 +1033,32 @@ class RiskFactorsManager {
 
     async saveRiskFactor(url, method, payload) {
         let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
-        let response = await riskAuthFetch(url, {
-            method,
-            body: JSON.stringify(body)
-        });
-        if (response.ok) this._lastAiAudit = null;
-        if (!response.ok && (body['Riskpoäng'] || body['PT/TF-relevans'])) {
-            const err = await response.json().catch(() => ({}));
-            const raw = JSON.stringify(err);
-            if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
-                body = { ...body };
-                if (body['Riskpoäng']) {
-                    body['Samspelsexempel'] = body['Riskpoäng'];
-                    delete body['Riskpoäng'];
-                }
-                if (/PT\/TF/i.test(raw)) delete body['PT/TF-relevans'];
-                response = await riskAuthFetch(url, {
-                    method,
-                    body: JSON.stringify(body)
-                });
+        let lastErr = {};
+        let lastStatus = 500;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const response = await riskAuthFetch(url, {
+                method,
+                body: JSON.stringify(body)
+            });
+            if (response.ok) {
+                this._lastAiAudit = null;
+                return response;
             }
+            lastStatus = response.status;
+            lastErr = await response.json().catch(() => ({}));
+            const unknown = String(lastErr.message || lastErr.error || JSON.stringify(lastErr))
+                .match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+            if (!unknown || !Object.prototype.hasOwnProperty.call(body, unknown)) break;
+            body = { ...body };
+            if (unknown === 'Riskpoäng' && body['Riskpoäng']) {
+                body['Samspelsexempel'] = body['Riskpoäng'];
+            }
+            delete body[unknown];
         }
-        return response;
+        return new Response(JSON.stringify(lastErr), {
+            status: lastStatus,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
 
     async markAsComplete(recordId) {

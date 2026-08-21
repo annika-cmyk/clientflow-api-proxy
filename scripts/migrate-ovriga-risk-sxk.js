@@ -13,12 +13,9 @@
  */
 const axios = require('axios');
 const RiskSkala = require('../public/js/risk-skala');
+const { SCHEMA_FIELDS: NEW_FIELDS } = require('../lib/ovriga-risk-fields');
 
 const TABLE_NAME = 'Risker kopplade till kunden';
-const NEW_FIELDS = [
-  { name: 'Riskpoäng', type: 'multilineText' },
-  { name: 'PT/TF-relevans', type: 'singleLineText' }
-];
 
 const needsMigration = RiskSkala.ovrigNeedsMigration;
 const migrationFields = RiskSkala.ovrigMigrationFields;

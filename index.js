@@ -62,11 +62,14 @@ const {
   isRiskSelectFieldName,
   planSelectChoiceMigration,
   airtableErrorMessage,
+  unknownAirtableFieldName,
+  dropUnknownAirtableField,
   isInvalidChoiceError,
   normalizeRiskFields,
   shouldOmitRiskSelectValue,
   missingExactRiskLabels
 } = require('./lib/risk-skala-airtable');
+const { SCHEMA_FIELDS: OVRIGA_RISK_SCHEMA_FIELDS, applyOvrigExtraAirtableFields } = require('./lib/ovriga-risk-fields');
 const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
@@ -5067,6 +5070,69 @@ async function writeAirtableRecordWithRiskChoices({
     if (!retryEnsure.ok && !ensured.ok) throw error;
     return request();
   }
+}
+
+async function ensureAirtableTableFields(token, baseId, tableName, wantedFields) {
+  const wanted = (wantedFields || []).filter((field) => field && field.name);
+  if (!wanted.length) return { ok: true, created: [] };
+  const tables = await getAirtableTablesCached(token, baseId);
+  const wantedName = String(tableName || '').trim().toLowerCase();
+  const table = (tables || []).find((t) => {
+    const name = (t.name || '').trim().toLowerCase();
+    return name === wantedName || (t.id || '') === tableName;
+  });
+  if (!table) return { ok: false, reason: 'Tabell saknas', created: [] };
+  const existing = new Set((table.fields || []).map((f) => (f.name || '').trim()));
+  const created = [];
+  for (const field of wanted) {
+    if (existing.has(field.name)) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await axios.post(
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields`,
+        { name: field.name, type: field.type || 'singleLineText' },
+        {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          timeout: 15000
+        }
+      );
+      existing.add(field.name);
+      created.push(field.name);
+    } catch (error) {
+      console.warn(`ensureAirtableTableFields ${field.name}:`, airtableErrorMessage(error));
+    }
+  }
+  if (created.length) {
+    _airtableTablesCache = null;
+    _airtableTablesCacheAt = 0;
+  }
+  return { ok: true, created };
+}
+
+async function writeAirtableFieldsRetryUnknown({
+  token,
+  baseId,
+  tableName,
+  fields,
+  request
+}) {
+  let current = { ...(fields || {}) };
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      return await writeAirtableRecordWithRiskChoices({
+        token,
+        baseId,
+        tableName,
+        request: () => request(current)
+      });
+    } catch (error) {
+      const next = dropUnknownAirtableField(current, unknownAirtableFieldName(error));
+      if (!next) throw error;
+      console.warn(`Airtable saknar fältet "${unknownAirtableFieldName(error)}" — sparar utan det.`);
+      current = next;
+    }
+  }
+  throw new Error('Kunde inte spara: för många okända Airtable-fält');
 }
 
 async function fetchAirtableByByraId(table, byraId, token, baseId) {
@@ -13556,10 +13622,10 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
     delete riskData.aiAudit;
     console.log('Mottaget riskfaktordata:', riskData);
 
-    const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
-    if (riskData['Riskpoäng'] !== undefined) airtableFields['Riskpoäng'] = riskData['Riskpoäng'];
-    if (riskData['PT/TF-relevans'] !== undefined) airtableFields['PT/TF-relevans'] = riskData['PT/TF-relevans'];
-    if (riskData['Samspelsexempel'] !== undefined) airtableFields['Samspelsexempel'] = riskData['Samspelsexempel'];
+    const airtableFields = applyOvrigExtraAirtableFields(
+      riskData,
+      mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true })
+    );
     console.log('Airtable-fält:', airtableFields);
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}`;
@@ -13568,12 +13634,14 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
       'Content-Type': 'application/json'
     };
 
-    const response = await writeAirtableRecordWithRiskChoices({
+    await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, RISK_FACTORS_TABLE, OVRIGA_RISK_SCHEMA_FIELDS);
+    const response = await writeAirtableFieldsRetryUnknown({
       token: airtableAccessToken,
       baseId: airtableBaseId,
       tableName: RISK_FACTORS_TABLE,
-      request: () => axios.post(url, {
-        fields: airtableFields,
+      fields: airtableFields,
+      request: (fields) => axios.post(url, {
+        fields,
         typecast: true
       }, { headers, timeout: 15000 })
     });
@@ -13642,7 +13710,10 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     console.log('Uppdateringsdata:', riskData);
 
     const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
-    const airtableFields = mapNamedFieldsToAirtable(riskData, factorMapping);
+    const airtableFields = applyOvrigExtraAirtableFields(
+      riskData,
+      mapNamedFieldsToAirtable(riskData, factorMapping, { dropUnknown: true })
+    );
     console.log('Airtable-fält:', airtableFields);
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
@@ -13656,12 +13727,14 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
 
-    const response = await writeAirtableRecordWithRiskChoices({
+    await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, RISK_FACTORS_TABLE, OVRIGA_RISK_SCHEMA_FIELDS);
+    const response = await writeAirtableFieldsRetryUnknown({
       token: airtableAccessToken,
       baseId: airtableBaseId,
       tableName: RISK_FACTORS_TABLE,
-      request: () => axios.patch(url, {
-        fields: airtableFields,
+      fields: airtableFields,
+      request: (fields) => axios.patch(url, {
+        fields,
         typecast: true
       }, { headers, timeout: 15000 })
     });
