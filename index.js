@@ -72,6 +72,8 @@ const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
+const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
+const { resolveAssistantVectorStoreId, buildAssistantRunPayload } = require('./lib/openai-assistant-run');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const personRegister = require('./lib/person-register');
 const dokumentKategori = require('./lib/dokument-kategori');
@@ -1166,8 +1168,8 @@ function getAuthHeaderForInternalRequests(req) {
 
 /**
  * All AI i ClientFlow ska gå via er OpenAI-assistent (samma som i Assistants/ChatGPT-byggaren).
- * Sätt OPENAI_ASSISTANT_ID=asst_... och valfritt OPENAI_VECTOR_STORE_ID=vs_... (file_search för rutter som skickar vectorStoreId).
- * Annika-chatt (/api/ai-chat) går via assistenten; vector: OPENAI_CHAT_VECTOR_STORE_ID om satt, annars OPENAI_VECTOR_STORE_ID.
+ * Sätt OPENAI_ASSISTANT_ID=asst_... File_search kopplas bara när rutten skickar vectorStoreId
+ * (chatt och sektion 4). Övriga JSON-rutter stänger av verktyg så assistentens kunskapsbas inte läses in.
  */
 function formatOpenAIAssistantError(err, step) {
   const status = err.response && err.response.status;
@@ -1250,7 +1252,7 @@ function updateAiDebugEvent(id, patch) {
 
 async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const assistantId = opts.assistantId || process.env.OPENAI_ASSISTANT_ID;
-  const vectorStoreId = opts.vectorStoreId !== undefined ? opts.vectorStoreId : (process.env.OPENAI_VECTOR_STORE_ID || null);
+  const vectorStoreId = resolveAssistantVectorStoreId(opts.vectorStoreId);
   const maxWaitMs = opts.maxWaitMs ?? 180000;
   const pollMs = opts.pollMs ?? 1500;
   const threadIdFromCaller = (opts.threadId || '').toString().trim();
@@ -1312,11 +1314,11 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     throw formatOpenAIAssistantError(e, 'OpenAI thread message');
   }
 
-  const runBody = {
-    assistant_id: assistantId,
-    ...(instructions ? { instructions } : {}),
-    ...(vectorStoreId && { tool_resources: { file_search: { vector_store_ids: [vectorStoreId] } } })
-  };
+  const runBody = buildAssistantRunPayload({
+    assistantId,
+    instructions,
+    vectorStoreId
+  });
   let runId;
   let runStatus;
   try {
@@ -1903,7 +1905,7 @@ Stil:
       {
         threadId: threadIdIn || undefined,
         threadIdOut,
-        vectorStoreId: chatVector || undefined,
+        vectorStoreId: chatVector,
         maxWaitMs: 120000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-chat', user: req.user?.email || '' }
@@ -19458,7 +19460,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
 
                 let line = `${kort}\n    (HÖGRISKTJÄNST — full analys nedan)`;
-                if (tjBeskr) line += `\n    Tjänstebeskrivning: ${tjBeskr}`;
+                if (tjBeskr) line += `\n    Tjänstebeskrivning och inneboende risk: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
@@ -19672,6 +19674,20 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const sparadeAtgarder = (f['Atgarder riskbedomning'] || '').trim();
     const harSparadBedomning = sparadBedomning.length > 0 || sparadeAtgarder.length > 0;
 
+    // Vector store ökar tokenförbrukning kraftigt. Standard: av för kundrisk.
+    const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
+    const riskVectorStoreId = riskUseVector
+      ? ((process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
+        || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
+        || null)
+      : null;
+    const kunskapBasBlock = riskVectorStoreId ? `
+KUNSKAPSBAS (vector store / file_search):
+- Använd uppladdade dokument ENBART för generell vägledning om PVML och vedertagen praxis. Det är ett komplement till — inte ersättning för — kundens faktiska uppgifter nedan.
+- Applicera ALDRIG byråns generella tjänsterisker på kunden om tjänsten inte finns i TJÄNSTLISTA.
+- Koppla resonemanget till kundunderlaget. Om sökningen inte ger relevant träff: fortsätt utifrån fälten nedan.
+` : '';
+
     const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
 Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbedömning enligt PVML (Penningtvättslagen).
 Väg in all tillgänglig information — varje ifyllt fält och varje vald riskfaktor bidrar till helhetsbilden av kunden.
@@ -19685,13 +19701,7 @@ BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Använd d
 VIKTIGT: Syftet med affärsförbindelsen ska stämma med underlaget nedan. Nämn endast tjänster enligt reglerna under "TJÄNSTLISTA".
 Skriv på enkel, korrekt svenska. Undvik “intern logik/UI-termer” som kryss/bockat/markerat/flik/formulär och hänvisa aldrig till hur informationen valts i systemet — beskriv istället fakta.
 Använd inte fraser som “Detta är utan PEP-status” eller “som kryss särskilt högrisk”. Skriv hellre t.ex. “Inga PEP-indikationer har noterats” och “Tjänsterna omfattar … vilket bedöms riskhöjande”.
-
-KUNSKAPSBAS (vector store / file_search — om tillgängligt i denna körning):
-- Om du har tillgång till uppladdade dokument via file_search: använd dem ENBART för generell vägledning om PVML och vedertagen praxis (metodik, kontrollfrekvens, vägledning). Det är ett komplement till — inte ersättning för — kundens faktiska uppgifter nedan.
-- KRITISKT: Kunskapsbasen kan innehålla information om tjänster och risker som gäller byråns GENERELLA riskbedömning (alla tjänster byrån erbjuder). Applicera ALDRIG denna information på den enskilda kunden om tjänsten inte finns i kundens TJÄNSTLISTA nedan. T.ex. om kunskapsbasen nämner ROT/RUT som en generell risk för byrån, men kunden inte har ROT/RUT i sin tjänstlista — nämn det INTE.
-- Koppla resonemanget till kundunderlaget; hitta inte på kundspecifika fakta bara för att något liknar ett dokument.
-- Om sökningen inte ger relevant träff: fortsätt utifrån fälten nedan och dessa regler.
-
+${kunskapBasBlock}
 TJÄNSTLISTA — ENDA AUKTORITATIVA KÄLLAN FÖR VILKA TJÄNSTER BYRÅN UTFÖR ÅT DENNA KUND I CLIENTFLOW:
 ${tjansterListaCanonical}
 REGLER FÖR TJÄNSTER (KRITISKT — BROTT MOT DESSA REGLER GER FELAKTIG RISKBEDÖMNING):
@@ -19891,14 +19901,6 @@ Svara EXAKT i detta JSON-format (inget annat):
       return false;
     };
 
-    // Vector store ökar tokenförbrukning kraftigt (TPM). Standard: av för kundrisk; sätt OPENAI_RISK_USE_VECTOR=1 för att tvinga på.
-    const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
-    const riskVectorStoreId = riskUseVector
-      ? ((process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
-        || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
-        || null)
-      : null;
-
     // Via samma OpenAI-assistent som övriga ClientFlow (OPENAI_ASSISTANT_ID). Run-instruktioner säkerställer JSON-svar.
     const assistantInstructions =
       'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
@@ -19908,7 +19910,7 @@ Svara EXAKT i detta JSON-format (inget annat):
       prompt,
       {
         instructions: assistantInstructions,
-        vectorStoreId: riskVectorStoreId || undefined,
+        vectorStoreId: riskVectorStoreId,
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-riskbedomning', user: req.user?.email || '' }
@@ -19938,7 +19940,7 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
         rewritePrompt,
         {
           instructions: assistantInstructions,
-          vectorStoreId: undefined,
+          vectorStoreId: null,
           maxWaitMs: 120000,
           pollMs: 1500,
           debugMeta: { route: '/api/ai-riskbedomning-rewrite', user: req.user?.email || '' }
@@ -20029,9 +20031,11 @@ REGLER:
 - Håll dig strikt till tjänstens domän
 - Blanda INTE in KYC, verkliga huvudmän eller penningtvättskontroller om tjänsten inte handlar om det
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
-- Om tjänsten är av redovisningskaraktär: fokusera på avstämningar, kontroller och dokumentationskrav kopplade till just den tjänsten
-- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): fokusera på identitetskontroll, riskbedömning och dokumentation
+- Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
+- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
+
+${INHERENT_DESCRIPTION_AI_RULES}
 
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN:
 Använd byråns profil för att kalibrera den sammanvägda risknivån.
@@ -20058,7 +20062,7 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-3 meningar om tjänsten och byråns roll. Inkludera en mening om hur byråns profil påverkar den sammanvägda risknivån.",
+  "beskrivning": "2-3 meningar om tjänsten och den inneboende risken. Inkludera en mening om hur byråns profil påverkar den inneboende risknivån. Inga kontroller, rutiner eller åtgärder.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
@@ -20134,17 +20138,11 @@ ${byraProfilUserBlock}${befintligtBlock}`;
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
 
   try {
-    const riskVectorStoreId =
-      (process.env.OPENAI_RISK_VECTOR_STORE_ID || '').toString().trim()
-      || (process.env.OPENAI_VECTOR_STORE_ID || '').toString().trim()
-      || null;
-
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
       userPrompt,
       {
         instructions: systemPrompt,
-        vectorStoreId: riskVectorStoreId || undefined,
         maxWaitMs: 180000,
         pollMs: 1500,
         debugMeta: { route: '/api/ai-byra-tjanst', user: req.user?.email || '' }
@@ -20245,10 +20243,12 @@ ${befintligt.ptTfRelevans ? `Befintlig PT/TF-relevans: ${befintligt.ptTfRelevans
 
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder.
 
+${INHERENT_DESCRIPTION_AI_RULES}
+
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån (inneboende risk).",
+  "beskrivning": "2-4 meningar om riskfaktorn och den inneboende risken. Inga kontroller, rutiner eller åtgärder.",
   "ptTfRelevans": "PT, TF eller Båda",
   "sannolikhet": 1,
   "konsekvens": 1,
@@ -20608,7 +20608,7 @@ Risknivå och åtgärder: Vi bedömer den sammantagna risken för tjänsten "Lö
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "4. Identifierade Risker och Sårbarheter" i en allmän riskbedömning (PVML, Penningtvättslagen).
 
-KUNSKAPSBAS (vector store / file_search): Du har tillgång till uppladdade officiella och rekommenderade dokument. Använd file_search FLITIGT innan du färdigställer texten. Väg in vägledning och krav från svenska och relevanta källor som kan finnas i arkivet, t.ex. Länsstyrelsen, Finansinspektionen, regeringens propositioner och förordningar, BRÅ, Polisen, internationella standarder där de är tillämpliga, och annan dokumentation om penningtvätt, riskbedömning och redovisningsbyråers skyldigheter. Din analys får INTE enbart återge byråns egna korta tjänstanalyser — den ska vara förenlig med ett riskbaserat förhållningssätt och vedertagen praxis enligt vad som framgår av kunskapsbasen. Om underlaget i arkivet stödjer mer detaljerade hot, sårbarheter eller åtgärder än byrån skrivit, ska du utveckla detta.
+KUNSKAPSBAS: Om file_search finns, gör EN sökning efter Länsstyrelsens vägledning för allmän riskbedömning. Återge inte bara byråns korta tjänstanalyser — utveckla hot, sårbarheter och åtgärder när vägledningen ger mer. Sök inte per tjänst eller per delavsnitt.
 
 OTROLIGT VIKTIGT – Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor som listas i underlagen. Utelämna INGEN. Länsstyrelsen delar ut sanktionsavgifter till byråer som glömmer tjänster eller riskfaktorer. Skriv en egen sektion för varje tjänst.
 
@@ -20620,7 +20620,7 @@ Skriv aldrig tekniska databas-ID som börjar med "rec" som tjänstnamn — anvä
 
     const userPrompt = `Skriv stycket "4. Identifierade Risker och Sårbarheter" för byråns allmänna riskbedömning.
 
-INNAN DU SKRIVER FÄRDIGT: Genomför en eller flera sökningar (file_search) i vector store efter relevant vägledning för varje huvudområde (tjänster, kunder, kanaler, geografi, verksamhet) och för tjänster med särskild exponering (t.ex. betalningsuppdrag, löner, moms). Kombinera det du hittar där med byråns statistik och egna texter nedan — byråns ifyllda analyser är underlag, inte den enda sanningen.
+Kombinera byråns statistik och egna texter nedan med den vägledning du redan har. Byråns ifyllda analyser är underlag, inte den enda sanningen. Sök inte igen per tjänst.
 
 OTROLIGT VIKTIGT: Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor nedan. Utelämna INGEN. Länsstyrelsen kräver att alla tjänster och riskfaktorer som är aktuella för byrån analyseras.
 

@@ -152,8 +152,9 @@
                         <section class="risk-sxk-section">
                             <h4>Inneboende risk</h4>
                             <div class="form-group">
-                                <label for="description">Beskrivning (inneboende risk) *</label>
-                                <textarea id="description" name="description" rows="4" required></textarea>
+                                <label for="description">Beskrivning och inneboende risk *</label>
+                                <p class="tjanst-panel-hint">Beskriv riskfaktorn och den risk den utgör i sig — nämn INTE byråns kontroller, rutiner eller åtgärder här; de hör hemma under Åtgärd.</p>
+                                <textarea id="description" name="description" rows="4" required placeholder="Vad riskfaktorn innebär och vilken risk den utgör i sig — inte era kontroller eller rutiner."></textarea>
                             </div>
                             <div class="form-group">
                                 <button type="button" class="btn btn-ai" id="add-ai-suggest-btn">
@@ -190,6 +191,7 @@
                             <h4>Residualrisk (efter åtgärd)</h4>
                             <div class="form-group">
                                 <label for="action">Åtgärd *</label>
+                                <p class="tjanst-panel-hint">Byråns kontroller, rutiner och åtgärder. Hör hit — inte i beskrivningen.</p>
                                 <textarea id="action" name="action" rows="4" required></textarea>
                             </div>
                             <div class="tjanst-risk-scores">
@@ -269,8 +271,9 @@
                         <section class="risk-sxk-section">
                             <h4>Inneboende risk</h4>
                             <div class="form-group">
-                                <label for="edit-description">Beskrivning (inneboende risk) *</label>
-                                <textarea id="edit-description" name="description" rows="4" required></textarea>
+                                <label for="edit-description">Beskrivning och inneboende risk *</label>
+                                <p class="tjanst-panel-hint">Beskriv riskfaktorn och den risk den utgör i sig — nämn INTE byråns kontroller, rutiner eller åtgärder här; de hör hemma under Åtgärd.</p>
+                                <textarea id="edit-description" name="description" rows="4" required placeholder="Vad riskfaktorn innebär och vilken risk den utgör i sig — inte era kontroller eller rutiner."></textarea>
                             </div>
                             <div class="form-group">
                                 <button type="button" class="btn btn-ai" id="edit-ai-suggest-btn">
@@ -308,6 +311,7 @@
                             <h4>Residualrisk (efter åtgärd)</h4>
                             <div class="form-group">
                                 <label for="edit-action">Åtgärd *</label>
+                                <p class="tjanst-panel-hint">Byråns kontroller, rutiner och åtgärder. Hör hit — inte i beskrivningen.</p>
                                 <textarea id="edit-action" name="action" rows="4" required></textarea>
                             </div>
                             <div class="tjanst-risk-scores">
@@ -365,6 +369,6 @@
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/risk-skala.js?v=3"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=2"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=3"></script>
 </body>
 </html>

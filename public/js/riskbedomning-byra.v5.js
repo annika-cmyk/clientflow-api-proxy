@@ -304,7 +304,7 @@ class RiskAssessmentManager {
         if (beskrivning) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning</h5>
+                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning och inneboende risk</h5>
                     <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
                 </div>
             `);
