@@ -6423,7 +6423,14 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     }
     delete payload[KundRiskprofil.FIELDS.FORESLAGEN];
     delete payload[KundRiskprofil.FIELDS.DRIVANDE];
-    const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster']
+    for (const ingaField of ['Riskhöjande faktorer övrigt', 'Risksänkande faktorer']) {
+      if (!Object.prototype.hasOwnProperty.call(payload, ingaField)) continue;
+      const ingaCheck = KundRiskprofil.exclusiveIngaCheck(payload[ingaField]);
+      if (!ingaCheck.ok) {
+        return res.status(400).json({ error: ingaCheck.error, code: 'inga_plus_andra', field: ingaField });
+      }
+    }
+    const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster', 'Riskhöjande faktorer övrigt', 'Kunden verkar i en högriskbransch']
       .some((key) => Object.prototype.hasOwnProperty.call(payload, key));
     const residualTouched = Object.prototype.hasOwnProperty.call(payload, 'Riskniva');
     const missingForeslagen = !KundRiskprofil.readForeslagen(customerRecord.fields || {});

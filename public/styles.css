@@ -5269,6 +5269,10 @@ body.sidebar-collapsed .logout-btn {
 .riskf-check-item--golv-hog:hover { background: #fee2e2; border-color: #dc2626; }
 .riskf-golv-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #991b1b; letter-spacing: 0.02em; text-transform: uppercase; }
 .riskf-chip--golv-hog { box-shadow: inset 3px 0 0 #ef4444; }
+.riskf-check-item--bidrar-golv { border-color: #f59e0b; background: #fffbeb; }
+.riskf-check-item--bidrar-golv:hover { background: #fef3c7; border-color: #d97706; }
+.riskf-bidrar-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #92400e; letter-spacing: 0.02em; text-transform: uppercase; }
+.riskf-chip--bidrar-golv { box-shadow: inset 3px 0 0 #f59e0b; }
 .riskhoj-katalog-section { margin: 0 0 1.5rem; }
 .riskhoj-katalog-list { display: flex; flex-direction: column; gap: 0.45rem; margin: 0.75rem 0; }
 .riskhoj-katalog-rad { display: flex; gap: 0.75rem; align-items: center; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; }

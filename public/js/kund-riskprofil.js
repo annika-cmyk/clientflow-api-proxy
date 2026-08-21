@@ -139,7 +139,7 @@
     'Historik av brott eller ekonomisk misskötsel': 'GOLV_HOG',
     'Otydlig affärsmodell': 'BIDRAR_VID_KOMBINATION',
     'Transaktioner utan tydligt syfte': 'BIDRAR_VID_KOMBINATION',
-    'Svårt att bekräfta identitet': 'BIDRAR_VID_KOMBINATION',
+    'Svårt att bekräfta identitet': 'GOLV_HOG',
     'Svårt att få svar på frågor': 'BIDRAR_VID_KOMBINATION',
     'Komplicerad struktur': 'BIDRAR_VID_KOMBINATION',
     'Mkt ändringar i styrelse, adress eller firmateckning': 'BIDRAR_VID_KOMBINATION',
@@ -289,6 +289,58 @@
 
   function hasRiskhojandeVal(fields) {
     return riskhojandeVal(fields).length > 0;
+  }
+
+  function isIngaLabel(namn) {
+    return foldNamn(namn) === 'inga';
+  }
+
+  function multiSelectList(raw) {
+    var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map(function (item) {
+      return trimStr(item && item.name ? item.name : item);
+    }).filter(function (v) { return v && v !== '---'; });
+  }
+
+  function exclusiveIngaCheck(raw) {
+    var list = multiSelectList(raw);
+    var hasInga = list.some(isIngaLabel);
+    var others = list.filter(function (v) { return !isIngaLabel(v); });
+    if (hasInga && others.length) {
+      return {
+        ok: false,
+        error: '"Inga" kan inte kombineras med andra valda faktorer.',
+        others: others
+      };
+    }
+    return { ok: true, hasInga: hasInga, others: others };
+  }
+
+  function marksForRiskhojandeVal(labels, katalog) {
+    var map = mergeRiskhojandeKatalog(katalog);
+    var golvHog = [];
+    var bidrar = [];
+    (Array.isArray(labels) ? labels : []).forEach(function (namn) {
+      var canon = canonicalRiskhojandeLabel(namn);
+      if (!canon || isIngaLabel(canon)) return;
+      var klass = klassForRiskhojande(canon, map);
+      if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golvHog.push(canon);
+      else if (klass === RISKHOJANDE_KLASS.BIDRAR) bidrar.push(canon);
+    });
+    return {
+      golvHog: golvHog,
+      bidrarTillGolv: bidrar.length >= 2 ? bidrar : []
+    };
+  }
+
+  function markKindForRiskhojande(namn, checkedLabels, katalog) {
+    var canon = canonicalRiskhojandeLabel(namn);
+    if (!canon || isIngaLabel(canon)) return '';
+    var map = mergeRiskhojandeKatalog(katalog);
+    if (klassForRiskhojande(canon, map) === RISKHOJANDE_KLASS.GOLV_HOG) return RISKHOJANDE_KLASS.GOLV_HOG;
+    var marks = marksForRiskhojandeVal(checkedLabels, map);
+    if (marks.bidrarTillGolv.indexOf(canon) !== -1) return RISKHOJANDE_KLASS.BIDRAR;
+    return '';
   }
 
   function foldNamn(s) {
@@ -625,6 +677,10 @@
     applyRiskhojandeGolv: applyRiskhojandeGolv,
     golvSkulleHojaBedomd: golvSkulleHojaBedomd,
     itemsFromRiskhojandeFlags: itemsFromRiskhojandeFlags,
+    isIngaLabel: isIngaLabel,
+    exclusiveIngaCheck: exclusiveIngaCheck,
+    marksForRiskhojandeVal: marksForRiskhojandeVal,
+    markKindForRiskhojande: markKindForRiskhojande,
     foreslagenFromLinkedRecords: foreslagenFromLinkedRecords,
     formatDrivandeFaktor: formatDrivandeFaktor,
     residualAvvikerFranForeslagen: residualAvvikerFranForeslagen,
