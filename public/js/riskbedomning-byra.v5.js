@@ -144,6 +144,7 @@ class RiskAssessmentManager {
         document.getElementById('status-filter')?.addEventListener('change', () => this.applyFilters());
 
         document.getElementById('tjanst-form')?.addEventListener('submit', (e) => this.handleSaveTjanst(e));
+        document.getElementById('tjanst-save-draft-btn')?.addEventListener('click', (e) => this.handleSaveTjanst(e, { asDraft: true }));
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
@@ -319,8 +320,8 @@ class RiskAssessmentManager {
 
         if (hot.length) {
             const rows = hot.map(h => {
-                const typ = (h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
-                const typClass = typ === 'TF' ? 'tag-tf' : 'tag-pt';
+                const typ = (window.RiskSkala && RiskSkala.normalizePtTf(h.typ)) || ((h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT');
+                const typClass = (window.TjanstTfTackning ? TjanstTfTackning.isTfHot(h) : typ === 'TF') ? 'tag-tf' : 'tag-pt';
                 return `
                     <div class="threat-row">
                         <span class="tag ${typClass}">${typ}</span>
@@ -402,6 +403,7 @@ class RiskAssessmentManager {
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}">${this.esc(scored.badge || riskLevel)}</span>
                                 ${residualLevel ? `<span class="risk-level-badge ${residualClass}">Residual ${this.esc(scored.residualBadge)}</span>` : ''}
+                                ${(window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(f)) ? '<span class="tf-missing-pill"><span class="tf-missing-dot" aria-hidden="true"></span>TF saknas</span>' : ''}
                             </div>
                         </div>
                     </div>
@@ -573,6 +575,21 @@ class RiskAssessmentManager {
             const empty = document.getElementById(`${key}-empty`);
             if (empty) empty.hidden = n > 0;
         });
+        this.updateTfBanner();
+    }
+
+    updateTfBanner() {
+        const Tf = window.TjanstTfTackning;
+        const hasTf = !!(Tf && Tf.hasTfHot(this.collectHot()));
+        const banner = document.getElementById('tjanst-tf-banner');
+        const textEl = document.getElementById('tjanst-tf-banner-text');
+        const overview = document.getElementById('tjanst-tf-oversikt-flag');
+        if (textEl && Tf) textEl.textContent = Tf.TF_BANNER_TEXT;
+        if (banner) banner.hidden = hasTf;
+        if (overview) {
+            overview.hidden = hasTf;
+            overview.textContent = hasTf ? '' : ((Tf && Tf.TF_BANNER_TEXT) || '');
+        }
     }
 
     bindDynCard(row, { expand = false, hasSource = false } = {}) {
@@ -621,7 +638,8 @@ class RiskAssessmentManager {
     addHotRow(data = {}, opts = {}) {
         const list = document.getElementById('hot-list');
         if (!list) return;
-        const typ = ((data.typ ?? data.type) || '').toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
+        const rawTyp = (window.RiskSkala && RiskSkala.normalizePtTf(data.typ ?? data.type)) || 'PT';
+        const typ = rawTyp === 'TF' || rawTyp === 'Båda' ? rawTyp : 'PT';
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
@@ -631,8 +649,9 @@ class RiskAssessmentManager {
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <select class="dyn-typ" aria-label="Hottyp">
-                    <option value="PT" ${typ === 'TF' ? '' : 'selected'}>PT</option>
+                    <option value="PT" ${typ === 'PT' ? 'selected' : ''}>PT</option>
                     <option value="TF" ${typ === 'TF' ? 'selected' : ''}>TF</option>
+                    <option value="Båda" ${typ === 'Båda' ? 'selected' : ''}>Båda</option>
                 </select>
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -648,6 +667,7 @@ class RiskAssessmentManager {
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
+        row.querySelector('.dyn-typ')?.addEventListener('change', () => this.updateTfBanner());
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -787,6 +807,9 @@ class RiskAssessmentManager {
         this.setTjanstTab('oversikt');
         this.updateTjanstLists();
         this.updateRiskBadges();
+        const tfEl = document.getElementById('tjanst-tf-motivering');
+        if (tfEl) tfEl.value = '';
+        this.updateTfBanner();
         if (window.AiFaltGranskning) AiFaltGranskning.hideReview(document.getElementById('tjanst-ai-review'));
     }
 
@@ -800,6 +823,8 @@ class RiskAssessmentManager {
         this.setScoreSelect('tjanst-sannolikhet-efter', scored.sannolikhetEfter);
         this.setScoreSelect('tjanst-konsekvens-efter', scored.konsekvensEfter);
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
+        const tfEl = document.getElementById('tjanst-tf-motivering');
+        if (tfEl) tfEl.value = (window.TjanstTfTackning && TjanstTfTackning.readTfMotivering(f)) || '';
 
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
         this.parseJsonField(f['Sårbarheter']).forEach(s => this.addSarbarhetRow(s));
@@ -903,6 +928,9 @@ class RiskAssessmentManager {
         this.replaceTjanstList('hot', data.hot);
         this.replaceTjanstList('sarbarheter', data.sarbarheter);
         this.replaceTjanstList('atgarder', data.atgarder);
+        const tfEl = document.getElementById('tjanst-tf-motivering');
+        if (tfEl) tfEl.value = data.tfMotivering || '';
+        this.updateTfBanner();
     }
 
     applyTjanstAiIfEmpty(existing, data) {
@@ -918,6 +946,11 @@ class RiskAssessmentManager {
         if (!(existing.atgarder || []).length && (data.atgarder || []).length) {
             this.replaceTjanstList('atgarder', data.atgarder);
         }
+        const tfEl = document.getElementById('tjanst-tf-motivering');
+        if (tfEl && !(Ai && Ai.isFilledText(existing.tfMotivering)) && data.tfMotivering) {
+            tfEl.value = data.tfMotivering;
+        }
+        this.updateTfBanner();
     }
 
     applyTjanstAiField(falt, forslag) {
@@ -944,6 +977,11 @@ class RiskAssessmentManager {
         } else if (falt === 'atgarder') {
             this.replaceTjanstList('atgarder', forslag);
             this.setTjanstTab('atgard');
+        } else if (falt === 'tfMotivering') {
+            const tfEl = document.getElementById('tjanst-tf-motivering');
+            if (tfEl) tfEl.value = String(forslag || '');
+            this.setTjanstTab('hot');
+            this.updateTfBanner();
         }
     }
 
@@ -971,7 +1009,8 @@ class RiskAssessmentManager {
             riskniva: inherent.level || '',
             hot: this.collectHot(),
             sarbarheter: this.collectSarbarhet(),
-            atgarder: this.collectAtgard()
+            atgarder: this.collectAtgard(),
+            tfMotivering: document.getElementById('tjanst-tf-motivering')?.value.trim() || ''
         };
         const reviewMode = !!(Ai && Ai.hasExistingTjanstContent(befintligt));
         btn.disabled = true;
@@ -1027,19 +1066,23 @@ class RiskAssessmentManager {
     buildPayload() {
         const poang = this.collectRiskPoang();
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
+        const tfMotivering = document.getElementById('tjanst-tf-motivering')?.value.trim() || '';
+        const serialized = (window.RiskSkala && RiskSkala.serializeRiskPoang({ ...poang, tfMotivering })) || JSON.stringify({ ...poang, tfMotivering });
         return {
             'Task Name': document.getElementById('tjanst-name').value.trim(),
             'Riskbedömning': inherent.level || '',
-            'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
+            'Riskpoäng': serialized,
             'Tjänstebeskrivning': document.getElementById('tjanst-beskrivning').value.trim(),
             'Hot': JSON.stringify(this.collectHot()),
             'Sårbarheter': JSON.stringify(this.collectSarbarhet()),
-            'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard())
+            'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard()),
+            'TF-motivering': tfMotivering
         };
     }
 
-    async handleSaveTjanst(event) {
+    async handleSaveTjanst(event, opts = {}) {
         event.preventDefault();
+        const asDraft = opts.asDraft === true;
 
         const recordId = document.getElementById('tjanst-record-id').value;
         const namn = document.getElementById('tjanst-name').value.trim();
@@ -1049,6 +1092,21 @@ class RiskAssessmentManager {
         }
 
         const payload = this.buildPayload();
+        const Tf = window.TjanstTfTackning;
+        if (Tf && !asDraft) {
+            const check = Tf.validateTjanstTfTackning({
+                hot: this.collectHot(),
+                tfMotivering: payload['TF-motivering'],
+                asDraft: false
+            });
+            if (!check.ok) {
+                this.setTjanstTab('hot');
+                this.updateTfBanner();
+                this.showNotification(check.error, 'error');
+                document.getElementById('tjanst-tf-motivering')?.focus();
+                return;
+            }
+        }
 
         // Vid skapande: koppla byrå-ID
         if (!recordId) {
@@ -1058,8 +1116,9 @@ class RiskAssessmentManager {
                 return;
             }
             if (userByraId) payload['Byrå ID'] = userByraId;
-            payload['Aktuell'] = true;
         }
+        payload['Aktuell'] = !asDraft;
+        if (asDraft) payload.utkast = true;
 
         try {
             const url = recordId
@@ -1075,13 +1134,16 @@ class RiskAssessmentManager {
             });
             if (response.ok) this._lastAiAudit = null;
 
-            if (!response.ok && body['Riskpoäng']) {
+            if (!response.ok && (body['Riskpoäng'] || body['TF-motivering'])) {
                 const err = await response.json().catch(() => ({}));
                 const raw = JSON.stringify(err);
                 if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
                     body = { ...body };
-                    body['Samspelsexempel'] = body['Riskpoäng'];
-                    delete body['Riskpoäng'];
+                    if (body['Riskpoäng']) {
+                        body['Samspelsexempel'] = body['Riskpoäng'];
+                        delete body['Riskpoäng'];
+                    }
+                    delete body['TF-motivering'];
                     response = await fetch(url, {
                         method,
                         headers: { 'Content-Type': 'application/json' },
@@ -1099,7 +1161,12 @@ class RiskAssessmentManager {
             if (response.ok) {
                 this.closeModal('tjanst-modal');
                 await this.loadRiskAssessments();
-                this.showNotification(recordId ? 'Tjänsten uppdaterad.' : 'Tjänsten tillagd.', 'success');
+                this.showNotification(
+                    asDraft
+                        ? 'Utkast sparat. TF-täckning krävs innan tjänsten kan användas i AR-exporten.'
+                        : (recordId ? 'Tjänsten uppdaterad.' : 'Tjänsten tillagd.'),
+                    'success'
+                );
             } else {
                 const err = await response.json().catch(() => ({}));
                 const raw = err.message || err.error;
@@ -1118,6 +1185,12 @@ class RiskAssessmentManager {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
         const newStatus = !(risk.fields['Aktuell'] === true);
+        if (newStatus && window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(risk.fields)) {
+            this.showNotification(TjanstTfTackning.TF_SAVE_ERROR, 'error');
+            this.openEditModal(recordId);
+            this.setTjanstTab('hot');
+            return;
+        }
 
         try {
             const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {

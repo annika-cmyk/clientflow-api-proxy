@@ -12819,6 +12819,52 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     flex-wrap: wrap;
     gap: 0.4rem;
 }
+
+.tf-missing-banner {
+    margin: 0 0 0.85rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #f4d27a;
+    border-radius: 10px;
+    background: #fff8e1;
+}
+.tf-missing-banner p {
+    margin: 0 0 0.55rem;
+    font-size: 0.86rem;
+    color: #7a5b00;
+    line-height: 1.45;
+}
+.tf-missing-banner label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+.tf-missing-banner textarea {
+    width: 100%;
+    min-height: 5.5rem;
+}
+.tf-missing-banner-compact {
+    margin-top: 0.75rem;
+}
+.tf-missing-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #7a5b00;
+    background: #fff3bf;
+    border: 1px solid #f4d27a;
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+}
+.tf-missing-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: #eab308;
+    display: inline-block;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .dyn-list { display: flex; flex-direction: column; gap: 0.5rem; }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260821c">
+    <link rel="stylesheet" href="styles.css?v=20260821d">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -180,6 +180,7 @@
                                 <label for="tjanst-beskrivning">Tjänstebeskrivning och inneboende risk</label>
                                 <p class="tjanst-panel-hint">Beskriv tjänsten och den risk den utgör i sig — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
                                 <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär och vilken risk den utgör i sig — inte byrån, personal eller era kontroller."></textarea>
+                                <div id="tjanst-tf-oversikt-flag" class="tf-missing-banner tf-missing-banner-compact" hidden></div>
                             </section>
 
                             <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
@@ -189,6 +190,12 @@
                                         <p class="tjanst-panel-hint">Ett hot per rad. Klicka på en rad för att skriva beskrivning och källa.</p>
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div id="tjanst-tf-banner" class="tf-missing-banner" hidden>
+                                    <p id="tjanst-tf-banner-text"></p>
+                                    <label for="tjanst-tf-motivering">TF-motivering</label>
+                                    <p class="tjanst-panel-hint">Förklara varför TF-analysen bedöms tillräckligt täckt av PT-analysen för just den här tjänsten. Minst 20 tecken.</p>
+                                    <textarea id="tjanst-tf-motivering" name="tfMotivering" rows="4" placeholder="Varför räcker PT-analysen för finansiering av terrorism i den här tjänsten?"></textarea>
                                 </div>
                                 <div id="hot-empty" class="tjanst-empty">Inga hot ännu.</div>
                                 <div id="hot-list" class="dyn-list"></div>
@@ -254,6 +261,9 @@
                             <button type="button" class="btn btn-secondary" onclick="closeModal('tjanst-modal')">
                                 Avbryt
                             </button>
+                            <button type="button" id="tjanst-save-draft-btn" class="btn btn-secondary">
+                                Spara utkast
+                            </button>
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i>
                                 Spara tjänst
@@ -279,8 +289,9 @@
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/aml-kalla.js?v=1"></script>
-    <script src="js/risk-skala.js?v=2"></script>
+    <script src="js/risk-skala.js?v=4"></script>
+    <script src="js/tjanst-tf-tackning.js?v=1"></script>
     <script src="js/ai-falt-granskning.js?v=1"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=8"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=9"></script>
 </body>
 </html>

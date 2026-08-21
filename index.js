@@ -71,6 +71,7 @@ const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
+const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -4859,6 +4860,25 @@ let _airtableTablesCache = null;
 let _airtableTablesCacheAt = 0;
 const _riskSkalaChoicesEnsured = new Set();
 
+function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  const asDraft = incoming.utkast === true || incoming.Aktuell === false
+    || (incoming.Aktuell == null && existing.Aktuell === false && incoming.Hot == null);
+  const merged = { ...existing, ...incoming };
+  const check = TjanstTfTackning.validateTjanstTfTackning({
+    hot: incoming.Hot != null ? incoming.Hot : existing.Hot,
+    tfMotivering: TjanstTfTackning.readTfMotivering(merged),
+    asDraft
+  });
+  if (check.ok) return false;
+  res.status(400).json({
+    error: check.error,
+    message: check.error
+  });
+  return true;
+}
+
 function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
   const normalized = normalizeRiskFields(data || {});
   const out = {};
@@ -5292,6 +5312,10 @@ app.post('/api/risk-assessments', async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const tjanstAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
+    const asDraftCreate = riskData.utkast === true;
+    delete riskData.utkast;
+    if (asDraftCreate) riskData.Aktuell = false;
+    if (rejectTjanstWithoutTfTackning(res, riskData)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5394,6 +5418,9 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const tjanstAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
+    const asDraftUpdate = riskData.utkast === true;
+    delete riskData.utkast;
+    if (asDraftUpdate) riskData.Aktuell = false;
     console.log(`📝 Mottaget uppdateringsdata för ${id}:`, riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5407,6 +5434,7 @@ app.put('/api/risk-assessments/:id', async (req, res) => {
       const prev = await axios.get(url, { headers, timeout: 10000 });
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
+    if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -20010,6 +20038,8 @@ REGLER:
 - Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
+- TF-TÄCKNING: överväg aktivt om minst ett TF-hot (finansiering av terrorism) är relevant för just denna tjänst. Defaulta inte till enbart PT. typ får vara "PT", "TF" eller "Båda".
+- Om inget TF-hot är relevant: lämna tfMotivering med 2–4 tjänstespecifika meningar om varför PT-analysen räcker. Hitta inte på ett TF-hot bara för att fylla kvoten. Om minst ett TF-hot finns: tfMotivering ska vara tom.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
@@ -20042,12 +20072,13 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]${reviewMode ? `,
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ],
+  "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
+      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
     ]
   }` : ''}
 }
@@ -20100,7 +20131,7 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
   };
 
   const normRisk = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
-  const normHotTyp = (v) => ((v || '').toString().trim().toUpperCase() === 'TF' ? 'TF' : 'PT');
+  const normHotTyp = (v) => RiskSkala.normalizePtTf(v) || 'PT';
   const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
   // Frontend-dropdownen har 4 kategorier. Prompten kan föreslå fler (t.ex.
   // "Leveranskanaler", "Produkter") – mappa dem till närmaste giltiga kategori.
@@ -20160,7 +20191,8 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
       riskniva: fallbackScores.level || fallbackLevel,
       hot,
       sarbarheter,
-      atgarder
+      atgarder,
+      tfMotivering: TjanstTfTackning.hasTfHot(hot) ? '' : cleanStr(result.tfMotivering)
     };
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst')

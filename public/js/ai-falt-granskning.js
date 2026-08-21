@@ -9,7 +9,8 @@
     residual: { etikett: 'Risk efter åtgärder' },
     hot: { etikett: 'Hot' },
     sarbarheter: { etikett: 'Sårbarheter' },
-    atgarder: { etikett: 'Åtgärder' }
+    atgarder: { etikett: 'Åtgärder' },
+    tfMotivering: { etikett: 'TF-motivering' }
   };
 
   const OVRIG_FALT = {
@@ -69,6 +70,7 @@
     if (hasListItems(o.hot)) keys.push('hot');
     if (hasListItems(o.sarbarheter)) keys.push('sarbarheter');
     if (hasListItems(o.atgarder)) keys.push('atgarder');
+    if (isFilledText(o.tfMotivering)) keys.push('tfMotivering');
     return keys;
   }
 
@@ -127,6 +129,9 @@
         `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`
       )));
     }
+    if (keys.includes('tfMotivering')) {
+      parts.push(`TF-motivering:\n${trimStr(o.tfMotivering)}`);
+    }
     return parts.join('\n\n');
   }
 
@@ -152,6 +157,7 @@
     beskrivning: ['beskrivning', 'beskrivning och inneboende risk'],
     atgard: ['atgard', 'atgarder', 'atgjard', 'action'],
     atgarder: ['atgarder', 'atgard', 'tjanstespecifika atgarder'],
+    tfMotivering: ['tfmotivering', 'tf motivering', 'tf analys'],
     hot: ['hot'],
     sarbarheter: ['sarbarheter', 'sarbarhet'],
     sxk: ['sxk', 'sannolikhet', 'konsekvens', 'inneboende', 'riskniva'],
@@ -243,6 +249,7 @@
   function generatedValueFor(falt, generated) {
     const g = generated || {};
     if (falt === 'tjanstebeskrivning') return trimStr(g.tjanstebeskrivning || g.beskrivning);
+    if (falt === 'tfMotivering') return trimStr(g.tfMotivering);
     if (falt === 'beskrivning') return trimStr(g.beskrivning);
     if (falt === 'atgard') return trimStr(g.atgard);
     if (falt === 'ptTfRelevans') return trimStr(g.ptTfRelevans);

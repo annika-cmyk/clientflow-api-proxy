@@ -32,7 +32,8 @@ const NEW_FIELDS = [
   { name: 'Sårbarheter', type: 'multilineText' },
   { name: 'Samspelsexempel', type: 'multilineText' },
   { name: 'Tjänstespecifika åtgärder', type: 'multilineText' },
-  { name: 'Riskpoäng', type: 'multilineText' }
+  { name: 'Riskpoäng', type: 'multilineText' },
+  { name: 'TF-motivering', type: 'multilineText' }
 ];
 
 async function main() {
