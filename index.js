@@ -4916,41 +4916,6 @@ function rejectOffTopicTjanstHot(res, riskData, existingFields = {}) {
   return true;
 }
 
-function rejectVagueTjanstAtgarder(res, riskData, existingFields = {}) {
-  const incoming = riskData || {};
-  const existing = existingFields || {};
-  const asDraft = incoming.utkast === true || incoming.Aktuell === false
-    || (incoming.Aktuell == null && existing.Aktuell === false && incoming['Tjänstespecifika åtgärder'] == null);
-  if (incoming.Aktuell === false) return false;
-  const raw = incoming['Tjänstespecifika åtgärder'] != null
-    ? incoming['Tjänstespecifika åtgärder']
-    : existing['Tjänstespecifika åtgärder'];
-  const check = AtgardKonkret.validateAtgarder(raw, { asDraft });
-  if (check.ok) return false;
-  res.status(400).json({
-    error: check.error,
-    message: check.error
-  });
-  return true;
-}
-
-function rejectVagueOvrigAtgard(res, riskData, existingFields = {}) {
-  const incoming = riskData || {};
-  const existing = existingFields || {};
-  if (incoming.Aktuell === false) return false;
-  const raw = incoming['Åtgärd'] != null || incoming['Åtgjärd'] != null
-    ? (incoming['Åtgärd'] || incoming['Åtgjärd'])
-    : (existing['Åtgärd'] || existing['Åtgjärd']);
-  const required = incoming['Åtgärd'] != null || incoming['Åtgjärd'] != null;
-  const check = AtgardKonkret.validateAtgardText(raw, { required });
-  if (check.ok) return false;
-  res.status(400).json({
-    error: check.error,
-    message: check.error
-  });
-  return true;
-}
-
 function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
   const normalized = normalizeRiskFields(data || {});
   const out = {};
@@ -5389,7 +5354,6 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     if (asDraftCreate) riskData.Aktuell = false;
     if (rejectTjanstWithoutTfTackning(res, riskData)) return;
     if (rejectOffTopicTjanstHot(res, riskData)) return;
-    if (rejectVagueTjanstAtgarder(res, riskData)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5510,7 +5474,6 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
     } catch (_) { /* jämför mot tomt */ }
     if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
     if (rejectOffTopicTjanstHot(res, riskData, beforeTjanst)) return;
-    if (rejectVagueTjanstAtgarder(res, riskData, beforeTjanst)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -13591,7 +13554,6 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
-    if (rejectVagueOvrigAtgard(res, riskData)) return;
     console.log('Mottaget riskfaktordata:', riskData);
 
     const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
@@ -13693,7 +13655,6 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       const prev = await axios.get(url, { headers, timeout: 10000 });
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
-    if (rejectVagueOvrigAtgard(res, riskData, beforeFaktor)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,

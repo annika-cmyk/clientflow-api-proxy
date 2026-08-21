@@ -797,11 +797,9 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet.">${this.esc(beskrivning)}</textarea>
-                <p class="atgard-konkret-warn" hidden></p>
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand });
-        this.bindAtgardKonkret(row);
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -842,28 +840,6 @@ class RiskAssessmentManager {
         row.classList.toggle('is-off-topic', off);
         warn.hidden = !off;
         warn.textContent = off ? H.HINT : '';
-    }
-
-    bindAtgardKonkret(row) {
-        const sync = () => this.paintAtgardKonkret(row);
-        row.querySelector('.dyn-titel')?.addEventListener('input', sync);
-        row.querySelector('.dyn-besk')?.addEventListener('input', sync);
-        sync();
-    }
-
-    paintAtgardKonkret(row) {
-        const A = window.AtgardKonkret;
-        const warn = row.querySelector('.atgard-konkret-warn');
-        if (!A || !warn) return;
-        const check = A.assessAtgard({
-            titel: row.querySelector('.dyn-titel')?.value || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value || ''
-        });
-        const vague = check.empty ? false : check.ok === false;
-        row.classList.toggle('is-vague', vague);
-        if (vague) row.classList.remove('is-collapsed');
-        warn.hidden = !vague;
-        warn.textContent = vague ? (check.error || A.HINT) : '';
     }
 
     collectAtgard() {
@@ -1256,7 +1232,6 @@ class RiskAssessmentManager {
                 if (kind === 'sarbarheter' && row.querySelector('.dyn-kategori')) {
                     row.querySelector('.dyn-kategori').value = box.querySelector('.dyn-ai-kat')?.value || 'Verksamhet';
                 }
-                if (kind === 'atgarder') this.paintAtgardKonkret(row);
                 box.remove();
             }
             if (ev.target.closest('[data-ai-dismiss]')) box.remove();
@@ -1503,17 +1478,6 @@ class RiskAssessmentManager {
                 return;
             }
         }
-        const Atg = window.AtgardKonkret;
-        if (Atg && !asDraft) {
-            const atgCheck = Atg.validateAtgarder(this.collectAtgard(), { asDraft: false });
-            if (!atgCheck.ok) {
-                this.setTjanstTab('atgard');
-                document.querySelectorAll('#atgard-list .dyn-row').forEach((row) => this.paintAtgardKonkret(row));
-                this.showNotification(atgCheck.error, 'error');
-                return;
-            }
-        }
-
         // Vid skapande: koppla byrå-ID
         if (!recordId) {
             const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
@@ -1604,16 +1568,6 @@ class RiskAssessmentManager {
                 return;
             }
         }
-        if (newStatus && window.AtgardKonkret) {
-            const atgCheck = AtgardKonkret.validateAtgarder(risk.fields['Tjänstespecifika åtgärder']);
-            if (!atgCheck.ok) {
-                this.showNotification(atgCheck.error, 'error');
-                this.openEditModal(recordId);
-                this.setTjanstTab('atgard');
-                return;
-            }
-        }
-
         try {
             const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
