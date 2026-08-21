@@ -19,7 +19,12 @@
  * Scriptet är idempotent: fält som redan finns hoppas över.
  */
 
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const envPath = fs.existsSync(path.join(__dirname, '..', '.env'))
+  ? path.join(__dirname, '..', '.env')
+  : path.join(__dirname, '..', 'env.env');
+require('dotenv').config({ path: envPath });
 const axios = require('axios');
 
 const BASE_ID = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
