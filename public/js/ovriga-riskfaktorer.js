@@ -215,6 +215,10 @@ class RiskFactorsManager {
         const editAiBtn = document.getElementById('edit-ai-suggest-btn');
         if (editAiBtn) editAiBtn.addEventListener('click', () => this.generateAiSuggestion('edit'));
 
+        ['action', 'edit-action'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', () => this.paintAtgardKonkret(id));
+        });
+
         ['sannolikhet', 'konsekvens', 'sannolikhet-efter', 'konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges('add'));
             document.getElementById(`edit-${id}`)?.addEventListener('change', () => {
@@ -404,6 +408,23 @@ class RiskFactorsManager {
         const flag = document.getElementById('edit-review-flag');
         if (flag) flag.hidden = mode !== 'edit' || !this.editNeedsReview;
         return { inherent, residual };
+    }
+
+    paintAtgardKonkret(textareaId) {
+        const A = window.AtgardKonkret;
+        const ta = document.getElementById(textareaId);
+        if (!A || !ta) return;
+        const warnId = textareaId === 'edit-action' ? 'edit-atgard-warn' : 'add-atgard-warn';
+        const warn = document.getElementById(warnId);
+        const wrap = ta.closest('.form-group');
+        const check = A.validateAtgardText(ta.value);
+        const vague = !check.empty && check.ok === false;
+        if (wrap) wrap.classList.toggle('is-vague', vague);
+        if (warn) {
+            warn.hidden = !vague;
+            warn.textContent = vague ? A.HINT : '';
+        }
+        return check;
     }
 
     collectRiskPayload(formData) {
@@ -706,6 +727,7 @@ class RiskFactorsManager {
             if (data.sannolikhet == null) this.setScoreSelect(`${prefix}sannolikhet`, inferred.sannolikhet);
             if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
         }
+        this.paintAtgardKonkret(`${prefix}action`);
     }
 
     applyOvrigAiIfEmpty(prefix, existing, data) {
@@ -722,6 +744,7 @@ class RiskFactorsManager {
         if (emptySxk && data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
         if (emptyRes && data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
         if (emptyRes && data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+        this.paintAtgardKonkret(`${prefix}action`);
     }
 
     applyOvrigAiField(prefix, falt, forslag) {
@@ -729,6 +752,7 @@ class RiskFactorsManager {
             document.getElementById(`${prefix}description`).value = String(forslag || '');
         } else if (falt === 'atgard') {
             document.getElementById(`${prefix}action`).value = String(forslag || '');
+            this.paintAtgardKonkret(`${prefix}action`);
         } else if (falt === 'ptTfRelevans') {
             const pt = document.getElementById(`${prefix}pt-tf`);
             if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(forslag)) || forslag;
@@ -856,6 +880,7 @@ class RiskFactorsManager {
         document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
         document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
+        this.paintAtgardKonkret('edit-action');
         const pt = document.getElementById('edit-pt-tf');
         if (pt) pt.value = scored.ptTfRelevans || 'PT';
         this.setScoreSelect('edit-sannolikhet', scored.sannolikhet);
@@ -882,6 +907,12 @@ class RiskFactorsManager {
         }
         
         this.editNeedsReview = false;
+        const atgCheck = this.paintAtgardKonkret('action');
+        if (atgCheck && !atgCheck.ok) {
+            this.showNotification(atgCheck.error || (window.AtgardKonkret && AtgardKonkret.SAVE_ERROR), 'error');
+            document.getElementById('action')?.focus();
+            return;
+        }
         const riskData = {
             ...this.collectRiskPayload(formData),
             'Byrå ID': userByraId,
@@ -895,11 +926,12 @@ class RiskFactorsManager {
                 await this.loadRiskFactors();
                 this.showNotification('Riskfaktor tillagd framgångsrikt', 'success');
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${response.status}`);
             }
         } catch (error) {
             console.error('Error adding risk factor:', error);
-            this.showNotification('Fel vid tillägg av riskfaktor', 'error');
+            this.showNotification('Fel vid tillägg av riskfaktor: ' + (error.message || ''), 'error');
         }
     }
 
@@ -917,6 +949,12 @@ class RiskFactorsManager {
             return;
         }
         
+        const atgCheck = this.paintAtgardKonkret('edit-action');
+        if (atgCheck && !atgCheck.ok) {
+            this.showNotification(atgCheck.error || (window.AtgardKonkret && AtgardKonkret.SAVE_ERROR), 'error');
+            document.getElementById('edit-action')?.focus();
+            return;
+        }
         const riskData = {
             ...this.collectRiskPayload(formData),
             'Byrå ID': userByraId
@@ -929,11 +967,12 @@ class RiskFactorsManager {
                 await this.loadRiskFactors();
                 this.showNotification('Riskfaktor uppdaterad framgångsrikt', 'success');
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${response.status}`);
             }
         } catch (error) {
             console.error('Error updating risk factor:', error);
-            this.showNotification('Fel vid uppdatering av riskfaktor', 'error');
+            this.showNotification('Fel vid uppdatering av riskfaktor: ' + (error.message || ''), 'error');
         }
     }
 
@@ -969,7 +1008,15 @@ class RiskFactorsManager {
 
         const currentStatus = risk.fields['Aktuell'] === true;
         const newStatus = !currentStatus;
-        
+        if (newStatus && window.AtgardKonkret) {
+            const atgCheck = AtgardKonkret.validateAtgardText(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '');
+            if (!atgCheck.ok) {
+                this.showNotification(atgCheck.error, 'error');
+                this.openEditModal(recordId);
+                return;
+            }
+        }
+
         try {
             const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
                 method: 'PUT',

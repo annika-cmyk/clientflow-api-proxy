@@ -72,6 +72,7 @@ const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
+const AtgardKonkret = require('./public/js/atgard-konkret');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -4897,6 +4898,41 @@ function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
   return true;
 }
 
+function rejectVagueTjanstAtgarder(res, riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  const asDraft = incoming.utkast === true || incoming.Aktuell === false
+    || (incoming.Aktuell == null && existing.Aktuell === false && incoming['Tjänstespecifika åtgärder'] == null);
+  if (incoming.Aktuell === false) return false;
+  const raw = incoming['Tjänstespecifika åtgärder'] != null
+    ? incoming['Tjänstespecifika åtgärder']
+    : existing['Tjänstespecifika åtgärder'];
+  const check = AtgardKonkret.validateAtgarder(raw, { asDraft });
+  if (check.ok) return false;
+  res.status(400).json({
+    error: check.error,
+    message: check.error
+  });
+  return true;
+}
+
+function rejectVagueOvrigAtgard(res, riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  if (incoming.Aktuell === false) return false;
+  const raw = incoming['Åtgärd'] != null || incoming['Åtgjärd'] != null
+    ? (incoming['Åtgärd'] || incoming['Åtgjärd'])
+    : (existing['Åtgärd'] || existing['Åtgjärd']);
+  const required = incoming['Åtgärd'] != null || incoming['Åtgjärd'] != null;
+  const check = AtgardKonkret.validateAtgardText(raw, { required });
+  if (check.ok) return false;
+  res.status(400).json({
+    error: check.error,
+    message: check.error
+  });
+  return true;
+}
+
 function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
   const normalized = normalizeRiskFields(data || {});
   const out = {};
@@ -5334,6 +5370,7 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     delete riskData.utkast;
     if (asDraftCreate) riskData.Aktuell = false;
     if (rejectTjanstWithoutTfTackning(res, riskData)) return;
+    if (rejectVagueTjanstAtgarder(res, riskData)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5453,6 +5490,7 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
+    if (rejectVagueTjanstAtgarder(res, riskData, beforeTjanst)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -13533,6 +13571,7 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
+    if (rejectVagueOvrigAtgard(res, riskData)) return;
     console.log('Mottaget riskfaktordata:', riskData);
 
     const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
@@ -13634,6 +13673,7 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       const prev = await axios.get(url, { headers, timeout: 10000 });
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
+    if (rejectVagueOvrigAtgard(res, riskData, beforeFaktor)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -20265,6 +20305,7 @@ REGLER:
 - tfMotivering bara när ett separat TF-hot verkligen inte är relevant. Då 2–4 tjänstespecifika meningar. Om minst ett TF-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
+${AtgardKonkret.AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
 Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
@@ -20297,7 +20338,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ],
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör." } ],
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
@@ -20498,6 +20539,7 @@ ${existingBlock ? `\n${existingBlock}\n` : ''}
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
+${AtgardKonkret.AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -20508,7 +20550,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."${reviewMode ? `,
+  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör."${reviewMode ? `,
   "granskning": {
     "poster": [
       { "falt": "beskrivning|atgard|ptTfRelevans|sxk|residual", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }

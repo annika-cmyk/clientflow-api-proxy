@@ -13036,6 +13036,24 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 100%;
     min-height: 5.5rem;
 }
+.atgard-konkret-warn {
+    display: none;
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #7a5b00;
+}
+.dyn-row-atgard.is-vague .atgard-konkret-warn,
+.form-group.is-vague .atgard-konkret-warn {
+    display: block;
+}
+.dyn-row-atgard.is-vague {
+    box-shadow: inset 0 0 0 1px #f4d27a;
+}
+.form-group.is-vague textarea {
+    border-color: #f4d27a;
+}
+
 .tf-missing-banner-compact {
     margin-top: 0.75rem;
 }
