@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Övriga riskfaktorer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260821p">
+    <link rel="stylesheet" href="styles.css?v=20260821q">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -64,6 +64,30 @@
                     </div>
                 </header>
 
+            <section class="riskhoj-katalog-section" id="riskhoj-katalog-section">
+                <div class="container">
+                    <div class="collapsible-card open" id="riskhoj-katalog-card">
+                        <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                            <div class="collapsible-title"><i class="fas fa-tags"></i> Riskhöjande faktorer övrigt — allvarlighet</div>
+                            <i class="fas fa-chevron-down collapsible-chevron"></i>
+                        </div>
+                        <div class="collapsible-body">
+                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual. <strong>Hög-golv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen.</p>
+                            <div id="riskhoj-katalog-list" class="riskhoj-katalog-list"></div>
+                            <div class="riskhoj-katalog-add">
+                                <input id="riskhoj-katalog-ny" class="form-input" placeholder="Ny tagg, t.ex. många byten av redovisningsbyråer">
+                                <select id="riskhoj-katalog-ny-klass" class="form-select">
+                                    <option value="BIDRAR_VID_KOMBINATION">Bidrar vid kombination</option>
+                                    <option value="GOLV_HOG">Hög-golv</option>
+                                    <option value="INFORMATIV">Informativ</option>
+                                </select>
+                                <button type="button" class="btn btn-primary btn-sm" id="riskhoj-katalog-add">Lägg till</button>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="riskhoj-katalog-save">Spara katalogen</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Risk Assessment List -->
             <section class="risk-assessment-section">
@@ -399,7 +423,8 @@
     <script src="js/components.js"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/risk-skala.js?v=7"></script>
+    <script src="js/kund-riskprofil.js?v=5"></script>
     <script src="js/ai-falt-granskning.js?v=9"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=13"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=14"></script>
 </body>
 </html>

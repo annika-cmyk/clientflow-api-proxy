@@ -5265,6 +5265,17 @@ body.sidebar-collapsed .logout-btn {
 .riskf-checkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.4rem; margin-bottom: 0.5rem; }
 .riskf-check-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; transition: background 0.12s; user-select: none; font-size: 0.83rem; color: var(--text); }
 .riskf-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
+.riskf-check-item--golv-hog { border-color: #ef4444; background: #fef2f2; }
+.riskf-check-item--golv-hog:hover { background: #fee2e2; border-color: #dc2626; }
+.riskf-golv-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #991b1b; letter-spacing: 0.02em; text-transform: uppercase; }
+.riskf-chip--golv-hog { box-shadow: inset 3px 0 0 #ef4444; }
+.riskhoj-katalog-section { margin: 0 0 1.5rem; }
+.riskhoj-katalog-list { display: flex; flex-direction: column; gap: 0.45rem; margin: 0.75rem 0; }
+.riskhoj-katalog-rad { display: flex; gap: 0.75rem; align-items: center; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; }
+.riskhoj-katalog-rad--golv { border-color: #ef4444; background: #fef2f2; }
+.riskhoj-katalog-namn { flex: 1; font-size: 0.88rem; }
+.riskhoj-katalog-klass { width: 14rem; }
+.riskhoj-katalog-add { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0; }
 .riskf-check-item input[type="checkbox"] { display: none; }
 .riskf-check-item input:checked ~ .tjanst-check-box { background: #6366f1; border-color: #6366f1; }
 .riskf-check-item input:checked ~ .tjanst-check-box::after { display: block; }

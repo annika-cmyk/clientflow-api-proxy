@@ -5265,16 +5265,36 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
       risker = KundRiskprofil.mergeHogriskBranschRisker(f, riskRecs, extra);
     }
   }
+  const katalog = await loadByraRiskhojandeKatalog(f, token, baseId);
   return {
     tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
     riskfaktorer: KundRiskprofil.itemsFromRiskRecords(risker)
-      .concat(KundRiskprofil.itemsFromRiskhojandeFlags(f, extra.concat(risker)))
+      .concat(KundRiskprofil.itemsFromRiskhojandeFlags(f, extra.concat(risker), katalog)),
+    katalog
   };
+}
+
+const BYRA_RISKHOJANDE_KATALOG_FIELD = 'Riskhöjande taggklass';
+
+async function loadByraRiskhojandeKatalog(fields, token, baseId) {
+  const byraId = String((fields || {})['Byrå ID'] || (fields || {}).Byrå || '').trim();
+  if (!byraId || !token) return {};
+  try {
+    const recs = await fetchAirtableByByraId('Byråer', byraId, token, baseId);
+    const rec = recs && recs[0];
+    return KundRiskprofil.parseRiskhojandeKatalog(rec && rec.fields && rec.fields[BYRA_RISKHOJANDE_KATALOG_FIELD]);
+  } catch (e) {
+    return {};
+  }
 }
 
 async function computeKundForeslagen(fields, token, baseId) {
   const inputs = await loadKundForeslagenInputs(fields, token, baseId);
-  return KundRiskprofil.beraknaForeslagenNiva(inputs);
+  return KundRiskprofil.applyRiskhojandeGolv(
+    KundRiskprofil.beraknaForeslagenNiva(inputs),
+    fields,
+    inputs.katalog
+  );
 }
 
 async function loadForeslagenRecordMaps(records, token, baseId) {
@@ -6718,6 +6738,86 @@ app.get('/api/kund-riskprofil/avvikelser', authenticateToken, async (req, res) =
   } catch (error) {
     console.error('GET kund-riskprofil/avvikelser:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte hämta avvikelser' });
+  }
+});
+
+app.get('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const overrides = KundRiskprofil.parseRiskhojandeKatalog(
+      result.record.fields && result.record.fields[BYRA_RISKHOJANDE_KATALOG_FIELD]
+    );
+    const katalog = KundRiskprofil.mergeRiskhojandeKatalog(overrides);
+    res.json({ success: true, katalog, overrides, defaults: KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG });
+  } catch (error) {
+    console.error('GET riskhojande-katalog:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte hämta taggkatalogen' });
+  }
+});
+
+app.patch('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const incoming = KundRiskprofil.parseRiskhojandeKatalog(req.body && (req.body.katalog || req.body.overrides));
+    const merged = KundRiskprofil.mergeRiskhojandeKatalog(incoming);
+    await ensureByraRiskhojandeKatalogField(airtableAccessToken, airtableBaseId);
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}/${result.record.id}`,
+      { fields: { [BYRA_RISKHOJANDE_KATALOG_FIELD]: JSON.stringify(merged) }, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
+    );
+    res.json({ success: true, katalog: merged });
+  } catch (error) {
+    console.error('PATCH riskhojande-katalog:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data?.error?.message || error.message || 'Kunde inte spara taggkatalogen'
+    });
+  }
+});
+
+app.get('/api/kund-riskprofil/riskhojande-golv-rapport', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const byraKatalog = await loadByraRiskhojandeKatalog(
+      { 'Byrå ID': userData.byraId || '' },
+      airtableAccessToken,
+      airtableBaseId
+    );
+    const kunder = records.map((rec) => {
+      const f = rec.fields || {};
+      const hit = KundRiskprofil.golvSkulleHojaBedomd(f, byraKatalog);
+      if (!hit) return null;
+      return {
+        id: rec.id,
+        namn: f.Namn || f['Företagsnamn'] || '',
+        orgnr: f.Orgnr || f.Organisationsnummer || '',
+        bedomd: hit.bedomd || '',
+        golvNiva: hit.golvNiva,
+        drivandeFaktor: hit.drivandeFaktor,
+        flaggor: KundRiskprofil.riskhojandeVal(f)
+      };
+    }).filter(Boolean);
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      antal: kunder.length,
+      kunder
+    });
+  } catch (error) {
+    console.error('GET riskhojande-golv-rapport:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa golvrapporten' });
   }
 });
 
@@ -11299,6 +11399,28 @@ async function getByraerTableMeta(airtableToken, baseId) {
     }) || null;
   } catch (_) {
     return null;
+  }
+}
+
+async function ensureByraRiskhojandeKatalogField(airtableToken, baseId) {
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(BYRA_RISKHOJANDE_KATALOG_FIELD)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: BYRA_RISKHOJANDE_KATALOG_FIELD,
+        type: 'multilineText',
+        description: 'JSON-katalog för Riskhöjande faktorer övrigt: GOLV_HOG, BIDRAR_VID_KOMBINATION, INFORMATIV.'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensureByraRiskhojandeKatalogField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
   }
 }
 

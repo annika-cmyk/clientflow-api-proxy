@@ -128,6 +128,140 @@
   }
 
   var RISKHOJANDE_DEFAULT_PRODUCT = 12;
+  var RISKHOJANDE_GOLV_PRODUCT = 16;
+  var RISKHOJANDE_KLASS = {
+    GOLV_HOG: 'GOLV_HOG',
+    BIDRAR: 'BIDRAR_VID_KOMBINATION',
+    INFORMATIV: 'INFORMATIV'
+  };
+
+  var DEFAULT_RISKHOJANDE_KATALOG = {
+    'Historik av brott eller ekonomisk misskötsel': 'GOLV_HOG',
+    'Otydlig affärsmodell': 'BIDRAR_VID_KOMBINATION',
+    'Transaktioner utan tydligt syfte': 'BIDRAR_VID_KOMBINATION',
+    'Svårt att bekräfta identitet': 'BIDRAR_VID_KOMBINATION',
+    'Svårt att få svar på frågor': 'BIDRAR_VID_KOMBINATION',
+    'Komplicerad struktur': 'BIDRAR_VID_KOMBINATION',
+    'Mkt ändringar i styrelse, adress eller firmateckning': 'BIDRAR_VID_KOMBINATION',
+    'Svårt att få kontakt med ägare/styrelse/huvudmän': 'BIDRAR_VID_KOMBINATION',
+    'Kontanthantering': 'BIDRAR_VID_KOMBINATION',
+    'Kopplingar till andra länder, särskilt länder utanför EU': 'BIDRAR_VID_KOMBINATION',
+    'Bristfälliga bokföringsrutiner': 'BIDRAR_VID_KOMBINATION',
+    'Många byten av redovisningsbyråer': 'BIDRAR_VID_KOMBINATION',
+    'Företaget har många kunder på distans': 'INFORMATIV'
+  };
+
+  function normalizeRiskhojandeKlass(raw) {
+    var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
+    if (v === 'GOLV_HOG' || v === 'GOLV' || v === 'HOG' || v === 'HÖG') return RISKHOJANDE_KLASS.GOLV_HOG;
+    if (v === 'BIDRAR_VID_KOMBINATION' || v === 'BIDRAR' || v === 'KOMBINATION') return RISKHOJANDE_KLASS.BIDRAR;
+    if (v === 'INFORMATIV' || v === 'INFO') return RISKHOJANDE_KLASS.INFORMATIV;
+    return '';
+  }
+
+  function parseRiskhojandeKatalog(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    try {
+      var parsed = JSON.parse(String(raw));
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function mergeRiskhojandeKatalog(overrides) {
+    var out = {};
+    Object.keys(DEFAULT_RISKHOJANDE_KATALOG).forEach(function (k) {
+      out[k] = DEFAULT_RISKHOJANDE_KATALOG[k];
+    });
+    var extra = parseRiskhojandeKatalog(overrides);
+    Object.keys(extra).forEach(function (k) {
+      var label = canonicalRiskhojandeLabel(k);
+      var klass = normalizeRiskhojandeKlass(extra[k]);
+      if (label && klass) out[label] = klass;
+    });
+    return out;
+  }
+
+  function klassForRiskhojande(namn, katalog) {
+    var canon = canonicalRiskhojandeLabel(namn);
+    var want = foldNamn(canon);
+    if (!want) return RISKHOJANDE_KLASS.INFORMATIV;
+    var map = katalog && typeof katalog === 'object' ? katalog : DEFAULT_RISKHOJANDE_KATALOG;
+    if (map[canon]) return normalizeRiskhojandeKlass(map[canon]) || RISKHOJANDE_KLASS.BIDRAR;
+    var found = '';
+    Object.keys(map).forEach(function (k) {
+      if (found) return;
+      var fk = foldNamn(canonicalRiskhojandeLabel(k));
+      if (!fk) return;
+      if (fk === want || fk.indexOf(want) === 0 || want.indexOf(fk) === 0) {
+        found = normalizeRiskhojandeKlass(map[k]);
+      }
+    });
+    return found || RISKHOJANDE_KLASS.BIDRAR;
+  }
+
+  function beraknaRiskhojandeGolv(fields, katalog) {
+    var labels = riskhojandeVal(fields);
+    if (!labels.length) return null;
+    var map = mergeRiskhojandeKatalog(katalog);
+    var golv = [];
+    var bidrar = [];
+    labels.forEach(function (namn) {
+      var klass = klassForRiskhojande(namn, map);
+      if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golv.push(namn);
+      else if (klass === RISKHOJANDE_KLASS.BIDRAR) bidrar.push(namn);
+    });
+    if (golv.length) {
+      return {
+        niva: 'Hög',
+        product: RISKHOJANDE_GOLV_PRODUCT,
+        namn: golv.join(', '),
+        drivandeFaktor: 'Golv satt av: ' + golv.join(', '),
+        kalla: golv
+      };
+    }
+    if (bidrar.length >= 2) {
+      return {
+        niva: 'Hög',
+        product: RISKHOJANDE_GOLV_PRODUCT,
+        namn: bidrar.join(' + '),
+        drivandeFaktor: 'Golv satt av: ' + bidrar.join(' + '),
+        kalla: bidrar
+      };
+    }
+    return null;
+  }
+
+  function applyRiskhojandeGolv(result, fields, katalog) {
+    var base = result || { niva: '', product: null, drivandeFaktor: '', drivande: null, poster: [] };
+    var golv = beraknaRiskhojandeGolv(fields, katalog);
+    if (!golv) return base;
+    if (rankOf(base.niva) > rankOf(golv.niva)) return base;
+    return {
+      niva: golv.niva,
+      product: Math.max(Number(base.product) || 0, golv.product),
+      drivandeFaktor: golv.drivandeFaktor,
+      drivande: { kind: 'riskfaktor', namn: golv.namn, product: golv.product, level: golv.niva },
+      poster: base.poster || [],
+      golv: golv
+    };
+  }
+
+  function golvSkulleHojaBedomd(fields, katalog) {
+    var golv = beraknaRiskhojandeGolv(fields, katalog);
+    if (!golv) return null;
+    var bedomd = readResidual(fields);
+    if (!bedomd || rankOf(bedomd) < rankOf(golv.niva)) {
+      return {
+        golvNiva: golv.niva,
+        bedomd: bedomd || '',
+        drivandeFaktor: golv.drivandeFaktor
+      };
+    }
+    return null;
+  }
 
   function canonicalRiskhojandeLabel(namn) {
     var raw = trimStr(namn);
@@ -174,8 +308,11 @@
     return found;
   }
 
-  function itemsFromRiskhojandeFlags(fields, extraRecords) {
+  function itemsFromRiskhojandeFlags(fields, extraRecords, katalog) {
+    var map = mergeRiskhojandeKatalog(katalog);
     return riskhojandeVal(fields).map(function (namn) {
+      var klass = klassForRiskhojande(namn, map);
+      if (klass === RISKHOJANDE_KLASS.INFORMATIV) return null;
       var rec = findRiskRecordByNamn(extraRecords, namn);
       if (rec) {
         var fromRec = itemsFromRiskRecords([rec])[0];
@@ -184,13 +321,14 @@
           return fromRec;
         }
       }
+      var isGolv = klass === RISKHOJANDE_KLASS.GOLV_HOG;
       return {
         kind: 'riskfaktor',
         namn: namn,
-        residualProduct: RISKHOJANDE_DEFAULT_PRODUCT,
-        residualLevel: 'Förhöjd'
+        residualProduct: isGolv ? RISKHOJANDE_GOLV_PRODUCT : RISKHOJANDE_DEFAULT_PRODUCT,
+        residualLevel: isGolv ? 'Hög' : 'Förhöjd'
       };
-    });
+    }).filter(Boolean);
   }
 
   function formatDrivandeFaktor(kind, namn, product) {
@@ -359,10 +497,11 @@
     if (opts && Array.isArray(opts.allaRiskRecords)) extra = extra.concat(opts.allaRiskRecords);
     extra = extra.concat(riskRecords || []);
     risker = mergeHogriskBranschRisker(f, risker, extra);
-    return beraknaForeslagenNiva({
+    var katalog = opts && opts.katalog;
+    return applyRiskhojandeGolv(beraknaForeslagenNiva({
       tjanster: itemsFromTjanstRecords(tjanster),
-      riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra))
-    });
+      riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra, katalog))
+    }), f, katalog);
   }
 
   function residualAvvikerFranForeslagen(residual, suggested) {
@@ -472,9 +611,19 @@
     findHogriskBranschRecords: findHogriskBranschRecords,
     mergeHogriskBranschRisker: mergeHogriskBranschRisker,
     RISKHOJANDE_DEFAULT_PRODUCT: RISKHOJANDE_DEFAULT_PRODUCT,
+    RISKHOJANDE_GOLV_PRODUCT: RISKHOJANDE_GOLV_PRODUCT,
+    RISKHOJANDE_KLASS: RISKHOJANDE_KLASS,
+    DEFAULT_RISKHOJANDE_KATALOG: DEFAULT_RISKHOJANDE_KATALOG,
     canonicalRiskhojandeLabel: canonicalRiskhojandeLabel,
     riskhojandeVal: riskhojandeVal,
     hasRiskhojandeVal: hasRiskhojandeVal,
+    normalizeRiskhojandeKlass: normalizeRiskhojandeKlass,
+    parseRiskhojandeKatalog: parseRiskhojandeKatalog,
+    mergeRiskhojandeKatalog: mergeRiskhojandeKatalog,
+    klassForRiskhojande: klassForRiskhojande,
+    beraknaRiskhojandeGolv: beraknaRiskhojandeGolv,
+    applyRiskhojandeGolv: applyRiskhojandeGolv,
+    golvSkulleHojaBedomd: golvSkulleHojaBedomd,
     itemsFromRiskhojandeFlags: itemsFromRiskhojandeFlags,
     foreslagenFromLinkedRecords: foreslagenFromLinkedRecords,
     formatDrivandeFaktor: formatDrivandeFaktor,

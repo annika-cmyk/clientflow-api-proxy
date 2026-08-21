@@ -6542,21 +6542,27 @@ class CustomerCardManager {
         if (!container) return;
 
         // Hämta dynamiska alternativ för riskfaktorfälten om ej cachade
-        if (!this._riskhojAlternativ || !this._risksankAlternativ) {
+        if (!this._riskhojAlternativ || !this._risksankAlternativ || !this._riskhojKatalog) {
             try {
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-                const [resHoj, resSank] = await Promise.all([
+                const [resHoj, resSank, resKat] = await Promise.all([
                     fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Riskhöjande faktorer övrigt')}`, { ...getAuthOptsKundkort() }),
-                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { ...getAuthOptsKundkort() })
+                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { ...getAuthOptsKundkort() }),
+                    fetch(`${baseUrl}/api/riskhojande-katalog`, { ...getAuthOptsKundkort() })
                 ]);
                 const dataHoj = resHoj.ok ? await resHoj.json() : {};
                 const dataSank = resSank.ok ? await resSank.json() : {};
+                const dataKat = resKat.ok ? await resKat.json() : {};
                 this._riskhojAlternativ = this._normalizeRiskhojAlternativ(dataHoj.choices || []);
                 this._risksankAlternativ = (dataSank.choices || []).filter(c => c && c !== '---');
+                this._riskhojKatalog = (window.KundRiskprofil && KundRiskprofil.mergeRiskhojandeKatalog)
+                    ? KundRiskprofil.mergeRiskhojandeKatalog(dataKat.katalog || dataKat.overrides || {})
+                    : (dataKat.katalog || {});
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta riskfaktor-alternativ:', e.message);
                 this._riskhojAlternativ = this._riskhojAlternativ || [];
                 this._risksankAlternativ = this._risksankAlternativ || [];
+                this._riskhojKatalog = this._riskhojKatalog || (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
             }
         }
 
@@ -7099,23 +7105,36 @@ class CustomerCardManager {
                 : valda.length
                     ? `<div class="riskf-chips">${valda.map(v => {
                         const label = this.formatFieldDisplay(v) || String(v || '');
-                        return label ? `<span class="${chipClass}">${this._esc(label)}</span>` : '';
+                        if (!label) return '';
+                        const golv = id === 'riskhojande-ovrigt' && window.KundRiskprofil && KundRiskprofil.klassForRiskhojande
+                            && KundRiskprofil.klassForRiskhojande(label, this._riskhojKatalog) === 'GOLV_HOG';
+                        return `<span class="${chipClass}${golv ? ' riskf-chip--golv-hog' : ''}">${this._esc(label)}</span>`;
                     }).filter(Boolean).join('')}</div>`
                     : '<span class="missing-data">Inga valda</span>');
 
         const hint = id === 'riskhojande-ovrigt'
-            ? '<p class="kyc-hint" style="margin-top:0.5rem;">Valda faktorer räknas in i beräknad residual — minst Förhöjd om faktorn saknar egen S×K på byrån.</p>'
+            ? '<p class="kyc-hint" style="margin-top:0.5rem;">Valda faktorer räknas in i beräknad residual. Röd markering = sätter golv Hög ensam. Två eller fler övriga riskhöjande kryss sätter samma golv.</p>'
             : '';
+        const klassOf = (alt) => {
+            if (id !== 'riskhojande-ovrigt' || !window.KundRiskprofil) return '';
+            return KundRiskprofil.klassForRiskhojande
+                ? KundRiskprofil.klassForRiskhojande(alt, this._riskhojKatalog)
+                : '';
+        };
         const editContent = typ === 'text'
             ? `<textarea id="riskf-input-${id}" class="kunduppgifter-input" rows="3">${värde || ''}</textarea>`
             : `<div class="riskf-checkgrid">
-                ${filtAlt.map(alt => `
-                    <label class="riskf-check-item">
-                        <input type="checkbox" name="riskf-${id}" value="${alt}" ${valda.includes(alt) ? 'checked' : ''}
+                ${filtAlt.map(alt => {
+                    const klass = klassOf(alt);
+                    const golv = klass === 'GOLV_HOG';
+                    return `
+                    <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}">
+                        <input type="checkbox" name="riskf-${id}" value="${this._esc(alt)}" ${valda.includes(alt) ? 'checked' : ''}
                             onchange="customerCardManager.updateRiskfaktorChips('${id}')">
                         <span class="tjanst-check-box"></span>
-                        <span class="tjanst-check-label">${alt}</span>
-                    </label>`).join('')}
+                        <span class="tjanst-check-label">${this._esc(alt)}${golv ? '<em class="riskf-golv-mark">Hög-golv</em>' : ''}</span>
+                    </label>`;
+                }).join('')}
                </div>${hint}`;
 
         return `
@@ -7263,10 +7282,14 @@ class CustomerCardManager {
                 konsekvensEfter: scored.konsekvensEfter
             };
         });
+        const fields = this.customerData?.fields || {};
         const flagItems = KP.itemsFromRiskhojandeFlags
-            ? KP.itemsFromRiskhojandeFlags(this.customerData?.fields || {}, this._allaRisker || [])
+            ? KP.itemsFromRiskhojandeFlags(fields, this._allaRisker || [], this._riskhojKatalog)
             : [];
-        return KP.beraknaForeslagenNiva({ tjanster, riskfaktorer: riskfaktorer.concat(flagItems) });
+        const base = KP.beraknaForeslagenNiva({ tjanster, riskfaktorer: riskfaktorer.concat(flagItems) });
+        return KP.applyRiskhojandeGolv
+            ? KP.applyRiskhojandeGolv(base, fields, this._riskhojKatalog)
+            : base;
     }
 
     _canonicalRiskhojandeLabel(namn) {

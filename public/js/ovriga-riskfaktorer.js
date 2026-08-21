@@ -28,6 +28,7 @@ class RiskFactorsManager {
         
         // Apply initial filtering based on user role
         this.applyFilters();
+        this.setupRiskhojandeKatalog();
     }
 
     async loadDatasourceConfig() {
@@ -1132,6 +1133,96 @@ class RiskFactorsManager {
                 notification.remove();
             }
         }, 5000);
+    }
+
+    setupRiskhojandeKatalog() {
+        const addBtn = document.getElementById('riskhoj-katalog-add');
+        const saveBtn = document.getElementById('riskhoj-katalog-save');
+        if (addBtn) addBtn.addEventListener('click', () => this.addRiskhojandeKatalogRad());
+        if (saveBtn) saveBtn.addEventListener('click', () => this.saveRiskhojandeKatalog());
+        this.loadRiskhojandeKatalog();
+    }
+
+    riskhojandeKlassLabel(klass) {
+        if (klass === 'GOLV_HOG') return 'Hög-golv';
+        if (klass === 'INFORMATIV') return 'Informativ';
+        return 'Bidrar vid kombination';
+    }
+
+    async loadRiskhojandeKatalog() {
+        const list = document.getElementById('riskhoj-katalog-list');
+        if (!list) return;
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/riskhojande-katalog`);
+            const data = res.ok ? await res.json() : {};
+            const KP = window.KundRiskprofil;
+            this._riskhojKatalog = KP && KP.mergeRiskhojandeKatalog
+                ? KP.mergeRiskhojandeKatalog(data.katalog || data.overrides || {})
+                : (data.katalog || {});
+        } catch (e) {
+            this._riskhojKatalog = (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
+        }
+        this.renderRiskhojandeKatalog();
+    }
+
+    renderRiskhojandeKatalog() {
+        const list = document.getElementById('riskhoj-katalog-list');
+        if (!list) return;
+        const katalog = this._riskhojKatalog || {};
+        const names = Object.keys(katalog).sort((a, b) => a.localeCompare(b, 'sv'));
+        list.innerHTML = names.map((namn) => {
+            const klass = katalog[namn];
+            return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
+                <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
+                <select class="form-select riskhoj-katalog-klass" data-namn="${namn.replace(/"/g, '&quot;')}">
+                    <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-golv</option>
+                    <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
+                    <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
+                </select>
+            </div>`;
+        }).join('');
+        list.querySelectorAll('.riskhoj-katalog-klass').forEach((sel) => {
+            sel.addEventListener('change', () => {
+                const namn = sel.getAttribute('data-namn');
+                if (!namn) return;
+                this._riskhojKatalog = Object.assign({}, this._riskhojKatalog, { [namn]: sel.value });
+                this.renderRiskhojandeKatalog();
+            });
+        });
+    }
+
+    addRiskhojandeKatalogRad() {
+        const input = document.getElementById('riskhoj-katalog-ny');
+        const sel = document.getElementById('riskhoj-katalog-ny-klass');
+        const KP = window.KundRiskprofil;
+        const namn = KP && KP.canonicalRiskhojandeLabel
+            ? KP.canonicalRiskhojandeLabel(input && input.value)
+            : String((input && input.value) || '').trim();
+        const klass = (sel && sel.value) || 'BIDRAR_VID_KOMBINATION';
+        if (!namn) return;
+        this._riskhojKatalog = Object.assign({}, this._riskhojKatalog, { [namn]: klass });
+        if (input) input.value = '';
+        this.renderRiskhojandeKatalog();
+    }
+
+    async saveRiskhojandeKatalog() {
+        const saveBtn = document.getElementById('riskhoj-katalog-save');
+        const orig = saveBtn ? saveBtn.innerHTML : '';
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = 'Sparar...'; }
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/riskhojande-katalog`, {
+                method: 'PATCH',
+                body: JSON.stringify({ katalog: this._riskhojKatalog || {} })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this._riskhojKatalog = data.katalog || this._riskhojKatalog;
+            this.showNotification('Taggkatalogen sparad', 'success');
+        } catch (e) {
+            this.showNotification(e.message || 'Kunde inte spara katalogen', 'error');
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = orig; }
+        }
     }
 }
 
