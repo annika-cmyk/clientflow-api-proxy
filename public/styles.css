@@ -1721,6 +1721,29 @@ body.sidebar-collapsed .logout-btn {
     max-width: 12rem;
 }
 
+.date-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 16rem;
+    width: 100%;
+}
+
+.date-input-wrap .date-input-text {
+    min-width: 8.5rem;
+    flex: 1 1 auto;
+}
+
+.date-input-wrap input[type="date"].date-input-picker {
+    width: 2.6rem;
+    min-width: 2.6rem;
+    max-width: 2.6rem;
+    padding-left: 0.15rem;
+    padding-right: 0.15rem;
+    flex: 0 0 2.6rem;
+    cursor: pointer;
+}
+
 /* Byrå & Användare – samma tabb-stil som kundkort */
 .byra-anvandare-tabs .tab-navigation {
     display: flex;
