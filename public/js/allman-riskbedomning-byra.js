@@ -51,6 +51,10 @@
     return !t || /^[—\-–\s.]+$/.test(t);
   }
 
+  function isIdentifieradeDump(text) {
+    return /\*\*Tjänst:|\*\*Produkter och tjänster\*\*|Tjänstebeskrivning och inneboende risk/.test(String(text || ''));
+  }
+
   function sanitizeIdentifieradeRiskerText(text) {
     if (!text || typeof text !== 'string') return text || '';
     var out = text;
@@ -143,7 +147,16 @@
     return m[3] + ' ' + mo + ' ' + m[1];
   }
 
+  function identifieradeRiskerReferralHtml() {
+    return '<div class="byra-card-formatted"><p>Identifierade risker och sårbarheter fylls i på Byråns tjänster och Övriga riskfaktorer. Hela underlaget från de sidorna visas i Dokumentationen och i den exporterade PDF:en till Länsstyrelsen.</p></div>';
+  }
+
   function updateCardView(card) {
+    if (card.getAttribute('data-field-id') === 'fld-identifierade-risker') {
+      var liveView = card.querySelector('.byra-card-value');
+      if (liveView) liveView.innerHTML = identifieradeRiskerReferralHtml();
+      return;
+    }
     var fid = card.getAttribute('data-field-id');
     if (fid) {
       var el = getEl(fid);
@@ -223,7 +236,10 @@
       var el = getEl(m.id);
       if (!el) return;
       var val = getFieldValue(fields, m.airtable);
-      if (m.airtable === RISK_FALT_AIRTABLE && val) val = sanitizeIdentifieradeRiskerText(String(val));
+      if (m.airtable === RISK_FALT_AIRTABLE) {
+        val = val && isIdentifieradeDump(val) ? '' : val;
+        if (val) val = sanitizeIdentifieradeRiskerText(String(val));
+      }
       if (m.type === 'number') el.value = val === '' || val == null ? '' : Number(val);
       else if (m.type === 'date') el.value = val ? String(val).substring(0, 10) : '';
       else el.value = val == null ? '' : String(val);

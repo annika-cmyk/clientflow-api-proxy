@@ -294,9 +294,14 @@
       }
       getEl('byrarutiner-view').innerHTML = rutinerHtml.join('');
 
+      const compiledIdentifierade = typeof data.identifieradeRiskerCompiled === 'string'
+        ? data.identifieradeRiskerCompiled
+        : '';
       const html = [];
       for (const { key, label } of LABELS) {
-        const val = getField(fields, key);
+        const val = key === '4. Identifierade Risker och Sårbarheter' && compiledIdentifierade
+          ? compiledIdentifierade
+          : getField(fields, key);
         if (key === 'Antal anställda' || key === 'Omsättning' || key === 'Antal kundföretag') {
           continue; // visas tillsammans
         }
