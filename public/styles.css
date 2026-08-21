@@ -12762,6 +12762,63 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .btn-ai:hover { background: var(--accent-dark); }
 .btn-ai:disabled { opacity: 0.7; cursor: progress; }
 .btn-ai.loading i { animation: spin 1s linear infinite; }
+
+.ai-review {
+    margin: 0.75rem 0 0;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid var(--accent-light, #c7d2fe);
+    border-radius: 12px;
+    background: var(--accent-tint, #eef2ff);
+}
+.ai-review-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+}
+.ai-review-head p {
+    margin: 0.2rem 0 0;
+    font-size: 0.82rem;
+    color: #475569;
+}
+.ai-review-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.ai-review-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.7rem 0.8rem;
+}
+.ai-review-card h5 {
+    margin: 0 0 0.35rem;
+    font-size: 0.86rem;
+}
+.ai-review-comment,
+.ai-review-ok {
+    margin: 0 0 0.45rem;
+    font-size: 0.84rem;
+    color: #334155;
+    line-height: 1.45;
+}
+.ai-review-forslag {
+    margin: 0 0 0.55rem;
+    padding: 0.55rem 0.65rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #0f172a;
+}
+.ai-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .dyn-list { display: flex; flex-direction: column; gap: 0.5rem; }

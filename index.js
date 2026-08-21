@@ -73,6 +73,7 @@ const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
+const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
   resolveResponsesModel,
@@ -19994,10 +19995,9 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
     ? formatByraProfilUserMessageBlock(byraProfil)
     : 'Byråns profil:\n- (Profil saknas – kalibrera utifrån generella antaganden för svenska redovisningsbyråer)';
 
-  const befintligBeskrivning = (befintligt.tjanstebeskrivning || '').toString().trim();
-  const befintligtBlock = befintligBeskrivning
-    ? `\nBefintlig tjänstebeskrivning (kan förbättras):\n${befintligBeskrivning}`
-    : '';
+  const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
+  const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
+  const existingKeys = AiFaltGranskning.filledTjanstKeys(befintligt);
 
   const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
@@ -20012,7 +20012,7 @@ REGLER:
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
 
 ${INHERENT_DESCRIPTION_AI_RULES}
-
+${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
 Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
 Skriv INTE in byråns storlek, personal, kapacitet eller andra profiluppgifter i fältet beskrivning.
@@ -20044,7 +20044,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "hot": [ { "typ": "PT eller TF", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — https://..." } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "..." } ]${reviewMode ? `,
+  "granskning": {
+    "poster": [
+      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
+    ]
+  }` : ''}
 }
 
 ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
@@ -20062,7 +20067,7 @@ ${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.
 ${residualIn.level ? `Befintlig residualbedömning: sannolikhet ${residualIn.sannolikhet}, konsekvens ${residualIn.konsekvens} → ${residualIn.badge}` : ''}
 ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` : ''}
 
-${byraProfilUserBlock}${befintligtBlock}`;
+${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -20157,6 +20162,13 @@ ${byraProfilUserBlock}${befintligtBlock}`;
       sarbarheter,
       atgarder
     };
+    let granskningPoster = reviewMode
+      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst')
+      : [];
+    if (reviewMode && !granskningPoster.length) {
+      granskningPoster = AiFaltGranskning.fallbackPosters('tjanst', tjanstAiPayload)
+        .filter((p) => existingKeys.includes(p.falt));
+    }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const tjanstAiLog = await auditHooks.logAiGenerated({
       write: writeAuditEvent,
@@ -20170,6 +20182,10 @@ ${byraProfilUserBlock}${befintligtBlock}`;
     });
     res.json({
       ...tjanstAiPayload,
+      granskning: {
+        lage: reviewMode ? 'granska' : 'generera',
+        poster: granskningPoster
+      },
       auditLogId: tjanstAiLog && tjanstAiLog.id
     });
   } catch (error) {
@@ -20204,21 +20220,22 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const befintligt = req.body?.befintligt || {};
   const inherentIn = RiskSkala.assessRisk(befintligt.sannolikhet, befintligt.konsekvens);
   const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
+  const reviewMode = AiFaltGranskning.hasExistingOvrigContent(befintligt);
+  const existingBlock = AiFaltGranskning.formatOvrigExistingBlock(befintligt);
+  const existingKeys = AiFaltGranskning.filledOvrigKeys(befintligt);
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
 
 ${byraProfilBlock}TYP AV RISKFAKTOR: ${typ || '–'}
 RISKFAKTOR: ${riskfaktor}
-${befintligt.beskrivning ? `Befintlig beskrivning: ${befintligt.beskrivning}` : ''}
 ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
-${befintligt.ptTfRelevans ? `Befintlig PT/TF-relevans: ${befintligt.ptTfRelevans}` : ''}
-
+${existingBlock ? `\n${existingBlock}\n` : ''}
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
-
+${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
@@ -20228,7 +20245,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."
+  "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."${reviewMode ? `,
+  "granskning": {
+    "poster": [
+      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|residual", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
+    ]
+  }` : ''}
 }
 
 SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen efter åtgärden. Returnera bara talen — risknivån räknas som S×K.`;
@@ -20295,6 +20317,13 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       riskbedomning: fallbackScores.level || fallbackLevel,
       atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
     };
+    let granskningPoster = reviewMode
+      ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig')
+      : [];
+    if (reviewMode && !granskningPoster.length) {
+      granskningPoster = AiFaltGranskning.fallbackPosters('ovrig', faktorAiPayload)
+        .filter((p) => existingKeys.includes(p.falt));
+    }
     const userDataFaktor = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const faktorAiLog = await auditHooks.logAiGenerated({
       write: writeAuditEvent,
@@ -20308,6 +20337,10 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
     });
     res.json({
       ...faktorAiPayload,
+      granskning: {
+        lage: reviewMode ? 'granska' : 'generera',
+        poster: granskningPoster
+      },
       auditLogId: faktorAiLog && faktorAiLog.id
     });
   } catch (error) {

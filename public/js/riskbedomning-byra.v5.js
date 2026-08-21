@@ -787,6 +787,7 @@ class RiskAssessmentManager {
         this.setTjanstTab('oversikt');
         this.updateTjanstLists();
         this.updateRiskBadges();
+        if (window.AiFaltGranskning) AiFaltGranskning.hideReview(document.getElementById('tjanst-ai-review'));
     }
 
     fillModal(risk) {
@@ -867,6 +868,85 @@ class RiskAssessmentManager {
         }
     }
 
+    applyTjanstAiScores(data, { onlyEmpty = false, existing = {} } = {}) {
+        const Ai = window.AiFaltGranskning;
+        const emptySxk = !onlyEmpty || !(Ai && (Ai.isFilledScore(existing.sannolikhet) || Ai.isFilledScore(existing.konsekvens)));
+        const emptyRes = !onlyEmpty || !(Ai && (Ai.isFilledScore(existing.sannolikhetEfter) || Ai.isFilledScore(existing.konsekvensEfter)));
+        if (emptySxk && data.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet', data.sannolikhet);
+        if (emptySxk && data.konsekvens != null) this.setScoreSelect('tjanst-konsekvens', data.konsekvens);
+        if (emptyRes && data.sannolikhetEfter != null) this.setScoreSelect('tjanst-sannolikhet-efter', data.sannolikhetEfter);
+        if (emptyRes && data.konsekvensEfter != null) this.setScoreSelect('tjanst-konsekvens-efter', data.konsekvensEfter);
+        if (emptySxk && (data.sannolikhet == null || data.konsekvens == null) && data.riskniva && window.RiskSkala) {
+            const inferred = RiskSkala.scoresFromLegacyLevel(data.riskniva);
+            if (data.sannolikhet == null) this.setScoreSelect('tjanst-sannolikhet', inferred.sannolikhet);
+            if (data.konsekvens == null) this.setScoreSelect('tjanst-konsekvens', inferred.konsekvens);
+        }
+        this.updateRiskBadges();
+    }
+
+    replaceTjanstList(kind, items) {
+        const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
+        const el = document.getElementById(listId);
+        if (el) el.innerHTML = '';
+        const add = kind === 'hot'
+            ? (row) => this.addHotRow(row)
+            : kind === 'sarbarheter'
+                ? (row) => this.addSarbarhetRow(row)
+                : (row) => this.addAtgardRow(row);
+        (items || []).forEach(add);
+        this.updateTjanstLists();
+    }
+
+    applyTjanstAiAll(data) {
+        if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
+        this.applyTjanstAiScores(data);
+        this.replaceTjanstList('hot', data.hot);
+        this.replaceTjanstList('sarbarheter', data.sarbarheter);
+        this.replaceTjanstList('atgarder', data.atgarder);
+    }
+
+    applyTjanstAiIfEmpty(existing, data) {
+        const Ai = window.AiFaltGranskning;
+        if (!(Ai && Ai.isFilledText(existing.tjanstebeskrivning)) && data.tjanstebeskrivning) {
+            document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
+        }
+        this.applyTjanstAiScores(data, { onlyEmpty: true, existing });
+        if (!(existing.hot || []).length && (data.hot || []).length) this.replaceTjanstList('hot', data.hot);
+        if (!(existing.sarbarheter || []).length && (data.sarbarheter || []).length) {
+            this.replaceTjanstList('sarbarheter', data.sarbarheter);
+        }
+        if (!(existing.atgarder || []).length && (data.atgarder || []).length) {
+            this.replaceTjanstList('atgarder', data.atgarder);
+        }
+    }
+
+    applyTjanstAiField(falt, forslag) {
+        if (falt === 'tjanstebeskrivning') {
+            document.getElementById('tjanst-beskrivning').value = String(forslag || '');
+            this.setTjanstTab('oversikt');
+        } else if (falt === 'sxk') {
+            const scores = forslag && typeof forslag === 'object' ? forslag : {};
+            if (scores.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet', scores.sannolikhet);
+            if (scores.konsekvens != null) this.setScoreSelect('tjanst-konsekvens', scores.konsekvens);
+            this.updateRiskBadges();
+        } else if (falt === 'residual') {
+            const scores = forslag && typeof forslag === 'object' ? forslag : {};
+            if (scores.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet-efter', scores.sannolikhet);
+            if (scores.konsekvens != null) this.setScoreSelect('tjanst-konsekvens-efter', scores.konsekvens);
+            this.updateRiskBadges();
+            this.setTjanstTab('atgard');
+        } else if (falt === 'hot') {
+            this.replaceTjanstList('hot', forslag);
+            this.setTjanstTab('hot');
+        } else if (falt === 'sarbarheter') {
+            this.replaceTjanstList('sarbarheter', forslag);
+            this.setTjanstTab('sarbarhet');
+        } else if (falt === 'atgarder') {
+            this.replaceTjanstList('atgarder', forslag);
+            this.setTjanstTab('atgard');
+        }
+    }
+
     // ---- AI-förslag ----
     async generateAiSuggestion() {
         const namn = document.getElementById('tjanst-name').value.trim();
@@ -879,22 +959,26 @@ class RiskAssessmentManager {
         const btn = document.getElementById('ai-suggest-btn');
         const label = btn.querySelector('.ai-btn-label');
         const originalLabel = label.textContent;
+        const Ai = window.AiFaltGranskning;
+        const poang = this.collectRiskPoang();
+        const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
+        const befintligt = {
+            tjanstebeskrivning: document.getElementById('tjanst-beskrivning').value.trim(),
+            sannolikhet: poang.sannolikhet,
+            konsekvens: poang.konsekvens,
+            sannolikhetEfter: poang.sannolikhetEfter,
+            konsekvensEfter: poang.konsekvensEfter,
+            riskniva: inherent.level || '',
+            hot: this.collectHot(),
+            sarbarheter: this.collectSarbarhet(),
+            atgarder: this.collectAtgard()
+        };
+        const reviewMode = !!(Ai && Ai.hasExistingTjanstContent(befintligt));
         btn.disabled = true;
         btn.classList.add('loading');
-        label.textContent = 'Genererar…';
+        label.textContent = reviewMode ? 'Granskar…' : 'Genererar…';
 
         try {
-            const poang = this.collectRiskPoang();
-            const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
-            const befintligt = {
-                tjanstebeskrivning: document.getElementById('tjanst-beskrivning').value.trim(),
-                sannolikhet: poang.sannolikhet,
-                konsekvens: poang.konsekvens,
-                sannolikhetEfter: poang.sannolikhetEfter,
-                konsekvensEfter: poang.konsekvensEfter,
-                riskniva: inherent.level || ''
-            };
-
             const byraProfil = await this.fetchByraProfil();
 
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
@@ -913,30 +997,22 @@ class RiskAssessmentManager {
             const data = await response.json();
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
-            if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
-            if (data.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet', data.sannolikhet);
-            if (data.konsekvens != null) this.setScoreSelect('tjanst-konsekvens', data.konsekvens);
-            if (data.sannolikhetEfter != null) this.setScoreSelect('tjanst-sannolikhet-efter', data.sannolikhetEfter);
-            if (data.konsekvensEfter != null) this.setScoreSelect('tjanst-konsekvens-efter', data.konsekvensEfter);
-            if ((data.sannolikhet == null || data.konsekvens == null) && data.riskniva && window.RiskSkala) {
-                const inferred = RiskSkala.scoresFromLegacyLevel(data.riskniva);
-                if (data.sannolikhet == null) this.setScoreSelect('tjanst-sannolikhet', inferred.sannolikhet);
-                if (data.konsekvens == null) this.setScoreSelect('tjanst-konsekvens', inferred.konsekvens);
+            if (reviewMode) {
+                this.applyTjanstAiIfEmpty(befintligt, data);
+                const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
+                    ? data.granskning.poster
+                    : (Ai.fallbackPosters('tjanst', data).filter((p) => Ai.filledTjanstKeys(befintligt).includes(p.falt)));
+                Ai.renderReview(document.getElementById('tjanst-ai-review'), poster, {
+                    onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag)
+                });
+                this.showNotification(poster.length
+                    ? 'AI har kommenterat era texter. Kopiera in eller avfärda varje förslag.'
+                    : 'AI har fyllt tomma fält. Befintliga texter lämnades orörda.', 'success');
+            } else {
+                this.applyTjanstAiAll(data);
+                this.setTjanstTab('hot');
+                this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
             }
-            this.updateRiskBadges();
-
-            // Ersätt befintliga rader med AI-förslag
-            ['hot-list', 'sarbarhet-list', 'atgard-list'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.innerHTML = '';
-            });
-            (data.hot || []).forEach(h => this.addHotRow(h));
-            (data.sarbarheter || []).forEach(s => this.addSarbarhetRow(s));
-            (data.atgarder || []).forEach(a => this.addAtgardRow(a));
-            this.updateTjanstLists();
-            this.setTjanstTab('hot');
-
-            this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
             console.error('AI-förslag fel:', error);
             this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');

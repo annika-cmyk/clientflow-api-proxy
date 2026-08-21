@@ -666,6 +666,60 @@ class RiskFactorsManager {
         document.getElementById('completed-count').textContent = completedCount;
     }
 
+    applyOvrigAiAll(prefix, data) {
+        if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
+        if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
+        if (data.ptTfRelevans) {
+            const pt = document.getElementById(`${prefix}pt-tf`);
+            if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(data.ptTfRelevans)) || data.ptTfRelevans;
+        }
+        if (data.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet`, data.sannolikhet);
+        if (data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
+        if (data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
+        if (data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+        if ((data.sannolikhet == null || data.konsekvens == null) && data.riskbedomning && window.RiskSkala) {
+            const inferred = RiskSkala.scoresFromLegacyLevel(data.riskbedomning);
+            if (data.sannolikhet == null) this.setScoreSelect(`${prefix}sannolikhet`, inferred.sannolikhet);
+            if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
+        }
+    }
+
+    applyOvrigAiIfEmpty(prefix, existing, data) {
+        const Ai = window.AiFaltGranskning;
+        if (!(Ai && Ai.isFilledText(existing.beskrivning)) && data.beskrivning) {
+            document.getElementById(`${prefix}description`).value = data.beskrivning;
+        }
+        if (!(Ai && Ai.isFilledText(existing.atgard)) && data.atgard) {
+            document.getElementById(`${prefix}action`).value = data.atgard;
+        }
+        const emptySxk = !(Ai && (Ai.isFilledScore(existing.sannolikhet) || Ai.isFilledScore(existing.konsekvens)));
+        const emptyRes = !(Ai && (Ai.isFilledScore(existing.sannolikhetEfter) || Ai.isFilledScore(existing.konsekvensEfter)));
+        if (emptySxk && data.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet`, data.sannolikhet);
+        if (emptySxk && data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
+        if (emptyRes && data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
+        if (emptyRes && data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+    }
+
+    applyOvrigAiField(prefix, falt, forslag) {
+        if (falt === 'beskrivning') {
+            document.getElementById(`${prefix}description`).value = String(forslag || '');
+        } else if (falt === 'atgard') {
+            document.getElementById(`${prefix}action`).value = String(forslag || '');
+        } else if (falt === 'ptTfRelevans') {
+            const pt = document.getElementById(`${prefix}pt-tf`);
+            if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(forslag)) || forslag;
+        } else if (falt === 'sxk') {
+            const scores = forslag && typeof forslag === 'object' ? forslag : {};
+            if (scores.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet`, scores.sannolikhet);
+            if (scores.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, scores.konsekvens);
+        } else if (falt === 'residual') {
+            const scores = forslag && typeof forslag === 'object' ? forslag : {};
+            if (scores.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, scores.sannolikhet);
+            if (scores.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens-efter`, scores.konsekvens);
+        }
+        this.updateRiskBadges(prefix ? 'edit' : 'add');
+    }
+
     async generateAiSuggestion(mode) {
         const isEdit = mode === 'edit';
         const prefix = isEdit ? 'edit-' : '';
@@ -680,26 +734,30 @@ class RiskFactorsManager {
         const btn = document.getElementById(isEdit ? 'edit-ai-suggest-btn' : 'add-ai-suggest-btn');
         const label = btn?.querySelector('.ai-btn-label');
         const originalLabel = label ? label.textContent : '';
+        const Ai = window.AiFaltGranskning;
+        const reviewHost = document.getElementById(isEdit ? 'edit-ai-review' : 'add-ai-review');
+        const inherent = (window.RiskSkala && RiskSkala.assessRisk(
+            document.getElementById(`${prefix}sannolikhet`)?.value,
+            document.getElementById(`${prefix}konsekvens`)?.value
+        )) || {};
+        const befintligt = {
+            beskrivning: document.getElementById(`${prefix}description`)?.value?.trim() || '',
+            atgard: document.getElementById(`${prefix}action`)?.value?.trim() || '',
+            sannolikhet: document.getElementById(`${prefix}sannolikhet`)?.value || '',
+            konsekvens: document.getElementById(`${prefix}konsekvens`)?.value || '',
+            sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value || '',
+            konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value || '',
+            ptTfRelevans: document.getElementById(`${prefix}pt-tf`)?.value || '',
+            riskbedomning: inherent.level || ''
+        };
+        const reviewMode = !!(Ai && Ai.hasExistingOvrigContent(befintligt));
         if (btn) {
             btn.disabled = true;
             btn.classList.add('loading');
-            if (label) label.textContent = 'Genererar…';
+            if (label) label.textContent = reviewMode ? 'Granskar…' : 'Genererar…';
         }
 
         try {
-            const inherent = (window.RiskSkala && RiskSkala.assessRisk(
-                document.getElementById(`${prefix}sannolikhet`)?.value,
-                document.getElementById(`${prefix}konsekvens`)?.value
-            )) || {};
-            const befintligt = {
-                beskrivning: document.getElementById(`${prefix}description`)?.value?.trim() || '',
-                sannolikhet: document.getElementById(`${prefix}sannolikhet`)?.value || '',
-                konsekvens: document.getElementById(`${prefix}konsekvens`)?.value || '',
-                sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value || '',
-                konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value || '',
-                ptTfRelevans: document.getElementById(`${prefix}pt-tf`)?.value || '',
-                riskbedomning: inherent.level || ''
-            };
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
             const response = await fetch(`${window.apiConfig.baseUrl}/api/ai-ovriga-riskfaktor`, {
                 method: 'POST',
@@ -713,24 +771,23 @@ class RiskFactorsManager {
             }
             const data = await response.json();
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
-            if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
-            if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
-            if (data.ptTfRelevans) {
-                const pt = document.getElementById(`${prefix}pt-tf`);
-                if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(data.ptTfRelevans)) || data.ptTfRelevans;
-            }
-            if (data.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet`, data.sannolikhet);
-            if (data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
-            if (data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
-            if (data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
-            if ((data.sannolikhet == null || data.konsekvens == null) && data.riskbedomning && window.RiskSkala) {
-                const inferred = RiskSkala.scoresFromLegacyLevel(data.riskbedomning);
-                if (data.sannolikhet == null) this.setScoreSelect(`${prefix}sannolikhet`, inferred.sannolikhet);
-                if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
+            if (reviewMode) {
+                this.applyOvrigAiIfEmpty(prefix, befintligt, data);
+                const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
+                    ? data.granskning.poster
+                    : (Ai.fallbackPosters('ovrig', data).filter((p) => Ai.filledOvrigKeys(befintligt).includes(p.falt)));
+                Ai.renderReview(reviewHost, poster, {
+                    onApply: (row) => this.applyOvrigAiField(prefix, row.falt, row.forslag)
+                });
+                this.showNotification(poster.length
+                    ? 'AI har kommenterat era texter. Kopiera in eller avfärda varje förslag.'
+                    : 'AI har fyllt tomma fält. Befintliga texter lämnades orörda.', 'success');
+            } else {
+                this.applyOvrigAiAll(prefix, data);
+                this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
             }
             if (mode === 'edit') this.editNeedsReview = false;
             this.updateRiskBadges(mode);
-            this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
             console.error('AI-förslag fel:', error);
             this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
@@ -754,6 +811,10 @@ class RiskFactorsManager {
 
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
+        if (window.AiFaltGranskning) {
+            AiFaltGranskning.hideReview(document.getElementById('add-ai-review'));
+            AiFaltGranskning.hideReview(document.getElementById('edit-ai-review'));
+        }
     }
 
     async openEditModal(recordId) {
