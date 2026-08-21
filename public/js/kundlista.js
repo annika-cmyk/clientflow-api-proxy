@@ -8,6 +8,7 @@ class CustomerManager {
         // Lead och Pågående kund visas som standard, Avslutad döljs tills filtret väljs
         this.activeStatuses = new Set(['Lead', 'Pågående kund']);
         this.viewerRole = '';
+        this.riskaptitOnly = false;
         this.init();
     }
 
@@ -63,6 +64,16 @@ class CustomerManager {
         const addBtn = document.getElementById('kundlista-add-btn');
         if (addBtn) {
             addBtn.addEventListener('click', () => this.openAddCompanyModal());
+        }
+
+        const riskaptitBtn = document.getElementById('riskaptit-filter-btn');
+        if (riskaptitBtn) {
+            riskaptitBtn.addEventListener('click', () => {
+                this.riskaptitOnly = !this.riskaptitOnly;
+                riskaptitBtn.classList.toggle('is-active', this.riskaptitOnly);
+                riskaptitBtn.setAttribute('aria-pressed', this.riskaptitOnly ? 'true' : 'false');
+                this.applyFilters();
+            });
         }
 
         window.addEventListener('clientflow:authReady', () => this.loadCustomers());
@@ -272,12 +283,17 @@ class CustomerManager {
         const q = (this.lastQuery || '').toLowerCase();
         this.filteredCustomers = this.customers.filter(c => {
             if (!this.activeStatuses.has(c.kundstatus)) return false;
+            if (this.riskaptitOnly && !c.riskaptitNeedsAction) return false;
             if (!q) return true;
             const name = (c.namn || '').toLowerCase();
             const org = (c.organisationsnummer || '').toLowerCase();
             const kontakt = (c.kontaktpersoner || '').toLowerCase();
             return name.includes(q) || org.includes(q) || kontakt.includes(q);
         });
+        const countEl = document.getElementById('riskaptit-count');
+        if (countEl) {
+            countEl.textContent = String(this.customers.filter((c) => c.riskaptitNeedsAction && this.activeStatuses.has(c.kundstatus)).length);
+        }
         this.render();
     }
 
@@ -338,6 +354,9 @@ class CustomerManager {
                 const complianceKlar = compliance
                     ? compliance.isKundlistaComplianceKlar(f, avtalStatus)
                     : false;
+                const riskaptit = (window.Riskaptit && Riskaptit.evaluateCustomer)
+                    ? Riskaptit.evaluateCustomer(f)
+                    : { needsAction: false, showBanner: false };
 
                 return {
                     id: r.id,
@@ -346,9 +365,15 @@ class CustomerManager {
                     bolagsform: f.Bolagsform || '',
                     kontaktpersoner,
                     kundstatus: this.normalizeStatus(f.Kundstatus),
-                    complianceKlar
+                    complianceKlar,
+                    riskaptitNeedsAction: !!(riskaptit.needsAction || riskaptit.showBanner),
+                    riskaptitStatus: riskaptit.status || ''
                 };
             }).sort((a, b) => a.namn.localeCompare(b.namn, 'sv'));
+
+            const riskaptitCount = this.customers.filter((c) => c.riskaptitNeedsAction && this.activeStatuses.has(c.kundstatus)).length;
+            const countEl = document.getElementById('riskaptit-count');
+            if (countEl) countEl.textContent = String(riskaptitCount);
 
             this.applyFilters();
 

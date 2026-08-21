@@ -477,6 +477,7 @@ class CustomerCardManager {
         }
 
         this._renderKundstatus(fields);
+        this._renderRiskaptitBanner(fields);
         this._renderKundDold(fields);
         
         // Update customer type badge
@@ -491,6 +492,159 @@ class CustomerCardManager {
         }
         
         console.log('✅ Customer info displayed');
+    }
+
+    _evaluateRiskaptit(fields) {
+        if (window.Riskaptit && typeof Riskaptit.evaluateCustomer === 'function') {
+            return Riskaptit.evaluateCustomer(fields || {});
+        }
+        return { showBanner: false, status: 'Inom_aptit', niva: '', needsAction: false };
+    }
+
+    _renderRiskaptitBanner(fields) {
+        const header = document.querySelector('.kundkort-page .content-header.risk-header');
+        if (!header) return;
+        const ev = this._evaluateRiskaptit(fields || this.customerData?.fields || {});
+        let banner = document.getElementById('riskaptit-banner');
+        if (!ev.showBanner) {
+            if (banner) banner.remove();
+            return;
+        }
+        const niva = ev.niva || 'okänd';
+        const tone = ev.status === 'Överskriden' ? 'over' : 'kraver';
+        const prev = ev.hasDecision && !ev.hasValidDecision
+            ? `<p class="riskaptit-banner-prev">Tidigare beslut (${this._esc(ev.beslutDatum || '—')}): ${this._esc((window.Riskaptit && Riskaptit.utfallLabel(ev.beslutUtfall)) || ev.beslutUtfall || '')}. Nytt beslut krävs för den ändrade riskbilden.</p>`
+            : (ev.hasValidDecision
+                ? `<p class="riskaptit-banner-prev">Registrerat beslut: ${this._esc((window.Riskaptit && Riskaptit.utfallLabel(ev.beslutUtfall)) || ev.beslutUtfall || '')} (${this._esc(ev.beslutDatum || '—')}).</p>`
+                : '');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'riskaptit-banner';
+            header.insertAdjacentElement('afterend', banner);
+        }
+        banner.className = `riskaptit-banner riskaptit-banner--${tone}`;
+        banner.innerHTML = `
+            <div class="riskaptit-banner-inner">
+                <div class="riskaptit-banner-text">
+                    <strong>⚠ Sammantagen risk är ${this._esc(niva)}.</strong>
+                    Enligt byråns riskaptit krävs ett dokumenterat beslut om fortsatt affärsförbindelse.
+                    ${prev}
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" data-kund-action="riskaptit-beslut">
+                    Fatta beslut
+                </button>
+            </div>`;
+        banner.querySelector('[data-kund-action="riskaptit-beslut"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.openRiskaptitBeslutModal();
+        });
+    }
+
+    closeRiskaptitBeslutModal() {
+        document.getElementById('riskaptit-beslut-modal')?.remove();
+    }
+
+    openRiskaptitBeslutModal() {
+        this.closeRiskaptitBeslutModal();
+        const fields = this.customerData?.fields || {};
+        const ev = this._evaluateRiskaptit(fields);
+        const minLen = (window.Riskaptit && Riskaptit.MOTIVERING_MIN_LENGTH) || 20;
+        const utfallOpts = ((window.Riskaptit && Riskaptit.UTFALL) || []).map((value) => {
+            const label = (window.Riskaptit && Riskaptit.utfallLabel(value)) || value;
+            return `<option value="${this._esc(value)}">${this._esc(label)}</option>`;
+        }).join('');
+        const historik = (ev.historik || []).slice().reverse().map((row) => `
+            <li>${this._esc(row.at || '—')}: ${this._esc((window.Riskaptit && Riskaptit.utfallLabel(row.utfall)) || row.utfall || '')}
+            ${row.motivering ? ` — ${this._esc(row.motivering)}` : ''}</li>
+        `).join('');
+        const modal = document.createElement('div');
+        modal.id = 'riskaptit-beslut-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="riskaptit-beslut-title">
+                <div class="modal-header">
+                    <h3 id="riskaptit-beslut-title">Dokumenterat riskaptitbeslut</h3>
+                    <button class="modal-close" type="button" aria-label="Stäng"><i class="fas fa-times"></i></button>
+                </div>
+                <form id="riskaptit-beslut-form" class="modal-body">
+                    <p>Sammantagen residualrisk: <strong>${this._esc(ev.niva || 'Ej bedömd')}</strong>. Status: ${this._esc(ev.statusLabel || ev.status)}.</p>
+                    <div id="riskaptit-beslut-error" class="kundlista-add-error" role="alert"></div>
+                    <div class="form-group">
+                        <label for="riskaptit-utfall">Utfall</label>
+                        <select id="riskaptit-utfall" class="form-input form-select" required>
+                            <option value="">Välj utfall</option>
+                            ${utfallOpts}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="riskaptit-motivering">Motivering (minst ${minLen} tecken)</label>
+                        <textarea id="riskaptit-motivering" class="kunduppgifter-input" rows="5" required minlength="${minLen}" placeholder="Dokumentera ställningstagandet om fortsatt affärsförbindelse..."></textarea>
+                    </div>
+                    ${historik ? `<div class="form-group"><div class="risker-vald-section-label">Tidigare beslut</div><ul class="riskaptit-historik">${historik}</ul></div>` : ''}
+                    ${ev.hasDecision && !historik ? `<p class="uppdrag-muted">Senaste beslutet (${this._esc(ev.beslutDatum || '—')}): ${this._esc((window.Riskaptit && Riskaptit.utfallLabel(ev.beslutUtfall)) || ev.beslutUtfall || '')}. Det bevaras i historiken när ett nytt beslut sparas.</p>` : ''}
+                </form>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost btn-sm" id="riskaptit-beslut-cancel">Avbryt</button>
+                    <button type="submit" form="riskaptit-beslut-form" class="btn btn-primary btn-sm" id="riskaptit-beslut-save">Spara beslut</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        const close = () => this.closeRiskaptitBeslutModal();
+        modal.querySelector('.modal-close')?.addEventListener('click', close);
+        modal.querySelector('#riskaptit-beslut-cancel')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+        modal.querySelector('#riskaptit-beslut-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.saveRiskaptitBeslut();
+        });
+    }
+
+    async saveRiskaptitBeslut() {
+        const utfall = document.getElementById('riskaptit-utfall')?.value || '';
+        const motivering = document.getElementById('riskaptit-motivering')?.value || '';
+        const errEl = document.getElementById('riskaptit-beslut-error');
+        const local = window.Riskaptit && Riskaptit.validateBeslut
+            ? Riskaptit.validateBeslut({ utfall, motivering })
+            : { ok: !!(utfall && motivering.trim().length >= 20) };
+        if (!local.ok) {
+            if (errEl) {
+                errEl.textContent = local.error || 'Fyll i utfall och motivering.';
+                errEl.classList.add('is-visible');
+            }
+            return;
+        }
+        const saveBtn = document.getElementById('riskaptit-beslut-save');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+        }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || '';
+            const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/riskaptit-beslut`, {
+                method: 'POST',
+                ...(typeof getAuthOptsKundkort === 'function'
+                    ? getAuthOptsKundkort()
+                    : { credentials: 'include', headers: { 'Content-Type': 'application/json' } }),
+                body: JSON.stringify({ utfall, motivering })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            if (data.record?.fields && this.customerData) {
+                this.customerData.fields = { ...(this.customerData.fields || {}), ...data.record.fields };
+            }
+            this.closeRiskaptitBeslutModal();
+            this._renderRiskaptitBanner(this.customerData?.fields || {});
+            this.showNotification('Riskaptitbeslut registrerat', 'success');
+        } catch (err) {
+            if (errEl) {
+                errEl.textContent = err.message || 'Kunde inte spara beslutet.';
+                errEl.classList.add('is-visible');
+            }
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = 'Spara beslut';
+            }
+        }
     }
 
     _normalizeKundstatus(raw) {
@@ -7126,6 +7280,7 @@ class CustomerCardManager {
                 body: JSON.stringify({ fields, aiAudit: this._lastAiAudit || undefined, riskTrigger: 'manuell_ändring' })
             });
             if (res.ok) this._lastAiAudit = null;
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             // Uppdatera customerData
@@ -7133,10 +7288,14 @@ class CustomerCardManager {
                 if (riskniva) this.customerData.fields['Riskniva'] = riskniva;
                 this.customerData.fields['Byrans riskbedomning'] = riskbedomning;
                 this.customerData.fields['Atgarder riskbedomning'] = atgarder;
+                if (data.record?.fields) {
+                    Object.assign(this.customerData.fields, data.record.fields);
+                }
             }
 
             // Uppdatera visningsvyn direkt
             this._updateRiskbedomningView(riskniva, riskbedomning, atgarder);
+            this._renderRiskaptitBanner(this.customerData?.fields || {});
             this.toggleRiskbedomningEdit();
             this.showNotification('Riskbedömning sparad!', 'success');
         } catch (err) {

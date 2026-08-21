@@ -254,6 +254,26 @@
                     </div>
                 </section>
 
+                <section id="dashboard-riskaptit" class="dashboard-section">
+                    <div class="dashboard-card dashboard-card-collapsible collapsed">
+                        <div class="dashboard-card-header" data-toggle="collapse" aria-expanded="false" aria-controls="riskaptit-list">
+                            <h2><i class="fas fa-exclamation-triangle"></i> Kunder som kräver riskaptitbeslut<span class="dashboard-card-count" id="dashboard-count-riskaptit"></span></h2>
+                            <div class="dashboard-card-header-actions">
+                                <button type="button" id="refresh-riskaptit" class="btn btn-ghost btn-sm" title="Uppdatera" onclick="event.stopPropagation()">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <span class="dashboard-collapse-icon"><i class="fas fa-chevron-down"></i></span>
+                            </div>
+                        </div>
+                        <div id="riskaptit-list" class="dashboard-list dashboard-card-body-collapsible">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Kunder som saknar uppdragsavtal -->
                 <section id="dashboard-uppdragsavtal" class="dashboard-section">
                     <div class="dashboard-card dashboard-card-collapsible collapsed">
@@ -426,6 +446,6 @@
     <script src="js/amla-nyheter.js?v=5"></script>
     <script src="js/whats-new.js?v=1"></script>
     <script src="js/feedback.js?v=1"></script>
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
 </body>
 </html>

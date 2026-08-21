@@ -13702,3 +13702,68 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-size: 0.8rem;
     color: var(--ink-3, #64748b);
 }
+
+.riskaptit-banner {
+    margin: 0 0 1rem;
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    border: 1px solid transparent;
+}
+.riskaptit-banner--kraver {
+    background: #fff7ed;
+    border-color: #fdba74;
+    color: #9a3412;
+}
+.riskaptit-banner--over {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+.riskaptit-banner-inner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.riskaptit-banner-text {
+    flex: 1;
+    min-width: 16rem;
+    line-height: 1.45;
+}
+.riskaptit-banner-prev {
+    margin: 0.45rem 0 0;
+    font-size: 0.88rem;
+}
+.riskaptit-historik {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.88rem;
+}
+.riskaptit-stat {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    padding: 0.15rem 0;
+}
+.riskaptit-stat.is-active,
+.riskaptit-stat[aria-pressed="true"] {
+    color: #b45309;
+    font-weight: 600;
+}
+.kundlista-riskaptit-stats {
+    margin-top: 0.65rem;
+}
+.riskaptit-policy-text {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    background: #f8fafc;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    margin: 0.4rem 0 0;
+}

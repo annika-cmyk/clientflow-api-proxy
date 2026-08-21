@@ -522,11 +522,20 @@
     });
   }
 
+  function fillRiskaptitPolicy() {
+    var text = (window.Riskaptit && Riskaptit.policyText) ? Riskaptit.policyText() : '';
+    var pre = getEl('fld-riskaptit-policy');
+    var view = getEl('fld-riskaptit-policy-view');
+    if (pre) pre.textContent = text;
+    if (view) view.textContent = text;
+  }
+
   function init() {
     load();
     initFormatToolbars();
     initAiBeskrivning();
     initAiVarderingRisk();
+    fillRiskaptitPolicy();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
