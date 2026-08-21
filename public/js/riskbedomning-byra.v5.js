@@ -610,6 +610,7 @@ class RiskAssessmentManager {
             }
             if (ev.target.closest('[data-ai-dismiss-all-tabs]')) {
                 if (window.AiFaltGranskning) AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
+                this.clearInlineAi();
                 this.clearTjanstAiSummary();
             }
         };
@@ -714,10 +715,11 @@ class RiskAssessmentManager {
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-hot dyn-card';
+        row.className = 'dyn-row dyn-row-hot dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <select class="dyn-typ" aria-label="Hottyp">
                     <option value="PT" ${typ === 'PT' ? 'selected' : ''}>PT</option>
                     <option value="TF" ${typ === 'TF' ? 'selected' : ''}>TF</option>
@@ -758,10 +760,11 @@ class RiskAssessmentManager {
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const optsHtml = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-sarbarhet dyn-card';
+        row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <select class="dyn-kategori" aria-label="Sårbarhetskategori">${optsHtml}</select>
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -782,10 +785,11 @@ class RiskAssessmentManager {
         const titel = data.titel ?? data.title ?? data.namn ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-atgard dyn-card';
+        row.className = 'dyn-row dyn-row-atgard dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <span class="dyn-header-label">Åtgärd</span>
                 <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -935,6 +939,7 @@ class RiskAssessmentManager {
             AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
             this.clearTjanstAiSummary();
         }
+        this.clearInlineAi();
     }
 
     fillModal(risk) {
@@ -1109,6 +1114,262 @@ class RiskAssessmentManager {
         }
     }
 
+    clearInlineAi() {
+        document.querySelectorAll('.dyn-ai-forslag, .dyn-ai-bar, .field-ai-forslag, .dyn-ai-list-note').forEach((el) => el.remove());
+        document.querySelectorAll('.dyn-card.is-ai-remove').forEach((row) => {
+            row.classList.remove('is-ai-remove');
+            row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = false; });
+        });
+        document.querySelectorAll('.dyn-card.is-ai-add').forEach((row) => row.remove());
+        this.updateTjanstLists();
+    }
+
+    paintInlineAiSummary(host, hasChanges) {
+        const Ai = window.AiFaltGranskning;
+        if (!host) return;
+        if (!hasChanges) {
+            if (Ai) Ai.hideReview(host);
+            return;
+        }
+        host.hidden = false;
+        host.classList.add('is-inline-summary');
+        host.innerHTML = `
+            <div class="ai-review-head">
+                <div>
+                    <strong>AI har lagt förslag i formuläret</strong>
+                    <p>Grönt kort = ny faktor. Överstruket = föreslås tas bort. Text under ett kort = nytt förslag. Du ansvarar för vad som sparas.</p>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
+            </div>
+        `;
+        host.onclick = (ev) => {
+            if (!ev.target.closest('[data-ai-dismiss-all]')) return;
+            this.clearInlineAi();
+            if (Ai) Ai.hideReview(host);
+        };
+    }
+
+    attachFieldAiForslag(afterEl, { label, html, comment, onApply }) {
+        if (!afterEl) return;
+        afterEl.parentElement?.querySelectorAll('.field-ai-forslag').forEach((el) => el.remove());
+        const box = document.createElement('div');
+        box.className = 'field-ai-forslag';
+        box.innerHTML = `
+            <span class="field-ai-label">${this.esc(label || 'AI-förslag')}</span>
+            ${comment ? `<p class="field-ai-comment">${this.esc(comment)}</p>` : ''}
+            ${html}
+            <div class="field-ai-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+            </div>
+        `;
+        afterEl.insertAdjacentElement('afterend', box);
+        box.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-apply]') && onApply) onApply(box);
+            if (ev.target.closest('[data-ai-apply]') || ev.target.closest('[data-ai-dismiss]')) box.remove();
+        });
+    }
+
+    markRowAiRemove(row, comment) {
+        if (!row) return;
+        row.classList.remove('is-ai-add');
+        row.classList.add('is-ai-remove');
+        row.classList.remove('is-collapsed');
+        row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = true; });
+        row.querySelector('.dyn-ai-bar')?.remove();
+        const bar = document.createElement('div');
+        bar.className = 'dyn-ai-bar';
+        bar.innerHTML = `
+            <span class="dyn-ai-label">Föreslås tas bort</span>
+            <p class="dyn-ai-comment">${this.esc(comment || 'AI tar inte med den här faktorn i sin analys. Du avgör om den ska vara kvar.')}</p>
+            <div class="dyn-ai-actions">
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-keep>Behåll</button>
+                <button type="button" class="btn btn-primary btn-sm" data-ai-drop>Ta bort</button>
+            </div>
+        `;
+        row.appendChild(bar);
+        bar.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-keep]')) {
+                row.classList.remove('is-ai-remove');
+                row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = false; });
+                bar.remove();
+            }
+            if (ev.target.closest('[data-ai-drop]')) {
+                row.remove();
+                this.updateTjanstLists();
+            }
+        });
+    }
+
+    markRowAiUpdate(row, kind, forslag, comment) {
+        if (!row || !forslag) return;
+        row.classList.remove('is-collapsed');
+        row.querySelector('.dyn-ai-forslag')?.remove();
+        const box = document.createElement('div');
+        box.className = 'dyn-ai-forslag';
+        const typ = forslag.typ || 'PT';
+        const kat = forslag.kategori || 'Verksamhet';
+        const extra = kind === 'hot'
+            ? `<select class="dyn-ai-typ" aria-label="PT eller TF">
+                <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
+                <option value="TF"${typ === 'TF' ? ' selected' : ''}>TF</option>
+                <option value="Båda"${typ === 'Båda' ? ' selected' : ''}>Båda</option>
+              </select>`
+            : kind === 'sarbarheter'
+                ? `<select class="dyn-ai-kat" aria-label="Kategori">
+                    <option${kat === 'Verksamhet' ? ' selected' : ''}>Verksamhet</option>
+                    <option${kat === 'Kunder' ? ' selected' : ''}>Kunder</option>
+                    <option${kat === 'Distribution' ? ' selected' : ''}>Distribution</option>
+                    <option${kat === 'Geografi' ? ' selected' : ''}>Geografi</option>
+                  </select>`
+                : '';
+        box.innerHTML = `
+            <span class="dyn-ai-label">AI-förslag</span>
+            ${comment ? `<p class="dyn-ai-comment">${this.esc(comment)}</p>` : ''}
+            ${extra}
+            <input type="text" class="dyn-ai-titel" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
+            <textarea class="dyn-ai-besk" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
+            ${kind === 'hot' ? `<input type="text" class="dyn-ai-kalla" value="${this.esc(forslag.kalla || '')}" placeholder="Källa">` : ''}
+            <div class="dyn-ai-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+            </div>
+        `;
+        row.appendChild(box);
+        box.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-apply]')) {
+                const titel = box.querySelector('.dyn-ai-titel')?.value || '';
+                const besk = box.querySelector('.dyn-ai-besk')?.value || '';
+                if (row.querySelector('.dyn-titel')) row.querySelector('.dyn-titel').value = titel;
+                if (row.querySelector('.dyn-besk')) row.querySelector('.dyn-besk').value = besk;
+                if (kind === 'hot') {
+                    const typEl = row.querySelector('.dyn-typ');
+                    const kallaEl = row.querySelector('.dyn-kalla');
+                    if (typEl) typEl.value = box.querySelector('.dyn-ai-typ')?.value || 'PT';
+                    if (kallaEl) {
+                        kallaEl.value = box.querySelector('.dyn-ai-kalla')?.value || '';
+                        kallaEl.dispatchEvent(new Event('input'));
+                    }
+                    this.updateTfBanner();
+                }
+                if (kind === 'sarbarheter' && row.querySelector('.dyn-kategori')) {
+                    row.querySelector('.dyn-kategori').value = box.querySelector('.dyn-ai-kat')?.value || 'Verksamhet';
+                }
+                if (kind === 'atgarder') this.paintAtgardKonkret(row);
+                box.remove();
+            }
+            if (ev.target.closest('[data-ai-dismiss]')) box.remove();
+        });
+    }
+
+    paintInlineListAi(kind, current, forslag, comment) {
+        const Ai = window.AiFaltGranskning;
+        if (!Ai) return false;
+        const diff = Ai.listDiff(current, forslag);
+        if (!Ai.listDiffHasChanges(diff)) return false;
+        const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
+        const rows = [...document.querySelectorAll(`#${listId} .dyn-row:not(.is-ai-add)`)];
+        const note = Ai.usefulComment(comment);
+        const list = document.getElementById(listId);
+        if (list) list.querySelectorAll('.dyn-ai-list-note').forEach((el) => el.remove());
+        if (list && note && (diff.updated.length > 1 || (diff.updated.length && (diff.added.length || diff.removed.length)))) {
+            const banner = document.createElement('p');
+            banner.className = 'dyn-ai-list-note dyn-ai-comment';
+            banner.textContent = note;
+            list.insertAdjacentElement('beforebegin', banner);
+        }
+        const itemComment = (diff.updated.length === 1 && !diff.added.length && !diff.removed.length) ? note : '';
+        diff.updated.forEach((row) => this.markRowAiUpdate(rows[row.currentIndex], kind, row.forslag, itemComment));
+        diff.removed.forEach((row) => this.markRowAiRemove(rows[row.currentIndex], note && diff.removed.length === 1 ? note : ''));
+        const add = kind === 'hot'
+            ? (item) => this.addHotRow(item, { expand: true, aiAdd: true })
+            : kind === 'sarbarheter'
+                ? (item) => this.addSarbarhetRow(item, { expand: true, aiAdd: true })
+                : (item) => this.addAtgardRow(item, { expand: true, aiAdd: true });
+        diff.added.forEach(add);
+        return true;
+    }
+
+    paintInlineTjanstAi(poster, befintligt) {
+        const Ai = window.AiFaltGranskning;
+        this.clearInlineAi();
+        const items = (poster || []).map((item) => Ai.decoratePoster(item, befintligt)).filter(Ai.isVisibleReviewItem);
+        let changed = false;
+        let firstTab = '';
+        items.forEach((item) => {
+            if (!item.andra) return;
+            const comment = Ai.usefulComment(item.kommentar);
+            if (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder') {
+                if (this.paintInlineListAi(item.falt, item.nuvarande, item.forslag, comment)) {
+                    changed = true;
+                    if (!firstTab) firstTab = item.falt === 'sarbarheter' ? 'sarbarhet' : (item.falt === 'atgarder' ? 'atgard' : 'hot');
+                }
+                return;
+            }
+            if (item.falt === 'tjanstebeskrivning') {
+                this.attachFieldAiForslag(document.getElementById('tjanst-beskrivning'), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="6">${this.esc(item.forslag || '')}</textarea>`,
+                    onApply: (box) => {
+                        document.getElementById('tjanst-beskrivning').value = box.querySelector('[data-ai-forslag]')?.value || '';
+                    }
+                });
+                changed = true;
+                if (!firstTab) firstTab = 'oversikt';
+                return;
+            }
+            if (item.falt === 'tfMotivering') {
+                const tf = document.getElementById('tjanst-tf-motivering');
+                this.attachFieldAiForslag(tf, {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${this.esc(item.forslag || '')}</textarea>`,
+                    onApply: (box) => {
+                        if (tf) tf.value = box.querySelector('[data-ai-forslag]')?.value || '';
+                        this.updateTfBanner();
+                    }
+                });
+                changed = true;
+                if (!firstTab) firstTab = 'hot';
+                return;
+            }
+            if (item.falt === 'sxk' || item.falt === 'residual') {
+                const s = item.forslag && typeof item.forslag === 'object' ? item.forslag : {};
+                const afterEl = item.falt === 'sxk'
+                    ? document.getElementById('tjanst-inneboende-badge')
+                    : document.getElementById('tjanst-residual-badge');
+                this.attachFieldAiForslag(afterEl, {
+                    label: item.falt === 'sxk' ? 'AI-förslag S×K' : 'AI-förslag residual',
+                    comment,
+                    html: `<div class="ai-review-scores">
+                        <label>Sannolikhet <select data-ai-s>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.sannolikhet) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                        <label>Konsekvens <select data-ai-k>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.konsekvens) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                    </div>`,
+                    onApply: (box) => {
+                        if (item.falt === 'sxk') {
+                            this.setScoreSelect('tjanst-sannolikhet', box.querySelector('[data-ai-s]')?.value);
+                            this.setScoreSelect('tjanst-konsekvens', box.querySelector('[data-ai-k]')?.value);
+                        } else {
+                            this.setScoreSelect('tjanst-sannolikhet-efter', box.querySelector('[data-ai-s]')?.value);
+                            this.setScoreSelect('tjanst-konsekvens-efter', box.querySelector('[data-ai-k]')?.value);
+                        }
+                        this.updateRiskBadges();
+                    }
+                });
+                changed = true;
+                if (!firstTab) firstTab = item.falt === 'residual' ? 'atgard' : 'oversikt';
+            }
+        });
+        if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
+        this.updateTjanstAiSummary({
+            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag').length,
+            hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag, #tjanst-tf-motivering ~ .field-ai-forslag').length,
+            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag').length,
+            atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag').length
+        });
+        if (firstTab) this.setTjanstTab(firstTab);
+        return changed;
+    }
+
     // ---- AI-förslag ----
     async generateAiSuggestion() {
         const namn = document.getElementById('tjanst-name').value.trim();
@@ -1167,16 +1428,9 @@ class RiskAssessmentManager {
                     : (Ai.ensureAnalysisPosters('tjanst', befintligt, data, []).concat(
                         Ai.ensureTfCoveragePosters(befintligt, data, [])
                     ));
-                const items = Ai.renderReviewByHosts(this.tjanstAiHosts(), poster, {
-                    kind: 'tjanst',
-                    befintligt,
-                    onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag),
-                    onTabCounts: (counts) => this.updateTjanstAiSummary(counts)
-                });
-                const firstTab = items[0] && Ai.tabForFalt(items[0].falt, 'tjanst');
-                if (firstTab) this.setTjanstTab(firstTab);
-                this.showNotification(items.length
-                    ? 'AI har gjort en egen analys. Förslagen ligger på respektive flik. Jämför och kopiera in det ni vill använda.'
+                const changed = this.paintInlineTjanstAi(poster, befintligt);
+                this.showNotification(changed
+                    ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
                     : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyTjanstAiAll(data);

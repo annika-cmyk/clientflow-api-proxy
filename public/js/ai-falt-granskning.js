@@ -369,7 +369,67 @@
 
   function isGenericReviewComment(text) {
     const t = fold(text);
-    return !t || t === fold('AI har ett ändringsförslag för det här fältet.');
+    if (!t) return true;
+    return t === fold('AI har ett ändringsförslag för det här fältet.')
+      || t === fold('AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.');
+  }
+
+  function usefulComment(text) {
+    const t = trimStr(text);
+    if (!t || isGenericReviewComment(t)) return '';
+    return t;
+  }
+
+  function similarKeys(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.length >= 6 && b.length >= 6 && (a.includes(b) || b.includes(a))) return true;
+    const words = (s) => String(s).split(' ').filter((w) => w.length > 3);
+    const aw = words(a);
+    const bw = new Set(words(b));
+    if (!aw.length || !bw.size) return false;
+    const hit = aw.filter((w) => bw.has(w)).length;
+    return hit >= 2 || hit / aw.length >= 0.6;
+  }
+
+  function listDiff(current, forslag) {
+    const cur = asList(current).map((item, i) => ({ item, i, key: itemKey(item), used: false }));
+    const next = asList(forslag).map((item, i) => ({ item, i, key: itemKey(item), used: false }));
+
+    function takeMatch(n, pred) {
+      const c = cur.find((x) => !x.used && pred(x, n));
+      if (!c) return null;
+      c.used = true;
+      n.used = true;
+      return c;
+    }
+
+    const updated = [];
+    next.forEach((n) => {
+      if (!n.key) return;
+      const c = takeMatch(n, (x) => x.key === n.key);
+      if (!c) return;
+      if (listItemSignature(c.item) !== listItemSignature(n.item)) {
+        updated.push({ current: c.item, forslag: n.item, currentIndex: c.i });
+      }
+    });
+    next.filter((n) => !n.used).forEach((n) => {
+      const c = takeMatch(n, (x) => similarKeys(x.key, n.key));
+      if (!c) return;
+      if (listItemSignature(c.item) !== listItemSignature(n.item)) {
+        updated.push({ current: c.item, forslag: n.item, currentIndex: c.i });
+      }
+    });
+
+    return {
+      updated,
+      added: next.filter((n) => !n.used).map((n) => n.item),
+      removed: cur.filter((c) => !c.used).map((c) => ({ item: c.item, currentIndex: c.i }))
+    };
+  }
+
+  function listDiffHasChanges(diff) {
+    return !!(diff && (diff.updated.length || diff.added.length || diff.removed.length));
   }
 
   function classifyAndring(falt, current, forslag, andra) {
@@ -896,7 +956,13 @@
     currentValueFor,
     classifyAndring,
     sameForslag,
+    similarKeys,
+    listDiff,
+    listDiffHasChanges,
+    usefulComment,
+    isGenericReviewComment,
     decoratePoster,
+    isVisibleReviewItem,
     readEditedForslag,
     fallbackPosters,
     ensureAnalysisPosters,

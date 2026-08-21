@@ -747,6 +747,102 @@ class RiskFactorsManager {
         this.paintAtgardKonkret(`${prefix}action`);
     }
 
+    attachOvrigFieldAi(afterEl, { label, html, comment, onApply }) {
+        if (!afterEl) return;
+        afterEl.parentElement?.querySelectorAll('.field-ai-forslag').forEach((el) => el.remove());
+        const box = document.createElement('div');
+        box.className = 'field-ai-forslag';
+        const esc = (s) => String(s || '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        box.innerHTML = `
+            <span class="field-ai-label">${esc(label || 'AI-förslag')}</span>
+            ${comment ? `<p class="field-ai-comment">${esc(comment)}</p>` : ''}
+            ${html}
+            <div class="field-ai-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+            </div>
+        `;
+        afterEl.insertAdjacentElement('afterend', box);
+        box.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-apply]') && onApply) onApply(box);
+            if (ev.target.closest('[data-ai-apply]') || ev.target.closest('[data-ai-dismiss]')) box.remove();
+        });
+    }
+
+    paintInlineOvrigAi(prefix, poster, befintligt, host) {
+        const Ai = window.AiFaltGranskning;
+        document.querySelectorAll(`#${prefix || ''}add-risk-form .field-ai-forslag, #${prefix}risk-form .field-ai-forslag, .field-ai-forslag`).forEach((el) => {
+            if (el.closest('#add-risk-modal, #edit-risk-modal')) el.remove();
+        });
+        const items = (poster || []).map((item) => Ai.decoratePoster(item, befintligt)).filter(Ai.isVisibleReviewItem);
+        let changed = false;
+        items.forEach((item) => {
+            if (!item.andra) return;
+            const comment = Ai.usefulComment(item.kommentar);
+            if (item.falt === 'beskrivning') {
+                this.attachOvrigFieldAi(document.getElementById(`${prefix}description`), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="5">${String(item.forslag || '').replace(/</g, '&lt;')}</textarea>`,
+                    onApply: (box) => {
+                        document.getElementById(`${prefix}description`).value = box.querySelector('[data-ai-forslag]')?.value || '';
+                    }
+                });
+                changed = true;
+            } else if (item.falt === 'atgard') {
+                this.attachOvrigFieldAi(document.getElementById(`${prefix}action`), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${String(item.forslag || '').replace(/</g, '&lt;')}</textarea>`,
+                    onApply: (box) => {
+                        document.getElementById(`${prefix}action`).value = box.querySelector('[data-ai-forslag]')?.value || '';
+                        this.paintAtgardKonkret(`${prefix}action`);
+                    }
+                });
+                changed = true;
+            } else if (item.falt === 'sxk' || item.falt === 'residual') {
+                const s = item.forslag && typeof item.forslag === 'object' ? item.forslag : {};
+                const afterEl = item.falt === 'sxk'
+                    ? document.getElementById(`${prefix}inneboende-badge`)
+                    : document.getElementById(`${prefix}residual-badge`);
+                this.attachOvrigFieldAi(afterEl, {
+                    label: item.falt === 'sxk' ? 'AI-förslag S×K' : 'AI-förslag residual',
+                    comment,
+                    html: `<div class="ai-review-scores">
+                        <label>Sannolikhet <select data-ai-s>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.sannolikhet) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                        <label>Konsekvens <select data-ai-k>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.konsekvens) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                    </div>`,
+                    onApply: (box) => this.applyOvrigAiField(prefix, item.falt, {
+                        sannolikhet: box.querySelector('[data-ai-s]')?.value,
+                        konsekvens: box.querySelector('[data-ai-k]')?.value
+                    })
+                });
+                changed = true;
+            }
+        });
+        if (host) {
+            if (!changed) Ai.hideReview(host);
+            else {
+                host.hidden = false;
+                host.classList.add('is-inline-summary');
+                host.innerHTML = `
+                    <div class="ai-review-head">
+                        <div>
+                            <strong>AI har lagt förslag under fälten</strong>
+                            <p>Jämför, redigera och kopiera in det du vill behålla. Du ansvarar för vad som sparas.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
+                    </div>
+                `;
+                host.onclick = (ev) => {
+                    if (!ev.target.closest('[data-ai-dismiss-all]')) return;
+                    host.closest('.modal')?.querySelectorAll('.field-ai-forslag').forEach((el) => el.remove());
+                    Ai.hideReview(host);
+                };
+            }
+        }
+        return changed;
+    }
+
     applyOvrigAiField(prefix, falt, forslag) {
         if (falt === 'beskrivning') {
             document.getElementById(`${prefix}description`).value = String(forslag || '');
@@ -824,12 +920,9 @@ class RiskFactorsManager {
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
                     : Ai.ensureAnalysisPosters('ovrig', befintligt, data, []);
-                Ai.renderReview(reviewHost, poster, {
-                    befintligt,
-                    onApply: (row) => this.applyOvrigAiField(prefix, row.falt, row.forslag)
-                });
-                this.showNotification(poster.length
-                    ? 'AI har gjort en egen analys. Jämför med era texter och kopiera in det ni vill använda.'
+                const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
+                this.showNotification(changed
+                    ? 'AI har lagt förslag under era fält. Jämför och kopiera in det ni vill använda. Du ansvarar för vad som sparas.'
                     : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);

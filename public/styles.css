@@ -13085,6 +13085,90 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-color: #86efac;
     background: #f0fdf4;
 }
+.dyn-card.is-ai-add {
+    border-color: #86efac;
+    background: #f0fdf4;
+    box-shadow: 0 0 0 1px #bbf7d0;
+}
+.dyn-card.is-ai-add .dyn-titel,
+.dyn-card.is-ai-add .dyn-besk {
+    background: #fff;
+}
+.dyn-ai-badge {
+    flex-shrink: 0;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: #166534;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.dyn-card.is-ai-remove {
+    opacity: 0.72;
+    background: #f8fafc;
+}
+.dyn-card.is-ai-remove .dyn-titel,
+.dyn-card.is-ai-remove .dyn-besk,
+.dyn-card.is-ai-remove .dyn-kalla {
+    text-decoration: line-through;
+    color: #64748b;
+}
+.dyn-ai-forslag,
+.dyn-ai-bar,
+.field-ai-forslag {
+    margin: 0.55rem 0 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #86efac;
+    border-radius: 10px;
+    background: #f0fdf4;
+}
+.dyn-ai-bar {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+.dyn-ai-label,
+.field-ai-label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #166534;
+}
+.dyn-ai-bar .dyn-ai-label { color: #991b1b; }
+.dyn-ai-comment,
+.field-ai-comment {
+    margin: 0 0 0.45rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: #334155;
+}
+.dyn-ai-forslag .dyn-titel,
+.dyn-ai-forslag .dyn-besk,
+.dyn-ai-forslag .dyn-kalla,
+.field-ai-forslag textarea,
+.field-ai-forslag select {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 0 0.4rem;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+    font: inherit;
+    background: #fff;
+}
+.dyn-ai-actions,
+.field-ai-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.ai-review.is-inline-summary {
+    max-height: none;
+}
 .ai-review-item-head {
     display: flex;
     flex-wrap: wrap;
@@ -13298,7 +13382,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     padding: 0.7rem 0.75rem 0.75rem;
 }
 .dyn-card.is-collapsed .dyn-row-body,
-.dyn-card.is-collapsed .dyn-kalla-row { display: none; }
+.dyn-card.is-collapsed .dyn-kalla-row,
+.dyn-card.is-collapsed .dyn-ai-forslag,
+.dyn-card.is-collapsed .dyn-ai-bar { display: none; }
 
 .dyn-row-body .dyn-besk {
     width: 100%;
