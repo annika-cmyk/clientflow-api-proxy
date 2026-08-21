@@ -63,6 +63,7 @@ const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identi
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
+const dokumentRedigera = require('./lib/dokument-redigera');
 const documentPreview = require('./lib/document-preview');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
@@ -6688,14 +6689,16 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const isPep = a._typ === 'pep';
       const isArs = a._typ === 'arsredovisning';
       const isDok = a._typ === 'dokumentation';
-      const category = a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt'));
-      const customCategory = a._customCategory || '';
+      const overlay = dokumentKategori.applyDokumentKategoriMeta(a, dokumentationKategorier);
+      const category = overlay.category || a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt'));
+      const customCategory = overlay.customCategory || a._customCategory || '';
       const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
-      let namn = a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
+      let namn = overlay.displayName || a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
       const fnLower = (a.filename || '').toLowerCase();
       const autoDesc = fnLower.includes('uppdragsavtal') ? 'Uppdragsavtal' : fnLower.includes('kyc') ? 'KYC-formulär' : (a._typ === 'riskbedomning' ? 'Dokumenterad riskbedömning' : '');
       let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : isDok ? (customCategory || categoryLabels[category] || 'Dokument') : (autoDesc || categoryLabels[category] || ''));
-      if (isDok && customCategory) beskrivning = customCategory;
+      if (customCategory) beskrivning = customCategory;
+      else if (overlay.category) beskrivning = categoryLabels[category] || beskrivning;
       return {
         id: `${a._typ}-${i}`,
         sourceField: a._sourceField,
@@ -6703,6 +6706,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
         category,
         customCategory: customCategory || undefined,
         categoryLabel: customCategory || categoryLabels[category] || category,
+        displayName: overlay.displayName || undefined,
         fields: {
           Namn: namn,
           Filtyp: 'PDF',
@@ -6817,25 +6821,23 @@ app.delete('/api/documents', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    if (sourceField === 'Dokumentation' || sourceField === 'Attachments') {
-      try {
-        const removed = Array.isArray(f[sourceField]) ? f[sourceField][idx] : null;
-        const kategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
-        const used = new Set();
-        const hit = dokumentKategori.matchDokumentKategori(removed, kategorier, used)
-          || ((sourceField === 'Dokumentation' && idx >= 0 && idx < kategorier.length)
-            ? { index: idx } : null);
-        if (hit && Number.isInteger(hit.index)) {
-          kategorier.splice(hit.index, 1);
-          await axios.patch(
-            `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
-            { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
-            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-          );
-        }
-      } catch (e) {
-        console.warn('Kunde inte uppdatera Dokumentation Kategorier (fältet kan saknas):', e.message);
+    try {
+      const removed = Array.isArray(f[sourceField]) ? f[sourceField][idx] : null;
+      const kategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
+      const used = new Set();
+      const hit = dokumentKategori.matchDokumentKategori(removed, kategorier, used)
+        || ((sourceField === 'Dokumentation' && idx >= 0 && idx < kategorier.length)
+          ? { index: idx } : null);
+      if (hit && Number.isInteger(hit.index)) {
+        kategorier.splice(hit.index, 1);
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+          { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
       }
+    } catch (e) {
+      console.warn('Kunde inte uppdatera Dokumentation Kategorier (fältet kan saknas):', e.message);
     }
 
     res.json({ success: true, message: 'Dokument borttaget' });
@@ -6846,6 +6848,95 @@ app.delete('/api/documents', authenticateToken, async (req, res) => {
 });
 
 const DOCUMENT_CATEGORIES = dokumentKategori.DOCUMENT_CATEGORIES;
+
+// PATCH /api/documents – Byt visningsnamn och/eller kategori
+app.patch('/api/documents', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const { customerId, sourceField, sourceIndex, displayName, category, customCategory } = req.body || {};
+    if (!customerId || !sourceField || sourceIndex == null) {
+      return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+    const custByraId = f['Byrå ID'] || f.Byrå || '';
+    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+      return res.status(403).json({ error: 'Ingen behörighet' });
+    }
+
+    const plan = dokumentRedigera.planDokumentEdit({
+      fields: f,
+      sourceField,
+      sourceIndex,
+      displayName,
+      category,
+      customCategory
+    });
+    if (plan.error) return res.status(plan.status || 400).json({ error: plan.error });
+
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+      { fields: plan.patchFields },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    if (plan.moved && plan.attachment) {
+      try {
+        const latestRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        const latest = latestRes.data.fields || {};
+        const destList = Array.isArray(latest[plan.destField]) ? latest[plan.destField] : [];
+        const newAtt = destList.filter((a) => dokumentKategori.filenamesMatch(a?.filename, plan.attachment.filename)).pop();
+        if (newAtt?.id) {
+          const refreshed = dokumentKategori.upsertDokumentKategori(
+            dokumentKategori.parseDokumentKategorier(latest['Dokumentation Kategorier']),
+            { id: plan.attachment.id, filename: plan.attachment.filename },
+            {
+              category: plan.nextCategory,
+              customCategory: plan.customCategory || '',
+              displayName: plan.displayName,
+              attachmentId: newAtt.id,
+              filename: newAtt.filename
+            }
+          );
+          await axios.patch(
+            `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+            { fields: { 'Dokumentation Kategorier': JSON.stringify(refreshed) } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (e) {
+        console.warn('Kunde inte uppdatera attachment-id efter dokumentflytt:', e.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Dokument uppdaterat',
+      displayName: plan.displayName,
+      category: plan.nextCategory,
+      sourceField: plan.destField,
+      moved: plan.moved
+    });
+  } catch (error) {
+    console.error('\u274c PATCH document:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // POST /api/documents/upload – Ladda upp dokument med kategori (body: customerId, file [base64], filename, category, customCategory?)
 app.post('/api/documents/upload', authenticateToken, async (req, res) => {

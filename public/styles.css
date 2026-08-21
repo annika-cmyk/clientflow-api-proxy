@@ -6168,11 +6168,14 @@ body.sidebar-collapsed .logout-btn {
 .document-list-buttons {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 0.5rem;
     flex-shrink: 0;
 }
 .document-list-item .document-download-btn,
-.document-list-item .document-preview-btn {
+.document-list-item .document-preview-btn,
+.document-list-item .document-edit-btn {
     padding: 0.35rem 0.7rem;
     font-size: 0.8rem;
 }

@@ -11103,6 +11103,9 @@ class CustomerCardManager {
         const deleteBtn = hasSource
             ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
             : '';
+        const editBtn = hasSource
+            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" title="Redigera namn och kategori" onclick="customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
+            : '';
         const nameHtml = canOpen
             ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
             : `<span class="document-list-name">${safeNamn}</span>`;
@@ -11115,6 +11118,7 @@ class CustomerCardManager {
                 </div>
                 <div class="document-list-buttons">
                     ${previewBtn}
+                    ${editBtn}
                     ${downloadBtn}
                     ${deleteBtn}
                 </div>
@@ -11239,6 +11243,148 @@ class CustomerCardManager {
         const idx = btn.getAttribute('data-source-index');
         const name = btn.getAttribute('data-doc-name') || 'dokumentet';
         if (field != null && idx != null) this.deleteDocument(field, parseInt(idx, 10), name);
+    }
+
+    editDocumentFromBtn(btn) {
+        if (!btn) return;
+        this.showEditDocumentModal({
+            sourceField: btn.getAttribute('data-source-field') || '',
+            sourceIndex: btn.getAttribute('data-source-index'),
+            name: btn.getAttribute('data-doc-name') || 'Dokument',
+            category: btn.getAttribute('data-category') || 'ovrigt',
+            customCategory: btn.getAttribute('data-custom-category') || ''
+        });
+    }
+
+    closeEditDocumentModal() {
+        const modal = document.getElementById('edit-document-modal');
+        if (modal) modal.remove();
+    }
+
+    showEditDocumentModal({ sourceField, sourceIndex, name, category, customCategory }) {
+        this.closeEditDocumentModal();
+        const modalHTML = `
+            <div id="edit-document-modal" class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-pencil-alt"></i> Redigera dokument</h3>
+                        <button type="button" class="modal-close" onclick="customerCardManager.closeEditDocumentModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="edit-document-form">
+                            <input type="hidden" id="edit-doc-source-field" value="${this.escapeDocHtml(sourceField || '')}">
+                            <input type="hidden" id="edit-doc-source-index" value="${this.escapeDocHtml(sourceIndex ?? '')}">
+                            <div class="form-group">
+                                <label for="edit-doc-name">Namn</label>
+                                <input type="text" id="edit-doc-name" name="displayName" maxlength="200" value="${this.escapeDocHtml(name || '')}" required>
+                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Namnet syns i listan. Själva filen ändras inte.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-doc-category">Kategori</label>
+                                <select id="edit-doc-category" name="category" required>
+                                    <option value="riskbedomning">Dokumentation riskbedömning</option>
+                                    <option value="historik">Dokumentation - historik</option>
+                                    <option value="arsredovisning">Årsredovisningar</option>
+                                    <option value="uppdragsavtal">Uppdragsavtal</option>
+                                    <option value="kyc">KYC-formulär</option>
+                                    <option value="bolagsverket_skatteverket">Bolagsverket och Skatteverket</option>
+                                    <option value="ovrigt">Övrigt</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="edit-doc-custom-wrap" style="display:none;">
+                                <label for="edit-doc-custom">Egen kategori (valfritt)</label>
+                                <input type="text" id="edit-doc-custom" name="customCategory" placeholder="t.ex. Specifikation, Avtal 2024" value="${this.escapeDocHtml(customCategory || '')}">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-ghost" onclick="customerCardManager.closeEditDocumentModal()">Avbryt</button>
+                                <button type="submit" class="btn btn-primary" id="edit-doc-submit">
+                                    <i class="fas fa-save"></i> Spara
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>`;
+        const wrap = document.createElement('div');
+        wrap.innerHTML = modalHTML;
+        document.body.appendChild(wrap.firstElementChild);
+        const form = document.getElementById('edit-document-form');
+        const catSelect = document.getElementById('edit-doc-category');
+        const customWrap = document.getElementById('edit-doc-custom-wrap');
+        if (catSelect && customWrap) {
+            if (category && catSelect.querySelector(`option[value="${category}"]`)) {
+                catSelect.value = category;
+            }
+            customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+            catSelect.addEventListener('change', () => {
+                customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+            });
+        }
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                customerCardManager.submitEditDocument();
+            });
+        }
+        const nameInput = document.getElementById('edit-doc-name');
+        if (nameInput) {
+            nameInput.focus();
+            nameInput.select();
+        }
+    }
+
+    async submitEditDocument() {
+        const sourceField = document.getElementById('edit-doc-source-field')?.value;
+        const sourceIndexRaw = document.getElementById('edit-doc-source-index')?.value;
+        const nameInput = document.getElementById('edit-doc-name');
+        const categorySelect = document.getElementById('edit-doc-category');
+        const customInput = document.getElementById('edit-doc-custom');
+        const submitBtn = document.getElementById('edit-doc-submit');
+        if (!sourceField || sourceIndexRaw === '' || sourceIndexRaw == null || !nameInput || !categorySelect) return;
+        const displayName = (nameInput.value || '').trim();
+        if (!displayName) {
+            this.showNotification('Ange ett namn på dokumentet.', 'error');
+            return;
+        }
+        const category = categorySelect.value;
+        const customCategory = (customInput?.value || '').trim();
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+        }
+        try {
+            const opts = getAuthOptsKundkort();
+            const res = await fetch(`${baseUrl}/api/documents`, {
+                method: 'PATCH',
+                ...opts,
+                headers: { ...(opts.headers || {}), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerId: this.customerId,
+                    sourceField,
+                    sourceIndex: parseInt(sourceIndexRaw, 10),
+                    displayName,
+                    category,
+                    customCategory: customCategory || undefined
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+            this.showNotification('Dokument uppdaterat.', 'success');
+            this.closeEditDocumentModal();
+            this.loadDocuments();
+        } catch (err) {
+            console.error('❌ Redigera dokument:', err);
+            this.showNotification('Kunde inte spara: ' + (err.message || 'Okänt fel'), 'error');
+        } finally {
+            const btn = document.getElementById('edit-doc-submit');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Spara';
+            }
+        }
     }
 
     async deleteDocument(sourceField, sourceIndex, docName) {
