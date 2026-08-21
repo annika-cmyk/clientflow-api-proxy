@@ -1,5 +1,6 @@
 /**
- * Riskaptit: tröskel mot sammantagen residual-S×K (samma band som beraknaRiskniva).
+ * Riskaptit: tröskel mot kundens explicit valda residualriskprofil (enum).
+ * Ingen S×K-produkt för kunden — det är metodik för tjänster och riskfaktorer.
  * Status: Inom_aptit | Kräver_beslut | Överskriden
  */
 (function (global) {
@@ -97,23 +98,21 @@
     }
 
     /**
-     * Kanoniskt fält är Riskniva. sammanlagd risk läses bara som fallback
-     * för äldre poster. Residual-S×K i Riskpoäng vinner om den finns.
+     * Kanoniskt fält är Riskniva (kundResidualRiskprofil).
+     * sammanlagd risk läses bara som fallback för äldre poster.
+     * S×K i Riskpoäng används inte för kundens residual — det är tjänste-/faktor-metodik.
      */
     function resolveResidualNiva(fields) {
-        var fromPoang = residualFromPoang(fields);
-        if (fromPoang.level) return fromPoang.level;
         var raw = fieldStr(fields, FIELDS.RISK_CANONICAL) || fieldStr(fields, FIELDS.RISK_LEGACY) || fieldStr(fields, 'Risknivå');
         return RiskSkala.riskLabelSv(raw) || '';
     }
 
     function resolveResidualMeta(fields) {
-        var fromPoang = residualFromPoang(fields);
-        var niva = fromPoang.level || resolveResidualNiva(fields);
+        var niva = resolveResidualNiva(fields);
         return {
             niva: niva,
-            product: fromPoang.product,
-            source: fromPoang.source || (niva ? 'Riskniva' : '')
+            product: null,
+            source: niva ? 'Riskniva' : ''
         };
     }
 
@@ -208,7 +207,7 @@
     }
 
     function RISK_TRIGGER_KEYS() {
-        return [FIELDS.RISK_CANONICAL, FIELDS.RISK_LEGACY, 'Risknivå', FIELDS.RISK_POANG, 'Riskpoang', FIELDS.SANKTIONER];
+        return [FIELDS.RISK_CANONICAL, FIELDS.RISK_LEGACY, 'Risknivå', FIELDS.SANKTIONER];
     }
 
     function incomingTouchesRisk(incoming) {
@@ -292,21 +291,16 @@
     }
 
     function policyText() {
-        var bands = sxkBands();
-        var lines = [
-            'Byråns riskaptit är kodad i ClientFlow (beraknaRiskniva / RiskSkala.levelFromProduct) och ska inte skilja sig från denna text.',
+        return [
+            'Byråns riskaptit för kunder styrs av den explicit valda residualriskprofilen (Låg, Normal, Förhöjd, Hög, Oacceptabel) — inte av en S×K-produkt.',
             '',
-            'Sammantagen residualrisk räknas som sannolikhet × konsekvens (S×K) på skalan 1–5 × 1–5:'
-        ];
-        bands.forEach(function (band) {
-            var extra = '';
-            if (band.label === 'Hög') extra = ' — kräver dokumenterat beslut om fortsatt affärsförbindelse (riskaptitStatus = Kräver_beslut tills beslut registrerats).';
-            if (band.label === 'Oacceptabel') extra = ' — överskrider byråns riskaptit (riskaptitStatus = Överskriden). Dokumenterat beslut krävs.';
-            lines.push('- ' + band.label + ': S×K ' + band.from + '–' + band.to + extra);
-        });
-        lines.push('');
-        lines.push('Kundspecifika beslut och historik registreras på kundkortet och i revisionsloggen (riskaptit_status_ändrad, riskaptit_beslut_registrerat), inte i detta byrådokument.');
-        return lines.join('\n');
+            'kundResidualRiskprofil = Hög → riskaptitStatus = Kräver_beslut (om inte ett giltigt beslut finns för aktuell riskbild).',
+            'kundResidualRiskprofil = Oacceptabel → riskaptitStatus = Överskriden.',
+            '',
+            'Sannolikhet × konsekvens (beraknaRiskniva) används för tjänster och övriga riskfaktorer. Den högsta residualnivån bland kundens valda tjänster är ett golv och en rekommendation för kundens residualprofil, inte en automatisk beräkning.',
+            '',
+            'Kundspecifika beslut och historik registreras på kundkortet och i revisionsloggen (riskaptit_status_ändrad, riskaptit_beslut_registrerat), inte i detta byrådokument.'
+        ].join('\n');
     }
 
     function nivaDisplayLabel(niva) {

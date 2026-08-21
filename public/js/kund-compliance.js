@@ -21,14 +21,16 @@
     }
 
     function isRiskbedomningKlar(fields) {
+        if (global.KundRiskprofil && typeof global.KundRiskprofil.isPublicerbar === 'function') {
+            return global.KundRiskprofil.isPublicerbar(fields);
+        }
         if (!fields) return false;
         const manual = fields['Flik klar - Riskbedömning'];
         if (manual === true) return true;
         if (manual === false) return false;
-        const sammanlagd = (fields['sammanlagd risk'] || fields['Riskniva'] || '').toString().trim();
-        const utförd = fields['Riskbedömning utförd datum'];
-        const bedömning = (fields['Byrans riskbedomning'] || fields['Motivering'] || '').toString().trim();
-        return !!(sammanlagd && (utförd || bedömning));
+        const inneboende = (fields['Kund inneboende riskprofil'] || '').toString().trim();
+        const residual = (fields['Riskniva'] || fields['sammanlagd risk'] || '').toString().trim();
+        return !!(inneboende && residual);
     }
 
     function isKycFormularKlar(fields, savedKyc) {

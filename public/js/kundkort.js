@@ -881,14 +881,16 @@ class CustomerCardManager {
     }
 
     _isRiskbedomningKlar(fields) {
+        if (window.KundRiskprofil && typeof KundRiskprofil.isPublicerbar === 'function') {
+            return KundRiskprofil.isPublicerbar(fields);
+        }
         if (!fields) return false;
         const manual = fields['Flik klar - Riskbedömning'];
         if (manual === true) return true;
         if (manual === false) return false;
-        const sammanlagd = (fields['sammanlagd risk'] || fields['Riskniva'] || '').toString().trim();
-        const utförd = fields['Riskbedömning utförd datum'];
-        const bedömning = (fields['Byrans riskbedomning'] || fields['Motivering'] || '').toString().trim();
-        return !!(sammanlagd && (utförd || bedömning));
+        const inneboende = (fields['Kund inneboende riskprofil'] || '').toString().trim();
+        const residual = (fields['Riskniva'] || fields['sammanlagd risk'] || '').toString().trim();
+        return !!(inneboende && residual);
     }
 
     _fieldIsChecked(fields, fieldName) {
@@ -7139,22 +7141,84 @@ class CustomerCardManager {
         return `<span class="risk-pill ${cls}">${label}${withSuffix ? ' risk' : ''}</span>`;
     }
 
-    _riskNivaButtonsHtml(riskniva) {
+    _riskNivaButtonsHtml(riskniva, kind) {
         const current = this._riskLabel(riskniva);
+        const target = kind === 'inneboende' ? 'inneboende' : 'residual';
         const levels = (window.RiskSkala && RiskSkala.labels()) || ['Låg', 'Normal', 'Förhöjd', 'Hög', 'Oacceptabel'];
         return levels.map((label) => {
             const active = current === label;
             const btnClass = (window.RiskSkala && RiskSkala.riskBtnClass(label)) || '';
-            return `<button type="button" class="ai-rb-niva-btn${active ? ' is-active ' + btnClass : ''}" data-riskniva="${label}" onclick="customerCardManager.setRiskniva('${label}')"><i class="fas fa-circle"></i> ${label}</button>`;
+            return `<button type="button" class="ai-rb-niva-btn${active ? ' is-active ' + btnClass : ''}" data-riskniva="${label}" data-riskprofil="${target}" onclick="customerCardManager.setKundRiskprofil('${target}','${label}')"><i class="fas fa-circle"></i> ${label}</button>`;
         }).join('\n                                ');
     }
 
-    renderRiskbedomningAiCard(f) {
-        const riskniva = f['Riskniva'] || '';
-        const riskbedomning = f['Byrans riskbedomning'] || '';
-        const atgarder = f['Atgarder riskbedomning'] || '';
+    _profilBadgeHtml(kind, niva) {
+        const label = this._riskLabel(niva);
+        const kindLabel = kind === 'inneboende' ? 'Inneboende' : 'Residual';
+        if (!label) {
+            return `<span class="ai-rb-profil-badge ai-rb-profil-badge--empty"><span class="ai-rb-profil-kind">${kindLabel}</span> <span class="missing-data">Ej vald</span></span>`;
+        }
+        const pill = this._riskPillHtml(label, false);
+        return `<span class="ai-rb-profil-badge"><span class="ai-rb-profil-kind">${kindLabel}</span> ${pill}</span>`;
+    }
 
-        const nivaBadge = (n) => n ? this._riskPillHtml(n, true) : '';
+    _selectedTjansterForFloor() {
+        const f = this.customerData?.fields || {};
+        const aktivaIds = this._aktivaTjansterIds || new Set(f['Kundens utvalda tjänster'] || []);
+        return (this._byransTjanster || []).filter((t) =>
+            this._tjanstIdMatchSet(t).some((id) => aktivaIds.has(id))
+        );
+    }
+
+    _tjanstResidualFloor() {
+        if (!window.KundRiskprofil) return { level: '', namn: '', rank: 0 };
+        return KundRiskprofil.tjanstResidualFloor(this._selectedTjansterForFloor());
+    }
+
+    _readRiskprofilFromFields(f) {
+        const fields = f || {};
+        const KP = window.KundRiskprofil;
+        return {
+            inneboende: KP ? KP.readInneboende(fields) : this._riskLabel(fields['Kund inneboende riskprofil'] || ''),
+            residual: KP ? KP.readResidual(fields) : this._riskLabel(fields.Riskniva || fields['sammanlagd risk'] || ''),
+            motivering: KP ? KP.readMotivering(fields) : (fields['Byrans riskbedomning'] || ''),
+            atgarder: KP && KP.readAtgarder ? KP.readAtgarder(fields) : (fields['Atgarder riskbedomning'] || ''),
+            legacy: KP ? KP.needsLegacyReview(fields) : !fields['Kund inneboende riskprofil']
+        };
+    }
+
+    _riskbedomningViewHtml(inneboende, residual, motivering, atgarder, opts = {}) {
+        const legacy = !!opts.legacy;
+        const badges = `
+                        <div class="ai-rb-profil-row" id="ai-rb-niva-display">
+                            ${this._profilBadgeHtml('inneboende', inneboende)}
+                            ${this._profilBadgeHtml('residual', residual)}
+                        </div>`;
+        const legacyBox = (legacy && motivering)
+            ? `<div class="ai-rb-legacy">Tidigare bedömning (ej uppdelad i inneboende/residual), kräver manuell översyn<div class="ai-rb-legacy-text">${this._esc(motivering)}</div></div>`
+            : '';
+        const motiveringBlock = (!legacy && motivering)
+            ? `<div class="risker-vald-section-label">Motivering</div>
+                        <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${this._esc(motivering)}</div>`
+            : '';
+        const atgarderBlock = atgarder
+            ? `<div class="risker-vald-section-label">Åtgärder</div>
+                        <div class="risker-vald-desc" id="ai-rb-atg-display" style="white-space:pre-wrap;">${this._esc(atgarder)}</div>
+                        <p class="ai-rb-residual-note">Dessa åtgärder ligger till grund för residualbedömningen ovan.</p>`
+            : '';
+        const empty = !motivering && !atgarder && !inneboende && !residual
+            ? '<p class="lead-empty">Ingen bedömning gjord ännu. Välj inneboende och residual nivå, eller låt AI analysera.</p>'
+            : '';
+        return `${badges}
+                        ${legacyBox}
+                        ${motiveringBlock}
+                        ${atgarderBlock}
+                        ${empty}`;
+    }
+
+    renderRiskbedomningAiCard(f) {
+        const profil = this._readRiskprofilFromFields(f);
+        const titleBadges = `${this._profilBadgeHtml('inneboende', profil.inneboende)} ${this._profilBadgeHtml('residual', profil.residual)}`;
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="ai-riskbedomning-kort">
@@ -7162,51 +7226,46 @@ class CustomerCardManager {
                     <div class="collapsible-title">
                         <i class="fas fa-robot" style="color:#6366f1;margin-right:0.4rem;"></i>
                         Kundens riskbedömning
-                        ${riskniva ? nivaBadge(riskniva) : ''}
+                        <span class="ai-rb-title-badges">${titleBadges}</span>
                     </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body" id="ai-riskbedomning-body">
-                    <!-- Visningsläge -->
                     <div id="ai-rb-view">
-                        <div class="ai-rb-riskniva-row">
-                            <span class="risker-vald-section-label" style="margin-top:0;">Sammanlagd risknivå</span>
-                            <div id="ai-rb-niva-display" style="margin-top:0.4rem;">
-                                ${riskniva ? nivaBadge(riskniva) : '<span class="missing-data">Ej bedömd</span>'}
-                            </div>
-                        </div>
-                        ${riskbedomning ? `
-                        <div class="risker-vald-section-label">Kundens riskbedömning</div>
-                        <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
-                        ${atgarder ? `
-                        <div class="risker-vald-section-label">Åtgärder</div>
-                        <div class="risker-vald-desc" id="ai-rb-atg-display" style="white-space:pre-wrap;">${atgarder}</div>` : ''}
-                        ${!riskbedomning && !atgarder ? '<p class="lead-empty">Ingen bedömning gjord ännu. Klicka redigera eller låt AI analysera.</p>' : ''}
+                        ${this._riskbedomningViewHtml(profil.inneboende, profil.residual, profil.motivering, profil.atgarder, { legacy: profil.legacy })}
                     </div>
 
-                    <!-- Redigeringsläge -->
-                    <div id="ai-rb-edit" style="display:none;">
+                    <div id="ai-rb-edit" style="display:none;" data-inneboende="${this._esc(profil.inneboende)}" data-residual="${this._esc(profil.residual)}">
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
-                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Sammanlagd risknivå</label>
-                            <div class="ai-rb-niva-btns">
-                                ${this._riskNivaButtonsHtml(riskniva)}
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Inneboende riskprofil</label>
+                            <div class="ai-rb-niva-btns" data-riskprofil="inneboende">
+                                ${this._riskNivaButtonsHtml(profil.inneboende, 'inneboende')}
                             </div>
                         </div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
-                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Kundens riskbedömning</label>
-                            <textarea id="ai-rb-text-input" class="kunduppgifter-input" rows="5" placeholder="Skriv kundens riskbedömning...">${riskbedomning}</textarea>
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Residual riskprofil</label>
+                            <div class="ai-rb-niva-btns" data-riskprofil="residual">
+                                ${this._riskNivaButtonsHtml(profil.residual, 'residual')}
+                            </div>
+                        </div>
+                        <p class="ai-rb-niva-help" id="ai-rb-niva-help" hidden></p>
+                        <p class="ai-rb-floor-warn" id="ai-rb-floor-warn" hidden></p>
+                        <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
+                            <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Motivering</label>
+                            <textarea id="ai-rb-text-input" class="kunduppgifter-input" rows="5" placeholder="Beskriv vilka riskfaktorer som identifierats och varför — utan att avsluta med en nivåslutsats." oninput="customerCardManager._updateKundRiskprofilWarnings()">${this._esc(profil.motivering)}</textarea>
+                            <p class="ai-rb-slutsats-warn" id="ai-rb-slutsats-warn" hidden></p>
                         </div>
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Åtgärder</label>
-                            <textarea id="ai-rb-atg-input" class="kunduppgifter-input" rows="5" placeholder="Beskriv vilka åtgärder byrån vidtar...">${atgarder}</textarea>
+                            <textarea id="ai-rb-atg-input" class="kunduppgifter-input" rows="5" placeholder="Beskriv vilka åtgärder byrån vidtar...">${this._esc(profil.atgarder)}</textarea>
+                            <p class="ai-rb-residual-note">Dessa åtgärder ligger till grund för residualbedömningen ovan.</p>
                         </div>
 
-                        <!-- AI-knapp -->
                         <div class="ai-rb-ai-row">
                             <button class="btn-ai-suggest" id="ai-rb-btn" onclick="customerCardManager.getAiRiskbedomning()">
                                 <i class="fas fa-robot"></i> Generera AI-förslag
                             </button>
-                            <span class="ai-rb-ai-hint">AI analyserar all KYC-data och föreslår risknivå, bedömning och åtgärder</span>
+                            <span class="ai-rb-ai-hint">AI föreslår inneboende och residual nivå var för sig, plus en motivering utan slutsatsmening</span>
                         </div>
 
                         <div class="kunduppgifter-actions" style="margin-top:1rem;">
@@ -7240,37 +7299,66 @@ class CustomerCardManager {
         if (!isEditing) {
             const card = document.getElementById('ai-riskbedomning-kort');
             if (card && !card.classList.contains('open')) card.classList.add('open');
+            this._updateKundRiskprofilWarnings();
         }
     }
 
     setRiskniva(nivå) {
+        this.setKundRiskprofil('residual', nivå);
+    }
+
+    setKundRiskprofil(kind, nivå) {
         const canonical = this._riskLabel(nivå) || nivå;
-        document.querySelectorAll('.ai-rb-niva-btn').forEach(b => {
+        const target = kind === 'inneboende' ? 'inneboende' : 'residual';
+        const scope = document.querySelectorAll(`.ai-rb-niva-btn[data-riskprofil="${target}"]`);
+        scope.forEach((b) => {
             b.classList.remove('is-active', 'is-low', 'is-lag', 'is-normal', 'is-medel', 'is-forhojd', 'is-high', 'is-hog', 'is-oacceptabel');
         });
-        const btn = [...document.querySelectorAll('.ai-rb-niva-btn')]
-            .find(b => (b.getAttribute('data-riskniva') || this._riskLabel(b.textContent)) === canonical);
+        const btn = [...scope].find((b) => (b.getAttribute('data-riskniva') || this._riskLabel(b.textContent)) === canonical);
         if (btn) {
             const btnClass = (window.RiskSkala && RiskSkala.riskBtnClass(canonical)) || '';
             btn.classList.add('is-active', btnClass);
         }
         const edit = document.getElementById('ai-rb-edit');
-        if (edit) edit.dataset.riskniva = canonical;
+        if (edit) edit.dataset[target] = canonical;
+        this._updateKundRiskprofilWarnings();
+    }
+
+    _updateKundRiskprofilWarnings() {
+        const edit = document.getElementById('ai-rb-edit');
+        const residual = edit?.dataset.residual || '';
+        const motivering = document.getElementById('ai-rb-text-input')?.value || '';
+        const KP = window.KundRiskprofil;
+
+        const floorEl = document.getElementById('ai-rb-floor-warn');
+        if (floorEl && KP) {
+            const warn = KP.floorWarning(residual, this._tjanstResidualFloor());
+            floorEl.hidden = !warn;
+            floorEl.textContent = warn;
+        }
+
+        const slutsatsEl = document.getElementById('ai-rb-slutsats-warn');
+        if (slutsatsEl && KP) {
+            const warn = KP.slutsatsVarning(motivering);
+            slutsatsEl.hidden = !warn;
+            slutsatsEl.textContent = warn;
+        }
     }
 
     async saveRiskbedomning() {
         const editEl = document.getElementById('ai-rb-edit');
-        const riskniva = editEl?.dataset.riskniva || '';
+        const inneboende = editEl?.dataset.inneboende || '';
+        const residual = editEl?.dataset.residual || '';
         const riskbedomning = document.getElementById('ai-rb-text-input')?.value || '';
         const atgarder = document.getElementById('ai-rb-atg-input')?.value || '';
 
         const fields = {
-            'Riskniva': riskniva || null,
+            'Kund inneboende riskprofil': inneboende || null,
+            Riskniva: residual || null,
             'Byrans riskbedomning': riskbedomning,
             'Atgarder riskbedomning': atgarder
         };
-        // Rensa tomma null-fält
-        Object.keys(fields).forEach(k => { if (fields[k] === null) delete fields[k]; });
+        Object.keys(fields).forEach((k) => { if (fields[k] === null) delete fields[k]; });
 
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -7283,9 +7371,9 @@ class CustomerCardManager {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-            // Uppdatera customerData
             if (this.customerData?.fields) {
-                if (riskniva) this.customerData.fields['Riskniva'] = riskniva;
+                if (inneboende) this.customerData.fields['Kund inneboende riskprofil'] = inneboende;
+                if (residual) this.customerData.fields.Riskniva = residual;
                 this.customerData.fields['Byrans riskbedomning'] = riskbedomning;
                 this.customerData.fields['Atgarder riskbedomning'] = atgarder;
                 if (data.record?.fields) {
@@ -7293,8 +7381,7 @@ class CustomerCardManager {
                 }
             }
 
-            // Uppdatera visningsvyn direkt
-            this._updateRiskbedomningView(riskniva, riskbedomning, atgarder);
+            this._updateRiskbedomningView(inneboende, residual, riskbedomning, atgarder);
             this._renderRiskaptitBanner(this.customerData?.fields || {});
             this.toggleRiskbedomningEdit();
             this.showNotification('Riskbedömning sparad!', 'success');
@@ -7304,32 +7391,23 @@ class CustomerCardManager {
         }
     }
 
-    _updateRiskbedomningView(riskniva, riskbedomning, atgarder) {
-        const nivaBadge = (n) => n ? this._riskPillHtml(n, true) : '<span class="missing-data">Ej bedömd</span>';
-
-        const nivaDisplay = document.getElementById('ai-rb-niva-display');
-        if (nivaDisplay) nivaDisplay.innerHTML = nivaBadge(riskniva);
-
+    _updateRiskbedomningView(inneboende, residual, riskbedomning, atgarder) {
+        const fields = this.customerData?.fields || {};
+        const legacy = window.KundRiskprofil
+            ? KundRiskprofil.needsLegacyReview({
+                ...fields,
+                'Kund inneboende riskprofil': inneboende,
+                Riskniva: residual,
+                'Byrans riskbedomning': riskbedomning
+            })
+            : !inneboende;
         const view = document.getElementById('ai-rb-view');
         if (view) {
-            view.innerHTML = `
-                <div class="ai-rb-riskniva-row">
-                    <span class="risker-vald-section-label" style="margin-top:0;">Sammanlagd risknivå</span>
-                    <div style="margin-top:0.4rem;">${nivaBadge(riskniva)}</div>
-                </div>
-                ${riskbedomning ? `<div class="risker-vald-section-label">Kundens riskbedömning</div>
-                <div class="risker-vald-desc" style="white-space:pre-wrap;">${riskbedomning}</div>` : ''}
-                ${atgarder ? `<div class="risker-vald-section-label">Åtgärder</div>
-                <div class="risker-vald-desc" style="white-space:pre-wrap;">${atgarder}</div>` : ''}
-                ${!riskbedomning && !atgarder ? '<p class="lead-empty">Ingen bedömning gjord ännu.</p>' : ''}`;
+            view.innerHTML = this._riskbedomningViewHtml(inneboende, residual, riskbedomning, atgarder, { legacy });
         }
-
-        // Uppdatera badge i kortrubriken
-        const title = document.querySelector('#ai-riskbedomning-kort .collapsible-title');
-        if (title) {
-            const existingPill = title.querySelector('.risk-pill');
-            if (existingPill) existingPill.remove();
-            if (riskniva) title.insertAdjacentHTML('beforeend', nivaBadge(riskniva));
+        const titleBadges = document.querySelector('#ai-riskbedomning-kort .ai-rb-title-badges');
+        if (titleBadges) {
+            titleBadges.innerHTML = `${this._profilBadgeHtml('inneboende', inneboende)} ${this._profilBadgeHtml('residual', residual)}`;
         }
     }
 
@@ -7389,14 +7467,32 @@ class CustomerCardManager {
             const data = await res.json();
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
-            // Fyll i fälten
             const textInput = document.getElementById('ai-rb-text-input');
             const atgInput = document.getElementById('ai-rb-atg-input');
-            if (textInput) textInput.value = data.riskbedomning || '';
+            if (textInput) textInput.value = data.riskbedomning || data.kundRiskMotivering || '';
             if (atgInput) atgInput.value = data.atgarder || '';
-            if (data.riskniva) this.setRiskniva(data.riskniva);
-
-            this.showNotification('AI-analys klar! Granska och spara.', 'success');
+            if (data.inneboendeRiskprofil || data.kundInneboendeRiskprofil) {
+                this.setKundRiskprofil('inneboende', data.inneboendeRiskprofil || data.kundInneboendeRiskprofil);
+            }
+            if (data.residualRiskprofil || data.kundResidualRiskprofil || data.riskniva) {
+                this.setKundRiskprofil('residual', data.residualRiskprofil || data.kundResidualRiskprofil || data.riskniva);
+            }
+            const help = document.getElementById('ai-rb-niva-help');
+            if (help) {
+                const nivaText = (data.nivaMotivering || '').trim();
+                help.hidden = !nivaText;
+                help.textContent = nivaText;
+            }
+            this._updateKundRiskprofilWarnings();
+            const flags = [];
+            if (data.slutsatsVarning) flags.push(data.slutsatsVarning);
+            if (data.tjanstGolvVarning) flags.push(data.tjanstGolvVarning);
+            this.showNotification(
+                flags.length
+                    ? 'AI-analys klar. Granska flaggorna innan du sparar.'
+                    : 'AI-analys klar! Granska och spara.',
+                flags.length ? 'warning' : 'success'
+            );
         } catch (err) {
             console.error('❌ AI-riskbedömning fel:', err);
             const msg = String(err.message || '');
@@ -7878,6 +7974,7 @@ class CustomerCardManager {
         if (document.getElementById('ovrigkyc-tjanster')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
+        this._updateKundRiskprofilWarnings();
     }
 
     renderTjanster(aktivaIds, byraHighRisk, targetId = 'services-content') {

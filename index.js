@@ -103,6 +103,7 @@ const auditLogAirtable = require('./lib/audit-log-airtable');
 const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
+const KundRiskprofil = require('./public/js/kund-riskprofil');
 const avvikelseStatus = require('./lib/avvikelse-status');
 const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
 const docsignInvite = require('./lib/docsign-invite');
@@ -1783,7 +1784,8 @@ async function buildAiChatKundContext(customerId, reqUser) {
       `Omsättning: ${f['Omsättning'] || '–'}`,
       `SNI/bransch: ${arr(f['SNI kod'] || f['SNI-koder'] || f['SNI-kod'] || f['SNI-bransch'] || f['Bransch']) || '–'}`,
       `Tjänster: ${tjanster.length ? tjanster.join('; ') : '–'}`,
-      `Risknivå (sparad): ${f['Riskniva'] || f['sammanlagd risk'] || '–'}`,
+      `Inneboende riskprofil: ${f['Kund inneboende riskprofil'] || '–'}`,
+      `Residual riskprofil: ${f['Riskniva'] || f['sammanlagd risk'] || '–'}`,
       `Transaktioner med andra länder: ${f['Har företaget transaktioner med andra länder?'] || '–'}`,
       `Internationell handel (KYC): ${kyc.internationellHandel || '–'}`,
       `PEP-status: ${arr(f['PEP']) || '–'}`,
@@ -2417,7 +2419,21 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   { name: Riskaptit.FIELDS.BESLUT_MOTIVERING, type: 'multilineText', description: 'Motivering till riskaptitbeslutet' },
   { name: Riskaptit.FIELDS.BESLUT_UTFALL, type: 'singleLineText', description: 'Fortsätter_med_skärpta_åtgärder | Avslutas | Avstår_nytt_uppdrag' },
   { name: Riskaptit.FIELDS.BESLUT_RISKBILD, type: 'singleLineText', description: 'Riskbild som det senaste beslutet gäller' },
-  { name: Riskaptit.FIELDS.HISTORIK, type: 'multilineText', description: 'JSON-historik över tidigare riskaptitbeslut' }
+  { name: Riskaptit.FIELDS.HISTORIK, type: 'multilineText', description: 'JSON-historik över tidigare riskaptitbeslut' },
+  {
+    name: 'Kund inneboende riskprofil',
+    type: 'singleSelect',
+    description: 'Explicit vald inneboende kundriskprofil (Låg–Oacceptabel). Inte S×K.',
+    options: {
+      choices: [
+        { name: 'Låg' },
+        { name: 'Normal' },
+        { name: 'Förhöjd' },
+        { name: 'Hög' },
+        { name: 'Oacceptabel' }
+      ]
+    }
+  }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -6818,8 +6834,11 @@ function buildKundRiskbedomningPdfHtml(data) {
 
       ${data.verksamhet ? section('Verksamhetsbeskrivning från Bolagsverket', nl2br(data.verksamhet)) : ''}
 
-      <h2>Sammanlagd risknivå</h2>
-      <p><span class="niva niva-${data.nivaClass}">${esc(data.nivaLabel)}</span></p>
+      <h2>Kundens riskprofil</h2>
+      <p>
+        <span class="niva niva-${data.inneboendeClass || 'normal'}">Inneboende ${esc(data.inneboendeLabel || 'Ej vald')}</span>
+        <span class="niva niva-${data.residualClass || data.nivaClass}" style="margin-left:8px;">Residual ${esc(data.residualLabel || data.nivaLabel || 'Ej vald')}</span>
+      </p>
 
       ${data.motivering ? section('Motivering', nl2br(data.motivering)) : ''}
 
@@ -7019,6 +7038,11 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const nivaCanon = RiskSkala.riskLabelSv(sammanlagdRisk);
     const nivaLabel = nivaCanon ? `${nivaCanon} risk` : (sammanlagdRisk || 'Ej angiven');
     const nivaClass = RiskSkala.riskCss(sammanlagdRisk);
+    const inneboendeRaw = f['Kund inneboende riskprofil'] || '';
+    const inneboendeLabel = RiskSkala.riskLabelSv(inneboendeRaw) || inneboendeRaw || 'Ej vald';
+    const inneboendeClass = RiskSkala.riskCss(inneboendeRaw) || 'normal';
+    const residualLabel = nivaCanon || 'Ej vald';
+    const residualClass = nivaClass || 'normal';
 
     const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
     const {
@@ -7113,6 +7137,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const riskData = {
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
+      inneboendeLabel, inneboendeClass, residualLabel, residualClass,
       verksamhet: pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
@@ -19585,6 +19610,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     let harForhojdInternationellExponering = false;
     let harForhojdPepRiskfaktor = false;
     let antalValdaRiskfaktorer = 0;
+    let tjanstResidualFloor = { level: '', namn: '', rank: 0 };
 
     const parseJsonArr = (v) => {
       if (!v) return [];
@@ -19615,6 +19641,15 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
               for (const { namn, tf } of ok) {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
                 const scored = RiskSkala.readTjanstRisk(tf);
+                const residualForFloor = scored.residualLevel || '';
+                const residualRank = RiskSkala.riskRank(residualForFloor);
+                if (residualRank > (tjanstResidualFloor.rank || 0)) {
+                  tjanstResidualFloor = {
+                    level: RiskSkala.riskLabelSv(residualForFloor) || residualForFloor,
+                    namn,
+                    rank: residualRank
+                  };
+                }
                 const risk = scored.level || (tf['Riskbedömning'] || '').trim();
                 const riskLabel = scored.badge
                   ? `${scored.badge}${scored.residualLevel ? `; residual ${scored.residualBadge}` : ''}`
@@ -19842,9 +19877,13 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     if (String(transaktionerAndraLander).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
 
     const sparadRiskniva = f['Riskniva'] || '';
+    const sparadInneboende = f['Kund inneboende riskprofil'] || '';
     const sparadBedomning = (f['Byrans riskbedomning'] || '').trim();
     const sparadeAtgarder = (f['Atgarder riskbedomning'] || '').trim();
     const harSparadBedomning = sparadBedomning.length > 0 || sparadeAtgarder.length > 0;
+    const tjanstGolvText = tjanstResidualFloor.level
+      ? `${tjanstResidualFloor.level}${tjanstResidualFloor.namn ? ` (tjänst: ${tjanstResidualFloor.namn})` : ''}`
+      : 'ingen vald tjänst med residualnivå';
 
     // Vector store ökar tokenförbrukning kraftigt. Standard: av för kundrisk.
     const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
@@ -19865,8 +19904,9 @@ Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbed
 Väg in all tillgänglig information — varje ifyllt fält och varje vald riskfaktor bidrar till helhetsbilden av kunden.
 ${harSparadBedomning ? `
 BEFINTLIG BEDÖMNING: Byrån har redan sparade texter för denna kund. Använd dem som utgångspunkt men KORRIGERA allt som strider mot aktuellt underlag nedan (t.ex. påståenden om "inga internationella transaktioner" om geografiska/import-export-faktorer är valda). Behåll bara formuleringar som fortfarande stämmer.
-- Sparad risknivå: ${sparadRiskniva || '–'}
-- Sparad riskbedömning: ${sparadBedomning || '–'}
+- Sparad inneboende riskprofil: ${sparadInneboende || '–'}
+- Sparad residual riskprofil: ${sparadRiskniva || '–'}
+- Sparad motivering: ${sparadBedomning || '–'}
 - Sparade åtgärder: ${sparadeAtgarder || '–'}
 ` : ''}
 
@@ -19888,6 +19928,11 @@ BYRÅNS ANALYS AV VALDA TJÄNSTER (endast tjänster som finns i TJÄNSTLISTA ova
 - Tjänster med Hög eller Oacceptabel risk: full byråanalys (beskrivning, hot, sårbarheter, åtgärder) ingår.
 Väg in detta när du bedömer kundens risk; generalisera inte från tjänster som inte är valda för kunden.
 ${byraValdaTjansterDetaljText}
+
+HÖGSTA RESIDUALRISK BLAND VALDA TJÄNSTER (golv för residualRiskprofil): ${tjanstGolvText}
+- residualRiskprofil bör inte ligga under detta golv. Det är en rekommendation, inte ett förbud — motivera i nivaMotivering om du ändå föreslår lägre.
+
+${KundRiskprofil.AI_RULES}
 
 KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till AI):
 - Organisationsform: ${f['Bolagsform'] || '–'}
@@ -19950,22 +19995,25 @@ FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
 - Prioritetsordning för verksamhetsbild: (1) Byråns beskrivning av kunden, (2) Ytterligare beskrivning, (3) Kommentar till riskfaktorer, (4) Bolagsverkets verksamhetsbeskrivning, (5) SNI först som komplement.
 - Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
 
-RISKNIVÅ — ANVÄND FEMGRADIG SKALA (Låg, Normal, Förhöjd, Hög, Oacceptabel):
+RISKNIVÅ — ANVÄND FEMGRADIG SKALA (Låg, Normal, Förhöjd, Hög, Oacceptabel) I TVÅ SEPARATA FÄLT:
+- inneboendeRiskprofil = risken i kunden/verksamheten INNAN byråns kontroller.
+- residualRiskprofil = risken EFTER byråns kontroller (screening, sanktionslistor, stickprov).
 - Sätt "Låg" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver högre nivå, och tjänster/exponering är okontroversiella utifrån underlaget.
 - "Normal" är standard för en typisk redovisningskund utan särskilda riskhöjande faktorer. Skriv inte "Medel".
 - "Förhöjd" när minst en tydlig riskhöjande faktor finns men inte räcker för hög.
 - "Hög" vid PEP Förhöjd, flera samverkande faktorer eller allvarlig enskild faktor.
 - "Oacceptabel" när byrån bör avstå från eller avveckla affärsförbindelsen.
 - Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj minst "Normal" — inte "Låg".
+- Använd INTE S×K (sannolikhet × konsekvens) för dessa två kundfält.
 
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
-1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska kundens sammanlagda risknivå vara "Hög" och PEP MÅSTE nämnas som huvudorsak i riskbedömningen. Vid nivå "Normal" på PEP-faktorn ska sammanlagd risk vara minst "Normal". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
+1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska både inneboendeRiskprofil och residualRiskprofil vara minst "Hög" och PEP MÅSTE nämnas som huvudorsak i motiveringen. Vid nivå "Normal" på PEP-faktorn ska båda profilerna vara minst "Normal". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
 
 1b. INTERNATIONELL EXPONERING / GEOGRAFI / IMPORT-EXPORT (KRITISKT):
    - Om någon vald riskfaktor är "Utanför EU", "Kunder med import/export", annan import/export-faktor, eller har nivå "Förhöjd"/"Hög" under Geografiska riskfaktorer eller riskfaktorer kopplat till kund med internationell koppling: du FÅR INTE skriva att det saknas indikationer på internationella transaktioner.
    - Sådana faktorer MÅSTE nämnas uttryckligen bland riskhöjande faktorer i riskbedömningstexten.
-   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": sammanlagd risknivå ska vara minst "Normal" (ofta "Förhöjd" eller "Hög" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
+   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": inneboendeRiskprofil ska vara minst "Normal" (ofta "Förhöjd" eller "Hög" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
    - Om fältet "Transaktioner med andra länder" eller KYC "Internationell handel" är tomt/Nej men valda riskfaktorer visar internationell exponering: prioritera de valda riskfaktorerna.
 
 2. ÅTGÄRDER — detta är kritiskt:
@@ -19999,15 +20047,17 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
    c) RISKSÄNKANDE FAKTORER: Vad talar för lägre risk? T.ex. enkel affärsstruktur, inhemska transaktioner, transparent verksamhet, känd bransch — inklusive ev. risksänkande aspekter i kommentaren.
    d) RISKHÖJANDE FAKTORER: Vad talar för högre risk? Nämn BARA saker som faktiskt framgår av underlaget, inklusive kommentaren.
    e) TJÄNSTER OCH DERAS RISKPROFIL: Beskriv kort riskprofilen kopplad till de tjänster byrån faktiskt utför åt kunden (ENBART från TJÄNSTLISTA).
-   f) SAMMANVÄGD BEDÖMNING: Motivera den valda risknivån genom att väga samman ovanstående.
+   Avsluta INTE med en sammanfattande nivåmening. Skriv ALDRIG "den sammantagna riskbedömningen är [nivå]" eller liknande. Nivån uttrycks BARA i enum-fälten.
 
    VIKTIG REGEL: Om det inte finns riskhöjande faktorer, skriv tydligt att inga riskhöjande faktorer noterats — hitta INTE PÅ risker för att "balansera" texten.
 
 Svara EXAKT i detta JSON-format (inget annat):
 {
-  "riskniva": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
-  "riskbedomning": "5-10 meningar som motiverar risknivån konkret enligt strukturen ovan.",
-  "atgarder": "Punkter med bindestreck (-) vid Förhöjd/Hög/Oacceptabel eller specifik risk, annars exakt tom sträng."
+  "inneboendeRiskprofil": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
+  "residualRiskprofil": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
+  "nivaMotivering": "1–2 meningar om VARFÖR just dessa två nivåer föreslås. Inte samma text som riskbedomning.",
+  "riskbedomning": "5-10 meningar som beskriver vilka faktorer som identifierats och varför — UTAN sammanfattande nivåmening.",
+  "atgarder": "Punkter med bindestreck (-) vid Förhöjd/Hög/Oacceptabel residual eller specifik risk, annars exakt tom sträng."
 }`;
 
     const extractFirstJsonObject = (text) => {
@@ -20095,7 +20145,8 @@ Svara EXAKT i detta JSON-format (inget annat):
     if (!result || isLowQualityRiskText(result.riskbedomning)) {
       const rewritePrompt = `Skriv om riskbedömningen till tydlig svenska enligt PVML.
 Utan UI-termer (kryss/bockat/markerat/flik/formulär). Hitta inte på nya fakta.
-Returnera EXAKT JSON: {"riskniva":"Låg|Normal|Förhöjd|Hög|Oacceptabel","riskbedomning":"...","atgarder":"..."}.
+Skriv INTE "den sammantagna riskbedömningen är [nivå]" i riskbedomning.
+Returnera EXAKT JSON: {"inneboendeRiskprofil":"Låg|Normal|Förhöjd|Hög|Oacceptabel","residualRiskprofil":"Låg|Normal|Förhöjd|Hög|Oacceptabel","nivaMotivering":"...","riskbedomning":"...","atgarder":"..."}.
 
 NUVARANDE SVAR ATT FÖRBÄTTRA:
 ${clip(aiText, 4000)}
@@ -20124,11 +20175,12 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 
-    const aiPayload = {
-      riskniva: RiskSkala.riskLabelSv(result.riskniva) || 'Normal',
-      riskbedomning: result.riskbedomning || '',
-      atgarder: result.atgarder || ''
-    };
+    const aiPayload = KundRiskprofil.normalizeAiPayload(result, { tjanstFloor: tjanstResidualFloor });
+    if (!aiPayload.residualRiskprofil) {
+      aiPayload.residualRiskprofil = RiskSkala.riskLabelSv(result.riskniva) || 'Normal';
+      aiPayload.riskniva = aiPayload.residualRiskprofil;
+      aiPayload.kundResidualRiskprofil = aiPayload.residualRiskprofil;
+    }
     const kundAiLog = await auditHooks.logAiGenerated({
       write: writeAuditEvent,
       actor: auditLog.SYSTEM_ACTORS.openai,
@@ -20136,8 +20188,8 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
       entityType: 'kund',
       entityId: kundId,
       fieldChanged: 'Byrans riskbedomning',
-      aiOutputRaw: [aiPayload.riskniva, aiPayload.riskbedomning, aiPayload.atgarder].filter(Boolean).join('\n\n'),
-      extra: { faltSomGenererades: 'riskniva,riskbedomning,atgarder' }
+      aiOutputRaw: [aiPayload.inneboendeRiskprofil, aiPayload.residualRiskprofil, aiPayload.nivaMotivering, aiPayload.riskbedomning, aiPayload.atgarder].filter(Boolean).join('\n\n'),
+      extra: { faltSomGenererades: 'inneboendeRiskprofil,residualRiskprofil,nivaMotivering,riskbedomning,atgarder' }
     });
     res.json({
       ...aiPayload,

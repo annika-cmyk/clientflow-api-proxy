@@ -6154,6 +6154,66 @@ body.sidebar-collapsed .logout-btn {
     line-height: 1.4;
 }
 .ai-rb-riskniva-row { margin-bottom: 0.75rem; }
+.ai-rb-title-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+.ai-rb-profil-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.85rem;
+}
+.ai-rb-profil-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.ai-rb-profil-kind {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.ai-rb-residual-note {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+}
+.ai-rb-legacy {
+    margin: 0.75rem 0;
+    padding: 0.7rem 0.85rem;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #92400e;
+}
+.ai-rb-legacy-text {
+    margin-top: 0.4rem;
+    white-space: pre-wrap;
+    color: #78350f;
+}
+.ai-rb-floor-warn,
+.ai-rb-slutsats-warn {
+    margin: 0.4rem 0 0.75rem;
+    padding: 0.55rem 0.75rem;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #9a3412;
+}
+.ai-rb-niva-help {
+    margin: 0 0 0.75rem;
+    font-size: 0.78rem;
+    color: #5b21b6;
+    line-height: 1.45;
+}
 
 .collapsible-edit-grid {
     display: grid;
