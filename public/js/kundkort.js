@@ -1759,8 +1759,8 @@ class CustomerCardManager {
             <div class="uppdrag-tab">
                 ${runsSetupHtml}
                 ${runsEnsureHtml}
-                ${allaUppdragCardHtml}
                 ${boardHtml}
+                ${allaUppdragCardHtml}
             </div>
         `;
 
