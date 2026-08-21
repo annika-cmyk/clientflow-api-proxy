@@ -305,12 +305,54 @@
 
     function serializeRiskPoang(poang) {
         var n = normalizePoang(poang || {});
-        return JSON.stringify({
+        var out = {
             sannolikhet: n.sannolikhet,
             konsekvens: n.konsekvens,
             sannolikhetEfter: n.sannolikhetEfter,
             konsekvensEfter: n.konsekvensEfter
-        });
+        };
+        if (poang && (poang.kraverManualOversyn === true || poang.requiresReview === true)) {
+            out.kraverManualOversyn = true;
+        }
+        return JSON.stringify(out);
+    }
+
+    function beraknaRiskniva(sannolikhet, konsekvens) {
+        return assessRisk(sannolikhet, konsekvens).level || '';
+    }
+
+    function normalizePtTf(raw) {
+        var t = fold(raw);
+        if (!t) return '';
+        if (t === 'tf' || t === 'terrorfinansiering' || t.indexOf('terror') === 0) return 'TF';
+        if (t === 'bada' || t === 'pt/tf' || t === 'pttf' || t === 'bagge' || t === 'bada pt/tf') return 'Båda';
+        if (t === 'pt' || t === 'penningtvatt' || t.indexOf('penning') === 0) return 'PT';
+        return '';
+    }
+
+    function isTfRelevant(raw) {
+        var v = normalizePtTf(raw);
+        return v === 'TF' || v === 'Båda';
+    }
+
+    function migrateLegacyRiskScores(rawLevel) {
+        var inferred = scoresFromLegacyLevel(rawLevel);
+        return {
+            sannolikhet: inferred.sannolikhet,
+            konsekvens: inferred.konsekvens,
+            sannolikhetEfter: inferred.sannolikhet,
+            konsekvensEfter: inferred.konsekvens,
+            kraverManualOversyn: true
+        };
+    }
+
+    function poangNeedsReview(raw) {
+        if (!raw) return false;
+        var obj = raw;
+        if (typeof raw === 'string') {
+            try { obj = JSON.parse(raw); } catch (_) { return false; }
+        }
+        return !!(obj && typeof obj === 'object' && (obj.kraverManualOversyn === true || obj.requiresReview === true));
     }
 
     function readTjanstRisk(fields) {
@@ -339,6 +381,49 @@
             residualLevel: residual.level,
             residualBadge: residual.badge
         };
+    }
+
+    function readOvrigRisk(fields) {
+        var f = fields || {};
+        var stored = parseRiskPoang(f['Riskpoäng'] || f.Riskpoang);
+        var legacy = String(f['Riskbedömning'] || '').trim();
+        var fromLegacy = false;
+        if (!stored && legacy) {
+            stored = normalizePoang(migrateLegacyRiskScores(legacy));
+            fromLegacy = true;
+        }
+        var inherent = assessRisk(stored && stored.sannolikhet, stored && stored.konsekvens);
+        var residual = assessRisk(stored && stored.sannolikhetEfter, stored && stored.konsekvensEfter);
+        return {
+            sannolikhet: inherent.sannolikhet,
+            konsekvens: inherent.konsekvens,
+            product: inherent.product,
+            level: inherent.level || riskLabelSv(legacy) || '',
+            badge: inherent.badge || riskLabelSv(legacy),
+            sannolikhetEfter: residual.sannolikhet,
+            konsekvensEfter: residual.konsekvens,
+            residualProduct: residual.product,
+            residualLevel: residual.level,
+            residualBadge: residual.badge,
+            ptTfRelevans: normalizePtTf(f['PT/TF-relevans'] || f.ptTfRelevans),
+            kraverManualOversyn: fromLegacy || poangNeedsReview(f['Riskpoäng'] || f.Riskpoang)
+        };
+    }
+
+    function ovrigNeedsMigration(fields) {
+        var stored = parseRiskPoang(fields && (fields['Riskpoäng'] || (fields && fields.Riskpoang)));
+        return !stored && !!(fields && String(fields['Riskbedömning'] || '').trim());
+    }
+
+    function ovrigMigrationFields(fields) {
+        var f = fields || {};
+        var migrated = migrateLegacyRiskScores(f['Riskbedömning']);
+        var out = {
+            Riskpoäng: serializeRiskPoang(migrated),
+            Riskbedömning: beraknaRiskniva(migrated.sannolikhet, migrated.konsekvens) || f['Riskbedömning']
+        };
+        if (!String(f['PT/TF-relevans'] || '').trim()) out['PT/TF-relevans'] = 'PT';
+        return out;
     }
 
     var api = {
@@ -373,7 +458,15 @@
         scoreOptionHtml: scoreOptionHtml,
         parseRiskPoang: parseRiskPoang,
         serializeRiskPoang: serializeRiskPoang,
-        readTjanstRisk: readTjanstRisk
+        readTjanstRisk: readTjanstRisk,
+        readOvrigRisk: readOvrigRisk,
+        beraknaRiskniva: beraknaRiskniva,
+        normalizePtTf: normalizePtTf,
+        isTfRelevant: isTfRelevant,
+        migrateLegacyRiskScores: migrateLegacyRiskScores,
+        poangNeedsReview: poangNeedsReview,
+        ovrigNeedsMigration: ovrigNeedsMigration,
+        ovrigMigrationFields: ovrigMigrationFields
     };
 
     if (typeof module !== 'undefined' && module.exports) {

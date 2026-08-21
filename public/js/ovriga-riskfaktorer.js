@@ -208,6 +208,14 @@ class RiskFactorsManager {
         const editAiBtn = document.getElementById('edit-ai-suggest-btn');
         if (editAiBtn) editAiBtn.addEventListener('click', () => this.generateAiSuggestion('edit'));
 
+        ['sannolikhet', 'konsekvens', 'sannolikhet-efter', 'konsekvens-efter'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges('add'));
+            document.getElementById(`edit-${id}`)?.addEventListener('change', () => {
+                this.editNeedsReview = false;
+                this.updateRiskBadges('edit');
+            });
+        });
+
         // Modal controls
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
@@ -346,13 +354,82 @@ class RiskFactorsManager {
         this.setupRiskItemEventListeners();
     }
 
+    scoredRisk(fields) {
+        return (window.RiskSkala && RiskSkala.readOvrigRisk(fields || {})) || {};
+    }
+
+    setScoreSelect(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = value == null ? '' : String(value);
+    }
+
+    paintRiskBadge(id, text, level) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        const pill = (window.RiskSkala && level) ? RiskSkala.riskPillClass(level) : '';
+        el.className = 'tjanst-risk-badge' + (pill ? ` ${pill}` : ' is-empty');
+    }
+
+    updateRiskBadges(mode) {
+        const prefix = mode === 'edit' ? 'edit-' : '';
+        const inherent = (window.RiskSkala && RiskSkala.assessRisk(
+            document.getElementById(`${prefix}sannolikhet`)?.value,
+            document.getElementById(`${prefix}konsekvens`)?.value
+        )) || {};
+        const residual = (window.RiskSkala && RiskSkala.assessRisk(
+            document.getElementById(`${prefix}sannolikhet-efter`)?.value,
+            document.getElementById(`${prefix}konsekvens-efter`)?.value
+        )) || {};
+        this.paintRiskBadge(
+            `${mode === 'edit' ? 'edit' : 'add'}-inneboende-badge`,
+            (window.RiskSkala && RiskSkala.formatInneboendeBadge(inherent)) || 'Inneboende risk: Ej satt',
+            inherent.level
+        );
+        this.paintRiskBadge(
+            `${mode === 'edit' ? 'edit' : 'add'}-residual-badge`,
+            (window.RiskSkala && RiskSkala.formatResidualBadge(residual)) || 'Residualrisk: Ej satt',
+            residual.level
+        );
+        const flag = document.getElementById('edit-review-flag');
+        if (flag) flag.hidden = mode !== 'edit' || !this.editNeedsReview;
+        return { inherent, residual };
+    }
+
+    collectRiskPayload(formData) {
+        const poang = {
+            sannolikhet: formData.get('sannolikhet'),
+            konsekvens: formData.get('konsekvens'),
+            sannolikhetEfter: formData.get('sannolikhet-efter'),
+            konsekvensEfter: formData.get('konsekvens-efter'),
+            kraverManualOversyn: this.editNeedsReview === true
+        };
+        const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
+        return {
+            'Typ av riskfaktor': formData.get('risk-type'),
+            'Riskfaktor': formData.get('risk-factor'),
+            'Beskrivning': formData.get('description'),
+            'Åtgjärd': formData.get('action'),
+            'Riskbedömning': inherent.level || '',
+            'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
+            'PT/TF-relevans': (window.RiskSkala && RiskSkala.normalizePtTf(formData.get('pt-tf'))) || formData.get('pt-tf') || 'PT'
+        };
+    }
+
     createRiskItem(risk) {
-        const riskLevelClass = this.getRiskLevelClass(risk.fields['Riskbedömning'] || 'Normal');
+        const scored = this.scoredRisk(risk.fields);
+        const riskLevel = scored.level || 'Normal';
+        const riskLevelClass = this.getRiskLevelClass(riskLevel);
+        const residualLevel = scored.residualLevel || '';
+        const residualClass = residualLevel ? this.getRiskLevelClass(residualLevel) : '';
         const isChecked = risk.fields['Aktuell'] === true;
         const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
         const riskFactor = risk.fields['Riskfaktor'] || '';
-        const riskLevel = (window.RiskSkala && RiskSkala.riskLabelSv(risk.fields['Riskbedömning'])) || risk.fields['Riskbedömning'] || 'Normal';
         const approvalDate = risk.fields['Riskbedömning godkänd datum'] || '';
+        const tfTag = (window.RiskSkala && RiskSkala.isTfRelevant(scored.ptTfRelevans))
+            ? '<span class="pt-tf-tag">TF</span>'
+            : '';
         
         return `
             <div class="risk-item ${riskLevelClass}" data-record-id="${risk.id}">
@@ -362,9 +439,10 @@ class RiskFactorsManager {
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${riskFactor}</h4>
+                            <h4 class="risk-task-name">${riskFactor} ${tfTag}</h4>
                             <div class="risk-meta-info">
-                                <span class="risk-level-badge ${riskLevelClass}">${riskLevel}</span>
+                                <span class="risk-level-badge ${riskLevelClass}">${scored.badge || riskLevel}</span>
+                                ${residualLevel ? `<span class="risk-level-badge ${residualClass}">Residual ${scored.residualBadge}</span>` : ''}
                                 ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
                             </div>
                         </div>
@@ -380,12 +458,12 @@ class RiskFactorsManager {
                     <div class="risk-content-section">
                         <h5><i class="fas fa-exclamation-triangle"></i> Riskfaktor</h5>
                         <p class="risk-content-text">
-                            ${this.formatDescription(riskFactor)}
+                            ${this.formatDescription(riskFactor)}${scored.ptTfRelevans ? ` · ${scored.ptTfRelevans}` : ''}
                         </p>
                     </div>
                     
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-info-circle"></i> Beskrivning</h5>
+                        <h5><i class="fas fa-info-circle"></i> Beskrivning (inneboende risk)</h5>
                         <p class="risk-content-text">
                             ${this.formatDescription(risk.fields['Beskrivning'] || '')}
                         </p>
@@ -525,9 +603,15 @@ class RiskFactorsManager {
                 }
             }
             
-            // Risk level filter (Medel räknas som Normal)
-            if (riskFilter && !(window.RiskSkala ? RiskSkala.sameLevel(fields['Riskbedömning'], riskFilter) : fields['Riskbedömning'] === riskFilter)) {
-                return false;
+            const scored = this.scoredRisk(fields);
+            if (riskFilter) {
+                const hitInherent = window.RiskSkala
+                    ? RiskSkala.sameLevel(scored.level, riskFilter)
+                    : scored.level === riskFilter;
+                const hitResidual = window.RiskSkala
+                    ? RiskSkala.sameLevel(scored.residualLevel, riskFilter)
+                    : scored.residualLevel === riskFilter;
+                if (!hitInherent && !hitResidual) return false;
             }
             
             // Status filter
@@ -567,9 +651,13 @@ class RiskFactorsManager {
     }
 
     updateStats() {
-        const highRiskCount = this.filteredRisks.filter(risk => (
-            window.RiskSkala ? RiskSkala.isElevatedOrAbove(risk.fields['Riskbedömning']) : ['Förhöjd', 'Hög', 'Oacceptabel'].includes(risk.fields['Riskbedömning'])
-        )).length;
+        const highRiskCount = this.filteredRisks.filter(risk => {
+            const scored = this.scoredRisk(risk.fields);
+            if (window.RiskSkala) {
+                return RiskSkala.isElevatedOrAbove(scored.level) || RiskSkala.isElevatedOrAbove(scored.residualLevel);
+            }
+            return ['Förhöjd', 'Hög', 'Oacceptabel'].includes(scored.level);
+        }).length;
         const completedCount = this.filteredRisks.filter(risk => 
             risk.fields['Aktuell'] === true
         ).length;
@@ -599,9 +687,18 @@ class RiskFactorsManager {
         }
 
         try {
+            const inherent = (window.RiskSkala && RiskSkala.assessRisk(
+                document.getElementById(`${prefix}sannolikhet`)?.value,
+                document.getElementById(`${prefix}konsekvens`)?.value
+            )) || {};
             const befintligt = {
                 beskrivning: document.getElementById(`${prefix}description`)?.value?.trim() || '',
-                riskbedomning: document.getElementById(`${prefix}risk-assessment`)?.value || ''
+                sannolikhet: document.getElementById(`${prefix}sannolikhet`)?.value || '',
+                konsekvens: document.getElementById(`${prefix}konsekvens`)?.value || '',
+                sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value || '',
+                konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value || '',
+                ptTfRelevans: document.getElementById(`${prefix}pt-tf`)?.value || '',
+                riskbedomning: inherent.level || ''
             };
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
             const response = await fetch(`${window.apiConfig.baseUrl}/api/ai-ovriga-riskfaktor`, {
@@ -616,11 +713,22 @@ class RiskFactorsManager {
             }
             const data = await response.json();
             if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
-            if (data.riskbedomning) {
-                const niva = (window.RiskSkala && RiskSkala.riskLabelSv(data.riskbedomning)) || data.riskbedomning;
-                document.getElementById(`${prefix}risk-assessment`).value = niva;
-            }
             if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
+            if (data.ptTfRelevans) {
+                const pt = document.getElementById(`${prefix}pt-tf`);
+                if (pt) pt.value = (window.RiskSkala && RiskSkala.normalizePtTf(data.ptTfRelevans)) || data.ptTfRelevans;
+            }
+            if (data.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet`, data.sannolikhet);
+            if (data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
+            if (data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
+            if (data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+            if ((data.sannolikhet == null || data.konsekvens == null) && data.riskbedomning && window.RiskSkala) {
+                const inferred = RiskSkala.scoresFromLegacyLevel(data.riskbedomning);
+                if (data.sannolikhet == null) this.setScoreSelect(`${prefix}sannolikhet`, inferred.sannolikhet);
+                if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
+            }
+            if (mode === 'edit') this.editNeedsReview = false;
+            this.updateRiskBadges(mode);
             this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
         } catch (error) {
             console.error('AI-förslag fel:', error);
@@ -635,6 +743,11 @@ class RiskFactorsManager {
     }
 
     openAddModal() {
+        document.getElementById('add-risk-form')?.reset();
+        const pt = document.getElementById('pt-tf');
+        if (pt) pt.value = 'PT';
+        this.editNeedsReview = false;
+        this.updateRiskBadges('add');
         document.getElementById('add-risk-modal').style.display = 'flex';
     }
 
@@ -652,10 +765,18 @@ class RiskFactorsManager {
         document.getElementById('edit-record-id').value = recordId;
         document.getElementById('edit-risk-type').value = fields['Typ av riskfaktor'] || '';
         
+        const scored = this.scoredRisk(fields);
         document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
-        document.getElementById('edit-risk-assessment').value = (window.RiskSkala && RiskSkala.riskLabelSv(fields['Riskbedömning'])) || fields['Riskbedömning'] || '';
         document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
+        const pt = document.getElementById('edit-pt-tf');
+        if (pt) pt.value = scored.ptTfRelevans || 'PT';
+        this.setScoreSelect('edit-sannolikhet', scored.sannolikhet);
+        this.setScoreSelect('edit-konsekvens', scored.konsekvens);
+        this.setScoreSelect('edit-sannolikhet-efter', scored.sannolikhetEfter);
+        this.setScoreSelect('edit-konsekvens-efter', scored.konsekvensEfter);
+        this.editNeedsReview = scored.kraverManualOversyn === true;
+        this.updateRiskBadges('edit');
 
         document.getElementById('edit-risk-modal').style.display = 'flex';
     }
@@ -673,25 +794,15 @@ class RiskFactorsManager {
             return;
         }
         
+        this.editNeedsReview = false;
         const riskData = {
-            'Typ av riskfaktor': formData.get('risk-type'),
+            ...this.collectRiskPayload(formData),
             'Byrå ID': userByraId,
-            'Riskfaktor': formData.get('risk-factor'),
-            'Beskrivning': formData.get('description'),
-            'Riskbedömning': (window.RiskSkala && RiskSkala.riskLabelSv(formData.get('risk-assessment'))) || formData.get('risk-assessment'),
-            'Åtgjärd': formData.get('action'),
             'Aktuell': true
         };
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(riskData)
-            });
-
+            const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors`, 'POST', riskData);
             if (response.ok) {
                 this.closeModal('add-risk-modal');
                 await this.loadRiskFactors();
@@ -720,23 +831,12 @@ class RiskFactorsManager {
         }
         
         const riskData = {
-            'Typ av riskfaktor': formData.get('risk-type'),
-            'Byrå ID': userByraId,
-            'Riskfaktor': formData.get('risk-factor'),
-            'Beskrivning': formData.get('description'),
-            'Riskbedömning': (window.RiskSkala && RiskSkala.riskLabelSv(formData.get('risk-assessment'))) || formData.get('risk-assessment'),
-            'Åtgjärd': formData.get('action')
+            ...this.collectRiskPayload(formData),
+            'Byrå ID': userByraId
         };
 
         try {
-            const response = await fetch(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(riskData)
-            });
-
+            const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, 'PUT', riskData);
             if (response.ok) {
                 this.closeModal('edit-risk-modal');
                 await this.loadRiskFactors();
@@ -748,6 +848,33 @@ class RiskFactorsManager {
             console.error('Error updating risk factor:', error);
             this.showNotification('Fel vid uppdatering av riskfaktor', 'error');
         }
+    }
+
+    async saveRiskFactor(url, method, payload) {
+        let body = payload;
+        let response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok && (body['Riskpoäng'] || body['PT/TF-relevans'])) {
+            const err = await response.json().catch(() => ({}));
+            const raw = JSON.stringify(err);
+            if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
+                body = { ...body };
+                if (body['Riskpoäng']) {
+                    body['Samspelsexempel'] = body['Riskpoäng'];
+                    delete body['Riskpoäng'];
+                }
+                if (/PT\/TF/i.test(raw)) delete body['PT/TF-relevans'];
+                response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            }
+        }
+        return response;
     }
 
     async markAsComplete(recordId) {

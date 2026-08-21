@@ -12811,6 +12811,52 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .dyn-row-header .dyn-remove:hover { background: #fee2e2; color: var(--error); }
 
+.risk-sxk-section {
+    margin: 1rem 0 0;
+    padding: 1rem 1.1rem 1.15rem;
+    border: 1px solid #e8eaee;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+.risk-sxk-section h4 {
+    margin: 0 0 0.85rem;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+.risk-sxk-section .tjanst-risk-scores {
+    flex-wrap: wrap;
+    margin-top: 0.35rem;
+}
+.risk-sxk-section .tjanst-risk-scores .form-group {
+    width: 168px;
+    flex: 0 0 168px;
+}
+.risk-sxk-section .tjanst-risk-scores label {
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.3rem;
+}
+.risk-sxk-section select,
+.risk-sxk-section textarea,
+.risk-sxk-section input[type="text"] {
+    width: 100%;
+}
+.pt-tf-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: #fce7f3;
+    color: #831843;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+}
+
 @media (max-width: 720px) {
     .tjanst-modal-identity {
         grid-template-columns: 1fr;

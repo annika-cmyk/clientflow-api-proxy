@@ -13025,6 +13025,9 @@ app.post('/api/risk-factors', async (req, res) => {
     console.log('Mottaget riskfaktordata:', riskData);
 
     const airtableFields = mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true });
+    if (riskData['Riskpoäng'] !== undefined) airtableFields['Riskpoäng'] = riskData['Riskpoäng'];
+    if (riskData['PT/TF-relevans'] !== undefined) airtableFields['PT/TF-relevans'] = riskData['PT/TF-relevans'];
+    if (riskData['Samspelsexempel'] !== undefined) airtableFields['Samspelsexempel'] = riskData['Samspelsexempel'];
     console.log('Airtable-fält:', airtableFields);
 
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}`;
@@ -19051,12 +19054,12 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             const typ = String(rf['Typ av riskfaktor'] || 'Övriga').trim() || 'Övriga';
             if (/tjänst|produkt/i.test(typ)) continue;
             const namn = String(rf['Riskfaktor'] || '').trim() || '–';
-            const niva = String(rf['Riskbedömning'] || '').trim();
+            const scored = RiskSkala.readOvrigRisk(rf);
+            const niva = scored.level || String(rf['Riskbedömning'] || '').trim();
             const beskr = clip(rf['Beskrivning'], 220);
             const atg = clip(rf['Åtgjärd'], 180);
             const namnLower = namn.toLowerCase();
-            const nivaLower = niva.toLowerCase();
-            const isForhojdNiva = nivaLower === 'förhöjd' || nivaLower === 'hog' || nivaLower === 'hög';
+            const isForhojdNiva = RiskSkala.isElevatedOrAbove(niva);
             if (isForhojdNiva && /pep/.test(namnLower)) harForhojdPepRiskfaktor = true;
             // Förhöjd geo/import-export (t.ex. "Utanför EU", "Kunder med import/export")
             if (
@@ -19066,8 +19069,12 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
               harForhojdInternationellExponering = true;
             }
             if (!byTyp.has(typ)) byTyp.set(typ, []);
+            const riskLabel = scored.badge
+              ? `${scored.badge}${scored.residualLevel ? `; residual ${scored.residualBadge}` : ''}`
+              : niva;
+            const tfMark = RiskSkala.isTfRelevant(scored.ptTfRelevans) ? ' [TF]' : '';
             byTyp.get(typ).push(
-              `  • ${namn}${niva ? ` — ${niva}` : ''}` +
+              `  • ${namn}${tfMark}${riskLabel ? ` — ${riskLabel}` : ''}` +
               (beskr ? `\n    Beskrivning: ${beskr}` : '') +
               (atg ? `\n    Åtgärd: ${atg}` : '')
             );
@@ -19699,6 +19706,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   } catch (_) { /* profil är valfritt underlag */ }
 
   const befintligt = req.body?.befintligt || {};
+  const inherentIn = RiskSkala.assessRisk(befintligt.sannolikhet, befintligt.konsekvens);
+  const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
@@ -19706,19 +19715,25 @@ Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns risk
 ${byraProfilBlock}TYP AV RISKFAKTOR: ${typ || '–'}
 RISKFAKTOR: ${riskfaktor}
 ${befintligt.beskrivning ? `Befintlig beskrivning: ${befintligt.beskrivning}` : ''}
-${befintligt.riskbedomning ? `Befintlig riskbedömning: ${befintligt.riskbedomning}` : ''}
+${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
+${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
+${befintligt.ptTfRelevans ? `Befintlig PT/TF-relevans: ${befintligt.ptTfRelevans}` : ''}
 
-Väg in BYRÅPROFIL ovan när du kalibrerar risknivå och åtgärder.
+Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder.
 
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån.",
-  "riskbedomning": "Låg, Normal, Förhöjd, Hög eller Oacceptabel",
+  "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån (inneboende risk).",
+  "ptTfRelevans": "PT, TF eller Båda",
+  "sannolikhet": 1,
+  "konsekvens": 1,
+  "sannolikhetEfter": 1,
+  "konsekvensEfter": 1,
   "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."
 }
 
-RISKNIVÅ ska vara exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal.`;
+SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen efter åtgärden. Returnera bara talen — risknivån räknas som S×K.`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -19765,9 +19780,21 @@ RISKNIVÅ ska vara exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skri
     );
     const result = parseAssistantJson(aiText);
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
+    const inherentOut = RiskSkala.assessRisk(result.sannolikhet, result.konsekvens);
+    const residualOut = RiskSkala.assessRisk(result.sannolikhetEfter, result.konsekvensEfter);
+    const fallbackLevel = inherentOut.level || normRiskfaktorNiva(result.riskbedomning || result.riskniva);
+    const fallbackScores = inherentOut.level ? inherentOut : RiskSkala.assessRisk(
+      RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
+      RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
+    );
     res.json({
       beskrivning: (result.beskrivning || '').toString().trim(),
-      riskbedomning: normRiskfaktorNiva(result.riskbedomning || result.riskniva),
+      ptTfRelevans: RiskSkala.normalizePtTf(result.ptTfRelevans) || 'PT',
+      sannolikhet: fallbackScores.sannolikhet,
+      konsekvens: fallbackScores.konsekvens,
+      sannolikhetEfter: residualOut.sannolikhet,
+      konsekvensEfter: residualOut.konsekvens,
+      riskbedomning: fallbackScores.level || fallbackLevel,
       atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
     });
   } catch (error) {
