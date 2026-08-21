@@ -6214,6 +6214,31 @@ body.sidebar-collapsed .logout-btn {
     color: #5b21b6;
     line-height: 1.45;
 }
+.ai-rb-foreslagen {
+    padding: 0.65rem 0.8rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+}
+.ai-rb-drivande,
+.ai-rb-avvikelse-view {
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: #475569;
+}
+.ai-rb-avvikelse-pil {
+    display: inline-block;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #9a3412;
+}
+.ai-rb-avvikelse-krav {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    color: #b91c1c;
+}
 
 .collapsible-edit-grid {
     display: grid;

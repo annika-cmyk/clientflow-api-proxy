@@ -2433,7 +2433,23 @@ const KUNDDATA_OPTIONAL_FIELDS = [
         { name: 'Oacceptabel' }
       ]
     }
-  }
+  },
+  {
+    name: 'Kund föreslagen nivå',
+    type: 'singleSelect',
+    description: 'Beräknad startpunkt: högsta residual-S×K bland valda tjänster och riskfaktorer.',
+    options: {
+      choices: [
+        { name: 'Låg' },
+        { name: 'Normal' },
+        { name: 'Förhöjd' },
+        { name: 'Hög' },
+        { name: 'Oacceptabel' }
+      ]
+    }
+  },
+  { name: 'Kund föreslagen drivande faktor', type: 'singleLineText', description: 'Vilken tjänst eller riskfaktor som gav den högsta residual-S×K.' },
+  { name: 'Kund avvikelse motivering', type: 'multilineText', description: 'Obligatorisk när residual skiljer sig från den beräknade föreslagna nivån.' }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -5228,6 +5244,40 @@ async function fetchAirtableRecordsByIds(airtableToken, baseId, tableIdOrName, i
   return out;
 }
 
+async function loadKundForeslagenInputs(fields, token, baseId) {
+  const f = fields || {};
+  const tjanstIds = Array.isArray(f['Kundens utvalda tjänster']) ? f['Kundens utvalda tjänster'] : [];
+  const linked = Array.isArray(f['risker kopplat till tjänster']) ? f['risker kopplat till tjänster'] : [];
+  const tjanstSet = new Set(tjanstIds.map((id) => String(id || '').trim()));
+  const riskIds = linked
+    .map((id) => String(id || '').trim())
+    .filter((id) => isAirtableRecordIdStr(id) && !tjanstSet.has(id));
+  const [tjanstRecs, riskRecs] = await Promise.all([
+    fetchAirtableRecordsByIds(token, baseId, RISK_ASSESSMENT_TABLE, tjanstIds, { concurrency: 8 }),
+    fetchAirtableRecordsByIds(token, baseId, OVRIGA_RISKER_TABLE_ID, riskIds, { concurrency: 8 })
+  ]);
+  return {
+    tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
+    riskfaktorer: KundRiskprofil.itemsFromRiskRecords(riskRecs)
+  };
+}
+
+async function computeKundForeslagen(fields, token, baseId) {
+  const inputs = await loadKundForeslagenInputs(fields, token, baseId);
+  return KundRiskprofil.beraknaForeslagenNiva(inputs);
+}
+
+async function loadForeslagenRecordMaps(records, token, baseId) {
+  const ids = statistikRiskbedomning.collectLookupIds(records);
+  const tjanstSet = new Set((ids.tjanstIds || []).map((id) => String(id)));
+  const riskIds = (ids.riskfaktorIds || []).filter((id) => !tjanstSet.has(String(id)));
+  const [tjanstRecords, riskfaktorRecords] = await Promise.all([
+    fetchAirtableRecordsByIds(token, baseId, RISK_ASSESSMENT_TABLE, ids.tjanstIds, { concurrency: 8 }),
+    fetchAirtableRecordsByIds(token, baseId, OVRIGA_RISKER_TABLE_ID, riskIds, { concurrency: 8 })
+  ]);
+  return { tjanstRecords, riskfaktorRecords };
+}
+
 async function loadStatistikRiskbedomning(userData, airtableAccessToken, baseId) {
   if (!statistikRiskbedomning.canBuildForUser(userData)) {
     return statistikRiskbedomning.emptyStatistik();
@@ -6080,6 +6130,12 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
     };
 
     const hogriskSniMatch = await hogriskSniFromFields(customerRecord.fields || {});
+    try {
+      const calc = await computeKundForeslagen(customerRecord.fields || {}, airtableAccessToken, airtableBaseId);
+      formattedRecord.fields = { ...formattedRecord.fields, ...KundRiskprofil.writeForeslagenFields(calc) };
+    } catch (e) {
+      console.warn('⚠️ Kunde inte beräkna föreslagen kundnivå vid GET:', e.message);
+    }
 
     const duration = Date.now() - startTime;
 
@@ -6311,6 +6367,42 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (Object.keys(payload).some((key) => isRiskSelectFieldName(key))) {
       await ensureRiskSkalaSelectChoices(airtableAccessToken, airtableBaseId, 'KUNDDATA');
     }
+    delete payload[KundRiskprofil.FIELDS.FORESLAGEN];
+    delete payload[KundRiskprofil.FIELDS.DRIVANDE];
+    const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster']
+      .some((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    const residualTouched = Object.prototype.hasOwnProperty.call(payload, 'Riskniva');
+    const missingForeslagen = !KundRiskprofil.readForeslagen(customerRecord.fields || {});
+    if (linksChanged || residualTouched || missingForeslagen) {
+      try {
+        const calc = await computeKundForeslagen(
+          { ...(customerRecord.fields || {}), ...payload },
+          airtableAccessToken,
+          airtableBaseId
+        );
+        Object.assign(payload, KundRiskprofil.writeForeslagenFields(calc));
+      } catch (e) {
+        console.warn('⚠️ Kunde inte beräkna föreslagen kundnivå:', e.message);
+      }
+    }
+    const nextResidual = Object.prototype.hasOwnProperty.call(payload, 'Riskniva')
+      ? payload.Riskniva
+      : customerRecord.fields?.Riskniva;
+    const nextSuggested = Object.prototype.hasOwnProperty.call(payload, KundRiskprofil.FIELDS.FORESLAGEN)
+      ? payload[KundRiskprofil.FIELDS.FORESLAGEN]
+      : customerRecord.fields?.[KundRiskprofil.FIELDS.FORESLAGEN];
+    const nextAvvikelse = Object.prototype.hasOwnProperty.call(payload, KundRiskprofil.FIELDS.AVVIKELSE)
+      ? payload[KundRiskprofil.FIELDS.AVVIKELSE]
+      : customerRecord.fields?.[KundRiskprofil.FIELDS.AVVIKELSE];
+    if (Object.prototype.hasOwnProperty.call(payload, 'Riskniva')) {
+      const saveCheck = KundRiskprofil.canSaveResidual(nextResidual, nextSuggested, nextAvvikelse);
+      if (!saveCheck.ok) {
+        return res.status(400).json({ error: saveCheck.error, code: 'avvikelse_motivering_kravs' });
+      }
+      if (!KundRiskprofil.residualAvvikerFranForeslagen(nextResidual, nextSuggested)) {
+        payload[KundRiskprofil.FIELDS.AVVIKELSE] = '';
+      }
+    }
     const riskaptitTransition = Riskaptit.applyOnRiskChange({
       previousFields: customerRecord.fields || {},
       incomingFields: payload
@@ -6531,6 +6623,59 @@ app.get('/api/riskaptit/rapport', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('GET riskaptit/rapport:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte skapa rapporten' });
+  }
+});
+
+app.get('/api/kund-riskprofil/avvikelser', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    let maps = { tjanstRecords: [], riskfaktorRecords: [] };
+    try {
+      maps = await loadForeslagenRecordMaps(records, airtableAccessToken, airtableBaseId);
+    } catch (e) {
+      console.warn('⚠️ Kunde inte ladda S×K-underlag för riskprofilavvikelser:', e.message);
+    }
+    const rows = records.map((rec) => {
+      const f = rec.fields || {};
+      const residual = KundRiskprofil.readResidual(f);
+      const live = KundRiskprofil.foreslagenFromLinkedRecords(f, maps.tjanstRecords, maps.riskfaktorRecords);
+      const foreslagen = live.niva || KundRiskprofil.readForeslagen(f);
+      if (!KundRiskprofil.residualAvvikerFranForeslagen(residual, foreslagen)) return null;
+      const riktning = KundRiskprofil.avvikelseRiktning(residual, foreslagen);
+      return {
+        id: rec.id,
+        namn: f.Namn || f['Företagsnamn'] || '',
+        orgnr: f.Orgnr || f.Organisationsnummer || '',
+        residual,
+        foreslagen,
+        riktning,
+        drivande: live.drivandeFaktor || KundRiskprofil.readDrivande(f),
+        motivering: KundRiskprofil.readAvvikelseMotivering(f),
+        rankDiff: Math.abs(RiskSkala.riskRank(residual) - RiskSkala.riskRank(foreslagen))
+      };
+    }).filter(Boolean);
+    rows.sort((a, b) => {
+      const hogreForst = (row) => RiskSkala.riskRank(row.foreslagen) > RiskSkala.riskRank(row.residual) ? 1 : 0;
+      if (hogreForst(b) !== hogreForst(a)) return hogreForst(b) - hogreForst(a);
+      if (b.rankDiff !== a.rankDiff) return b.rankDiff - a.rankDiff;
+      return String(a.namn).localeCompare(String(b.namn), 'sv');
+    });
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      antal: rows.length,
+      kunder: rows
+    });
+  } catch (error) {
+    console.error('GET kund-riskprofil/avvikelser:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte hämta avvikelser' });
   }
 });
 
@@ -19611,6 +19756,8 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     let harForhojdPepRiskfaktor = false;
     let antalValdaRiskfaktorer = 0;
     let tjanstResidualFloor = { level: '', namn: '', rank: 0 };
+    const foreslagenTjanster = [];
+    const foreslagenRisker = [];
 
     const parseJsonArr = (v) => {
       if (!v) return [];
@@ -19649,6 +19796,13 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                     namn,
                     rank: residualRank
                   };
+                }
+                if (scored.residualProduct != null) {
+                  foreslagenTjanster.push({
+                    namn,
+                    residualProduct: scored.residualProduct,
+                    residualLevel: scored.residualLevel
+                  });
                 }
                 const risk = scored.level || (tf['Riskbedömning'] || '').trim();
                 const riskLabel = scored.badge
@@ -19759,6 +19913,13 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             if (/tjänst|produkt/i.test(typ)) continue;
             const namn = String(rf['Riskfaktor'] || '').trim() || '–';
             const scored = RiskSkala.readOvrigRisk(rf);
+            if (scored.residualProduct != null) {
+              foreslagenRisker.push({
+                namn,
+                residualProduct: scored.residualProduct,
+                residualLevel: scored.residualLevel
+              });
+            }
             const niva = scored.level || String(rf['Riskbedömning'] || '').trim();
             const beskr = clip(rf['Beskrivning'], 220);
             const atg = clip(rf['Åtgjärd'], 180);
@@ -19884,6 +20045,17 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const tjanstGolvText = tjanstResidualFloor.level
       ? `${tjanstResidualFloor.level}${tjanstResidualFloor.namn ? ` (tjänst: ${tjanstResidualFloor.namn})` : ''}`
       : 'ingen vald tjänst med residualnivå';
+    const foreslagenCalc = KundRiskprofil.beraknaForeslagenNiva({
+      tjanster: foreslagenTjanster,
+      riskfaktorer: foreslagenRisker
+    });
+    const foreslagenNivaText = foreslagenCalc.niva
+      ? `${foreslagenCalc.niva}${foreslagenCalc.drivandeFaktor ? ` — drivs av ${foreslagenCalc.drivandeFaktor}` : ''}`
+      : 'ingen residual-S×K att utgå från';
+    const användarenAvviker = KundRiskprofil.residualAvvikerFranForeslagen(
+      KundRiskprofil.readResidual(f),
+      foreslagenCalc.niva
+    );
 
     // Vector store ökar tokenförbrukning kraftigt. Standard: av för kundrisk.
     const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
@@ -19929,8 +20101,9 @@ BYRÅNS ANALYS AV VALDA TJÄNSTER (endast tjänster som finns i TJÄNSTLISTA ova
 Väg in detta när du bedömer kundens risk; generalisera inte från tjänster som inte är valda för kunden.
 ${byraValdaTjansterDetaljText}
 
-HÖGSTA RESIDUALRISK BLAND VALDA TJÄNSTER (golv för residualRiskprofil): ${tjanstGolvText}
-- residualRiskprofil bör inte ligga under detta golv. Det är en rekommendation, inte ett förbud — motivera i nivaMotivering om du ändå föreslår lägre.
+BERÄKNAD FÖRESLAGEN NIVÅ (maskinell startpunkt — CFA väljer den slutgiltiga nivån): ${foreslagenNivaText}
+- Föreslå INTE egna värden för inneboendeRiskprofil eller residualRiskprofil.
+- Om användaren redan avvikit: ${användarenAvviker ? 'JA — du får formulera avvikelseMotivering utifrån underlaget, inte besluta om avvikelsen.' : 'NEJ — lämna avvikelseMotivering tom.'}
 
 ${KundRiskprofil.AI_RULES}
 
@@ -19995,25 +20168,18 @@ FORMULERINGSREGLER FÖR BRANSCH OCH VERKSAMHET:
 - Prioritetsordning för verksamhetsbild: (1) Byråns beskrivning av kunden, (2) Ytterligare beskrivning, (3) Kommentar till riskfaktorer, (4) Bolagsverkets verksamhetsbeskrivning, (5) SNI först som komplement.
 - Undvik generiska fraser som inte tillför något. Var specifik utifrån underlaget.
 
-RISKNIVÅ — ANVÄND FEMGRADIG SKALA (Låg, Normal, Förhöjd, Hög, Oacceptabel) I TVÅ SEPARATA FÄLT:
-- inneboendeRiskprofil = risken i kunden/verksamheten INNAN byråns kontroller.
-- residualRiskprofil = risken EFTER byråns kontroller (screening, sanktionslistor, stickprov).
-- Sätt "Låg" bara om helhetsbilden entydigt är låg risk: inga relevanta riskhöjande faktorer som motiverar högre nivå, inga PEP-/sanktionslägen som enligt reglerna nedan kräver högre nivå, och tjänster/exponering är okontroversiella utifrån underlaget.
-- "Normal" är standard för en typisk redovisningskund utan särskilda riskhöjande faktorer. Skriv inte "Medel".
-- "Förhöjd" när minst en tydlig riskhöjande faktor finns men inte räcker för hög.
-- "Hög" vid PEP Förhöjd, flera samverkande faktorer eller allvarlig enskild faktor.
-- "Oacceptabel" när byrån bör avstå från eller avveckla affärsförbindelsen.
-- Vid tvekan, sparsamt ifyllt underlag, eller minsta konkreta riskhöjande omständighet: välj minst "Normal" — inte "Låg".
-- Använd INTE S×K (sannolikhet × konsekvens) för dessa två kundfält.
+RISKNIVÅ — DEN BERÄKNADE STARTPUNKTEN ÄR REDAN SATT (${foreslagenNivaText}).
+- Sätt INTE inneboendeRiskprofil eller residualRiskprofil i JSON-svaret.
+- Beskriv faktorerna i riskbedomning. Avsluta inte med en nivåslutsats.
 
 ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
-1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska både inneboendeRiskprofil och residualRiskprofil vara minst "Hög" och PEP MÅSTE nämnas som huvudorsak i motiveringen. Vid nivå "Normal" på PEP-faktorn ska båda profilerna vara minst "Normal". Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
+1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska PEP nämnas som huvudorsak i motiveringen. Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
 
 1b. INTERNATIONELL EXPONERING / GEOGRAFI / IMPORT-EXPORT (KRITISKT):
    - Om någon vald riskfaktor är "Utanför EU", "Kunder med import/export", annan import/export-faktor, eller har nivå "Förhöjd"/"Hög" under Geografiska riskfaktorer eller riskfaktorer kopplat till kund med internationell koppling: du FÅR INTE skriva att det saknas indikationer på internationella transaktioner.
    - Sådana faktorer MÅSTE nämnas uttryckligen bland riskhöjande faktorer i riskbedömningstexten.
-   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": inneboendeRiskprofil ska vara minst "Normal" (ofta "Förhöjd" eller "Hög" om flera förhöjda faktorer eller kombination med hög tjänsterisk/komplicerad struktur).
+   - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": nämn det uttryckligen i motiveringen. Den beräknade startpunkten speglar residual-S×K; du ska inte välja en annan nivå.
    - Om fältet "Transaktioner med andra länder" eller KYC "Internationell handel" är tomt/Nej men valda riskfaktorer visar internationell exponering: prioritera de valda riskfaktorerna.
 
 2. ÅTGÄRDER — detta är kritiskt:
@@ -20053,11 +20219,9 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 
 Svara EXAKT i detta JSON-format (inget annat):
 {
-  "inneboendeRiskprofil": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
-  "residualRiskprofil": "Låg" eller "Normal" eller "Förhöjd" eller "Hög" eller "Oacceptabel",
-  "nivaMotivering": "1–2 meningar om VARFÖR just dessa två nivåer föreslås. Inte samma text som riskbedomning.",
   "riskbedomning": "5-10 meningar som beskriver vilka faktorer som identifierats och varför — UTAN sammanfattande nivåmening.",
-  "atgarder": "Punkter med bindestreck (-) vid Förhöjd/Hög/Oacceptabel residual eller specifik risk, annars exakt tom sträng."
+  "atgarder": "Punkter med bindestreck (-) vid Förhöjd/Hög/Oacceptabel residual eller specifik risk, annars exakt tom sträng.",
+  "avvikelseMotivering": "${användarenAvviker ? 'Hjälptext som formulerar varför residualen avviker från den beräknade nivån, utifrån underlaget.' : ''}"
 }`;
 
     const extractFirstJsonObject = (text) => {
@@ -20146,7 +20310,8 @@ Svara EXAKT i detta JSON-format (inget annat):
       const rewritePrompt = `Skriv om riskbedömningen till tydlig svenska enligt PVML.
 Utan UI-termer (kryss/bockat/markerat/flik/formulär). Hitta inte på nya fakta.
 Skriv INTE "den sammantagna riskbedömningen är [nivå]" i riskbedomning.
-Returnera EXAKT JSON: {"inneboendeRiskprofil":"Låg|Normal|Förhöjd|Hög|Oacceptabel","residualRiskprofil":"Låg|Normal|Förhöjd|Hög|Oacceptabel","nivaMotivering":"...","riskbedomning":"...","atgarder":"..."}.
+Returnera EXAKT JSON: {"riskbedomning":"...","atgarder":"...","avvikelseMotivering":""}.
+Föreslå INTE inneboendeRiskprofil eller residualRiskprofil.
 
 NUVARANDE SVAR ATT FÖRBÄTTRA:
 ${clip(aiText, 4000)}
@@ -20175,12 +20340,11 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
 
     if (!result) throw new Error('Kunde inte tolka AI-svar');
 
-    const aiPayload = KundRiskprofil.normalizeAiPayload(result, { tjanstFloor: tjanstResidualFloor });
-    if (!aiPayload.residualRiskprofil) {
-      aiPayload.residualRiskprofil = RiskSkala.riskLabelSv(result.riskniva) || 'Normal';
-      aiPayload.riskniva = aiPayload.residualRiskprofil;
-      aiPayload.kundResidualRiskprofil = aiPayload.residualRiskprofil;
-    }
+    const aiPayload = KundRiskprofil.normalizeAiPayload(result, {
+      tjanstFloor: tjanstResidualFloor,
+      foreslagenNiva: foreslagenCalc.niva
+    });
+    if (!användarenAvviker) aiPayload.avvikelseMotivering = '';
     const kundAiLog = await auditHooks.logAiGenerated({
       write: writeAuditEvent,
       actor: auditLog.SYSTEM_ACTORS.openai,
@@ -20188,8 +20352,8 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
       entityType: 'kund',
       entityId: kundId,
       fieldChanged: 'Byrans riskbedomning',
-      aiOutputRaw: [aiPayload.inneboendeRiskprofil, aiPayload.residualRiskprofil, aiPayload.nivaMotivering, aiPayload.riskbedomning, aiPayload.atgarder].filter(Boolean).join('\n\n'),
-      extra: { faltSomGenererades: 'inneboendeRiskprofil,residualRiskprofil,nivaMotivering,riskbedomning,atgarder' }
+      aiOutputRaw: [aiPayload.riskbedomning, aiPayload.atgarder, aiPayload.avvikelseMotivering].filter(Boolean).join('\n\n'),
+      extra: { faltSomGenererades: 'riskbedomning,atgarder,avvikelseMotivering' }
     });
     res.json({
       ...aiPayload,

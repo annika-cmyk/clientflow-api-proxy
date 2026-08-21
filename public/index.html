@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.7">
+    <link rel="stylesheet" href="styles.css?v=2.8">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -274,6 +274,26 @@
                     </div>
                 </section>
 
+                <section id="dashboard-riskprofil-avvikelser" class="dashboard-section">
+                    <div class="dashboard-card dashboard-card-collapsible collapsed">
+                        <div class="dashboard-card-header" data-toggle="collapse" aria-expanded="false" aria-controls="riskprofil-avvikelser-list">
+                            <h2><i class="fas fa-balance-scale"></i> Residual avviker från beräknad nivå<span class="dashboard-card-count" id="dashboard-count-riskprofil-avvikelser"></span></h2>
+                            <div class="dashboard-card-header-actions">
+                                <button type="button" id="refresh-riskprofil-avvikelser" class="btn btn-ghost btn-sm" title="Uppdatera" onclick="event.stopPropagation()">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <span class="dashboard-collapse-icon"><i class="fas fa-chevron-down"></i></span>
+                            </div>
+                        </div>
+                        <div id="riskprofil-avvikelser-list" class="dashboard-list dashboard-card-body-collapsible">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Kunder som saknar uppdragsavtal -->
                 <section id="dashboard-uppdragsavtal" class="dashboard-section">
                     <div class="dashboard-card dashboard-card-collapsible collapsed">
@@ -446,6 +466,6 @@
     <script src="js/amla-nyheter.js?v=5"></script>
     <script src="js/whats-new.js?v=1"></script>
     <script src="js/feedback.js?v=1"></script>
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.8"></script>
 </body>
 </html>

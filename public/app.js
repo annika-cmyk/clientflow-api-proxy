@@ -27,6 +27,10 @@ class ClientFlowApp {
             this.loadRiskaptitList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskaptitList());
         }
+        if (document.getElementById('riskprofil-avvikelser-list')) {
+            this.loadRiskprofilAvvikelserList();
+            window.addEventListener('clientflow:authReady', () => this.loadRiskprofilAvvikelserList());
+        }
         if (document.getElementById('my-tasks-list')) {
             this.loadMyTasks();
             window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
@@ -111,6 +115,10 @@ class ClientFlowApp {
         const refreshRiskaptit = document.getElementById('refresh-riskaptit');
         if (refreshRiskaptit) {
             refreshRiskaptit.addEventListener('click', () => this.loadRiskaptitList());
+        }
+        const refreshRiskprofilAvvikelser = document.getElementById('refresh-riskprofil-avvikelser');
+        if (refreshRiskprofilAvvikelser) {
+            refreshRiskprofilAvvikelser.addEventListener('click', () => this.loadRiskprofilAvvikelserList());
         }
         const refreshMyTasks = document.getElementById('refresh-my-tasks');
         if (refreshMyTasks) {
@@ -658,6 +666,63 @@ class ClientFlowApp {
         } catch (error) {
             console.error('Fel vid laddning av riskaptitrapport:', error);
             this.updateDashboardCount('riskaptit', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadRiskprofilAvvikelserList() {
+        const container = document.getElementById('riskprofil-avvikelser-list');
+        if (!container) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('riskprofil-avvikelser', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+        try {
+            const response = await fetch(`${this.baseUrl}/api/kund-riskprofil/avvikelser`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const kunder = Array.isArray(data.kunder) ? data.kunder : [];
+            this.updateDashboardCount('riskprofil-avvikelser', kunder.length);
+            if (!kunder.length) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga residualnivåer avviker från den beräknade startpunkten.</p>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${kunder.map((c) => `
+                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(c.namn || 'Namn saknas')}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${c.orgnr ? `<span class="kundlista-orgnr">${this.escapeHtml(c.orgnr)}</span>` : ''}
+                                <span class="kundlista-bolagsform">${this.escapeHtml(c.foreslagen || '–')} → ${this.escapeHtml(c.residual || '–')}</span>
+                                ${c.riktning ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.riktning)}</span>` : ''}
+                            </div>
+                            ${c.motivering ? `<div class="kundlista-row-note">${this.escapeHtml(c.motivering)}</div>` : ''}
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>
+                    `).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av riskprofilavvikelser:', error);
+            this.updateDashboardCount('riskprofil-avvikelser', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
