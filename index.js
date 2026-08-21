@@ -74,6 +74,7 @@ const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
 const AmlKalla = require('./public/js/aml-kalla');
 const AtgardKonkret = require('./public/js/atgard-konkret');
+const HotAmlTf = require('./public/js/hot-aml-tf');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -4899,6 +4900,22 @@ function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
   return true;
 }
 
+function rejectOffTopicTjanstHot(res, riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  const asDraft = incoming.utkast === true || incoming.Aktuell === false
+    || (incoming.Aktuell == null && existing.Aktuell === false && incoming.Hot == null);
+  if (incoming.Aktuell === false) return false;
+  const raw = incoming.Hot != null ? incoming.Hot : existing.Hot;
+  const check = HotAmlTf.validateHots(raw, { asDraft });
+  if (check.ok) return false;
+  res.status(400).json({
+    error: check.error,
+    message: check.error
+  });
+  return true;
+}
+
 function rejectVagueTjanstAtgarder(res, riskData, existingFields = {}) {
   const incoming = riskData || {};
   const existing = existingFields || {};
@@ -5371,6 +5388,7 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     delete riskData.utkast;
     if (asDraftCreate) riskData.Aktuell = false;
     if (rejectTjanstWithoutTfTackning(res, riskData)) return;
+    if (rejectOffTopicTjanstHot(res, riskData)) return;
     if (rejectVagueTjanstAtgarder(res, riskData)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
@@ -5491,6 +5509,7 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
+    if (rejectOffTopicTjanstHot(res, riskData, beforeTjanst)) return;
     if (rejectVagueTjanstAtgarder(res, riskData, beforeTjanst)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
@@ -20300,6 +20319,7 @@ REGLER:
 - Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot.
+${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
 - TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", om du inte lämnar en tjänstespecifik tfMotivering. Defaulta inte till enbart PT.
 - Föredra ett konkret TF-hot när tjänsten kan användas för att flytta, dölja eller legitimera medel (de flesta redovisnings- och skattetjänster). Utgå från kända TF-tillvägagångssätt hos FATF, Säpo, Polisen eller Samordningsfunktionen.
@@ -20437,9 +20457,9 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
     const result = parseAssistantJson(aiText);
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
 
-    const hot = Array.isArray(result.hot) ? result.hot
+    const hot = HotAmlTf.filterHots(Array.isArray(result.hot) ? result.hot
       .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
-      .filter(h => h.titel || h.beskrivning) : [];
+      .filter(h => h.titel || h.beskrivning) : []);
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
       .filter(s => s.titel || s.beskrivning) : [];
@@ -20470,6 +20490,10 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst', befintligt)
       : [];
+    granskningPoster = granskningPoster.map((p) => {
+      if (!p || p.falt !== 'hot' || !Array.isArray(p.forslag)) return p;
+      return Object.assign({}, p, { forslag: HotAmlTf.filterHots(p.forslag) });
+    });
     if (reviewMode) {
       granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster);
       granskningPoster = AiFaltGranskning.ensureTfCoveragePosters(befintligt, tjanstAiPayload, granskningPoster);
