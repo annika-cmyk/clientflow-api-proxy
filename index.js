@@ -109,6 +109,7 @@ const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
 const statistikDokumentation = require('./lib/statistik-dokumentation');
+const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
@@ -5209,6 +5210,22 @@ async function fetchAirtableRecordsByIds(airtableToken, baseId, tableIdOrName, i
     }
   }
   return out;
+}
+
+async function loadStatistikRiskbedomning(userData, airtableAccessToken, baseId) {
+  if (!statistikRiskbedomning.canBuildForUser(userData)) {
+    return statistikRiskbedomning.emptyStatistik();
+  }
+  const token = airtableAccessToken || process.env.AIRTABLE_ACCESS_TOKEN;
+  const bid = baseId || process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!token) throw new Error('Airtable API-nyckel saknas');
+  const records = await fetchKunddataRecordsForUser(userData, token, bid);
+  const ids = statistikRiskbedomning.collectLookupIds(records);
+  const [tjanstRecords, riskfaktorRecords] = await Promise.all([
+    fetchAirtableRecordsByIds(token, bid, RISK_ASSESSMENT_TABLE, ids.tjanstIds, { concurrency: 8 }),
+    fetchAirtableRecordsByIds(token, bid, OVRIGA_RISKER_TABLE_ID, ids.riskfaktorIds, { concurrency: 8 })
+  ]);
+  return statistikRiskbedomning.aggregateStatistik(records, { tjanstRecords, riskfaktorRecords });
 }
 
 function extractRecIdsFromText(text) {
@@ -12913,7 +12930,6 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
 
     if (!airtableAccessToken) {
       return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
@@ -12924,157 +12940,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    const filterFormula = access.kunddataFilterFormula(userData);
-    if (filterFormula === null) {
-      return res.json({ antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerKund: [] });
-    }
-
-    let allRecords = [];
-    let offset = null;
-    do {
-      let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?pageSize=100`;
-      if (filterFormula) url += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
-      if (offset) url += `&offset=${offset}`;
-      const r = await axios.get(url, {
-        headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-      allRecords = allRecords.concat(r.data.records || []);
-      offset = r.data.offset || null;
-    } while (offset);
-    allRecords = access.filterRecordsForUser(userData, allRecords);
-
-    const riskniva = RiskSkala.emptyCounts();
-    const tjänstAntal = {};
-    const högriskbranschAntal = {};
-    const riskfaktorIdAntal = {};
-    let antalKunderMedRiskfaktor = 0;
-    const pepEllerSanktionKundIds = [];
-
-    for (const rec of allRecords) {
-      const f = rec.fields || {};
-      const rn = (f['Riskniva'] || '').trim();
-      if (rn) RiskSkala.countRisk(riskniva, rn);
-
-      const tjanstIds = f['Kundens utvalda tjänster'];
-      if (Array.isArray(tjanstIds)) {
-        for (const id of tjanstIds) {
-          tjänstAntal[id] = (tjänstAntal[id] || 0) + 1;
-        }
-      }
-
-      const hogrisk = f['Kunden verkar i en högriskbransch'];
-      const hogriskList = Array.isArray(hogrisk) ? hogrisk : (hogrisk ? [hogrisk] : []);
-      for (const b of hogriskList) {
-        const namn = (b && String(b).trim()) || 'Övrig';
-        if (namn !== '---') högriskbranschAntal[namn] = (högriskbranschAntal[namn] || 0) + 1;
-      }
-
-      const riskerKund = f['risker kopplat till tjänster'];
-      const riskIds = Array.isArray(riskerKund) ? riskerKund : (riskerKund ? [riskerKund] : []);
-      if (riskIds.length > 0) antalKunderMedRiskfaktor++;
-      for (const rid of riskIds) {
-        riskfaktorIdAntal[rid] = (riskfaktorIdAntal[rid] || 0) + 1;
-      }
-
-      const pepFält = f['PEP'];
-      const pepList = Array.isArray(pepFält) ? pepFält : (pepFält ? [pepFält] : []);
-      const ärPep = pepList.some(v => v && String(v).trim() && String(v).trim() !== 'Inte PEP');
-      const traffar = parseInt(f['Antal träffar PEP och sanktionslistor'], 10) || 0;
-      const harSanktioner = !isNaN(traffar) && traffar > 0;
-      if (ärPep || harSanktioner) pepEllerSanktionKundIds.push(rec.id);
-    }
-
-    const tjanstIdToName = {};
-    const uniqueTjanstIds = [...new Set(Object.keys(tjänstAntal))];
-    const tablePath = encodeURIComponent(RISK_ASSESSMENT_TABLE);
-    await Promise.all(
-      uniqueTjanstIds.map(async (id) => {
-        try {
-          const r = await axios.get(
-            `https://api.airtable.com/v0/${airtableBaseId}/${tablePath}/${id}`,
-            { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-          );
-          const namn = (r.data.fields && r.data.fields['Task Name'] || '').trim();
-          if (namn) tjanstIdToName[id] = namn;
-        } catch (_) { /* behåll id som namn om hämtning misslyckas */ }
-      })
-    );
-    // Gruppera per tjänstenamn så samma namn (olika record-ID) inte visas dubbelt
-    const tjanstByName = {};
-    for (const [id, antal] of Object.entries(tjänstAntal)) {
-      let namn = (tjanstIdToName[id] || '').trim();
-      // Visa aldrig rått Airtable record-ID som namn (hämtning kan ha misslyckats)
-      if (!namn && /^rec[A-Za-z0-9]{10,}$/.test(String(id))) continue;
-      if (!namn) namn = String(id);
-      tjanstByName[namn] = (tjanstByName[namn] || 0) + antal;
-    }
-    const tjänsterMedNamn = Object.entries(tjanstByName).map(([namn, antal]) => ({
-      namn,
-      antal
-    })).sort((a, b) => b.antal - a.antal);
-
-    const högriskbransch = Object.entries(högriskbranschAntal).map(([namn, antal]) => ({ namn, antal })).sort((a, b) => b.antal - a.antal);
-
-    const RISKER_KUND_TABLE = 'tblWw6tM2YOTYFn2H';
-    const riskfaktorIdToLabel = {};
-    const riskfaktorIdToTyp = {};
-    const uniqueRiskfaktorIds = [...new Set(Object.keys(riskfaktorIdAntal))];
-    await Promise.all(
-      uniqueRiskfaktorIds.map(async (id) => {
-        try {
-          const r = await axios.get(
-            `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_KUND_TABLE}/${id}`,
-            { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-          );
-          const f = r.data.fields || {};
-          const typ = (f['Typ av riskfaktor'] || '').trim() || 'Övriga';
-          riskfaktorIdToTyp[id] = typ;
-          const riskfaktorNamn = (f['Riskfaktor'] || '').trim();
-          riskfaktorIdToLabel[id] = riskfaktorNamn || id;
-        } catch (_) {
-          riskfaktorIdToTyp[id] = 'Övriga';
-          riskfaktorIdToLabel[id] = id;
-        }
-      })
-    );
-
-    const typToCustomerIds = {};
-    for (const rec of allRecords) {
-      const riskIds = rec.fields?.['risker kopplat till tjänster'];
-      const ids = Array.isArray(riskIds) ? riskIds : (riskIds ? [riskIds] : []);
-      for (const rid of ids) {
-        const t = riskfaktorIdToTyp[rid] || 'Övriga';
-        if (!typToCustomerIds[t]) typToCustomerIds[t] = new Set();
-        typToCustomerIds[t].add(rec.id);
-      }
-    }
-
-    const typToRiskfaktorer = {};
-    for (const [id, antal] of Object.entries(riskfaktorIdAntal)) {
-      const typ = riskfaktorIdToTyp[id] || 'Övriga';
-      if (!typToRiskfaktorer[typ]) typToRiskfaktorer[typ] = [];
-      typToRiskfaktorer[typ].push({ id, namn: riskfaktorIdToLabel[id] || id, antal });
-    }
-    for (const arr of Object.values(typToRiskfaktorer)) {
-      arr.sort((a, b) => b.antal - a.antal);
-    }
-
-    const riskfaktorerPerTyp = Object.keys(typToRiskfaktorer).map(typ => ({
-      typ,
-      antalKunder: (typToCustomerIds[typ] || new Set()).size,
-      riskfaktorer: typToRiskfaktorer[typ] || []
-    })).sort((a, b) => b.antalKunder - a.antalKunder);
-
-    res.json({
-      antalKunder: allRecords.length,
-      riskniva,
-      antalPepEllerSanktion: pepEllerSanktionKundIds.length,
-      tjänster: tjänsterMedNamn,
-      högriskbransch,
-      antalKunderMedRiskfaktor,
-      riskfaktorerPerTyp
-    });
+    res.json(await loadStatistikRiskbedomning(userData, airtableAccessToken, airtableBaseId));
   } catch (err) {
     console.error('❌ statistik-riskbedomning:', err.message);
     res.status(500).json({ error: err.message || 'Kunde inte hämta statistik' });
@@ -13086,7 +12952,6 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
     const { typ, id: paramId, namn: paramNamn } = req.query;
 
     if (!airtableAccessToken) {
@@ -13098,23 +12963,8 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    const filterFormula = access.kunddataFilterFormula(userData);
-    if (filterFormula === null) return res.json({ kunder: [] });
-
-    let allRecords = [];
-    let offset = null;
-    do {
-      let url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}?pageSize=100`;
-      if (filterFormula) url += `&filterByFormula=${encodeURIComponent(filterFormula)}`;
-      if (offset) url += `&offset=${offset}`;
-      const r = await axios.get(url, {
-        headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-      allRecords = allRecords.concat(r.data.records || []);
-      offset = r.data.offset || null;
-    } while (offset);
-    allRecords = access.filterRecordsForUser(userData, allRecords);
+    if (!statistikRiskbedomning.canBuildForUser(userData)) return res.json({ kunder: [] });
+    const allRecords = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
 
     let kunder = [];
     if (typ === 'tjanst') {
@@ -13135,18 +12985,16 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       }
       const idSet = new Set(tjanstIdsToMatch);
       for (const rec of allRecords) {
-        const tjanstIds = rec.fields?.['Kundens utvalda tjänster'];
-        if (!Array.isArray(tjanstIds)) continue;
-        if (tjanstIds.some(id => idSet.has(id))) {
+        const tjanstIds = statistikRiskbedomning.asValues(rec.fields?.['Kundens utvalda tjänster']);
+        if (tjanstIds.some((id) => idSet.has(id) || (paramNamn && String(id).trim() === String(paramNamn).trim()))) {
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
     } else if (typ === 'hogriskbransch' && paramNamn !== undefined) {
       const sokNamn = String(paramNamn).trim();
       for (const rec of allRecords) {
-        const hogrisk = rec.fields?.['Kunden verkar i en högriskbransch'];
-        const list = Array.isArray(hogrisk) ? hogrisk : (hogrisk ? [hogrisk] : []);
-        if (list.some(b => (b && String(b).trim()) === sokNamn)) {
+        const list = statistikRiskbedomning.asValues(rec.fields?.['Kunden verkar i en högriskbransch']);
+        if (list.some((b) => b === sokNamn)) {
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
@@ -13168,8 +13016,7 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       }
       const idSet = new Set(riskfaktorIdsToMatch);
       for (const rec of allRecords) {
-        const risker = rec.fields?.['risker kopplat till tjänster'];
-        const ids = Array.isArray(risker) ? risker : (risker ? [risker] : []);
+        const ids = statistikRiskbedomning.asValues(rec.fields?.['risker kopplat till tjänster']);
         if (paramId || (paramNamn !== undefined && paramNamn !== '')) {
           if (idSet.size > 0 && ids.some(id => idSet.has(id))) {
             kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
@@ -13182,12 +13029,7 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
       }
     } else if (typ === 'pep-sanktion') {
       for (const rec of allRecords) {
-        const pepFält = rec.fields?.['PEP'];
-        const pepList = Array.isArray(pepFält) ? pepFält : (pepFält ? [pepFält] : []);
-        const ärPep = pepList.some(v => v && String(v).trim() && String(v).trim() !== 'Inte PEP');
-        const traffar = parseInt(rec.fields?.['Antal träffar PEP och sanktionslistor'], 10) || 0;
-        const harSanktioner = !isNaN(traffar) && traffar > 0;
-        if (ärPep || harSanktioner) {
+        if (statistikRiskbedomning.isPepEllerSanktion(rec.fields)) {
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
@@ -18567,10 +18409,10 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
 
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE') : '—';
 
-    const [byraRes, tjansterRes, statRes, riskRes] = await Promise.all([
+    const [byraRes, tjansterRes, stat, riskRes] = await Promise.all([
       axios.get(`https://api.airtable.com/v0/${airtableBaseId}/${BYRAER_TBL}?filterByFormula=${encodeURIComponent(`{Byrå ID}="${byraId}"`)}&maxRecords=1`, { headers: { Authorization: `Bearer ${airtableAccessToken}` } }),
       axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { tjanster: [] } })),
-      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { antalKunder: 0, riskniva: {}, tjänster: [], högriskbransch: [], riskfaktorerPerTyp: [] } })),
+      loadStatistikRiskbedomning(userData, airtableAccessToken, airtableBaseId),
       axios.get(`${baseUrl}/api/risk-factors`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { records: [] } }))
     ]);
 
@@ -18594,7 +18436,6 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const byraNamn = byraFields['Byrå'] || byraFields['Namn'] || 'Byrån';
     const exportStamp = new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' });
     const tjanster = (tjansterRes.data?.tjanster || []);
-    const stat = statRes.data || {};
     const riskRecords = riskRes.data?.records || [];
 
     const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20747,13 +20588,12 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
     const byraId = (userData.byraId || '').toString().trim();
     if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
 
-    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
-      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+    const [statistik, tjansterRes, rutinerRes] = await Promise.all([
+      loadStatistikRiskbedomning(userData, process.env.AIRTABLE_ACCESS_TOKEN, process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'),
       axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
       axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
     ]);
 
-    const statistik = statRes.data || {};
     const tjanster = (tjansterRes.data && tjansterRes.data.tjanster) || [];
     const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
 
@@ -20843,13 +20683,12 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
     const byraId = (userData.byraId || '').toString().trim();
     if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
 
-    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
-      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+    const [statistik, tjansterRes, rutinerRes] = await Promise.all([
+      loadStatistikRiskbedomning(userData, process.env.AIRTABLE_ACCESS_TOKEN, process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'),
       axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
       axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
     ]);
 
-    const statistik = statRes.data || {};
     const tjansterFromByra = (tjansterRes.data && tjansterRes.data.tjanster) || [];
     const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
 
@@ -21117,13 +20956,12 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
     const byraId = (userData.byraId || '').toString().trim();
     if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
 
-    const [statRes, tjansterRes, rutinerRes] = await Promise.all([
-      axios.get(`${baseUrl}/api/statistik-riskbedomning`, { headers: authHeader, timeout: 15000 }),
+    const [statistik, tjansterRes, rutinerRes] = await Promise.all([
+      loadStatistikRiskbedomning(userData, process.env.AIRTABLE_ACCESS_TOKEN, process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'),
       axios.get(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { headers: authHeader, timeout: 10000 }),
       axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 })
     ]);
 
-    const statistik = statRes.data || {};
     const tjanster = (tjansterRes.data && tjansterRes.data.tjanster) || [];
     const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
 
