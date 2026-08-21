@@ -72,6 +72,7 @@ const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
+const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const { resolveAssistantVectorStoreId, buildAssistantRunPayload } = require('./lib/openai-assistant-run');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const personRegister = require('./lib/person-register');
@@ -19163,7 +19164,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
 
                 let line = `${kort}\n    (HÖGRISKTJÄNST — full analys nedan)`;
-                if (tjBeskr) line += `\n    Tjänstebeskrivning: ${tjBeskr}`;
+                if (tjBeskr) line += `\n    Tjänstebeskrivning och inneboende risk: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
@@ -19720,9 +19721,11 @@ REGLER:
 - Håll dig strikt till tjänstens domän
 - Blanda INTE in KYC, verkliga huvudmän eller penningtvättskontroller om tjänsten inte handlar om det
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
-- Om tjänsten är av redovisningskaraktär: fokusera på avstämningar, kontroller och dokumentationskrav kopplade till just den tjänsten
-- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): fokusera på identitetskontroll, riskbedömning och dokumentation
+- Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
+- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot, med myndighetsnamn och webbadress när det går (t.ex. "Skatteverket — https://www.skatteverket.se/")
+
+${INHERENT_DESCRIPTION_AI_RULES}
 
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN:
 Använd byråns profil för att kalibrera den sammanvägda risknivån.
@@ -19749,7 +19752,7 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-3 meningar om tjänsten och byråns roll. Inkludera en mening om hur byråns profil påverkar den sammanvägda risknivån.",
+  "beskrivning": "2-3 meningar om tjänsten och den inneboende risken. Inkludera en mening om hur byråns profil påverkar den inneboende risknivån. Inga kontroller, rutiner eller åtgärder.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
@@ -19915,10 +19918,12 @@ ${befintligt.ptTfRelevans ? `Befintlig PT/TF-relevans: ${befintligt.ptTfRelevans
 
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder.
 
+${INHERENT_DESCRIPTION_AI_RULES}
+
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om riskfaktorn och varför den är relevant för byrån (inneboende risk).",
+  "beskrivning": "2-4 meningar om riskfaktorn och den inneboende risken. Inga kontroller, rutiner eller åtgärder.",
   "ptTfRelevans": "PT, TF eller Båda",
   "sannolikhet": 1,
   "konsekvens": 1,

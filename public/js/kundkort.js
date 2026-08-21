@@ -7848,7 +7848,7 @@ class CustomerCardManager {
 
         if (beskrivning) {
             parts.push(`
-                <div class="risker-vald-section-label">Tjänstebeskrivning</div>
+                <div class="risker-vald-section-label">Tjänstebeskrivning och inneboende risk</div>
                 <div class="risker-vald-desc">${this._nl(beskrivning)}</div>`);
         }
         if (hot.length) {

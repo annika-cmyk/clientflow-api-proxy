@@ -176,9 +176,9 @@
 
                         <div class="tjanst-modal-body">
                             <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
-                                <label for="tjanst-beskrivning">Tjänstebeskrivning</label>
-                                <p class="tjanst-panel-hint">Kort vad tjänsten innebär i praktiken. AI kan föreslå text utifrån namnet.</p>
-                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad gör ni i tjänsten, för vem, och vilka moment ingår?"></textarea>
+                                <label for="tjanst-beskrivning">Tjänstebeskrivning och inneboende risk</label>
+                                <p class="tjanst-panel-hint">Beskriv tjänsten och den risk den utgör i sig — nämn INTE byråns kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
+                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär och vilken risk den utgör i sig — inte era kontroller eller rutiner."></textarea>
                             </section>
 
                             <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
@@ -209,7 +209,7 @@
                                 <div class="form-group-head">
                                     <div>
                                         <label>Tjänstespecifika åtgärder</label>
-                                        <p class="tjanst-panel-hint">Vad ni gör för att hantera hoten och sårbarheterna.</p>
+                                        <p class="tjanst-panel-hint">Vad ni gör för att hantera hoten och sårbarheterna. Kontroller, rutiner och åtgärder hör hit — inte i översikten.</p>
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="atgard"><i class="fas fa-plus"></i> Lägg till</button>
                                 </div>
@@ -279,6 +279,6 @@
     <script src="app.js?v=1.1"></script>
     <script src="js/aml-kalla.js?v=1"></script>
     <script src="js/risk-skala.js?v=2"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=6"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=7"></script>
 </body>
 </html>
