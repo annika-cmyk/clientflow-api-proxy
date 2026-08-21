@@ -194,8 +194,10 @@
     const stat = {
       antalKunder: Number(d.antalKunder) || 0,
       lag: Number(riskniva['Låg']) || 0,
-      medel: Number(riskniva['Medel']) || 0,
+      normal: (Number(riskniva['Normal']) || 0) + (Number(riskniva['Medel']) || 0),
+      forhojd: Number(riskniva['Förhöjd']) || 0,
       hog: Number(riskniva['Hög']) || 0,
+      oacceptabel: Number(riskniva['Oacceptabel']) || 0,
       ovrigt: Number(riskniva['Övrigt']) || 0,
       pep: Number(d.antalPepEllerSanktion) || 0,
       tjanster: namedCounts(d.tjänster || d.tjanster),
@@ -212,8 +214,10 @@
     const cards = [
       { label: 'Antal kunder (byrån)', value: stat.antalKunder, icon: 'fa-users' },
       { label: 'Låg risk', value: stat.lag, icon: 'fa-shield-alt', klass: 'stat-number--low' },
-      { label: 'Medel risk', value: stat.medel, icon: 'fa-balance-scale', klass: 'stat-number--medium' },
+      { label: 'Normal risk', value: stat.normal, icon: 'fa-balance-scale', klass: 'stat-number--normal' },
+      { label: 'Förhöjd risk', value: stat.forhojd, icon: 'fa-exclamation-circle', klass: 'stat-number--elevated' },
       { label: 'Hög risk', value: stat.hog, icon: 'fa-exclamation-triangle', klass: 'stat-number--high' },
+      { label: 'Oacceptabel', value: stat.oacceptabel, icon: 'fa-ban', klass: 'stat-number--unacceptable' },
       { label: 'Övrig risknivå', value: stat.ovrigt, icon: 'fa-question-circle' },
       { label: 'PEP eller på sanktionslistor', value: stat.pep, icon: 'fa-user-secret' }
     ].map(function (c) {
