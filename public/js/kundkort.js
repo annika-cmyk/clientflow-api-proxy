@@ -7285,23 +7285,17 @@ class CustomerCardManager {
         return `<p class="ai-rb-kalla ai-rb-foreslagen">${this._esc(text)}</p>`;
     }
 
-    _riskKallaHtml(foreslagen, residual, drivande, avvikelse) {
+    _riskKallaHtml(foreslagen, residual, avvikelse) {
         const KP = window.KundRiskprofil;
         const niva = this._riskLabel(foreslagen);
-        const kalla = this._drivandeKort(drivande);
         const avviker = KP && KP.residualAvvikerFranForeslagen(residual, foreslagen);
-        if (!niva && !kalla) return '';
-        if (!avviker) {
-            const line = kalla ? `Beräknad från ${kalla}` : `Beräknad nivå: ${niva}`;
-            return `<p class="ai-rb-kalla">${this._esc(line)}</p>`;
-        }
+        if (!avviker) return '';
         const residualLabel = this._riskLabel(residual) || 'ej vald';
         const riktning = KP.avvikelseRiktning(residual, foreslagen);
         const riktningText = riktning === 'skärpt' ? ', skärpt' : riktning === 'lättat' ? ', lättat' : '';
         return `
                         <div class="ai-rb-avvikelse-kort">
                             <p class="ai-rb-kalla">Avviker från beräknad ${this._esc(niva)} — satt till ${this._esc(residualLabel)}${riktningText}</p>
-                            ${kalla ? `<p class="ai-rb-kalla">Beräknad från ${this._esc(kalla)}</p>` : ''}
                             ${avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Varför</span><div class="risker-vald-desc">${this._esc(avvikelse)}</div></div>` : ''}
                         </div>`;
     }
@@ -7309,10 +7303,9 @@ class CustomerCardManager {
     _riskbedomningViewHtml(inneboende, residual, motivering, atgarder, opts = {}) {
         const legacy = !!opts.legacy;
         const badges = `<div class="ai-rb-profil-row" id="ai-rb-niva-display">
-                            ${this._profilBadgeHtml('residual', residual)}
                             ${this._profilBadgeHtml('inneboende', inneboende)}
                         </div>
-                        ${this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse)}`;
+                        ${this._riskKallaHtml(opts.foreslagen, residual, opts.avvikelse)}`;
         const legacyBox = (legacy && motivering)
             ? `<div class="ai-rb-legacy">Tidigare bedömning (ej uppdelad i inneboende/residual), kräver manuell översyn<div class="ai-rb-legacy-text">${this._esc(motivering)}</div></div>`
             : '';
