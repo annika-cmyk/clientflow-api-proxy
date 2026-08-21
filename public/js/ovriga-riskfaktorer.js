@@ -778,7 +778,7 @@ class RiskFactorsManager {
         if (btn) {
             btn.disabled = true;
             btn.classList.add('loading');
-            if (label) label.textContent = reviewMode ? 'Granskar…' : 'Genererar…';
+            if (label) label.textContent = reviewMode ? 'Analyserar…' : 'Genererar…';
         }
 
         try {
@@ -799,14 +799,14 @@ class RiskFactorsManager {
                 this.applyOvrigAiIfEmpty(prefix, befintligt, data);
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
-                    : (Ai.fallbackPosters('ovrig', data, befintligt).filter((p) => Ai.filledOvrigKeys(befintligt).includes(p.falt)));
+                    : Ai.ensureAnalysisPosters('ovrig', befintligt, data, []);
                 Ai.renderReview(reviewHost, poster, {
                     befintligt,
                     onApply: (row) => this.applyOvrigAiField(prefix, row.falt, row.forslag)
                 });
                 this.showNotification(poster.length
-                    ? 'AI har kommenterat era texter. Kopiera in eller avfärda varje förslag.'
-                    : 'AI har fyllt tomma fält. Befintliga texter lämnades orörda.', 'success');
+                    ? 'AI har gjort en egen analys. Jämför med era texter och kopiera in det ni vill använda.'
+                    : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);
                 this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');

@@ -1032,7 +1032,7 @@ class RiskAssessmentManager {
         const reviewMode = !!(Ai && Ai.hasExistingTjanstContent(befintligt));
         btn.disabled = true;
         btn.classList.add('loading');
-        label.textContent = reviewMode ? 'Granskar…' : 'Genererar…';
+        label.textContent = reviewMode ? 'Analyserar…' : 'Genererar…';
 
         try {
             const byraProfil = await this.fetchByraProfil();
@@ -1057,14 +1057,16 @@ class RiskAssessmentManager {
                 this.applyTjanstAiIfEmpty(befintligt, data);
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
-                    : (Ai.fallbackPosters('tjanst', data, befintligt).filter((p) => Ai.filledTjanstKeys(befintligt).includes(p.falt)));
+                    : (Ai.ensureAnalysisPosters('tjanst', befintligt, data, []).concat(
+                        Ai.ensureTfCoveragePosters(befintligt, data, [])
+                    ));
                 Ai.renderReview(document.getElementById('tjanst-ai-review'), poster, {
                     befintligt,
                     onApply: (row) => this.applyTjanstAiField(row.falt, row.forslag)
                 });
                 this.showNotification(poster.length
-                    ? 'AI har kommenterat era texter. Kopiera in eller avfärda varje förslag.'
-                    : 'AI har fyllt tomma fält. Befintliga texter lämnades orörda.', 'success');
+                    ? 'AI har gjort en egen analys. Jämför med era texter och kopiera in det ni vill använda.'
+                    : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyTjanstAiAll(data);
                 this.setTjanstTab('hot');

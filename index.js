@@ -20237,7 +20237,6 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
-  const existingKeys = AiFaltGranskning.filledTjanstKeys(befintligt);
 
   const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
 
@@ -20281,7 +20280,7 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-3 meningar om tjänsten och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "3-5 meningar om tjänsten och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
@@ -20292,7 +20291,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
+      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }
@@ -20417,11 +20416,8 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst', befintligt)
       : [];
-    if (reviewMode && !granskningPoster.length) {
-      granskningPoster = AiFaltGranskning.fallbackPosters('tjanst', tjanstAiPayload, befintligt)
-        .filter((p) => existingKeys.includes(p.falt));
-    }
     if (reviewMode) {
+      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster);
       granskningPoster = AiFaltGranskning.ensureTfCoveragePosters(befintligt, tjanstAiPayload, granskningPoster);
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
@@ -20477,7 +20473,6 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const residualIn = RiskSkala.assessRisk(befintligt.sannolikhetEfter, befintligt.konsekvensEfter);
   const reviewMode = AiFaltGranskning.hasExistingOvrigContent(befintligt);
   const existingBlock = AiFaltGranskning.formatOvrigExistingBlock(befintligt);
-  const existingKeys = AiFaltGranskning.filledOvrigKeys(befintligt);
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
@@ -20503,7 +20498,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "atgard": "Konkreta åtgärder byrån bör vidta (2-4 meningar)."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|residual", "kommentar": "1-2 meningar", "andra": false, "forslag": "" }
+      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|residual", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }
@@ -20575,9 +20570,8 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig', befintligt)
       : [];
-    if (reviewMode && !granskningPoster.length) {
-      granskningPoster = AiFaltGranskning.fallbackPosters('ovrig', faktorAiPayload, befintligt)
-        .filter((p) => existingKeys.includes(p.falt));
+    if (reviewMode) {
+      granskningPoster = AiFaltGranskning.ensureAnalysisPosters('ovrig', befintligt, faktorAiPayload, granskningPoster);
     }
     const userDataFaktor = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const faktorAiLog = await auditHooks.logAiGenerated({

@@ -1,6 +1,6 @@
 /**
- * AI-granskning av redan ifyllda fält på tjänst och övrig riskfaktor.
- * Delas av servern (prompt + normalisering) och formulären (granskningskort).
+ * AI-analys av tjänst och övrig riskfaktor: egna kompletta förslag plus jämförelse mot ifylld text.
+ * Delas av servern (prompt + normalisering) och formulären (analyskort).
  */
 (function (global) {
   const TJANST_FALT = {
@@ -21,17 +21,16 @@
     residual: { etikett: 'Risk efter åtgärd' }
   };
 
-  const REVIEW_PROMPT_RULES = `GRANSKNINGSLÄGE (när befintligt innehåll finns):
-- Tomma fält: fyll i som vanligt i huvudfälten.
-- Ifyllda fält: kopiera användarens nuvarande text tillbaka till huvudfältet. Skriv inte om den där.
-- För varje ifyllt fält: lägg en post i granskning.poster.
-- kommentar: 1–2 meningar om vad som är bra, vad som saknas eller vad som bör ändras.
-- Om du föreslår ändring: andra=true och forslag med den nya texten (sträng) eller den nya listan (array av objekt).
-- andra=true bara när forslag SKILJER sig från det befintliga innehållet (annan text, andra S×K-tal, ny/borttagen/ändrad post).
-- Om du bara upprepar samma text eller samma lista: andra=false och forslag="" (eller tom lista).
-- Om texten är bra: andra=false och forslag="" (eller tom lista).
-- Föreslå ändring bara när det behövs (fel, saknad risk, nämner byrån i inneboende beskrivning, svag källa, saknad TF-täckning). Inte bara omformulering.
-- TF-LUCKA: Om tjänsten saknar TF-hot (typ TF eller Båda) och saknar TF-motivering är det ett måste. Sätt andra=true på hot med era befintliga poster PLUS minst ett nytt TF- eller Båda-hot, ELLER andra=true på tfMotivering. Lämna inte luckan utan förslag.`;
+  const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
+- Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
+- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot), och TF-täckning.
+- Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, lägg till saknade hot (särskilt TF), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn.
+- Kopiera inte rakt av. En lätt omskrivning räcker inte.
+- Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
+- Ifyllda fält: lägg en post i granskning.poster med andra=true. forslag ska vara SAMMA kompletta innehåll som i huvudfälten (hela listan, inte en kommentar eller en enstaka punkt).
+- kommentar: 2–3 meningar om vad din analys tillför (luckor, nya hot, S×K, TF, källor) — inte bara "bra som den är".
+- andra=false bara om ditt förslag är identiskt med nuvarande innehåll.
+- TF-LUCKA: Om tjänsten saknar TF-hot (typ TF eller Båda) och saknar TF-motivering är det ett måste. Ditt hot-förslag ska innehålla minst ett TF- eller Båda-hot, annars tfMotivering.`;
 
   function getTjanstTfTackning() {
     if (typeof global !== 'undefined' && global.TjanstTfTackning) return global.TjanstTfTackning;
@@ -114,7 +113,7 @@
     const o = befintligt || {};
     const keys = filledTjanstKeys(o);
     if (!keys.length) return '';
-    const parts = ['BEFINTLIGT INNEHÅLL (användaren har redan fyllt i — skriv inte över i onödan):'];
+    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
     if (keys.includes('tjanstebeskrivning')) {
       parts.push(`Tjänstebeskrivning:\n${trimStr(o.tjanstebeskrivning)}`);
     }
@@ -154,7 +153,7 @@
     const o = befintligt || {};
     const keys = filledOvrigKeys(o);
     if (!keys.length) return '';
-    const parts = ['BEFINTLIGT INNEHÅLL (användaren har redan fyllt i — skriv inte över i onödan):'];
+    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
     if (keys.includes('beskrivning')) parts.push(`Beskrivning:\n${trimStr(o.beskrivning)}`);
     if (keys.includes('atgard')) parts.push(`Åtgärd:\n${trimStr(o.atgard)}`);
     if (keys.includes('ptTfRelevans')) parts.push(`PT/TF-relevans: ${trimStr(o.ptTfRelevans)}`);
@@ -534,19 +533,45 @@
     return list;
   }
 
+  function ensureAnalysisPosters(kind, befintligt, generated, posters) {
+    const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
+    const list = Array.isArray(posters) ? posters.slice() : [];
+    Object.keys(catalog).forEach((key) => {
+      const current = currentValueFor(key, befintligt);
+      if (isEmptyCurrent(key, current)) return;
+      const forslag = generatedValueFor(key, generated);
+      if (!hasForslag(key, forslag) || sameForslag(key, current, forslag)) return;
+      const existing = list.find((item) => item && item.falt === key);
+      upsertPoster(list, {
+        falt: key,
+        etikett: catalog[key].etikett,
+        kommentar: (existing && existing.kommentar) || 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.',
+        andra: true,
+        forslag
+      });
+    });
+    return list;
+  }
+
   function ensureTfCoveragePosters(befintligt, generated, posters) {
     const Tf = getTjanstTfTackning();
     const list = Array.isArray(posters) ? posters.slice() : [];
+    const existingHot = list.find((item) => item && item.falt === 'hot');
+    if (existingHot && Tf && Tf.hasTfHot(existingHot.forslag)) return list;
     if (!Tf || !Tf.tjanstSaknarTfTackning(befintligt || {})) return list;
     const genHot = generated && generated.hot;
     const genMot = generated && generated.tfMotivering;
     if (Tf.hasTfHot(genHot)) {
+      const base = existingHot && hasForslag('hot', existingHot.forslag)
+        ? existingHot.forslag
+        : (befintligt && befintligt.hot);
       return upsertPoster(list, {
         falt: 'hot',
         etikett: TJANST_FALT.hot.etikett,
-        kommentar: 'Tjänsten saknade TF-hot. AI föreslår minst ett TF-hot som komplement till era befintliga hot.',
+        kommentar: (existingHot && existingHot.kommentar)
+          || 'Tjänsten saknade TF-hot. AI föreslår minst ett TF-hot som komplement till era befintliga hot.',
         andra: true,
-        forslag: mergeHotLists(befintligt && befintligt.hot, genHot)
+        forslag: mergeHotLists(base, genHot)
       });
     }
     if (Tf.tfMotiveringOk(genMot)) {
@@ -610,8 +635,8 @@
     host.innerHTML = `
       <div class="ai-review-head">
         <div>
-          <strong>AI har tittat på era texter</strong>
-          <p>Jämför med nuvarande text, redigera förslaget och kopiera in det — eller avfärda. Inget skrivs över förrän du väljer.</p>
+          <strong>AI:s egen analys</strong>
+          <p>AI har tagit fram kompletta egna förslag. Jämför med nuvarande text, redigera och kopiera in det du vill behålla. Inget skrivs över förrän du väljer.</p>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
       </div>
@@ -692,6 +717,7 @@
     decoratePoster,
     readEditedForslag,
     fallbackPosters,
+    ensureAnalysisPosters,
     ensureTfCoveragePosters,
     mergeHotLists,
     hasForslag,
