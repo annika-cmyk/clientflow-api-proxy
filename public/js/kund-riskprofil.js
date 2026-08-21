@@ -245,13 +245,18 @@
     riskhojandeVal(fields).forEach(function (namn) {
       flagNames[foldNamn(namn)] = true;
     });
+    var seen = {};
     return (Array.isArray(poster) ? poster : []).filter(function (item) {
       if (!item || isRiskhojandeFlagItem(item)) return false;
       var namn = foldNamn(item.namn);
-      if (namn && flagNames[namn]) return false;
+      if (!namn || flagNames[namn] || seen[namn]) return false;
       var product = residualProductOf(item);
-      if (product != null && isFinite(product)) return product >= STRUKTUR_FORHOJD_MIN;
-      return rankOf(item.residualLevel || item.level || '') >= 3;
+      var hit = product != null && isFinite(product)
+        ? product >= STRUKTUR_FORHOJD_MIN
+        : rankOf(item.residualLevel || item.level || '') >= 3;
+      if (!hit) return false;
+      seen[namn] = true;
+      return true;
     });
   }
 
