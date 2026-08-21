@@ -72,7 +72,7 @@ const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag
 const UppdragTyp = require('./public/js/uppdrag-typ');
 const { mapByraTjanstRecord } = require('./lib/byra-tjanst-map');
 const TjanstTfTackning = require('./public/js/tjanst-tf-tackning');
-const { compileIdentifieradeRisker, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
+const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
@@ -10874,12 +10874,14 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
         .catch((err) => console.warn('⚠️ Kunde inte rätta kundkännedomsåtgärder:', err.message));
     }
     const riskKey = '4. Identifierade Risker och Sårbarheter';
+    const referral = referralIdentifieradeRisker();
+    let compiledRisker = '';
     try {
-      const compiled = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
-      fields[riskKey] = compiled;
+      compiledRisker = await compiledIdentifieradeForByra(byraId, airtableAccessToken, airtableBaseId);
       const stored = typeof record.fields[riskKey] === 'string' ? record.fields[riskKey] : '';
-      if (compiled && compiled !== stored) {
-        patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, { [riskKey]: compiled })
+      // Behåll kompilerad text i Airtable för Minibok/integrationer, men formuläret får bara hänvisningen.
+      if (compiledRisker && compiledRisker !== stored) {
+        patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, { [riskKey]: compiledRisker })
           .catch((err) => console.warn('⚠️ Kunde inte spegla identifierade risker till Byråer:', err.message));
       }
     } catch (compileErr) {
@@ -10887,18 +10889,20 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
       const riskRaw = fields[riskKey];
       if (riskRaw && typeof riskRaw === 'string' && /rec[A-Za-z0-9]{10,}/.test(riskRaw)) {
         const idMap = await buildTjanstIdToNamnMap(airtableAccessToken, airtableBaseId, byraId, riskRaw);
-        fields[riskKey] = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
-      } else if (riskRaw && typeof riskRaw === 'string') {
-        fields[riskKey] = stripEmptyTjanstRiskSections(riskRaw);
+        compiledRisker = sanitizeIdentifieradeRiskerText(riskRaw, idMap);
+      } else if (riskRaw && typeof riskRaw === 'string' && isIdentifieradeCompiledDump(riskRaw)) {
+        compiledRisker = stripEmptyTjanstRiskSections(riskRaw);
       }
     }
+    fields[riskKey] = referral;
 
     res.json({
       success: true,
       record: { id: record.id, fields },
       fields,
       id: record.id,
-      identifieradeRiskerLive: true
+      identifieradeRiskerLive: true,
+      identifieradeRiskerCompiled: compiledRisker
     });
   } catch (error) {
     console.error('❌ GET /api/byra-rutiner:', error.response?.data || error.message);
@@ -20634,7 +20638,8 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
     const tjanster = (tjansterRes.data && tjansterRes.data.tjanster) || [];
     const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
 
-    const identifieradeRisker = rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
+    const identifieradeRisker = (rutinerRes.data && rutinerRes.data.identifieradeRiskerCompiled)
+      || rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
     const befintligVardering = rutinerFields['8. Värdering av sammantagen risk'] || '';
     const syfteOmfattning = rutinerFields['1. Syfte och Omfattning'] || rutinerFields['Syfte och Omfattning'] || '';
     const beskrivning = rutinerFields['2. Beskrivning av Byråns verksamhet'] || rutinerFields['Beskrivning av Byråns verksamhet'] || '';
@@ -20732,7 +20737,8 @@ app.post('/api/ai-identifierade-risker-byra', authenticateToken, async (req, res
     const syfteOmfattning = rutinerFields['1. Syfte och Omfattning'] || rutinerFields['Syfte och Omfattning'] || '';
     const beskrivning = rutinerFields['2. Beskrivning av Byråns verksamhet'] || rutinerFields['Beskrivning av Byråns verksamhet'] || '';
     const metod = rutinerFields['3. Metod för Riskbedömning '] || rutinerFields['Metod för Riskbedömning'] || '';
-    const befintligText = rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
+    const befintligText = (rutinerRes.data && rutinerRes.data.identifieradeRiskerCompiled)
+      || rutinerFields['4. Identifierade Risker och Sårbarheter'] || '';
 
     // Airtable-ID:n (rec…) får aldrig visas som tjänstnamn — mappa till Task Name från byråns tjänster.
     const tjanstIdToNamn = new Map();
