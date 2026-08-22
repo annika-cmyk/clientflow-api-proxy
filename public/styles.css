@@ -2069,7 +2069,8 @@ body.sidebar-collapsed .logout-btn {
   
   /* Sidebar smalare på medel/liten skärm */
   .sidebar { width: 260px; }
-  .main-content { margin-left: 260px; padding: 1rem; }
+  .main-content { margin-left: 260px; width: calc(100% - 260px); padding: 1rem; }
+  body.sidebar-collapsed .main-content { margin-left: 72px; width: calc(100% - 72px); }
   
   /* Dashboard-header kompakt */
   .content-header.dashboard-header { padding: 1rem 0; margin-bottom: 1.25rem; }
@@ -2098,8 +2099,8 @@ body.sidebar-collapsed .logout-btn {
 }
 @media (max-width: 900px) {
   .sidebar { width: 220px; }
-  .main-content { margin-left: 220px; padding: 0.75rem; }
-  body.sidebar-collapsed .main-content { margin-left: 72px; }
+  .main-content { margin-left: 220px; width: calc(100% - 220px); padding: 0.75rem; }
+  body.sidebar-collapsed .main-content { margin-left: 72px; width: calc(100% - 72px); }
   .dashboard-grid { grid-template-columns: 1fr; }
   .dashboard-left { position: static; }
 }
@@ -2107,16 +2108,23 @@ body.sidebar-collapsed .logout-btn {
   .sidebar { 
     transform: translateX(-100%);
     transition: transform 0.3s ease;
+    width: min(280px, 86vw);
   }
   
   .sidebar.open {
     transform: translateX(0);
+    box-shadow: 8px 0 28px rgba(21, 24, 29, 0.16);
   }
   
-  .main-content { margin-left: 0; }
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+  }
   /* På mobil används inte ihopfällt läge – sidomenyn går helt åt sidan */
-  body.sidebar-collapsed .sidebar { width: 260px; }
-  body.sidebar-collapsed .main-content { margin-left: 0; width: 100%; }
+  body.sidebar-collapsed .sidebar { width: min(280px, 86vw); }
+  body.sidebar-collapsed .main-content { margin-left: 0; width: 100%; max-width: 100%; }
+  body.sidebar-collapsed .sidebar .sidebar-collapse-hide { display: revert !important; }
 
   .toolbar { gap: .4rem; }
   .company-details { grid-template-columns: 1fr; }
@@ -4717,7 +4725,7 @@ body.sidebar-collapsed .logout-btn {
 
 .form-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 1.25rem;
 }
 
@@ -14207,4 +14215,188 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: none;
     padding: 0.65rem 0 0;
     margin: 0;
+}
+
+/* Mobilskal: döljs på dator, syns bara under 768px */
+.mobile-topbar,
+.mobile-nav-toggle,
+.mobile-nav-overlay {
+    display: none;
+}
+
+@media (max-width: 768px) {
+  html, body {
+    overflow-x: hidden;
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 52px;
+    padding: 0 0.75rem;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    z-index: 1100;
+    box-sizing: border-box;
+  }
+  .mobile-topbar-title {
+    font-family: var(--title-font);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--title-text);
+    letter-spacing: 0.04em;
+  }
+  .mobile-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .mobile-nav-toggle i {
+    font-size: 1.05rem;
+  }
+  .mobile-nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(21, 24, 29, 0.4);
+    z-index: 998;
+  }
+  .mobile-nav-overlay[hidden] {
+    display: none;
+  }
+
+  .sidebar {
+    z-index: 1000;
+  }
+  .sidebar-toggle {
+    display: none;
+  }
+
+  body.mobile-nav-open {
+    overflow: hidden;
+  }
+  body.sidebar-collapsed .sidebar-header,
+  body.sidebar-collapsed .nav-section li a,
+  body.sidebar-collapsed .sidebar-ai-chat-btn,
+  body.sidebar-collapsed .user-info,
+  body.sidebar-collapsed .logout-btn {
+    justify-content: flex-start;
+  }
+  body.sidebar-collapsed .sidebar-header {
+    padding: 2rem 1.5rem 1.5rem;
+    min-height: 0;
+    display: block;
+    text-align: center;
+  }
+  body.sidebar-collapsed .nav-section li a {
+    padding: 10px 1rem;
+  }
+  body.sidebar-collapsed .nav-section .nav-section-chevron {
+    display: inline-block;
+  }
+
+  .main-content {
+    padding: 3.75rem 0.75rem 2rem;
+    box-sizing: border-box;
+  }
+  .main-content > .container {
+    padding: 0;
+    max-width: 100%;
+  }
+
+  .content-header,
+  .page-header {
+    padding: 0.85rem 0 1rem;
+    margin-bottom: 1.1rem;
+  }
+  .content-header h1,
+  .page-header h1,
+  .risk-header h1 {
+    font-size: 1.35rem;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    margin-bottom: 0.4rem;
+  }
+  .content-header p,
+  .page-header p,
+  .risk-header p,
+  .risk-header-sub {
+    font-size: 0.92rem;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+  }
+  .risk-header {
+    overflow: visible;
+    flex-wrap: wrap;
+    display: block;
+  }
+
+  .info-section,
+  .statistik-section {
+    padding: 1rem;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .form-grid,
+  .form-grid--inline,
+  .address-details {
+    grid-template-columns: 1fr;
+  }
+  .byrarutiner-actions,
+  .card-save-wrap,
+  .byra-logga-wrap,
+  .risk-header-actions {
+    flex-wrap: wrap;
+  }
+  .byrarutiner-format-toolbar {
+    flex-wrap: wrap;
+  }
+  .byrarutiner-section .form-textarea,
+  .byrarutiner-section textarea.form-input {
+    min-height: 160px;
+    padding: 0.75rem;
+  }
+  .byra-card-view {
+    padding: 0.85rem 1rem 2.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .kundlista-row {
+    flex-wrap: wrap;
+    gap: 0.55rem 0.75rem;
+    padding: 0.75rem 0.9rem;
+  }
+  .kundlista-row-meta {
+    flex-wrap: wrap;
+    flex-shrink: 1;
+  }
+
+  table {
+    max-width: 100%;
+  }
+  .uppdragboard-table-wrap,
+  .records-container,
+  .kundlista-table {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .kyc-row-label {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
 }

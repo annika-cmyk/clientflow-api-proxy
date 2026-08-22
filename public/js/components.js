@@ -70,9 +70,13 @@ class ComponentLoader {
         if (sidebar && toggleBtn) {
             try {
                 const saved = sessionStorage.getItem('clientflow-sidebar-collapsed');
-                if (saved === '1') document.body.classList.add('sidebar-collapsed');
+                const mobile = window.ClientFlowMobileNav
+                    ? window.ClientFlowMobileNav.isMobile()
+                    : window.matchMedia('(max-width: 768px)').matches;
+                if (saved === '1' && !mobile) document.body.classList.add('sidebar-collapsed');
             } catch (e) { /* ignore */ }
             toggleBtn.addEventListener('click', () => {
+                if (window.matchMedia('(max-width: 768px)').matches) return;
                 document.body.classList.toggle('sidebar-collapsed');
                 try {
                     sessionStorage.setItem('clientflow-sidebar-collapsed', document.body.classList.contains('sidebar-collapsed') ? '1' : '0');
@@ -80,6 +84,7 @@ class ComponentLoader {
             });
         }
 
+        this.initMobileNav(element);
         this.initSidebarSearch(element);
         this.initMinibokBanner();
 
@@ -109,6 +114,33 @@ class ComponentLoader {
                 } catch (e) { /* ignore */ }
             });
         });
+    }
+
+    initMobileNav(element) {
+        const runInit = () => {
+            if (!window.ClientFlowMobileNav || typeof window.ClientFlowMobileNav.init !== 'function') return;
+            window.ClientFlowMobileNav.init({
+                sidebar: element.querySelector('.sidebar'),
+                toggle: element.querySelector('#mobile-nav-toggle'),
+                overlay: element.querySelector('#mobile-nav-overlay'),
+                body: document.body
+            });
+        };
+
+        if (window.ClientFlowMobileNav) {
+            runInit();
+            return;
+        }
+
+        if (!document.querySelector('script[src*="mobile-nav.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'js/mobile-nav.js?v=1';
+            script.async = false;
+            script.onload = runInit;
+            document.body.appendChild(script);
+            return;
+        }
+        runInit();
     }
 
     initSidebarSearch(element) {
