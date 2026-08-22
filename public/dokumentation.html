@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Dokumentation</title>
-    <link rel="stylesheet" href="styles.css?v=20260822m">
+    <link rel="stylesheet" href="styles.css?v=20260822n">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -20,7 +20,10 @@
                         <p class="section-desc dokumentation-page-desc">Slutlig riskbedömning, byrårutiner, dolda kundkort och revisionslogg enligt penningtvättslagen.</p>
                     </div>
                     <div class="dokumentation-header-actions" id="dokumentation-export-wrap" style="display:none;">
-                        <button type="button" class="btn btn-primary" id="btn-export-dokumentation" title="Generera PDF, ladda ner och spara i historiken">
+                        <button type="button" class="btn btn-primary" id="btn-sign-dokumentation" title="Skicka riskbedömning och rutiner till en användare på byrån för BankID-signering">
+                            <i class="fas fa-pen-nib"></i> Skicka för signering och godkännande
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="btn-export-dokumentation" title="Ladda ner PDF utan att spara den">
                             <i class="fas fa-file-export"></i> Exportera PDF
                         </button>
                         <button type="button" class="btn btn-secondary" id="btn-export-dokumentation-zip" title="Ladda ner byråns PDF:er och alla kunddokument som ZIP">
@@ -55,8 +58,9 @@
                     </section>
 
                     <section class="info-section dokumentation-section dokumentation-export-history">
-                        <h3><i class="fas fa-file-pdf"></i> Exporterade dokument</h3>
-                        <p class="section-desc">Här sparas skapade riskbedömningar och policydokument med datumstämpel. Du kan öppna tidigare versioner och se när de gjordes.</p>
+                        <h3><i class="fas fa-file-signature"></i> Godkända dokument</h3>
+                        <p class="section-desc">Här sparas riskbedömning och rutiner när de har signerats i Inleed. Godkännandedatumet är dagen dokumentet signerades. En vanlig PDF-export sparas inte.</p>
+                        <div id="dokumentation-signering-status" class="dokumentation-signering-status"></div>
                         <div id="lansstyrelsen-pdf-list" class="dokumentation-pdf-list"></div>
                     </section>
                     </div>
@@ -121,7 +125,7 @@
     <script src="js/identifierade-risker-view.js?v=3"></script>
     <script src="js/riskaptit.js?v=2"></script>
     <script src="js/audit-logg.js?v=1"></script>
-    <script src="js/dokumentation.js?v=13"></script>
+    <script src="js/dokumentation.js?v=14"></script>
     <script src="app.js"></script>
 </body>
 </html>

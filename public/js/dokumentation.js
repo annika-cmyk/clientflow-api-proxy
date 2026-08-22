@@ -11,10 +11,14 @@
   async function getSavedPdfsFromApi() {
     try {
       const res = await fetch(getBaseUrl() + '/api/settings/dokumentation-pdfs', getAuthOpts());
-      if (!res.ok) return [];
+      if (!res.ok) return { list: [], signering: null, godkannande: null };
       const data = await res.json();
-      return Array.isArray(data.list) ? data.list : [];
-    } catch { return []; }
+      return {
+        list: Array.isArray(data.list) ? data.list : [],
+        signering: data.signering || null,
+        godkannande: data.godkannande || null
+      };
+    } catch { return { list: [], signering: null, godkannande: null }; }
   }
 
   function escapeHtml(s) {
@@ -288,7 +292,7 @@
       for (const { key, label } of RUTINER_LABELS) {
         const val = getField(fields, key);
         if (key === 'Policydokumentet reviderat och godkänt') {
-          rutinerHtml.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val)) : '—'}</div></div>`);
+          rutinerHtml.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value" id="dok-policy-godkand">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
         } else {
           rutinerHtml.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? markdownToHtml(val) : '—'}</div></div>`);
         }
@@ -311,7 +315,7 @@
           html.push(statData
             ? renderStatistikSection(statData)
             : '<div class="dokumentation-field dokumentation-statistik"><strong>Statistik för riskbedömning</strong><div class="dokumentation-value"><p class="section-desc" style="color:#94a3b8;">Kunde inte ladda statistiken.</p></div></div>');
-          html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
+          html.push(`<div class="dokumentation-field"><strong>${label}</strong><div class="dokumentation-value" id="dok-risk-godkand">${val ? escapeHtml(String(val).substring(0, 10)) : '—'}</div></div>`);
           continue;
         }
         if (key === '9. Riskaptit') {
@@ -366,11 +370,45 @@
     return '';
   }
 
+  function applyGodkannande(date) {
+    const shown = date ? escapeHtml(String(date).substring(0, 10)) : '';
+    ['dok-policy-godkand', 'dok-risk-godkand'].forEach(function (id) {
+      const el = getEl(id);
+      if (el && shown) el.textContent = shown;
+    });
+  }
+
+  function renderSigneringStatus(signering) {
+    const box = getEl('dokumentation-signering-status');
+    if (!box) return;
+    if (!signering || !signering.inleedDokumentId) {
+      box.innerHTML = '';
+      return;
+    }
+    if (signering.status === 'signed') {
+      box.innerHTML = '<p class="dokumentation-signering-banner is-signed">Senast godkänt ' +
+        escapeHtml(signering.signedAt || '—') +
+        (signering.signerName ? ' av ' + escapeHtml(signering.signerName) : '') +
+        '.</p>';
+      return;
+    }
+    box.innerHTML = '<div class="dokumentation-signering-banner is-pending">' +
+      '<p>Väntar på BankID-signering' +
+      (signering.signerName ? ' av <strong>' + escapeHtml(signering.signerName) + '</strong>' : '') +
+      (signering.signerEmail ? ' (' + escapeHtml(signering.signerEmail) + ')' : '') +
+      '.</p>' +
+      '<button type="button" class="btn btn-secondary btn-sm" id="btn-check-dokumentation-sign">' +
+      '<i class="fas fa-sync"></i> Kontrollera signering</button>' +
+      '</div>';
+    const checkBtn = getEl('btn-check-dokumentation-sign');
+    if (checkBtn) checkBtn.addEventListener('click', hamtaSigneratDokument);
+  }
+
   function renderPdfListWith(list) {
     const container = getEl('lansstyrelsen-pdf-list');
     if (!container) return;
     if (list.length === 0) {
-      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga riskbedömningar eller policydokument sparade ännu. Klicka på <strong>Exportera PDF</strong> ovan för att skapa dagens version med datumstämpel.</p>';
+      container.innerHTML = '<p class="section-desc" style="color:#94a3b8;">Inga signerade dokument sparade ännu. Skicka för signering och godkännande när underlaget är klart.</p>';
       return;
     }
     container.innerHTML = '<ul class="document-list">' + list.map((item, i) => {
@@ -382,7 +420,7 @@
         <i class="fas fa-file-pdf document-list-icon"></i>
         <span class="document-list-info">
           <strong class="document-list-name">${escapeHtml(title)}</strong>
-          <span class="document-list-meta">Skapad ${escapeHtml(stamp || '—')}</span>
+          <span class="document-list-meta">Godkänt ${escapeHtml(stamp || '—')}</span>
         </span>
         <button type="button" class="btn btn-secondary btn-sm document-download-btn" data-pdf-index="${i}" ${canDownload ? '' : 'disabled'}>
           <i class="fas fa-download"></i> Ladda ner
@@ -396,12 +434,14 @@
   }
 
   async function renderPdfList() {
-    const list = await getSavedPdfsFromApi();
-    renderPdfListWith(list);
+    const data = await getSavedPdfsFromApi();
+    renderPdfListWith(data.list);
+    renderSigneringStatus(data.signering);
+    if (data.godkannande) applyGodkannande(data.godkannande);
   }
 
   window.dokumentationDownloadPdf = async function (index, listArg) {
-    const list = listArg || await getSavedPdfsFromApi();
+    const list = listArg || (await getSavedPdfsFromApi()).list;
     const item = list[index];
     const id = item && (item.attachmentId || item.id);
     if (!item || !id) {
@@ -461,10 +501,6 @@
       a.click();
       URL.revokeObjectURL(url);
 
-      await renderPdfList();
-      if (res.headers.get('X-Dokumentation-Saved') === '0') {
-        console.warn('Dokumentexporten laddades ner men historiken kunde inte sparas.');
-      }
     } catch (err) {
       console.error('Dokumentation export:', err);
       alert('Kunde inte exportera: ' + (err.message || 'Okänt fel'));
@@ -522,6 +558,127 @@
         btn.disabled = false;
         btn.innerHTML = origHtml;
       }
+    }
+  }
+
+  async function hamtaSigneratDokument() {
+    const btn = getEl('btn-check-dokumentation-sign');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kontrollerar...';
+    }
+    try {
+      const res = await fetch(getBaseUrl() + '/api/byra/dokumentation/hamta-signerat', {
+        method: 'POST',
+        ...getAuthOpts()
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        renderSigneringStatus(data.signering);
+        throw new Error(data.error || 'Dokumentet är inte signerat ännu.');
+      }
+      renderPdfListWith(data.list || []);
+      renderSigneringStatus(data.signering);
+      if (data.godkannande) applyGodkannande(data.godkannande);
+      alert('Dokumentet är signerat och sparat. Godkännandedatum: ' + (data.godkannande || '—'));
+    } catch (err) {
+      alert(err.message || 'Kunde inte hämta det signerade dokumentet.');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    }
+  }
+
+  function closeSignModal() {
+    const modal = getEl('dokumentation-sign-modal');
+    if (modal) modal.remove();
+  }
+
+  async function openSignModal() {
+    closeSignModal();
+    const modal = document.createElement('div');
+    modal.id = 'dokumentation-sign-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = '<div class="modal-box" style="max-width:520px;">' +
+      '<div class="modal-header">' +
+      '<h3><i class="fas fa-pen-nib" style="color:var(--accent)"></i> Skicka för signering och godkännande</h3>' +
+      '<button type="button" class="modal-close" id="dokumentation-sign-close"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="modal-body"><p class="section-desc">Laddar användare på byrån…</p></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    getEl('dokumentation-sign-close').addEventListener('click', closeSignModal);
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeSignModal();
+    });
+
+    try {
+      const res = await fetch(getBaseUrl() + '/api/byra/anvandare', getAuthOpts());
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || 'Kunde inte hämta användare');
+      const users = (data.users || []).filter(function (u) { return u && u.id && u.email && (u.name || u.fullName); });
+      const body = modal.querySelector('.modal-body');
+      if (!users.length) {
+        body.innerHTML = '<p class="section-desc">Inga användare med e-post hittades på byrån.</p>';
+        return;
+      }
+      body.innerHTML = '<p class="section-desc">Välj vem på byrån som ska signera riskbedömningen och rutinerna med BankID. När dokumentet är signerat sparas det här och godkännandedatumet sätts till signeringsdagen.</p>' +
+        '<div class="dokumentation-signer-list">' +
+        users.map(function (u, idx) {
+          return '<label class="inleed-person-option">' +
+            '<input type="radio" name="dokumentation-signer" value="' + escapeHtml(u.id) + '"' + (idx === 0 ? ' checked' : '') + '>' +
+            '<div class="inleed-person-info">' +
+            '<span class="inleed-person-name">' + escapeHtml(u.name || u.fullName) + '</span>' +
+            (u.role ? '<span class="inleed-person-roll">' + escapeHtml(u.role) + '</span>' : '') +
+            '<span class="inleed-person-contact"><i class="fas fa-envelope"></i> ' + escapeHtml(u.email) + '</span>' +
+            '</div></label>';
+        }).join('') +
+        '</div>' +
+        '<div class="modal-footer">' +
+        '<button type="button" class="btn btn-secondary" id="dokumentation-sign-cancel">Avbryt</button>' +
+        '<button type="button" class="btn btn-primary" id="dokumentation-sign-send"><i class="fas fa-paper-plane"></i> Skicka</button>' +
+        '</div>';
+      getEl('dokumentation-sign-cancel').addEventListener('click', closeSignModal);
+      getEl('dokumentation-sign-send').addEventListener('click', async function () {
+        const chosen = modal.querySelector('input[name="dokumentation-signer"]:checked');
+        if (!chosen) {
+          alert('Välj en användare på byrån.');
+          return;
+        }
+        const sendBtn = getEl('dokumentation-sign-send');
+        const orig = sendBtn.innerHTML;
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skickar...';
+        if (typeof window.showAiThinking === 'function') {
+          window.showAiThinking('Skapar PDF och skickar till Inleed...');
+        }
+        try {
+          const sendRes = await fetch(getBaseUrl() + '/api/byra/dokumentation/skicka-for-signering', {
+            method: 'POST',
+            ...getAuthOpts(),
+            body: JSON.stringify({ signerUserId: chosen.value })
+          });
+          const sendData = await sendRes.json().catch(function () { return {}; });
+          if (!sendRes.ok) throw new Error(sendData.error || 'Kunde inte skicka för signering');
+          closeSignModal();
+          renderSigneringStatus(sendData.signering);
+          alert(sendData.message || 'Dokumentet har skickats för signering.');
+        } catch (err) {
+          alert(err.message || 'Kunde inte skicka för signering.');
+        } finally {
+          if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = orig;
+          }
+        }
+      });
+    } catch (err) {
+      const body = modal.querySelector('.modal-body');
+      if (body) body.innerHTML = '<p class="section-desc">' + escapeHtml(err.message || 'Kunde inte ladda användare.') + '</p>';
     }
   }
 
@@ -622,6 +779,8 @@
     if (btn) btn.addEventListener('click', exportDokumentationPdf);
     const zipBtn = getEl('btn-export-dokumentation-zip');
     if (zipBtn) zipBtn.addEventListener('click', exportAllDokumentationZip);
+    const signBtn = getEl('btn-sign-dokumentation');
+    if (signBtn) signBtn.addEventListener('click', openSignModal);
   }
 
   /** Kör load() när auth är klar – annars kan getCurrentUser() vara null eftersom checkAuthStatus() är asynkron. */

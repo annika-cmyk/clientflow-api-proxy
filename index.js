@@ -111,6 +111,7 @@ const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
 const docsignInvite = require('./lib/docsign-invite');
 const inleedLinks = require('./lib/inleed-links');
 const dokumentationExport = require('./lib/dokumentation-export');
+const dokumentationSignering = require('./lib/dokumentation-signering');
 const statistikDokumentation = require('./lib/statistik-dokumentation');
 const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
 const amlaNews = require('./lib/amla-news');
@@ -8809,7 +8810,7 @@ async function sendKlientansvarigNotifyEmail({ toEmail, toName, byraNamn, kind, 
   }
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const subject = docsignInvite.buildStaffNotifySubject({ kind, kundnamn });
+  const subject = docsignInvite.buildStaffNotifySubject({ kind, kundnamn, byraNamn });
   const text = docsignInvite.buildStaffNotifyText({
     kind,
     byraNamn,
@@ -11637,7 +11638,12 @@ async function ensureDokumentationExportFields(airtableToken, baseId) {
     {
       name: DOKUMENTATION_PDF_FILES_FIELD,
       type: 'multipleAttachments',
-      description: 'Exporterade PDF:er för allmän riskbedömning och byråpolicy.'
+      description: 'Signerade PDF:er för allmän riskbedömning och byråpolicy.'
+    },
+    {
+      name: dokumentationSignering.SIGNERING_FIELD,
+      type: 'multilineText',
+      description: 'JSON-status för Inleed-signering av allmän riskbedömning och rutiner.'
     }
   ];
   const created = [];
@@ -11744,6 +11750,78 @@ async function persistDokumentationPdfExport({
     console.warn('⚠️ Dokumentation PDF-lista kunde inte sparas:', metaErr.response?.data?.error?.message || metaErr.message);
   }
   return { saved: true, entry, list: nextList };
+}
+
+async function persistSignedDokumentation({
+  airtableToken,
+  baseId,
+  record,
+  pdfBuffer,
+  byraNamn,
+  signering,
+  signedAt
+}) {
+  const date = dokumentationSignering.toDateOnly(signedAt) || new Date().toISOString().slice(0, 10);
+  const persisted = await persistDokumentationPdfExport({
+    airtableToken,
+    baseId,
+    record,
+    pdfBuffer,
+    byraNamn,
+    type: 'risk_och_policy',
+    exportedAt: `${date}T12:00:00.000Z`
+  });
+  const nextState = dokumentationSignering.markSigneringSigned(signering, date);
+  if (persisted.entry) nextState.attachmentId = persisted.entry.attachmentId || '';
+  const approval = dokumentationSignering.approvalFieldsFromSignedAt(date) || {};
+  await ensureDokumentationExportFields(airtableToken, baseId);
+  await patchByraerRecordFields(airtableToken, baseId, record.id, {
+    ...approval,
+    [dokumentationSignering.SIGNERING_FIELD]: JSON.stringify(nextState)
+  });
+  return { persisted, signering: nextState, godkannande: date };
+}
+
+async function syncDokumentationSignering({
+  airtableToken,
+  baseId,
+  record,
+  byraNamn,
+  force = false
+}) {
+  const state = dokumentationSignering.parseSignering(record.fields?.[dokumentationSignering.SIGNERING_FIELD]);
+  const publicState = dokumentationSignering.publicSignering(state);
+  if (!state || !state.inleedDokumentId || state.status === 'signed') {
+    return { signering: publicState, synced: false };
+  }
+  const docsignApiKey = process.env.DOCSIGN_API_KEY;
+  if (!docsignApiKey) return { signering: publicState, synced: false };
+  const doc = await fetchInleedDocumentById(docsignApiKey, state.inleedDokumentId);
+  if (!doc || !isInleedDocumentSigned(doc)) {
+    return { signering: publicState, synced: false, inleed: inleedLinks.buildInleedSignPayload(doc, { documentId: state.inleedDokumentId }) };
+  }
+  const pdfUrl = getInleedSignedPdfUrl(doc);
+  if (!pdfUrl && !force) {
+    return { signering: publicState, synced: false, inleed: inleedLinks.buildInleedSignPayload(doc, { documentId: state.inleedDokumentId }) };
+  }
+  if (!pdfUrl) return { signering: publicState, synced: false, error: 'Saknar signerad PDF' };
+  const pdfDownload = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 60000 });
+  const signedAt = inleedLinks.extractSignedDate(doc) || new Date().toISOString().slice(0, 10);
+  const stored = await persistSignedDokumentation({
+    airtableToken,
+    baseId,
+    record,
+    pdfBuffer: Buffer.from(pdfDownload.data),
+    byraNamn,
+    signering: state,
+    signedAt
+  });
+  return {
+    signering: dokumentationSignering.publicSignering(stored.signering),
+    synced: true,
+    godkannande: stored.godkannande,
+    list: stored.persisted.list
+  };
 }
 
 async function ensureByraProfilAirtableFields(airtableToken, baseId) {
@@ -12953,15 +13031,41 @@ app.get('/api/utbildning/genomforda', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/settings/dokumentation-pdfs – Historik för exporterad riskbedömning och policy
+// GET /api/settings/dokumentation-pdfs – Historik för signerade riskbedömningar och policy
 app.get('/api/settings/dokumentation-pdfs', authenticateToken, async (req, res) => {
   try {
-    const { record } = await loadUserByraerRecord(req);
-    if (!record) return res.json({ list: [] });
-    const raw = record.fields?.[DOKUMENTATION_PDF_LIST_FIELD];
-    const atts = record.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
+    const loaded = await loadUserByraerRecord(req);
+    const { record, airtableAccessToken, airtableBaseId } = loaded;
+    if (!record) return res.json({ list: [], signering: null, godkannande: null });
+    const byraNamn = record.fields?.['Byrå'] || record.fields?.['Namn'] || 'Byrån';
+    let listRecord = record;
+    let signering = dokumentationSignering.publicSignering(
+      dokumentationSignering.parseSignering(record.fields?.[dokumentationSignering.SIGNERING_FIELD])
+    );
+    try {
+      const synced = await syncDokumentationSignering({
+        airtableToken: airtableAccessToken,
+        baseId: airtableBaseId,
+        record,
+        byraNamn
+      });
+      if (synced.signering) signering = synced.signering;
+      if (synced.synced) {
+        const fresh = await loadUserByraerRecord(req);
+        if (fresh.record) listRecord = fresh.record;
+      }
+    } catch (syncErr) {
+      console.warn('dokumentation-pdfs sync:', syncErr.message);
+    }
+    const raw = listRecord.fields?.[DOKUMENTATION_PDF_LIST_FIELD];
+    const atts = listRecord.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
     const list = mergeAttachmentsIntoList(raw, atts).map(toPublicListItem);
-    res.json({ list });
+    const godkannande = dokumentationSignering.toDateOnly(
+      listRecord.fields?.[dokumentationSignering.RISK_GODKAND_FIELD]
+      || listRecord.fields?.[dokumentationSignering.POLICY_GODKAND_FIELD]
+      || (signering && signering.signedAt)
+    ) || null;
+    res.json({ list, signering, godkannande });
   } catch (error) {
     console.error('❌ GET /api/settings/dokumentation-pdfs:', error.message);
     res.status(error.status || 500).json({ error: error.message });
@@ -19061,8 +19165,9 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       exportedAt
     });
 
+    const shouldSave = req.body?.save === true || req.query?.save === '1';
     let savedExport = false;
-    if (byraRec && byraRec.id) {
+    if (shouldSave && byraRec && byraRec.id) {
       try {
         const persisted = await persistDokumentationPdfExport({
           airtableToken: airtableAccessToken,
@@ -19090,9 +19195,6 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       } catch (saveErr) {
         console.warn('⚠️ Kunde inte spara dokumentexport i historik:', saveErr.message);
       }
-      try {
-        await patchByraerFieldToAirtable(byraRec.id, 'Senast Länsstyrelsen-PDF export', exportedAt.split('T')[0]);
-      } catch (_) { /* fält finns kanske inte i Airtable */ }
     }
 
     res.set({
@@ -19105,6 +19207,148 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('\u274c Länsstyrelsen PDF:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/byra/dokumentation/skicka-for-signering – Inleed-signering av risk + rutiner
+app.post('/api/byra/dokumentation/skicka-for-signering', authenticateToken, async (req, res) => {
+  try {
+    const loaded = await loadUserByraerRecord(req);
+    const { record, airtableAccessToken, airtableBaseId, userData, byraId } = loaded;
+    if (!record) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
+
+    const docsignApiKey = process.env.DOCSIGN_API_KEY;
+    if (!docsignApiKey) return res.status(500).json({ error: 'DOCSIGN_API_KEY saknas.' });
+
+    const users = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, {
+      byraRecord: record
+    });
+    const signer = dokumentationSignering.pickSignerFromUsers(users, req.body && req.body.signerUserId);
+    if (!signer) {
+      return res.status(400).json({ error: 'Välj en användare på byrån med namn och e-post.' });
+    }
+
+    const byraNamn = record.fields?.['Byrå'] || record.fields?.['Namn'] || userData?.byra || 'Byrån';
+    const internalHeaders = {};
+    if (req.headers.authorization) internalHeaders.Authorization = req.headers.authorization;
+    if (req.cookies?.authToken) internalHeaders.Cookie = `authToken=${req.cookies.authToken}`;
+    const pdfRes = await axios.post(
+      `http://localhost:${process.env.PORT || PORT || 3001}/api/byra/lansstyrelsen-pdf`,
+      { save: false },
+      { responseType: 'arraybuffer', headers: internalHeaders, timeout: 120000 }
+    );
+    const pdfBuffer = Buffer.from(pdfRes.data);
+
+    const partyRes = await axios.post('https://docsign.se/api/parties', {
+      api_key: docsignApiKey,
+      name: signer.namn,
+      email: signer.epost,
+      company: byraNamn,
+      sign_method: 'bankid',
+      external_id: `dok-byra-${signer.id}-${Date.now()}`,
+      debug: false
+    }, { headers: { 'Content-Type': 'application/json' } });
+    if (!partyRes.data?.success) {
+      return res.status(500).json({ error: `Kunde inte skapa ${signer.namn} som undertecknare.` });
+    }
+
+    const docPayload = docsignInvite.applyDocsignInviteMeta({
+      api_key: docsignApiKey,
+      name: dokumentationSignering.dokumentationInleedTitle(byraNamn),
+      parties: [partyRes.data.party_id],
+      send_reminders: true,
+      send_receipt: true,
+      attachments: [{ name: 'allman-riskbedomning-och-rutiner.pdf', base64_content: pdfBuffer.toString('base64') }]
+    }, {
+      kind: 'dokumentation',
+      byraNamn,
+      klientansvarigNamn: userData?.name || '',
+      konsultEmail: userData?.email || req.user.email,
+      mottagareNamn: signer.namn
+    });
+    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!docRes.data?.success) {
+      return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.' });
+    }
+
+    const documentId = docRes.data.document_id;
+    const pending = dokumentationSignering.buildPendingSignering({
+      inleedDokumentId: documentId,
+      signer,
+      sentAt: new Date().toISOString()
+    });
+    await ensureDokumentationExportFields(airtableAccessToken, airtableBaseId);
+    await patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, {
+      [dokumentationSignering.SIGNERING_FIELD]: JSON.stringify(pending)
+    });
+
+    if (signer.epost) {
+      sendKlientansvarigNotifyEmail({
+        toEmail: signer.epost,
+        toName: signer.namn,
+        byraNamn,
+        kind: 'dokumentation',
+        kundnamn: byraNamn,
+        signerNames: [signer.namn],
+        replyTo: userData?.email || req.user.email
+      }).catch((e) => console.warn('Dokumentation-notis till signerare:', e.message));
+    }
+
+    res.json({
+      success: true,
+      document_id: documentId,
+      signering: dokumentationSignering.publicSignering(pending),
+      message: `Dokumentet har skickats till ${signer.namn} för BankID-signering.`
+    });
+  } catch (error) {
+    console.error('❌ Dokumentation skicka-för-signering:', error.message);
+    res.status(500).json({ error: 'Kunde inte skicka dokumentet för signering.' });
+  }
+});
+
+// POST /api/byra/dokumentation/hamta-signerat – Hämta signerat dokument och sätt godkännandedatum
+app.post('/api/byra/dokumentation/hamta-signerat', authenticateToken, async (req, res) => {
+  try {
+    const loaded = await loadUserByraerRecord(req);
+    const { record, airtableAccessToken, airtableBaseId } = loaded;
+    if (!record) return res.status(404).json({ error: 'Ingen Byråer-post hittades för er byrå' });
+    const state = dokumentationSignering.parseSignering(record.fields?.[dokumentationSignering.SIGNERING_FIELD]);
+    if (!state || !state.inleedDokumentId) {
+      return res.status(400).json({ error: 'Inget dokument är skickat för signering.' });
+    }
+    const byraNamn = record.fields?.['Byrå'] || record.fields?.['Namn'] || 'Byrån';
+    const synced = await syncDokumentationSignering({
+      airtableToken: airtableAccessToken,
+      baseId: airtableBaseId,
+      record,
+      byraNamn,
+      force: true
+    });
+    if (synced.error) return res.status(400).json({ error: synced.error, signering: synced.signering });
+    if (!synced.synced && synced.signering && synced.signering.status !== 'signed') {
+      return res.status(400).json({
+        error: 'Dokumentet är ännu inte färdigsignerat.',
+        signering: synced.signering,
+        inleed: synced.inleed || null
+      });
+    }
+    const fresh = await loadUserByraerRecord(req);
+    const listRecord = fresh.record || record;
+    const raw = listRecord.fields?.[DOKUMENTATION_PDF_LIST_FIELD];
+    const atts = listRecord.fields?.[DOKUMENTATION_PDF_FILES_FIELD] || [];
+    res.json({
+      success: true,
+      signering: synced.signering,
+      godkannande: synced.godkannande || dokumentationSignering.toDateOnly(
+        listRecord.fields?.[dokumentationSignering.RISK_GODKAND_FIELD]
+      ),
+      list: mergeAttachmentsIntoList(raw, atts).map(toPublicListItem)
+    });
+  } catch (error) {
+    console.error('❌ Dokumentation hämta-signerat:', error.message);
+    res.status(500).json({ error: 'Kunde inte hämta det signerade dokumentet.' });
   }
 });
 
