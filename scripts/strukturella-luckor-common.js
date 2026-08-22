@@ -34,7 +34,15 @@ async function loadStrukturellaLuckor() {
     fetchAll(token, baseId, TJANSTER),
     fetchAll(token, baseId, OVRIGA)
   ]);
-  return buildStrukturellaLuckor({ kunder, tjanster, ovriga });
+  const counts = {};
+  (kunder || []).forEach((rec) => {
+    const id = String((rec.fields || {})['Byrå ID'] || '').trim();
+    if (!id) return;
+    counts[id] = (counts[id] || 0) + 1;
+  });
+  const largest = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  const byraId = process.env.BYRA_ID || (largest && largest[0]) || '';
+  return buildStrukturellaLuckor({ kunder, tjanster, ovriga, byraId: byraId || undefined });
 }
 
 module.exports = { fetchAll, loadStrukturellaLuckor };

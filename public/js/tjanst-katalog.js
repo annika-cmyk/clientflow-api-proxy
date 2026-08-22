@@ -134,14 +134,23 @@
     return { raw: raw, status: 'unknown', how: 'unknown' };
   }
 
-  function classifyCustomerServices(values, catalog) {
+  function classifyCustomerServices(values, catalog, opts) {
     var index = catalog && catalog.byId ? catalog : catalogFromRecords(catalog);
+    var lookup = (opts && opts.idLookup) || {};
     var matched = [];
     var normalize = [];
     var unknown = [];
     var askAnnika = [];
     asValues(values).forEach(function (raw) {
-      var hit = matchValue(raw, index);
+      var toMatch = raw;
+      var resolvedNamn = '';
+      if (isRecId(raw) && !index.byId[raw] && lookup[raw]) {
+        resolvedNamn = lookup[raw];
+        toMatch = resolvedNamn;
+      }
+      var hit = matchValue(toMatch, index);
+      hit.raw = raw;
+      if (resolvedNamn) hit.resolvedNamn = resolvedNamn;
       if (hit.status === 'catalog') {
         matched.push(hit);
         return;
