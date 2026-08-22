@@ -257,8 +257,16 @@
     const data = source || {};
     const tjanster = Array.isArray(data.tjanster) ? data.tjanster : [];
     const ovriga = Array.isArray(data.ovriga) ? data.ovriga : [];
+    const Dim = (typeof window !== 'undefined' && window.RiskDimensioner)
+      || (typeof require === 'function' ? require('./risk-dimensioner') : null);
     const tjanstCards = tjanster.filter((t) => text(t && (t.namn || t.title))).map(renderTjanstCard);
-    const ovrigCards = ovriga.filter((r) => text(r && (r.namn || r.beskrivning || r.typ))).map(renderOvrigCard);
+    const grouped = Dim && Dim.groupOvrigaByTyp
+      ? Dim.groupOvrigaByTyp(ovriga.filter((r) => text(r && (r.namn || r.beskrivning || r.typ))))
+      : [{ typ: '', items: ovriga.filter((r) => text(r && (r.namn || r.beskrivning || r.typ))) }];
+    const ovrigCards = grouped.flatMap((group) => (group.items || []).map((r) => {
+      const typ = (Dim && Dim.normalizeTyp) ? Dim.normalizeTyp(r.typ) : text(r.typ);
+      return renderOvrigCard(Object.assign({}, r, { typ: typ }));
+    }));
     if (!tjanstCards.length && !ovrigCards.length) {
       return '<p class="identifierade-empty">Inga tjänster eller övriga riskfaktorer är ifyllda ännu. '
         + 'Gå till <a href="riskbedomning-byra.html">Byråns tjänster</a> och '
@@ -271,7 +279,15 @@
     }
     if (ovrigCards.length) {
       parts.push(heading('Övriga riskfaktorer'));
-      parts.push('<div class="risk-items">' + ovrigCards.join('') + '</div>');
+      grouped.forEach((group) => {
+        const cards = (group.items || []).map((r) => {
+          const typ = (Dim && Dim.normalizeTyp) ? Dim.normalizeTyp(r.typ) : text(r.typ);
+          return renderOvrigCard(Object.assign({}, r, { typ: typ }));
+        });
+        if (!cards.length) return;
+        if (group.typ) parts.push(heading(group.typ));
+        parts.push('<div class="risk-items">' + cards.join('') + '</div>');
+      });
     }
     return '<div class="identifierade-kort">' + parts.join('') + '</div>';
   }

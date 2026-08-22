@@ -880,9 +880,21 @@ class CustomerCardManager {
         return !!(email && telefon && beskrivning && harKontakt);
     }
 
+    _dimensionStatus(fields) {
+        const RD = window.RiskDimensioner;
+        if (!RD || !RD.assessCustomerDimensions) return null;
+        const linked = this._linkedRiskIds || new Set();
+        return RD.assessCustomerDimensions({
+            fields: fields || this.customerData?.fields || {},
+            linkedRiskRecords: (this._allaRisker || []).filter((r) => linked.has(r.id)),
+            byraTemplates: this._allaRisker || []
+        });
+    }
+
     _isRiskbedomningKlar(fields) {
+        const opts = { dimensionStatus: this._dimensionStatus(fields) };
         if (window.KundRiskprofil && typeof KundRiskprofil.isPublicerbar === 'function') {
-            return KundRiskprofil.isPublicerbar(fields);
+            return KundRiskprofil.isPublicerbar(fields, opts);
         }
         if (!fields) return false;
         const manual = fields['Flik klar - Riskbedömning'];
@@ -6582,6 +6594,16 @@ class CustomerCardManager {
         ];
     }
 
+    _riskerForTypId(typId, risker) {
+        const list = Array.isArray(risker) ? risker : [];
+        const RD = window.RiskDimensioner;
+        if (RD && RD.typMatchesDimension) {
+            return list.filter((r) => RD.typMatchesDimension(r.fields && r.fields['Typ av riskfaktor'], typId));
+        }
+        const match = this._riskTypMap().find((t) => t.id === typId);
+        return list.filter((r) => match && r.fields && r.fields['Typ av riskfaktor'] === match.typ);
+    }
+
     _kycFieldForRiskerTyp(typId) {
         const map = { geografiska: 'KYC genomgången - Geografiska riskfaktorer', kund: 'KYC genomgången - Riskfaktorer kund', distribution: 'KYC genomgången - Distributionskanaler', verksamhet: 'KYC genomgången - Verksamhetsspecifika riskfaktorer' };
         return map[typId] || null;
@@ -6606,10 +6628,10 @@ class CustomerCardManager {
             this._allaRisker = allaRisker;
             this._linkedRiskIds = linkedIds;
 
-            this._riskTypMap().forEach(({ typ, id }) => {
+            this._riskTypMap().forEach(({ id }) => {
                 const container = document.getElementById(`ovrigkyc-risker-${id}`);
                 if (!container) return;
-                const riskerForTyp = allaRisker.filter(r => r.fields['Typ av riskfaktor'] === typ);
+                const riskerForTyp = this._riskerForTypId(id, allaRisker);
                 this._renderRiskerForTyp(container, riskerForTyp, linkedIds, id);
             });
             this._refreshRiskprofilForeslagenUi();
@@ -6690,11 +6712,8 @@ class CustomerCardManager {
             </div>
             <div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>` : '';
 
-        const ingaRiskLabels = { verksamhet: 'Inga verksamhetsspecifika riskfaktorer' };
         const riskListViewHtml = valda.length === 0
-            ? (typId === 'kund' ? '' : (ingaRiskLabels[typId]
-                ? `<div class="riskf-chips"><span class="kyc-chip riskf-chip">${ingaRiskLabels[typId]}</span></div>`
-                : '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>'))
+            ? (typId === 'kund' ? '' : '<p class="lead-empty">Inga risker valda. Minst ett val krävs. Klicka Redigera för att välja.</p>')
             : valda.map((r, i) => {
                 const uid = `risk-details-${typId}-${i}`;
                 const hasDetails = r.fields['Beskrivning'] || r.fields['Åtgjärd'];
@@ -6730,7 +6749,7 @@ class CustomerCardManager {
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="display:none;">
-                    <p class="tjanster-edit-hint">Markera de risker som gäller för kunden.</p>
+                    <p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>
                     ${hogriskEditHtml}
                     ${riskerForList.map(r => `
                         <label class="risker-check-item">
@@ -6784,7 +6803,10 @@ class CustomerCardManager {
         }
         if (isEditing) {
             const kycField = this._kycFieldForRiskerTyp(typId);
-            if (kycField) this._saveKycStatus(kycField, true);
+            const linked = this._linkedRiskIds || new Set();
+            const hasVal = this._riskerForTypId(typId, this._allaRisker || []).some((r) => linked.has(r.id))
+                || (typId === 'kund' && this._hogriskBranschValda().length > 0);
+            if (kycField && hasVal) this._saveKycStatus(kycField, true);
         }
         if (!isEditing) {
             const card = btn?.closest('.collapsible-card');
@@ -6803,11 +6825,7 @@ class CustomerCardManager {
         const allChecked = new Set(this._linkedRiskIds || []);
 
         // Ta bort alla risker av denna typ ur setet
-        const riskerForTyp = (this._allaRisker || []).filter(r => {
-            const typMap = this._riskTypMap();
-            const match = typMap.find(t => t.id === typId);
-            return match && r.fields['Typ av riskfaktor'] === match.typ;
-        });
+        const riskerForTyp = this._riskerForTypId(typId, this._allaRisker || []);
         riskerForTyp.forEach(r => allChecked.delete(r.id));
 
         // Lägg till de nya valen för detta kort
@@ -6870,12 +6888,13 @@ class CustomerCardManager {
             // Rita om detta kortets visningsläge
             const container = document.getElementById(`ovrigkyc-risker-${typId}`);
             if (container && this._allaRisker) {
-                const match = this._riskTypMap().find(t => t.id === typId);
-                const risker = this._allaRisker.filter(r => r.fields['Typ av riskfaktor'] === match?.typ);
+                const risker = this._riskerForTypId(typId, this._allaRisker);
                 this._renderRiskerForTyp(container, risker, allChecked, typId);
             }
             const kycField = this._kycFieldForRiskerTyp(typId);
-            if (kycField) this._saveKycStatus(kycField, true);
+            const dimHasValue = nyaChecked.length > 0
+                || (typId === 'kund' && Array.isArray(nyaHogrisk) && nyaHogrisk.length > 0);
+            if (kycField && dimHasValue) this._saveKycStatus(kycField, true);
 
             this._refreshRiskprofilForeslagenUi();
             this.showNotification('Risker sparade!', 'success');
@@ -7298,7 +7317,11 @@ class CustomerCardManager {
         const flagItems = KP.itemsFromRiskhojandeFlags
             ? KP.itemsFromRiskhojandeFlags(fields, this._allaRisker || [], this._riskhojKatalog)
             : [];
-        const base = KP.beraknaForeslagenNiva({ tjanster, riskfaktorer: riskfaktorer.concat(flagItems) });
+        const base = KP.beraknaForeslagenNiva({
+            tjanster,
+            riskfaktorer: riskfaktorer.concat(flagItems),
+            dimensionStatus: this._dimensionStatus(fields)
+        });
         return KP.applyRiskhojandeGolv
             ? KP.applyRiskhojandeGolv(base, fields, this._riskhojKatalog)
             : base;
@@ -7414,6 +7437,9 @@ class CustomerCardManager {
             foreslagen,
             drivande: live.drivandeFaktor || (KP ? KP.readDrivande(fields) : (fields['Kund föreslagen drivande faktor'] || '')),
             golv: live.golv || null,
+            ofullstandig: !!live.ofullstandig,
+            varning: live.varning || '',
+            saknadeDimensioner: live.saknadeDimensioner || [],
             avvikelse: KP ? KP.readAvvikelseMotivering(fields) : (fields['Kund avvikelse motivering'] || ''),
             motivering: KP ? KP.readMotivering(fields) : (fields['Byrans riskbedomning'] || ''),
             atgarder: KP && KP.readAtgarder ? KP.readAtgarder(fields) : (fields['Atgarder riskbedomning'] || ''),
@@ -7440,7 +7466,10 @@ class CustomerCardManager {
         return '';
     }
 
-    _foreslagenHtml(foreslagen, drivande, golv) {
+    _foreslagenHtml(foreslagen, drivande, golv, ofullstandig, varning) {
+        if (ofullstandig && varning) {
+            return `<div class="ai-rb-foreslagen ai-rb-foreslagen--ofullstandig"><p class="ai-rb-kalla ai-rb-kalla--warn">${this._esc(varning)}</p></div>`;
+        }
         const niva = this._riskLabel(foreslagen);
         const kalla = this._drivandeKort(drivande);
         const badge = this._golvBadgeHtml(golv);
@@ -7450,7 +7479,10 @@ class CustomerCardManager {
         return `<div class="ai-rb-foreslagen">${badge}<p class="ai-rb-kalla">${this._esc(text)}</p></div>`;
     }
 
-    _riskKallaHtml(foreslagen, residual, drivande, avvikelse, golv) {
+    _riskKallaHtml(foreslagen, residual, drivande, avvikelse, golv, ofullstandig, varning) {
+        if (ofullstandig && varning) {
+            return `<p class="ai-rb-kalla ai-rb-kalla--warn">${this._esc(varning)}</p>`;
+        }
         const KP = window.KundRiskprofil;
         const niva = this._riskLabel(foreslagen);
         const kalla = this._drivandeKort(drivande);
@@ -7473,7 +7505,7 @@ class CustomerCardManager {
     }
 
     _riskbedomningViewHtml(residual, motivering, atgarder, opts = {}) {
-        const kalla = this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse, opts.golv);
+        const kalla = this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse, opts.golv, opts.ofullstandig, opts.varning);
         const motiveringBlock = motivering
             ? `<div class="risker-vald-section-label">Motivering</div>
                         <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${this._esc(motivering)}</div>`
@@ -7512,12 +7544,14 @@ class CustomerCardManager {
                             foreslagen: profil.foreslagen,
                             drivande: profil.drivande,
                             golv: profil.golv,
-                            avvikelse: profil.avvikelse
+                            avvikelse: profil.avvikelse,
+                            ofullstandig: profil.ofullstandig,
+                            varning: profil.varning
                         })}
                     </div>
 
                     <div id="ai-rb-edit" style="display:none;" data-residual="${this._esc(profil.residual)}" data-foreslagen="${this._esc(profil.foreslagen)}">
-                        ${this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv)}
+                        ${this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv, profil.ofullstandig, profil.varning)}
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Vår bedömda risk</label>
                             <div class="ai-rb-niva-btns" data-riskprofil="residual">
@@ -7615,7 +7649,7 @@ class CustomerCardManager {
             const wrap = edit.querySelector('.ai-rb-foreslagen');
             if (wrap) {
                 const tmp = document.createElement('div');
-                tmp.innerHTML = this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv);
+                tmp.innerHTML = this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv, profil.ofullstandig, profil.varning);
                 if (tmp.firstElementChild) wrap.replaceWith(tmp.firstElementChild);
             }
         }
@@ -7644,6 +7678,18 @@ class CustomerCardManager {
             const warn = KP.slutsatsVarning(motivering);
             slutsatsEl.hidden = !warn;
             slutsatsEl.textContent = warn;
+        }
+
+        const dimEl = document.getElementById('ai-rb-niva-help');
+        const dimStatus = this._dimensionStatus();
+        if (dimEl) {
+            if (dimStatus && !dimStatus.komplett && dimStatus.varning) {
+                dimEl.hidden = false;
+                dimEl.textContent = dimStatus.varning;
+                dimEl.classList.add('ai-rb-kalla--warn');
+            } else {
+                dimEl.classList.remove('ai-rb-kalla--warn');
+            }
         }
 
         const avviker = KP ? KP.residualAvvikerFranForeslagen(residual, foreslagen) : false;
@@ -8251,6 +8297,16 @@ class CustomerCardManager {
         return t._mergedRecordIds && t._mergedRecordIds.length ? t._mergedRecordIds : [t.id];
     }
 
+    _unmatchedTjanster() {
+        const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
+        const catalog = this._byransTjanster || [];
+        const TK = window.TjanstKatalog;
+        if (TK && TK.classifyCustomerServices) {
+            return TK.classifyCustomerServices(existing, catalog).unmatched.map((hit) => hit.raw);
+        }
+        return [];
+    }
+
     /** Aktiva tjänstnamn för kunden, baserat på byråns aktuella tjänster (riskbedömningssidan). */
     _getAktivaTjansterNamn() {
         const f = this.customerData?.fields || {};
@@ -8388,6 +8444,10 @@ class CustomerCardManager {
         });
 
         const aktiva = alla.filter((t) => isTjanstAktiv(t));
+        const unmatched = this._unmatchedTjanster();
+        const unmatchedHtml = unmatched.length
+            ? `<div class="tjanster-unmatched-warn" role="status">Tjänster som inte finns i byråns katalog och behöver granskas: ${unmatched.map((n) => `<strong>${this._esc(n)}</strong>`).join(', ')}. De sparas oförändrade tills ni väljer en katalogtjänst eller lägger till dem i katalogen.</div>`
+            : '';
 
         // Visningsläge — klickbara grå kort, info fälls ut
         const viewContent = aktiva.length === 0
@@ -8433,9 +8493,10 @@ class CustomerCardManager {
 
         content.innerHTML = `
             <div class="risker-selector">
-                <div id="tjanster-view-${p}">${viewContent}</div>
+                <div id="tjanster-view-${p}">${unmatchedHtml}${viewContent}</div>
                 <div id="tjanster-edit-${p}" style="display:none;">
-                    <p class="tjanster-edit-hint">Markera de tjänster som ska vara aktiva för kunden.</p>
+                    <p class="tjanster-edit-hint">Markera tjänster från byråns katalog. Endast katalogposter kan väljas.</p>
+                    ${unmatchedHtml}
                     ${editContent}
                     <div class="tjanster-edit-actions">
                         <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveTjanster('${p}')">
@@ -8596,6 +8657,11 @@ class CustomerCardManager {
         // Incheckade värden = kanoniska record-ID (en per logisk tjänst efter deduplicering)
         const checkedIds = [...document.querySelectorAll(`#tjanster-edit-${p} input[name="tjanst-${p}"]:checked`)]
             .map((cb) => cb.value);
+        const TK = window.TjanstKatalog;
+        const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
+        const toSave = TK && TK.mergeSaveValues
+            ? TK.mergeSaveValues(existing, checkedIds, this._byransTjanster || [])
+            : checkedIds;
 
         const saveBtn = document.querySelector(`#tjanster-edit-${p} .btn-primary`);
         const originalText = saveBtn?.innerHTML;
@@ -8607,7 +8673,7 @@ class CustomerCardManager {
                 method: 'PATCH',
                 ...getAuthOptsKundkort(),
                 body: JSON.stringify({
-                    fields: { 'Kundens utvalda tjänster': checkedIds }
+                    fields: { 'Kundens utvalda tjänster': toSave }
                 })
             });
 
@@ -8621,9 +8687,9 @@ class CustomerCardManager {
             }
 
             // Uppdatera lokal cache
-            this._aktivaTjansterIds = new Set(checkedIds);
+            this._aktivaTjansterIds = new Set(toSave);
             if (this.customerData?.fields) {
-                this.customerData.fields['Kundens utvalda tjänster'] = checkedIds;
+                this.customerData.fields['Kundens utvalda tjänster'] = toSave;
             }
 
             const byraHighRisk = this.customerData?.fields?.['Lookup Byråns högrisktjänster'] || [];
@@ -8634,7 +8700,7 @@ class CustomerCardManager {
             await this._syncKycTjansterFromAktiva();
             this._saveKycStatus('KYC genomgången - Tjänster', true);
             this._refreshRiskprofilForeslagenUi();
-            this.showNotification(`Tjänster sparade — ${checkedIds.length} aktiva`, 'success');
+            this.showNotification(`Tjänster sparade — ${checkedIds.length} från katalogen`, 'success');
 
         } catch (error) {
             console.error('❌ Fel vid sparande av tjänster:', error);

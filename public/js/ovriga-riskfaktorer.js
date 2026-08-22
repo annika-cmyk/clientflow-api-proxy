@@ -407,6 +407,14 @@ class RiskFactorsManager {
         return { inherent, residual };
     }
 
+    requirePtTf(raw) {
+        const pt = (window.RiskSkala && RiskSkala.normalizePtTf(raw)) || String(raw || '').trim();
+        if (!pt) {
+            throw new Error('PT/TF-relevans är obligatorisk. Välj PT, TF eller Båda.');
+        }
+        return pt;
+    }
+
     collectRiskPayload(formData) {
         const poang = {
             sannolikhet: formData.get('sannolikhet'),
@@ -423,7 +431,7 @@ class RiskFactorsManager {
             'Åtgjärd': formData.get('action'),
             'Riskbedömning': inherent.level || '',
             'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
-            'PT/TF-relevans': (window.RiskSkala && RiskSkala.normalizePtTf(formData.get('pt-tf'))) || formData.get('pt-tf') || 'PT'
+            'PT/TF-relevans': this.requirePtTf(formData.get('pt-tf'))
         };
     }
 
@@ -921,7 +929,7 @@ class RiskFactorsManager {
     openAddModal() {
         document.getElementById('add-risk-form')?.reset();
         const pt = document.getElementById('pt-tf');
-        if (pt) pt.value = 'PT';
+        if (pt) pt.value = '';
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
         document.getElementById('add-risk-modal').style.display = 'flex';
@@ -943,14 +951,21 @@ class RiskFactorsManager {
         
         // Populate form fields
         document.getElementById('edit-record-id').value = recordId;
-        document.getElementById('edit-risk-type').value = fields['Typ av riskfaktor'] || '';
+        const typRaw = fields['Typ av riskfaktor'] || '';
+        const typSelect = document.getElementById('edit-risk-type');
+        const typValue = (window.RiskDimensioner && RiskDimensioner.airtableTypValue)
+            ? RiskDimensioner.airtableTypValue(typRaw)
+            : typRaw;
+        if (typSelect) {
+            typSelect.value = [...typSelect.options].some((o) => o.value === typValue) ? typValue : typRaw;
+        }
         
         const scored = this.scoredRisk(fields);
         document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
         document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
         const pt = document.getElementById('edit-pt-tf');
-        if (pt) pt.value = scored.ptTfRelevans || 'PT';
+        if (pt) pt.value = scored.ptTfRelevans || '';
         this.setScoreSelect('edit-sannolikhet', scored.sannolikhet);
         this.setScoreSelect('edit-konsekvens', scored.konsekvens);
         this.setScoreSelect('edit-sannolikhet-efter', scored.sannolikhetEfter);
@@ -975,13 +990,13 @@ class RiskFactorsManager {
         }
         
         this.editNeedsReview = false;
-        const riskData = {
-            ...this.collectRiskPayload(formData),
-            'Byrå ID': userByraId,
-            'Aktuell': true
-        };
 
         try {
+            const riskData = {
+                ...this.collectRiskPayload(formData),
+                'Byrå ID': userByraId,
+                'Aktuell': true
+            };
             const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors`, 'POST', riskData);
             if (response.ok) {
                 this.closeModal('add-risk-modal');
@@ -1011,12 +1026,11 @@ class RiskFactorsManager {
             return;
         }
         
-        const riskData = {
-            ...this.collectRiskPayload(formData),
-            'Byrå ID': userByraId
-        };
-
         try {
+            const riskData = {
+                ...this.collectRiskPayload(formData),
+                'Byrå ID': userByraId
+            };
             const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, 'PUT', riskData);
             if (response.ok) {
                 this.closeModal('edit-risk-modal');

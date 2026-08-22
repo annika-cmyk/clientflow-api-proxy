@@ -104,6 +104,8 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
+const TjanstKatalog = require('./public/js/tjanst-katalog');
+const RiskDimensioner = require('./public/js/risk-dimensioner');
 const avvikelseStatus = require('./lib/avvikelse-status');
 const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
 const docsignInvite = require('./lib/docsign-invite');
@@ -5266,11 +5268,21 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
     }
   }
   const katalog = await loadByraRiskhojandeKatalog(f, token, baseId);
+  const byraId = f['Byrå ID'] || f.Byrå || '';
+  let templates = extra;
+  if (!templates.length && byraId) {
+    templates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  }
   return {
     tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
     riskfaktorer: KundRiskprofil.itemsFromRiskRecords(risker)
       .concat(KundRiskprofil.itemsFromRiskhojandeFlags(f, extra.concat(risker), katalog)),
-    katalog
+    katalog,
+    dimensionStatus: RiskDimensioner.assessCustomerDimensions({
+      fields: f,
+      linkedRiskRecords: risker,
+      byraTemplates: templates
+    })
   };
 }
 
@@ -6430,6 +6442,42 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: ingaCheck.error, code: 'inga_plus_andra', field: ingaField });
       }
     }
+    if (Object.prototype.hasOwnProperty.call(payload, 'Kundens utvalda tjänster')) {
+      try {
+        const byraId = (payload['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || '').toString().trim();
+        const catalogRecs = await fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId);
+        payload['Kundens utvalda tjänster'] = TjanstKatalog.filterIncomingToCatalog(
+          payload['Kundens utvalda tjänster'],
+          customerRecord.fields?.['Kundens utvalda tjänster'],
+          catalogRecs
+        );
+      } catch (e) {
+        console.warn('⚠️ Kunde inte filtrera tjänstekatalog:', e.message);
+      }
+    }
+    if (payload['Flik klar - Riskbedömning'] === true) {
+      try {
+        const byraId = (payload['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || '').toString().trim();
+        const templates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId);
+        const mergedFields = { ...(customerRecord.fields || {}), ...payload };
+        const linkedIds = TjanstKatalog.asValues(mergedFields['risker kopplat till tjänster']);
+        const linkedRiskRecords = templates.filter((r) => linkedIds.includes(r.id));
+        const dim = RiskDimensioner.assessCustomerDimensions({
+          fields: mergedFields,
+          linkedRiskRecords,
+          byraTemplates: templates
+        });
+        if (!dim.komplett) {
+          return res.status(400).json({
+            error: dim.varning,
+            code: 'riskdimension_ofullstandig',
+            saknade: dim.saknade
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Kunde inte kontrollera riskdimensioner vid klarmarkering:', e.message);
+      }
+    }
     const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster', 'Riskhöjande faktorer övrigt', 'Kunden verkar i en högriskbransch']
       .some((key) => Object.prototype.hasOwnProperty.call(payload, key));
     const residualTouched = Object.prototype.hasOwnProperty.call(payload, 'Riskniva');
@@ -6871,7 +6919,33 @@ app.get('/api/kund-riskprofil/oacceptabel-golv-rapport', authenticateToken, asyn
     });
   } catch (error) {
     console.error('GET oacceptabel-golv-rapport:', error.message);
-    res.status(500).json({ error: error.message || 'Kunde inte skapa Oacceptabel-golvrapporten' });
+    res.status(500).json({ error: error.message || 'Kunde inte skapa golvrapporten' });
+  }
+});
+
+app.get('/api/kund-riskprofil/strukturella-luckor-rapport', authenticateToken, async (req, res) => {
+  try {
+    const { buildStrukturellaLuckor } = require('./lib/strukturella-luckor');
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const kunder = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const byraId = userData.byraId || '';
+    const [tjanster, ovriga] = await Promise.all([
+      fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId),
+      fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId)
+    ]);
+    res.json({
+      success: true,
+      ...buildStrukturellaLuckor({ kunder, tjanster, ovriga })
+    });
+  } catch (error) {
+    console.error('GET strukturella-luckor-rapport:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa rapporten över strukturella luckor' });
   }
 });
 
@@ -13940,6 +14014,14 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
+    const ptTf = RiskSkala.normalizePtTf(riskData['PT/TF-relevans'] || riskData.ptTfRelevans);
+    if (!ptTf) {
+      return res.status(400).json({
+        error: 'PT/TF-relevans är obligatorisk. Välj PT, TF eller Båda.',
+        code: 'pt_tf_kravs'
+      });
+    }
+    riskData['PT/TF-relevans'] = ptTf;
     console.log('Mottaget riskfaktordata:', riskData);
 
     const airtableFields = applyOvrigExtraAirtableFields(
@@ -14027,6 +14109,14 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
+    const ptTf = RiskSkala.normalizePtTf(riskData['PT/TF-relevans'] || riskData.ptTfRelevans);
+    if (!ptTf) {
+      return res.status(400).json({
+        error: 'PT/TF-relevans är obligatorisk. Välj PT, TF eller Båda.',
+        code: 'pt_tf_kravs'
+      });
+    }
+    riskData['PT/TF-relevans'] = ptTf;
     console.log('Uppdateringsdata:', riskData);
 
     const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
@@ -18160,47 +18250,28 @@ app.get('/api/byra-info', authenticateToken, async (req, res) => {
       roll: u.role || ''
     })).filter(k => k.namn);
 
-    // Hämta tillåtna tjänster via Airtable Metadata API (choices på "Kundens utvalda tjänster")
+    // Tillåtna tjänster = byråns katalog (Risker kopplad till tjänster), inte fritext-choices
     let byransTjanster = [];
     let byransHighRisk = [];
     try {
-      const metaRes = await axios.get(
-        `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`,
-        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-      );
-      const kundTable = (metaRes.data.tables || []).find(
-        t => t.id === 'tblOIuLQS2DqmOQWe' || t.name === 'KUNDDATA'
-      );
-      if (kundTable) {
-        // Hitta "Kundens utvalda tjänster"-fältet och läs dess choices
-        const tjansterField = kundTable.fields.find(
-          f => f.name === 'Kundens utvalda tjänster'
-        );
-        if (tjansterField?.options?.choices) {
-          byransTjanster = tjansterField.options.choices.map(c => c.name);
-        }
-        // Hitta "Lookup Byråns högrisktjänster" om det finns
-        const highRiskField = kundTable.fields.find(
-          f => f.name === 'Lookup Byråns högrisktjänster'
-        );
-        // highRiskField är en lookup — hämta värden via ett kundpost istället
-        if (byraId) {
-          const hrRes = await axios.get(
-            `https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe`,
-            {
-              headers: { Authorization: `Bearer ${airtableAccessToken}` },
-              params: {
-                filterByFormula: `{Byrå ID}="${byraId}"`,
-                fields: ['Lookup Byråns högrisktjänster'],
-                maxRecords: 1
-              }
+      const catalogRecs = await fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId);
+      byransTjanster = [...new Set(catalogRecs.map((t) => t.namn).filter(Boolean))];
+      if (byraId) {
+        const hrRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/tblOIuLQS2DqmOQWe`,
+          {
+            headers: { Authorization: `Bearer ${airtableAccessToken}` },
+            params: {
+              filterByFormula: `{Byrå ID}="${byraId}"`,
+              fields: ['Lookup Byråns högrisktjänster'],
+              maxRecords: 1
             }
-          );
-          byransHighRisk = hrRes.data.records?.[0]?.fields?.['Lookup Byråns högrisktjänster'] || [];
-        }
+          }
+        );
+        byransHighRisk = hrRes.data.records?.[0]?.fields?.['Lookup Byråns högrisktjänster'] || [];
       }
     } catch (metaErr) {
-      console.warn('⚠️ Kunde inte hämta tjänster via metadata:', metaErr.message);
+      console.warn('⚠️ Kunde inte hämta tjänstekatalog:', metaErr.message);
     }
 
     // Hämta byråns orgnr från Application Users-posten (fallback)

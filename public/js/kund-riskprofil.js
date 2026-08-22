@@ -6,6 +6,9 @@
   var RiskSkala = (typeof module !== 'undefined' && module.exports)
     ? require('./risk-skala')
     : (global.RiskSkala || null);
+  var RiskDimensioner = (typeof module !== 'undefined' && module.exports)
+    ? require('./risk-dimensioner')
+    : (global.RiskDimensioner || null);
 
   var FIELDS = {
     INNEBOENDE: 'Kund inneboende riskprofil',
@@ -65,11 +68,27 @@
     return !!readResidual(fields);
   }
 
-  function isPublicerbar(fields) {
+  function dimensionStatusOf(fields, opts) {
+    if (opts && opts.dimensionStatus) return opts.dimensionStatus;
+    if (!RiskDimensioner || !RiskDimensioner.assessCustomerDimensions) return null;
+    if (opts && (opts.linkedRiskRecords || opts.byraTemplates)) {
+      return RiskDimensioner.assessCustomerDimensions({
+        fields: fields,
+        linkedRiskRecords: opts.linkedRiskRecords,
+        byraTemplates: opts.byraTemplates
+      });
+    }
+    return null;
+  }
+
+  function isPublicerbar(fields, opts) {
     if (!fields) return false;
-    if (fields['Flik klar - Riskbedömning'] === true) return true;
     if (fields['Flik klar - Riskbedömning'] === false) return false;
-    return hasExplicitProfiles(fields);
+    var flagged = fields['Flik klar - Riskbedömning'] === true || hasExplicitProfiles(fields);
+    if (!flagged) return false;
+    var dim = dimensionStatusOf(fields, opts);
+    if (dim && dim.komplett === false) return false;
+    return true;
   }
 
   function needsLegacyReview() {
@@ -276,6 +295,7 @@
 
   function applyOacceptabelGolv(result, fields) {
     var base = result || { niva: '', product: null, drivandeFaktor: '', drivande: null, poster: [] };
+    if (base.ofullstandig) return base;
     var hog = base.golv;
     if (!hog || hog.niva !== 'Hög') return base;
     var struktur = struktureradeForhojda(base.poster, fields);
@@ -305,6 +325,7 @@
 
   function applyHogGolv(result, fields, katalog) {
     var base = result || { niva: '', product: null, drivandeFaktor: '', drivande: null, poster: [] };
+    if (base.ofullstandig) return base;
     var golv = beraknaRiskhojandeGolv(fields, katalog);
     if (!golv) return base;
     golv.skikt = 'HOG';
@@ -602,6 +623,29 @@
   }
 
   function beraknaForeslagenNiva(kund) {
+    var src = kund || {};
+    var completeness = src.dimensionStatus || null;
+    if (!completeness && RiskDimensioner && (src.linkedRiskRecords || src.byraTemplates || src.fields)) {
+      completeness = RiskDimensioner.assessCustomerDimensions({
+        fields: src.fields,
+        linkedRiskRecords: src.linkedRiskRecords,
+        byraTemplates: src.byraTemplates
+      });
+    }
+    if (completeness && completeness.komplett === false) {
+      return {
+        niva: '',
+        product: null,
+        drivandeFaktor: '',
+        drivande: null,
+        poster: [],
+        ofullstandig: true,
+        saknadeDimensioner: completeness.saknade || [],
+        varning: completeness.varning || (RiskDimensioner && RiskDimensioner.ofullstandigVarning
+          ? RiskDimensioner.ofullstandigVarning(completeness.saknade)
+          : '')
+      };
+    }
     var items = collectResidualItems(kund);
     var best = null;
     items.forEach(function (item) {
@@ -735,9 +779,18 @@
     extra = extra.concat(riskRecords || []);
     risker = mergeHogriskBranschRisker(f, risker, extra);
     var katalog = opts && opts.katalog;
+    var templates = extra.length ? extra : (riskRecords || []);
+    var dimensionStatus = RiskDimensioner && RiskDimensioner.assessCustomerDimensions
+      ? RiskDimensioner.assessCustomerDimensions({
+        fields: f,
+        linkedRiskRecords: risker,
+        byraTemplates: templates
+      })
+      : null;
     return applyRiskhojandeGolv(beraknaForeslagenNiva({
       tjanster: itemsFromTjanstRecords(tjanster),
-      riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra, katalog))
+      riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra, katalog)),
+      dimensionStatus: dimensionStatus
     }), f, katalog);
   }
 
@@ -885,6 +938,7 @@
     writeForeslagenFields: writeForeslagenFields,
     hasExplicitProfiles: hasExplicitProfiles,
     isPublicerbar: isPublicerbar,
+    dimensionStatusOf: dimensionStatusOf,
     needsLegacyReview: needsLegacyReview,
     hasSammantagenSlutsats: hasSammantagenSlutsats,
     stripSammantagenSlutsats: stripSammantagenSlutsats,

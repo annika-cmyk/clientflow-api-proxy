@@ -6273,6 +6273,27 @@ body.sidebar-collapsed .logout-btn {
     line-height: 1.45;
     color: #64748b;
 }
+.ai-rb-kalla--warn,
+.ai-rb-niva-help.ai-rb-kalla--warn {
+    color: #b45309;
+    font-weight: 600;
+}
+.ai-rb-foreslagen--ofullstandig {
+    padding: 0.65rem 0.8rem;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+.tjanster-unmatched-warn {
+    margin: 0 0 0.75rem;
+    padding: 0.55rem 0.75rem;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #9a3412;
+}
 .ai-rb-kalla + .ai-rb-kalla {
     margin-top: -0.45rem;
 }
