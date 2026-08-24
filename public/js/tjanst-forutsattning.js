@@ -505,6 +505,13 @@
       .filter(Boolean);
   }
 
+  function formatAtgardForslagText(item) {
+    var titel = atgardTitel(item);
+    var desc = trimStr(item && (item.beskrivning || item.description));
+    if (titel && desc) return titel + ': ' + desc;
+    return titel || desc;
+  }
+
   function buildForeslagnaAtgarder(tjanster, kundState, existingText) {
     var existing = {};
     parseAtgardLines(existingText).forEach(function (line) {
@@ -517,28 +524,28 @@
       existing[fold(text)] = true;
       out.push(item);
     }
-    listKundForutsattningar(tjanster, kundState).forEach(function (g) {
-      var unmet = (g.rows || []).filter(function (row) { return isEjUppfylld(row.uppfylld); });
-      if (!unmet.length) return;
-      var uppdrag = listUppdragsatgarder((g.item && g.item.atgarder) || []);
-      if (uppdrag.length) {
-        uppdrag.forEach(function (a) {
-          var text = atgardTitel(a) || trimStr(a.beskrivning || a.description);
-          if (!text) return;
-          pushForslag({
-            key: atgardKey(a),
-            text: text,
-            reason: 'Risksänkande åtgärd från tjänsten som ska kopplas till uppdragskörning.',
-            titel: text,
-            tjanstId: g.tjanstId,
-            tjanstNamn: g.namn,
-            approved: false,
-            fromUppdragsatgard: true
-          });
+    (Array.isArray(tjanster) ? tjanster : []).forEach(function (t) {
+      var namn = trimStr(t.namn || (t.fields && t.fields['Task Name']));
+      var tjanstId = trimStr(t.id || t.recId);
+      listUppdragsatgarder(t.atgarder || (t.fields && t.fields['Tjänstespecifika åtgärder'])).forEach(function (a) {
+        var text = formatAtgardForslagText(a);
+        if (!text) return;
+        pushForslag({
+          key: atgardKey(a),
+          text: text,
+          reason: (namn ? namn + ' — ' : '') + 'risksänkande åtgärd som ska kopplas till uppdragskörning.',
+          titel: atgardTitel(a) || text,
+          tjanstId: tjanstId,
+          tjanstNamn: namn,
+          approved: false,
+          fromUppdragsatgard: true
         });
-        return;
-      }
-      unmet.forEach(function (row) {
+      });
+    });
+    listKundForutsattningar(tjanster, kundState).forEach(function (g) {
+      if (listUppdragsatgarder((g.item && g.item.atgarder) || []).length) return;
+      (g.rows || []).forEach(function (row) {
+        if (!isEjUppfylld(row.uppfylld)) return;
         var forslag = suggestKompletterandeAtgard(row);
         pushForslag(Object.assign({}, forslag, {
           tjanstId: g.tjanstId,
@@ -702,6 +709,7 @@
     listKundForutsattningar: listKundForutsattningar,
     suggestKompletterandeAtgard: suggestKompletterandeAtgard,
     buildForeslagnaAtgarder: buildForeslagnaAtgarder,
+    formatAtgardForslagText: formatAtgardForslagText,
     applyApprovedAtgarder: applyApprovedAtgarder,
     foreslaUppdragsTyp: foreslaUppdragsTyp,
     buildUppdragsatgardText: buildUppdragsatgardText,

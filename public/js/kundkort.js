@@ -7954,7 +7954,7 @@ class CustomerCardManager {
         }
         box.hidden = false;
         box.innerHTML = `
-            <p class="ai-rb-foreslagna-lead">Åtgärdsförslag hämtas från tjänstens risksänkande åtgärder som ska kopplas till uppdragskörningar. Godkänn innan de läggs i åtgärdslistan — de sparas inte automatiskt.</p>
+            <p class="ai-rb-foreslagna-lead">Förslag från tjänsternas risksänkande åtgärder som ska kopplas till uppdragskörningar. Godkänn för att lägga dem i åtgärdslistan.</p>
             ${list.map((item, i) => `
                 <div class="ai-rb-foreslagen-rad" data-idx="${i}">
                     <p class="ai-rb-foreslagen-text">${this._esc(item.text || '')}</p>
@@ -8447,6 +8447,7 @@ class CustomerCardManager {
             const card = document.getElementById('ai-riskbedomning-kort');
             if (card && !card.classList.contains('open')) card.classList.add('open');
             this._updateKundRiskprofilWarnings();
+            this._refreshForeslagnaAtgarderFromTjanster();
         }
     }
 
@@ -8486,7 +8487,28 @@ class CustomerCardManager {
         }
         this._updateRiskbedomningView(profil.residual, profil.motivering, profil.atgarder);
         this._refreshRiskForutsattningUi();
+        this._refreshForeslagnaAtgarderFromTjanster();
         this._updateKundRiskprofilWarnings();
+    }
+
+    _existingAtgarderText() {
+        const liveEl = document.getElementById('ai-rb-atg-input');
+        if (liveEl) return liveEl.value || '';
+        const KP = window.KundRiskprofil;
+        const fields = this.customerData?.fields || {};
+        if (KP && KP.readAtgarder) return KP.readAtgarder(fields) || '';
+        return fields['Atgarder riskbedomning'] || '';
+    }
+
+    _refreshForeslagnaAtgarderFromTjanster() {
+        const TF = window.TjanstForutsattning;
+        if (!TF || !TF.buildForeslagnaAtgarder) return;
+        this._pendingForeslagnaAtgarder = TF.buildForeslagnaAtgarder(
+            this._selectedForutsattningTjanster(),
+            this._kundForutsattningState(),
+            this._existingAtgarderText()
+        );
+        this._renderForeslagnaAtgarder();
     }
 
     _updateKundRiskprofilWarnings() {
@@ -8688,8 +8710,7 @@ class CustomerCardManager {
             const atgInput = document.getElementById('ai-rb-atg-input');
             if (textInput) textInput.value = data.riskbedomning || data.kundRiskMotivering || '';
             if (atgInput) atgInput.value = data.atgarder || '';
-            this._pendingForeslagnaAtgarder = Array.isArray(data.foreslagnaAtgarder) ? data.foreslagnaAtgarder : [];
-            this._renderForeslagnaAtgarder();
+            this._refreshForeslagnaAtgarderFromTjanster();
             const avvikelseInput = document.getElementById('ai-rb-avvikelse-input');
             if (avvikelseInput && data.avvikelseMotivering) avvikelseInput.value = data.avvikelseMotivering;
             const help = document.getElementById('ai-rb-niva-help');
@@ -9288,6 +9309,7 @@ class CustomerCardManager {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
         this._refreshRiskForutsattningUi();
+        this._refreshForeslagnaAtgarderFromTjanster();
         this._updateKundRiskprofilWarnings();
     }
 

@@ -21415,6 +21415,7 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
    - "Normal": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
    - "Låg": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
    - Kompletterande åtgärder för ej uppfyllda kundberoende förutsättningar ska INTE skrivas i atgarder (de visas i en separat granskningslista).
+   - Risksänkande åtgärder som ska kopplas till uppdragskörningar hämtas från tjänstekatalogen och visas som förslag i gränssnittet. Skriv inte om dem i atgarder och hitta inte på egna ersättare för dem.
 
    SÄRSKILT vid "sanktionslistor/PEP": Om du föreslår kontroller ska du ange exakt vilka källor som kontrolleras (minst två av):
    - EU:s konsoliderade sanktionslista
