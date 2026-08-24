@@ -8913,6 +8913,170 @@ async function resolveKlientansvarigForSend({ customerFields, extraFields, fallb
   });
 }
 
+const INLEED_KVITTO_FIELD = 'Inleed kvitto';
+const sentDocsignReceiptIds = new Set();
+const pendingReceiptByDocId = new Map();
+
+function rememberDocsignReceipt(documentId, meta) {
+  const id = String(documentId || '').trim();
+  if (id && meta && typeof meta === 'object') pendingReceiptByDocId.set(id, meta);
+}
+
+function recallDocsignReceipt(documentId, fallback) {
+  if (fallback && typeof fallback === 'object') return fallback;
+  const id = String(documentId || '').trim();
+  return (id && pendingReceiptByDocId.get(id)) || null;
+}
+
+function docsignCallbackUrl(kind, recordId) {
+  return docsignInvite.buildCallbackUrl({
+    kind,
+    recordId,
+    secret: docsignInvite.callbackSecret(),
+    baseUrl: process.env.PUBLIC_BASE_URL || 'https://www.app.clientflow.se'
+  });
+}
+
+function createSmtpTransportOrNull() {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
+  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
+  if (!host || !user || !pass) return null;
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const transporterOpts = { host, port, secure, auth: { user, pass } };
+  if (port === 587 && !secure) transporterOpts.requireTLS = true;
+  return nodemailer.createTransport(transporterOpts);
+}
+
+async function fetchSignedPdfBuffer(doc) {
+  const url = getInleedSignedPdfUrl(doc);
+  if (!url) return null;
+  const pdfRes = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 });
+  return Buffer.from(pdfRes.data);
+}
+
+async function sendSignedDocumentReceipts({
+  kind,
+  kundnamn,
+  byraNamn,
+  agencyEmail,
+  agencyName,
+  signers,
+  partyEmails,
+  pdfBuffer,
+  filename,
+  replyTo
+}) {
+  const transporter = createSmtpTransportOrNull();
+  if (!transporter) return { sent: false, error: 'SMTP ej konfigurerad' };
+  const recipients = docsignInvite.receiptRecipients({
+    agencyEmail,
+    signerEmails: (signers || []).map((s) => s.epost || s.email),
+    partyEmails
+  });
+  if (!recipients.length) return { sent: false, error: 'Inga kvittomottagare' };
+  const signerNames = (signers || [])
+    .map((s) => s.namn || s.name)
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  const attachments = pdfBuffer
+    ? [{
+      filename: filename || 'signerat-dokument.pdf',
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    }]
+    : [];
+  const results = [];
+  for (const toEmail of recipients) {
+    const signer = (signers || []).find((s) => (
+      docsignInvite.normalizeEmail(s.epost || s.email) === docsignInvite.normalizeEmail(toEmail)
+    ));
+    const toName = docsignInvite.normalizeEmail(toEmail) === docsignInvite.normalizeEmail(agencyEmail)
+      ? agencyName
+      : ((signer && (signer.namn || signer.name)) || '');
+    try {
+      await transporter.sendMail({
+        from: smtpMailFromDisplay(byraNamn),
+        to: toEmail,
+        replyTo: replyTo || agencyEmail || undefined,
+        subject: docsignInvite.buildSignedReceiptSubject({ kind, kundnamn, byraNamn }),
+        text: docsignInvite.buildSignedReceiptText({
+          kind,
+          toName,
+          kundnamn,
+          byraNamn,
+          signerNames,
+          hasAttachment: !!pdfBuffer
+        }),
+        attachments
+      });
+      results.push({ toEmail, sent: true });
+    } catch (err) {
+      console.warn('sendSignedDocumentReceipts:', toEmail, err.message);
+      results.push({ toEmail, sent: false, error: err.message });
+    }
+  }
+  return { sent: results.some((r) => r.sent), results };
+}
+
+async function maybeSendDocsignReceipt({
+  kind,
+  documentId,
+  receipt,
+  doc,
+  kundnamn,
+  filename
+}) {
+  const meta = receipt && typeof receipt === 'object' ? receipt : {};
+  const docKey = String(documentId || (doc && (doc.id || doc.document_id)) || '').trim();
+  if (!docsignInvite.shouldSendReceipt(meta)) return { sent: false, skipped: true, receipt: meta };
+  if (docKey && sentDocsignReceiptIds.has(docKey)) {
+    return { sent: false, skipped: true, receipt: docsignInvite.markReceiptSent(meta) };
+  }
+  let pdfBuffer = null;
+  try {
+    pdfBuffer = doc ? await fetchSignedPdfBuffer(doc) : null;
+  } catch (e) {
+    console.warn('kvitto: kunde inte hämta signerad PDF:', e.message);
+  }
+  const result = await sendSignedDocumentReceipts({
+    kind: meta.kind || kind,
+    kundnamn: meta.kundnamn || kundnamn,
+    byraNamn: meta.byraNamn,
+    agencyEmail: meta.agencyEmail,
+    agencyName: meta.agencyName,
+    signers: meta.signers,
+    partyEmails: docsignInvite.partyEmailsFromDoc(doc),
+    pdfBuffer,
+    filename,
+    replyTo: meta.agencyEmail
+  });
+  if (result.sent) {
+    if (docKey) sentDocsignReceiptIds.add(docKey);
+    return { sent: true, receipt: docsignInvite.markReceiptSent(meta) };
+  }
+  return { sent: false, receipt: meta, error: result.error };
+}
+
+async function patchAvtalReceiptMeta(airtableAccessToken, avtalId, receipt) {
+  if (!airtableAccessToken || !avtalId || !receipt) return false;
+  try {
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtalId}`,
+      { fields: { [INLEED_KVITTO_FIELD]: JSON.stringify(receipt) } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+    return true;
+  } catch (e) {
+    if (e.response?.status !== 422) {
+      console.warn('Kunde inte spara Inleed-kvitto på avtalet:', e.message);
+    }
+    return false;
+  }
+}
+
 // POST /api/samarbete/requests – Skapa förfrågan (auth), returnerar länk för kunden
 app.post('/api/samarbete/requests', authenticateToken, async (req, res) => {
   try {
@@ -11808,6 +11972,50 @@ async function persistDokumentationPdfExport({
   return { saved: true, entry, list: nextList };
 }
 
+async function sendDokumentationSignedReceipt({
+  airtableToken,
+  baseId,
+  record,
+  state,
+  byraNamn,
+  doc
+}) {
+  if (!state || state.receiptSentAt) return state;
+  let signedDoc = doc;
+  if (!signedDoc && state.inleedDokumentId && process.env.DOCSIGN_API_KEY) {
+    try {
+      signedDoc = await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, state.inleedDokumentId);
+    } catch (_) { signedDoc = null; }
+  }
+  const sent = await maybeSendDocsignReceipt({
+    kind: 'dokumentation',
+    documentId: state.inleedDokumentId,
+    receipt: {
+      kind: 'dokumentation',
+      agencyEmail: state.agencyEmail || '',
+      agencyName: state.agencyName || '',
+      byraNamn: state.byraNamn || byraNamn,
+      signers: state.signerEmail
+        ? [{ namn: state.signerName || '', epost: state.signerEmail }]
+        : [],
+      kundnamn: state.byraNamn || byraNamn
+    },
+    doc: signedDoc,
+    kundnamn: byraNamn,
+    filename: 'allman-riskbedomning-och-rutiner-signerat.pdf'
+  });
+  if (!sent.sent) return state;
+  state.receiptSentAt = sent.receipt.sentAt;
+  try {
+    await patchByraerRecordFields(airtableToken, baseId, record.id, {
+      [dokumentationSignering.SIGNERING_FIELD]: JSON.stringify(state)
+    });
+  } catch (e) {
+    console.warn('dokumentation kvitto: kunde inte spara receiptSentAt:', e.message);
+  }
+  return state;
+}
+
 async function persistSignedDokumentation({
   airtableToken,
   baseId,
@@ -11847,8 +12055,21 @@ async function syncDokumentationSignering({
 }) {
   const state = dokumentationSignering.parseSignering(record.fields?.[dokumentationSignering.SIGNERING_FIELD]);
   const publicState = dokumentationSignering.publicSignering(state);
-  if (!state || !state.inleedDokumentId || state.status === 'signed') {
+  if (!state || !state.inleedDokumentId) {
     return { signering: publicState, synced: false };
+  }
+  if (state.status === 'signed') {
+    if (state.agencyEmail && !state.receiptSentAt) {
+      await sendDokumentationSignedReceipt({
+        airtableToken,
+        baseId,
+        record,
+        state,
+        byraNamn,
+        doc: null
+      });
+    }
+    return { signering: dokumentationSignering.publicSignering(state), synced: false };
   }
   const docsignApiKey = process.env.DOCSIGN_API_KEY;
   if (!docsignApiKey) return { signering: publicState, synced: false };
@@ -11871,6 +12092,14 @@ async function syncDokumentationSignering({
     byraNamn,
     signering: state,
     signedAt
+  });
+  await sendDokumentationSignedReceipt({
+    airtableToken,
+    baseId,
+    record,
+    state: stored.signering,
+    byraNamn,
+    doc
   });
   return {
     signering: dokumentationSignering.publicSignering(stored.signering),
@@ -15302,6 +15531,21 @@ async function fetchInleedDocumentById(docsignApiKey, inleedDocId) {
   return null;
 }
 
+async function postInleedDocument(docPayload) {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, { headers });
+    if (docRes.data?.success || !docPayload.callback_url) return docRes;
+    console.warn('Inleed documents: success=false med callback_url, försöker utan:', docRes.data);
+  } catch (err) {
+    if (!docPayload.callback_url) throw err;
+    console.warn('Inleed documents: fel med callback_url, försöker utan:', err.response?.data || err.message);
+  }
+  const retry = { ...docPayload };
+  delete retry.callback_url;
+  return axios.post('https://docsign.se/api/documents', retry, { headers });
+}
+
 async function fetchInleedDocumentByTitle(docsignApiKey, title) {
   if (!docsignApiKey || !title) return null;
   for (const state of ['completed', 'pending', 'signed']) {
@@ -15329,6 +15573,144 @@ function isInleedDocumentSigned(doc) {
   const st = (doc.status || doc.state || '').toString().toLowerCase();
   return ['completed', 'signed', 'done', 'finished'].includes(st);
 }
+
+async function deliverDocsignReceiptForRecord({ kind, recordId }) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const docsignApiKey = process.env.DOCSIGN_API_KEY;
+  if (!airtableAccessToken || !docsignApiKey || !recordId) {
+    return { sent: false, error: 'Saknar underlag för kvitto' };
+  }
+  if (kind === 'kyc') {
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${recordId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const fields = custRes.data.fields || {};
+    let kyc = {};
+    try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}'); } catch (_) { kyc = {}; }
+    const inleedId = kyc.inleedDokumentId;
+    if (!inleedId) return { sent: false, error: 'Inget Inleed-dokument' };
+    const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
+    if (!doc || !isInleedDocumentSigned(doc)) return { sent: false, error: 'Inte signerat ännu' };
+    const kycReceipt = recallDocsignReceipt(inleedId, kyc.receipt);
+    if (!kycReceipt || !docsignInvite.shouldSendReceipt(kycReceipt)) return { sent: false, skipped: true };
+    const kundnamn = fields['Namn'] || kyc.foretagsnamn || 'Kund';
+    const sent = await maybeSendDocsignReceipt({
+      kind: 'kyc',
+      documentId: inleedId,
+      receipt: kycReceipt,
+      doc,
+      kundnamn,
+      filename: 'KYC-signerat.pdf'
+    });
+    if (sent.receipt) {
+      kyc.receipt = sent.receipt;
+      kyc.status = 'Signerat';
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${recordId}`,
+        { fields: { 'KYC-formular (JSON)': JSON.stringify(kyc) } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      ).catch((e) => console.warn('kyc kvitto callback PATCH:', e.message));
+    }
+    return sent;
+  }
+  if (kind === 'uppdragsavtal') {
+    const avtalRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${recordId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const fields = avtalRes.data.fields || {};
+    const inleedId = fields.InleedDokumentId;
+    if (!inleedId) return { sent: false, error: 'Inget Inleed-dokument' };
+    const doc = await fetchInleedDocumentById(docsignApiKey, inleedId);
+    if (!doc || !isInleedDocumentSigned(doc)) return { sent: false, error: 'Inte signerat ännu' };
+    const storedReceipt = recallDocsignReceipt(
+      inleedId,
+      docsignInvite.parseReceiptMeta(fields[INLEED_KVITTO_FIELD])
+    ) || docsignInvite.buildReceiptMeta({
+      kind: 'uppdragsavtal',
+      kundnamn: fields.Kundnamn || fields.Namn || 'Kund',
+      signers: (doc.parties || []).map((p) => ({ namn: p.name, epost: p.email }))
+    });
+    if (!docsignInvite.shouldSendReceipt(storedReceipt)) return { sent: false, skipped: true };
+    const kundnamn = fields.Kundnamn || fields.Namn || 'Kund';
+    const sent = await maybeSendDocsignReceipt({
+      kind: 'uppdragsavtal',
+      documentId: inleedId,
+      receipt: storedReceipt,
+      doc,
+      kundnamn,
+      filename: 'uppdragsavtal-signerat.pdf'
+    });
+    if (sent.sent) {
+      await patchAvtalReceiptMeta(airtableAccessToken, recordId, sent.receipt);
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${recordId}`,
+        { fields: { Avtalsstatus: 'Signerat' } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      ).catch(() => {});
+    }
+    return sent;
+  }
+  if (kind === 'dokumentation') {
+    const recRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}/${recordId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = recRes.data;
+    const state = dokumentationSignering.parseSignering(record.fields?.[dokumentationSignering.SIGNERING_FIELD]);
+    if (!state || !state.inleedDokumentId) return { sent: false, error: 'Inget Inleed-dokument' };
+    const byraNamn = record.fields?.['Byrå'] || record.fields?.['Namn'] || state.byraNamn || 'Byrån';
+    const next = await sendDokumentationSignedReceipt({
+      airtableToken: airtableAccessToken,
+      baseId,
+      record,
+      state,
+      byraNamn,
+      doc: null
+    });
+    return { sent: !!next.receiptSentAt };
+  }
+  return { sent: false, error: 'Okänd dokumenttyp' };
+}
+
+app.post('/api/inleed/callback', async (req, res) => {
+  const kind = String(req.query.kind || req.body?.kind || '').trim();
+  const recordId = String(req.query.record || req.body?.record || '').trim();
+  const token = String(req.query.t || req.body?.t || '').trim();
+  if (!docsignInvite.verifyCallbackToken({
+    kind,
+    recordId,
+    token,
+    secret: docsignInvite.callbackSecret()
+  })) {
+    return res.status(403).json({ error: 'Ogiltig callback' });
+  }
+  deliverDocsignReceiptForRecord({ kind, recordId }).catch((e) => {
+    console.warn('inleed callback:', e.message);
+  });
+  res.json({ ok: true });
+});
+
+app.get('/api/inleed/callback', async (req, res) => {
+  const kind = String(req.query.kind || '').trim();
+  const recordId = String(req.query.record || '').trim();
+  const token = String(req.query.t || '').trim();
+  if (!docsignInvite.verifyCallbackToken({
+    kind,
+    recordId,
+    token,
+    secret: docsignInvite.callbackSecret()
+  })) {
+    return res.status(403).json({ error: 'Ogiltig callback' });
+  }
+  deliverDocsignReceiptForRecord({ kind, recordId }).catch((e) => {
+    console.warn('inleed callback:', e.message);
+  });
+  res.json({ ok: true });
+});
 
 // GET /api/kyc-formular/:customerId – Hämta sparat KYC-formulär
 app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => {
@@ -15366,12 +15748,25 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
           const signedDatum = (doc.completed_at || doc.signed_at || doc.updated_at || created || '')
             .toString().split(' ')[0].split('T')[0];
           const signed = isInleedDocumentSigned(doc);
-          const shouldWrite = !kyc.inleedDokumentId
+          let shouldWrite = !kyc.inleedDokumentId
             || (signed && (kyc.status || '') !== 'Signerat');
           kyc.inleedDokumentId = inleedId;
           if (signed) {
             kyc.status = 'Signerat';
             if (/^\d{4}-\d{2}-\d{2}$/.test(signedDatum)) kyc.signeringsdatum = signedDatum;
+            const kycReceipt = recallDocsignReceipt(inleedId, kyc.receipt);
+            if (kycReceipt && docsignInvite.shouldSendReceipt(kycReceipt)) {
+              const sent = await maybeSendDocsignReceipt({
+                kind: 'kyc',
+                documentId: inleedId,
+                receipt: kycReceipt,
+                doc,
+                kundnamn: f['Namn'] || kyc.foretagsnamn || '',
+                filename: `KYC-signerat.pdf`
+              });
+              if (sent.receipt) kyc.receipt = sent.receipt;
+              if (sent.sent) shouldWrite = true;
+            }
           } else if ((kyc.status || '') !== 'Signerat') {
             kyc.status = 'Skickat till kund';
           }
@@ -15421,6 +15816,7 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
       inleedDokumentId: existingKyc.inleedDokumentId || req.body.inleedDokumentId || '',
       utskickningsdatum: existingKyc.utskickningsdatum || req.body.utskickningsdatum || '',
       signeringsdatum: existingKyc.signeringsdatum || req.body.signeringsdatum || '',
+      receipt: existingKyc.receipt || req.body.receipt || undefined,
       updatedAt: new Date().toISOString(),
       updatedBy: req.user?.email || ''
     };
@@ -15733,12 +16129,20 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     }
 
     const pdfBase64 = pdfBuffer.toString('base64');
+    const receiptMeta = docsignInvite.buildReceiptMeta({
+      kind: 'kyc',
+      agencyEmail: sender.email,
+      agencyName: sender.name,
+      byraNamn: sender.byraNamn,
+      signers: signerareList,
+      kundnamn
+    });
     const docPayload = docsignInvite.applyDocsignInviteMeta({
       api_key: docsignApiKey,
       name: `KYC-formulär - ${kundnamn}`,
       parties: kundPartyIds,
       send_reminders: true,
-      send_receipt: true,
+      send_receipt: false,
       attachments: [{ name: 'kyc-formular.pdf', base64_content: pdfBase64 }]
     }, {
       kind: 'kyc',
@@ -15746,14 +16150,16 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
       klientansvarigNamn: sender.name,
       konsultEmail: sender.email,
       mottagareNamn: signerareList[0] && signerareList[0].namn,
-      kundnamn
+      kundnamn,
+      callbackUrl: docsignCallbackUrl('kyc', customerId)
     });
-    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, { headers: { 'Content-Type': 'application/json' } });
+    const docRes = await postInleedDocument(docPayload);
     if (!docRes.data?.success) {
       return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.' });
     }
 
     const documentId = docRes.data.document_id;
+    rememberDocsignReceipt(documentId, receiptMeta);
     const utskickningsdatum = new Date().toISOString().split('T')[0];
 
     // Uppdatera KYC-formulär med Inleed-status
@@ -15763,6 +16169,7 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     kycData.status = 'Skickat till kund';
     kycData.inleedDokumentId = String(documentId);
     kycData.utskickningsdatum = utskickningsdatum;
+    kycData.receipt = receiptMeta;
 
     await axios.patch(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
@@ -15861,6 +16268,18 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
     // Uppdatera KYC-status till Signerat
     kycData.status = 'Signerat';
     kycData.signeringsdatum = datum;
+    const kycReceipt = recallDocsignReceipt(inleedId, kycData.receipt);
+    if (kycReceipt && docsignInvite.shouldSendReceipt(kycReceipt)) {
+      const sent = await maybeSendDocsignReceipt({
+        kind: 'kyc',
+        documentId: inleedId,
+        receipt: kycReceipt,
+        doc,
+        kundnamn,
+        filename: docFilename
+      });
+      if (sent.receipt) kycData.receipt = sent.receipt;
+    }
     await axios.patch(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
       { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
@@ -15970,6 +16389,31 @@ app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
               );
               avtal = { ...avtal, fields: { ...fields, ...patch } };
             } catch (_) { /* länkar visas ändå */ }
+          }
+          if (doc && isInleedDocumentSigned(doc) && status !== 'Signerat') {
+            const storedReceipt = recallDocsignReceipt(
+              resolvedId,
+              docsignInvite.parseReceiptMeta(fields[INLEED_KVITTO_FIELD])
+            );
+            if (storedReceipt && docsignInvite.shouldSendReceipt(storedReceipt)) {
+              const sent = await maybeSendDocsignReceipt({
+                kind: 'uppdragsavtal',
+                documentId: resolvedId,
+                receipt: storedReceipt,
+                doc,
+                kundnamn: fields['Kundnamn'] || fields['Namn'] || '',
+                filename: 'uppdragsavtal-signerat.pdf'
+              });
+              if (sent.sent) await patchAvtalReceiptMeta(airtableAccessToken, avtal.id, sent.receipt);
+            }
+            try {
+              await axios.patch(
+                `https://api.airtable.com/v0/${airtableBaseId}/${UPPDRAGSAVTAL_TABLE}/${avtal.id}`,
+                { fields: { Avtalsstatus: 'Signerat' } },
+                { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+              );
+              avtal = { ...avtal, fields: { ...avtal.fields, Avtalsstatus: 'Signerat' } };
+            } catch (_) { /* kvittot kan ha skickats ändå */ }
           }
           if (doc && status === 'Skickat till kund' && !utskickningsdatum && doc.created_at) {
             const datum = (doc.created_at + '').split(' ')[0].split('T')[0] || (doc.created_at + '').slice(0, 10);
@@ -19338,27 +19782,37 @@ app.post('/api/byra/dokumentation/skicka-for-signering', authenticateToken, asyn
       name: dokumentationSignering.dokumentationInleedTitle(byraNamn),
       parties: [partyRes.data.party_id],
       send_reminders: true,
-      send_receipt: true,
+      send_receipt: false,
       attachments: [{ name: 'allman-riskbedomning-och-rutiner.pdf', base64_content: pdfBuffer.toString('base64') }]
     }, {
       kind: 'dokumentation',
       byraNamn,
       klientansvarigNamn: userData?.name || '',
       konsultEmail: userData?.email || req.user.email,
-      mottagareNamn: signer.namn
+      mottagareNamn: signer.namn,
+      callbackUrl: docsignCallbackUrl('dokumentation', record.id)
     });
-    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const docRes = await postInleedDocument(docPayload);
     if (!docRes.data?.success) {
       return res.status(500).json({ error: 'Kunde inte skapa dokument i Inleed.' });
     }
 
     const documentId = docRes.data.document_id;
+    rememberDocsignReceipt(documentId, docsignInvite.buildReceiptMeta({
+      kind: 'dokumentation',
+      agencyEmail: userData?.email || req.user.email,
+      agencyName: userData?.name || '',
+      byraNamn,
+      signers: [signer],
+      kundnamn: byraNamn
+    }));
     const pending = dokumentationSignering.buildPendingSignering({
       inleedDokumentId: documentId,
       signer,
-      sentAt: new Date().toISOString()
+      sentAt: new Date().toISOString(),
+      agencyEmail: userData?.email || req.user.email,
+      agencyName: userData?.name || '',
+      byraNamn
     });
     await ensureDokumentationExportFields(airtableAccessToken, airtableBaseId);
     await patchByraerRecordFields(airtableAccessToken, airtableBaseId, record.id, {
@@ -20175,12 +20629,20 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
 
     // 4. Skapa dokument i Inleed med alla parter – konsult först, sedan alla kunder
     const pdfBase64 = pdfBuffer.toString('base64');
+    const receiptMeta = docsignInvite.buildReceiptMeta({
+      kind: 'uppdragsavtal',
+      agencyEmail: sender.email || byraSigner.email,
+      agencyName: sender.name || byraSigner.name,
+      byraNamn: byraSigner.byra,
+      signers: signerareList,
+      kundnamn
+    });
     const docPayload = docsignInvite.applyDocsignInviteMeta({
       api_key: docsignApiKey,
       name: `Uppdragsavtal - ${kundnamn}`,
       parties: [konsultPartyId, ...kundPartyIds],
       send_reminders: true,
-      send_receipt: true,
+      send_receipt: false,
       attachments: [{
         name: 'uppdragsavtal.pdf',
         base64_content: pdfBase64
@@ -20191,7 +20653,8 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
       klientansvarigNamn: sender.name || byraSigner.name,
       konsultEmail: sender.email || byraSigner.email,
       mottagareNamn: signerareList[0] && signerareList[0].namn,
-      kundnamn
+      kundnamn,
+      callbackUrl: docsignCallbackUrl('uppdragsavtal', id)
     });
 
     // 4b. Lägg till kundens egna bilagor (PDF) i DocSign (attachment-fält vars namn innehåller "bilag")
@@ -20227,9 +20690,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
 
     console.log('📤 Skapar dokument i Inleed för:', kundnamn, '| PDF:', pdfBuffer.length, 'bytes | Konsult:', konsultPartyId, 'Kunder:', kundPartyIds);
 
-    const docRes = await axios.post('https://docsign.se/api/documents', docPayload, {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const docRes = await postInleedDocument(docPayload);
 
     console.log('\ud83d\udd0d Inleed documents svar:', JSON.stringify(docRes.data));
 
@@ -20239,6 +20700,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
     }
 
     const documentId = docRes.data.document_id;
+    rememberDocsignReceipt(documentId, receiptMeta);
     console.log('\u2705 Dokument skapat i Inleed, document_id:', documentId);
 
     const utskickningsdatum = new Date().toISOString().split('T')[0];
@@ -20255,6 +20717,7 @@ app.post('/api/uppdragsavtal/:id/skicka-for-signering', authenticateToken, async
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       );
       console.log('\u2705 Airtable uppdaterad: Avtalsstatus, InleedDokumentId, Utskickningsdatum');
+      await patchAvtalReceiptMeta(airtableAccessToken, id, receiptMeta);
     } catch (e) {
       console.error('\u274c Airtable PATCH misslyckades:', e.response?.status, e.response?.data?.error || e.message);
       if (e.response?.status === 422) {
@@ -20379,6 +20842,22 @@ app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req,
         { fields: { Avtalsstatus: 'Signerat', Signeringsdatum: datumStr } },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       ).catch(() => {});
+
+      const storedReceipt = recallDocsignReceipt(
+        inleedDocId,
+        docsignInvite.parseReceiptMeta(avtalFields[INLEED_KVITTO_FIELD])
+      );
+      if (storedReceipt && docsignInvite.shouldSendReceipt(storedReceipt)) {
+        const sent = await maybeSendDocsignReceipt({
+          kind: 'uppdragsavtal',
+          documentId: inleedDocId,
+          receipt: storedReceipt,
+          doc,
+          kundnamn,
+          filename: filnamn
+        });
+        if (sent.sent) await patchAvtalReceiptMeta(airtableAccessToken, avtalId, sent.receipt);
+      }
 
       // Spara kategori-metadata så dokumentet visas under rätt rubrik
       try {
