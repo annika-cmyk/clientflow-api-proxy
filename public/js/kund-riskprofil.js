@@ -12,6 +12,9 @@
   var TjanstForutsattning = (typeof module !== 'undefined' && module.exports)
     ? require('./tjanst-forutsattning')
     : (global.TjanstForutsattning || null);
+  var OvrigaRiskKategorier = (typeof module !== 'undefined' && module.exports)
+    ? require('./ovriga-risk-kategorier')
+    : (global.OvrigaRiskKategorier || null);
 
   var FIELDS = {
     INNEBOENDE: 'Kund inneboende riskprofil',
@@ -159,21 +162,22 @@
     INFORMATIV: 'INFORMATIV'
   };
 
-  var DEFAULT_RISKHOJANDE_KATALOG = {
-    'Historik av brott eller ekonomisk misskötsel': 'GOLV_HOG',
-    'Otydlig affärsmodell': 'BIDRAR_VID_KOMBINATION',
-    'Transaktioner utan tydligt syfte': 'BIDRAR_VID_KOMBINATION',
-    'Svårt att bekräfta identitet': 'GOLV_HOG',
-    'Svårt att få svar på frågor': 'BIDRAR_VID_KOMBINATION',
-    'Komplicerad struktur': 'BIDRAR_VID_KOMBINATION',
-    'Mkt ändringar i styrelse, adress eller firmateckning': 'BIDRAR_VID_KOMBINATION',
-    'Svårt att få kontakt med ägare/styrelse/huvudmän': 'BIDRAR_VID_KOMBINATION',
-    'Kontanthantering': 'BIDRAR_VID_KOMBINATION',
-    'Kopplingar till andra länder, särskilt länder utanför EU': 'BIDRAR_VID_KOMBINATION',
-    'Bristfälliga bokföringsrutiner': 'BIDRAR_VID_KOMBINATION',
-    'Många byten av redovisningsbyråer': 'BIDRAR_VID_KOMBINATION',
-    'Företaget har många kunder på distans': 'INFORMATIV'
-  };
+  var DEFAULT_RISKHOJANDE_KATALOG = (OvrigaRiskKategorier && OvrigaRiskKategorier.defaultKatalog)
+    ? OvrigaRiskKategorier.defaultKatalog()
+    : {
+      'Historik av brott / ekonomisk brottslighet': 'GOLV_HOG',
+      'Otydlig affärsmodell': 'BIDRAR_VID_KOMBINATION',
+      'Transaktioner utan tydligt syfte': 'BIDRAR_VID_KOMBINATION',
+      'Svårt att bekräfta identitet': 'GOLV_HOG',
+      'Svårt att få svar på frågor / undvikande beteende': 'BIDRAR_VID_KOMBINATION',
+      'Komplicerad eller ovanlig ägarstruktur': 'BIDRAR_VID_KOMBINATION',
+      'Kontantintensiv verksamhet': 'GOLV_HOG',
+      'Kopplingar till utlandet / Högriskländer': 'GOLV_HOG',
+      'Bristfälliga interna bokföringsrutiner hos kunden': 'BIDRAR_VID_KOMBINATION',
+      'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring': 'BIDRAR_VID_KOMBINATION',
+      'Högriskbransch': 'BIDRAR_VID_KOMBINATION',
+      'Distansrelation med BankID-verifiering': 'BIDRAR_VID_KOMBINATION'
+    };
 
   function normalizeRiskhojandeKlass(raw) {
     var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
@@ -255,8 +259,29 @@
     return found || RISKHOJANDE_KLASS.BIDRAR;
   }
 
+  function extraKombinationsNamn(fields) {
+    var extra = [];
+    var hog = hogriskBranschVal(fields);
+    if (hog && hog.length) extra.push('Högriskbransch');
+    return extra;
+  }
+
+  function kombinationsLabels(fields) {
+    var seen = {};
+    var out = [];
+    riskhojandeVal(fields).concat(extraKombinationsNamn(fields)).forEach(function (namn) {
+      var canon = canonicalRiskhojandeLabel(namn);
+      if (!canon) return;
+      var key = foldNamn(canon);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(canon);
+    });
+    return out;
+  }
+
   function beraknaRiskhojandeGolv(fields, katalog) {
-    var labels = riskhojandeVal(fields);
+    var labels = kombinationsLabels(fields);
     if (!labels.length) return null;
     var map = mergeRiskhojandeKatalog(katalog);
     var golv = [];
@@ -409,9 +434,12 @@
   }
 
   function canonicalRiskhojandeLabel(namn) {
+    if (OvrigaRiskKategorier && OvrigaRiskKategorier.canonicalLabel) {
+      return OvrigaRiskKategorier.canonicalLabel(namn);
+    }
     var raw = trimStr(namn);
     if (/kortvarig|kortsiktig|tillf[äa]llig aff[äa]rsrelation/i.test(raw)) {
-      return 'Många byten av redovisningsbyråer';
+      return 'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring';
     }
     return raw;
   }
@@ -966,6 +994,8 @@
     OACCEPTABEL_GOLV_PRODUCT: OACCEPTABEL_GOLV_PRODUCT,
     RISKHOJANDE_KLASS: RISKHOJANDE_KLASS,
     DEFAULT_RISKHOJANDE_KATALOG: DEFAULT_RISKHOJANDE_KATALOG,
+    extraKombinationsNamn: extraKombinationsNamn,
+    kombinationsLabels: kombinationsLabels,
     canonicalRiskhojandeLabel: canonicalRiskhojandeLabel,
     riskhojandeVal: riskhojandeVal,
     hasRiskhojandeVal: hasRiskhojandeVal,
