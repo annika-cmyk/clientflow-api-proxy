@@ -1799,6 +1799,10 @@ async function buildAiChatKundContext(customerId, reqUser) {
       `Valda riskfaktorer:`,
       ...(riskLines.length ? riskLines : ['- (inga valda)']),
       `Beskrivning: ${clip(f['Beskrivning av kunden'] || f['Verksamhetsbeskrivning'], 700) || '–'}`,
+      `Verksamhet: ${clip(f['Verksamhet'] || (kyc && kyc.verksamhet), 500) || '–'}`,
+      `Kostnader: ${clip(f['Kostnader'] || (kyc && kyc.kostnader), 400) || '–'}`,
+      `Intäkterna: ${clip(f['Intäkterna'] || (kyc && kyc.intakterna), 400) || '–'}`,
+      `Bokföring: ${clip(f['Bokföring beskrivning'], 400) || '–'}`,
       `Ytterligare beskrivning: ${clip(f['Ytterligare beskrivning av kunden och verksamheten'], 500) || '–'}`,
       `Sparad riskbedömning: ${clip(f['Byrans riskbedomning'], 800) || '–'}`,
       'Hitta inte på detaljer som saknas ovan. Om något saknas: säg det.'
@@ -2454,7 +2458,11 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   },
   { name: 'Kund föreslagen drivande faktor', type: 'singleLineText', description: 'Vilken tjänst eller riskfaktor som gav den högsta residual-S×K.' },
   { name: 'Kund avvikelse motivering', type: 'multilineText', description: 'Obligatorisk när residual skiljer sig från den beräknade föreslagna nivån.' },
-  { name: TjanstForutsattning.FIELD, type: 'multilineText', description: 'JSON: per tjänst, uppfylld-status för kundberoende förutsättningar och ev. residual-override (S×K).' }
+  { name: TjanstForutsattning.FIELD, type: 'multilineText', description: 'JSON: per tjänst, uppfylld-status för kundberoende förutsättningar och ev. residual-override (S×K).' },
+  { name: 'Verksamhet', type: 'multilineText', description: 'Vad gör kunden (byråns beskrivning av verksamheten).' },
+  { name: 'Kostnader', type: 'multilineText', description: 'Kundens kostnader, leverantörer och hur betalning sker.' },
+  { name: 'Intäkterna', type: 'multilineText', description: 'Kundens kunder, hur de möts, hur de tar betalt och systemstöd.' },
+  { name: 'Bokföring beskrivning', type: 'multilineText', description: 'Hur underlag kommer in, bankinlogg, ordning och kännedom om kunden/branschen.' }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -7221,7 +7229,9 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
     <div class="field"><span class="field-label">Familjemedlem/medarbetare till PEP:</span> ${pdfJanej(kyc.pepFamilj)}</div>
   </div>
   <div class="section"><h2>5. Affärsförbindelsens syfte och art</h2>
-    <div class="field"><span class="field-label">Huvudsaklig verksamhet:</span><br>${nl2br(kyc.verksamhet || '—')}</div>
+    <div class="field"><span class="field-label">Verksamhet:</span><br>${nl2br(kyc.verksamhet || '—')}</div>
+    <div class="field"><span class="field-label">Kostnader:</span><br>${nl2br(kyc.kostnader || '—')}</div>
+    <div class="field"><span class="field-label">Intäkterna:</span><br>${nl2br(kyc.intakterna || '—')}</div>
     <div class="field"><span class="field-label">Byråns tjänster (kundens valda):</span> ${esc(kyc.tjanster || '—')}</div>
     <div class="field"><span class="field-label">Pengarnas ursprung:</span> ${esc(kyc.kapitalUrsprung || '—')}</div>
     <div class="row">
@@ -7648,7 +7658,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
       residualLabel, residualClass, foreslagenLabel, foreslagenDrivande,
-      verksamhet: pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      verksamhet: pdfToText(f['Verksamhet']) || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
       sammanlagdRisk,
       motivering: pdfToText(f['Motivering']),
       kommentarRisk: pdfToText(f['Kommentar till riskfaktorerna ovan']),
@@ -7682,7 +7692,9 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       pepDetaljer: pdfHtmlToPlainText(pepDetaljerFromKyc) || '',
       pepFamilj: pepFamiljFromKyc || 'Nej',
       // KYC-verksamhet kan innehålla HTML från rich text – rensas till plaintext i PDF
-      verksamhet: pdfHtmlToPlainText(savedKyc.verksamhet) || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      verksamhet: pdfToText(f['Verksamhet']) || pdfHtmlToPlainText(savedKyc.verksamhet) || pdfToText(f['Verksamhetsbeskrivning']) || pdfToText(f['Beskrivning av kunden']) || '',
+      kostnader: pdfToText(f['Kostnader']) || pdfHtmlToPlainText(savedKyc.kostnader) || '',
+      intakterna: pdfToText(f['Intäkterna']) || pdfHtmlToPlainText(savedKyc.intakterna) || '',
       tjanster: tjansterNamnLista,
       kapitalUrsprung: pdfHtmlToPlainText(savedKyc.kapitalUrsprung) || pdfFmtList(f['Vilket ursprung har företagets kapital?']).join(', ') || '',
       anstallda: savedKyc.anstallda || '',
@@ -15413,11 +15425,34 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
       updatedBy: req.user?.email || ''
     };
 
-    await axios.patch(
-      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-      { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
-      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-    );
+    const syncFields = {};
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'verksamhet')) {
+      syncFields['Verksamhet'] = String(req.body.verksamhet || '');
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'kostnader')) {
+      syncFields['Kostnader'] = String(req.body.kostnader || '');
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'intakterna')) {
+      syncFields['Intäkterna'] = String(req.body.intakterna || '');
+    }
+    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+
+    let patchFields = { 'KYC-formular (JSON)': JSON.stringify(kycData), ...syncFields };
+    try {
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { fields: patchFields },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (syncErr) {
+      const msg = syncErr.response?.data?.error?.message || syncErr.message || '';
+      if (!/Unknown field name/i.test(String(msg))) throw syncErr;
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    }
 
     res.json({ success: true, message: 'KYC-formulär sparat.' });
   } catch (error) {
@@ -15572,7 +15607,9 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
 
   <div class="section">
     <h2>5. Affärsförbindelsens syfte och art</h2>
-    <div class="field"><span class="field-label">Huvudsaklig verksamhet:</span><br><span class="field-value">${nl2br(kyc.verksamhet || '\u2014')}</span></div>
+    <div class="field"><span class="field-label">Verksamhet:</span><br><span class="field-value">${nl2br(f['Verksamhet'] || kyc.verksamhet || '\u2014')}</span></div>
+    <div class="field"><span class="field-label">Kostnader:</span><br><span class="field-value">${nl2br(f['Kostnader'] || kyc.kostnader || '\u2014')}</span></div>
+    <div class="field"><span class="field-label">Intäkterna:</span><br><span class="field-value">${nl2br(f['Intäkterna'] || kyc.intakterna || '\u2014')}</span></div>
     ${kyc.syfte_affarsrelation ? `<div class="field"><span class="field-label">Syfte med affärsrelationen:</span><br><span class="field-value">${nl2br(kyc.syfte_affarsrelation)}</span></div>` : ''}
     <div class="field"><span class="field-label">Byråns tjänster:</span> <span class="field-value">${esc(kyc.tjanster || '\u2014')}</span></div>
     <div class="field"><span class="field-label">Pengarnas ursprung:</span> <span class="field-value">${esc(kyc.kapitalUrsprung || '\u2014')}</span></div>
@@ -20664,6 +20701,22 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
       bodyOverride.beskrivningAvKunden,
       f['Beskrivning av kunden']
     ), 1800) || '–';
+    const verksamhetByra = clip(pickText(
+      bodyOverride.verksamhet,
+      f['Verksamhet']
+    ), 900) || '–';
+    const kostnaderByra = clip(pickText(
+      bodyOverride.kostnader,
+      f['Kostnader']
+    ), 700) || '–';
+    const intakternaByra = clip(pickText(
+      bodyOverride.intakterna,
+      f['Intäkterna']
+    ), 700) || '–';
+    const bokforingByra = clip(pickText(
+      bodyOverride.bokforingBeskrivning,
+      f['Bokföring beskrivning']
+    ), 700) || '–';
     const verksamhetsbeskrivningBolagsverket = clip(pickText(
       bodyOverride.verksamhetsbeskrivning,
       f['Verksamhetsbeskrivning']
@@ -20701,6 +20754,9 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const kycAnstallda = clip(kyc.anstallda, 200) || '–';
     const kycVhUtlandska = kyc.vh_utlandska_agare === true ? 'Ja' : (kyc.vh_utlandska_agare === false ? 'Nej' : '–');
     const kycSyfte = clip(kyc.syfte_affarsrelation || kyc.syfte, 500) || '–';
+    const verksamhetText = verksamhetByra !== '–' ? verksamhetByra : (clip(pickText(kyc.verksamhet), 900) || '–');
+    const kostnaderText = kostnaderByra !== '–' ? kostnaderByra : (clip(pickText(kyc.kostnader), 700) || '–');
+    const intakternaText = intakternaByra !== '–' ? intakternaByra : (clip(pickText(kyc.intakterna), 700) || '–');
     if (String(kycInternationell).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
     if (String(transaktionerAndraLander).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
 
@@ -20801,6 +20857,10 @@ KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till
 - Kapitalets ursprung: ${arr(f['Vilket ursprung har företagets kapital?'])}
 - Affärsmodell: ${f['Affärsmodell'] || '–'}
 - Byråns beskrivning av kunden (MANUELL — det byrån själv skrivit om kunden; prioritera detta framför SNI/Bolagsverket när det finns innehåll): ${beskrivningKundFull}
+- Verksamhet (vad kunden gör): ${verksamhetText}
+- Kostnader (leverantörer och betalning): ${kostnaderText}
+- Intäkterna (kunder, mötesform, betalning och systemstöd): ${intakternaText}
+- Bokföring (underlag, bankinlogg, ordning och kännedom): ${bokforingByra}
 - Verksamhetsbeskrivning från Bolagsverket (officiell registertext — kompletterande, inte ersättning för byråns beskrivning): ${verksamhetsbeskrivningBolagsverket}
 - Ytterligare beskrivning av kunden och verksamheten (hela texten): ${beskrivningExtraFull}
 - Kommentar till riskfaktorerna ovan (MANUELL — byråns egna anteckningar om riskbilden; MÅSTE vägas in om ifylld): ${kommentarRiskfaktorer}
@@ -21001,6 +21061,9 @@ ${clip(aiText, 4000)}
 
 KORT UNDERLAG (kom ihåg manuella fritexter):
 - Byråns beskrivning: ${beskrivningKundFull}
+- Verksamhet: ${verksamhetText}
+- Kostnader: ${kostnaderText}
+- Intäkterna: ${intakternaText}
 - Kommentar riskfaktorer: ${kommentarRiskfaktorer}
 - Tjänster: ${tjansterListaCanonical}
 - Riskfaktorer: ${clip(lankadeRiskerText || 'Inga', 1200)}
