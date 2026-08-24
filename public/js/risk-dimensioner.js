@@ -145,6 +145,13 @@
       present.kund.push('Kunden verkar i en högriskbransch');
     }
 
+    var extraPresent = src.extraPresent && typeof src.extraPresent === 'object' ? src.extraPresent : {};
+    Object.keys(extraPresent).forEach(function (id) {
+      if (!present[id] || !extraPresent[id]) return;
+      if (present[id].length) return;
+      present[id].push(typeof extraPresent[id] === 'string' ? extraPresent[id] : 'Övriga riskfaktorer');
+    });
+
     var saknade = required.filter(function (dim) {
       return !(present[dim.id] && present[dim.id].length);
     }).map(function (dim) { return dim.label; });

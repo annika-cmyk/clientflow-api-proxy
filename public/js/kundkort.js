@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.79', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.80', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -918,11 +918,17 @@ class CustomerCardManager {
     _dimensionStatus(fields) {
         const RD = window.RiskDimensioner;
         if (!RD || !RD.assessCustomerDimensions) return null;
+        const src = fields || this.customerData?.fields || {};
         const linked = this._linkedRiskIds || new Set();
+        const Kat = window.OvrigaRiskKategorier;
+        const extraPresent = (Kat && Kat.filledDimensionsFromLabels)
+            ? Kat.filledDimensionsFromLabels(this._normalizeRiskhojValda(src['Riskhöjande faktorer övrigt']))
+            : {};
         return RD.assessCustomerDimensions({
-            fields: fields || this.customerData?.fields || {},
+            fields: src,
             linkedRiskRecords: (this._allaRisker || []).filter((r) => linked.has(r.id)),
-            byraTemplates: this._allaRisker || []
+            byraTemplates: this._allaRisker || [],
+            extraPresent
         });
     }
 
@@ -6806,7 +6812,13 @@ class CustomerCardManager {
         });
         // Undvik dubbel "högriskbransch" – den hanteras ovan med branschval, visa den inte under Övriga
         const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
-        const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
+        const Kat = window.OvrigaRiskKategorier;
+        const isCoveredOvriga = (r) => Kat && Kat.isCoveredByDimension && Kat.isCoveredByDimension(r.fields['Riskfaktor']);
+        const riskerForList = risker.filter((r) => {
+            if (typId === 'kund' && isHogriskBranschRisk(r)) return false;
+            if (isCoveredOvriga(r)) return false;
+            return true;
+        });
 
         const valda = riskerForList.filter(r => linkedIds.has(r.id));
         const viewId = `risker-view-${typId}`;
@@ -7250,8 +7262,7 @@ class CustomerCardManager {
 
     renderOvrigaRiskKategoriBlock(fields) {
         const Kat = window.OvrigaRiskKategorier;
-        const valda = this._normalizeRiskhojValda(fields && fields['Riskhöjande faktorer övrigt'])
-            .filter((v) => !(Kat && Kat.isCoveredByDimension && Kat.isCoveredByDimension(v)));
+        const valda = this._normalizeRiskhojValda(fields && fields['Riskhöjande faktorer övrigt']);
         const kycFält = 'KYC genomgången - Riskhöjande faktorer övrigt';
         const kycVärde = fields && fields[kycFält];
         if (!Kat || !Kat.CATEGORIES) {
@@ -7298,7 +7309,7 @@ class CustomerCardManager {
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body" style="position:relative;">
-                    <p class="kyc-hint">Varningsflaggor utöver listorna ovan. Distans, ombud, PEP, högriskbransch och kontanter väljs i korten ovanför. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
+                    <p class="kyc-hint">Alla övriga varningsflaggor samlas här. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
                     <div id="riskf-view-ovriga-alla" data-chip-variant="high">${viewContent}</div>
                     <div id="riskf-edit-ovriga-alla" style="display:none;">
                         ${editSections}
@@ -7349,7 +7360,7 @@ class CustomerCardManager {
 
     _ovrigaRiskKategoriItems(cat, valda) {
         const Kat = window.OvrigaRiskKategorier;
-        const prescribed = Kat && Kat.factorsForCategory ? Kat.factorsForCategory(cat.id, { kundkort: true }) : [];
+        const prescribed = Kat && Kat.factorsForCategory ? Kat.factorsForCategory(cat.id) : [];
         const extras = Kat && Kat.extrasForCategory
             ? Kat.extrasForCategory(cat.id, this._riskhojAlternativ || [])
             : [];

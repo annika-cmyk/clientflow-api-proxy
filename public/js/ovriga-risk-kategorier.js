@@ -345,6 +345,23 @@
     return !!(hit && hit.coveredByDimension);
   }
 
+  function dimensionIdForFactor(factor) {
+    if (!factor || !factor.coveredByDimension) return '';
+    if (factor.category === 'samarbete') return 'distribution';
+    if (factor.category === 'kunden') return 'kund';
+    if (factor.category === 'verksamheten') return 'verksamhet';
+    return '';
+  }
+
+  function filledDimensionsFromLabels(labels) {
+    var out = {};
+    (Array.isArray(labels) ? labels : []).forEach(function (raw) {
+      var id = dimensionIdForFactor(findFactor(raw));
+      if (id) out[id] = true;
+    });
+    return out;
+  }
+
   function factorsForCategory(categoryId, opts) {
     return FACTORS.filter(function (f) {
       if (f.category !== categoryId) return false;
@@ -374,14 +391,15 @@
     var out = [];
     (Array.isArray(checkedLabels) ? checkedLabels : []).forEach(function (raw) {
       var label = canonicalLabel(raw);
-      if (!label || fold(label) === 'inga' || isCoveredByDimension(label)) return;
+      if (!label || fold(label) === 'inga') return;
       if (seen[fold(label)]) return;
       seen[fold(label)] = true;
       out.push(label);
     });
     (Array.isArray(existingLabels) ? existingLabels : []).forEach(function (raw) {
       var label = canonicalLabel(raw);
-      if (!label || !isCoveredByDimension(label) || seen[fold(label)]) return;
+      if (!label || fold(label) === 'inga' || seen[fold(label)]) return;
+      if (findFactor(label)) return;
       seen[fold(label)] = true;
       out.push(label);
     });
@@ -432,6 +450,8 @@
     defaultKatalog: defaultKatalog,
     categoryById: categoryById,
     isCoveredByDimension: isCoveredByDimension,
+    dimensionIdForFactor: dimensionIdForFactor,
+    filledDimensionsFromLabels: filledDimensionsFromLabels,
     factorsForCategory: factorsForCategory,
     labelsForCategory: labelsForCategory,
     extrasForCategory: extrasForCategory,
