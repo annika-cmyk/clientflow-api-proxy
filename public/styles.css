@@ -12854,6 +12854,79 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .tjanst-forutsattning-flag--nej { color: #b91c1c; }
 .tjanst-forutsattning-flag--delvis { color: #b45309; }
+.tjanst-kundspecifik-chip {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.12rem 0.42rem;
+    border-radius: 999px;
+    background: #fff4e5;
+    color: #9a3412;
+    white-space: nowrap;
+}
+.tjanst-kundspecifik-chip--ok {
+    background: #ecfdf3;
+    color: #047857;
+}
+.tjanst-risk-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+    margin: 0 0 0.75rem;
+}
+.tjanst-risk-pair-item {
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+}
+.tjanst-risk-pair-item.is-default {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+.tjanst-risk-pair-kicker {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.2rem;
+}
+.tjanst-risk-pair-item.is-default .tjanst-risk-pair-kicker { color: #1d4ed8; }
+.tjanst-risk-pair-value {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--title-text);
+}
+.tjanst-risk-pair-value small {
+    font-weight: 500;
+    color: #64748b;
+}
+.tjanst-risk-pair-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: #64748b;
+    line-height: 1.35;
+}
+.tjanst-forutsattning-editor {
+    margin-top: 0.85rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #fdba74;
+    border-radius: 10px;
+    background: #fffbeb;
+}
+.forutsattning-desc {
+    margin: 0.25rem 0 0;
+    font-size: 0.78rem;
+    color: #475569;
+    line-height: 1.4;
+}
+@media (max-width: 640px) {
+    .tjanst-risk-pair { grid-template-columns: 1fr; }
+}
 .forutsattning-box {
     margin-top: 0.85rem;
     padding: 0.75rem 0.85rem;

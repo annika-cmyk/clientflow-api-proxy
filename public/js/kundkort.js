@@ -7755,6 +7755,89 @@ class CustomerCardManager {
         );
     }
 
+    _renderTjanstRiskPairHtml(item) {
+        if (!item) return '';
+        const used = item.residualSource || 'mall';
+        const inherentLabel = this._riskLabel(item.inherentLevel) || '–';
+        const mallLabel = this._riskLabel(item.mallResidualLevel) || this._riskLabel(item.residualLevel) || '–';
+        const usedLabel = this._riskLabel(item.residualLevel) || mallLabel;
+        const inherentActive = used === 'inneboende';
+        const residualActive = used === 'mall' || used === 'override';
+        const residualHint = used === 'override'
+            ? 'Eget S×K gäller i beräkningen'
+            : (residualActive ? 'Gäller när kundspecifika åtgärder görs' : 'Mallens residual används inte');
+        return `
+            <div class="tjanst-risk-pair">
+                <div class="tjanst-risk-pair-item${inherentActive ? ' is-default' : ''}">
+                    <span class="tjanst-risk-pair-kicker">Inneboende${inherentActive ? ' · gäller nu' : ''}</span>
+                    <span class="tjanst-risk-pair-value">${this._esc(inherentLabel)} <small>S×K ${item.inherentProduct != null ? item.inherentProduct : '–'}</small></span>
+                    <span class="tjanst-risk-pair-hint">${inherentActive ? 'Kundspecifika åtgärder görs inte' : 'Default om åtgärderna inte görs'}</span>
+                </div>
+                <div class="tjanst-risk-pair-item${residualActive ? ' is-default' : ''}">
+                    <span class="tjanst-risk-pair-kicker">${used === 'override' ? 'Korrigerad residual · gäller nu' : `Residual${residualActive ? ' · gäller nu' : ''}`}</span>
+                    <span class="tjanst-risk-pair-value">${this._esc(used === 'override' ? usedLabel : mallLabel)} <small>S×K ${used === 'override' ? (item.residualProduct != null ? item.residualProduct : '–') : (item.mallResidualProduct != null ? item.mallResidualProduct : '–')}</small></span>
+                    <span class="tjanst-risk-pair-hint">${this._esc(residualHint)}</span>
+                </div>
+            </div>`;
+    }
+
+    _renderForutsattningGroupInner(g) {
+        const TF = window.TjanstForutsattning;
+        const sid = this._esc(g.tjanstId);
+        const assess = g.assess || {};
+        const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
+        const warn = assess.warning
+            ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
+            : (assess.hint ? `<p class="forutsattning-hint">${this._esc(assess.hint)}</p>` : '');
+        const rows = (g.rows || []).map((row) => {
+            const state = row.triState || (TF ? TF.triState(row.uppfylld) : 'ej_bedomd');
+            const needMot = state === 'ej_uppfylld';
+            const desc = row.beskrivning ? `<p class="forutsattning-desc">${this._esc(row.beskrivning)}</p>` : '';
+            return `
+                    <div class="forutsattning-row forutsattning-row--tri" data-tjanst-id="${sid}" data-atgard-key="${this._esc(row.key)}" data-state="${state}">
+                        <div class="forutsattning-row-top">
+                            <button type="button" class="forutsattning-check" aria-pressed="${state === 'uppfylld' ? 'true' : 'false'}" title="Görs" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'uppfylld')">
+                                <span class="forutsattning-check-box" aria-hidden="true"></span>
+                            </button>
+                            <span class="forutsattning-titel">${this._esc(row.titel)}</span>
+                            <button type="button" class="forutsattning-nej" aria-pressed="${state === 'ej_uppfylld' ? 'true' : 'false'}" title="Görs inte" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'ej_uppfylld')">✕</button>
+                        </div>
+                        ${desc}
+                        <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Kort motivering (obligatorisk när åtgärden inte görs)" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
+                    </div>`;
+        }).join('');
+        const ov = assess.override || {};
+        const sVal = ov.sannolikhetEfter || '';
+        const kVal = ov.konsekvensEfter || '';
+        const overrideReq = assess.status === 'nej' && !assess.override;
+        const residualHint = g.item && g.item.residualSource === 'inneboende'
+            ? `<p class="forutsattning-hint">Default är inneboende risk (${this._esc(g.item.inherentLevel || '')}, S×K ${g.item.inherentProduct || '–'}). Korrigera S och K om ni vill sätta ett eget värde.</p>`
+            : (g.item && g.item.residualSource === 'override'
+                ? `<p class="forutsattning-hint">Eget värde S×K ${g.item.residualProduct} (${this._esc(g.item.residualLevel || '')}) följer med till kundens riskbedömning.</p>`
+                : `<p class="forutsattning-hint">Default är tjänstens residual. Korrigera S och K om ni vill sätta ett eget värde — det följer med till kundens riskbedömning så ni kan kommentera det.</p>`);
+        return `
+                    ${warn}
+                    ${residualHint}
+                    ${rows}
+                    <div class="forutsattning-override">
+                        <p class="forutsattning-override-label">${overrideReq ? 'Korrigera residual (S×K) — eget värde ersätter inneboende default' : 'Korrigera residual (S×K), valfritt'}</p>
+                        <div class="forutsattning-override-scores">
+                            <label>Sannolikhet
+                                <select class="forutsattning-override-s" onclick="event.stopPropagation()" onchange="customerCardManager._onForutsattningOverrideChange(this)">
+                                    <option value="">Mall</option>
+                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(sVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                                </select>
+                            </label>
+                            <label>Konsekvens
+                                <select class="forutsattning-override-k" onclick="event.stopPropagation()" onchange="customerCardManager._onForutsattningOverrideChange(this)">
+                                    <option value="">Mall</option>
+                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(kVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                                </select>
+                            </label>
+                        </div>
+                    </div>`;
+    }
+
     _renderRiskForutsattningBlock() {
         const TF = window.TjanstForutsattning;
         if (!TF || !TF.listKundForutsattningar) {
@@ -7764,64 +7847,15 @@ class CustomerCardManager {
         if (!groups.length) {
             return '<div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" hidden></div>';
         }
-        const html = groups.map((g) => {
-            const sid = this._esc(g.tjanstId);
-            const assess = g.assess || {};
-            const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
-            const warn = assess.warning
-                ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
-                : (assess.hint ? `<p class="forutsattning-hint">${this._esc(assess.hint)}</p>` : '');
-            const rows = (g.rows || []).map((row) => {
-                const state = row.triState || TF.triState(row.uppfylld);
-                const needMot = state === 'ej_uppfylld';
-                return `
-                    <div class="forutsattning-row forutsattning-row--tri" data-tjanst-id="${sid}" data-atgard-key="${this._esc(row.key)}" data-state="${state}">
-                        <div class="forutsattning-row-top">
-                            <button type="button" class="forutsattning-check" aria-pressed="${state === 'uppfylld' ? 'true' : 'false'}" title="Uppfylld" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'uppfylld')">
-                                <span class="forutsattning-check-box" aria-hidden="true"></span>
-                            </button>
-                            <span class="forutsattning-titel">${this._esc(row.titel)}</span>
-                            <button type="button" class="forutsattning-nej" aria-pressed="${state === 'ej_uppfylld' ? 'true' : 'false'}" title="Ej uppfylld" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'ej_uppfylld')">✕</button>
-                        </div>
-                        <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Kort motivering (obligatorisk när förutsättningen inte är uppfylld)" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
-                    </div>`;
-            }).join('');
-            const ov = assess.override || {};
-            const sVal = ov.sannolikhetEfter || '';
-            const kVal = ov.konsekvensEfter || '';
-            const overrideReq = assess.status === 'nej' && !assess.override;
-            const residualHint = g.item && g.item.residualSource === 'inneboende'
-                ? `<p class="forutsattning-hint">Beräknad residual för tjänsten använder inneboende risk (${this._esc(g.item.inherentLevel || '')}, S×K ${g.item.inherentProduct || '–'}) tills ni sätter en kundspecifik residual.</p>`
-                : (g.item && g.item.residualSource === 'override'
-                    ? `<p class="forutsattning-hint">Kundspecifik residual S×K ${g.item.residualProduct} (${this._esc(g.item.residualLevel || '')}) används i den beräknade nivån.</p>`
-                    : '');
-            return `
-                <section class="forutsattning-group" data-tjanst-id="${sid}">
+        const html = groups.map((g) => `
+                <section class="forutsattning-group" data-tjanst-id="${this._esc(g.tjanstId)}">
                     <h4 class="forutsattning-group-title">FÖRUTSÄTTNINGAR FÖR ${this._esc(g.namn || 'tjänsten')}</h4>
-                    ${warn}
-                    ${residualHint}
-                    ${rows}
-                    <div class="forutsattning-override">
-                        <p class="forutsattning-override-label">${overrideReq ? 'Kundspecifik residual (krävs för att använda sänkt residual i beräkningen)' : 'Kundspecifik residual (S×K), valfritt'}</p>
-                        <div class="forutsattning-override-scores">
-                            <label>Sannolikhet
-                                <select class="forutsattning-override-s">
-                                    <option value="">Mall</option>
-                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(sVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
-                                </select>
-                            </label>
-                            <label>Konsekvens
-                                <select class="forutsattning-override-k">
-                                    <option value="">Mall</option>
-                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(kVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
-                                </select>
-                            </label>
-                        </div>
-                    </div>
-                </section>`;
-        }).join('');
+                    ${this._renderTjanstRiskPairHtml(g.item)}
+                    ${this._renderForutsattningGroupInner(g)}
+                </section>`).join('');
         return `
             <div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" onclick="event.stopPropagation()">
+                <p class="forutsattning-hint">Värdet från tjänsterna ovan (inneboende, residual eller korrigerat S×K) används i den beräknade residualen. Kommentera det i motiveringen.</p>
                 ${html}
                 <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar()">
                     <i class="fas fa-save"></i> Spara förutsättningar
@@ -7853,6 +7887,60 @@ class CustomerCardManager {
         if (nej) nej.setAttribute('aria-pressed', next === 'ej_uppfylld' ? 'true' : 'false');
         const area = row.querySelector('.forutsattning-motivering');
         if (area) area.hidden = next !== 'ej_uppfylld';
+        this._refreshTjanstForutsattningPreview(row.closest('.forutsattning-group'));
+    }
+
+    _onForutsattningOverrideChange(el) {
+        this._refreshTjanstForutsattningPreview(el && el.closest('.forutsattning-group'));
+    }
+
+    _refreshTjanstForutsattningPreview(group) {
+        if (!group) return;
+        const pair = group.querySelector('.tjanst-risk-pair')
+            || (group.closest('.tjanst-forutsattning-editor') || group).querySelector('.tjanst-risk-pair');
+        const tjanst = this._tjanstById(group.getAttribute('data-tjanst-id'));
+        if (!pair || !tjanst) return;
+        const draft = this._draftForutsattningState(group);
+        const TF = window.TjanstForutsattning;
+        if (!TF || !TF.applyToResidualItem) return;
+        const item = TF.applyToResidualItem(tjanst, draft);
+        pair.outerHTML = this._renderTjanstRiskPairHtml(item);
+    }
+
+    _tjanstById(tjanstId) {
+        const want = String(tjanstId || '').trim();
+        if (!want) return null;
+        return (this._byransTjanster || []).find((t) =>
+            this._tjanstIdMatchSet(t).some((id) => String(id) === want)
+        ) || null;
+    }
+
+    _draftForutsattningState(group) {
+        const TF = window.TjanstForutsattning;
+        const state = TF ? TF.readKundState(this.customerData?.fields || {}) : {};
+        if (!TF || !group) return state;
+        const collected = this._collectForutsattningGroup(group, TF);
+        if (collected) state[collected.tjanstId] = collected;
+        return state;
+    }
+
+    _collectForutsattningGroup(group, TF) {
+        const tjanstId = group.getAttribute('data-tjanst-id');
+        if (!tjanstId) return null;
+        const forutsattningar = {};
+        group.querySelectorAll('.forutsattning-row').forEach((row) => {
+            const key = row.getAttribute('data-atgard-key');
+            const tri = row.getAttribute('data-state') || 'ej_bedomd';
+            const uppfylld = TF.fromTriState(tri);
+            const motivering = row.querySelector('.forutsattning-motivering')?.value.trim() || '';
+            forutsattningar[key] = { uppfylld, motivering };
+        });
+        const s = Number(group.querySelector('.forutsattning-override-s')?.value);
+        const k = Number(group.querySelector('.forutsattning-override-k')?.value);
+        const override = (isFinite(s) && isFinite(k) && s >= 1 && k >= 1)
+            ? { sannolikhetEfter: s, konsekvensEfter: k }
+            : null;
+        return { tjanstId, forutsattningar, override };
     }
 
     _renderForeslagnaAtgarder() {
@@ -7866,7 +7954,7 @@ class CustomerCardManager {
         }
         box.hidden = false;
         box.innerHTML = `
-            <p class="ai-rb-foreslagna-lead">AI föreslår kompletterande åtgärder för ej uppfyllda förutsättningar. Godkänn innan de läggs i åtgärdslistan — de sparas inte automatiskt.</p>
+            <p class="ai-rb-foreslagna-lead">Åtgärdsförslag hämtas från tjänstens risksänkande åtgärder som ska kopplas till uppdragskörningar. Godkänn innan de läggs i åtgärdslistan — de sparas inte automatiskt.</p>
             ${list.map((item, i) => `
                 <div class="ai-rb-foreslagen-rad" data-idx="${i}">
                     <p class="ai-rb-foreslagen-text">${this._esc(item.text || '')}</p>
@@ -9220,14 +9308,20 @@ class CustomerCardManager {
         const riskBadge = (t) => this._riskSkalaPillsHtml(this._scoredFromTjanst(t));
         const forutsattningFlag = (t) => {
             const item = this._effectiveTjanstItem(t);
-            const st = item.forutsattning && item.forutsattning.status;
+            const assess = item.forutsattning;
+            if (!assess || !assess.hasKundberoende) return '';
+            const st = assess.status;
+            const chip = `<span class="tjanst-kundspecifik-chip" title="Tjänsten har kundspecifika åtgärder som ska bedömas här">Kundspecifik åtgärd</span>`;
             if (st === 'nej') {
-                return `<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--nej" title="${this._esc(item.forutsattning.warning)}">⚠</span>`;
+                return `${chip}<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--nej" title="${this._esc(assess.warning)}">⚠</span>`;
             }
             if (st === 'delvis') {
-                return `<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--delvis" title="${this._esc(item.forutsattning.warning)}">⚠</span>`;
+                return `${chip}<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--delvis" title="${this._esc(assess.warning)}">⚠</span>`;
             }
-            return '';
+            if (st === 'ok') {
+                return `${chip}<span class="tjanst-kundspecifik-chip tjanst-kundspecifik-chip--ok" title="Kundspecifika åtgärder görs">Görs</span>`;
+            }
+            return chip;
         };
 
         // Gruppera per TJÄNSTTYP
@@ -9262,7 +9356,7 @@ class CustomerCardManager {
                         </div>
                     </div>
                     ${hasDetails ? `
-                    <div class="tjanst-collapsible-body" id="${uid}" style="display:none;">
+                    <div class="tjanst-collapsible-body" id="${uid}" style="display:none;" onclick="event.stopPropagation()">
                         ${detailsHtml}
                     </div>` : ''}
                 </div>`;
@@ -9388,23 +9482,26 @@ class CustomerCardManager {
         }
         if (atgarder.length) {
             const TF = window.TjanstForutsattning;
-            parts.push(`<div class="risker-vald-section-label">Tjänstespecifika åtgärder</div>`);
-            parts.push(atgarder.map((a) => {
-                const title = String(a.titel || a.title || a.namn || '').trim();
-                const desc = String(a.beskrivning || a.description || '').trim();
-                if (!title && !desc) return '';
-                const typ = TF ? TF.normalizeAtgardTyp(a.atgardTyp) : '';
-                const tag = TF && typ ? TF.typTagClass(typ) : '';
-                const tagLabel = TF && typ ? TF.typTagLabel(typ) : '';
-                const typHtml = tag && tagLabel
-                    ? `<span class="atgard-typ-tag atgard-typ-tag--${tag}">${this._esc(tagLabel)}</span>`
-                    : '';
-                return `
+            const ovriga = TF ? atgarder.filter((a) => !TF.isKundberoende(a)) : atgarder;
+            if (ovriga.length) {
+                parts.push(`<div class="risker-vald-section-label">Tjänstespecifika åtgärder</div>`);
+                parts.push(ovriga.map((a) => {
+                    const title = String(a.titel || a.title || a.namn || '').trim();
+                    const desc = String(a.beskrivning || a.description || '').trim();
+                    if (!title && !desc) return '';
+                    const typ = TF ? TF.normalizeAtgardTyp(a.atgardTyp) : '';
+                    const tag = TF && typ ? TF.typTagClass(typ) : '';
+                    const tagLabel = TF && typ ? TF.typTagLabel(typ) : '';
+                    const typHtml = tag && tagLabel
+                        ? `<span class="atgard-typ-tag atgard-typ-tag--${tag}">${this._esc(tagLabel)}</span>`
+                        : '';
+                    return `
                     <div class="action-item" style="margin-bottom:0.45rem;">
                         <i class="fas fa-check action-icon"></i>
                         <span class="action-text">${title ? `<strong>${this._esc(title)}</strong>` : ''}${desc ? (title ? ' — ' : '') + this._nl(desc) : ''}${typHtml}</span>
                     </div>`;
-            }).join(''));
+                }).join(''));
+            }
             const checklist = this._renderTjanstForutsattningChecklist(t);
             if (checklist) parts.push(checklist);
         } else if (legacyAtgard) {
@@ -9417,14 +9514,22 @@ class CustomerCardManager {
 
     _renderTjanstForutsattningChecklist(t) {
         const TF = window.TjanstForutsattning;
-        if (!TF) return '';
-        const item = this._effectiveTjanstItem(t);
-        const assess = item.forutsattning;
-        if (!assess || !assess.hasKundberoende) return '';
-        const status = assess.status === 'nej'
-            ? 'Ej uppfylld'
-            : (assess.status === 'ok' ? 'Uppfylld' : (assess.status === 'delvis' ? 'Delvis uppfylld' : 'Ej bedömd'));
-        return `<p class="forutsattning-tjanst-note">Förutsättningar bedöms under <strong>Kundens riskbedömning</strong> — just nu: ${this._esc(status)}.</p>`;
+        if (!TF || !TF.listKundForutsattningar) return '';
+        const groups = TF.listKundForutsattningar([t], this._kundForutsattningState());
+        const g = groups[0];
+        if (!g || !g.assess || !g.assess.hasKundberoende) return '';
+        return `
+            <div class="tjanst-forutsattning-editor" onclick="event.stopPropagation()">
+                <div class="risker-vald-section-label">Kundspecifika åtgärder</div>
+                <p class="forutsattning-hint">Markera om åtgärden görs för den här kunden. Om den inte görs blir inneboende risk default. Om den görs blir residual default. Korrigera S och K vid behov — värdet följer med till kundens riskbedömning.</p>
+                ${this._renderTjanstRiskPairHtml(g.item)}
+                <section class="forutsattning-group" data-tjanst-id="${this._esc(g.tjanstId)}">
+                    ${this._renderForutsattningGroupInner(g)}
+                </section>
+                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar(this)">
+                    <i class="fas fa-save"></i> Spara förutsättningar
+                </button>
+            </div>`;
     }
 
     _toggleForutsattningMotivering(selectEl) {
@@ -9439,35 +9544,27 @@ class CustomerCardManager {
         return this.saveRiskForutsattningar();
     }
 
-    async saveRiskForutsattningar() {
+    async saveRiskForutsattningar(fromEl) {
         const TF = window.TjanstForutsattning;
         const customerId = this.customerId;
-        const box = document.getElementById('ai-rb-forutsattningar');
-        if (!TF || !customerId || !box) return;
+        const root = (fromEl && fromEl.closest
+            && (fromEl.closest('.tjanst-forutsattning-editor') || fromEl.closest('#ai-rb-forutsattningar')))
+            || document.getElementById('ai-rb-forutsattningar');
+        const groups = (root || document).querySelectorAll('.forutsattning-group');
+        if (!TF || !customerId || !groups.length) return;
         const state = TF.readKundState(this.customerData?.fields || {});
-        const groups = box.querySelectorAll('.forutsattning-group');
-        if (!groups.length) return;
         for (const group of groups) {
-            const tjanstId = group.getAttribute('data-tjanst-id');
-            const forutsattningar = {};
-            group.querySelectorAll('.forutsattning-row').forEach((row) => {
-                const key = row.getAttribute('data-atgard-key');
-                const tri = row.getAttribute('data-state') || 'ej_bedomd';
-                const uppfylld = TF.fromTriState(tri);
-                const motivering = row.querySelector('.forutsattning-motivering')?.value.trim() || '';
-                forutsattningar[key] = { uppfylld, motivering };
-            });
-            const s = Number(group.querySelector('.forutsattning-override-s')?.value);
-            const k = Number(group.querySelector('.forutsattning-override-k')?.value);
-            const override = (isFinite(s) && isFinite(k) && s >= 1 && k >= 1)
-                ? { sannolikhetEfter: s, konsekvensEfter: k }
-                : null;
-            const check = TF.validateKundState({ [tjanstId]: { forutsattningar } });
+            const collected = this._collectForutsattningGroup(group, TF);
+            if (!collected) continue;
+            const check = TF.validateKundState({ [collected.tjanstId]: { forutsattningar: collected.forutsattningar } });
             if (!check.ok) {
                 this.showNotification(check.error, 'error');
                 return;
             }
-            state[tjanstId] = { forutsattningar, override };
+            state[collected.tjanstId] = {
+                forutsattningar: collected.forutsattningar,
+                override: collected.override
+            };
         }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -9622,7 +9719,24 @@ class CustomerCardManager {
         }
     }
 
+    _openTjanstDetailIds() {
+        return [...document.querySelectorAll('.tjanst-collapsible-body')]
+            .filter((el) => el.style.display !== 'none')
+            .map((el) => el.id);
+    }
+
+    _restoreTjanstDetails(ids) {
+        (ids || []).forEach((id) => {
+            const body = document.getElementById(id);
+            const chevron = document.getElementById(`chevron-${id}`);
+            if (!body) return;
+            body.style.display = '';
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
+        });
+    }
+
     _refreshServicesAndRisk() {
+        const openIds = this._openTjanstDetailIds();
         const byraHighRisk = this._byraHighRiskTjanster || [];
         if (document.getElementById('services-content')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'services-content');
@@ -9630,6 +9744,7 @@ class CustomerCardManager {
         if (document.getElementById('ovrigkyc-tjanster')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
+        this._restoreTjanstDetails(openIds);
         this._refreshRiskprofilForeslagenUi();
     }
 

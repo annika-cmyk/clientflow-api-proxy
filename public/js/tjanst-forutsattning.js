@@ -110,6 +110,10 @@
     return parseAtgarder(raw).filter(isKundberoende);
   }
 
+  function listUppdragsatgarder(raw) {
+    return parseAtgarder(raw).filter(isUppdragsatgard);
+  }
+
   var KUND_HINT_RE = /\b(automatiserad|lagervardering|lagerhantering|lagersystem|lagerprogram|hos kunden|kundens system|kundens rutin|kundens program|kundens underlag|forutsatter|forutsattning|kunden sjalv|kunden har|regelbundna avstamningar|regelbunden avstamning|affarssystem|kassasystem)\b/;
   var BYRA_HINT_RE = /\b(byran|vi kontrollerar|vi granskar|vi stämmer|vi stamer|vi dokumenterar|bokslutsprogram|intern rutin|intern kontroll|handlaggare|kann kunden|kyc)\b/;
 
@@ -507,12 +511,36 @@
       existing[fold(line)] = true;
     });
     var out = [];
+    function pushForslag(item) {
+      var text = trimStr(item && item.text);
+      if (!text || existing[fold(text)]) return;
+      existing[fold(text)] = true;
+      out.push(item);
+    }
     listKundForutsattningar(tjanster, kundState).forEach(function (g) {
-      g.rows.forEach(function (row) {
-        if (!isEjUppfylld(row.uppfylld)) return;
+      var unmet = (g.rows || []).filter(function (row) { return isEjUppfylld(row.uppfylld); });
+      if (!unmet.length) return;
+      var uppdrag = listUppdragsatgarder((g.item && g.item.atgarder) || []);
+      if (uppdrag.length) {
+        uppdrag.forEach(function (a) {
+          var text = atgardTitel(a) || trimStr(a.beskrivning || a.description);
+          if (!text) return;
+          pushForslag({
+            key: atgardKey(a),
+            text: text,
+            reason: 'Risksänkande åtgärd från tjänsten som ska kopplas till uppdragskörning.',
+            titel: text,
+            tjanstId: g.tjanstId,
+            tjanstNamn: g.namn,
+            approved: false,
+            fromUppdragsatgard: true
+          });
+        });
+        return;
+      }
+      unmet.forEach(function (row) {
         var forslag = suggestKompletterandeAtgard(row);
-        if (existing[fold(forslag.text)]) return;
-        out.push(Object.assign({}, forslag, {
+        pushForslag(Object.assign({}, forslag, {
           tjanstId: g.tjanstId,
           tjanstNamn: g.namn,
           approved: false
@@ -575,6 +603,7 @@
       });
     });
     listKundForutsattningar(tjanster, kundState).forEach(function (g) {
+      if (listUppdragsatgarder((g.item && g.item.atgarder) || []).length) return;
       g.rows.forEach(function (row) {
         if (!row.lagsUtSomUppdragsatgard || !isEjUppfylld(row.uppfylld)) return;
         push({
@@ -646,6 +675,7 @@
     isKundberoende: isKundberoende,
     isUppdragsatgard: isUppdragsatgard,
     kundberoendeAtgarder: kundberoendeAtgarder,
+    listUppdragsatgarder: listUppdragsatgarder,
     suggestAtgardTyp: suggestAtgardTyp,
     typLabel: typLabel,
     typTagClass: typTagClass,
