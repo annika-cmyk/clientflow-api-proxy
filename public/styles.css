@@ -12950,8 +12950,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
         "hint hint hint";
     gap: 0.65rem 1rem;
     align-items: end;
-    padding: 1.1rem 1.6rem 1rem;
-    background: #f8fafc;
+    padding: 0 0 1rem;
+    margin: 0 0 1rem;
+    background: transparent;
     border-bottom: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
 }
@@ -13046,11 +13047,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     background: #fff;
     font-size: 0.92rem;
 }
+.tjanst-panel[data-tjanst-panel="hot"] #hot-list,
+.tjanst-panel[data-tjanst-panel="sarbarhet"] #sarbarhet-list,
 .tjanst-panel[data-tjanst-panel="atgard"] #atgard-list,
 .tjanst-panel[data-tjanst-panel="atgard"] #atgard-empty {
     min-height: 0;
 }
+.tjanst-panel[data-tjanst-panel="hot"] #hot-list,
+.tjanst-panel[data-tjanst-panel="sarbarhet"] #sarbarhet-list,
 .tjanst-panel[data-tjanst-panel="atgard"] #atgard-list {
+    flex: 1 1 auto;
     overflow: auto;
 }
 .tjanst-modal-identity .form-group {
@@ -13076,11 +13082,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .tjanst-tabs {
     display: flex;
+    flex-wrap: nowrap;
     gap: 0.25rem;
     padding: 0.75rem 1.6rem 0;
     border-bottom: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
     background: #fff;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 .tjanst-tab {
     appearance: none;
@@ -13097,6 +13108,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 .tjanst-tab:hover { color: #0f172a; }
 .tjanst-tab.is-active {
@@ -13123,7 +13136,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .tjanst-modal-body {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     padding: 1.15rem 1.6rem 1.25rem;
     display: flex;
     flex-direction: column;
@@ -13133,6 +13146,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .tjanst-panel[hidden] { display: none !important; }
 .tjanst-panel label {
@@ -13150,7 +13166,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .tjanst-panel #tjanst-beskrivning {
     width: 100%;
     flex: 1;
-    min-height: 280px;
+    min-height: 160px;
     resize: none;
     border: 1px solid #d7dee8;
     border-radius: 10px;

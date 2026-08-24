@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Riskbedömning av byråns tjänster</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260824c">
+    <link rel="stylesheet" href="styles.css?v=20260824d">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -151,42 +151,6 @@
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
 
-                        <div class="tjanst-modal-identity">
-                            <div class="form-group tjanst-name-field">
-                                <label for="tjanst-name">Tjänstens namn *</label>
-                                <input type="text" id="tjanst-name" name="task-name" placeholder="t.ex. Löpande bokföring" required>
-                            </div>
-                            <div class="tjanst-risk-scores">
-                                <div class="form-group">
-                                    <label for="tjanst-sannolikhet" title="Hur troligt är det att något av de listade hoten realiseras, givet sårbarheterna">Sannolikhet (1–5)</label>
-                                    <select id="tjanst-sannolikhet" name="sannolikhet">
-                                        <option value="">Ej satt</option>
-                                        <option value="1">1</option>
-                                        <option value="2">2</option>
-                                        <option value="3">3</option>
-                                        <option value="4">4</option>
-                                        <option value="5">5</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="tjanst-konsekvens" title="Hur allvarlig är skadan om det händer">Konsekvens (1–5)</label>
-                                    <select id="tjanst-konsekvens" name="konsekvens">
-                                        <option value="">Ej satt</option>
-                                        <option value="1">1</option>
-                                        <option value="2">2</option>
-                                        <option value="3">3</option>
-                                        <option value="4">4</option>
-                                        <option value="5">5</option>
-                                    </select>
-                                </div>
-                                <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status" title="Inneboende risk är risken i tjänsten i sig, innan era åtgärder. Räknas som S×K.">Inneboende risk: Ej satt</div>
-                            </div>
-                            <button type="button" id="ai-suggest-btn" class="btn btn-ai">
-                                <i class="fas fa-wand-magic-sparkles"></i>
-                                <span class="ai-btn-label">Generera med AI</span>
-                            </button>
-                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
-                        </div>
                         <div id="tjanst-ai-summary" class="ai-review-summary" hidden></div>
 
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
@@ -198,6 +162,42 @@
 
                         <div class="tjanst-modal-body">
                             <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
+                                <div class="tjanst-modal-identity">
+                                    <div class="form-group tjanst-name-field">
+                                        <label for="tjanst-name">Tjänstens namn *</label>
+                                        <input type="text" id="tjanst-name" name="task-name" placeholder="t.ex. Löpande bokföring" required>
+                                    </div>
+                                    <div class="tjanst-risk-scores">
+                                        <div class="form-group">
+                                            <label for="tjanst-sannolikhet" title="Hur troligt är det att något av de listade hoten realiseras, givet sårbarheterna">Sannolikhet (1–5)</label>
+                                            <select id="tjanst-sannolikhet" name="sannolikhet">
+                                                <option value="">Ej satt</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="tjanst-konsekvens" title="Hur allvarlig är skadan om det händer">Konsekvens (1–5)</label>
+                                            <select id="tjanst-konsekvens" name="konsekvens">
+                                                <option value="">Ej satt</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                            </select>
+                                        </div>
+                                        <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status" title="Inneboende risk är risken i tjänsten i sig, innan era åtgärder. Räknas som S×K.">Inneboende risk: Ej satt</div>
+                                    </div>
+                                    <button type="button" id="ai-suggest-btn" class="btn btn-ai">
+                                        <i class="fas fa-wand-magic-sparkles"></i>
+                                        <span class="ai-btn-label">Generera med AI</span>
+                                    </button>
+                                    <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
+                                </div>
                                 <label for="tjanst-beskrivning">Tjänstebeskrivning och inneboende risk</label>
                                 <p class="tjanst-panel-hint">Beskriv tjänsten och den risk den utgör i sig — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
                                 <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär och vilken risk den utgör i sig — inte byrån, personal eller era kontroller."></textarea>
