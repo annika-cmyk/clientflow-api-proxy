@@ -2367,6 +2367,60 @@ body.sidebar-collapsed .logout-btn {
     text-transform: uppercase;
     opacity: 0.85;
 }
+.hogrisk-edit-grupp {
+    margin-bottom: 1.25rem;
+    border: 1px solid #fee2e2;
+    border-radius: 8px;
+    padding: 0.75rem 0.85rem;
+    background: #fff5f5;
+}
+.hogrisk-edit-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+.hogrisk-edit-header .risker-checkgrupp-titel {
+    color: #dc2626;
+    margin-bottom: 0;
+}
+.hogrisk-edit-summary-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+}
+.hogrisk-edit-chips {
+    justify-content: flex-end;
+}
+.hogrisk-edit-empty {
+    font-size: 0.78rem;
+    color: #9f1239;
+}
+.hogrisk-edit-body {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #fecaca;
+}
+.hogrisk-edit-hint {
+    margin: 0 0 0.65rem;
+    font-size: 0.8rem;
+    color: #7f1d1d;
+    line-height: 1.4;
+}
+.hogrisk-manuell-rad {
+    display: flex;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+    align-items: center;
+}
+.hogrisk-manuell-rad input {
+    flex: 1;
+    min-width: 0;
+}
 
 .sni-code-label {
     font-size: 0.88rem;

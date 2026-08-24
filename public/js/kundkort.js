@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.79', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.90', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -6820,11 +6820,13 @@ class CustomerCardManager {
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
         const sniHogrisk = typId === 'kund' ? this._hogriskSniBranscher() : [];
         const hogriskAlternativ = [...HOGRISK_ALTERNATIV];
-        sniHogrisk.forEach((alt) => {
+        const pushHogriskAlt = (alt) => {
+            if (!alt) return;
             if (!hogriskAlternativ.some((x) => String(x).toLowerCase() === String(alt).toLowerCase())) {
                 hogriskAlternativ.push(alt);
             }
-        });
+        };
+        sniHogrisk.forEach(pushHogriskAlt);
         // Undvik dubbel "högriskbransch" – den hanteras ovan med branschval, visa den inte under Övriga
         const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
         const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
@@ -6842,7 +6844,10 @@ class CustomerCardManager {
             ]))
             : [];
 
+        valdaHogrisk.forEach(pushHogriskAlt);
+        const hogriskIsVald = (alt) => valdaHogrisk.some((x) => String(x).toLowerCase() === String(alt).toLowerCase());
         const hogriskUid = 'hogrisk-sub-body';
+        const hogriskEditUid = 'hogrisk-edit-body';
         const hogriskTemplate = typId === 'kund' ? this._hogriskBranschRiskRecord() : null;
         const hogriskBadge = hogriskTemplate
             ? (riskBadge(hogriskTemplate) || `<span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>`)
@@ -6859,7 +6864,7 @@ class CustomerCardManager {
                 <div class="tjanst-collapsible-body" id="${hogriskUid}" style="display:none;">
                     <div class="riskf-chips" style="margin-top:0.25rem;">${valdaHogrisk.map(v => {
                         const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(v).toLowerCase());
-                        return `<span class="kyc-chip riskf-chip${fromSni ? ' riskf-chip--sni' : ''}">${v}${fromSni ? ' <em>SNI</em>' : ''}</span>`;
+                        return `<span class="kyc-chip riskf-chip${fromSni ? ' riskf-chip--sni' : ''}">${this._esc(v)}${fromSni ? ' <em>SNI</em>' : ''}</span>`;
                     }).join('')}</div>
                 </div>
             </div>` : '';
@@ -6867,19 +6872,32 @@ class CustomerCardManager {
         const embedded = !!(opts && opts.embedded);
         const parentEditing = !!(container.closest('.collapsible-card')?.querySelector('.card-edit-fab.is-active'));
         const hogriskEditHtml = typId === 'kund' ? `
-            <div class="risker-checkgrupp" style="margin-bottom:1.25rem;border:1px solid #fee2e2;border-radius:8px;padding:0.75rem 0.85rem;background:#fff5f5;">
-                <div class="risker-checkgrupp-titel" style="color:#dc2626;margin-bottom:0.6rem;">
-                    <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
+            <div class="risker-checkgrupp hogrisk-edit-grupp">
+                <div class="hogrisk-edit-header" onclick="customerCardManager.toggleTjanstDetails('${hogriskEditUid}')">
+                    <div class="risker-checkgrupp-titel">
+                        <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
+                    </div>
+                    <div class="hogrisk-edit-summary-wrap">
+                        <div id="hogrisk-edit-summary">${this._hogriskSummaryChipsHtml(valdaHogrisk, sniHogrisk)}</div>
+                        ${hogriskBadge}
+                        <i class="fas fa-chevron-down tjanst-chevron" id="chevron-${hogriskEditUid}"></i>
+                    </div>
                 </div>
-                ${hogriskAlternativ.map(alt => {
-                    const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(alt).toLowerCase());
-                    return `
-                    <label class="risker-check-item">
-                        <input type="checkbox" name="hogrisk-kund" value="${alt}" ${valdaHogrisk.includes(alt) || fromSni ? 'checked' : ''} ${fromSni ? 'disabled' : ''}>
-                        <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
-                        <span class="risker-check-label"><span class="risker-check-namn">${alt}${fromSni ? ' <em class="risker-sni-hint">från SNI</em>' : ''}</span></span>
-                    </label>`;
-                }).join('')}
+                <div class="hogrisk-edit-body" id="${hogriskEditUid}" style="display:none;">
+                    <p class="hogrisk-edit-hint">Branschen hämtas från SNI-koden. Bocka fler eller skriv en egen.</p>
+                    <div id="hogrisk-edit-list">
+                        ${hogriskAlternativ.map((alt) => {
+                            const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(alt).toLowerCase());
+                            return this._hogriskCheckItemHtml(alt, fromSni, hogriskIsVald(alt) || fromSni);
+                        }).join('')}
+                    </div>
+                    <div class="hogrisk-manuell-rad">
+                        <input type="text" id="hogrisk-manuell-input" class="form-input" placeholder="Lägg till bransch manuellt"
+                            onclick="event.stopPropagation()"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();customerCardManager.addHogriskBranschManuell();}">
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="event.stopPropagation();customerCardManager.addHogriskBranschManuell();">Lägg till</button>
+                    </div>
+                </div>
             </div>
             ${embedded ? '' : '<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>'}` : '';
 
@@ -6992,6 +7010,8 @@ class CustomerCardManager {
         if (typId === 'kund') {
             const fromBoxes = [...document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]:checked`)]
                 .map((cb) => cb.value);
+            const pending = String(document.getElementById('hogrisk-manuell-input')?.value || '').trim();
+            if (pending) fromBoxes.push(pending);
             const HS = window.HogriskSni;
             nyaHogrisk = HS
                 ? HS.mergeLabels(fromBoxes, this._hogriskSniBranscher())
@@ -8098,6 +8118,58 @@ class CustomerCardManager {
             .filter((v) => v && v !== '---');
         const fromSni = this._hogriskSniBranscher ? this._hogriskSniBranscher() : [];
         return Array.from(new Set([...fromField, ...fromSni]));
+    }
+
+    _hogriskCheckItemHtml(alt, fromSni, checked) {
+        const safe = this._esc(alt);
+        return `
+                    <label class="risker-check-item">
+                        <input type="checkbox" name="hogrisk-kund" value="${safe}" ${checked || fromSni ? 'checked' : ''} ${fromSni ? 'disabled' : ''}
+                            onchange="customerCardManager._refreshHogriskEditSummary()">
+                        <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
+                        <span class="risker-check-label"><span class="risker-check-namn">${safe}${fromSni ? ' <em class="risker-sni-hint">från SNI</em>' : ''}</span></span>
+                    </label>`;
+    }
+
+    _hogriskSummaryChipsHtml(labels, sniList) {
+        const items = Array.isArray(labels) ? labels.filter(Boolean) : [];
+        const sni = new Set((sniList || []).map((x) => String(x).toLowerCase()));
+        if (!items.length) {
+            return '<span class="hogrisk-edit-empty">Ingen vald · hämtas från SNI eller fylls i manuellt</span>';
+        }
+        return `<div class="riskf-chips hogrisk-edit-chips">${items.map((v) => {
+            const fromSni = sni.has(String(v).toLowerCase());
+            return `<span class="kyc-chip riskf-chip${fromSni ? ' riskf-chip--sni' : ''}">${this._esc(v)}${fromSni ? ' <em>SNI</em>' : ''}</span>`;
+        }).join('')}</div>`;
+    }
+
+    _refreshHogriskEditSummary() {
+        const el = document.getElementById('hogrisk-edit-summary');
+        if (!el) return;
+        const fromBoxes = [...document.querySelectorAll('#risker-edit-kund input[name="hogrisk-kund"]:checked')]
+            .map((cb) => cb.value);
+        const sni = this._hogriskSniBranscher();
+        const HS = window.HogriskSni;
+        const labels = HS
+            ? HS.mergeLabels(fromBoxes, sni)
+            : Array.from(new Set(fromBoxes.concat(sni)));
+        el.innerHTML = this._hogriskSummaryChipsHtml(labels, sni);
+    }
+
+    addHogriskBranschManuell() {
+        const input = document.getElementById('hogrisk-manuell-input');
+        const list = document.getElementById('hogrisk-edit-list');
+        const raw = String(input?.value || '').trim();
+        if (!raw || !list) return;
+        const existing = [...list.querySelectorAll('input[name="hogrisk-kund"]')]
+            .find((cb) => String(cb.value).toLowerCase() === raw.toLowerCase());
+        if (existing) {
+            existing.checked = true;
+        } else {
+            list.insertAdjacentHTML('beforeend', this._hogriskCheckItemHtml(raw, false, true));
+        }
+        if (input) input.value = '';
+        this._refreshHogriskEditSummary();
     }
 
     _hogriskBranschRiskRecord() {
