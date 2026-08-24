@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Övriga riskfaktorer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260824a">
+    <link rel="stylesheet" href="styles.css?v=20260824q">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -140,10 +140,15 @@
                             <i class="fas fa-chevron-down collapsible-chevron"></i>
                         </div>
                         <div class="collapsible-body">
-                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual. <strong>Hög-aktiv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen.</p>
+                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual och i vilket kort de syns. <strong>Hög-aktiv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen. Kategorin styr om flaggan ligger under A. Hur samarbetar vi?, B. Vem är kunden? eller C. Vad gör kunden?</p>
                             <div id="riskhoj-katalog-list" class="riskhoj-katalog-list"></div>
                             <div class="riskhoj-katalog-add">
                                 <input id="riskhoj-katalog-ny" class="form-input" placeholder="Ny flagga, t.ex. många byten av redovisningsbyråer">
+                                <select id="riskhoj-katalog-ny-kategori" class="form-select">
+                                    <option value="samarbete">A. Hur samarbetar vi?</option>
+                                    <option value="kunden">B. Vem är kunden?</option>
+                                    <option value="verksamheten" selected>C. Vad gör kunden?</option>
+                                </select>
                                 <select id="riskhoj-katalog-ny-klass" class="form-select">
                                     <option value="BIDRAR_VID_KOMBINATION">Bidrar vid kombination</option>
                                     <option value="GOLV_HOG">Hög-aktiv</option>
@@ -427,9 +432,9 @@
     <script src="js/risk-skala.js?v=7"></script>
     <script src="js/risk-dimensioner.js?v=1"></script>
     <script src="js/tjanst-forutsattning.js?v=1"></script>
-    <script src="js/ovriga-risk-kategorier.js?v=2"></script>
-    <script src="js/kund-riskprofil.js?v=12"></script>
+    <script src="js/ovriga-risk-kategorier.js?v=3"></script>
+    <script src="js/kund-riskprofil.js?v=13"></script>
     <script src="js/ai-falt-granskning.js?v=9"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=17"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=18"></script>
 </body>
 </html>

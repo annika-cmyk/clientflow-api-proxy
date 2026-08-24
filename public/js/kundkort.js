@@ -6733,13 +6733,17 @@ class CustomerCardManager {
                 this._riskhojAlternativ = this._normalizeRiskhojAlternativ(dataHoj.choices || []);
                 this._risksankAlternativ = (dataSank.choices || []).filter(c => c && c !== '---');
                 this._riskhojKatalog = (window.KundRiskprofil && KundRiskprofil.mergeRiskhojandeKatalog)
-                    ? KundRiskprofil.mergeRiskhojandeKatalog(dataKat.katalog || dataKat.overrides || {})
+                    ? KundRiskprofil.mergeRiskhojandeKatalog(dataKat.overrides || dataKat.katalog || {})
                     : (dataKat.katalog || {});
+                this._riskhojKategorier = (window.KundRiskprofil && KundRiskprofil.mergeRiskhojandeKategorier)
+                    ? KundRiskprofil.mergeRiskhojandeKategorier(dataKat.overrides || dataKat.katalog || {})
+                    : (dataKat.kategorier || {});
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta riskfaktor-alternativ:', e.message);
                 this._riskhojAlternativ = this._riskhojAlternativ || [];
                 this._risksankAlternativ = this._risksankAlternativ || [];
                 this._riskhojKatalog = this._riskhojKatalog || (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
+                this._riskhojKategorier = this._riskhojKategorier || {};
             }
         }
 
@@ -7302,17 +7306,29 @@ class CustomerCardManager {
 
     _ovrigaRiskKategoriItems(cat, valda) {
         const Kat = window.OvrigaRiskKategorier;
-        const prescribed = Kat && Kat.factorsForCategory ? Kat.factorsForCategory(cat.id, { kundkort: true }) : [];
-        const extras = Kat && Kat.extrasForCategory
-            ? Kat.extrasForCategory(cat.id, this._riskhojAlternativ || [])
+        const categoryMap = this._riskhojKategorier || {};
+        const prescribed = Kat && Kat.factorsForCategory
+            ? Kat.factorsForCategory(cat.id, { kundkort: true, categoryMap })
             : [];
-        const items = prescribed.map((f) => ({
-            label: f.label,
-            hint: f.hint || '',
-            klass: f.klass,
-            badge: (Kat && Kat.klassBadge) ? Kat.klassBadge(f.klass, f.badge) : (f.badge || ''),
-            group: f.group || ''
-        }));
+        const extraLabels = Array.from(new Set([].concat(
+            this._riskhojAlternativ || [],
+            Object.keys(this._riskhojKatalog || {})
+        )));
+        const extras = Kat && Kat.extrasForCategory
+            ? Kat.extrasForCategory(cat.id, extraLabels, categoryMap)
+            : [];
+        const items = prescribed.map((f) => {
+            const klass = window.KundRiskprofil && KundRiskprofil.klassForRiskhojande
+                ? KundRiskprofil.klassForRiskhojande(f.label, this._riskhojKatalog)
+                : f.klass;
+            return {
+                label: f.label,
+                hint: f.hint || '',
+                klass,
+                badge: (Kat && Kat.klassBadge) ? Kat.klassBadge(klass, f.badge) : (f.badge || ''),
+                group: f.group || ''
+            };
+        });
         extras.forEach((label) => {
             if (items.some((x) => x.label === label)) return;
             items.push({
@@ -7425,7 +7441,7 @@ class CustomerCardManager {
         const merged = catId === 'alla' && Kat && Kat.mergeVisibleVal
             ? Kat.mergeVisibleVal(existing, checked)
             : (Kat && Kat.mergeValForCategory
-                ? Kat.mergeValForCategory(existing, catId, checked)
+                ? Kat.mergeValForCategory(existing, catId, checked, this._riskhojKategorier)
                 : checked);
         document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]`).forEach((cb) => {
             const label = cb.closest('label');
@@ -7457,7 +7473,7 @@ class CustomerCardManager {
         const Kat = window.OvrigaRiskKategorier;
         const värde = this._normalizeRiskhojValda(
             Kat && Kat.mergeValForCategory
-                ? Kat.mergeValForCategory(existing, catId, checked)
+                ? Kat.mergeValForCategory(existing, catId, checked, this._riskhojKategorier)
                 : checked
         );
         const typId = this._typIdForOvrigaCardId(id);

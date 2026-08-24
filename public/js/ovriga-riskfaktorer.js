@@ -1163,6 +1163,25 @@ class RiskFactorsManager {
         return 'Bidrar vid kombination';
     }
 
+    _riskhojKategoriOptions(selected) {
+        const cats = (window.OvrigaRiskKategorier && OvrigaRiskKategorier.CATEGORIES) || [
+            { id: 'samarbete', letter: 'A', title: 'Hur samarbetar vi?' },
+            { id: 'kunden', letter: 'B', title: 'Vem är kunden?' },
+            { id: 'verksamheten', letter: 'C', title: 'Vad gör kunden?' }
+        ];
+        return cats.map((c) => (
+            `<option value="${c.id}"${c.id === selected ? ' selected' : ''}>${c.letter}. ${c.title}</option>`
+        )).join('');
+    }
+
+    _riskhojDefaultCategory(namn) {
+        const KP = window.KundRiskprofil;
+        if (KP && KP.defaultRiskhojandeCategory) return KP.defaultRiskhojandeCategory(namn);
+        const Kat = window.OvrigaRiskKategorier;
+        const hit = Kat && Kat.findFactor ? Kat.findFactor(namn) : null;
+        return (hit && hit.category) || 'verksamheten';
+    }
+
     async loadRiskhojandeKatalog() {
         const list = document.getElementById('riskhoj-katalog-list');
         if (!list) return;
@@ -1170,11 +1189,31 @@ class RiskFactorsManager {
             const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/riskhojande-katalog`);
             const data = res.ok ? await res.json() : {};
             const KP = window.KundRiskprofil;
-            this._riskhojKatalog = KP && KP.mergeRiskhojandeKatalog
-                ? KP.mergeRiskhojandeKatalog(data.katalog || data.overrides || {})
-                : (data.katalog || {});
+            this._riskhojEntries = KP && KP.mergeRiskhojandeEntries
+                ? KP.mergeRiskhojandeEntries(data.overrides || data.katalog || {})
+                : {};
+            if (!Object.keys(this._riskhojEntries).length) {
+                const katalog = KP && KP.mergeRiskhojandeKatalog
+                    ? KP.mergeRiskhojandeKatalog(data.overrides || data.katalog || {})
+                    : (data.katalog || {});
+                const kategorier = data.kategorier || {};
+                this._riskhojEntries = {};
+                Object.keys(katalog).forEach((namn) => {
+                    this._riskhojEntries[namn] = {
+                        klass: katalog[namn],
+                        category: kategorier[namn] || this._riskhojDefaultCategory(namn)
+                    };
+                });
+            }
         } catch (e) {
-            this._riskhojKatalog = (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
+            const katalog = (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
+            this._riskhojEntries = {};
+            Object.keys(katalog).forEach((namn) => {
+                this._riskhojEntries[namn] = {
+                    klass: katalog[namn],
+                    category: this._riskhojDefaultCategory(namn)
+                };
+            });
         }
         this.renderRiskhojandeKatalog();
     }
@@ -1182,28 +1221,54 @@ class RiskFactorsManager {
     renderRiskhojandeKatalog() {
         const list = document.getElementById('riskhoj-katalog-list');
         if (!list) return;
-        const katalog = this._riskhojKatalog || {};
-        const names = Object.keys(katalog).sort((a, b) => a.localeCompare(b, 'sv'));
-        list.innerHTML = names.map((namn) => {
-            const klass = katalog[namn];
-            const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
-                <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
-                <select class="form-select riskhoj-katalog-klass" data-namn="${safeNamn}">
-                    <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-aktiv</option>
-                    <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
-                    <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
-                </select>
-                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove" data-namn="${safeNamn}" title="Ta bort flagga" aria-label="Ta bort ${safeNamn}">
-                    <i class="fas fa-times"></i>
-                </button>
+        const entries = this._riskhojEntries || {};
+        const cats = (window.OvrigaRiskKategorier && OvrigaRiskKategorier.CATEGORIES) || [];
+        const groups = (cats.length ? cats : [
+            { id: 'samarbete', letter: 'A', title: 'Hur samarbetar vi?' },
+            { id: 'kunden', letter: 'B', title: 'Vem är kunden?' },
+            { id: 'verksamheten', letter: 'C', title: 'Vad gör kunden?' }
+        ]).map((cat) => {
+            const names = Object.keys(entries)
+                .filter((namn) => (entries[namn].category || this._riskhojDefaultCategory(namn)) === cat.id)
+                .sort((a, b) => a.localeCompare(b, 'sv'));
+            const rows = names.map((namn) => {
+                const klass = entries[namn].klass;
+                const category = entries[namn].category || this._riskhojDefaultCategory(namn);
+                const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
+                    <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
+                    <select class="form-select riskhoj-katalog-kategori" data-namn="${safeNamn}" aria-label="Kategori för ${safeNamn}">
+                        ${this._riskhojKategoriOptions(category)}
+                    </select>
+                    <select class="form-select riskhoj-katalog-klass" data-namn="${safeNamn}">
+                        <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-aktiv</option>
+                        <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
+                        <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
+                    </select>
+                    <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove" data-namn="${safeNamn}" title="Ta bort flagga" aria-label="Ta bort ${safeNamn}">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>`;
+            }).join('');
+            return `<div class="riskhoj-katalog-grupp">
+                <h4 class="riskhoj-katalog-grupp-titel"><span class="ovriga-risk-kategori-letter">${cat.letter}</span> ${cat.title}</h4>
+                ${rows || '<p class="kyc-hint">Inga flaggor i den här kategorin.</p>'}
             </div>`;
         }).join('');
+        list.innerHTML = groups;
         list.querySelectorAll('.riskhoj-katalog-klass').forEach((sel) => {
             sel.addEventListener('change', () => {
                 const namn = sel.getAttribute('data-namn');
-                if (!namn) return;
-                this._riskhojKatalog = Object.assign({}, this._riskhojKatalog, { [namn]: sel.value });
+                if (!namn || !this._riskhojEntries[namn]) return;
+                this._riskhojEntries[namn] = Object.assign({}, this._riskhojEntries[namn], { klass: sel.value });
+                this.renderRiskhojandeKatalog();
+            });
+        });
+        list.querySelectorAll('.riskhoj-katalog-kategori').forEach((sel) => {
+            sel.addEventListener('change', () => {
+                const namn = sel.getAttribute('data-namn');
+                if (!namn || !this._riskhojEntries[namn]) return;
+                this._riskhojEntries[namn] = Object.assign({}, this._riskhojEntries[namn], { category: sel.value });
                 this.renderRiskhojandeKatalog();
             });
         });
@@ -1212,9 +1277,9 @@ class RiskFactorsManager {
                 const namn = btn.getAttribute('data-namn');
                 if (!namn) return;
                 if (!window.confirm('Ta bort flaggan "' + namn + '"? Ändringen sparas när du klickar Spara katalogen.')) return;
-                const next = Object.assign({}, this._riskhojKatalog);
+                const next = Object.assign({}, this._riskhojEntries);
                 delete next[namn];
-                this._riskhojKatalog = next;
+                this._riskhojEntries = next;
                 this.renderRiskhojandeKatalog();
             });
         });
@@ -1223,13 +1288,17 @@ class RiskFactorsManager {
     addRiskhojandeKatalogRad() {
         const input = document.getElementById('riskhoj-katalog-ny');
         const sel = document.getElementById('riskhoj-katalog-ny-klass');
+        const catSel = document.getElementById('riskhoj-katalog-ny-kategori');
         const KP = window.KundRiskprofil;
         const namn = KP && KP.canonicalRiskhojandeLabel
             ? KP.canonicalRiskhojandeLabel(input && input.value)
             : String((input && input.value) || '').trim();
         const klass = (sel && sel.value) || 'BIDRAR_VID_KOMBINATION';
+        const category = (catSel && catSel.value) || 'verksamheten';
         if (!namn) return;
-        this._riskhojKatalog = Object.assign({}, this._riskhojKatalog, { [namn]: klass });
+        this._riskhojEntries = Object.assign({}, this._riskhojEntries, {
+            [namn]: { klass, category }
+        });
         if (input) input.value = '';
         this.renderRiskhojandeKatalog();
     }
@@ -1241,12 +1310,16 @@ class RiskFactorsManager {
         try {
             const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/riskhojande-katalog`, {
                 method: 'PATCH',
-                body: JSON.stringify({ katalog: this._riskhojKatalog || {} })
+                body: JSON.stringify({ katalog: this._riskhojEntries || {} })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-            this._riskhojKatalog = data.katalog || this._riskhojKatalog;
+            const KP = window.KundRiskprofil;
+            this._riskhojEntries = KP && KP.mergeRiskhojandeEntries
+                ? KP.mergeRiskhojandeEntries(this._riskhojEntries)
+                : this._riskhojEntries;
             this.showNotification('Varningsflaggorna sparade', 'success');
+            this.renderRiskhojandeKatalog();
         } catch (e) {
             this.showNotification(e.message || 'Kunde inte spara katalogen', 'error');
         } finally {

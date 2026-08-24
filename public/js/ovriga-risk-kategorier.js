@@ -360,9 +360,23 @@
     return '';
   }
 
+  function categoryFor(namn, categoryMap) {
+    var label = canonicalLabel(namn);
+    if (!label) return '';
+    var mapped = '';
+    if (categoryMap && typeof categoryMap === 'object') {
+      mapped = categoryMap[label] || categoryMap[namn] || '';
+    }
+    if (mapped === 'samarbete' || mapped === 'kunden' || mapped === 'verksamheten') return mapped;
+    var hit = findFactor(label);
+    return hit ? hit.category : 'verksamheten';
+  }
+
   function factorsForCategory(categoryId, opts) {
+    var map = (opts && opts.categoryMap) || {};
     return FACTORS.filter(function (f) {
-      if (f.category !== categoryId) return false;
+      var cat = categoryFor(f.label, map);
+      if (cat !== categoryId) return false;
       if (opts && opts.kundkort && f.coveredByDimension) return false;
       return true;
     });
@@ -372,7 +386,7 @@
     return factorsForCategory(categoryId).map(function (f) { return f.label; });
   }
 
-  function extrasForCategory(categoryId, allLabels) {
+  function extrasForCategory(categoryId, allLabels, categoryMap) {
     var known = {};
     FACTORS.forEach(function (f) { known[fold(f.label)] = true; });
     return (Array.isArray(allLabels) ? allLabels : [])
@@ -380,7 +394,8 @@
       .filter(function (label) {
         if (!label || fold(label) === 'inga') return false;
         if (isCoveredByDimension(label)) return false;
-        return !known[fold(label)] && categoryId === 'verksamheten';
+        if (known[fold(label)]) return false;
+        return categoryFor(label, categoryMap) === categoryId;
       });
   }
 
@@ -403,15 +418,15 @@
     return out;
   }
 
-  function mergeValForCategory(existingLabels, categoryId, checkedLabels) {
+  function mergeValForCategory(existingLabels, categoryId, checkedLabels, categoryMap) {
     var keep = [];
     var seen = {};
     (Array.isArray(existingLabels) ? existingLabels : []).forEach(function (raw) {
       var label = canonicalLabel(raw);
       if (!label || fold(label) === 'inga') return;
       var factor = findFactor(label);
-      if (factor && factor.category === categoryId && !factor.steeredFromKyc) return;
-      if (!factor && categoryId === 'verksamheten') return;
+      var cat = categoryFor(label, categoryMap);
+      if (cat === categoryId && !(factor && factor.steeredFromKyc)) return;
       if (seen[fold(label)]) return;
       seen[fold(label)] = true;
       keep.push(label);
@@ -449,6 +464,7 @@
     isCoveredByDimension: isCoveredByDimension,
     categoryIdForDimension: categoryIdForDimension,
     dimensionIdForCategory: dimensionIdForCategory,
+    categoryFor: categoryFor,
     factorsForCategory: factorsForCategory,
     labelsForCategory: labelsForCategory,
     extrasForCategory: extrasForCategory,

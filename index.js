@@ -6808,7 +6808,16 @@ app.get('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
       result.record.fields && result.record.fields[BYRA_RISKHOJANDE_KATALOG_FIELD]
     );
     const katalog = KundRiskprofil.mergeRiskhojandeKatalog(overrides);
-    res.json({ success: true, katalog, overrides, defaults: KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG });
+    const kategorier = KundRiskprofil.mergeRiskhojandeKategorier
+      ? KundRiskprofil.mergeRiskhojandeKategorier(overrides)
+      : {};
+    res.json({
+      success: true,
+      katalog,
+      kategorier,
+      overrides,
+      defaults: KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG
+    });
   } catch (error) {
     console.error('GET riskhojande-katalog:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte hämta taggkatalogen' });
@@ -6830,7 +6839,11 @@ app.patch('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
       { fields: { [BYRA_RISKHOJANDE_KATALOG_FIELD]: JSON.stringify(persisted.stored) }, typecast: true },
       { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
     );
-    res.json({ success: true, katalog: persisted.visible });
+    res.json({
+      success: true,
+      katalog: persisted.visible,
+      kategorier: persisted.categories || KundRiskprofil.mergeRiskhojandeKategorier(persisted.stored)
+    });
   } catch (error) {
     console.error('PATCH riskhojande-katalog:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({

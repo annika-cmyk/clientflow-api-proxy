@@ -180,11 +180,33 @@
     };
 
   function normalizeRiskhojandeKlass(raw) {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return normalizeRiskhojandeKlass(raw.klass || raw.typ || '');
+    }
     var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
     if (v === 'GOLV_HOG' || v === 'GOLV' || v === 'HOG' || v === 'HÖG') return RISKHOJANDE_KLASS.GOLV_HOG;
     if (v === 'BIDRAR_VID_KOMBINATION' || v === 'BIDRAR' || v === 'KOMBINATION') return RISKHOJANDE_KLASS.BIDRAR;
     if (v === 'INFORMATIV' || v === 'INFO') return RISKHOJANDE_KLASS.INFORMATIV;
     return '';
+  }
+
+  function normalizeRiskhojandeCategory(raw) {
+    var src = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw.category || raw.kategori || raw.kategoriId || '')
+      : raw;
+    var v = trimStr(src).toLowerCase();
+    if (v === 'samarbete' || v === 'a' || v === 'hur samarbetar vi?') return 'samarbete';
+    if (v === 'kunden' || v === 'b' || v === 'vem är kunden?' || v === 'vem ar kunden?') return 'kunden';
+    if (v === 'verksamheten' || v === 'c' || v === 'vad gör kunden?' || v === 'vad gor kunden?') return 'verksamheten';
+    return '';
+  }
+
+  function defaultRiskhojandeCategory(namn) {
+    if (OvrigaRiskKategorier && OvrigaRiskKategorier.findFactor) {
+      var hit = OvrigaRiskKategorier.findFactor(namn);
+      if (hit && hit.category) return hit.category;
+    }
+    return 'verksamheten';
   }
 
   function parseRiskhojandeKatalog(raw) {
@@ -199,6 +221,9 @@
   }
 
   function isRemovedRiskhojandeKlass(raw) {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return isRemovedRiskhojandeKlass(raw.klass);
+    }
     var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
     return v === 'BORTTAGEN' || v === 'REMOVED' || v === 'TA_BORT';
   }
@@ -225,20 +250,56 @@
   function persistRiskhojandeKatalog(working) {
     var parsed = parseRiskhojandeKatalog(working);
     var visible = {};
+    var categories = {};
     Object.keys(parsed).forEach(function (k) {
       var label = canonicalRiskhojandeLabel(k);
       if (!label || isRemovedRiskhojandeKlass(parsed[k])) return;
       var klass = normalizeRiskhojandeKlass(parsed[k]);
-      if (klass) visible[label] = klass;
+      if (!klass) return;
+      visible[label] = klass;
+      categories[label] = normalizeRiskhojandeCategory(parsed[k]) || defaultRiskhojandeCategory(label);
     });
     var stored = {};
     Object.keys(visible).forEach(function (k) {
-      stored[k] = visible[k];
+      stored[k] = { klass: visible[k], category: categories[k] || defaultRiskhojandeCategory(k) };
     });
     Object.keys(DEFAULT_RISKHOJANDE_KATALOG).forEach(function (k) {
       if (!visible[k]) stored[k] = 'BORTTAGEN';
     });
-    return { visible: visible, stored: stored };
+    return { visible: visible, stored: stored, categories: categories };
+  }
+
+  function mergeRiskhojandeKategorier(overrides) {
+    var klassMap = mergeRiskhojandeKatalog(overrides);
+    var extra = parseRiskhojandeKatalog(overrides);
+    var out = {};
+    Object.keys(klassMap).forEach(function (label) {
+      var raw = extra[label];
+      if (raw == null) {
+        Object.keys(extra).some(function (k) {
+          if (canonicalRiskhojandeLabel(k) === label) {
+            raw = extra[k];
+            return true;
+          }
+          return false;
+        });
+      }
+      out[label] = normalizeRiskhojandeCategory(raw) || defaultRiskhojandeCategory(label);
+    });
+    return out;
+  }
+
+  function mergeRiskhojandeEntries(overrides) {
+    var klassMap = mergeRiskhojandeKatalog(overrides);
+    var catMap = mergeRiskhojandeKategorier(overrides);
+    var out = {};
+    Object.keys(klassMap).forEach(function (label) {
+      out[label] = {
+        klass: klassMap[label],
+        category: catMap[label] || defaultRiskhojandeCategory(label)
+      };
+    });
+    return out;
   }
 
   function klassForRiskhojande(namn, katalog) {
@@ -1002,7 +1063,11 @@
     normalizeRiskhojandeKlass: normalizeRiskhojandeKlass,
     parseRiskhojandeKatalog: parseRiskhojandeKatalog,
     mergeRiskhojandeKatalog: mergeRiskhojandeKatalog,
+    mergeRiskhojandeKategorier: mergeRiskhojandeKategorier,
+    mergeRiskhojandeEntries: mergeRiskhojandeEntries,
     persistRiskhojandeKatalog: persistRiskhojandeKatalog,
+    normalizeRiskhojandeCategory: normalizeRiskhojandeCategory,
+    defaultRiskhojandeCategory: defaultRiskhojandeCategory,
     isRemovedRiskhojandeKlass: isRemovedRiskhojandeKlass,
     klassForRiskhojande: klassForRiskhojande,
     beraknaRiskhojandeGolv: beraknaRiskhojandeGolv,
