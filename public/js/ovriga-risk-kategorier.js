@@ -345,6 +345,20 @@
     return !!(hit && hit.coveredByDimension);
   }
 
+  function categoryIdForDimension(dimId) {
+    if (dimId === 'distribution') return 'samarbete';
+    if (dimId === 'kund') return 'kunden';
+    if (dimId === 'verksamhet') return 'verksamheten';
+    return '';
+  }
+
+  function dimensionIdForCategory(categoryId) {
+    if (categoryId === 'samarbete') return 'distribution';
+    if (categoryId === 'kunden') return 'kund';
+    if (categoryId === 'verksamheten') return 'verksamhet';
+    return '';
+  }
+
   function factorsForCategory(categoryId, opts) {
     return FACTORS.filter(function (f) {
       if (f.category !== categoryId) return false;
@@ -432,6 +446,8 @@
     defaultKatalog: defaultKatalog,
     categoryById: categoryById,
     isCoveredByDimension: isCoveredByDimension,
+    categoryIdForDimension: categoryIdForDimension,
+    dimensionIdForCategory: dimensionIdForCategory,
     factorsForCategory: factorsForCategory,
     labelsForCategory: labelsForCategory,
     extrasForCategory: extrasForCategory,

@@ -6757,6 +6757,36 @@ class CustomerCardManager {
         return map[typId] || null;
     }
 
+    _ovrigaCategoryForTyp(typId) {
+        const Kat = window.OvrigaRiskKategorier;
+        if (Kat && Kat.categoryIdForDimension) return Kat.categoryIdForDimension(typId);
+        if (typId === 'distribution') return 'samarbete';
+        if (typId === 'kund') return 'kunden';
+        if (typId === 'verksamhet') return 'verksamheten';
+        return '';
+    }
+
+    _ovrigaValdaLabels() {
+        return this._normalizeRiskhojValda(this.customerData?.fields?.['Riskhöjande faktorer övrigt']);
+    }
+
+    _ovrigaItemsForTyp(typId, riskerForList = []) {
+        const catId = this._ovrigaCategoryForTyp(typId);
+        if (!catId) return [];
+        const Kat = window.OvrigaRiskKategorier;
+        const cat = Kat && Kat.categoryById ? Kat.categoryById(catId) : { id: catId };
+        const items = this._ovrigaRiskKategoriItems(cat, this._ovrigaValdaLabels());
+        return items.filter((item) => {
+            return !riskerForList.some((r) => {
+                const namn = (r.fields && r.fields['Riskfaktor']) || '';
+                if (!namn) return false;
+                if (String(namn).trim().toLowerCase() === String(item.label).trim().toLowerCase()) return true;
+                const hit = Kat && Kat.findFactor ? Kat.findFactor(namn) : null;
+                return !!(hit && hit.label === item.label);
+            });
+        });
+    }
+
     async loadKundRisker() {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
@@ -6807,6 +6837,11 @@ class CustomerCardManager {
         // Undvik dubbel "högriskbransch" – den hanteras ovan med branschval, visa den inte under Övriga
         const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
         const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
+        const ovrigaItems = this._ovrigaItemsForTyp(typId, riskerForList);
+        const ovrigaValdaLabels = this._ovrigaValdaLabels();
+        const selectedOvriga = ovrigaItems.filter((item) =>
+            ovrigaValdaLabels.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase())
+        );
 
         const valda = riskerForList.filter(r => linkedIds.has(r.id));
         const viewId = `risker-view-${typId}`;
@@ -6860,8 +6895,22 @@ class CustomerCardManager {
             </div>
             <div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>` : '';
 
+        const ovrigaViewHtml = selectedOvriga.length ? selectedOvriga.map((item) => {
+            const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
+                ? KundRiskprofil.markKindForRiskhojande(item.label, ovrigaValdaLabels, this._riskhojKatalog)
+                : item.klass;
+            const extra = kind === 'GOLV_HOG' ? ' riskf-chip--golv-hog' : (kind === 'BIDRAR_VID_KOMBINATION' ? ' riskf-chip--bidrar-golv' : '');
+            const badge = kind === 'GOLV_HOG' ? 'Hög-aktiv' : (kind === 'BIDRAR_VID_KOMBINATION' ? 'Bidrar' : '');
+            return `<div class="tjanst-collapsible-item">
+                <div class="tjanst-collapsible-header">
+                    <span class="risker-vald-namn">${this._esc(item.label)}</span>
+                    ${badge ? `<span class="kyc-chip riskf-chip riskf-chip--high${extra}">${badge}</span>` : ''}
+                </div>
+            </div>`;
+        }).join('') : '';
+
         const riskListViewHtml = valda.length === 0
-            ? (typId === 'kund' ? '' : '<p class="lead-empty">Inga risker valda. Minst ett val krävs. Klicka Redigera för att välja.</p>')
+            ? (typId === 'kund' || selectedOvriga.length ? '' : '<p class="lead-empty">Inga risker valda. Minst ett val krävs. Klicka Redigera för att välja.</p>')
             : valda.map((r, i) => {
                 const uid = `risk-details-${typId}-${i}`;
                 const hasDetails = r.fields['Beskrivning'] || r.fields['Åtgjärd'];
@@ -6886,14 +6935,21 @@ class CustomerCardManager {
                 </div>`;
             }).join('');
 
-        const emptyMsg = (typId === 'kund' && valda.length === 0 && valdaHogrisk.length === 0)
+        const emptyMsg = (typId === 'kund' && valda.length === 0 && valdaHogrisk.length === 0 && !selectedOvriga.length)
             ? '<p class="lead-empty">Inga risker valda. Klicka Redigera för att välja.</p>' : '';
+        const ovrigaEditHtml = ovrigaItems.length ? `
+            <div class="risker-ovriga-flaggor">
+                <div class="risker-checkgrupp-titel">Varningsflaggor</div>
+                <p class="kyc-hint">Kompletterande tecken i den här kategorin. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
+                ${this._renderOvrigaRiskDimChecks(typId, ovrigaItems, ovrigaValdaLabels)}
+            </div>` : '';
 
         container.innerHTML = `
             <div class="risker-selector">
                 <div id="${viewId}">
                     ${hogriskViewHtml}
                     ${riskListViewHtml}
+                    ${ovrigaViewHtml}
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="display:none;">
@@ -6912,6 +6968,7 @@ class CustomerCardManager {
                                 ${r.fields['Beskrivning'] ? `<span class="risker-check-desc">${r.fields['Beskrivning']}</span>` : ''}
                             </span>
                         </label>`).join('')}
+                    ${ovrigaEditHtml}
                     <div class="tjanster-edit-actions">
                         <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveRisker('${typId}')">
                             <i class="fas fa-save"></i> Spara
@@ -6953,7 +7010,10 @@ class CustomerCardManager {
             const kycField = this._kycFieldForRiskerTyp(typId);
             const linked = this._linkedRiskIds || new Set();
             const hasVal = this._riskerForTypId(typId, this._allaRisker || []).some((r) => linked.has(r.id))
-                || (typId === 'kund' && this._hogriskBranschValda().length > 0);
+                || (typId === 'kund' && this._hogriskBranschValda().length > 0)
+                || this._ovrigaItemsForTyp(typId).some((item) =>
+                    this._ovrigaValdaLabels().some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase())
+                );
             if (kycField && hasVal) this._saveKycStatus(kycField, true);
         }
         if (!isEditing) {
@@ -7012,6 +7072,28 @@ class CustomerCardManager {
             if (typId === 'kund' && nyaHogrisk !== null) {
                 fieldsToSave['Kunden verkar i en högriskbransch'] = nyaHogrisk;
             }
+            const ovrigaCatId = this._ovrigaCategoryForTyp(typId);
+            let nyaOvriga = null;
+            if (ovrigaCatId) {
+                const checkedFlags = [...document.querySelectorAll(`#risker-edit-${typId} input[name="ovriga-flag-${typId}"]:checked`)]
+                    .map((cb) => cb.value);
+                const Kat = window.OvrigaRiskKategorier;
+                const existingFlags = this._ovrigaValdaLabels();
+                nyaOvriga = this._normalizeRiskhojValda(
+                    Kat && Kat.mergeValForCategory
+                        ? Kat.mergeValForCategory(existingFlags, ovrigaCatId, checkedFlags)
+                        : checkedFlags
+                );
+                if (window.KundRiskprofil && KundRiskprofil.exclusiveIngaCheck) {
+                    const ingaCheck = KundRiskprofil.exclusiveIngaCheck(nyaOvriga);
+                    if (!ingaCheck.ok) {
+                        this.showNotification(ingaCheck.error, 'error');
+                        if (saveBtn) { saveBtn.innerHTML = origText; saveBtn.disabled = false; }
+                        return;
+                    }
+                }
+                fieldsToSave['Riskhöjande faktorer övrigt'] = nyaOvriga;
+            }
 
             const response = await fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
                 method: 'PATCH',
@@ -7032,6 +7114,9 @@ class CustomerCardManager {
             if (typId === 'kund' && nyaHogrisk !== null && this.customerData?.fields) {
                 this.customerData.fields['Kunden verkar i en högriskbransch'] = nyaHogrisk;
             }
+            if (nyaOvriga !== null && this.customerData?.fields) {
+                this.customerData.fields['Riskhöjande faktorer övrigt'] = nyaOvriga;
+            }
 
             // Rita om detta kortets visningsläge
             const container = document.getElementById(`ovrigkyc-risker-${typId}`);
@@ -7041,8 +7126,14 @@ class CustomerCardManager {
             }
             const kycField = this._kycFieldForRiskerTyp(typId);
             const dimHasValue = nyaChecked.length > 0
-                || (typId === 'kund' && Array.isArray(nyaHogrisk) && nyaHogrisk.length > 0);
+                || (typId === 'kund' && Array.isArray(nyaHogrisk) && nyaHogrisk.length > 0)
+                || (Array.isArray(nyaOvriga) && this._ovrigaItemsForTyp(typId).some((item) =>
+                    nyaOvriga.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase())
+                ));
             if (kycField && dimHasValue) this._saveKycStatus(kycField, true);
+            if (Array.isArray(nyaOvriga) && nyaOvriga.length) {
+                this._saveKycStatus('KYC genomgången - Riskhöjande faktorer övrigt', true);
+            }
 
             this._refreshRiskprofilForeslagenUi();
             this.showNotification('Risker sparade!', 'success');
@@ -7190,9 +7281,6 @@ class CustomerCardManager {
                     </div>
                 </div>
 
-                <!-- Övriga riskfaktorer i tre kategorier -->
-                ${this.renderOvrigaRiskKategoriBlock(f)}
-
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
                     f['Risksänkande faktorer'],
                     this._risksankAlternativ?.length ? this._risksankAlternativ : ['Inga','Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
@@ -7320,7 +7408,7 @@ class CustomerCardManager {
             </div>`;
     }
 
-    _renderOvrigaRiskKategoriChecks(id, items, valda) {
+    _renderOvrigaRiskDimChecks(typId, items, valda) {
         return `<div class="riskf-checkgrid">
             ${items.map((item) => {
                 const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
@@ -7334,8 +7422,8 @@ class CustomerCardManager {
                     : (kombi ? '<em class="riskf-bidrar-mark">Bidrar vid kombination</em>' : (item.badge ? `<em class="riskf-info-mark">${this._esc(item.badge)}</em>` : ''));
                 return `
                 <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}${kombi ? ' riskf-check-item--bidrar-golv' : ''}">
-                    <input type="checkbox" name="riskf-${id}" value="${this._esc(item.label)}" data-group="${this._esc(item.group || '')}" ${checked ? 'checked' : ''}
-                        onchange="customerCardManager.updateOvrigaRiskKategoriChips('alla', this)">
+                    <input type="checkbox" name="ovriga-flag-${typId}" value="${this._esc(item.label)}" ${checked ? 'checked' : ''}
+                        onchange="customerCardManager.updateOvrigaRiskDimChips('${typId}')">
                     <span class="tjanst-check-box"></span>
                     <span class="tjanst-check-label">
                         <strong>${this._esc(item.label)}</strong>
@@ -7345,6 +7433,27 @@ class CustomerCardManager {
                 </label>`;
             }).join('')}
         </div>`;
+    }
+
+    updateOvrigaRiskDimChips(typId) {
+        const wrap = document.getElementById(`risker-edit-${typId}`);
+        if (!wrap) return;
+        const checked = [...wrap.querySelectorAll(`input[name="ovriga-flag-${typId}"]:checked`)]
+            .map((cb) => cb.value);
+        const Kat = window.OvrigaRiskKategorier;
+        const catId = this._ovrigaCategoryForTyp(typId);
+        const merged = Kat && Kat.mergeValForCategory
+            ? Kat.mergeValForCategory(this._ovrigaValdaLabels(), catId, checked)
+            : checked;
+        wrap.querySelectorAll(`input[name="ovriga-flag-${typId}"]`).forEach((cb) => {
+            const label = cb.closest('label');
+            if (!label) return;
+            const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
+                ? KundRiskprofil.markKindForRiskhojande(cb.value, merged, this._riskhojKatalog)
+                : '';
+            label.classList.toggle('riskf-check-item--golv-hog', kind === 'GOLV_HOG');
+            label.classList.toggle('riskf-check-item--bidrar-golv', kind === 'BIDRAR_VID_KOMBINATION');
+        });
     }
 
     _ovrigaRiskKategoriItems(cat, valda) {

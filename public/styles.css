@@ -5328,6 +5328,12 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 500;
     color: #64748b;
 }
+.risker-ovriga-flaggor {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid #e2e8f0;
+}
+.risker-ovriga-flaggor .kyc-hint { margin: 0.35rem 0 0.65rem; }
 .ovriga-risk-faktor-hint {
     display: block;
     margin-top: 0.15rem;
