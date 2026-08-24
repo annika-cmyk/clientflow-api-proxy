@@ -21228,7 +21228,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     let kyc = {};
     try { kyc = JSON.parse(f['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
     const kycInternationell = (kyc.internationellHandel || '').toString().trim() || '–';
-    const kycInternationellaLander = clip(kyc.internationellaLander, 500) || '–';
+    const kycInternationellaLander = clip(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander, 500) || '–';
     const kycKontanter = (kyc.kontanter || '').toString().trim() || '–';
     const kycKontanterAndel = clip(kyc.kontanterAndel, 200) || '–';
     const kycPep = (kyc.pep || '').toString().trim() || '–';
