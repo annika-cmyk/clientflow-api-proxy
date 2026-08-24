@@ -9,6 +9,9 @@
   var RiskDimensioner = (typeof module !== 'undefined' && module.exports)
     ? require('./risk-dimensioner')
     : (global.RiskDimensioner || null);
+  var TjanstForutsattning = (typeof module !== 'undefined' && module.exports)
+    ? require('./tjanst-forutsattning')
+    : (global.TjanstForutsattning || null);
 
   var FIELDS = {
     INNEBOENDE: 'Kund inneboende riskprofil',
@@ -586,11 +589,17 @@
     }).filter(function (item) { return item.namn; });
   }
 
-  function formatDrivandeFaktor(kind, namn, product) {
+  function formatDrivandeFaktor(kind, namn, product, item) {
     var prefix = kind === 'tjänst' ? 'tjänst' : 'riskfaktor';
     var name = trimStr(namn) || 'okänd post';
-    var sxk = product != null && isFinite(product) ? ' (residual S×K ' + product + ')' : '';
-    return prefix + ': ' + name + sxk;
+    var source = item && item.residualSource;
+    var label = 'residual';
+    if (source === 'inneboende') label = 'inneboende';
+    else if (source === 'override') label = 'kundresidual';
+    var sxk = product != null && isFinite(product) ? ' (' + label + ' S×K ' + product + ')' : '';
+    var note = '';
+    if (source === 'inneboende') note = ' — standardåtgärder ej uppfyllda';
+    return prefix + ': ' + name + sxk + note;
   }
 
   function collectResidualItems(kund) {
@@ -608,12 +617,14 @@
         }
         items.push({
           kind: item.kind || kind,
-          source: item.source || '',
+          source: item.source || item.residualSource || '',
+          residualSource: item.residualSource || '',
           namn: trimStr(item.namn || item.titel || item.title || item.Riskfaktor || ''),
           product: product,
           level: level,
           residualProduct: product,
-          residualLevel: level
+          residualLevel: level,
+          forutsattning: item.forutsattning || null
         });
       });
     }
@@ -667,14 +678,30 @@
     return {
       niva: niva,
       product: best.product,
-      drivandeFaktor: formatDrivandeFaktor(best.kind, best.namn, best.product),
+      drivandeFaktor: formatDrivandeFaktor(best.kind, best.namn, best.product, best),
       drivande: best,
       poster: items
     };
   }
 
-  function itemsFromTjanstRecords(records) {
+  function itemsFromTjanstRecords(records, opts) {
+    var kundState = TjanstForutsattning
+      ? TjanstForutsattning.readKundState(opts && opts.fields)
+      : {};
     return (Array.isArray(records) ? records : []).map(function (r) {
+      if (TjanstForutsattning && TjanstForutsattning.applyToResidualItem) {
+        var tjanst = (r && r.fields)
+          ? {
+            id: r.id,
+            namn: trimStr(r.fields['Task Name'] || r.namn || ''),
+            atgarder: TjanstForutsattning.parseAtgarder(r.fields['Tjänstespecifika åtgärder']),
+            fields: r.fields
+          }
+          : r;
+        var mapped = TjanstForutsattning.applyToResidualItem(tjanst, kundState);
+        mapped.kind = 'tjänst';
+        return mapped;
+      }
       var f = (r && r.fields) || r || {};
       var scored = RiskSkala && RiskSkala.readTjanstRisk ? RiskSkala.readTjanstRisk(f) : {};
       return {
@@ -788,7 +815,7 @@
       })
       : null;
     return applyRiskhojandeGolv(beraknaForeslagenNiva({
-      tjanster: itemsFromTjanstRecords(tjanster),
+      tjanster: itemsFromTjanstRecords(tjanster, { fields: f }),
       riskfaktorer: itemsFromRiskRecords(risker).concat(itemsFromRiskhojandeFlags(f, extra, katalog)),
       dimensionStatus: dimensionStatus
     }), f, katalog);

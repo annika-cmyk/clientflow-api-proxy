@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.56', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.75', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -7209,7 +7209,37 @@ class CustomerCardManager {
         return `<span class="risk-pill ${cls}">${label}${withSuffix ? ' risk' : ''}</span>`;
     }
 
+    _kundForutsattningState() {
+        const TF = window.TjanstForutsattning;
+        if (!TF) return {};
+        return TF.readKundState(this.customerData?.fields || {});
+    }
+
+    _effectiveTjanstItem(t) {
+        const TF = window.TjanstForutsattning;
+        if (TF && TF.applyToResidualItem) {
+            return TF.applyToResidualItem(t, this._kundForutsattningState());
+        }
+        return {
+            namn: t && t.namn,
+            residualProduct: t && t.residualProduct,
+            residualLevel: (t && (t.residualrisk || t.residualLevel)) || '',
+            residualSource: 'mall'
+        };
+    }
+
     _scoredFromTjanst(t) {
+        const item = this._effectiveTjanstItem(t);
+        if (item && item.residualSource && item.residualSource !== 'mall') {
+            return {
+                level: item.inherentLevel || '',
+                residualLevel: item.residualLevel || '',
+                residualProduct: item.residualProduct,
+                product: item.inherentProduct,
+                residualSource: item.residualSource,
+                forutsattning: item.forutsattning
+            };
+        }
         if (!t) return {};
         if (window.RiskSkala && t.fields && RiskSkala.readTjanstRisk) {
             return RiskSkala.readTjanstRisk(t.fields);
@@ -7243,12 +7273,21 @@ class CustomerCardManager {
         const S = window.RiskSkala;
         const residual = this._riskLabel(src.residualLevel);
         if (!residual) return '';
-        const badges = S && S.listBadgeLabels ? S.listBadgeLabels(src) : {
-            residual: `Residualrisk: ${residual}`,
-            residualTitle: 'Residualrisk är risken som är kvar efter åtgärderna.'
-        };
+        let label = `Residualrisk: ${residual}`;
+        let title = 'Residualrisk är risken som är kvar efter åtgärderna.';
+        if (src.residualSource === 'inneboende') {
+            label = `Inneboende: ${residual}`;
+            title = 'Mallens residual används inte — en kundberoende förutsättning är inte uppfylld.';
+        } else if (src.residualSource === 'override') {
+            label = `Kundresidual: ${residual}`;
+            title = 'Kundspecifik residual efter att standardåtgärder inte stämmer för kunden.';
+        } else if (S && S.listBadgeLabels) {
+            const badges = S.listBadgeLabels(src);
+            label = badges.residual || label;
+            title = badges.residualTitle || title;
+        }
         const cls = (S && S.riskPillClass(residual)) || 'risk-pill--normal';
-        return `<span class="risk-skala-pills"><span class="risk-pill ${cls}" title="${this._esc(badges.residualTitle || badges.residual)}">${this._esc(badges.residual)}</span></span>`;
+        return `<span class="risk-skala-pills"><span class="risk-pill ${cls}" title="${this._esc(title)}">${this._esc(label)}</span></span>`;
     }
 
     _riskNivaButtonsHtml(riskniva) {
@@ -7275,7 +7314,7 @@ class CustomerCardManager {
         const aktivaIds = this._aktivaTjansterIds || new Set(f['Kundens utvalda tjänster'] || []);
         return (this._byransTjanster || []).filter((t) =>
             this._tjanstIdMatchSet(t).some((id) => aktivaIds.has(id))
-        );
+        ).map((t) => this._effectiveTjanstItem(t));
     }
 
     _tjanstResidualFloor() {
@@ -7290,6 +7329,8 @@ class CustomerCardManager {
             namn: t.namn,
             residualProduct: t.residualProduct,
             residualLevel: t.residualrisk || t.residualLevel,
+            residualSource: t.residualSource,
+            forutsattning: t.forutsattning,
             sannolikhetEfter: t.sannolikhetEfter,
             konsekvensEfter: t.konsekvensEfter
         }));
@@ -8434,6 +8475,17 @@ class CustomerCardManager {
         }
 
         const riskBadge = (t) => this._riskSkalaPillsHtml(this._scoredFromTjanst(t));
+        const forutsattningFlag = (t) => {
+            const item = this._effectiveTjanstItem(t);
+            const st = item.forutsattning && item.forutsattning.status;
+            if (st === 'nej') {
+                return `<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--nej" title="${this._esc(item.forutsattning.warning)}">⚠</span>`;
+            }
+            if (st === 'delvis') {
+                return `<span class="tjanst-forutsattning-flag tjanst-forutsattning-flag--delvis" title="${this._esc(item.forutsattning.warning)}">⚠</span>`;
+            }
+            return '';
+        };
 
         // Gruppera per TJÄNSTTYP
         const grupper = {};
@@ -8461,6 +8513,7 @@ class CustomerCardManager {
                     <div class="tjanst-collapsible-header">
                         <span class="risker-vald-namn">${this._esc(t.namn)}</span>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
+                            ${forutsattningFlag(t)}
                             ${riskBadge(t)}
                             ${hasDetails ? `<i class="fas fa-chevron-down tjanst-chevron" id="chevron-${uid}"></i>` : ''}
                         </div>
@@ -8591,23 +8644,160 @@ class CustomerCardManager {
             }).join(''));
         }
         if (atgarder.length) {
+            const TF = window.TjanstForutsattning;
             parts.push(`<div class="risker-vald-section-label">Tjänstespecifika åtgärder</div>`);
             parts.push(atgarder.map((a) => {
                 const title = String(a.titel || a.title || a.namn || '').trim();
                 const desc = String(a.beskrivning || a.description || '').trim();
                 if (!title && !desc) return '';
+                const typ = TF ? TF.normalizeAtgardTyp(a.atgardTyp) : '';
+                const typHtml = typ
+                    ? `<span class="atgard-typ-tag atgard-typ-tag--${typ === 'kundberoende_forutsattning' ? 'kund' : 'byra'}">${typ === 'kundberoende_forutsattning' ? 'Kundberoende' : 'Byrårutin'}</span>`
+                    : '';
                 return `
                     <div class="action-item" style="margin-bottom:0.45rem;">
                         <i class="fas fa-check action-icon"></i>
-                        <span class="action-text">${title ? `<strong>${this._esc(title)}</strong>` : ''}${desc ? (title ? ' — ' : '') + this._nl(desc) : ''}</span>
+                        <span class="action-text">${title ? `<strong>${this._esc(title)}</strong>` : ''}${desc ? (title ? ' — ' : '') + this._nl(desc) : ''}${typHtml}</span>
                     </div>`;
             }).join(''));
+            const checklist = this._renderTjanstForutsattningChecklist(t);
+            if (checklist) parts.push(checklist);
         } else if (legacyAtgard) {
             parts.push(`
                 <div class="risker-vald-section-label">Åtgärder</div>
                 <div class="risker-vald-desc">${this._nl(legacyAtgard)}</div>`);
         }
         return parts.filter(Boolean).join('');
+    }
+
+    _renderTjanstForutsattningChecklist(t) {
+        const TF = window.TjanstForutsattning;
+        if (!TF) return '';
+        const item = this._effectiveTjanstItem(t);
+        const assess = item.forutsattning;
+        if (!assess || !assess.hasKundberoende) return '';
+        const sid = this._esc(t.id);
+        const opts = [TF.UPPFYLLD.EJ_BEDOMD, TF.UPPFYLLD.JA, TF.UPPFYLLD.DELVIS, TF.UPPFYLLD.NEJ];
+        const rows = assess.rows.map((row) => {
+            const needMot = row.uppfylld === TF.UPPFYLLD.DELVIS || row.uppfylld === TF.UPPFYLLD.NEJ;
+            return `
+                <div class="forutsattning-row" data-atgard-key="${this._esc(row.key)}">
+                    <div class="forutsattning-row-top">
+                        <span class="forutsattning-titel">${this._esc(row.titel)}</span>
+                        <label class="forutsattning-uppfylld">Uppfylld hos kund?
+                            <select class="forutsattning-select" data-forutsattning-uppfylld onchange="customerCardManager._toggleForutsattningMotivering(this)">
+                                ${opts.map((v) => `<option value="${v}"${row.uppfylld === v ? ' selected' : ''}>${v}</option>`).join('')}
+                            </select>
+                        </label>
+                    </div>
+                    <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Motivering (obligatorisk vid Delvis eller Nej)" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
+                </div>`;
+        }).join('');
+        const ov = assess.override || {};
+        const sVal = ov.sannolikhetEfter || '';
+        const kVal = ov.konsekvensEfter || '';
+        const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
+        const warn = assess.warning
+            ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
+            : (assess.hint ? `<p class="forutsattning-hint">${this._esc(assess.hint)}</p>` : '');
+        const overrideReq = assess.status === 'nej' && !assess.override;
+        return `
+            <div class="forutsattning-box" onclick="event.stopPropagation()">
+                <div class="risker-vald-section-label">Uppfylld hos kund?</div>
+                ${warn}
+                ${rows}
+                <div class="forutsattning-override">
+                    <p class="forutsattning-override-label">${overrideReq ? 'Kundspecifik residual (krävs för att använda sänkt residual i beräkningen)' : 'Kundspecifik residual (S×K), valfritt'}</p>
+                    <div class="forutsattning-override-scores">
+                        <label>Sannolikhet
+                            <select class="forutsattning-override-s" data-tjanst-id="${sid}">
+                                <option value="">Mall</option>
+                                ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(sVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                            </select>
+                        </label>
+                        <label>Konsekvens
+                            <select class="forutsattning-override-k" data-tjanst-id="${sid}">
+                                <option value="">Mall</option>
+                                ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(kVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                            </select>
+                        </label>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveTjanstForutsattning('${sid}')">
+                    <i class="fas fa-save"></i> Spara förutsättningar
+                </button>
+            </div>`;
+    }
+
+    _toggleForutsattningMotivering(selectEl) {
+        const row = selectEl && selectEl.closest('.forutsattning-row');
+        const area = row && row.querySelector('.forutsattning-motivering');
+        if (!area) return;
+        const v = selectEl.value;
+        area.hidden = !(v === 'Delvis' || v === 'Nej');
+    }
+
+    async saveTjanstForutsattning(tjanstId) {
+        const TF = window.TjanstForutsattning;
+        const customerId = this.customerId;
+        if (!TF || !customerId) return;
+        const box = document.querySelector(`.forutsattning-box select.forutsattning-override-s[data-tjanst-id="${tjanstId}"]`)
+            ?.closest('.forutsattning-box');
+        if (!box) return;
+        const forutsattningar = {};
+        box.querySelectorAll('.forutsattning-row').forEach((row) => {
+            const key = row.getAttribute('data-atgard-key');
+            const uppfylld = row.querySelector('[data-forutsattning-uppfylld]')?.value || TF.UPPFYLLD.EJ_BEDOMD;
+            const motivering = row.querySelector('.forutsattning-motivering')?.value.trim() || '';
+            forutsattningar[key] = { uppfylld, motivering };
+        });
+        const s = Number(box.querySelector('.forutsattning-override-s')?.value);
+        const k = Number(box.querySelector('.forutsattning-override-k')?.value);
+        const override = (isFinite(s) && isFinite(k) && s >= 1 && k >= 1)
+            ? { sannolikhetEfter: s, konsekvensEfter: k }
+            : null;
+        const check = TF.validateKundState({ [tjanstId]: { forutsattningar } });
+        if (!check.ok) {
+            this.showNotification(check.error, 'error');
+            return;
+        }
+        const state = TF.readKundState(this.customerData?.fields || {});
+        state[tjanstId] = { forutsattningar, override };
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                method: 'PATCH',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({
+                    fields: { [TF.FIELD]: TF.serializeKundState(state) }
+                })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const saved = await response.json().catch(() => ({}));
+            if (saved.record?.fields && this.customerData?.fields) {
+                Object.assign(this.customerData.fields, saved.record.fields);
+            } else if (this.customerData?.fields) {
+                this.customerData.fields[TF.FIELD] = TF.serializeKundState(state);
+            }
+            this.showNotification('Förutsättningar sparade.', 'success');
+            this._refreshServicesAndRisk();
+        } catch (error) {
+            this.showNotification('Kunde inte spara förutsättningar: ' + error.message, 'error');
+        }
+    }
+
+    _refreshServicesAndRisk() {
+        const byraHighRisk = this._byraHighRiskTjanster || [];
+        if (document.getElementById('services-content')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'services-content');
+        }
+        if (document.getElementById('ovrigkyc-tjanster')) {
+            this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
+        }
+        this._refreshRiskprofilForeslagenUi();
     }
 
     toggleTjanstDetails(uid) {

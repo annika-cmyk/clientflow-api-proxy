@@ -104,6 +104,7 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
+const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
 const TjanstKatalog = require('./public/js/tjanst-katalog');
 const RiskDimensioner = require('./public/js/risk-dimensioner');
 const avvikelseStatus = require('./lib/avvikelse-status');
@@ -2452,7 +2453,8 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     }
   },
   { name: 'Kund föreslagen drivande faktor', type: 'singleLineText', description: 'Vilken tjänst eller riskfaktor som gav den högsta residual-S×K.' },
-  { name: 'Kund avvikelse motivering', type: 'multilineText', description: 'Obligatorisk när residual skiljer sig från den beräknade föreslagna nivån.' }
+  { name: 'Kund avvikelse motivering', type: 'multilineText', description: 'Obligatorisk när residual skiljer sig från den beräknade föreslagna nivån.' },
+  { name: TjanstForutsattning.FIELD, type: 'multilineText', description: 'JSON: per tjänst, uppfylld-status för kundberoende förutsättningar och ev. residual-override (S×K).' }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -5259,7 +5261,7 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
     templates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
   }
   return {
-    tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs),
+    tjanster: KundRiskprofil.itemsFromTjanstRecords(tjanstRecs, { fields: f }),
     riskfaktorer: KundRiskprofil.itemsFromRiskRecords(risker)
       .concat(KundRiskprofil.itemsFromRiskhojandeFlags(f, extra.concat(risker), katalog)),
     katalog,
@@ -6461,7 +6463,16 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         console.warn('⚠️ Kunde inte kontrollera riskdimensioner vid klarmarkering:', e.message);
       }
     }
-    const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster', 'Riskhöjande faktorer övrigt', 'Kunden verkar i en högriskbransch']
+    if (Object.prototype.hasOwnProperty.call(payload, TjanstForutsattning.FIELD)) {
+      const stateCheck = TjanstForutsattning.validateKundState(payload[TjanstForutsattning.FIELD]);
+      if (!stateCheck.ok) {
+        return res.status(400).json({ error: stateCheck.error, code: 'forutsattning_motivering_kravs' });
+      }
+      if (typeof payload[TjanstForutsattning.FIELD] !== 'string') {
+        payload[TjanstForutsattning.FIELD] = TjanstForutsattning.serializeKundState(payload[TjanstForutsattning.FIELD]);
+      }
+    }
+    const linksChanged = ['Kundens utvalda tjänster', 'risker kopplat till tjänster', 'Riskhöjande faktorer övrigt', 'Kunden verkar i en högriskbransch', TjanstForutsattning.FIELD]
       .some((key) => Object.prototype.hasOwnProperty.call(payload, key));
     const residualTouched = Object.prototype.hasOwnProperty.call(payload, 'Riskniva');
     const missingForeslagen = !KundRiskprofil.readForeslagen(customerRecord.fields || {});
@@ -6906,6 +6917,57 @@ app.get('/api/kund-riskprofil/oacceptabel-golv-rapport', authenticateToken, asyn
   }
 });
 
+app.get('/api/kund-riskprofil/tjanst-forutsattning-rapport', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const kunder = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const tjanstIds = [];
+    kunder.forEach((rec) => {
+      (rec.fields?.['Kundens utvalda tjänster'] || []).forEach((id) => {
+        if (id && !tjanstIds.includes(id)) tjanstIds.push(id);
+      });
+    });
+    const tjanstRecs = await fetchAirtableRecordsByIds(
+      airtableAccessToken,
+      airtableBaseId,
+      RISK_ASSESSMENT_TABLE,
+      tjanstIds,
+      { concurrency: 8 }
+    );
+    const tjansterById = {};
+    tjanstRecs.forEach((r) => {
+      if (r && r.id) tjansterById[r.id] = r;
+    });
+    let byraTjanster = [];
+    if (userData.byraId) {
+      byraTjanster = await fetchByraTjansterRecordsForPdf(
+        airtableAccessToken,
+        airtableBaseId,
+        userData.byraId
+      );
+    }
+    const migrering = TjanstForutsattning.buildMigreringsrapport({
+      kunder,
+      tjansterById
+    });
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      granskningslista: TjanstForutsattning.buildGranskningslista(byraTjanster.map(mapByraTjanstRecord)),
+      ...migrering
+    });
+  } catch (error) {
+    console.error('GET tjanst-forutsattning-rapport:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa förutsättningsrapporten' });
+  }
+});
+
 app.get('/api/kund-riskprofil/strukturella-luckor-rapport', authenticateToken, async (req, res) => {
   try {
     const { buildStrukturellaLuckor } = require('./lib/strukturella-luckor');
@@ -7345,7 +7407,7 @@ async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseI
  * Samma logik som kundkortet renderTjanster: byråns tjänster där minst ett record-ID finns i kundens länkfält.
  * Returnerar även allowedKeys för att filtrera bort byråtjänster som felaktigt hamnat under riskfaktorer.
  */
-async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedRaw) {
+async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedRaw, kundFields) {
   const linked = Array.isArray(linkedRaw) ? linkedRaw : [];
   const empty = { namn: [], items: [], allowedKeys: new Set(), linkedTjanstIdSet: new Set(), allByraKeys: new Set() };
   if (!linked.length) return empty;
@@ -7373,7 +7435,7 @@ async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId
     const matched = dedupedForKeys.filter((t) => namn.some((n) => normTjanstKey(n) === normTjanstKey(t.namn)));
     return {
       namn,
-      items: KundRiskprofil.itemsFromTjanstRecords(matched),
+      items: KundRiskprofil.itemsFromTjanstRecords(matched, { fields: kundFields }),
       allowedKeys: new Set(namn.map(normTjanstKey)),
       linkedTjanstIdSet: new Set(),
       allByraKeys
@@ -7387,7 +7449,7 @@ async function resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId
   const allowedKeys = new Set(namn.map(normTjanstKey));
   return {
     namn,
-    items: KundRiskprofil.itemsFromTjanstRecords(aktiv),
+    items: KundRiskprofil.itemsFromTjanstRecords(aktiv, { fields: kundFields }),
     allowedKeys,
     linkedTjanstIdSet: linkedSet,
     allByraKeys
@@ -7470,7 +7532,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       allowedKeys: allowedTjanstKeys,
       linkedTjanstIdSet,
       allByraKeys
-    } = await resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedTjanstIds);
+    } = await resolveKundAktivaTjansterNamn(airtableAccessToken, airtableBaseId, byraId, linkedTjanstIds, f);
 
     const filterRiskChipList = (list) => pdfFmtList(list).filter((item) => {
       const k = normTjanstKey(item);
@@ -15396,7 +15458,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
       const byraId = pdfUser?.byraId ? String(pdfUser.byraId).trim() : (f['Byrå ID'] || f.Byrå || '');
       const linkedTjanstIds = f['Kundens utvalda tjänster'] || [];
       const { namn: liveTjansterNamn } = await resolveKundAktivaTjansterNamn(
-        airtableAccessToken, baseId, byraId, linkedTjanstIds
+        airtableAccessToken, baseId, byraId, linkedTjanstIds, f
       );
       if (liveTjansterNamn.length) {
         kyc.tjanster = liveTjansterNamn.join(', ');

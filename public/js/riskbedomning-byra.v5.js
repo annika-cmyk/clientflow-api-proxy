@@ -280,12 +280,14 @@ class RiskAssessmentManager {
                     </button>
                 </div>
             `;
+            this.renderAtgardTypGranskning();
             return;
         }
 
         const riskItems = this.filteredRisks.map(risk => this.createRiskItem(risk)).join('');
         riskList.innerHTML = `<div class="risk-items">${riskItems}</div>`;
         this.setupRiskItemEventListeners();
+        this.renderAtgardTypGranskning();
     }
 
     createRiskItem(risk) {
@@ -782,8 +784,16 @@ class RiskAssessmentManager {
         if (!list) return;
         const titel = data.titel ?? data.title ?? data.namn ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
+        const TF = window.TjanstForutsattning;
+        const typ = TF ? TF.normalizeAtgardTyp(data.atgardTyp) : (data.atgardTyp || '');
+        const seq = (this._atgardTypSeq = (this._atgardTypSeq || 0) + 1);
+        const name = `atgard-typ-${seq}`;
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-atgard dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        const forslag = (!typ && TF) ? TF.suggestAtgardTyp({ titel, beskrivning }) : { typ: '', reason: '' };
+        const forslagHtml = (!typ && forslag.typ)
+            ? `<p class="dyn-atgard-forslag">Förslag: ${this.esc(TF.typLabel(forslag.typ))}${forslag.reason ? ' — ' + this.esc(forslag.reason) : ''}. Bekräfta eller ändra nedan.</p>`
+            : '';
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
@@ -795,9 +805,14 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet.">${this.esc(beskrivning)}</textarea>
+                <div class="dyn-atgard-typ" role="group" aria-label="Åtgärdstyp">
+                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="byrarutin"${typ === 'byrarutin' ? ' checked' : ''}> Byrårutin</label>
+                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="kundberoende_forutsattning"${typ === 'kundberoende_forutsattning' ? ' checked' : ''}> Kundberoende förutsättning</label>
+                </div>
+                ${forslagHtml}
             </div>
         `;
-        this.bindDynCard(row, { expand: !!opts.expand });
+        this.bindDynCard(row, { expand: !!opts.expand || !typ });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -820,10 +835,78 @@ class RiskAssessmentManager {
     }
 
     collectAtgard() {
-        return [...document.querySelectorAll('#atgard-list .dyn-row')].map(row => ({
-            titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
-        })).filter(a => a.titel || a.beskrivning);
+        return [...document.querySelectorAll('#atgard-list .dyn-row')].map(row => {
+            const typ = row.querySelector('.dyn-atgard-typ input:checked')?.value || '';
+            const item = {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+            };
+            if (typ) item.atgardTyp = typ;
+            return item;
+        }).filter(a => a.titel || a.beskrivning);
+    }
+
+    renderAtgardTypGranskning() {
+        const box = document.getElementById('atgard-typ-granskning');
+        const TF = window.TjanstForutsattning;
+        if (!box || !TF) return;
+        const lista = TF.buildGranskningslista((this.filteredRisks || []).map((r) => ({
+            id: r.id,
+            namn: (r.fields && r.fields['Task Name']) || '',
+            atgarder: this.parseJsonField(r.fields && r.fields['Tjänstespecifika åtgärder'])
+        })));
+        const oklar = lista.flatMap((t) => t.atgarder.filter((a) => !a.klassificerad).map((a) => ({
+            tjanstId: t.id,
+            tjanstNamn: t.namn,
+            ...a
+        })));
+        if (!oklar.length) {
+            box.hidden = true;
+            box.innerHTML = '';
+            return;
+        }
+        box.hidden = false;
+        box.innerHTML = `
+            <h3>Granska åtgärdstyp</h3>
+            <p>Befintliga åtgärder är inte klassificerade. Förslagen är bara hjälp — bekräfta eller ändra innan de räknas som kundberoende förutsättning.</p>
+            <ul class="atgard-typ-granskning-list">
+                ${oklar.map((a) => `
+                    <li>
+                        <strong>${this.esc(a.tjanstNamn)}</strong>
+                        — ${this.esc(a.titel || 'Åtgärd')}
+                        ${a.forslagTyp ? `<em>Förslag: ${this.esc(TF.typLabel(a.forslagTyp))}</em>` : '<em>Inget förslag</em>'}
+                        <span class="atgard-typ-granskning-actions">
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','byrarutin')">Byrårutin</button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','kundberoende_forutsattning')">Kundberoende</button>
+                        </span>
+                    </li>`).join('')}
+            </ul>`;
+    }
+
+    async confirmAtgardTyp(recordId, key, typ) {
+        const TF = window.TjanstForutsattning;
+        const risk = (this.risks || []).find((r) => r.id === recordId);
+        if (!risk || !TF) return;
+        const atgarder = this.parseJsonField(risk.fields && risk.fields['Tjänstespecifika åtgärder']).map((a) => {
+            if (TF.atgardKey(a) !== key) return a;
+            return Object.assign({}, a, { atgardTyp: typ });
+        });
+        try {
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ 'Tjänstespecifika åtgärder': JSON.stringify(atgarder) })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${response.status}`);
+            }
+            risk.fields = risk.fields || {};
+            risk.fields['Tjänstespecifika åtgärder'] = JSON.stringify(atgarder);
+            this.renderAtgardTypGranskning();
+            this.showNotification('Åtgärdstyp sparad.', 'success');
+        } catch (error) {
+            this.showNotification('Kunde inte spara åtgärdstyp: ' + error.message, 'error');
+        }
     }
 
     setScoreSelect(id, value) {

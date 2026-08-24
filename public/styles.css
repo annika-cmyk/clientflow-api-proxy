@@ -12705,6 +12705,85 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .action-icon { color: var(--success); font-size: 0.85rem; margin-top: 3px; flex-shrink: 0; }
 .action-text { font-size: 0.86rem; color: var(--text); line-height: 1.5; }
 .action-text strong { color: var(--title-text); }
+.atgard-typ-tag {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+.atgard-typ-tag--byra { background: #e8f0fe; color: #1d4ed8; }
+.atgard-typ-tag--kund { background: #fff4e5; color: #9a3412; }
+.dyn-atgard-typ {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 1rem;
+    margin-top: 0.55rem;
+}
+.dyn-atgard-typ-opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--title-text);
+}
+.dyn-atgard-forslag {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    color: #7a5b00;
+}
+.atgard-typ-granskning {
+    margin: 0 0 1.1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid #f4d27a;
+    border-radius: 12px;
+    background: #fff8e1;
+}
+.atgard-typ-granskning h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.atgard-typ-granskning p { margin: 0 0 0.65rem; font-size: 0.84rem; line-height: 1.45; }
+.atgard-typ-granskning-list { margin: 0; padding-left: 1.1rem; }
+.atgard-typ-granskning-list li { margin: 0.4rem 0; font-size: 0.84rem; }
+.atgard-typ-granskning-actions { display: inline-flex; gap: 0.35rem; margin-left: 0.4rem; }
+.tjanst-forutsattning-flag {
+    font-size: 0.95rem;
+    line-height: 1;
+}
+.tjanst-forutsattning-flag--nej { color: #b91c1c; }
+.tjanst-forutsattning-flag--delvis { color: #b45309; }
+.forutsattning-box {
+    margin-top: 0.85rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card-bg);
+}
+.forutsattning-warn {
+    margin: 0 0 0.65rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+.forutsattning-warn--nej { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.forutsattning-warn--delvis { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+.forutsattning-hint { margin: 0 0 0.55rem; font-size: 0.8rem; color: #64748b; }
+.forutsattning-row { margin-bottom: 0.7rem; }
+.forutsattning-row-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.85rem;
+    align-items: center;
+    justify-content: space-between;
+}
+.forutsattning-titel { font-weight: 600; font-size: 0.84rem; }
+.forutsattning-uppfylld { font-size: 0.78rem; display: flex; align-items: center; gap: 0.4rem; }
+.forutsattning-motivering { margin-top: 0.35rem; }
+.forutsattning-override { margin: 0.65rem 0; }
+.forutsattning-override-label { margin: 0 0 0.35rem; font-size: 0.78rem; color: #475569; }
+.forutsattning-override-scores { display: flex; gap: 0.85rem; flex-wrap: wrap; }
+.forutsattning-override-scores label { font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.2rem; }
 
 @media (max-width: 640px) {
     .vuln-grid { grid-template-columns: 1fr; }
