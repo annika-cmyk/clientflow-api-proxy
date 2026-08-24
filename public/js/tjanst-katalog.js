@@ -174,10 +174,45 @@
     };
   }
 
-  function unmatchedRaws(values, catalog) {
-    return classifyCustomerServices(values, catalog).unmatched.map(function (hit) {
+  function unmatchedRaws(values, catalog, opts) {
+    return classifyCustomerServices(values, catalog, opts).unmatched.map(function (hit) {
       return hit.raw;
     });
+  }
+
+  function unmatchedLabel(hit) {
+    if (!hit) return '';
+    var namn = trimStr(hit.resolvedNamn || hit.proposed || hit.catalogNamn);
+    if (namn) return namn;
+    if (!isRecId(hit.raw)) return trimStr(hit.raw);
+    return 'saknad tjänstpost';
+  }
+
+  function reviewLabels(values, catalog, opts) {
+    var classified = classifyCustomerServices(values, catalog, opts);
+    var seen = {};
+    var out = [];
+    (classified.unknown || []).concat(classified.askAnnika || []).forEach(function (hit) {
+      var label = unmatchedLabel(hit);
+      var key = foldName(label);
+      if (!label || seen[key]) return;
+      seen[key] = true;
+      out.push(label);
+    });
+    return out;
+  }
+
+  function catalogIdsForCustomerValues(values, catalog, opts) {
+    var classified = classifyCustomerServices(values, catalog, opts);
+    var seen = {};
+    var out = [];
+    (classified.matched || []).concat(classified.normalize || []).forEach(function (hit) {
+      var id = hit && hit.catalogId;
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      out.push(id);
+    });
+    return out;
   }
 
   function catalogIdsFromSelection(selectedIds, catalog) {
@@ -199,8 +234,8 @@
    * Vid sparning: bara katalog-ID från UI, plus oförändrade icke-katalogvärden
    * så att Avstämning/BOKSLUT inte raderas innan manuell granskning.
    */
-  function mergeSaveValues(existingValues, selectedCatalogIds, catalog) {
-    var keep = unmatchedRaws(existingValues, catalog);
+  function mergeSaveValues(existingValues, selectedCatalogIds, catalog, opts) {
+    var keep = unmatchedRaws(existingValues, catalog, opts);
     var ids = catalogIdsFromSelection(selectedCatalogIds, catalog);
     var seen = {};
     var out = [];
@@ -234,6 +269,9 @@
     matchValue: matchValue,
     classifyCustomerServices: classifyCustomerServices,
     unmatchedRaws: unmatchedRaws,
+    unmatchedLabel: unmatchedLabel,
+    reviewLabels: reviewLabels,
+    catalogIdsForCustomerValues: catalogIdsForCustomerValues,
     catalogIdsFromSelection: catalogIdsFromSelection,
     mergeSaveValues: mergeSaveValues,
     filterIncomingToCatalog: filterIncomingToCatalog

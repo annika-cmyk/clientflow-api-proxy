@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.77', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.78', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -8853,12 +8853,42 @@ class CustomerCardManager {
         return t._mergedRecordIds && t._mergedRecordIds.length ? t._mergedRecordIds : [t.id];
     }
 
+    _tjanstKatalogOpts() {
+        return { idLookup: this._kundTjanstLookup || {} };
+    }
+
+    _applyKundTjanster(data) {
+        const list = (data && data.tjanster) || [];
+        const lookup = {};
+        list.forEach((t) => {
+            if (t && t.id) lookup[t.id] = t.namn || '';
+        });
+        this._kundTjanstLookup = lookup;
+        const ids = new Set(list.map((t) => t.id).filter(Boolean));
+        const TK = window.TjanstKatalog;
+        if (TK && TK.catalogIdsForCustomerValues) {
+            TK.catalogIdsForCustomerValues(
+                this.customerData?.fields?.['Kundens utvalda tjänster'] || list.map((t) => t.id),
+                this._byransTjanster || [],
+                this._tjanstKatalogOpts()
+            ).forEach((id) => ids.add(id));
+        }
+        this._aktivaTjansterIds = ids;
+        if (this.customerData?.fields) {
+            this.customerData.fields['Kundens utvalda tjänster'] = (data && data.linkedIds) || list.map((t) => t.id);
+        }
+    }
+
     _unmatchedTjanster() {
         const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
         const catalog = this._byransTjanster || [];
         const TK = window.TjanstKatalog;
+        if (TK && TK.reviewLabels) {
+            return TK.reviewLabels(existing, catalog, this._tjanstKatalogOpts());
+        }
         if (TK && TK.classifyCustomerServices) {
-            return TK.classifyCustomerServices(existing, catalog).unmatched.map((hit) => hit.raw);
+            return TK.classifyCustomerServices(existing, catalog, this._tjanstKatalogOpts()).unmatched
+                .map((hit) => (TK.unmatchedLabel && TK.unmatchedLabel(hit)) || hit.raw);
         }
         return [];
     }
@@ -8955,12 +8985,7 @@ class CustomerCardManager {
                 ...getAuthOptsKundkort()
             });
             const data = res.ok ? await res.json() : {};
-            // Spara aktiva som array av record ID:n
-            this._aktivaTjansterIds = new Set((data.tjanster || []).map(t => t.id));
-            // Uppdatera customerData för andra delar av koden
-            if (this.customerData?.fields) {
-                this.customerData.fields['Kundens utvalda tjänster'] = data.linkedIds || [];
-            }
+            this._applyKundTjanster(data);
         } catch (e) {
             console.warn('⚠️ Kunde inte hämta kundens tjänster:', e.message);
             this._aktivaTjansterIds = new Set();
@@ -9454,7 +9479,7 @@ class CustomerCardManager {
         const TK = window.TjanstKatalog;
         const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
         const toSave = TK && TK.mergeSaveValues
-            ? TK.mergeSaveValues(existing, checkedIds, this._byransTjanster || [])
+            ? TK.mergeSaveValues(existing, checkedIds, this._byransTjanster || [], this._tjanstKatalogOpts())
             : checkedIds;
 
         const saveBtn = document.querySelector(`#tjanster-edit-${p} .btn-primary`);
@@ -9603,10 +9628,7 @@ class CustomerCardManager {
         try {
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/tjanster`, { ...getAuthOptsKundkort() });
             const data = res.ok ? await res.json() : {};
-            this._aktivaTjansterIds = new Set((data.tjanster || []).map(t => t.id));
-            if (this.customerData?.fields) {
-                this.customerData.fields['Kundens utvalda tjänster'] = data.linkedIds || [];
-            }
+            this._applyKundTjanster(data);
         } catch (e) {
             console.warn('⚠️ Kunde inte hämta kundens tjänster för KYC:', e.message);
             if (!this._aktivaTjansterIds) this._aktivaTjansterIds = new Set();
