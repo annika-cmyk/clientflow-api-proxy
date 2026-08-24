@@ -58,6 +58,7 @@ const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const EuHogriskLander = require('./public/js/eu-hogrisk-lander');
+const KycHuvudman = require('./public/js/kyc-huvudman');
 const RiskSkala = require('./public/js/risk-skala');
 const {
   isRiskSelectFieldName,
@@ -7182,6 +7183,30 @@ function isEnskildFirmaBolagsform(bolagsform) {
     || raw === 'fysiska personer';
 }
 
+function kycHuvudmanPdfHtml(kyc, esc) {
+  const list = KycHuvudman.listFromSaved(kyc, []);
+  const filled = list.filter((p) => p.namn || p.personnr);
+  if (!filled.length) {
+    const fallback = String(kyc && kyc.huvudmanInfo || '').trim();
+    return fallback
+      ? `<div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br>${esc(fallback).replace(/\n/g, '<br>')}</div>`
+      : '<div class="field"><span class="field-value">\u2014</span></div>';
+  }
+  return filled.map((p) => {
+    const hemvist = p.hemvist || p.skatterattslig_hemvist || '';
+    const tinHtml = (KycHuvudman.isForeignHemvist(hemvist) && p.tin)
+      ? `<div class="field"><span class="field-label">TIN:</span> <span class="field-value">${esc(p.tin)}</span></div>`
+      : '';
+    return `
+    <div class="row">
+      <div class="col"><span class="field-label">Namn:</span> <span class="field-value">${esc(p.namn || '\u2014')}</span></div>
+      <div class="col"><span class="field-label">Personnummer:</span> <span class="field-value">${esc(p.personnr || '\u2014')}</span></div>
+    </div>
+    <div class="field"><span class="field-label">Skatterättslig hemvist:</span> <span class="field-value">${esc(hemvist || '\u2014')}</span></div>
+    ${tinHtml}`;
+  }).join('<div style="border-top:0.5px solid #e2e8f0;margin:6px 0;"></div>');
+}
+
 function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
   const ACCENT_KYC = '#3b4a8a';
   const esc = pdfEscape;
@@ -7221,7 +7246,7 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
     </div>
   </div>
   ${isEnskildFirmaBolagsform(kyc.bolagsform) ? '' : `<div class="section"><h2>3. Verklig huvudman</h2>
-    <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br>${nl2br(kyc.huvudmanInfo || '—')}</div>
+    ${kycHuvudmanPdfHtml(kyc, esc)}
     ${kyc.huvudmanAnnatSatt ? `<div class="field"><span class="field-label">Kontroll genom avtal:</span><br>${nl2br(kyc.huvudmanAnnatSatt)}</div>` : ''}
   </div>`}
   <div class="section"><h2>4. PEP</h2>
@@ -15801,12 +15826,14 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
 
     let existingKyc = {};
+    let existingFields = {};
     try {
       const existingRes = await axios.get(
         `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
         { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
       );
-      existingKyc = JSON.parse(existingRes.data?.fields?.['KYC-formular (JSON)'] || '{}') || {};
+      existingFields = existingRes.data?.fields || {};
+      existingKyc = JSON.parse(existingFields['KYC-formular (JSON)'] || '{}') || {};
     } catch (_) { existingKyc = {}; }
 
     const keepStatus = ['Skickat till kund', 'Signerat'].includes(existingKyc.status);
@@ -15834,6 +15861,21 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'internationellHandel')) {
       syncFields['Har företaget transaktioner med andra länder?'] = String(req.body.internationellHandel || '');
+    }
+    const huvudmanList = Array.isArray(req.body?.huvudman) && req.body.huvudman.length
+      ? req.body.huvudman
+      : KycHuvudman.parseHuvudmanInfo(req.body?.huvudmanInfo || kycData.huvudmanInfo || '');
+    if (huvudmanList.length) {
+      syncFields['Verklig huvudman'] = KycHuvudman.formatHuvudmanInfo(huvudmanList);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'huvudman')
+      || Object.prototype.hasOwnProperty.call(req.body || {}, 'huvudmanInfo')
+      || Object.prototype.hasOwnProperty.call(req.body || {}, 'vh_utlandska_agare')) {
+      const existingFlags = existingFields['Riskhöjande faktorer övrigt'] || [];
+      syncFields['Riskhöjande faktorer övrigt'] = KycHuvudman.mergeUtlandskaUboFlag(
+        existingFlags,
+        KycHuvudman.hasForeignHemvist(huvudmanList)
+      );
     }
     await ensureKunddataOptionalFields(airtableAccessToken, baseId);
 
@@ -15988,7 +16030,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
 
   ${isEnskildFirmaBolagsform(kyc.bolagsform || f['Bolagsform']) ? '' : `<div class="section">
     <h2>3. Verklig huvudman</h2>
-    <div class="field"><span class="field-label">Verklig(a) huvudman/-män:</span><br><span class="field-value">${nl2br(kyc.huvudmanInfo || '\u2014')}</span></div>
+    ${kycHuvudmanPdfHtml(kyc, esc)}
     ${kyc.huvudmanAnnatSatt ? `<div class="field" style="margin-top:6px;"><span class="field-label">Kontroll genom avtal el. dyl.:</span><br><span class="field-value">${nl2br(kyc.huvudmanAnnatSatt)}</span></div>` : ''}
     ${(kyc.vh_agarandel !== null && kyc.vh_agarandel !== undefined && kyc.vh_agarandel !== '') ? `<div class="field"><span class="field-label">Total ägarandel:</span> <span class="field-value">${esc(kyc.vh_agarandel)} %</span></div>` : ''}
     <div class="row">

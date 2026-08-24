@@ -5438,6 +5438,10 @@ body.sidebar-collapsed .logout-btn {
 .kyc-lander-geo .kyc-lander-picker { margin-top: 0.35rem; }
 .risker-check-item.is-geo-steered { border-color: #c7d2fe; background: #eef2ff; }
 .risker-check-item.is-geo-steered input { accent-color: #4f46e5; }
+.risker-check-item.is-ubo-steered,
+.riskf-check-item.is-ubo-steered { border-color: #fecaca; background: #fff5f5; }
+.risker-check-item.is-ubo-steered input,
+.riskf-check-item.is-ubo-steered input { accent-color: #dc2626; }
 .risker-ovriga-flaggor {
     margin-top: 1.1rem;
     padding-top: 0.9rem;

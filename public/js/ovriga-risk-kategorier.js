@@ -154,7 +154,8 @@
       klass: KLASS.BIDRAR,
       badge: 'Bidrar vid kombination',
       coveredByDimension: true,
-      aliases: ['utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet', 'kunder med utländska huvudmän']
+      aliases: ['utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet', 'kunder med utländska huvudmän'],
+      steeredFromKyc: true
     },
     {
       id: 'pep-rca',
@@ -409,7 +410,7 @@
       var label = canonicalLabel(raw);
       if (!label || fold(label) === 'inga') return;
       var factor = findFactor(label);
-      if (factor && factor.category === categoryId) return;
+      if (factor && factor.category === categoryId && !factor.steeredFromKyc) return;
       if (!factor && categoryId === 'verksamheten') return;
       if (seen[fold(label)]) return;
       seen[fold(label)] = true;
