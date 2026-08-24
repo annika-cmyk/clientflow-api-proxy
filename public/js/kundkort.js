@@ -909,7 +909,8 @@ class CustomerCardManager {
         if (manual === false) return false;
         const email = (fields['e-post'] || fields['Email'] || fields['E-post'] || '').toString().trim();
         const telefon = (fields['Telefonnr'] || fields['telefon'] || '').toString().trim();
-        const beskrivning = (fields['Beskrivning av kunden'] || '').toString().trim();
+        const beskrivning = this._htmlToPlainText(fields['Verksamhet'])
+            || this._htmlToPlainText(fields['Beskrivning av kunden']);
         const personer = this._parseKontaktPersoner(fields);
         const harKontakt = personer.length > 0;
         return !!(email && telefon && beskrivning && harKontakt);
@@ -5009,7 +5010,7 @@ class CustomerCardManager {
         // Redigerbara kunduppgifter
         const email = fields['e-post'] || fields['Email'] || fields['E-post'] || '';
         const telefon = fields['Telefonnr'] || fields['telefon'] || '';
-        const kundBeskrivning = fields['Beskrivning av kunden'] || '';
+        const kundBeskrivning = this._resolvedVerksamhetHtml(fields);
 
         // Redovisningsuppgifter
         const redovisningsmetod = fields['Redovisningsmetod'] || '';
@@ -5195,29 +5196,14 @@ class CustomerCardManager {
                     </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
-                <div class="collapsible-body" style="position:relative;">
-                    <div id="beskrivning-view">
-                        <div id="ku-beskrivning-view" class="kunduppgifter-beskrivning-view">${kundBeskrivning || mis}</div>
+                <div class="collapsible-body">
+                    <div class="beskrivning-inner">
+                        ${KUND_BESKRIVNING_DELKORT.map((def) => this._renderBeskrivningDelkort(def, fields, mis)).join('\n')}
                     </div>
-                    <div id="beskrivning-edit" style="display:none;">
-                        <div class="richtext-toolbar">
-                            <button type="button" title="Fet" onclick="document.execCommand('bold')"><b>B</b></button>
-                            <button type="button" title="Punktlista" onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
-                        </div>
-                        <div id="ku-beskrivning-input" class="kunduppgifter-richtext" contenteditable="true"
-                             data-placeholder="Beskriv kundens verksamhet, bakgrund eller övrigt...">${kundBeskrivning}</div>
-                        <div class="kunduppgifter-actions">
-                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveBeskrivning()"><i class="fas fa-save"></i> Spara</button>
-                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningEdit()">Avbryt</button>
-                        </div>
-                    </div>
-                    <button class="card-edit-fab" id="beskrivning-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningEdit()">
-                        <i class="fas fa-pencil-alt"></i>
-                    </button>
+                    <div id="ku-beskrivning-view" hidden>${kundBeskrivning}</div>
+                    <div id="ku-beskrivning-input" hidden>${kundBeskrivning}</div>
                 </div>
             </div>
-
-            ${KUND_BESKRIVNING_DELKORT.map((def) => this._renderBeskrivningDelkort(def, fields, mis)).join('\n')}
 
             <!-- KORT 4: Redovisningsuppgifter -->
             <div class="collapsible-card is-collapsed" id="redovisning-card">
@@ -5370,6 +5356,7 @@ class CustomerCardManager {
         }
 
         console.log('✅ Company info loaded with lead-card layout');
+        this._maybeMigrateBeskrivningTillVerksamhet();
     }
 
     async refreshBolagsverketData() {
@@ -5911,49 +5898,70 @@ class CustomerCardManager {
         return KUND_BESKRIVNING_DELKORT.find((d) => d.id === id) || null;
     }
 
+    _resolvedVerksamhetHtml(fields) {
+        const f = fields || {};
+        const verksamhet = this._kundFieldText(f['Verksamhet']);
+        if (this._htmlToPlainText(verksamhet)) return verksamhet;
+        return this._kundFieldText(f['Beskrivning av kunden']);
+    }
+
+    _maybeMigrateBeskrivningTillVerksamhet() {
+        const f = this.customerData?.fields || {};
+        if (this._htmlToPlainText(f['Verksamhet'])) return;
+        const src = f['Beskrivning av kunden'];
+        if (!this._htmlToPlainText(src)) return;
+        this._patchKunddataFields({ Verksamhet: src }).then((result) => {
+            if (!result.ok) return;
+            const viewEl = document.getElementById('ku-verksamhet-view');
+            const inputEl = document.getElementById('ku-verksamhet-input');
+            if (viewEl) viewEl.innerHTML = src;
+            if (inputEl) inputEl.innerHTML = src;
+            const hiddenView = document.getElementById('ku-beskrivning-view');
+            const hiddenInput = document.getElementById('ku-beskrivning-input');
+            if (hiddenView) hiddenView.innerHTML = src;
+            if (hiddenInput) hiddenInput.innerHTML = src;
+        });
+    }
+
     _renderBeskrivningDelkort(def, fields, mis) {
-        const raw = this._kundFieldText(fields[def.field]);
+        const raw = def.id === 'verksamhet'
+            ? this._resolvedVerksamhetHtml(fields)
+            : this._kundFieldText(fields[def.field]);
         const empty = !this._htmlToPlainText(raw);
-        const cardId = `${def.id}-card`;
         const hintHtml = this._esc(def.hint).replace(/\n/g, '<br>');
         const hintAttr = this._esc(def.hint.replace(/\n/g, ' '));
         return `
-            <div class="collapsible-card is-collapsed" id="${cardId}">
-                <div class="collapsible-header" onclick="customerCardManager.toggleCard('${cardId}')">
-                    <div class="collapsible-title">
-                        <i class="fas ${def.icon}"></i>
-                        <span>${this._esc(def.title)}</span>
-                    </div>
-                    <i class="fas fa-chevron-down collapsible-chevron"></i>
+            <section class="beskrivning-delkort" id="${def.id}-card">
+                <div class="beskrivning-delkort-head">
+                    <i class="fas ${def.icon}"></i>
+                    <span>${this._esc(def.title)}</span>
                 </div>
-                <div class="collapsible-body" style="position:relative;">
-                    <p class="kunduppgifter-delkort-hint">${hintHtml}</p>
-                    <div id="${def.id}-view">
-                        <div id="ku-${def.id}-view" class="kunduppgifter-beskrivning-view">${empty ? mis : raw}</div>
-                    </div>
-                    <div id="${def.id}-edit" style="display:none;">
-                        <div class="richtext-toolbar">
-                            <button type="button" title="Fet" onclick="document.execCommand('bold')"><b>B</b></button>
-                            <button type="button" title="Punktlista" onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
-                        </div>
-                        <div id="ku-${def.id}-input" class="kunduppgifter-richtext" contenteditable="true"
-                             data-placeholder="${hintAttr}">${raw}</div>
-                        <div class="kunduppgifter-actions">
-                            <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveBeskrivningDelkort('${def.id}')"><i class="fas fa-save"></i> Spara</button>
-                            <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">Avbryt</button>
-                        </div>
-                    </div>
-                    <button class="card-edit-fab" id="${def.id}-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">
-                        <i class="fas fa-pencil-alt"></i>
-                    </button>
+                <p class="kunduppgifter-delkort-hint">${hintHtml}</p>
+                <div id="${def.id}-view">
+                    <div id="ku-${def.id}-view" class="kunduppgifter-beskrivning-view">${empty ? mis : raw}</div>
                 </div>
-            </div>`;
+                <div id="${def.id}-edit" style="display:none;">
+                    <div class="richtext-toolbar">
+                        <button type="button" title="Fet" onclick="document.execCommand('bold')"><b>B</b></button>
+                        <button type="button" title="Punktlista" onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
+                    </div>
+                    <div id="ku-${def.id}-input" class="kunduppgifter-richtext" contenteditable="true"
+                         data-placeholder="${hintAttr}">${raw}</div>
+                    <div class="kunduppgifter-actions">
+                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveBeskrivningDelkort('${def.id}')"><i class="fas fa-save"></i> Spara</button>
+                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">Avbryt</button>
+                    </div>
+                </div>
+                <button class="card-edit-fab" id="${def.id}-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">
+                    <i class="fas fa-pencil-alt"></i>
+                </button>
+            </section>`;
     }
 
     toggleBeskrivningDelkortEdit(id) {
         const def = this._beskrivningDelkortById(id);
         if (!def) return;
-        this._ensureCardOpen(`${def.id}-card`);
+        this._ensureCardOpen('beskrivning-card');
         const view = document.getElementById(`${def.id}-view`);
         const edit = document.getElementById(`${def.id}-edit`);
         const btn = document.getElementById(`${def.id}-edit-btn`);
@@ -5984,6 +5992,15 @@ class CustomerCardManager {
             const viewEl = document.getElementById(`ku-${def.id}-view`);
             if (viewEl) viewEl.innerHTML = this._htmlToPlainText(html) ? html : '<span class="missing-data">Ej angiven</span>';
             if (this.customerData?.fields) this.customerData.fields[def.field] = html;
+            if (def.id === 'verksamhet') {
+                if (this.customerData?.fields && !this._htmlToPlainText(this.customerData.fields['Beskrivning av kunden'])) {
+                    this.customerData.fields['Beskrivning av kunden'] = html;
+                }
+                const hiddenView = document.getElementById('ku-beskrivning-view');
+                const hiddenInput = document.getElementById('ku-beskrivning-input');
+                if (hiddenView) hiddenView.innerHTML = html;
+                if (hiddenInput) hiddenInput.innerHTML = html;
+            }
             if (def.kycKey && this._savedKycFormular) this._savedKycFormular[def.kycKey] = this._htmlToPlainText(html);
             this.toggleBeskrivningDelkortEdit(def.id);
             this.showNotification(`${def.title} sparad.`, 'success');
@@ -10058,7 +10075,6 @@ class CustomerCardManager {
         const savedVerksamhet = this._kycPrefillText(
             f['Verksamhet'],
             saved.verksamhet,
-            f['Verksamhetsbeskrivning'],
             f['Beskrivning av kunden']
         );
         const savedKostnader = this._kycPrefillText(f['Kostnader'], saved.kostnader);
@@ -10336,20 +10352,23 @@ class CustomerCardManager {
                                 <label>Syfte med affärsrelationen</label>
                                 <textarea id="kyc-syfte-affarsrelation" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Varför ingås affärsrelationen och hur ska byråns tjänster användas?">${esc(savedSyfteAffarsrelation)}</textarea>
                             </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Verksamhet</label>
-                                <p class="uppdrag-hint">Vad gör kunden</p>
-                                <textarea id="kyc-verksamhet" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Vad gör kunden">${esc(savedVerksamhet)}</textarea>
-                            </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Kostnader</label>
-                                <p class="uppdrag-hint">Beskriv vilka kostnader kunden har, vilka leverantörerna är och hur betalning sker</p>
-                                <textarea id="kyc-kostnader" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Kostnader, leverantörer och hur betalning sker">${esc(savedKostnader)}</textarea>
-                            </div>
-                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                <label>Intäkterna</label>
-                                <p class="uppdrag-hint">Vilka är kundens kunder, hur möter de sina kunder (digitalt, fysiskt möte?) hur tar de betalt, använder de faktureringsprogram eller andra systemstöd?</p>
-                                <textarea id="kyc-intakterna" class="uppdrag-input uppdrag-textarea" rows="4" placeholder="Kunder, mötesform, betalning och systemstöd">${esc(savedIntakterna)}</textarea>
+                            <div class="kyc-beskrivning-block">
+                                <h4 class="kyc-beskrivning-title">Beskrivning av kunden</h4>
+                                <div class="uppdrag-field uppdrag-field--full">
+                                    <label>Verksamhet</label>
+                                    <p class="uppdrag-hint">Vad gör kunden</p>
+                                    <textarea id="kyc-verksamhet" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Vad gör kunden">${esc(savedVerksamhet)}</textarea>
+                                </div>
+                                <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
+                                    <label>Kostnader</label>
+                                    <p class="uppdrag-hint">Beskriv vilka kostnader kunden har, vilka leverantörerna är och hur betalning sker</p>
+                                    <textarea id="kyc-kostnader" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Kostnader, leverantörer och hur betalning sker">${esc(savedKostnader)}</textarea>
+                                </div>
+                                <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
+                                    <label>Intäkterna</label>
+                                    <p class="uppdrag-hint">Vilka är kundens kunder, hur möter de sina kunder (digitalt, fysiskt möte?) hur tar de betalt, använder de faktureringsprogram eller andra systemstöd?</p>
+                                    <textarea id="kyc-intakterna" class="uppdrag-input uppdrag-textarea" rows="4" placeholder="Kunder, mötesform, betalning och systemstöd">${esc(savedIntakterna)}</textarea>
+                                </div>
                             </div>
                             <div class="uppdrag-grid" style="margin-top:0.75rem;">
                                 <div class="uppdrag-field">
