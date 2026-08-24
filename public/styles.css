@@ -12784,6 +12784,108 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .forutsattning-override-label { margin: 0 0 0.35rem; font-size: 0.78rem; color: #475569; }
 .forutsattning-override-scores { display: flex; gap: 0.85rem; flex-wrap: wrap; }
 .forutsattning-override-scores label { font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.ai-rb-forutsattningar {
+    margin: 0 0 1rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.forutsattning-group { margin-bottom: 1rem; }
+.forutsattning-group-title {
+    margin: 0 0 0.55rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: #475569;
+}
+.forutsattning-row--tri {
+    padding: 0.35rem 0.4rem;
+    border-radius: 8px;
+}
+.forutsattning-row--tri[data-state="ej_uppfylld"] { background: #fef2f2; }
+.forutsattning-row--tri[data-state="uppfylld"] { background: #f0fdf4; }
+.forutsattning-check {
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    line-height: 0;
+}
+.forutsattning-check-box {
+    display: inline-block;
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 2px solid #94a3b8;
+    border-radius: 4px;
+    background: #fff;
+    position: relative;
+    vertical-align: middle;
+}
+.forutsattning-row--tri[data-state="uppfylld"] .forutsattning-check-box {
+    background: #16a34a;
+    border-color: #16a34a;
+}
+.forutsattning-row--tri[data-state="uppfylld"] .forutsattning-check-box::after {
+    content: '';
+    position: absolute;
+    left: 0.22rem;
+    top: 0.02rem;
+    width: 0.32rem;
+    height: 0.55rem;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.forutsattning-nej {
+    width: 1.6rem;
+    height: 1.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.forutsattning-row--tri[data-state="ej_uppfylld"] .forutsattning-nej {
+    background: #dc2626;
+    color: #fff;
+    border-color: #dc2626;
+}
+.forutsattning-tjanst-note {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin: 0.45rem 0 0;
+}
+.ai-rb-foreslagna {
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    border: 1px dashed #6366f1;
+    border-radius: 10px;
+    background: #eef2ff;
+}
+.ai-rb-foreslagna-lead {
+    margin: 0 0 0.55rem;
+    font-size: 0.82rem;
+    color: #3730a3;
+}
+.ai-rb-foreslagen-rad {
+    margin: 0.55rem 0 0;
+    padding: 0.55rem 0.65rem;
+    background: #fff;
+    border-radius: 8px;
+}
+.ai-rb-foreslagen-text { margin: 0 0 0.25rem; font-size: 0.84rem; }
+.ai-rb-foreslagen-reason { margin: 0 0 0.45rem; font-size: 0.76rem; color: #64748b; }
+.ai-rb-foreslagen-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.dyn-atgard-lagsut {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    color: #334155;
+}
 
 @media (max-width: 640px) {
     .vuln-grid { grid-template-columns: 1fr; }

@@ -892,11 +892,15 @@
     var slutsats = hasSammantagenSlutsats(motivering);
     if (slutsats) motivering = stripSammantagenSlutsats(motivering);
     var floor = (opts && opts.tjanstFloor) || { level: '', namn: '' };
+    var foreslagnaAtgarder = [];
+    if (opts && Array.isArray(opts.foreslagnaAtgarder)) foreslagnaAtgarder = opts.foreslagnaAtgarder;
+    else if (Array.isArray(src.foreslagnaAtgarder)) foreslagnaAtgarder = src.foreslagnaAtgarder;
     return {
       foreslagenNiva: suggested,
       riskbedomning: motivering,
       kundRiskMotivering: motivering,
       atgarder: atgarder,
+      foreslagnaAtgarder: foreslagnaAtgarder,
       avvikelseMotivering: avvikelseMotivering,
       harSammantagenSlutsats: slutsats,
       slutsatsVarning: slutsats ? slutsatsVarning(src.riskbedomning || src.kundRiskMotivering || motivering) : '',

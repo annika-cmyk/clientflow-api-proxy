@@ -7215,6 +7215,161 @@ class CustomerCardManager {
         return TF.readKundState(this.customerData?.fields || {});
     }
 
+    _selectedForutsattningTjanster() {
+        const f = this.customerData?.fields || {};
+        const aktivaIds = this._aktivaTjansterIds || new Set(f['Kundens utvalda tjänster'] || []);
+        return (this._byransTjanster || []).filter((t) =>
+            this._tjanstIdMatchSet(t).some((id) => aktivaIds.has(id))
+        );
+    }
+
+    _renderRiskForutsattningBlock() {
+        const TF = window.TjanstForutsattning;
+        if (!TF || !TF.listKundForutsattningar) {
+            return '<div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" hidden></div>';
+        }
+        const groups = TF.listKundForutsattningar(this._selectedForutsattningTjanster(), this._kundForutsattningState());
+        if (!groups.length) {
+            return '<div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" hidden></div>';
+        }
+        const html = groups.map((g) => {
+            const sid = this._esc(g.tjanstId);
+            const assess = g.assess || {};
+            const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
+            const warn = assess.warning
+                ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
+                : (assess.hint ? `<p class="forutsattning-hint">${this._esc(assess.hint)}</p>` : '');
+            const rows = (g.rows || []).map((row) => {
+                const state = row.triState || TF.triState(row.uppfylld);
+                const needMot = state === 'ej_uppfylld';
+                return `
+                    <div class="forutsattning-row forutsattning-row--tri" data-tjanst-id="${sid}" data-atgard-key="${this._esc(row.key)}" data-state="${state}">
+                        <div class="forutsattning-row-top">
+                            <button type="button" class="forutsattning-check" aria-pressed="${state === 'uppfylld' ? 'true' : 'false'}" title="Uppfylld" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'uppfylld')">
+                                <span class="forutsattning-check-box" aria-hidden="true"></span>
+                            </button>
+                            <span class="forutsattning-titel">${this._esc(row.titel)}</span>
+                            <button type="button" class="forutsattning-nej" aria-pressed="${state === 'ej_uppfylld' ? 'true' : 'false'}" title="Ej uppfylld" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'ej_uppfylld')">✕</button>
+                        </div>
+                        <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Kort motivering (obligatorisk när förutsättningen inte är uppfylld)" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
+                    </div>`;
+            }).join('');
+            const ov = assess.override || {};
+            const sVal = ov.sannolikhetEfter || '';
+            const kVal = ov.konsekvensEfter || '';
+            const overrideReq = assess.status === 'nej' && !assess.override;
+            const residualHint = g.item && g.item.residualSource === 'inneboende'
+                ? `<p class="forutsattning-hint">Beräknad residual för tjänsten använder inneboende risk (${this._esc(g.item.inherentLevel || '')}, S×K ${g.item.inherentProduct || '–'}) tills ni sätter en kundspecifik residual.</p>`
+                : (g.item && g.item.residualSource === 'override'
+                    ? `<p class="forutsattning-hint">Kundspecifik residual S×K ${g.item.residualProduct} (${this._esc(g.item.residualLevel || '')}) används i den beräknade nivån.</p>`
+                    : '');
+            return `
+                <section class="forutsattning-group" data-tjanst-id="${sid}">
+                    <h4 class="forutsattning-group-title">FÖRUTSÄTTNINGAR FÖR ${this._esc(g.namn || 'tjänsten')}</h4>
+                    ${warn}
+                    ${residualHint}
+                    ${rows}
+                    <div class="forutsattning-override">
+                        <p class="forutsattning-override-label">${overrideReq ? 'Kundspecifik residual (krävs för att använda sänkt residual i beräkningen)' : 'Kundspecifik residual (S×K), valfritt'}</p>
+                        <div class="forutsattning-override-scores">
+                            <label>Sannolikhet
+                                <select class="forutsattning-override-s">
+                                    <option value="">Mall</option>
+                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(sVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                                </select>
+                            </label>
+                            <label>Konsekvens
+                                <select class="forutsattning-override-k">
+                                    <option value="">Mall</option>
+                                    ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(kVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                </section>`;
+        }).join('');
+        return `
+            <div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" onclick="event.stopPropagation()">
+                ${html}
+                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar()">
+                    <i class="fas fa-save"></i> Spara förutsättningar
+                </button>
+            </div>`;
+    }
+
+    _refreshRiskForutsattningUi() {
+        const current = document.getElementById('ai-rb-forutsattningar');
+        const body = document.getElementById('ai-riskbedomning-body');
+        if (!body) return;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = this._renderRiskForutsattningBlock();
+        const next = tmp.firstElementChild;
+        if (!next) return;
+        if (current) current.replaceWith(next);
+        else body.insertBefore(next, body.firstChild);
+    }
+
+    _setForutsattningTri(el, intended) {
+        const row = el && el.closest('.forutsattning-row');
+        if (!row) return;
+        const current = row.getAttribute('data-state') || 'ej_bedomd';
+        const next = current === intended ? 'ej_bedomd' : intended;
+        row.setAttribute('data-state', next);
+        const check = row.querySelector('.forutsattning-check');
+        const nej = row.querySelector('.forutsattning-nej');
+        if (check) check.setAttribute('aria-pressed', next === 'uppfylld' ? 'true' : 'false');
+        if (nej) nej.setAttribute('aria-pressed', next === 'ej_uppfylld' ? 'true' : 'false');
+        const area = row.querySelector('.forutsattning-motivering');
+        if (area) area.hidden = next !== 'ej_uppfylld';
+    }
+
+    _renderForeslagnaAtgarder() {
+        const box = document.getElementById('ai-rb-foreslagna');
+        const list = Array.isArray(this._pendingForeslagnaAtgarder) ? this._pendingForeslagnaAtgarder : [];
+        if (!box) return;
+        if (!list.length) {
+            box.hidden = true;
+            box.innerHTML = '';
+            return;
+        }
+        box.hidden = false;
+        box.innerHTML = `
+            <p class="ai-rb-foreslagna-lead">AI föreslår kompletterande åtgärder för ej uppfyllda förutsättningar. Godkänn innan de läggs i åtgärdslistan — de sparas inte automatiskt.</p>
+            ${list.map((item, i) => `
+                <div class="ai-rb-foreslagen-rad" data-idx="${i}">
+                    <p class="ai-rb-foreslagen-text">${this._esc(item.text || '')}</p>
+                    <p class="ai-rb-foreslagen-reason">${this._esc(item.reason || item.tjanstNamn || '')}</p>
+                    <div class="ai-rb-foreslagen-actions">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.approveForeslagenAtgard(${i})">Godkänn</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.rejectForeslagenAtgard(${i})">Avvisa</button>
+                    </div>
+                </div>`).join('')}
+        `;
+    }
+
+    approveForeslagenAtgard(idx) {
+        const TF = window.TjanstForutsattning;
+        const list = Array.isArray(this._pendingForeslagnaAtgarder) ? this._pendingForeslagnaAtgarder : [];
+        const item = list[idx];
+        if (!item) return;
+        const atg = document.getElementById('ai-rb-atg-input');
+        if (atg && TF && TF.applyApprovedAtgarder) {
+            atg.value = TF.applyApprovedAtgarder(atg.value, [item]);
+        }
+        list.splice(idx, 1);
+        this._pendingForeslagnaAtgarder = list;
+        this._renderForeslagnaAtgarder();
+        this.showNotification('Åtgärden tillagd i listan. Spara riskbedömningen för att behålla den.', 'success');
+    }
+
+    rejectForeslagenAtgard(idx) {
+        const list = Array.isArray(this._pendingForeslagnaAtgarder) ? this._pendingForeslagnaAtgarder : [];
+        if (!list[idx]) return;
+        list.splice(idx, 1);
+        this._pendingForeslagnaAtgarder = list;
+        this._renderForeslagnaAtgarder();
+    }
+
     _effectiveTjanstItem(t) {
         const TF = window.TjanstForutsattning;
         if (TF && TF.applyToResidualItem) {
@@ -7580,6 +7735,7 @@ class CustomerCardManager {
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
                 <div class="collapsible-body" id="ai-riskbedomning-body">
+                    ${this._renderRiskForutsattningBlock()}
                     <div id="ai-rb-view">
                         ${this._riskbedomningViewHtml(profil.residual, profil.motivering, profil.atgarder, {
                             foreslagen: profil.foreslagen,
@@ -7616,6 +7772,7 @@ class CustomerCardManager {
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Åtgärder</label>
                             <textarea id="ai-rb-atg-input" class="kunduppgifter-input" rows="5" placeholder="Beskriv vilka åtgärder byrån vidtar...">${this._esc(profil.atgarder)}</textarea>
                             <p class="ai-rb-residual-note">Dessa åtgärder ligger till grund för residualbedömningen ovan.</p>
+                            <div id="ai-rb-foreslagna" class="ai-rb-foreslagna" hidden></div>
                         </div>
 
                         <div class="ai-rb-ai-row">
@@ -7695,6 +7852,7 @@ class CustomerCardManager {
             }
         }
         this._updateRiskbedomningView(profil.residual, profil.motivering, profil.atgarder);
+        this._refreshRiskForutsattningUi();
         this._updateKundRiskprofilWarnings();
     }
 
@@ -7885,6 +8043,8 @@ class CustomerCardManager {
             const atgInput = document.getElementById('ai-rb-atg-input');
             if (textInput) textInput.value = data.riskbedomning || data.kundRiskMotivering || '';
             if (atgInput) atgInput.value = data.atgarder || '';
+            this._pendingForeslagnaAtgarder = Array.isArray(data.foreslagnaAtgarder) ? data.foreslagnaAtgarder : [];
+            this._renderForeslagnaAtgarder();
             const avvikelseInput = document.getElementById('ai-rb-avvikelse-input');
             if (avvikelseInput && data.avvikelseMotivering) avvikelseInput.value = data.avvikelseMotivering;
             const help = document.getElementById('ai-rb-niva-help');
@@ -8457,6 +8617,7 @@ class CustomerCardManager {
         if (document.getElementById('ovrigkyc-tjanster')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'ovrigkyc-tjanster');
         }
+        this._refreshRiskForutsattningUi();
         this._updateKundRiskprofilWarnings();
     }
 
@@ -8676,57 +8837,10 @@ class CustomerCardManager {
         const item = this._effectiveTjanstItem(t);
         const assess = item.forutsattning;
         if (!assess || !assess.hasKundberoende) return '';
-        const sid = this._esc(t.id);
-        const opts = [TF.UPPFYLLD.EJ_BEDOMD, TF.UPPFYLLD.JA, TF.UPPFYLLD.DELVIS, TF.UPPFYLLD.NEJ];
-        const rows = assess.rows.map((row) => {
-            const needMot = row.uppfylld === TF.UPPFYLLD.DELVIS || row.uppfylld === TF.UPPFYLLD.NEJ;
-            return `
-                <div class="forutsattning-row" data-atgard-key="${this._esc(row.key)}">
-                    <div class="forutsattning-row-top">
-                        <span class="forutsattning-titel">${this._esc(row.titel)}</span>
-                        <label class="forutsattning-uppfylld">Uppfylld hos kund?
-                            <select class="forutsattning-select" data-forutsattning-uppfylld onchange="customerCardManager._toggleForutsattningMotivering(this)">
-                                ${opts.map((v) => `<option value="${v}"${row.uppfylld === v ? ' selected' : ''}>${v}</option>`).join('')}
-                            </select>
-                        </label>
-                    </div>
-                    <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Motivering (obligatorisk vid Delvis eller Nej)" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
-                </div>`;
-        }).join('');
-        const ov = assess.override || {};
-        const sVal = ov.sannolikhetEfter || '';
-        const kVal = ov.konsekvensEfter || '';
-        const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
-        const warn = assess.warning
-            ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
-            : (assess.hint ? `<p class="forutsattning-hint">${this._esc(assess.hint)}</p>` : '');
-        const overrideReq = assess.status === 'nej' && !assess.override;
-        return `
-            <div class="forutsattning-box" onclick="event.stopPropagation()">
-                <div class="risker-vald-section-label">Uppfylld hos kund?</div>
-                ${warn}
-                ${rows}
-                <div class="forutsattning-override">
-                    <p class="forutsattning-override-label">${overrideReq ? 'Kundspecifik residual (krävs för att använda sänkt residual i beräkningen)' : 'Kundspecifik residual (S×K), valfritt'}</p>
-                    <div class="forutsattning-override-scores">
-                        <label>Sannolikhet
-                            <select class="forutsattning-override-s" data-tjanst-id="${sid}">
-                                <option value="">Mall</option>
-                                ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(sVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
-                            </select>
-                        </label>
-                        <label>Konsekvens
-                            <select class="forutsattning-override-k" data-tjanst-id="${sid}">
-                                <option value="">Mall</option>
-                                ${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(kVal) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}
-                            </select>
-                        </label>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveTjanstForutsattning('${sid}')">
-                    <i class="fas fa-save"></i> Spara förutsättningar
-                </button>
-            </div>`;
+        const status = assess.status === 'nej'
+            ? 'Ej uppfylld'
+            : (assess.status === 'ok' ? 'Uppfylld' : (assess.status === 'delvis' ? 'Delvis uppfylld' : 'Ej bedömd'));
+        return `<p class="forutsattning-tjanst-note">Förutsättningar bedöms under <strong>Kundens riskbedömning</strong> — just nu: ${this._esc(status)}.</p>`;
     }
 
     _toggleForutsattningMotivering(selectEl) {
@@ -8737,32 +8851,40 @@ class CustomerCardManager {
         area.hidden = !(v === 'Delvis' || v === 'Nej');
     }
 
-    async saveTjanstForutsattning(tjanstId) {
+    async saveTjanstForutsattning() {
+        return this.saveRiskForutsattningar();
+    }
+
+    async saveRiskForutsattningar() {
         const TF = window.TjanstForutsattning;
         const customerId = this.customerId;
-        if (!TF || !customerId) return;
-        const box = document.querySelector(`.forutsattning-box select.forutsattning-override-s[data-tjanst-id="${tjanstId}"]`)
-            ?.closest('.forutsattning-box');
-        if (!box) return;
-        const forutsattningar = {};
-        box.querySelectorAll('.forutsattning-row').forEach((row) => {
-            const key = row.getAttribute('data-atgard-key');
-            const uppfylld = row.querySelector('[data-forutsattning-uppfylld]')?.value || TF.UPPFYLLD.EJ_BEDOMD;
-            const motivering = row.querySelector('.forutsattning-motivering')?.value.trim() || '';
-            forutsattningar[key] = { uppfylld, motivering };
-        });
-        const s = Number(box.querySelector('.forutsattning-override-s')?.value);
-        const k = Number(box.querySelector('.forutsattning-override-k')?.value);
-        const override = (isFinite(s) && isFinite(k) && s >= 1 && k >= 1)
-            ? { sannolikhetEfter: s, konsekvensEfter: k }
-            : null;
-        const check = TF.validateKundState({ [tjanstId]: { forutsattningar } });
-        if (!check.ok) {
-            this.showNotification(check.error, 'error');
-            return;
-        }
+        const box = document.getElementById('ai-rb-forutsattningar');
+        if (!TF || !customerId || !box) return;
         const state = TF.readKundState(this.customerData?.fields || {});
-        state[tjanstId] = { forutsattningar, override };
+        const groups = box.querySelectorAll('.forutsattning-group');
+        if (!groups.length) return;
+        for (const group of groups) {
+            const tjanstId = group.getAttribute('data-tjanst-id');
+            const forutsattningar = {};
+            group.querySelectorAll('.forutsattning-row').forEach((row) => {
+                const key = row.getAttribute('data-atgard-key');
+                const tri = row.getAttribute('data-state') || 'ej_bedomd';
+                const uppfylld = TF.fromTriState(tri);
+                const motivering = row.querySelector('.forutsattning-motivering')?.value.trim() || '';
+                forutsattningar[key] = { uppfylld, motivering };
+            });
+            const s = Number(group.querySelector('.forutsattning-override-s')?.value);
+            const k = Number(group.querySelector('.forutsattning-override-k')?.value);
+            const override = (isFinite(s) && isFinite(k) && s >= 1 && k >= 1)
+                ? { sannolikhetEfter: s, konsekvensEfter: k }
+                : null;
+            const check = TF.validateKundState({ [tjanstId]: { forutsattningar } });
+            if (!check.ok) {
+                this.showNotification(check.error, 'error');
+                return;
+            }
+            state[tjanstId] = { forutsattningar, override };
+        }
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
             const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
@@ -8784,8 +8906,135 @@ class CustomerCardManager {
             }
             this.showNotification('Förutsättningar sparade.', 'success');
             this._refreshServicesAndRisk();
+            await this._maybeCreateUppdragsatgarder(state);
         } catch (error) {
             this.showNotification('Kunde inte spara förutsättningar: ' + error.message, 'error');
+        }
+    }
+
+    _findUppdragForTyp(typ) {
+        const records = this._uppdragRecords || [];
+        const want = String(typ || '').trim();
+        const exact = records.find((r) => String(r?.fields?.['Typ'] || '').trim() === want);
+        if (exact) return exact;
+        if (want === 'Löneuppdrag') {
+            return records.find((r) => /lön/i.test(String(r?.fields?.['Typ'] || ''))) || null;
+        }
+        return null;
+    }
+
+    async _ensureUppdragRecords() {
+        if (Array.isArray(this._uppdragRecords)) return this._uppdragRecords;
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(this.customerId)}`, {
+                ...getAuthOptsKundkort()
+            });
+            const data = await res.json().catch(() => ({}));
+            this._uppdragRecords = Array.isArray(data.records) ? data.records : [];
+        } catch (_) {
+            this._uppdragRecords = [];
+        }
+        return this._uppdragRecords;
+    }
+
+    async _maybeCreateUppdragsatgarder(state) {
+        const TF = window.TjanstForutsattning;
+        if (!TF || !TF.pendingUppdragsatgarder) return;
+        const pending = TF.pendingUppdragsatgarder(this._selectedForutsattningTjanster(), state);
+        if (!pending.length) return;
+        const lines = pending.map((p) => `• ${p.text} (${p.typ})`).join('\n');
+        const ok = window.confirm(
+            'Lägg följande som åtgärd på kundens uppdragskörningar?\n\n' +
+            lines +
+            '\n\nÅtgärden syns då i det löpande arbetsflödet, inte bara i riskbedömningen.'
+        );
+        if (!ok) return;
+        await this._applyUppdragsatgarder(pending);
+    }
+
+    async _applyUppdragsatgarder(pending) {
+        const TF = window.TjanstForutsattning;
+        const customerId = this.customerId;
+        if (!TF || !customerId || !pending.length) return;
+        await this._ensureUppdragRecords();
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const byTyp = new Map();
+        pending.forEach((p) => {
+            const list = byTyp.get(p.typ) || [];
+            list.push(p);
+            byTyp.set(p.typ, list);
+        });
+        const created = [];
+        const missing = [];
+        for (const [typ, items] of byTyp.entries()) {
+            const rec = this._findUppdragForTyp(typ);
+            const texts = items.map((p) => p.text);
+            if (!rec) {
+                missing.push({ typ, texts });
+                continue;
+            }
+            const actualTyp = String(rec.fields?.['Typ'] || typ).trim();
+            const merged = TF.mergeRiskAtgarderValda(rec.fields?.['Riskåtgärder valda'], texts);
+            try {
+                const res = await fetch(`${baseUrl}/api/uppdrag`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    body: JSON.stringify({
+                        customerId,
+                        typ: actualTyp,
+                        uppdragId: rec.id,
+                        fields: {
+                            'Riskåtgärder valda': JSON.stringify(merged),
+                            'Riskåtgärder aktiverade': true
+                        }
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                if (data.record) {
+                    const idx = (this._uppdragRecords || []).findIndex((r) => r.id === rec.id);
+                    if (idx >= 0) this._uppdragRecords[idx] = data.record;
+                    else this._uppdragRecords.push(data.record);
+                } else if (rec.fields) {
+                    rec.fields['Riskåtgärder valda'] = JSON.stringify(merged);
+                    rec.fields['Riskåtgärder aktiverade'] = true;
+                }
+                created.push(...texts.map((text) => ({ typ: actualTyp, text })));
+            } catch (err) {
+                this.showNotification(`Kunde inte lägga åtgärd på ${actualTyp}: ${err.message}`, 'error');
+            }
+        }
+        const catalogTexts = pending.map((p) => p.text);
+        const currentAtg = this.customerData?.fields?.['Atgarder riskbedomning'] || '';
+        const nextAtg = TF.applyApprovedAtgarder(currentAtg, catalogTexts.map((text) => ({ text })));
+        if (nextAtg !== currentAtg) {
+            try {
+                await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
+                    method: 'PATCH',
+                    ...getAuthOptsKundkort(),
+                    body: JSON.stringify({ fields: { 'Atgarder riskbedomning': nextAtg } })
+                });
+                if (this.customerData?.fields) this.customerData.fields['Atgarder riskbedomning'] = nextAtg;
+                const atgInput = document.getElementById('ai-rb-atg-input');
+                if (atgInput) atgInput.value = nextAtg;
+            } catch (_) { /* kataloguppdatering är kompletterande */ }
+        }
+        if (created.length) {
+            this.showNotification(
+                `Uppdragsåtgärd tillagd: ${created.map((c) => `${c.text} (${c.typ})`).join(', ')}.`,
+                'success'
+            );
+            if (typeof this.loadUppdrag === 'function' && document.getElementById('uppdrag-content')) {
+                this.loadUppdrag();
+            }
+        }
+        if (missing.length) {
+            this.showNotification(
+                'Ingen ' + missing.map((m) => m.typ).join('/') +
+                '-uppdrag finns ännu. Åtgärden ligger i riskbedömningens åtgärdslista och kan kopplas när uppdraget skapas.',
+                'warning'
+            );
         }
     }
 

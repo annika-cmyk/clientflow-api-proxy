@@ -402,6 +402,180 @@
     };
   }
 
+  function triState(raw) {
+    var u = normalizeUppfylld(raw);
+    if (u === UPPFYLLD.JA) return 'uppfylld';
+    if (u === UPPFYLLD.NEJ) return 'ej_uppfylld';
+    return 'ej_bedomd';
+  }
+
+  function fromTriState(state) {
+    if (state === 'uppfylld') return UPPFYLLD.JA;
+    if (state === 'ej_uppfylld') return UPPFYLLD.NEJ;
+    return UPPFYLLD.EJ_BEDOMD;
+  }
+
+  function isEjUppfylld(raw) {
+    return normalizeUppfylld(raw) === UPPFYLLD.NEJ;
+  }
+
+  function readLagsUt(atgard) {
+    return !!(atgard && (atgard.lagsUtSomUppdragsatgard === true || atgard.lagsUtSomUppdragsatgard === 'true' || atgard.lagsUtSomUppdragsatgard === 1));
+  }
+
+  function listKundForutsattningar(tjanster, kundState) {
+    return (Array.isArray(tjanster) ? tjanster : []).map(function (t) {
+      var assess = assessTjanst(t, kundState);
+      var item = applyToResidualItem(t, kundState);
+      var atgarder = kundberoendeAtgarder(t.atgarder || (t.fields && t.fields['Tjänstespecifika åtgärder']));
+      return {
+        tjanstId: trimStr(t.id || t.recId || assess.tjanstId),
+        namn: trimStr(t.namn || (t.fields && t.fields['Task Name']) || item.namn),
+        assess: assess,
+        item: item,
+        rows: assess.rows.map(function (row) {
+          var src = atgarder.find(function (a) { return atgardKey(a) === row.key; }) || {};
+          return Object.assign({}, row, {
+            lagsUtSomUppdragsatgard: readLagsUt(src),
+            triState: triState(row.uppfylld)
+          });
+        })
+      };
+    }).filter(function (g) { return g.assess.hasKundberoende; });
+  }
+
+  function suggestKompletterandeAtgard(row) {
+    var titel = trimStr(row && (row.titel || row.namn)) || 'förutsättningen';
+    var folded = fold(titel + ' ' + trimStr(row && row.beskrivning));
+    var text;
+    if (/lager/.test(folded)) {
+      text = 'Byrån genomför manuell lagerinventering kvartalsvis tills kunden infört eget system. Dokumentera inventeringen i ClientFlow.';
+    } else if (/underlag|i tid/.test(folded)) {
+      text = 'Byrån följer upp saknade underlag vid varje körning och dokumenterar påminnelser i ClientFlow tills kunden levererar löpande och i tid.';
+    } else {
+      text = 'Byrån kompenserar för att «' + titel + '» inte är uppfylld: gör en manuell kontroll i samband med nästa uppdragskörning och dokumentera resultatet i ClientFlow.';
+    }
+    return {
+      key: (row && row.key) || atgardKey({ titel: titel }),
+      text: text,
+      reason: 'Kundberoende förutsättning ej uppfylld: ' + titel,
+      titel: titel
+    };
+  }
+
+  function parseAtgardLines(raw) {
+    return trimStr(raw)
+      .split(/\r?\n/)
+      .map(function (s) { return s.replace(/^\s*[-•]\s*/, '').trim(); })
+      .filter(Boolean);
+  }
+
+  function buildForeslagnaAtgarder(tjanster, kundState, existingText) {
+    var existing = {};
+    parseAtgardLines(existingText).forEach(function (line) {
+      existing[fold(line)] = true;
+    });
+    var out = [];
+    listKundForutsattningar(tjanster, kundState).forEach(function (g) {
+      g.rows.forEach(function (row) {
+        if (!isEjUppfylld(row.uppfylld)) return;
+        var forslag = suggestKompletterandeAtgard(row);
+        if (existing[fold(forslag.text)]) return;
+        out.push(Object.assign({}, forslag, {
+          tjanstId: g.tjanstId,
+          tjanstNamn: g.namn,
+          approved: false
+        }));
+      });
+    });
+    return out;
+  }
+
+  function applyApprovedAtgarder(existingText, approved) {
+    var lines = parseAtgardLines(existingText);
+    var seen = {};
+    lines.forEach(function (l) { seen[fold(l)] = true; });
+    (Array.isArray(approved) ? approved : []).forEach(function (item) {
+      var text = trimStr(item && item.text ? item.text : item);
+      if (!text || seen[fold(text)]) return;
+      seen[fold(text)] = true;
+      lines.push(text.charAt(0) === '-' ? text : '- ' + text);
+    });
+    return lines.join('\n');
+  }
+
+  function foreslaUppdragsTyp(tjanstNamn) {
+    var f = fold(tjanstNamn);
+    if (/lone|lon /.test(f) || f === 'lon') return 'Löneuppdrag';
+    if (/moms/.test(f)) return 'Momsredovisning';
+    return 'Bokslut';
+  }
+
+  function buildUppdragsatgardText(row) {
+    var titel = trimStr(row && row.titel) || 'kundens förutsättning';
+    if (/lager/.test(fold(titel))) return 'Kontrollera lagerunderlag manuellt';
+    return 'Kontrollera manuellt: ' + titel;
+  }
+
+  function pendingUppdragsatgarder(tjanster, kundState) {
+    var out = [];
+    listKundForutsattningar(tjanster, kundState).forEach(function (g) {
+      g.rows.forEach(function (row) {
+        if (!row.lagsUtSomUppdragsatgard || !isEjUppfylld(row.uppfylld)) return;
+        out.push({
+          key: row.key,
+          text: buildUppdragsatgardText(row),
+          typ: foreslaUppdragsTyp(g.namn),
+          tjanstId: g.tjanstId,
+          tjanstNamn: g.namn,
+          titel: row.titel
+        });
+      });
+    });
+    return out;
+  }
+
+  function buildForutsattningPromptBlock(tjanster, kundState) {
+    var lines = [];
+    listKundForutsattningar(tjanster, kundState).forEach(function (g) {
+      g.rows.forEach(function (row) {
+        if (!isEjUppfylld(row.uppfylld)) return;
+        lines.push('- ' + g.namn + ' / ' + row.titel + ': EJ UPPFYLLD' + (row.motivering ? ' — ' + row.motivering : ''));
+      });
+    });
+    if (!lines.length) return '';
+    return 'KUNDBEROENDE FÖRUTSÄTTNINGAR SOM INTE ÄR UPPFYLLDA (påverkar residualen — mallens sänkta residual används inte):\n' +
+      lines.join('\n') +
+      '\n- Nämn i motiveringen att standardåtgärden inte fungerar för kunden.' +
+      '\n- Lägg INTE kompletterande åtgärder för dessa i fältet atgarder — de granskas separat av användaren.';
+  }
+
+  function mergeRiskAtgarderValda(existingRaw, added) {
+    var have = [];
+    var seen = {};
+    function push(text) {
+      var t = trimStr(text);
+      var k = fold(t);
+      if (!t || seen[k]) return;
+      seen[k] = true;
+      have.push(t);
+    }
+    if (Array.isArray(existingRaw)) existingRaw.forEach(push);
+    else if (typeof existingRaw === 'string' && existingRaw.trim()) {
+      try {
+        var parsed = JSON.parse(existingRaw);
+        if (Array.isArray(parsed)) parsed.forEach(function (x) {
+          push(typeof x === 'string' ? x : (x && (x.text || x.name || x.label)));
+        });
+        else String(existingRaw).split(/\r?\n/).forEach(push);
+      } catch (_) {
+        String(existingRaw).split(/\r?\n/).forEach(push);
+      }
+    }
+    (Array.isArray(added) ? added : []).forEach(push);
+    return have;
+  }
+
   var api = {
     FIELD: FIELD,
     TYP: TYP,
@@ -432,7 +606,20 @@
     buildGranskningslista: buildGranskningslista,
     buildMigreringsrapport: buildMigreringsrapport,
     isTrueHorses: isTrueHorses,
-    kundFlags: kundFlags
+    kundFlags: kundFlags,
+    triState: triState,
+    fromTriState: fromTriState,
+    isEjUppfylld: isEjUppfylld,
+    readLagsUt: readLagsUt,
+    listKundForutsattningar: listKundForutsattningar,
+    suggestKompletterandeAtgard: suggestKompletterandeAtgard,
+    buildForeslagnaAtgarder: buildForeslagnaAtgarder,
+    applyApprovedAtgarder: applyApprovedAtgarder,
+    foreslaUppdragsTyp: foreslaUppdragsTyp,
+    buildUppdragsatgardText: buildUppdragsatgardText,
+    pendingUppdragsatgarder: pendingUppdragsatgarder,
+    mergeRiskAtgarderValda: mergeRiskAtgarderValda,
+    buildForutsattningPromptBlock: buildForutsattningPromptBlock
   };
 
   if (typeof module !== 'undefined' && module.exports) {

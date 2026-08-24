@@ -20414,6 +20414,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     let tjanstResidualFloor = { level: '', namn: '', rank: 0 };
     const foreslagenTjanster = [];
     const foreslagenRisker = [];
+    let valdaTjanstRecords = [];
 
     const parseJsonArr = (v) => {
       if (!v) return [];
@@ -20430,6 +20431,9 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
             const expandedRecs = await fetchAirtableRecordsByIds(
               airtableAccessToken, baseId, RISK_ASSESSMENT_TABLE, tjansterIds, { logErrors: true }
             );
+            valdaTjanstRecords = expandedRecs;
+            const effectiveItems = KundRiskprofil.itemsFromTjanstRecords(expandedRecs, { fields: f });
+            const effectiveByNamn = new Map(effectiveItems.map((it) => [it.namn, it]));
             const ok = expandedRecs.map((r) => {
               const tf = r.fields || {};
               const namn = (tf['Task Name'] || '').trim() || r.id;
@@ -20444,7 +20448,8 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
               for (const { namn, tf } of ok) {
                 const typ = (tf['TJÄNSTTYP'] || '').trim();
                 const scored = RiskSkala.readTjanstRisk(tf);
-                const residualForFloor = scored.residualLevel || '';
+                const effective = effectiveByNamn.get(namn);
+                const residualForFloor = (effective && effective.residualLevel) || scored.residualLevel || '';
                 const residualRank = RiskSkala.riskRank(residualForFloor);
                 if (residualRank > (tjanstResidualFloor.rank || 0)) {
                   tjanstResidualFloor = {
@@ -20453,7 +20458,13 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                     rank: residualRank
                   };
                 }
-                if (scored.residualProduct != null) {
+                if (effective && effective.residualProduct != null) {
+                  foreslagenTjanster.push({
+                    namn,
+                    residualProduct: effective.residualProduct,
+                    residualLevel: effective.residualLevel
+                  });
+                } else if (scored.residualProduct != null) {
                   foreslagenTjanster.push({
                     namn,
                     residualProduct: scored.residualProduct,
@@ -20711,6 +20722,22 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
       KundRiskprofil.readResidual(f),
       foreslagenCalc.niva
     );
+    const forutsattningTjanster = valdaTjanstRecords.map((r) => ({
+      id: r.id,
+      namn: (r.fields && r.fields['Task Name']) || '',
+      atgarder: TjanstForutsattning.parseAtgarder(r.fields && r.fields['Tjänstespecifika åtgärder']),
+      fields: r.fields
+    }));
+    const kundForutsattningState = TjanstForutsattning.readKundState(f);
+    const forutsattningPromptBlock = TjanstForutsattning.buildForutsattningPromptBlock(
+      forutsattningTjanster,
+      kundForutsattningState
+    );
+    const foreslagnaAtgarder = TjanstForutsattning.buildForeslagnaAtgarder(
+      forutsattningTjanster,
+      kundForutsattningState,
+      sparadeAtgarder
+    );
 
     // Vector store ökar tokenförbrukning kraftigt. Standard: av för kundrisk.
     const riskUseVector = String(process.env.OPENAI_RISK_USE_VECTOR || '').trim() === '1';
@@ -20758,6 +20785,7 @@ ${byraValdaTjansterDetaljText}
 BERÄKNAD FÖRESLAGEN NIVÅ (maskinell startpunkt — CFA väljer den slutgiltiga nivån): ${foreslagenNivaText}
 - Föreslå INTE egna värden för residualRiskprofil eller bedömdRisk.
 - Om användaren redan avvikit: ${användarenAvviker ? 'JA — du får formulera avvikelseMotivering utifrån underlaget, inte besluta om avvikelsen.' : 'NEJ — lämna avvikelseMotivering tom.'}
+${forutsattningPromptBlock ? `\n${forutsattningPromptBlock}\n` : ''}
 
 ${KundRiskprofil.AI_RULES}
 
@@ -20847,6 +20875,7 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
    - "Förhöjd": 1-3 åtgärder enligt formatkravet.
    - "Normal": Sätt atgarder = "" SÅVIDA INTE något verkligen sticker ut (PEP, utländska transaktioner, okänt kapitalursprung, högriskbransch). Om du ändå anger åtgärder måste de följa formatkravet och vara max 1-3 punkter.
    - "Låg": Sätt alltid atgarder = "". Inga åtgärder för lågrisk-kunder.
+   - Kompletterande åtgärder för ej uppfyllda kundberoende förutsättningar ska INTE skrivas i atgarder (de visas i en separat granskningslista).
 
    SÄRSKILT vid "sanktionslistor/PEP": Om du föreslår kontroller ska du ange exakt vilka källor som kontrolleras (minst två av):
    - EU:s konsoliderade sanktionslista
@@ -20996,7 +21025,8 @@ KORT UNDERLAG (kom ihåg manuella fritexter):
 
     const aiPayload = KundRiskprofil.normalizeAiPayload(result, {
       tjanstFloor: tjanstResidualFloor,
-      foreslagenNiva: foreslagenCalc.niva
+      foreslagenNiva: foreslagenCalc.niva,
+      foreslagnaAtgarder
     });
     if (!användarenAvviker) aiPayload.avvikelseMotivering = '';
     const kundAiLog = await auditHooks.logAiGenerated({

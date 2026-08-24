@@ -786,6 +786,7 @@ class RiskAssessmentManager {
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const TF = window.TjanstForutsattning;
         const typ = TF ? TF.normalizeAtgardTyp(data.atgardTyp) : (data.atgardTyp || '');
+        const lagsUt = !!(TF && TF.readLagsUt ? TF.readLagsUt(data) : data.lagsUtSomUppdragsatgard);
         const seq = (this._atgardTypSeq = (this._atgardTypSeq || 0) + 1);
         const name = `atgard-typ-${seq}`;
         const row = document.createElement('div');
@@ -809,10 +810,21 @@ class RiskAssessmentManager {
                     <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="byrarutin"${typ === 'byrarutin' ? ' checked' : ''}> Byrårutin</label>
                     <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="kundberoende_forutsattning"${typ === 'kundberoende_forutsattning' ? ' checked' : ''}> Kundberoende förutsättning</label>
                 </div>
+                <label class="dyn-atgard-lagsut"${typ === 'kundberoende_forutsattning' ? '' : ' hidden'}>
+                    <input type="checkbox" class="dyn-lags-ut"${lagsUt ? ' checked' : ''}>
+                    Lägg ut som uppdragsåtgärd om förutsättningen inte är uppfylld
+                </label>
                 ${forslagHtml}
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand || !typ });
+        row.querySelectorAll('.dyn-atgard-typ input').forEach((input) => {
+            input.addEventListener('change', () => {
+                const checked = row.querySelector('.dyn-atgard-typ input:checked')?.value || '';
+                const lags = row.querySelector('.dyn-atgard-lagsut');
+                if (lags) lags.hidden = checked !== 'kundberoende_forutsattning';
+            });
+        });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -842,6 +854,9 @@ class RiskAssessmentManager {
                 beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
             };
             if (typ) item.atgardTyp = typ;
+            if (typ === 'kundberoende_forutsattning' && row.querySelector('.dyn-lags-ut')?.checked) {
+                item.lagsUtSomUppdragsatgard = true;
+            }
             return item;
         }).filter(a => a.titel || a.beskrivning);
     }
