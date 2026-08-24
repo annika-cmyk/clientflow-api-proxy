@@ -6802,7 +6802,7 @@ class CustomerCardManager {
                 if (!container) return;
                 const riskerForTyp = this._riskerForTypId(id, allaRisker);
                 this._renderRiskerForTyp(container, riskerForTyp, linkedIds, id, {
-                    embedded: id !== 'geografiska'
+                    embedded: true
                 });
             });
             this._renderKycLanderOnGeo();
@@ -6942,7 +6942,7 @@ class CustomerCardManager {
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="${embedded && parentEditing ? '' : 'display:none;'}">
-                    ${embedded ? '<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Riskfaktorer</div>' : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
+                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? 'Geografisk residual' : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
                     ${hogriskEditHtml}
                     ${riskerForList.map(r => `
                         <label class="risker-check-item">
@@ -6995,6 +6995,13 @@ class CustomerCardManager {
         return '';
     }
 
+    _embeddedTypIdsForOvrigaCard(id) {
+        const typId = this._typIdForOvrigaCardId(id);
+        const ids = typId ? [typId] : [];
+        if (String(id || '').replace(/^ovriga-/, '') === 'verksamheten') ids.unshift('geografiska');
+        return ids;
+    }
+
     _toggleEmbeddedRiskerEdit(typId, showEdit) {
         if (!typId) return;
         const view = document.getElementById(`risker-view-${typId}`);
@@ -7004,8 +7011,8 @@ class CustomerCardManager {
         edit.style.display = showEdit ? '' : 'none';
     }
 
-    _collectRiskerSavePayload(typId) {
-        const allChecked = new Set(this._linkedRiskIds || []);
+    _collectRiskerSavePayload(typId, startSet) {
+        const allChecked = startSet instanceof Set ? new Set(startSet) : new Set(this._linkedRiskIds || []);
         const riskerForTyp = this._riskerForTypId(typId, this._allaRisker || []);
         riskerForTyp.forEach((r) => allChecked.delete(r.id));
         const nyaChecked = [...document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]:checked`)]
@@ -7030,6 +7037,23 @@ class CustomerCardManager {
             if (nyaHogrisk.length) hogriskRecs.forEach((r) => allChecked.add(r.id));
             else hogriskRecs.forEach((r) => allChecked.delete(r.id));
             this._mergeSteeredUboIds(allChecked);
+        }
+        return { allChecked, nyaChecked, nyaHogrisk };
+    }
+
+    _collectEmbeddedRiskerPayload(typIds) {
+        let allChecked = new Set(this._linkedRiskIds || []);
+        const nyaChecked = [];
+        let nyaHogrisk = null;
+        (Array.isArray(typIds) ? typIds : []).forEach((typId) => {
+            if (!typId || !document.getElementById(`risker-edit-${typId}`)) return;
+            const part = this._collectRiskerSavePayload(typId, allChecked);
+            allChecked = part.allChecked;
+            (part.nyaChecked || []).forEach((id) => nyaChecked.push(id));
+            if (part.nyaHogrisk !== null) nyaHogrisk = part.nyaHogrisk;
+        });
+        if ((Array.isArray(typIds) ? typIds : []).includes('geografiska')) {
+            this._mergeSteeredGeoIds(allChecked);
         }
         return { allChecked, nyaChecked, nyaHogrisk };
     }
@@ -7109,7 +7133,7 @@ class CustomerCardManager {
             if (container && this._allaRisker) {
                 const risker = this._riskerForTypId(typId, this._allaRisker);
                 this._renderRiskerForTyp(container, risker, allChecked, typId, {
-                    embedded: typId !== 'geografiska'
+                    embedded: true
                 });
             }
             if (typId === 'geografiska') this._renderKycLanderOnGeo();
@@ -7215,19 +7239,6 @@ class CustomerCardManager {
                 `)}
 
 
-                <!-- Riskfaktorkort per typ – fylls i av loadKundRisker() -->
-                <div class="kyc-section collapsible-card collapsible-card--kyc" id="risker-kort-geografiska">
-                    <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
-                        <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Geografiska riskfaktorer', f['KYC genomgången - Geografiska riskfaktorer'], 'fa-globe-europe')} Geografiska riskfaktorer</div>
-                        <i class="fas fa-chevron-down collapsible-chevron"></i>
-                    </div>
-                    <div class="collapsible-body">
-                        <div id="ovrigkyc-risker-geografiska">
-                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
-                        </div>
-                    </div>
-                </div>
-
                 ${this.renderOvrigaRiskKategoriBlock(f)}
 
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
@@ -7296,7 +7307,7 @@ class CustomerCardManager {
         return `
             <div class="ovriga-risk-kategori-intro kyc-section">
                 <h3 class="ovriga-risk-kategori-intro-title">Riskfaktorer</h3>
-                <p class="kyc-hint">Tre kategorier så att samarbete, kund och verksamhet inte blandas ihop. Varje kort har byråns vanliga riskfaktorer och kompletterande varningsflaggor. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
+                <p class="kyc-hint">Tre kategorier så att samarbete, kund och verksamhet inte blandas ihop. Varje kort har byråns vanliga riskfaktorer och kompletterande varningsflaggor. Länder kunden handlar med ligger under <strong>Vad gör kunden?</strong> och styr geografisk residual. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
             </div>
             ${cards || this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
                 valda,
@@ -7401,6 +7412,9 @@ class CustomerCardManager {
                 </div>
                 <div class="collapsible-body" style="position:relative;">
                     <p class="kyc-hint">${this._esc(cat.hint || '')}</p>
+                    ${cat.id === 'verksamheten' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
+                        <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                    </div>` : ''}
                     ${typId ? `<div class="ovriga-risk-katalog" id="ovrigkyc-risker-${typId}">
                         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
                     </div>` : ''}
@@ -7476,10 +7490,10 @@ class CustomerCardManager {
                 ? Kat.mergeValForCategory(existing, catId, checked, this._riskhojKategorier)
                 : checked
         );
-        const typId = this._typIdForOvrigaCardId(id);
+        const typIds = this._embeddedTypIdsForOvrigaCard(id);
         const extra = {};
-        if (typId && document.getElementById(`risker-edit-${typId}`)) {
-            extra.risker = this._collectRiskerSavePayload(typId);
+        if (typIds.some((typId) => document.getElementById(`risker-edit-${typId}`))) {
+            extra.risker = this._collectEmbeddedRiskerPayload(typIds);
         }
         return this._persistOvrigaRiskVal(värde, id, extra);
     }
@@ -7519,11 +7533,14 @@ class CustomerCardManager {
             const kycField = 'KYC genomgången - Riskhöjande faktorer övrigt';
             if (värde.length) this._saveKycStatus(kycField, true);
             if (riskerPayload) {
-                const typId = this._typIdForOvrigaCardId(id);
-                const dimKyc = this._kycFieldForRiskerTyp(typId);
-                const dimHasValue = (riskerPayload.nyaChecked || []).length > 0
-                    || (Array.isArray(riskerPayload.nyaHogrisk) && riskerPayload.nyaHogrisk.length > 0);
-                if (dimKyc && dimHasValue) this._saveKycStatus(dimKyc, true);
+                this._embeddedTypIdsForOvrigaCard(id).forEach((typId) => {
+                    const dimKyc = this._kycFieldForRiskerTyp(typId);
+                    if (!dimKyc) return;
+                    const recs = this._riskerForTypId(typId, this._allaRisker || []);
+                    const dimHasValue = recs.some((r) => riskerPayload.allChecked && riskerPayload.allChecked.has(r.id))
+                        || (typId === 'kund' && Array.isArray(riskerPayload.nyaHogrisk) && riskerPayload.nyaHogrisk.length > 0);
+                    if (dimHasValue) this._saveKycStatus(dimKyc, true);
+                });
             }
             this._refreshRiskprofilForeslagenUi();
             this.showNotification('Sparat!', 'success');
@@ -8755,13 +8772,13 @@ class CustomerCardManager {
         const btn = document.getElementById(`riskf-btn-${id}`);
         if (!view || !edit) return;
         const isEditing = edit.style.display !== 'none';
-        const typId = this._typIdForOvrigaCardId(id);
+        const typIds = this._embeddedTypIdsForOvrigaCard(id);
         if (isEditing) {
             edit.style.display = 'none';
             view.style.display = '';
             btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
             btn.classList.remove('is-active');
-            this._toggleEmbeddedRiskerEdit(typId, false);
+            typIds.forEach((typId) => this._toggleEmbeddedRiskerEdit(typId, false));
             const card = document.getElementById(`riskf-card-${id}`);
             const kycField = card?.dataset?.kycField;
             if (kycField) this._saveKycStatus(kycField, true);
@@ -8770,7 +8787,7 @@ class CustomerCardManager {
             edit.style.display = '';
             btn.innerHTML = '<i class="fas fa-times"></i>';
             btn.classList.add('is-active');
-            this._toggleEmbeddedRiskerEdit(typId, true);
+            typIds.forEach((typId) => this._toggleEmbeddedRiskerEdit(typId, true));
             const card = btn?.closest('.collapsible-card');
             if (card && !card.classList.contains('open')) card.classList.add('open');
             this._refreshRiskhojandeMarks(id);
@@ -10936,7 +10953,7 @@ class CustomerCardManager {
         }
         const container = document.getElementById('ovrigkyc-risker-geografiska');
         if (container && this._allaRisker) {
-            this._renderRiskerForTyp(container, recs, next, 'geografiska');
+            this._renderRiskerForTyp(container, recs, next, 'geografiska', { embedded: true });
         }
         this._renderKycLanderOnGeo();
         this._refreshRiskprofilForeslagenUi();

@@ -5383,6 +5383,7 @@ body.sidebar-collapsed .logout-btn {
     color: #64748b;
 }
 .ovriga-risk-katalog { margin: 0.15rem 0 0.35rem; }
+.ovriga-risk-katalog--geo { margin-bottom: 0.75rem; }
 .kyc-lander-picker { position: relative; }
 .kyc-lander-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.35rem 0 0.5rem; }
 .kyc-lander-chip { display: inline-flex; align-items: center; gap: 0.35rem; }

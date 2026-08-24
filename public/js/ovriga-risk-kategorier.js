@@ -30,8 +30,8 @@
       id: 'verksamheten',
       letter: 'C',
       title: 'Vad gör kunden?',
-      subtitle: 'Affärsmodell och transaktioner',
-      hint: 'Risker i kundens dagliga drift och bransch.',
+      subtitle: 'Affärsmodell, transaktioner och länder',
+      hint: 'Risker i kundens dagliga drift, bransch och länder kunden handlar med.',
       icon: 'fa-industry'
     }
   ];
