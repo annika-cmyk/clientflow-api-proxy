@@ -45,6 +45,7 @@
       klass: KLASS.INFORMATIV,
       badge: 'Låg risk',
       group: 'kanal',
+      coveredByDimension: true,
       aliases: ['fysiskt möte', 'fysiskt mote', 'personligt möte']
     },
     {
@@ -55,6 +56,7 @@
       klass: KLASS.BIDRAR,
       badge: 'Normal risk',
       group: 'kanal',
+      coveredByDimension: true,
       aliases: [
         'distansrelation med bankid-verifiering',
         'distansrelation med bankid',
@@ -70,6 +72,7 @@
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
       group: 'kanal',
+      coveredByDimension: true,
       aliases: [
         'distansrelation utan säker verifiering',
         'distansrelation utan saker verifiering',
@@ -83,6 +86,7 @@
       hint: 'Kunden företräds av någon annan.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
+      coveredByDimension: true,
       aliases: ['etablering via ombud', 'via ombud', 'ombud']
     },
     {
@@ -149,7 +153,8 @@
       hint: 'Särskilt om de är etablerade utanför EU/EES.',
       klass: KLASS.BIDRAR,
       badge: 'Bidrar vid kombination',
-      aliases: ['utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet']
+      coveredByDimension: true,
+      aliases: ['utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet', 'kunder med utländska huvudmän']
     },
     {
       id: 'pep-rca',
@@ -158,7 +163,8 @@
       hint: 'Politiskt utsatt person eller närstående. Triggar alltid Hög risk.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
-      aliases: ['pep eller rca', 'pep', 'rca', 'politiskt exponerad person']
+      coveredByDimension: true,
+      aliases: ['pep eller rca', 'pep', 'rca', 'politiskt exponerad person', 'pep, familjemedlem till pep']
     },
     {
       id: 'brott',
@@ -212,6 +218,7 @@
       hint: 'Bygg, restaurang, bilhandel, bemanning, skrot med mera.',
       klass: KLASS.BIDRAR,
       badge: 'Bidrar vid kombination',
+      coveredByDimension: true,
       aliases: ['högriskbransch', 'hogriskbransch', 'kunden verkar i en högriskbransch']
     },
     {
@@ -221,7 +228,8 @@
       hint: 'Kunden tar emot mycket kontanter eller har stora dagskassor.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
-      aliases: ['kontantintensiv verksamhet', 'kontanthantering']
+      coveredByDimension: true,
+      aliases: ['kontantintensiv verksamhet', 'kontanthantering', 'kunder med mycket kontanta transaktioner']
     },
     {
       id: 'kunder-distans',
@@ -242,10 +250,12 @@
       hint: 'Transaktioner eller affärspartners utanför EU/EES.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
+      coveredByDimension: true,
       aliases: [
         'kopplingar till utlandet / högriskländer',
         'kopplingar till andra länder, särskilt länder utanför eu',
-        'högriskländer'
+        'högriskländer',
+        'kunder med import/export'
       ]
     },
     {
@@ -330,8 +340,17 @@
     return null;
   }
 
-  function factorsForCategory(categoryId) {
-    return FACTORS.filter(function (f) { return f.category === categoryId; });
+  function isCoveredByDimension(namn) {
+    var hit = findFactor(namn);
+    return !!(hit && hit.coveredByDimension);
+  }
+
+  function factorsForCategory(categoryId, opts) {
+    return FACTORS.filter(function (f) {
+      if (f.category !== categoryId) return false;
+      if (opts && opts.kundkort && f.coveredByDimension) return false;
+      return true;
+    });
   }
 
   function labelsForCategory(categoryId) {
@@ -345,8 +364,28 @@
       .map(canonicalLabel)
       .filter(function (label) {
         if (!label || fold(label) === 'inga') return false;
+        if (isCoveredByDimension(label)) return false;
         return !known[fold(label)] && categoryId === 'verksamheten';
       });
+  }
+
+  function mergeVisibleVal(existingLabels, checkedLabels) {
+    var seen = {};
+    var out = [];
+    (Array.isArray(checkedLabels) ? checkedLabels : []).forEach(function (raw) {
+      var label = canonicalLabel(raw);
+      if (!label || fold(label) === 'inga' || isCoveredByDimension(label)) return;
+      if (seen[fold(label)]) return;
+      seen[fold(label)] = true;
+      out.push(label);
+    });
+    (Array.isArray(existingLabels) ? existingLabels : []).forEach(function (raw) {
+      var label = canonicalLabel(raw);
+      if (!label || !isCoveredByDimension(label) || seen[fold(label)]) return;
+      seen[fold(label)] = true;
+      out.push(label);
+    });
+    return out;
   }
 
   function mergeValForCategory(existingLabels, categoryId, checkedLabels) {
@@ -392,10 +431,12 @@
     canonicalLabel: canonicalLabel,
     defaultKatalog: defaultKatalog,
     categoryById: categoryById,
+    isCoveredByDimension: isCoveredByDimension,
     factorsForCategory: factorsForCategory,
     labelsForCategory: labelsForCategory,
     extrasForCategory: extrasForCategory,
     mergeValForCategory: mergeValForCategory,
+    mergeVisibleVal: mergeVisibleVal,
     channelLabels: channelLabels,
     klassBadge: klassBadge
   };
