@@ -6802,6 +6802,7 @@ class CustomerCardManager {
                 });
             });
             this._renderKycLanderOnGeo();
+            this._maybeSteerGeoFromSavedLander();
             this._refreshRiskprofilForeslagenUi();
 
         } catch (error) {
@@ -6958,6 +6959,7 @@ class CustomerCardManager {
                 }
             }
         }
+        if (typId === 'geografiska') this._applyGeoChecksFromLander();
     }
 
     _typIdForOvrigaCardId(id) {
@@ -7039,6 +7041,9 @@ class CustomerCardManager {
 
     async saveRisker(typId) {
         const { allChecked, nyaChecked, nyaHogrisk } = this._collectRiskerSavePayload(typId);
+        if (typId === 'geografiska') {
+            this._mergeSteeredGeoIds(allChecked);
+        }
         const totalChecked = [...allChecked];
 
         const saveBtn = document.querySelector(`#risker-edit-${typId} .btn-primary`);
@@ -7081,6 +7086,7 @@ class CustomerCardManager {
                     embedded: typId !== 'geografiska'
                 });
             }
+            if (typId === 'geografiska') this._renderKycLanderOnGeo();
             const kycField = this._kycFieldForRiskerTyp(typId);
             const dimHasValue = nyaChecked.length > 0
                 || (typId === 'kund' && Array.isArray(nyaHogrisk) && nyaHogrisk.length > 0);
@@ -10245,7 +10251,7 @@ class CustomerCardManager {
                                 <p class="uppdrag-hint">Välj länder. Varje land jämförs mot EU:s förteckning över högriskländer.</p>
                                 <div class="kyc-lander-picker" id="kyc-internationella-lander-picker">
                                     <div class="kyc-lander-chips" id="kyc-internationella-lander-chips"></div>
-                                    <input type="search" id="kyc-internationella-lander-sok" class="uppdrag-input" placeholder="Sök land, t.ex. Norge eller Iran" autocomplete="off">
+                                    <input type="search" id="kyc-internationella-lander-sok" class="uppdrag-input kyc-lander-sok" placeholder="Sök land, t.ex. Norge eller Iran" autocomplete="off">
                                     <div class="kyc-lander-suggest" id="kyc-internationella-lander-suggest" hidden></div>
                                     <input type="hidden" id="kyc-internationella-lander" value="${esc(savedInternationellaLander)}">
                                     <div class="kyc-lander-assess" id="kyc-internationella-lander-assess"></div>
@@ -10308,6 +10314,7 @@ class CustomerCardManager {
         this._updateKycForetradareRemoveButtons();
         this._initKycLanderPicker();
         this._renderKycLanderOnGeo();
+        this._maybeSteerGeoFromSavedLander();
     }
 
     // HTML för en företrädar-rad (används vid render och när man lägger till fler)
@@ -10396,8 +10403,11 @@ class CustomerCardManager {
         if (sel && wrap) {
             wrap.style.display = sel.value === showValue ? 'block' : 'none';
         }
-        if (wrapId === 'kyc-internationella-lander-wrap') this._refreshKycLanderPicker();
-    }
+        if (wrapId === 'kyc-internationella-lander-wrap') {
+            this._refreshKycLanderPicker();
+            this._applyGeoChecksFromLander();
+            if (sel && String(sel.value).toLowerCase() === 'nej') this._scheduleGeoFromLanderSave();
+        }
 
     _kycLanderLabels() {
         const Eu = window.EuHogriskLander;
@@ -10407,61 +10417,74 @@ class CustomerCardManager {
         return Eu && Eu.parseLabels ? Eu.parseLabels(raw) : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
     }
 
-    _setKycLanderLabels(labels) {
+    _setKycLanderLabels(labels, opts = {}) {
         const Eu = window.EuHogriskLander;
         const next = Eu && Eu.parseLabels ? Eu.parseLabels(labels) : (labels || []).filter(Boolean);
         const hidden = document.getElementById('kyc-internationella-lander');
         if (hidden) hidden.value = next.join(', ');
-        if (this._savedKycFormular) this._savedKycFormular.internationellaLander = next.join(', ');
+        if (this._savedKycFormular) {
+            this._savedKycFormular.internationellaLander = next.join(', ');
+            if (next.length) this._savedKycFormular.internationellHandel = 'Ja';
+        }
+        const jaNej = document.getElementById('kyc-internationell');
+        if (jaNej && next.length) {
+            jaNej.value = 'Ja';
+            this._toggleKycConditional('kyc-internationell', 'Ja', 'kyc-internationella-lander-wrap');
+        }
         this._refreshKycLanderPicker();
-        this._renderKycLanderOnGeo();
+        this._applyGeoChecksFromLander();
+        if (opts.persist !== false) this._scheduleGeoFromLanderSave();
     }
 
     _initKycLanderPicker() {
-        const sok = document.getElementById('kyc-internationella-lander-sok');
-        const suggest = document.getElementById('kyc-internationella-lander-suggest');
-        if (!sok || !suggest) return;
-        const hide = () => { suggest.hidden = true; suggest.innerHTML = ''; };
-        const renderSuggest = () => {
-            const Eu = window.EuHogriskLander;
-            const q = sok.value.trim();
-            const selected = new Set(this._kycLanderLabels().map((l) => String(l).toLowerCase()));
-            const hits = Eu && Eu.search ? Eu.search(q, 10).filter((c) => !selected.has(c.name.toLowerCase())) : [];
-            if (!q || !hits.length) {
-                hide();
-                return;
-            }
-            suggest.innerHTML = hits.map((c) => {
-                const meta = Eu.classifyOne(c.name);
-                return `<button type="button" class="kyc-lander-suggest-item" data-land="${this._esc(c.name)}">
-                    <span>${this._esc(c.name)}</span>
-                    <em class="kyc-lander-badge kyc-lander-badge--${this._esc(meta.klass)}">${this._esc(meta.badge)}</em>
-                </button>`;
-            }).join('');
-            suggest.hidden = false;
-        };
-        sok.addEventListener('input', renderSuggest);
-        sok.addEventListener('focus', renderSuggest);
-        sok.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Escape') { hide(); return; }
-            if (ev.key !== 'Enter') return;
-            ev.preventDefault();
-            const first = suggest.querySelector('[data-land]');
-            if (first) this._addKycLander(first.getAttribute('data-land'));
-        });
-        suggest.addEventListener('mousedown', (ev) => {
-            const btn = ev.target.closest('[data-land]');
-            if (!btn) return;
-            ev.preventDefault();
-            this._addKycLander(btn.getAttribute('data-land'));
+        document.querySelectorAll('.kyc-lander-picker').forEach((root) => {
+            const sok = root.querySelector('.kyc-lander-sok');
+            const suggest = root.querySelector('.kyc-lander-suggest');
+            if (!sok || !suggest || sok.dataset.bound === '1') return;
+            sok.dataset.bound = '1';
+            const hide = () => { suggest.hidden = true; suggest.innerHTML = ''; };
+            const renderSuggest = () => {
+                const Eu = window.EuHogriskLander;
+                const q = sok.value.trim();
+                const selected = new Set(this._kycLanderLabels().map((l) => String(l).toLowerCase()));
+                const hits = Eu && Eu.search ? Eu.search(q, 10).filter((c) => !selected.has(c.name.toLowerCase())) : [];
+                if (!q || !hits.length) {
+                    hide();
+                    return;
+                }
+                suggest.innerHTML = hits.map((c) => {
+                    const meta = Eu.classifyOne(c.name);
+                    return `<button type="button" class="kyc-lander-suggest-item" data-land="${this._esc(c.name)}">
+                        <span>${this._esc(c.name)}</span>
+                        <em class="kyc-lander-badge kyc-lander-badge--${this._esc(meta.klass)}">${this._esc(meta.badge)}</em>
+                    </button>`;
+                }).join('');
+                suggest.hidden = false;
+            };
+            sok.addEventListener('input', renderSuggest);
+            sok.addEventListener('focus', renderSuggest);
+            sok.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') { hide(); return; }
+                if (ev.key !== 'Enter') return;
+                ev.preventDefault();
+                const first = suggest.querySelector('[data-land]');
+                if (first) this._addKycLander(first.getAttribute('data-land'));
+            });
+            suggest.addEventListener('mousedown', (ev) => {
+                const btn = ev.target.closest('[data-land]');
+                if (!btn) return;
+                ev.preventDefault();
+                this._addKycLander(btn.getAttribute('data-land'));
+            });
         });
         if (!this._kycLanderDocBound) {
             this._kycLanderDocBound = true;
             document.addEventListener('click', (ev) => {
-                const box = document.getElementById('kyc-internationella-lander-suggest');
-                if (!box || ev.target.closest('#kyc-internationella-lander-picker')) return;
-                box.hidden = true;
-                box.innerHTML = '';
+                if (ev.target.closest('.kyc-lander-picker')) return;
+                document.querySelectorAll('.kyc-lander-suggest').forEach((box) => {
+                    box.hidden = true;
+                    box.innerHTML = '';
+                });
             });
         }
         this._refreshKycLanderPicker();
@@ -10472,10 +10495,8 @@ class CustomerCardManager {
         if (!name || labels.some((l) => String(l).toLowerCase() === String(name).toLowerCase())) return;
         labels.push(name);
         this._setKycLanderLabels(labels);
-        const sok = document.getElementById('kyc-internationella-lander-sok');
-        const suggest = document.getElementById('kyc-internationella-lander-suggest');
-        if (sok) sok.value = '';
-        if (suggest) { suggest.hidden = true; suggest.innerHTML = ''; }
+        document.querySelectorAll('.kyc-lander-sok').forEach((el) => { el.value = ''; });
+        document.querySelectorAll('.kyc-lander-suggest').forEach((el) => { el.hidden = true; el.innerHTML = ''; });
     }
 
     _removeKycLander(name) {
@@ -10484,50 +10505,136 @@ class CustomerCardManager {
 
     _refreshKycLanderPicker() {
         const Eu = window.EuHogriskLander;
-        const chips = document.getElementById('kyc-internationella-lander-chips');
-        const assessEl = document.getElementById('kyc-internationella-lander-assess');
-        if (!chips) return;
         const result = Eu && Eu.assess ? Eu.assess(this._kycLanderLabels()) : { countries: [], hasHogrisk: false };
-        chips.innerHTML = result.countries.map((c) => `
+        const chipsHtml = result.countries.map((c) => `
             <span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">
                 ${this._esc(c.label)}
                 <em>${this._esc(c.badge)}</em>
                 <button type="button" class="kyc-lander-chip-x" title="Ta bort" onclick="customerCardManager._removeKycLander(${JSON.stringify(c.label)})">×</button>
             </span>`).join('');
-        if (assessEl) {
-            const warn = Eu && Eu.warningText ? Eu.warningText(result) : '';
-            assessEl.innerHTML = warn
-                ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>
-                   <p class="kyc-hint">${this._esc((Eu && Eu.SOURCE) || '')}</p>`
+        document.querySelectorAll('.kyc-lander-chips').forEach((chips) => { chips.innerHTML = chipsHtml; });
+        const warn = Eu && Eu.warningText ? Eu.warningText(result) : '';
+        const assessHtml = warn
+            ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>
+               <p class="kyc-hint">${this._esc((Eu && Eu.SOURCE) || '')}</p>`
+            : '';
+        document.querySelectorAll('.kyc-lander-assess').forEach((el) => { el.innerHTML = assessHtml; });
+        const steered = this._suggestedGeoFactorLabels();
+        document.querySelectorAll('.kyc-lander-geo-styr').forEach((el) => {
+            el.textContent = steered.length
+                ? `Styr geografisk residual: ${steered.join(', ')}.`
                 : '';
+        });
+    }
+
+    _geoLanderOpts() {
+        const handel = document.getElementById('kyc-internationell')?.value
+            || this._savedKycFormular?.internationellHandel
+            || '';
+        const labels = this._kycLanderLabels();
+        return { onlySweden: String(handel).toLowerCase() === 'nej' };
+    }
+
+    _suggestedGeoFactorLabels() {
+        const Eu = window.EuHogriskLander;
+        if (!Eu || !Eu.suggestedGeoFactorIds) return [];
+        const ids = Eu.suggestedGeoFactorIds(this._kycLanderLabels(), this._geoLanderOpts());
+        return (Eu.GEO_FACTORS || []).filter((f) => ids.includes(f.id)).map((f) => f.label);
+    }
+
+    _mergeSteeredGeoIds(allChecked) {
+        const Eu = window.EuHogriskLander;
+        if (!Eu || !Eu.suggestedRecordIds) return allChecked;
+        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const labels = this._kycLanderLabels();
+        const opts = this._geoLanderOpts();
+        if (!opts.onlySweden && !labels.length) return allChecked;
+        const steered = new Set(Eu.steeredRecordIds(recs));
+        const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+        steered.forEach((id) => allChecked.delete(id));
+        suggested.forEach((id) => allChecked.add(id));
+        return allChecked;
+    }
+
+    _applyGeoChecksFromLander() {
+        const Eu = window.EuHogriskLander;
+        if (!Eu || !Eu.suggestedRecordIds) return;
+        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const labels = this._kycLanderLabels();
+        const opts = this._geoLanderOpts();
+        if (!opts.onlySweden && !labels.length) return;
+        const steered = new Set(Eu.steeredRecordIds(recs));
+        const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+        document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
+            if (!steered.has(cb.value)) return;
+            cb.checked = suggested.has(cb.value);
+            cb.disabled = suggested.has(cb.value);
+            const item = cb.closest('.risker-check-item');
+            if (item) item.classList.toggle('is-geo-steered', suggested.has(cb.value));
+        });
+    }
+
+    _maybeSteerGeoFromSavedLander() {
+        const Eu = window.EuHogriskLander;
+        if (!Eu || !Eu.suggestedRecordIds || !this._allaRisker) return;
+        const labels = this._kycLanderLabels();
+        const opts = this._geoLanderOpts();
+        if (!opts.onlySweden && !labels.length) return;
+        const recs = this._riskerForTypId('geografiska', this._allaRisker);
+        const suggested = Eu.suggestedRecordIds(recs, labels, opts);
+        const linked = this._linkedRiskIds || new Set();
+        if (suggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
+    }
+
+    _scheduleGeoFromLanderSave() {
+        clearTimeout(this._geoFromLanderTimer);
+        this._geoFromLanderTimer = setTimeout(() => {
+            this._persistGeoFromLander().catch((err) => {
+                console.warn('Kunde inte styra geografiska från länder:', err);
+            });
+        }, 350);
+    }
+
+    async _persistGeoFromLander(opts = {}) {
+        const labels = this._kycLanderLabels();
+        const landerOpts = this._geoLanderOpts();
+        if (!landerOpts.onlySweden && !labels.length) return;
+        if (!this._allaRisker) await this.loadKundRisker();
+        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const next = this._mergeSteeredGeoIds(new Set(this._linkedRiskIds || []));
+        const fields = { 'risker kopplat till tjänster': [...next] };
+        if (landerOpts.onlySweden) fields['Har företaget transaktioner med andra länder?'] = 'Nej';
+        else if (labels.length) fields['Har företaget transaktioner med andra länder?'] = 'Ja';
+        const result = await this._patchKunddataFields(fields);
+        if (!result.ok) return;
+        this._linkedRiskIds = next;
+        if (!opts.skipKycPost && this.customerId && (labels.length || landerOpts.onlySweden)) {
+            try {
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    body: JSON.stringify({
+                        internationellaLander: labels.join(', '),
+                        internationellHandel: landerOpts.onlySweden ? 'Nej' : 'Ja'
+                    })
+                });
+            } catch (_) { /* residualen är redan uppdaterad */ }
         }
+        const container = document.getElementById('ovrigkyc-risker-geografiska');
+        if (container && this._allaRisker) {
+            this._renderRiskerForTyp(container, recs, next, 'geografiska');
+        }
+        this._renderKycLanderOnGeo();
+        this._refreshRiskprofilForeslagenUi();
+        const kycField = this._kycFieldForRiskerTyp('geografiska');
+        if (kycField && next.size) this._saveKycStatus(kycField, true);
     }
 
     _renderKycLanderOnGeo() {
         const container = document.getElementById('ovrigkyc-risker-geografiska');
-        if (!container) return;
-        const Eu = window.EuHogriskLander;
-        const raw = this._savedKycFormular?.internationellaLander || '';
+        if (!container || !window.EuHogriskLander) return;
         let box = container.querySelector('.kyc-lander-geo');
-        if (!Eu || !raw) {
-            if (box) box.remove();
-            return;
-        }
-        const result = Eu.assess(raw);
-        if (!result.countries.length) {
-            if (box) box.remove();
-            return;
-        }
-        const warn = Eu.warningText(result);
-        const html = `
-            <div class="kyc-lander-geo">
-                <div class="risker-checkgrupp-titel">Länder från KYC</div>
-                <div class="riskf-chips">${result.countries.map((c) =>
-                    `<span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">${this._esc(c.label)} <em>${this._esc(c.badge)}</em></span>`
-                ).join('')}</div>
-                ${warn ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>` : ''}
-                <p class="kyc-hint">${this._esc(Eu.SOURCE)}</p>
-            </div>`;
         if (!box) {
             box = document.createElement('div');
             box.className = 'kyc-lander-geo';
@@ -10535,7 +10642,18 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
-        box.outerHTML = html;
+        box.innerHTML = `
+            <div class="risker-checkgrupp-titel">Länder kunden handlar med</div>
+            <p class="kyc-hint">Valda länder styr geografisk residual. Närområde, Europa, Utanför EU och högriskland kryssas automatiskt.</p>
+            <div class="kyc-lander-picker" id="geo-internationella-lander-picker">
+                <div class="kyc-lander-chips"></div>
+                <input type="search" class="uppdrag-input kyc-lander-sok" placeholder="Sök land, t.ex. Norge eller Iran" autocomplete="off">
+                <div class="kyc-lander-suggest" hidden></div>
+                <p class="kyc-lander-geo-styr"></p>
+                <div class="kyc-lander-assess"></div>
+            </div>`;
+        this._initKycLanderPicker();
+        this._applyGeoChecksFromLander();
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
@@ -10636,6 +10754,7 @@ class CustomerCardManager {
                 this.customerData.fields['Intäkterna'] = data.intakterna;
             }
             this.showNotification('KYC-formuläret sparat!', 'success');
+            await this._persistGeoFromLander({ skipKycPost: true });
             this.loadKYCFormular();
         } catch (e) {
             this.showNotification(`Kunde inte spara KYC-formulär: ${e.message}`, 'error');

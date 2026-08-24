@@ -271,6 +271,65 @@
     return hits.slice(0, max);
   }
 
+  var NORDIC = { NO: true, DK: true, FI: true, IS: true };
+
+  var GEO_FACTORS = [
+    { id: 'naromrade', label: 'Närområde', aliases: ['naromrade', 'näromrade'] },
+    { id: 'europa', label: 'Europa', aliases: ['europa'] },
+    { id: 'hog_korruption', label: 'Land med hög korruption/svag kontroll', aliases: ['hog korruption', 'svag kontroll'] },
+    { id: 'utanfor_eu', label: 'Utanför EU', aliases: ['utanfor eu', 'utanför eu'] }
+  ];
+
+  function matchGeoFactor(namn) {
+    var key = fold(namn);
+    if (!key) return null;
+    for (var i = 0; i < GEO_FACTORS.length; i += 1) {
+      var factor = GEO_FACTORS[i];
+      if (key === fold(factor.label) || key.indexOf(fold(factor.label)) !== -1) return factor;
+      for (var j = 0; j < factor.aliases.length; j += 1) {
+        if (key.indexOf(factor.aliases[j]) !== -1) return factor;
+      }
+    }
+    return null;
+  }
+
+  function suggestedGeoFactorIds(raw, opts) {
+    if (opts && opts.onlySweden) return ['naromrade'];
+    var result = assess(raw);
+    if (!result.countries.length) return [];
+    var ids = [];
+    var hasNordic = result.countries.some(function (c) { return NORDIC[c.iso2]; });
+    var hasEuOther = result.countries.some(function (c) {
+      return c.group === GROUP.EU_EES && !NORDIC[c.iso2];
+    });
+    if (hasNordic) ids.push('naromrade');
+    if (hasEuOther) ids.push('europa');
+    if (result.hasOutsideEu) ids.push('utanfor_eu');
+    if (result.hasHogrisk) ids.push('hog_korruption');
+    return ids;
+  }
+
+  function recordNamn(rec) {
+    if (!rec) return '';
+    var f = rec.fields || rec;
+    return String(f.Riskfaktor || f['Riskfaktor'] || rec.namn || '').trim();
+  }
+
+  function suggestedRecordIds(records, raw, opts) {
+    var wanted = {};
+    suggestedGeoFactorIds(raw, opts).forEach(function (id) { wanted[id] = true; });
+    return (Array.isArray(records) ? records : []).filter(function (rec) {
+      var hit = matchGeoFactor(recordNamn(rec));
+      return !!(hit && wanted[hit.id] && rec.id);
+    }).map(function (rec) { return rec.id; });
+  }
+
+  function steeredRecordIds(records) {
+    return (Array.isArray(records) ? records : []).filter(function (rec) {
+      return !!(matchGeoFactor(recordNamn(rec)) && rec.id);
+    }).map(function (rec) { return rec.id; });
+  }
+
   function warningText(result) {
     if (!result || !result.countries.length) return '';
     if (result.hasCallForAction) {
@@ -298,7 +357,12 @@
     assess: assess,
     formatWithBadges: formatWithBadges,
     search: search,
-    warningText: warningText
+    warningText: warningText,
+    GEO_FACTORS: GEO_FACTORS,
+    matchGeoFactor: matchGeoFactor,
+    suggestedGeoFactorIds: suggestedGeoFactorIds,
+    suggestedRecordIds: suggestedRecordIds,
+    steeredRecordIds: steeredRecordIds
   };
 
   if (typeof module !== 'undefined' && module.exports) {

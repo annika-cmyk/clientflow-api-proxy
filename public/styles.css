@@ -5380,6 +5380,10 @@ body.sidebar-collapsed .logout-btn {
 .kyc-lander-warn { margin: 0.55rem 0 0.15rem; font-size: 0.85rem; color: #334155; }
 .kyc-lander-warn--hog { color: #9a3412; background: #fff7ed; border-radius: 8px; padding: 0.55rem 0.7rem; }
 .kyc-lander-geo { margin: 0 0 1rem; padding-bottom: 0.85rem; border-bottom: 1px solid #e2e8f0; }
+.kyc-lander-geo-styr { margin: 0.45rem 0 0; font-size: 0.82rem; font-weight: 600; color: #334155; }
+.kyc-lander-geo .kyc-lander-picker { margin-top: 0.35rem; }
+.risker-check-item.is-geo-steered { border-color: #c7d2fe; background: #eef2ff; }
+.risker-check-item.is-geo-steered input { accent-color: #4f46e5; }
 .risker-ovriga-flaggor {
     margin-top: 1.1rem;
     padding-top: 0.9rem;
