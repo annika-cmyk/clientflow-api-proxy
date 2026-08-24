@@ -1158,7 +1158,7 @@ class RiskFactorsManager {
     }
 
     riskhojandeKlassLabel(klass) {
-        if (klass === 'GOLV_HOG') return 'Hög-golv';
+        if (klass === 'GOLV_HOG') return 'Hög-aktiv';
         if (klass === 'INFORMATIV') return 'Informativ';
         return 'Bidrar vid kombination';
     }
@@ -1190,7 +1190,7 @@ class RiskFactorsManager {
             return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
                 <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
                 <select class="form-select riskhoj-katalog-klass" data-namn="${safeNamn}">
-                    <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-golv</option>
+                    <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-aktiv</option>
                     <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
                     <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
                 </select>

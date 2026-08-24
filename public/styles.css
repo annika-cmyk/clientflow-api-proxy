@@ -5282,6 +5282,59 @@ body.sidebar-collapsed .logout-btn {
 .riskf-check-item--bidrar-golv:hover { background: #fef3c7; border-color: #d97706; }
 .riskf-bidrar-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #92400e; letter-spacing: 0.02em; text-transform: uppercase; }
 .riskf-chip--bidrar-golv { box-shadow: inset 3px 0 0 #f59e0b; }
+.ovriga-risk-kategori-intro { margin: 1.25rem 0 0.75rem; }
+.ovriga-risk-kategori-intro-title {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+.ovriga-risk-kategori-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-right: 0.35rem;
+    border-radius: 999px;
+    background: #e0e7ff;
+    color: #3730a3;
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+.ovriga-risk-kategori-sub {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #64748b;
+}
+.ovriga-risk-faktor-hint {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.35;
+}
+.riskf-info-mark {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.68rem;
+    font-style: normal;
+    font-weight: 600;
+    color: #334155;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+#riskf-card-ovriga-samarbete .riskf-checkgrid,
+#riskf-card-ovriga-kunden .riskf-checkgrid,
+#riskf-card-ovriga-verksamheten .riskf-checkgrid {
+    grid-template-columns: 1fr;
+}
+#riskf-card-ovriga-samarbete .riskf-check-item,
+#riskf-card-ovriga-kunden .riskf-check-item,
+#riskf-card-ovriga-verksamheten .riskf-check-item {
+    align-items: flex-start;
+}
 .riskhoj-katalog-section { margin: 1.5rem 0 0; }
 .riskhoj-katalog-list { display: flex; flex-direction: column; gap: 0.45rem; margin: 0.75rem 0; }
 .riskhoj-katalog-rad { display: flex; gap: 0.75rem; align-items: center; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; }
