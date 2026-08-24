@@ -1,6 +1,7 @@
 /**
- * Tjänsteåtgärder: byrårutin (gäller alltid) eller kundberoende förutsättning.
- * Per kund: uppfylld-status + ev. residual-override när förutsättningen saknas.
+ * Tjänsteåtgärder: byrårutin, kundspecifik åtgärd eller risksänkande
+ * åtgärd kopplad till uppdragskörningar.
+ * Per kund: uppfylld-status + ev. residual-override när den kundspecifika saknas.
  */
 (function (global) {
   var RiskSkala = (typeof module !== 'undefined' && module.exports)
@@ -10,7 +11,8 @@
   var FIELD = 'Kund tjänsteförutsättningar';
   var TYP = {
     BYRARUTIN: 'byrarutin',
-    KUNDBEROENDE: 'kundberoende_forutsattning'
+    KUNDBEROENDE: 'kundberoende_forutsattning',
+    UPPDRAGSATGARD: 'uppdragsatgard'
   };
   var UPPFYLLD = {
     JA: 'Ja',
@@ -76,7 +78,14 @@
   function normalizeAtgardTyp(raw) {
     var v = fold(raw).replace(/\s+/g, '_');
     if (v === TYP.BYRARUTIN || v === 'byra_rutin' || v === 'byrarutin') return TYP.BYRARUTIN;
-    if (v === TYP.KUNDBEROENDE || v === 'kundberoende' || v === 'forutsattning') return TYP.KUNDBEROENDE;
+    if (v === TYP.KUNDBEROENDE || v === 'kundberoende' || v === 'forutsattning'
+      || v === 'kundspecifik' || v === 'kundspecifik_atgard') {
+      return TYP.KUNDBEROENDE;
+    }
+    if (v === TYP.UPPDRAGSATGARD || v === 'koring_atgard' || v === 'uppdragskorning'
+      || v === 'risksankande_uppdrag' || v === 'risksankande_atgard') {
+      return TYP.UPPDRAGSATGARD;
+    }
     return '';
   }
 
@@ -91,6 +100,10 @@
 
   function isKundberoende(item) {
     return normalizeAtgardTyp(item && item.atgardTyp) === TYP.KUNDBEROENDE;
+  }
+
+  function isUppdragsatgard(item) {
+    return normalizeAtgardTyp(item && item.atgardTyp) === TYP.UPPDRAGSATGARD;
   }
 
   function kundberoendeAtgarder(raw) {
@@ -112,15 +125,33 @@
       return { typ: TYP.BYRARUTIN, reason: 'Formuleringen beskriver något byrån gör.' };
     }
     if (kund && byra) {
-      return { typ: TYP.KUNDBEROENDE, reason: 'Blandad text — föreslås som kundberoende så ni kan bedöma den per kund.' };
+      return { typ: TYP.KUNDBEROENDE, reason: 'Blandad text — föreslås som kundspecifik så ni kan bedöma den per kund.' };
+    }
+    if (/\b(uppdragskorning|korning|lonespecifikation|vid varje korning)\b/.test(text)) {
+      return { typ: TYP.UPPDRAGSATGARD, reason: 'Formuleringen hör till en konkret uppdragskörning.' };
     }
     return { typ: '', reason: '' };
   }
 
   function typLabel(typ) {
-    if (typ === TYP.KUNDBEROENDE) return 'Kundberoende förutsättning';
-    if (typ === TYP.BYRARUTIN) return 'Byrårutin';
+    if (typ === TYP.KUNDBEROENDE) return 'Kundspecifik åtgärd';
+    if (typ === TYP.BYRARUTIN) return 'Byrårutin — ingår i vårt normala arbetssätt';
+    if (typ === TYP.UPPDRAGSATGARD) return 'Risksänkande åtgärd som ska kopplas till specifika uppdragskörningar';
     return 'Ej klassificerad';
+  }
+
+  function typTagClass(typ) {
+    if (typ === TYP.KUNDBEROENDE) return 'kund';
+    if (typ === TYP.UPPDRAGSATGARD) return 'uppdrag';
+    if (typ === TYP.BYRARUTIN) return 'byra';
+    return '';
+  }
+
+  function typTagLabel(typ) {
+    if (typ === TYP.KUNDBEROENDE) return 'Kundspecifik';
+    if (typ === TYP.BYRARUTIN) return 'Byrårutin';
+    if (typ === TYP.UPPDRAGSATGARD) return 'Uppdragskörning';
+    return '';
   }
 
   function parseKundState(raw) {
@@ -519,10 +550,34 @@
 
   function pendingUppdragsatgarder(tjanster, kundState) {
     var out = [];
+    var seen = {};
+    function push(item) {
+      var key = fold(item.tjanstId + ' ' + item.key);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push(item);
+    }
+    (Array.isArray(tjanster) ? tjanster : []).forEach(function (t) {
+      var namn = trimStr(t.namn || (t.fields && t.fields['Task Name']));
+      var tjanstId = trimStr(t.id || t.recId);
+      var atgarder = parseAtgarder(t.atgarder || (t.fields && t.fields['Tjänstespecifika åtgärder']));
+      atgarder.forEach(function (a) {
+        if (!isUppdragsatgard(a)) return;
+        var titel = atgardTitel(a) || 'Åtgärd';
+        push({
+          key: atgardKey(a),
+          text: titel,
+          typ: foreslaUppdragsTyp(namn),
+          tjanstId: tjanstId,
+          tjanstNamn: namn,
+          titel: titel
+        });
+      });
+    });
     listKundForutsattningar(tjanster, kundState).forEach(function (g) {
       g.rows.forEach(function (row) {
         if (!row.lagsUtSomUppdragsatgard || !isEjUppfylld(row.uppfylld)) return;
-        out.push({
+        push({
           key: row.key,
           text: buildUppdragsatgardText(row),
           typ: foreslaUppdragsTyp(g.namn),
@@ -589,9 +644,12 @@
     normalizeAtgardTyp: normalizeAtgardTyp,
     normalizeUppfylld: normalizeUppfylld,
     isKundberoende: isKundberoende,
+    isUppdragsatgard: isUppdragsatgard,
     kundberoendeAtgarder: kundberoendeAtgarder,
     suggestAtgardTyp: suggestAtgardTyp,
     typLabel: typLabel,
+    typTagClass: typTagClass,
+    typTagLabel: typTagLabel,
     parseKundState: parseKundState,
     readKundState: readKundState,
     serializeKundState: serializeKundState,

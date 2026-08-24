@@ -791,6 +791,7 @@ class RiskAssessmentManager {
         const name = `atgard-typ-${seq}`;
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-atgard dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        if (typ === 'kundberoende_forutsattning' && lagsUt) row.dataset.lagsUt = '1';
         const forslag = (!typ && TF) ? TF.suggestAtgardTyp({ titel, beskrivning }) : { typ: '', reason: '' };
         const forslagHtml = (!typ && forslag.typ)
             ? `<p class="dyn-atgard-forslag">Förslag: ${this.esc(TF.typLabel(forslag.typ))}${forslag.reason ? ' — ' + this.esc(forslag.reason) : ''}. Bekräfta eller ändra nedan.</p>`
@@ -806,25 +807,15 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet.">${this.esc(beskrivning)}</textarea>
-                <div class="dyn-atgard-typ" role="group" aria-label="Åtgärdstyp">
-                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="byrarutin"${typ === 'byrarutin' ? ' checked' : ''}> Byrårutin</label>
-                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="kundberoende_forutsattning"${typ === 'kundberoende_forutsattning' ? ' checked' : ''}> Kundberoende förutsättning</label>
+                <div class="dyn-atgard-typ" role="radiogroup" aria-label="Åtgärdstyp">
+                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="byrarutin"${typ === 'byrarutin' ? ' checked' : ''}> Byrårutin — ingår i vårt normala arbetssätt</label>
+                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="kundberoende_forutsattning"${typ === 'kundberoende_forutsattning' ? ' checked' : ''}> Kundspecifik åtgärd</label>
+                    <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="uppdragsatgard"${typ === 'uppdragsatgard' ? ' checked' : ''}> Risksänkande åtgärd som ska kopplas till specifika uppdragskörningar</label>
                 </div>
-                <label class="dyn-atgard-lagsut"${typ === 'kundberoende_forutsattning' ? '' : ' hidden'}>
-                    <input type="checkbox" class="dyn-lags-ut"${lagsUt ? ' checked' : ''}>
-                    Lägg ut som uppdragsåtgärd om förutsättningen inte är uppfylld
-                </label>
                 ${forslagHtml}
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand || !typ });
-        row.querySelectorAll('.dyn-atgard-typ input').forEach((input) => {
-            input.addEventListener('change', () => {
-                const checked = row.querySelector('.dyn-atgard-typ input:checked')?.value || '';
-                const lags = row.querySelector('.dyn-atgard-lagsut');
-                if (lags) lags.hidden = checked !== 'kundberoende_forutsattning';
-            });
-        });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -854,7 +845,8 @@ class RiskAssessmentManager {
                 beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
             };
             if (typ) item.atgardTyp = typ;
-            if (typ === 'kundberoende_forutsattning' && row.querySelector('.dyn-lags-ut')?.checked) {
+            if (typ === 'uppdragsatgard') item.lagsUtSomUppdragsatgard = true;
+            else if (typ === 'kundberoende_forutsattning' && row.dataset.lagsUt === '1') {
                 item.lagsUtSomUppdragsatgard = true;
             }
             return item;
@@ -883,7 +875,7 @@ class RiskAssessmentManager {
         box.hidden = false;
         box.innerHTML = `
             <h3>Granska åtgärdstyp</h3>
-            <p>Befintliga åtgärder är inte klassificerade. Förslagen är bara hjälp — bekräfta eller ändra innan de räknas som kundberoende förutsättning.</p>
+            <p>Befintliga åtgärder är inte klassificerade. Förslagen är bara hjälp — bekräfta eller ändra innan de räknas som kundspecifik åtgärd eller uppdragsåtgärd.</p>
             <ul class="atgard-typ-granskning-list">
                 ${oklar.map((a) => `
                     <li>
@@ -892,7 +884,8 @@ class RiskAssessmentManager {
                         ${a.forslagTyp ? `<em>Förslag: ${this.esc(TF.typLabel(a.forslagTyp))}</em>` : '<em>Inget förslag</em>'}
                         <span class="atgard-typ-granskning-actions">
                             <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','byrarutin')">Byrårutin</button>
-                            <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','kundberoende_forutsattning')">Kundberoende</button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','kundberoende_forutsattning')">Kundspecifik</button>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="riskManager.confirmAtgardTyp('${this.esc(a.tjanstId)}','${this.esc(a.key)}','uppdragsatgard')">Uppdragskörning</button>
                         </span>
                     </li>`).join('')}
             </ul>`;

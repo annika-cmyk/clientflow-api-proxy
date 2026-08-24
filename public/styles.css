@@ -12810,18 +12810,26 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .atgard-typ-tag--byra { background: #e8f0fe; color: #1d4ed8; }
 .atgard-typ-tag--kund { background: #fff4e5; color: #9a3412; }
+.atgard-typ-tag--uppdrag { background: #ecfdf3; color: #047857; }
 .dyn-atgard-typ {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
     margin-top: 0.55rem;
 }
 .dyn-atgard-typ-opt {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
     font-size: 0.8rem;
+    line-height: 1.35;
     color: var(--title-text);
+    max-width: 100%;
+}
+.dyn-atgard-typ-opt input {
+    margin-top: 0.15rem;
+    flex-shrink: 0;
 }
 .dyn-atgard-forslag {
     margin: 0.45rem 0 0;

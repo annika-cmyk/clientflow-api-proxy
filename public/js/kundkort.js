@@ -9394,8 +9394,10 @@ class CustomerCardManager {
                 const desc = String(a.beskrivning || a.description || '').trim();
                 if (!title && !desc) return '';
                 const typ = TF ? TF.normalizeAtgardTyp(a.atgardTyp) : '';
-                const typHtml = typ
-                    ? `<span class="atgard-typ-tag atgard-typ-tag--${typ === 'kundberoende_forutsattning' ? 'kund' : 'byra'}">${typ === 'kundberoende_forutsattning' ? 'Kundberoende' : 'Byrårutin'}</span>`
+                const tag = TF && typ ? TF.typTagClass(typ) : '';
+                const tagLabel = TF && typ ? TF.typTagLabel(typ) : '';
+                const typHtml = tag && tagLabel
+                    ? `<span class="atgard-typ-tag atgard-typ-tag--${tag}">${this._esc(tagLabel)}</span>`
                     : '';
                 return `
                     <div class="action-item" style="margin-bottom:0.45rem;">
