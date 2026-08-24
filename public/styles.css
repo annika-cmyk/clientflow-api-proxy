@@ -7119,6 +7119,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .kunduppgifter-beskrivning-view li {
     margin-bottom: 0.15rem;
 }
+.kunduppgifter-delkort-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    color: #64748b;
+    line-height: 1.45;
+}
 
 .kunduppgifter-actions {
     display: flex;
