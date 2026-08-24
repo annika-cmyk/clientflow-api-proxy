@@ -194,6 +194,11 @@
     }
   }
 
+  function isRemovedRiskhojandeKlass(raw) {
+    var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
+    return v === 'BORTTAGEN' || v === 'REMOVED' || v === 'TA_BORT';
+  }
+
   function mergeRiskhojandeKatalog(overrides) {
     var out = {};
     Object.keys(DEFAULT_RISKHOJANDE_KATALOG).forEach(function (k) {
@@ -202,10 +207,34 @@
     var extra = parseRiskhojandeKatalog(overrides);
     Object.keys(extra).forEach(function (k) {
       var label = canonicalRiskhojandeLabel(k);
+      if (!label) return;
+      if (isRemovedRiskhojandeKlass(extra[k])) {
+        delete out[label];
+        return;
+      }
       var klass = normalizeRiskhojandeKlass(extra[k]);
-      if (label && klass) out[label] = klass;
+      if (klass) out[label] = klass;
     });
     return out;
+  }
+
+  function persistRiskhojandeKatalog(working) {
+    var parsed = parseRiskhojandeKatalog(working);
+    var visible = {};
+    Object.keys(parsed).forEach(function (k) {
+      var label = canonicalRiskhojandeLabel(k);
+      if (!label || isRemovedRiskhojandeKlass(parsed[k])) return;
+      var klass = normalizeRiskhojandeKlass(parsed[k]);
+      if (klass) visible[label] = klass;
+    });
+    var stored = {};
+    Object.keys(visible).forEach(function (k) {
+      stored[k] = visible[k];
+    });
+    Object.keys(DEFAULT_RISKHOJANDE_KATALOG).forEach(function (k) {
+      if (!visible[k]) stored[k] = 'BORTTAGEN';
+    });
+    return { visible: visible, stored: stored };
   }
 
   function klassForRiskhojande(namn, katalog) {
@@ -943,6 +972,8 @@
     normalizeRiskhojandeKlass: normalizeRiskhojandeKlass,
     parseRiskhojandeKatalog: parseRiskhojandeKatalog,
     mergeRiskhojandeKatalog: mergeRiskhojandeKatalog,
+    persistRiskhojandeKatalog: persistRiskhojandeKatalog,
+    isRemovedRiskhojandeKlass: isRemovedRiskhojandeKlass,
     klassForRiskhojande: klassForRiskhojande,
     beraknaRiskhojandeGolv: beraknaRiskhojandeGolv,
     applyHogGolv: applyHogGolv,

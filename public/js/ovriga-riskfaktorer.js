@@ -1186,13 +1186,17 @@ class RiskFactorsManager {
         const names = Object.keys(katalog).sort((a, b) => a.localeCompare(b, 'sv'));
         list.innerHTML = names.map((namn) => {
             const klass = katalog[namn];
+            const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
             return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
                 <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
-                <select class="form-select riskhoj-katalog-klass" data-namn="${namn.replace(/"/g, '&quot;')}">
+                <select class="form-select riskhoj-katalog-klass" data-namn="${safeNamn}">
                     <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-golv</option>
                     <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
                     <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
                 </select>
+                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove" data-namn="${safeNamn}" title="Ta bort flagga" aria-label="Ta bort ${safeNamn}">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>`;
         }).join('');
         list.querySelectorAll('.riskhoj-katalog-klass').forEach((sel) => {
@@ -1200,6 +1204,17 @@ class RiskFactorsManager {
                 const namn = sel.getAttribute('data-namn');
                 if (!namn) return;
                 this._riskhojKatalog = Object.assign({}, this._riskhojKatalog, { [namn]: sel.value });
+                this.renderRiskhojandeKatalog();
+            });
+        });
+        list.querySelectorAll('.riskhoj-katalog-remove').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const namn = btn.getAttribute('data-namn');
+                if (!namn) return;
+                if (!window.confirm('Ta bort flaggan "' + namn + '"? Ändringen sparas när du klickar Spara katalogen.')) return;
+                const next = Object.assign({}, this._riskhojKatalog);
+                delete next[namn];
+                this._riskhojKatalog = next;
                 this.renderRiskhojandeKatalog();
             });
         });
@@ -1231,7 +1246,7 @@ class RiskFactorsManager {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
             this._riskhojKatalog = data.katalog || this._riskhojKatalog;
-            this.showNotification('Taggkatalogen sparad', 'success');
+            this.showNotification('Varningsflaggorna sparade', 'success');
         } catch (e) {
             this.showNotification(e.message || 'Kunde inte spara katalogen', 'error');
         } finally {

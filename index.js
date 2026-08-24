@@ -6821,14 +6821,14 @@ app.patch('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
     const incoming = KundRiskprofil.parseRiskhojandeKatalog(req.body && (req.body.katalog || req.body.overrides));
-    const merged = KundRiskprofil.mergeRiskhojandeKatalog(incoming);
+    const persisted = KundRiskprofil.persistRiskhojandeKatalog(incoming);
     await ensureByraRiskhojandeKatalogField(airtableAccessToken, airtableBaseId);
     await axios.patch(
       `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}/${result.record.id}`,
-      { fields: { [BYRA_RISKHOJANDE_KATALOG_FIELD]: JSON.stringify(merged) }, typecast: true },
+      { fields: { [BYRA_RISKHOJANDE_KATALOG_FIELD]: JSON.stringify(persisted.stored) }, typecast: true },
       { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
     );
-    res.json({ success: true, katalog: merged });
+    res.json({ success: true, katalog: persisted.visible });
   } catch (error) {
     console.error('PATCH riskhojande-katalog:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({
