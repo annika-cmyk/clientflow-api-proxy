@@ -13219,17 +13219,20 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
    Tjänst-modal (lägg till / redigera) med AI-förslag
    ===================================================================== */
 #tjanst-modal.modal {
-    padding: 1rem 1.25rem;
-    align-items: stretch;
+    padding: 0.75rem 1rem;
+    align-items: center !important;
+    overflow: hidden !important;
+    box-sizing: border-box;
 }
 .modal-content.tjanst-modal-content {
     max-width: none;
     width: min(1280px, 96vw);
-    height: min(920px, 94vh);
-    max-height: 94vh;
+    height: min(920px, calc(100dvh - 1.5rem));
+    max-height: calc(100dvh - 1.5rem);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
 }
 .tjanst-modal-content .modal-header {
     flex-shrink: 0;
@@ -13247,9 +13250,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex: 1;
+    flex: 1 1 0;
     padding: 0;
     overflow: hidden;
+}
+#tjanst-ai-summary {
+    flex-shrink: 0;
 }
 .tjanst-modal-identity {
     display: grid;
@@ -13320,7 +13326,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: 1px solid #cbd5e1;
 }
 .tjanst-residual-bar {
-    margin-top: auto;
+    margin-top: 0.85rem;
     padding-top: 1.1rem;
     border-top: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
@@ -13361,12 +13367,6 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .tjanst-panel[data-tjanst-panel="atgard"] #atgard-list,
 .tjanst-panel[data-tjanst-panel="atgard"] #atgard-empty {
     min-height: 0;
-}
-.tjanst-panel[data-tjanst-panel="hot"] #hot-list,
-.tjanst-panel[data-tjanst-panel="sarbarhet"] #sarbarhet-list,
-.tjanst-panel[data-tjanst-panel="atgard"] #atgard-list {
-    flex: 1 1 auto;
-    overflow: auto;
 }
 .tjanst-modal-identity .form-group {
     margin: 0;
@@ -13443,7 +13443,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: var(--accent, #13505c);
 }
 .tjanst-modal-body {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
     padding: 1.15rem 1.6rem 1.25rem;
@@ -13451,13 +13451,20 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     flex-direction: column;
 }
 .tjanst-panel.is-active {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+}
+.tjanst-panel-scroll {
+    flex: 1 1 0;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-right: 0.15rem;
 }
 .tjanst-panel[hidden] { display: none !important; }
 .tjanst-panel label {
@@ -13523,6 +13530,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: space-between;
     gap: 0.75rem;
     margin-bottom: 0.75rem;
+    flex-shrink: 0;
 }
 .form-group-head label { margin: 0; }
 .form-group-head .tjanst-panel-hint { margin-bottom: 0; }
