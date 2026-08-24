@@ -13459,20 +13459,6 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 100%;
     min-height: 5.5rem;
 }
-.hot-aml-tf-warn {
-    display: none;
-    margin: 0.4rem 0 0;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    color: #7a5b00;
-}
-.dyn-row-hot.is-off-topic .hot-aml-tf-warn {
-    display: block;
-}
-.dyn-row-hot.is-off-topic {
-    box-shadow: inset 0 0 0 1px #f4d27a;
-}
-
 .tf-missing-banner-compact {
     margin-top: 0.75rem;
 }

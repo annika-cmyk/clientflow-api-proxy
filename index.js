@@ -4939,22 +4939,6 @@ function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
   return true;
 }
 
-function rejectOffTopicTjanstHot(res, riskData, existingFields = {}) {
-  const incoming = riskData || {};
-  const existing = existingFields || {};
-  const asDraft = incoming.utkast === true || incoming.Aktuell === false
-    || (incoming.Aktuell == null && existing.Aktuell === false && incoming.Hot == null);
-  if (incoming.Aktuell === false) return false;
-  const raw = incoming.Hot != null ? incoming.Hot : existing.Hot;
-  const check = HotAmlTf.validateHots(raw, { asDraft });
-  if (check.ok) return false;
-  res.status(400).json({
-    error: check.error,
-    message: check.error
-  });
-  return true;
-}
-
 function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
   const normalized = normalizeRiskFields(data || {});
   const out = {};
@@ -5568,7 +5552,6 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     delete riskData.utkast;
     if (asDraftCreate) riskData.Aktuell = false;
     if (rejectTjanstWithoutTfTackning(res, riskData)) return;
-    if (rejectOffTopicTjanstHot(res, riskData)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskData);
 
     const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -5688,7 +5671,6 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
-    if (rejectOffTopicTjanstHot(res, riskData, beforeTjanst)) return;
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,

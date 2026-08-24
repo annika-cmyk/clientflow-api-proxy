@@ -731,7 +731,6 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="Hur tjänsten kan utnyttjas för penningtvätt eller finansiering av terrorism.">${this.esc(beskrivning)}</textarea>
-                <p class="hot-aml-tf-warn" hidden></p>
             </div>
             <div class="dyn-kalla-row">
                 <span class="dyn-kalla-label">Källa</span>
@@ -740,7 +739,6 @@ class RiskAssessmentManager {
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
-        this.bindHotAmlTf(row);
         row.querySelector('.dyn-typ')?.addEventListener('change', () => this.updateTfBanner());
         list.appendChild(row);
         this.updateTjanstLists();
@@ -819,27 +817,6 @@ class RiskAssessmentManager {
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
             beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
         })).filter(s => s.titel || s.beskrivning);
-    }
-
-    bindHotAmlTf(row) {
-        const sync = () => this.paintHotAmlTf(row);
-        row.querySelector('.dyn-titel')?.addEventListener('input', sync);
-        row.querySelector('.dyn-besk')?.addEventListener('input', sync);
-        sync();
-    }
-
-    paintHotAmlTf(row) {
-        const H = window.HotAmlTf;
-        const warn = row.querySelector('.hot-aml-tf-warn');
-        if (!H || !warn) return;
-        const check = H.assessHot({
-            titel: row.querySelector('.dyn-titel')?.value || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value || ''
-        });
-        const off = check.empty ? false : check.ok === false;
-        row.classList.toggle('is-off-topic', off);
-        warn.hidden = !off;
-        warn.textContent = off ? H.HINT : '';
     }
 
     collectAtgard() {
@@ -1468,16 +1445,6 @@ class RiskAssessmentManager {
                 return;
             }
         }
-        const Hot = window.HotAmlTf;
-        if (Hot && !asDraft) {
-            const hotCheck = Hot.validateHots(this.collectHot(), { asDraft: false });
-            if (!hotCheck.ok) {
-                this.setTjanstTab('hot');
-                document.querySelectorAll('#hot-list .dyn-row').forEach((row) => this.paintHotAmlTf(row));
-                this.showNotification(hotCheck.error, 'error');
-                return;
-            }
-        }
         // Vid skapande: koppla byrå-ID
         if (!recordId) {
             const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
@@ -1558,15 +1525,6 @@ class RiskAssessmentManager {
             this.openEditModal(recordId);
             this.setTjanstTab('hot');
             return;
-        }
-        if (newStatus && window.HotAmlTf) {
-            const hotCheck = HotAmlTf.validateHots(risk.fields['Hot']);
-            if (!hotCheck.ok) {
-                this.showNotification(hotCheck.error, 'error');
-                this.openEditModal(recordId);
-                this.setTjanstTab('hot');
-                return;
-            }
         }
         try {
             const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
