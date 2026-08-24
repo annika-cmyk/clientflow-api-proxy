@@ -5329,6 +5329,57 @@ body.sidebar-collapsed .logout-btn {
     color: #64748b;
 }
 .ovriga-risk-katalog { margin: 0.15rem 0 0.35rem; }
+.kyc-lander-picker { position: relative; }
+.kyc-lander-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.35rem 0 0.5rem; }
+.kyc-lander-chip { display: inline-flex; align-items: center; gap: 0.35rem; }
+.kyc-lander-chip em { font-style: normal; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.kyc-lander-chip--lag { background: #ecfdf5; color: #047857; }
+.kyc-lander-chip--normal { background: #eff6ff; color: #1d4ed8; }
+.kyc-lander-chip--hog { background: #fff7ed; color: #c2410c; }
+.kyc-lander-chip--golv { background: #fef2f2; color: #b91c1c; }
+.kyc-lander-chip-x {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+}
+.kyc-lander-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 8;
+    margin-top: 0.2rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    max-height: 16rem;
+    overflow: auto;
+}
+.kyc-lander-suggest-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+}
+.kyc-lander-suggest-item:hover { background: #f8fafc; }
+.kyc-lander-badge { font-size: 0.68rem; font-style: normal; font-weight: 700; text-transform: uppercase; }
+.kyc-lander-badge--lag { color: #047857; }
+.kyc-lander-badge--normal { color: #1d4ed8; }
+.kyc-lander-badge--hog { color: #c2410c; }
+.kyc-lander-badge--golv { color: #b91c1c; }
+.kyc-lander-warn { margin: 0.55rem 0 0.15rem; font-size: 0.85rem; color: #334155; }
+.kyc-lander-warn--hog { color: #9a3412; background: #fff7ed; border-radius: 8px; padding: 0.55rem 0.7rem; }
+.kyc-lander-geo { margin: 0 0 1rem; padding-bottom: 0.85rem; border-bottom: 1px solid #e2e8f0; }
 .risker-ovriga-flaggor {
     margin-top: 1.1rem;
     padding-top: 0.9rem;

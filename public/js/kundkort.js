@@ -6801,6 +6801,7 @@ class CustomerCardManager {
                     embedded: id !== 'geografiska'
                 });
             });
+            this._renderKycLanderOnGeo();
             this._refreshRiskprofilForeslagenUi();
 
         } catch (error) {
@@ -10241,7 +10242,14 @@ class CustomerCardManager {
                             </div>
                             <div class="uppdrag-field uppdrag-field--full" id="kyc-internationella-lander-wrap" style="display:${savedInternationellHandel === 'Ja' ? 'block' : 'none'};margin-top:0.75rem;">
                                 <label>Vilka länder handlar ni med?</label>
-                                <input type="text" id="kyc-internationella-lander" class="uppdrag-input" value="${esc(savedInternationellaLander)}" placeholder="t.ex. Norge, Tyskland">
+                                <p class="uppdrag-hint">Välj länder. Varje land jämförs mot EU:s förteckning över högriskländer.</p>
+                                <div class="kyc-lander-picker" id="kyc-internationella-lander-picker">
+                                    <div class="kyc-lander-chips" id="kyc-internationella-lander-chips"></div>
+                                    <input type="search" id="kyc-internationella-lander-sok" class="uppdrag-input" placeholder="Sök land, t.ex. Norge eller Iran" autocomplete="off">
+                                    <div class="kyc-lander-suggest" id="kyc-internationella-lander-suggest" hidden></div>
+                                    <input type="hidden" id="kyc-internationella-lander" value="${esc(savedInternationellaLander)}">
+                                    <div class="kyc-lander-assess" id="kyc-internationella-lander-assess"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -10298,6 +10306,8 @@ class CustomerCardManager {
 
         if (window.DateInput) DateInput.bindDateInputs(container);
         this._updateKycForetradareRemoveButtons();
+        this._initKycLanderPicker();
+        this._renderKycLanderOnGeo();
     }
 
     // HTML för en företrädar-rad (används vid render och när man lägger till fler)
@@ -10386,6 +10396,146 @@ class CustomerCardManager {
         if (sel && wrap) {
             wrap.style.display = sel.value === showValue ? 'block' : 'none';
         }
+        if (wrapId === 'kyc-internationella-lander-wrap') this._refreshKycLanderPicker();
+    }
+
+    _kycLanderLabels() {
+        const Eu = window.EuHogriskLander;
+        const raw = document.getElementById('kyc-internationella-lander')?.value
+            || this._savedKycFormular?.internationellaLander
+            || '';
+        return Eu && Eu.parseLabels ? Eu.parseLabels(raw) : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
+    _setKycLanderLabels(labels) {
+        const Eu = window.EuHogriskLander;
+        const next = Eu && Eu.parseLabels ? Eu.parseLabels(labels) : (labels || []).filter(Boolean);
+        const hidden = document.getElementById('kyc-internationella-lander');
+        if (hidden) hidden.value = next.join(', ');
+        if (this._savedKycFormular) this._savedKycFormular.internationellaLander = next.join(', ');
+        this._refreshKycLanderPicker();
+        this._renderKycLanderOnGeo();
+    }
+
+    _initKycLanderPicker() {
+        const sok = document.getElementById('kyc-internationella-lander-sok');
+        const suggest = document.getElementById('kyc-internationella-lander-suggest');
+        if (!sok || !suggest) return;
+        const hide = () => { suggest.hidden = true; suggest.innerHTML = ''; };
+        const renderSuggest = () => {
+            const Eu = window.EuHogriskLander;
+            const q = sok.value.trim();
+            const selected = new Set(this._kycLanderLabels().map((l) => String(l).toLowerCase()));
+            const hits = Eu && Eu.search ? Eu.search(q, 10).filter((c) => !selected.has(c.name.toLowerCase())) : [];
+            if (!q || !hits.length) {
+                hide();
+                return;
+            }
+            suggest.innerHTML = hits.map((c) => {
+                const meta = Eu.classifyOne(c.name);
+                return `<button type="button" class="kyc-lander-suggest-item" data-land="${this._esc(c.name)}">
+                    <span>${this._esc(c.name)}</span>
+                    <em class="kyc-lander-badge kyc-lander-badge--${this._esc(meta.klass)}">${this._esc(meta.badge)}</em>
+                </button>`;
+            }).join('');
+            suggest.hidden = false;
+        };
+        sok.addEventListener('input', renderSuggest);
+        sok.addEventListener('focus', renderSuggest);
+        sok.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') { hide(); return; }
+            if (ev.key !== 'Enter') return;
+            ev.preventDefault();
+            const first = suggest.querySelector('[data-land]');
+            if (first) this._addKycLander(first.getAttribute('data-land'));
+        });
+        suggest.addEventListener('mousedown', (ev) => {
+            const btn = ev.target.closest('[data-land]');
+            if (!btn) return;
+            ev.preventDefault();
+            this._addKycLander(btn.getAttribute('data-land'));
+        });
+        if (!this._kycLanderDocBound) {
+            this._kycLanderDocBound = true;
+            document.addEventListener('click', (ev) => {
+                const box = document.getElementById('kyc-internationella-lander-suggest');
+                if (!box || ev.target.closest('#kyc-internationella-lander-picker')) return;
+                box.hidden = true;
+                box.innerHTML = '';
+            });
+        }
+        this._refreshKycLanderPicker();
+    }
+
+    _addKycLander(name) {
+        const labels = this._kycLanderLabels();
+        if (!name || labels.some((l) => String(l).toLowerCase() === String(name).toLowerCase())) return;
+        labels.push(name);
+        this._setKycLanderLabels(labels);
+        const sok = document.getElementById('kyc-internationella-lander-sok');
+        const suggest = document.getElementById('kyc-internationella-lander-suggest');
+        if (sok) sok.value = '';
+        if (suggest) { suggest.hidden = true; suggest.innerHTML = ''; }
+    }
+
+    _removeKycLander(name) {
+        this._setKycLanderLabels(this._kycLanderLabels().filter((l) => String(l).toLowerCase() !== String(name).toLowerCase()));
+    }
+
+    _refreshKycLanderPicker() {
+        const Eu = window.EuHogriskLander;
+        const chips = document.getElementById('kyc-internationella-lander-chips');
+        const assessEl = document.getElementById('kyc-internationella-lander-assess');
+        if (!chips) return;
+        const result = Eu && Eu.assess ? Eu.assess(this._kycLanderLabels()) : { countries: [], hasHogrisk: false };
+        chips.innerHTML = result.countries.map((c) => `
+            <span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">
+                ${this._esc(c.label)}
+                <em>${this._esc(c.badge)}</em>
+                <button type="button" class="kyc-lander-chip-x" title="Ta bort" onclick="customerCardManager._removeKycLander(${JSON.stringify(c.label)})">×</button>
+            </span>`).join('');
+        if (assessEl) {
+            const warn = Eu && Eu.warningText ? Eu.warningText(result) : '';
+            assessEl.innerHTML = warn
+                ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>
+                   <p class="kyc-hint">${this._esc((Eu && Eu.SOURCE) || '')}</p>`
+                : '';
+        }
+    }
+
+    _renderKycLanderOnGeo() {
+        const container = document.getElementById('ovrigkyc-risker-geografiska');
+        if (!container) return;
+        const Eu = window.EuHogriskLander;
+        const raw = this._savedKycFormular?.internationellaLander || '';
+        let box = container.querySelector('.kyc-lander-geo');
+        if (!Eu || !raw) {
+            if (box) box.remove();
+            return;
+        }
+        const result = Eu.assess(raw);
+        if (!result.countries.length) {
+            if (box) box.remove();
+            return;
+        }
+        const warn = Eu.warningText(result);
+        const html = `
+            <div class="kyc-lander-geo">
+                <div class="risker-checkgrupp-titel">Länder från KYC</div>
+                <div class="riskf-chips">${result.countries.map((c) =>
+                    `<span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">${this._esc(c.label)} <em>${this._esc(c.badge)}</em></span>`
+                ).join('')}</div>
+                ${warn ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>` : ''}
+                <p class="kyc-hint">${this._esc(Eu.SOURCE)}</p>
+            </div>`;
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'kyc-lander-geo';
+            const selector = container.querySelector('.risker-selector');
+            if (selector) container.insertBefore(box, selector);
+            else container.prepend(box);
+        }
+        box.outerHTML = html;
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige
@@ -10428,7 +10578,9 @@ class CustomerCardManager {
             anstallda: g('kyc-anstallda'),
             omsattning: g('kyc-omsattning'),
             internationellHandel: g('kyc-internationell'),
-            internationellaLander: g('kyc-internationella-lander'),
+            internationellaLander: (window.EuHogriskLander && EuHogriskLander.parseLabels
+                ? EuHogriskLander.parseLabels(g('kyc-internationella-lander')).join(', ')
+                : g('kyc-internationella-lander')),
             kontanter: g('kyc-kontanter'),
             kontanterAndel: g('kyc-kontanter-andel'),
             // Sektion 1 — bolagsform från företagsinfo (dolt); bransch/SNI visas inte i formuläret

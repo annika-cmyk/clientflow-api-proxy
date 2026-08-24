@@ -57,6 +57,7 @@ const {
 const access = require('./lib/access');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
+const EuHogriskLander = require('./public/js/eu-hogrisk-lander');
 const RiskSkala = require('./public/js/risk-skala');
 const {
   isRiskSelectFieldName,
@@ -7241,7 +7242,7 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
   </div>
   <div class="section"><h2>6. Internationell handel</h2>
     <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${pdfJanej(kyc.internationellHandel)}</div>
-    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> ${esc(kyc.internationellaLander)}</div>` : ''}
+    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> ${esc(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander)}</div>` : ''}
   </div>
   <div class="section"><h2>7. Kontanthantering</h2>
     <div class="field"><span class="field-label">Kontanthantering:</span> ${pdfJanej(kyc.kontanter)}</div>
@@ -15831,6 +15832,9 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'intakterna')) {
       syncFields['Intäkterna'] = String(req.body.intakterna || '');
     }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'internationellHandel')) {
+      syncFields['Har företaget transaktioner med andra länder?'] = String(req.body.internationellHandel || '');
+    }
     await ensureKunddataOptionalFields(airtableAccessToken, baseId);
 
     let patchFields = { 'KYC-formular (JSON)': JSON.stringify(kycData), ...syncFields };
@@ -16018,7 +16022,7 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
   <div class="section">
     <h2>6. Internationell handel</h2>
     <div class="field"><span class="field-label">Handel utanför Sverige:</span> ${janej(kyc.internationellHandel)}</div>
-    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> <span class="field-value">${esc(kyc.internationellaLander)}</span></div>` : ''}
+    ${kyc.internationellHandel === 'Ja' && kyc.internationellaLander ? `<div class="field"><span class="field-label">Länder:</span> <span class="field-value">${esc(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander)}</span></div>` : ''}
   </div>
 
   <div class="section">
