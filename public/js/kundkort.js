@@ -7350,6 +7350,13 @@ class CustomerCardManager {
         return items;
     }
 
+    _ovrigaRiskFlagHint(hint) {
+        const text = String(hint || '').trim();
+        if (!text) return '';
+        if (/^(hög-aktiv|bidrar vid kombination|informativ)\.?$/i.test(text)) return '';
+        return text;
+    }
+
     renderOvrigaRiskKategoriCard(cat, valda, kycFält, kycVärde) {
         const items = this._ovrigaRiskKategoriItems(cat, valda);
         const selected = items.filter((item) => valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase()));
@@ -7370,29 +7377,24 @@ class CustomerCardManager {
             : '<span class="missing-data">Inga valda</span>';
         const editContent = `<div class="riskf-checkgrid">
             ${items.map((item) => {
-                const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
-                    ? KundRiskprofil.markKindForRiskhojande(item.label, valda, this._riskhojKatalog)
-                    : item.klass;
-                const golv = kind === 'GOLV_HOG' || item.klass === 'GOLV_HOG';
-                const kombi = kind === 'BIDRAR_VID_KOMBINATION' || item.klass === 'BIDRAR_VID_KOMBINATION';
+                const klass = item.klass || '';
                 const checked = valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase());
-                const mark = golv
-                    ? '<em class="riskf-golv-mark">Hög-aktiv</em>'
-                    : (kombi ? '<em class="riskf-bidrar-mark">Bidrar vid kombination</em>' : (item.badge ? `<em class="riskf-info-mark">${this._esc(item.badge)}</em>` : ''));
+                const golv = checked && klass === 'GOLV_HOG';
+                const kombi = checked && klass === 'BIDRAR_VID_KOMBINATION';
+                const hint = this._ovrigaRiskFlagHint(item.hint);
                 return `
                 <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}${kombi ? ' riskf-check-item--bidrar-golv' : ''}">
-                    <input type="checkbox" name="riskf-${id}" value="${this._esc(item.label)}" data-group="${this._esc(item.group || '')}" ${checked ? 'checked' : ''}
+                    <input type="checkbox" name="riskf-${id}" value="${this._esc(item.label)}" data-klass="${this._esc(klass)}" data-group="${this._esc(item.group || '')}" ${checked ? 'checked' : ''}
                         onchange="customerCardManager.updateOvrigaRiskKategoriChips('${cat.id}', this)">
                     <span class="tjanst-check-box"></span>
                     <span class="tjanst-check-label">
                         <strong>${this._esc(item.label)}</strong>
-                        ${item.hint ? `<small class="ovriga-risk-faktor-hint">${this._esc(item.hint)}</small>` : ''}
-                        ${mark}
+                        ${hint ? `<small class="ovriga-risk-faktor-hint">${this._esc(hint)}</small>` : ''}
                     </span>
                 </label>`;
             }).join('')}
         </div>
-        <p class="kyc-hint" style="margin-top:0.5rem;">Hög-aktiv höjer till Hög ensam. Orange markering = bidrar till Hög tillsammans med minst en annan.</p>`;
+        <p class="kyc-hint" style="margin-top:0.5rem;">Röd markering höjer till Hög ensam. Orange höjer till Hög tillsammans med minst en annan.</p>`;
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}"${headerKyc ? ` data-kyc-field="${String(headerKyc).replace(/"/g, '&quot;')}"` : ''}>
@@ -7443,23 +7445,12 @@ class CustomerCardManager {
                 if (cb !== changed) cb.checked = false;
             });
         }
-        const checked = [...document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]:checked`)]
-            .map((cb) => cb.value);
-        const existing = this._normalizeRiskhojValda(this.customerData?.fields?.['Riskhöjande faktorer övrigt']);
-        const Kat = window.OvrigaRiskKategorier;
-        const merged = catId === 'alla' && Kat && Kat.mergeVisibleVal
-            ? Kat.mergeVisibleVal(existing, checked)
-            : (Kat && Kat.mergeValForCategory
-                ? Kat.mergeValForCategory(existing, catId, checked, this._riskhojKategorier)
-                : checked);
         document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]`).forEach((cb) => {
             const label = cb.closest('label');
             if (!label) return;
-            const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
-                ? KundRiskprofil.markKindForRiskhojande(cb.value, merged, this._riskhojKatalog)
-                : '';
-            label.classList.toggle('riskf-check-item--golv-hog', kind === 'GOLV_HOG');
-            label.classList.toggle('riskf-check-item--bidrar-golv', kind === 'BIDRAR_VID_KOMBINATION');
+            const klass = cb.getAttribute('data-klass') || '';
+            label.classList.toggle('riskf-check-item--golv-hog', cb.checked && klass === 'GOLV_HOG');
+            label.classList.toggle('riskf-check-item--bidrar-golv', cb.checked && klass === 'BIDRAR_VID_KOMBINATION');
         });
     }
 
@@ -7592,18 +7583,16 @@ class CustomerCardManager {
             : `<div class="riskf-checkgrid">
                 ${filtAlt.map(alt => {
                     const kind = markKind(alt);
-                    const golv = kind === 'GOLV_HOG';
-                    const kombi = kind === 'BIDRAR_VID_KOMBINATION';
+                    const checkedAlt = isCheckedAlt(alt);
+                    const golv = checkedAlt && kind === 'GOLV_HOG';
+                    const kombi = checkedAlt && kind === 'BIDRAR_VID_KOMBINATION';
                     const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(alt) : '';
-                    const mark = golv
-                        ? '<em class="riskf-golv-mark">Hög-golv</em>'
-                        : (kombi ? '<em class="riskf-bidrar-mark">Bidrar till Hög-golv</em>' : '');
                     return `
                     <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}${kombi ? ' riskf-check-item--bidrar-golv' : ''}">
-                        <input type="checkbox" name="riskf-${id}" value="${this._esc(alt)}" ${isCheckedAlt(alt) ? 'checked' : ''}
+                        <input type="checkbox" name="riskf-${id}" value="${this._esc(alt)}" ${checkedAlt ? 'checked' : ''}
                             onchange="customerCardManager.updateRiskfaktorChips('${id}', this)">
                         <span class="tjanst-check-box"></span>
-                        <span class="tjanst-check-label">${this._esc(alt)}${residual}${mark}</span>
+                        <span class="tjanst-check-label">${this._esc(alt)}${residual}</span>
                     </label>`;
                 }).join('')}
                </div>${hint}`;
@@ -8816,7 +8805,7 @@ class CustomerCardManager {
             const label = cb.closest('.riskf-check-item');
             const textEl = label && label.querySelector('.tjanst-check-label');
             if (!label || !textEl) return;
-            const kind = KP && KP.markKindForRiskhojande
+            const kind = cb.checked && KP && KP.markKindForRiskhojande
                 ? KP.markKindForRiskhojande(cb.value, checked, this._riskhojKatalog)
                 : '';
             const golv = kind === 'GOLV_HOG';
@@ -8826,8 +8815,6 @@ class CustomerCardManager {
             textEl.querySelectorAll('.riskf-golv-mark, .riskf-bidrar-mark, .riskf-residual-mark').forEach((n) => n.remove());
             const residual = this._riskhojandeResidualMark(cb.value);
             if (residual) textEl.insertAdjacentHTML('beforeend', residual);
-            if (golv) textEl.insertAdjacentHTML('beforeend', '<em class="riskf-golv-mark">Hög-golv</em>');
-            else if (kombi) textEl.insertAdjacentHTML('beforeend', '<em class="riskf-bidrar-mark">Bidrar till Hög-golv</em>');
         });
     }
 
