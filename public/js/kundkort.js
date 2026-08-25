@@ -6876,7 +6876,7 @@ class CustomerCardManager {
         const embedded = !!(opts && opts.embedded);
         const parentEditing = !!(container.closest('.collapsible-card')?.querySelector('.card-edit-fab.is-active'));
         const hogriskEditHtml = typId === 'kund' ? `
-            <div class="risker-checkgrupp hogrisk-edit-grupp">
+            <div class="risker-checkgrupp hogrisk-edit-grupp${valdaHogrisk.length ? ' hogrisk-edit-grupp--aktiv' : ''}">
                 <div class="hogrisk-edit-header" onclick="customerCardManager.toggleTjanstDetails('${hogriskEditUid}')">
                     <div class="risker-checkgrupp-titel">
                         <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
@@ -8184,6 +8184,8 @@ class CustomerCardManager {
             ? HS.mergeLabels(fromBoxes, sni)
             : Array.from(new Set(fromBoxes.concat(sni)));
         el.innerHTML = this._hogriskSummaryChipsHtml(labels, sni);
+        const grupp = el.closest('.hogrisk-edit-grupp');
+        if (grupp) grupp.classList.toggle('hogrisk-edit-grupp--aktiv', labels.length > 0);
     }
 
     addHogriskBranschManuell() {
