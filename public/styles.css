@@ -5582,27 +5582,11 @@ body.riskbedomning-byra-page h5 {
     color: #4338ca;
 }
 .riskhoj-katalog-add-btn:hover { color: #3730a3; background: #eef2ff; }
-.risksank-katalog-list { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.85rem 0; }
-.risksank-katalog-rad {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    padding: 0.7rem 0.8rem;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: #fff;
-}
-.risksank-katalog-rad-top { display: flex; gap: 0.5rem; align-items: center; }
-.risksank-katalog-namn { flex: 1; }
-.risksank-katalog-falt { display: flex; flex-direction: column; gap: 0.25rem; }
-.risksank-katalog-falt span {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #64748b;
-}
-.risksank-katalog-forklaring { resize: vertical; min-height: 3.2rem; }
+.risksank-katalog-list { display: flex; flex-direction: column; gap: 0.45rem; margin: 0.85rem 0; }
+.risksank-katalog-list .form-input { width: auto; }
+.risksank-katalog-namn { flex: 1.4 1 12rem; min-width: 10rem; font-size: 0.88rem; }
+.risksank-katalog-forklaring { flex: 1.2 1 10rem; min-width: 8rem; }
+.risksank-katalog-kalla { flex: 0.9 1 9rem; min-width: 8rem; }
 .risksank-faktor-hint { display: block; margin-top: 0.15rem; font-size: 0.75rem; color: #64748b; line-height: 1.35; }
 .risksank-faktor-kalla { display: block; margin-top: 0.1rem; font-size: 0.72rem; color: #4338ca; }
 .risksank-faktor-meta-list { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.55rem; }
@@ -5612,7 +5596,10 @@ body.riskbedomning-byra-page h5 {
 .tjanst-check-copy { display: flex; flex-direction: column; min-width: 0; }
 @media (max-width: 720px) {
     .riskhoj-katalog-kategori,
-    .riskhoj-katalog-klass { width: 100%; }
+    .riskhoj-katalog-klass,
+    .risksank-katalog-namn,
+    .risksank-katalog-forklaring,
+    .risksank-katalog-kalla { width: 100%; }
 }
 .riskf-check-item input[type="checkbox"] { display: none; }
 .riskf-check-item input:checked ~ .tjanst-check-box { background: #6366f1; border-color: #6366f1; }

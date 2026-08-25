@@ -117,6 +117,28 @@
     return { visible: visible, stored: stored };
   }
 
+  function escAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderKatalogRad(namn, entry) {
+    var e = normalizeEntry(entry) || { forklaring: '', kalla: '' };
+    var safeNamn = escAttr(namn);
+    return (
+      '<div class="riskhoj-katalog-rad risksank-katalog-rad">' +
+        '<input class="form-input risksank-katalog-namn" data-namn="' + safeNamn + '" value="' + safeNamn + '" aria-label="Namn på ' + safeNamn + '" placeholder="Faktor">' +
+        '<input class="form-input risksank-katalog-forklaring" data-namn="' + safeNamn + '" value="' + escAttr(e.forklaring) + '" placeholder="Förklaring" aria-label="Förklaring till ' + safeNamn + '">' +
+        '<input class="form-input risksank-katalog-kalla" data-namn="' + safeNamn + '" value="' + escAttr(e.kalla) + '" placeholder="Källa, t.ex. 3 kap. 6 § PTL" aria-label="Källa för ' + safeNamn + '">' +
+        '<button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove risksank-katalog-remove" data-namn="' + safeNamn + '" title="Ta bort faktor" aria-label="Ta bort ' + safeNamn + '">' +
+          '<i class="fas fa-times"></i>' +
+        '</button>' +
+      '</div>'
+    );
+  }
+
   function labels(katalog) {
     return Object.keys(katalog && typeof katalog === 'object' ? katalog : {});
   }
@@ -144,6 +166,7 @@
     persistKatalog: persistKatalog,
     labels: labels,
     metaFor: metaFor,
+    renderKatalogRad: renderKatalogRad,
     isIngaLabel: isIngaLabel,
     isRemoved: isRemoved
   };

@@ -1357,28 +1357,12 @@ class RiskFactorsManager {
         if (!list) return;
         const entries = this._risksankEntries || {};
         const names = Object.keys(entries).sort((a, b) => a.localeCompare(b, 'sv'));
-        list.innerHTML = names.map((namn) => {
-            const entry = entries[namn] || {};
-            const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            const forklaring = String(entry.forklaring || '').replace(/</g, '&lt;');
-            const kalla = String(entry.kalla || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            return `<div class="risksank-katalog-rad">
-                <div class="risksank-katalog-rad-top">
-                    <input class="form-input risksank-katalog-namn" data-namn="${safeNamn}" value="${safeNamn}" aria-label="Namn på ${safeNamn}">
-                    <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove risksank-katalog-remove" data-namn="${safeNamn}" title="Ta bort faktor" aria-label="Ta bort ${safeNamn}">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <label class="risksank-katalog-falt">
-                    <span>Förklaring</span>
-                    <textarea class="form-input risksank-katalog-forklaring" data-namn="${safeNamn}" rows="2" placeholder="Varför faktorn sänker risken">${forklaring}</textarea>
-                </label>
-                <label class="risksank-katalog-falt">
-                    <span>Källa</span>
-                    <input class="form-input risksank-katalog-kalla" data-namn="${safeNamn}" value="${kalla}" placeholder="T.ex. 3 kap. 6 § PTL eller intern rutin">
-                </label>
-            </div>`;
-        }).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
+        const RS = window.RisksankandeKatalog;
+        list.innerHTML = names.map((namn) => (
+            RS && RS.renderKatalogRad
+                ? RS.renderKatalogRad(namn, entries[namn])
+                : ''
+        )).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
         list.querySelectorAll('.risksank-katalog-namn').forEach((input) => {
             input.addEventListener('change', () => this._renameRisksankande(input.getAttribute('data-namn'), input.value));
         });
@@ -1400,12 +1384,11 @@ class RiskFactorsManager {
             btn.addEventListener('click', () => {
                 const namn = btn.getAttribute('data-namn');
                 if (!namn) return;
-                if (!window.confirm('Ta bort faktorn "' + namn + '"? Den försvinner från byråns lista och kundkortet.')) return;
+                if (!window.confirm('Ta bort faktorn "' + namn + '"? Ändringen sparas när du klickar Spara katalogen.')) return;
                 const next = Object.assign({}, this._risksankEntries);
                 delete next[namn];
                 this._risksankEntries = next;
                 this.renderRisksankandeKatalog();
-                this.saveRisksankandeKatalog();
             });
         });
     }
