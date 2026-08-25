@@ -4336,9 +4336,10 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .risk-list-header h3 {
-    color: #2c3e50;
-    font-size: 1.2rem;
-    font-weight: 600;
+    color: var(--title-text);
+    font-family: var(--title-font);
+    font-size: 1.15rem;
+    font-weight: 700;
     margin: 0;
 }
 
@@ -5217,6 +5218,7 @@ body.sidebar-collapsed .logout-btn {
     color: var(--title-text);
     position: relative;
     overflow: hidden;
+    font-family: var(--body-font);
 }
 
 .risk-header-content {
@@ -5224,30 +5226,55 @@ body.sidebar-collapsed .logout-btn {
     z-index: 1;
 }
 
+/* Ett typsnitt och en brödtextstorlek i introt — inte Inter + Merriweather + blandade skalor */
+.content-header.risk-header p,
+.content-header.risk-header .risk-header-sub,
+.content-header.risk-header .risk-header-body p,
+.content-header.risk-header .risk-header-body li {
+    font-family: var(--body-font);
+    font-size: 1rem;
+    line-height: 1.65;
+    opacity: 1;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.content-header.risk-header h3,
+.content-header.risk-header h4 {
+    font-family: var(--title-font);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--title-text);
+}
+
 /* Introtext under rubrik – samma bredd som övrigt innehåll, tydlig spacing */
 .risk-header-body {
     line-height: 1.65;
-    margin-top: 1rem;
+    margin-top: 1.15rem;
+    font-family: var(--body-font);
+    color: var(--text);
 }
 .risk-header-body p {
-    margin: 0 0 1rem 0;
-    font-size: 0.95rem;
+    margin: 0 0 0.85rem 0;
+    font-size: 1rem;
     color: var(--text);
-    opacity: 0.95;
+    opacity: 1;
 }
 .risk-header-body h3 {
+    font-family: var(--title-font);
     font-size: 1rem;
-    font-weight: 600;
-    margin: 1.25rem 0 0.5rem 0;
+    font-weight: 700;
+    margin: 1.35rem 0 0.5rem 0;
     color: var(--title-text);
 }
 .risk-header-body ul {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.85rem 0;
     padding-left: 1.35rem;
 }
 .risk-header-body li {
-    margin-bottom: 0.35rem;
-    font-size: 0.95rem;
+    margin-bottom: 0.4rem;
+    font-size: 1rem;
     color: var(--text);
 }
 .risk-header-body p.risk-header-note {
@@ -5256,12 +5283,12 @@ body.sidebar-collapsed .logout-btn {
     background: #f8fafc;
     border-left: 3px solid var(--accent);
     border-radius: 0 6px 6px 0;
-    font-size: 0.9rem;
-    color: #475569;
+    font-size: 1rem;
+    color: var(--text);
 }
 .risk-header-body p.risk-header-note strong {
     font-weight: 600;
-    color: #334155;
+    color: var(--title-text);
 }
 
 .risk-begrepp {
@@ -5282,24 +5309,42 @@ body.sidebar-collapsed .logout-btn {
 }
 .risk-begrepp-card h4 {
     margin: 0 0 0.4rem;
-    font-size: 0.82rem;
+    font-family: var(--title-font);
+    font-size: 1rem;
     font-weight: 700;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #0f172a;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--title-text);
 }
 .risk-begrepp-card p {
     margin: 0;
     padding: 0;
-    font-size: 0.88rem;
-    line-height: 1.55;
-    color: #334155;
+    font-family: var(--body-font);
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--text);
     opacity: 1;
     background: transparent;
     border: none;
 }
 @media (max-width: 720px) {
     .risk-begrepp { grid-template-columns: 1fr; }
+}
+
+/* Byråns tjänster: bara Schibsted Grotesk, inga kvarvarande Inter/Merriweather */
+body.riskbedomning-byra-page,
+body.riskbedomning-byra-page button,
+body.riskbedomning-byra-page input,
+body.riskbedomning-byra-page select,
+body.riskbedomning-byra-page textarea {
+    font-family: var(--body-font);
+}
+body.riskbedomning-byra-page h1,
+body.riskbedomning-byra-page h2,
+body.riskbedomning-byra-page h3,
+body.riskbedomning-byra-page h4,
+body.riskbedomning-byra-page h5 {
+    font-family: var(--title-font);
 }
 
 .kundkort-company-name {
@@ -12860,7 +12905,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ai-chat-panel__send:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Statistik f?r riskbed?mning */
-.risk-header-sub { margin: 0; font-size: 1rem; opacity: 0.85; }
+.risk-header-sub {
+    margin: 0;
+    font-family: var(--body-font);
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 1;
+}
 .statistik-error { color: var(--error); margin-bottom: 1rem; }
 .statistik-loading { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; color: var(--text); }
 .stats-cards-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
