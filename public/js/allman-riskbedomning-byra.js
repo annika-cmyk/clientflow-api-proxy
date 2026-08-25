@@ -573,6 +573,14 @@
 
   var PIE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f43f5e', '#64748b', '#d946ef'];
 
+  function flaggKlassBadge(klass) {
+    var Kat = window.OvrigaRiskKategorier;
+    if (Kat && Kat.klassBadge) return Kat.klassBadge(klass) || '';
+    if (klass === 'GOLV_HOG') return 'Hög-aktiv';
+    if (klass === 'BIDRAR_VID_KOMBINATION') return 'Bidrar vid kombination';
+    return '';
+  }
+
   function renderBarChartHtml(rows, opts) {
     opts = opts || {};
     var list = (rows || []).filter(function (t) { return t && t.namn; });
@@ -580,15 +588,21 @@
       return '<p class="identifierade-empty">' + (opts.empty || 'Inga värden att visa.') + '</p>';
     }
     var max = list.reduce(function (m, t) { return Math.max(m, Number(t.antal) || 0); }, 0) || 1;
+    var chartClass = 'ar-bar-chart' + (opts.chartClass ? ' ' + opts.chartClass : '');
     return (opts.title ? '<h4 class="ar-chart-title">' + opts.title + '</h4>' : '')
       + (opts.hint ? '<p class="byra-card-source-hint">' + opts.hint + '</p>' : '')
-      + '<div class="ar-bar-chart" role="img" aria-label="' + escapeHtml(opts.aria || opts.title || 'Stapeldiagram') + '">'
+      + '<div class="' + chartClass + '" role="img" aria-label="' + escapeHtml(opts.aria || opts.title || 'Stapeldiagram') + '">'
       + list.map(function (t) {
         var n = Number(t.antal) || 0;
         var pct = Math.round((n / max) * 100);
+        var badge = opts.showKlass ? flaggKlassBadge(t.klass) : '';
+        var fillClass = t.klass === 'GOLV_HOG' ? ' ar-bar-fill--golv'
+          : (t.klass === 'BIDRAR_VID_KOMBINATION' ? ' ar-bar-fill--bidrar' : '');
         return '<div class="ar-bar-row">'
-          + '<span class="ar-bar-label">' + escapeHtml(t.namn) + '</span>'
-          + '<div class="ar-bar-track"><div class="ar-bar-fill" style="width:' + pct + '%"></div></div>'
+          + '<span class="ar-bar-label">' + escapeHtml(t.namn)
+          + (badge ? ' <em class="ar-flaggor-klass">' + escapeHtml(badge) + '</em>' : '')
+          + '</span>'
+          + '<div class="ar-bar-track"><div class="ar-bar-fill' + fillClass + '" style="width:' + pct + '%"></div></div>'
           + '<span class="ar-bar-value">' + n + '</span>'
           + '</div>';
       }).join('')
@@ -768,14 +782,21 @@
       + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
       + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
       + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
-      + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder. Vi har även utifrån information från Finanspolisen, AMLA, Länsstyrelser, Ekobrottsmyndigheten m.fl. lagt till relevanta varningstecken för sådana kunder som vi har. Vi har bedömt omständigheterna som kan tyda på högre risk som antingen sådana som alltid är riskhöjande eller sådana som bidrar i kombination.</p>'
-      + '<h5 class="ar-flaggor-title">Våra varningsflaggor</h5>'
-      + (flags.length
-        ? renderBarChartHtml(flags, {
-          hint: 'Antal kunder på inloggad byrå som har respektive varningsflagga ibockad.',
-          aria: 'Stapeldiagram över kunder per varningsflagga'
-        })
-        : '<p class="identifierade-empty">Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>');
+      + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder. Vi har även utifrån information från Finanspolisen, AMLA, Länsstyrelser, Ekobrottsmyndigheten m.fl. lagt till relevanta varningstecken för sådana kunder som vi har. Vi har bedömt omständigheterna som kan tyda på högre risk som antingen sådana som alltid är riskhöjande eller sådana som bidrar i kombination.</p>';
+    renderFlaggorBarChart(flags);
+  }
+
+  function renderFlaggorBarChart(flags) {
+    var wrap = getEl('ar-flaggor-chart');
+    if (!wrap) return;
+    wrap.innerHTML = renderBarChartHtml(flags, {
+      title: 'Kunder per varningsflagga',
+      hint: 'Antal kunder på inloggad byrå som har respektive varningsflagga ibockad.',
+      aria: 'Stapeldiagram över kunder per varningsflagga',
+      empty: 'Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.',
+      chartClass: 'ar-bar-chart--flaggor',
+      showKlass: true
+    });
   }
 
   async function loadArStatistikBlock() {
@@ -806,6 +827,7 @@
       var el = getEl('ar-kundtyper-body');
       if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för inloggad byrå.</p>';
       renderTjansterBarChart([]);
+      renderFlaggorBarChart([]);
     }
   }
 
