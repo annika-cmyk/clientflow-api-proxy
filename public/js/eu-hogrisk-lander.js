@@ -340,10 +340,7 @@
       return 'Handel med ' + result.hogrisk.map(function (c) { return c.label; }).join(', ')
         + ' kräver skärpta åtgärder enligt EU:s förteckning över högriskländer.';
     }
-    if (result.hasOutsideEu) {
-      return 'Handel utanför EU/EES. Kontrollera geografisk residual mot tredjeland.';
-    }
-    return 'Alla valda länder är inom EU/EES.';
+    return '';
   }
 
   var api = {

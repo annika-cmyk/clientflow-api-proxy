@@ -11195,7 +11195,7 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
-        const landerHelp = 'Hämtas från KYC-formuläret, avsnitt 6. Internationell handel. Handel utanför EU/EES. Kontrollera geografisk residual mot tredjeland. Kommissionens delegerade förordning (EU) 2016/1675, konsoliderad 29 januari 2026.';
+        const landerHelp = 'Hämtas från KYC-formuläret, avsnitt 6. Internationell handel. Kommissionens delegerade förordning (EU) 2016/1675, konsoliderad 29 januari 2026.';
         box.innerHTML = `
             <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
                 <span>Länder kunden handlar med</span>
