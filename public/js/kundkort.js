@@ -909,8 +909,8 @@ class CustomerCardManager {
         if (manual === false) return false;
         const email = (fields['e-post'] || fields['Email'] || fields['E-post'] || '').toString().trim();
         const telefon = (fields['Telefonnr'] || fields['telefon'] || '').toString().trim();
-        const beskrivning = this._htmlToPlainText(fields['Verksamhet'])
-            || this._htmlToPlainText(fields['Beskrivning av kunden']);
+        const beskrivning = this._htmlToPlainText(this._meaningfulKundText(fields['Verksamhet']))
+            || this._htmlToPlainText(this._meaningfulKundText(fields['Beskrivning av kunden']));
         const personer = this._parseKontaktPersoner(fields);
         const harKontakt = personer.length > 0;
         return !!(email && telefon && beskrivning && harKontakt);
@@ -5887,9 +5887,19 @@ class CustomerCardManager {
         return (div.innerText || div.textContent || '').replace(/\u00a0/g, ' ').trim();
     }
 
+    _isGenericKundbeskrivning(value) {
+        const t = this._htmlToPlainText(value).replace(/\s+/g, ' ').trim();
+        return /^beskrivning av kunden\.?$/i.test(t);
+    }
+
+    _meaningfulKundText(value) {
+        if (this._isGenericKundbeskrivning(value)) return '';
+        return this._kundFieldText(value);
+    }
+
     _kycPrefillText(...candidates) {
         for (const c of candidates) {
-            const t = this._htmlToPlainText(c);
+            const t = this._htmlToPlainText(this._meaningfulKundText(c));
             if (t) return t;
         }
         return '';
@@ -5901,16 +5911,15 @@ class CustomerCardManager {
 
     _resolvedVerksamhetHtml(fields) {
         const f = fields || {};
-        const verksamhet = this._kundFieldText(f['Verksamhet']);
-        if (this._htmlToPlainText(verksamhet)) return verksamhet;
-        return this._kundFieldText(f['Beskrivning av kunden']);
+        return this._meaningfulKundText(f['Verksamhet'])
+            || this._meaningfulKundText(f['Beskrivning av kunden']);
     }
 
     _maybeMigrateBeskrivningTillVerksamhet() {
         const f = this.customerData?.fields || {};
-        if (this._htmlToPlainText(f['Verksamhet'])) return;
-        const src = f['Beskrivning av kunden'];
-        if (!this._htmlToPlainText(src)) return;
+        if (this._meaningfulKundText(f['Verksamhet'])) return;
+        const src = this._meaningfulKundText(f['Beskrivning av kunden']);
+        if (!src) return;
         this._patchKunddataFields({ Verksamhet: src }).then((result) => {
             if (!result.ok) return;
             const viewEl = document.getElementById('ku-verksamhet-view');
@@ -10198,9 +10207,9 @@ class CustomerCardManager {
 
         // 5. Affärsförbindelsens syfte - delvis hämtat
         const savedVerksamhet = this._kycPrefillText(
-            f['Verksamhet'],
+            this._meaningfulKundText(f['Verksamhet']),
             saved.verksamhet,
-            f['Beskrivning av kunden']
+            this._meaningfulKundText(f['Beskrivning av kunden'])
         );
         const savedKostnader = this._kycPrefillText(f['Kostnader'], saved.kostnader);
         const savedIntakterna = this._kycPrefillText(f['Intäkterna'], saved.intakterna);
