@@ -4341,6 +4341,8 @@ body.sidebar-collapsed .logout-btn {
     font-size: 1.15rem;
     font-weight: 700;
     margin: 0;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 .risk-stats {
@@ -7760,11 +7762,12 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .risk-list-header h3 {
     color: var(--title-text);
-    font-size: 1.3rem;
+    font-family: var(--title-font);
+    font-size: 1.15rem;
     font-weight: 700;
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    text-transform: none;
+    letter-spacing: 0;
 }
 
 /* Loading and Empty States */
