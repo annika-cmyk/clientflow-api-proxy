@@ -5947,6 +5947,7 @@ class CustomerCardManager {
                     <span>${this._esc(def.title)}</span>
                 </div>
                 <p class="kunduppgifter-delkort-hint">${hintHtml}</p>
+                <div class="beskrivning-delkort-box">
                 <div id="${def.id}-view">
                     <div id="ku-${def.id}-view" class="kunduppgifter-beskrivning-view">${empty ? mis : raw}</div>
                 </div>
@@ -5965,6 +5966,7 @@ class CustomerCardManager {
                 <button class="card-edit-fab" id="${def.id}-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">
                     <i class="fas fa-pencil-alt"></i>
                 </button>
+                </div>
             </section>`;
     }
 
