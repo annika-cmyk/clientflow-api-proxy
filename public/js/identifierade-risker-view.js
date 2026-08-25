@@ -221,12 +221,13 @@
     });
   }
 
-  function renderOvrigCard(r) {
+  function renderOvrigCard(r, opts) {
     const item = r || {};
     const info = scoredFrom(item);
     const typ = text(item.typ);
     const namn = text(item.namn);
-    const title = typ && namn ? (typ + ': ' + namn) : (namn || typ || 'Namnlös riskfaktor');
+    const hideTyp = opts && (opts.only === 'distribution' || opts.only === 'verksamhet');
+    const title = (!hideTyp && typ && namn) ? (typ + ': ' + namn) : (namn || typ || 'Namnlös riskfaktor');
     const parts = [];
     if (item.beskrivning) {
       parts.push(section('fa-info-circle', 'Beskrivning och inneboende risk',
@@ -273,7 +274,7 @@
       : [{ typ: '', items: ovriga.filter((r) => text(r && (r.namn || r.beskrivning || r.typ))) }];
     const ovrigCards = grouped.flatMap((group) => (group.items || []).map((r) => {
       const typ = (Dim && Dim.normalizeTyp) ? Dim.normalizeTyp(r.typ) : text(r.typ);
-      return renderOvrigCard(Object.assign({}, r, { typ: typ }));
+      return renderOvrigCard(Object.assign({}, r, { typ: typ }), opts);
     }));
     if (!tjanstCards.length && !ovrigCards.length) {
       if (only === 'tjanster') {
@@ -308,7 +309,7 @@
       grouped.forEach((group) => {
         const cards = (group.items || []).map((r) => {
           const typ = (Dim && Dim.normalizeTyp) ? Dim.normalizeTyp(r.typ) : text(r.typ);
-          return renderOvrigCard(Object.assign({}, r, { typ: typ }));
+          return renderOvrigCard(Object.assign({}, r, { typ: typ }), opts);
         });
         if (!cards.length) return;
         if (group.typ && only !== 'distribution' && only !== 'verksamhet') parts.push(heading(group.typ));

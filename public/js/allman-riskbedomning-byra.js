@@ -737,7 +737,9 @@
     ((stat && stat.varningsflaggor) || []).forEach(function (f) {
       if (!f || !f.namn) return;
       var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
-      if (match || (dimId === 'distribution' && /distans|fysiskt möte|ombud/i.test(f.namn))) {
+      if (match
+        || (dimId === 'distribution' && /distans|fysiskt möte|ombud/i.test(f.namn))
+        || (dimId === 'verksamhet' && /verksamhetsspecifik|betalkort|kontant/i.test(f.namn))) {
         add(f.namn, f.antal);
       }
     });
@@ -847,7 +849,7 @@
       });
       renderPieChart('ar-verksamhet-chart', countsForDimension(stat, 'verksamhet', window._arIdentifieradeSource), {
         title: 'Andel kunder per verksamhetsfaktor',
-        hint: 'Hur stor andel av byråns kunder som har respektive verksamhetsspecifik riskfaktor.',
+        hint: 'Andel av kunderna som har respektive verksamhetsspecifik riskfaktor.',
         aria: 'Cirkeldiagram över verksamhetsspecifika riskfaktorer',
         empty: 'Inga verksamhetsspecifika riskfaktorer är kopplade till kunder ännu.'
       });
