@@ -106,6 +106,7 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
+const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
 const TjanstKatalog = require('./public/js/tjanst-katalog');
 const RiskDimensioner = require('./public/js/risk-dimensioner');
@@ -5284,6 +5285,7 @@ async function loadKundForeslagenInputs(fields, token, baseId) {
 }
 
 const BYRA_RISKHOJANDE_KATALOG_FIELD = 'Riskhöjande taggklass';
+const BYRA_RISKSANKANDE_KATALOG_FIELD = 'Risksänkande katalog';
 
 async function loadByraRiskhojandeKatalog(fields, token, baseId) {
   const byraId = String((fields || {})['Byrå ID'] || (fields || {}).Byrå || '').trim();
@@ -6848,6 +6850,50 @@ app.patch('/api/riskhojande-katalog', authenticateToken, async (req, res) => {
     console.error('PATCH riskhojande-katalog:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({
       error: error.response?.data?.error?.message || error.message || 'Kunde inte spara taggkatalogen'
+    });
+  }
+});
+
+app.get('/api/risksankande-katalog', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const overrides = RisksankandeKatalog.parseKatalog(
+      result.record.fields && result.record.fields[BYRA_RISKSANKANDE_KATALOG_FIELD]
+    );
+    const katalog = RisksankandeKatalog.mergeKatalog(overrides);
+    res.json({
+      success: true,
+      katalog,
+      overrides,
+      defaults: RisksankandeKatalog.DEFAULT_RISKSANKANDE
+    });
+  } catch (error) {
+    console.error('GET risksankande-katalog:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte hämta risksänkande katalogen' });
+  }
+});
+
+app.patch('/api/risksankande-katalog', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const incoming = RisksankandeKatalog.parseKatalog(req.body && (req.body.katalog || req.body.overrides));
+    const persisted = RisksankandeKatalog.persistKatalog(incoming);
+    await ensureByraRisksankandeKatalogField(airtableAccessToken, airtableBaseId);
+    await axios.patch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}/${result.record.id}`,
+      { fields: { [BYRA_RISKSANKANDE_KATALOG_FIELD]: JSON.stringify(persisted.stored) }, typecast: true },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 15000 }
+    );
+    res.json({ success: true, katalog: persisted.visible });
+  } catch (error) {
+    console.error('PATCH risksankande-katalog:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data?.error?.message || error.message || 'Kunde inte spara risksänkande katalogen'
     });
   }
 });
@@ -11858,6 +11904,28 @@ async function ensureByraRiskaptitField(airtableToken, baseId) {
     return { ok: true, created: true };
   } catch (err) {
     console.warn('ensureByraRiskaptitField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function ensureByraRisksankandeKatalogField(airtableToken, baseId) {
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(BYRA_RISKSANKANDE_KATALOG_FIELD)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: BYRA_RISKSANKANDE_KATALOG_FIELD,
+        type: 'multilineText',
+        description: 'JSON-katalog för Risksänkande faktorer per byrå: namn, förklaring och källa.'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensureByraRisksankandeKatalogField:', err.response?.data?.error?.message || err.message);
     return { ok: false, error: err.message };
   }
 }

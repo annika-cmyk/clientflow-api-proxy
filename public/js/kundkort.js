@@ -6720,19 +6720,25 @@ class CustomerCardManager {
         if (!container) return;
 
         // Hämta dynamiska alternativ för riskfaktorfälten om ej cachade
-        if (!this._riskhojAlternativ || !this._risksankAlternativ || !this._riskhojKatalog) {
+        if (!this._riskhojAlternativ || !this._risksankKatalog || !this._riskhojKatalog) {
             try {
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-                const [resHoj, resSank, resKat] = await Promise.all([
+                const [resHoj, resSankKat, resKat] = await Promise.all([
                     fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Riskhöjande faktorer övrigt')}`, { ...getAuthOptsKundkort() }),
-                    fetch(`${baseUrl}/api/falt-alternativ?falt=${encodeURIComponent('Risksänkande faktorer')}`, { ...getAuthOptsKundkort() }),
+                    fetch(`${baseUrl}/api/risksankande-katalog`, { ...getAuthOptsKundkort() }),
                     fetch(`${baseUrl}/api/riskhojande-katalog`, { ...getAuthOptsKundkort() })
                 ]);
                 const dataHoj = resHoj.ok ? await resHoj.json() : {};
-                const dataSank = resSank.ok ? await resSank.json() : {};
+                const dataSankKat = resSankKat.ok ? await resSankKat.json() : {};
                 const dataKat = resKat.ok ? await resKat.json() : {};
                 this._riskhojAlternativ = this._normalizeRiskhojAlternativ(dataHoj.choices || []);
-                this._risksankAlternativ = (dataSank.choices || []).filter(c => c && c !== '---');
+                const RS = window.RisksankandeKatalog;
+                this._risksankKatalog = (RS && RS.mergeKatalog)
+                    ? RS.mergeKatalog(dataSankKat.overrides || dataSankKat.katalog || {})
+                    : (dataSankKat.katalog || {});
+                this._risksankAlternativ = (RS && RS.labels)
+                    ? RS.labels(this._risksankKatalog)
+                    : Object.keys(this._risksankKatalog || {});
                 this._riskhojKatalog = (window.KundRiskprofil && KundRiskprofil.mergeRiskhojandeKatalog)
                     ? KundRiskprofil.mergeRiskhojandeKatalog(dataKat.overrides || dataKat.katalog || {})
                     : (dataKat.katalog || {});
@@ -6742,7 +6748,9 @@ class CustomerCardManager {
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta riskfaktor-alternativ:', e.message);
                 this._riskhojAlternativ = this._riskhojAlternativ || [];
-                this._risksankAlternativ = this._risksankAlternativ || [];
+                const RS = window.RisksankandeKatalog;
+                this._risksankKatalog = this._risksankKatalog || (RS && RS.mergeKatalog ? RS.mergeKatalog({}) : {});
+                this._risksankAlternativ = this._risksankAlternativ || (RS && RS.labels ? RS.labels(this._risksankKatalog) : []);
                 this._riskhojKatalog = this._riskhojKatalog || (window.KundRiskprofil && KundRiskprofil.DEFAULT_RISKHOJANDE_KATALOG) || {};
                 this._riskhojKategorier = this._riskhojKategorier || {};
             }
@@ -7245,7 +7253,7 @@ class CustomerCardManager {
 
                 ${this.renderRiskfaktorCard('risksankande', 'Risksänkande faktorer', 'fa-arrow-trend-down',
                     f['Risksänkande faktorer'],
-                    this._risksankAlternativ?.length ? this._risksankAlternativ : ['Inga','Inga kopplingar till utlandet','Enkel struktur, lätt att få överblick på transaktionerna','Små transaktioner'],
+                    this._risksankAlternativForCard(f['Risksänkande faktorer']),
                     'multi', '', 'KYC genomgången - Risksänkande faktorer', f['KYC genomgången - Risksänkande faktorer'])}
 
                 ${this.renderRiskfaktorCard('kommentar-risk', 'Kommentar till riskfaktorerna ovan', 'fa-comment-alt',
@@ -7537,6 +7545,45 @@ class CustomerCardManager {
         }
     }
 
+    _isIngaRisksankLabel(namn) {
+        const RS = window.RisksankandeKatalog;
+        if (RS && RS.isIngaLabel) return RS.isIngaLabel(namn);
+        return String(namn || '').trim().toLowerCase() === 'inga';
+    }
+
+    _risksankAlternativForCard(värde) {
+        const RS = window.RisksankandeKatalog;
+        const katalog = this._risksankKatalog
+            || (RS && RS.mergeKatalog ? RS.mergeKatalog({}) : {});
+        const labels = ((RS && RS.labels) ? RS.labels(katalog) : Object.keys(katalog || {}))
+            .filter((n) => n && !this._isIngaRisksankLabel(n));
+        const selected = (Array.isArray(värde) ? värde : (värde ? [värde] : []))
+            .map((v) => String(v || '').trim())
+            .filter((v) => v && v !== '---' && !this._isIngaRisksankLabel(v));
+        const extras = selected.filter((v) => !labels.some((l) => l.toLowerCase() === v.toLowerCase()));
+        return ['Inga'].concat(labels, extras);
+    }
+
+    _risksankMetaHtml(namn) {
+        const RS = window.RisksankandeKatalog;
+        if (!namn || this._isIngaRisksankLabel(namn) || !RS || !RS.metaFor) return '';
+        const meta = RS.metaFor(namn, this._risksankKatalog);
+        const forklaring = String(meta && meta.forklaring || '').trim();
+        const kalla = String(meta && meta.kalla || '').trim();
+        if (!forklaring && !kalla) return '';
+        return `${forklaring ? `<span class="risksank-faktor-hint">${this._esc(forklaring)}</span>` : ''}${kalla ? `<span class="risksank-faktor-kalla">${this._esc(kalla)}</span>` : ''}`;
+    }
+
+    _risksankValdaMetaHtml(valda) {
+        const blocks = (valda || []).map((v) => {
+            const meta = this._risksankMetaHtml(v);
+            if (!meta) return '';
+            const label = this.formatFieldDisplay(v) || String(v || '');
+            return `<div class="risksank-faktor-meta"><strong>${this._esc(label)}</strong>${meta}</div>`;
+        }).filter(Boolean);
+        return blocks.length ? `<div class="risksank-faktor-meta-list">${blocks.join('')}</div>` : '';
+    }
+
     renderRiskfaktorCard(id, titel, icon, värde, alternativ, typ, chipVariant = '', kycFält = null, kycVärde = null) {
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const valda = fmtList(värde).filter(v => v && v !== '---');
@@ -7569,7 +7616,7 @@ class CustomerCardManager {
                         const extra = kind === 'GOLV_HOG' ? ' riskf-chip--golv-hog' : (kind === 'BIDRAR_VID_KOMBINATION' ? ' riskf-chip--bidrar-golv' : '');
                         const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(label) : '';
                         return `<span class="${chipClass}${extra}">${this._esc(label)}${residual}</span>`;
-                    }).filter(Boolean).join('')}</div>`
+                    }).filter(Boolean).join('')}</div>${id === 'risksankande' ? this._risksankValdaMetaHtml(displayValda) : ''}`
                     : '<span class="missing-data">Inga valda</span>');
 
         const hint = id === 'riskhojande-ovrigt'
@@ -7589,12 +7636,16 @@ class CustomerCardManager {
                     const golv = checkedAlt && kind === 'GOLV_HOG';
                     const kombi = checkedAlt && kind === 'BIDRAR_VID_KOMBINATION';
                     const residual = id === 'riskhojande-ovrigt' ? this._riskhojandeResidualMark(alt) : '';
+                    const sankMeta = id === 'risksankande' ? this._risksankMetaHtml(alt) : '';
                     return `
-                    <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}${kombi ? ' riskf-check-item--bidrar-golv' : ''}">
+                    <label class="riskf-check-item${golv ? ' riskf-check-item--golv-hog' : ''}${kombi ? ' riskf-check-item--bidrar-golv' : ''}${sankMeta ? ' riskf-check-item--sank' : ''}">
                         <input type="checkbox" name="riskf-${id}" value="${this._esc(alt)}" ${checkedAlt ? 'checked' : ''}
                             onchange="customerCardManager.updateRiskfaktorChips('${id}', this)">
                         <span class="tjanst-check-box"></span>
-                        <span class="tjanst-check-label">${this._esc(alt)}${residual}</span>
+                        <span class="tjanst-check-copy">
+                            <span class="tjanst-check-label">${this._esc(alt)}${residual}</span>
+                            ${sankMeta}
+                        </span>
                     </label>`;
                 }).join('')}
                </div>${hint}`;

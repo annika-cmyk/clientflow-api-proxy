@@ -29,6 +29,7 @@ class RiskFactorsManager {
         // Apply initial filtering based on user role
         this.applyFilters();
         this.setupRiskhojandeKatalog();
+        this.setupRisksankandeKatalog();
     }
 
     async loadDatasourceConfig() {
@@ -1320,6 +1321,150 @@ class RiskFactorsManager {
                 : this._riskhojEntries;
             this.showNotification('Varningsflaggorna sparade', 'success');
             this.renderRiskhojandeKatalog();
+        } catch (e) {
+            this.showNotification(e.message || 'Kunde inte spara katalogen', 'error');
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = orig; }
+        }
+    }
+
+    setupRisksankandeKatalog() {
+        const addBtn = document.getElementById('risksank-katalog-add');
+        const saveBtn = document.getElementById('risksank-katalog-save');
+        if (addBtn) addBtn.addEventListener('click', () => this.addRisksankandeKatalogRad());
+        if (saveBtn) saveBtn.addEventListener('click', () => this.saveRisksankandeKatalog());
+        this.loadRisksankandeKatalog();
+    }
+
+    async loadRisksankandeKatalog() {
+        const list = document.getElementById('risksank-katalog-list');
+        if (!list) return;
+        const RS = window.RisksankandeKatalog;
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risksankande-katalog`);
+            const data = res.ok ? await res.json() : {};
+            this._risksankEntries = RS && RS.mergeKatalog
+                ? RS.mergeKatalog(data.overrides || data.katalog || {})
+                : (data.katalog || {});
+        } catch (e) {
+            this._risksankEntries = RS && RS.mergeKatalog ? RS.mergeKatalog({}) : {};
+        }
+        this.renderRisksankandeKatalog();
+    }
+
+    renderRisksankandeKatalog() {
+        const list = document.getElementById('risksank-katalog-list');
+        if (!list) return;
+        const entries = this._risksankEntries || {};
+        const names = Object.keys(entries).sort((a, b) => a.localeCompare(b, 'sv'));
+        list.innerHTML = names.map((namn) => {
+            const entry = entries[namn] || {};
+            const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const forklaring = String(entry.forklaring || '').replace(/</g, '&lt;');
+            const kalla = String(entry.kalla || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            return `<div class="risksank-katalog-rad">
+                <div class="risksank-katalog-rad-top">
+                    <input class="form-input risksank-katalog-namn" data-namn="${safeNamn}" value="${safeNamn}" aria-label="Namn på ${safeNamn}">
+                    <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-remove risksank-katalog-remove" data-namn="${safeNamn}" title="Ta bort faktor" aria-label="Ta bort ${safeNamn}">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <label class="risksank-katalog-falt">
+                    <span>Förklaring</span>
+                    <textarea class="form-input risksank-katalog-forklaring" data-namn="${safeNamn}" rows="2" placeholder="Varför faktorn sänker risken">${forklaring}</textarea>
+                </label>
+                <label class="risksank-katalog-falt">
+                    <span>Källa</span>
+                    <input class="form-input risksank-katalog-kalla" data-namn="${safeNamn}" value="${kalla}" placeholder="T.ex. 3 kap. 6 § PTL eller intern rutin">
+                </label>
+            </div>`;
+        }).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
+        list.querySelectorAll('.risksank-katalog-namn').forEach((input) => {
+            input.addEventListener('change', () => this._renameRisksankande(input.getAttribute('data-namn'), input.value));
+        });
+        list.querySelectorAll('.risksank-katalog-forklaring').forEach((area) => {
+            area.addEventListener('change', () => {
+                const namn = area.getAttribute('data-namn');
+                if (!namn || !this._risksankEntries[namn]) return;
+                this._risksankEntries[namn] = Object.assign({}, this._risksankEntries[namn], { forklaring: area.value });
+            });
+        });
+        list.querySelectorAll('.risksank-katalog-kalla').forEach((input) => {
+            input.addEventListener('change', () => {
+                const namn = input.getAttribute('data-namn');
+                if (!namn || !this._risksankEntries[namn]) return;
+                this._risksankEntries[namn] = Object.assign({}, this._risksankEntries[namn], { kalla: input.value });
+            });
+        });
+        list.querySelectorAll('.risksank-katalog-remove').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const namn = btn.getAttribute('data-namn');
+                if (!namn) return;
+                if (!window.confirm('Ta bort faktorn "' + namn + '"? Ändringen sparas när du klickar Spara katalogen.')) return;
+                const next = Object.assign({}, this._risksankEntries);
+                delete next[namn];
+                this._risksankEntries = next;
+                this.renderRisksankandeKatalog();
+            });
+        });
+    }
+
+    _renameRisksankande(oldNamn, rawNext) {
+        const namn = String(rawNext || '').trim();
+        if (!oldNamn || !this._risksankEntries[oldNamn]) return;
+        if (!namn || namn === oldNamn) {
+            this.renderRisksankandeKatalog();
+            return;
+        }
+        if (this._risksankEntries[namn]) {
+            this.showNotification('Det finns redan en faktor med det namnet', 'error');
+            this.renderRisksankandeKatalog();
+            return;
+        }
+        const next = {};
+        Object.keys(this._risksankEntries).forEach((k) => {
+            next[k === oldNamn ? namn : k] = this._risksankEntries[k];
+        });
+        this._risksankEntries = next;
+        this.renderRisksankandeKatalog();
+    }
+
+    addRisksankandeKatalogRad() {
+        const input = document.getElementById('risksank-katalog-ny');
+        const namn = String((input && input.value) || '').trim();
+        if (!namn) return;
+        const RS = window.RisksankandeKatalog;
+        if (RS && RS.isIngaLabel && RS.isIngaLabel(namn)) {
+            this.showNotification('Inga är ett fast val på kundkortet och läggs inte i katalogen', 'error');
+            return;
+        }
+        if (this._risksankEntries && this._risksankEntries[namn]) {
+            this.showNotification('Faktorn finns redan', 'error');
+            return;
+        }
+        this._risksankEntries = Object.assign({}, this._risksankEntries, {
+            [namn]: { forklaring: '', kalla: '' }
+        });
+        if (input) input.value = '';
+        this.renderRisksankandeKatalog();
+    }
+
+    async saveRisksankandeKatalog() {
+        const saveBtn = document.getElementById('risksank-katalog-save');
+        const orig = saveBtn ? saveBtn.innerHTML : '';
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = 'Sparar...'; }
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risksankande-katalog`, {
+                method: 'PATCH',
+                body: JSON.stringify({ katalog: this._risksankEntries || {} })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            const RS = window.RisksankandeKatalog;
+            this._risksankEntries = data.katalog
+                || (RS && RS.persistKatalog ? RS.persistKatalog(this._risksankEntries).visible : this._risksankEntries);
+            this.showNotification('Risksänkande faktorer sparade', 'success');
+            this.renderRisksankandeKatalog();
         } catch (e) {
             this.showNotification(e.message || 'Kunde inte spara katalogen', 'error');
         } finally {

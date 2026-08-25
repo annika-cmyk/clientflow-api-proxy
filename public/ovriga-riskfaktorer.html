@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Övriga riskfaktorer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260825b">
+    <link rel="stylesheet" href="styles.css?v=20260825c">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -159,6 +159,28 @@
                                 </button>
                             </div>
                             <button type="button" class="btn btn-primary" id="riskhoj-katalog-save">Spara katalogen</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="riskhoj-katalog-section" id="risksank-katalog-section">
+                <div class="container">
+                    <div class="collapsible-card open" id="risksank-katalog-card">
+                        <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
+                            <div class="collapsible-title"><i class="fas fa-arrow-trend-down"></i> Risksänkande faktorer</div>
+                            <i class="fas fa-chevron-down collapsible-chevron"></i>
+                        </div>
+                        <div class="collapsible-body">
+                            <p class="kyc-hint">Byråns lista på kundkortet. Ni kan lägga till, redigera och ta bort faktorer. <strong>Förklaring</strong> och <strong>källa</strong> syns på varje faktor på kundkortet. Ändringen sparas på byrån och filtrerar vilka val som visas.</p>
+                            <div id="risksank-katalog-list" class="risksank-katalog-list"></div>
+                            <div class="riskhoj-katalog-add">
+                                <input id="risksank-katalog-ny" class="form-input" placeholder="Ny faktor, t.ex. långvarig kundrelation">
+                                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="risksank-katalog-add" title="Lägg till faktor" aria-label="Lägg till faktor">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-primary" id="risksank-katalog-save">Spara katalogen</button>
                         </div>
                     </div>
                 </div>
@@ -436,7 +458,8 @@
     <script src="js/tjanst-forutsattning.js?v=1"></script>
     <script src="js/ovriga-risk-kategorier.js?v=7"></script>
     <script src="js/kund-riskprofil.js?v=13"></script>
+    <script src="js/risksankande-katalog.js?v=1"></script>
     <script src="js/ai-falt-granskning.js?v=9"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=18"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=19"></script>
 </body>
 </html>
