@@ -8,34 +8,47 @@
     {
       id: 'kund',
       label: 'Riskfaktorer kopplat till kund',
+      cardTitle: 'Vem är kunden?',
+      categoryId: 'kunden',
       aliases: [
         'riskfaktorer kopplat till kund',
         'kunder',
-        'kundtyp'
+        'kundtyp',
+        'vem är kunden?',
+        'vem ar kunden?'
       ]
     },
     {
       id: 'distribution',
       label: 'Distributionskanaler',
+      cardTitle: 'Hur samarbetar vi?',
+      categoryId: 'samarbete',
       aliases: [
         'distributionskanaler',
         'distrubutionskanaler',
         'distribution',
-        'distributionskanal'
+        'distributionskanal',
+        'hur samarbetar vi?'
       ]
     },
     {
       id: 'geografiska',
       label: 'Geografiska riskfaktorer',
+      cardTitle: 'Vad gör kunden?',
+      categoryId: 'verksamheten',
       aliases: ['geografiska riskfaktorer', 'geografi', 'geografiska']
     },
     {
       id: 'verksamhet',
       label: 'Verksamhetsspecifika riskfaktorer',
+      cardTitle: 'Vad gör kunden?',
+      categoryId: 'verksamheten',
       aliases: [
         'verksamhetsspecifika riskfaktorer',
         'verksamhetsspecifika omständigheter',
-        'verksamhet'
+        'verksamhet',
+        'vad gör kunden?',
+        'vad gor kunden?'
       ]
     }
   ];
@@ -88,6 +101,44 @@
     var raw = fields && fields['Kunden verkar i en högriskbransch'];
     var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
     return list.map(trimStr).filter(function (v) { return v && v !== '---'; });
+  }
+
+  function riskhojandeList(fields) {
+    var raw = fields && fields['Riskhöjande faktorer övrigt'];
+    var list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.map(function (item) {
+      return trimStr(item && item.name ? item.name : item);
+    }).filter(function (v) { return v && v !== '---'; });
+  }
+
+  function hasIngaRiskfaktorer(fields, categoryId) {
+    var want = fold('Inga riskfaktorer · ' + categoryId);
+    return riskhojandeList(fields).some(function (label) {
+      var key = fold(label);
+      return key === want || key === 'inga riskfaktorer';
+    });
+  }
+
+  function cardTitleOf(namn) {
+    var dim = dimensionOfTyp(namn);
+    if (dim && dim.cardTitle) return dim.cardTitle;
+    var raw = trimStr(namn);
+    for (var i = 0; i < DIMENSIONS.length; i += 1) {
+      if (DIMENSIONS[i].cardTitle === raw) return raw;
+    }
+    return raw;
+  }
+
+  function uniqueLabels(list) {
+    var seen = {};
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (item) {
+      var label = trimStr(item);
+      if (!label || seen[label]) return;
+      seen[label] = true;
+      out.push(label);
+    });
+    return out;
   }
 
   function recordTyp(rec) {
@@ -144,10 +195,16 @@
     if (present.kund && hogriskBranschVal(fields).length) {
       present.kund.push('Kunden verkar i en högriskbransch');
     }
+    required.forEach(function (dim) {
+      if (!present[dim.id] || present[dim.id].length) return;
+      if (dim.categoryId && hasIngaRiskfaktorer(fields, dim.categoryId)) {
+        present[dim.id].push('Inga riskfaktorer');
+      }
+    });
 
-    var saknade = required.filter(function (dim) {
+    var saknade = uniqueLabels(required.filter(function (dim) {
       return !(present[dim.id] && present[dim.id].length);
-    }).map(function (dim) { return dim.label; });
+    }).map(function (dim) { return dim.cardTitle || dim.label; }));
 
     return {
       required: required.map(function (dim) { return dim.id; }),
@@ -159,12 +216,12 @@
   }
 
   function ofullstandigVarning(saknade) {
-    var list = (Array.isArray(saknade) ? saknade : []).filter(Boolean);
+    var list = uniqueLabels((Array.isArray(saknade) ? saknade : []).map(cardTitleOf));
     if (!list.length) return '';
     var text = list.length === 1
       ? list[0]
       : (list.length === 2 ? list[0] + ' och ' + list[1] : list.slice(0, -1).join(', ') + ' och ' + list[list.length - 1]);
-    return 'Riskbedömning ofullständig — saknar ' + text;
+    return 'Riskbedömning ofullständig — saknar val på ' + text;
   }
 
   function groupOvrigaByTyp(ovriga) {
@@ -199,6 +256,7 @@
     availableDimensions: availableDimensions,
     assessCustomerDimensions: assessCustomerDimensions,
     ofullstandigVarning: ofullstandigVarning,
+    cardTitleOf: cardTitleOf,
     groupOvrigaByTyp: groupOvrigaByTyp
   };
 
