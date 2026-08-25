@@ -10800,11 +10800,12 @@ class CustomerCardManager {
 
     _kycLanderLabels() {
         const Eu = window.EuHogriskLander;
+        const parse = (raw) => (Eu && Eu.parseLabels)
+            ? Eu.parseLabels(raw)
+            : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
         const formEl = document.getElementById('kyc-internationella-lander');
-        const formVal = formEl ? String(formEl.value || '').trim() : '';
-        const savedVal = String(this._savedKycFormular?.internationellaLander || '').trim();
-        const raw = formVal || savedVal;
-        return Eu && Eu.parseLabels ? Eu.parseLabels(raw) : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
+        if (formEl) return parse(formEl.value);
+        return parse(this._savedKycFormular?.internationellaLander);
     }
 
     _setKycLanderLabels(labels, opts = {}) {
@@ -10812,10 +10813,9 @@ class CustomerCardManager {
         const next = Eu && Eu.parseLabels ? Eu.parseLabels(labels) : (labels || []).filter(Boolean);
         const hidden = document.getElementById('kyc-internationella-lander');
         if (hidden) hidden.value = next.join(', ');
-        if (this._savedKycFormular) {
-            this._savedKycFormular.internationellaLander = next.join(', ');
-            if (next.length) this._savedKycFormular.internationellHandel = 'Ja';
-        }
+        if (!this._savedKycFormular) this._savedKycFormular = {};
+        this._savedKycFormular.internationellaLander = next.join(', ');
+        if (next.length) this._savedKycFormular.internationellHandel = 'Ja';
         const jaNej = document.getElementById('kyc-internationell');
         if (jaNej && next.length) {
             jaNej.value = 'Ja';
@@ -10866,6 +10866,17 @@ class CustomerCardManager {
                 ev.preventDefault();
                 this._addKycLander(btn.getAttribute('data-land'));
             });
+            const chips = root.querySelector('.kyc-lander-chips');
+            if (chips && chips.dataset.removeBound !== '1') {
+                chips.dataset.removeBound = '1';
+                chips.addEventListener('click', (ev) => {
+                    const btn = ev.target.closest('.kyc-lander-chip-x');
+                    if (!btn) return;
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    this._removeKycLander(btn.getAttribute('data-land'));
+                });
+            }
         });
         if (!this._kycLanderDocBound) {
             this._kycLanderDocBound = true;
@@ -10901,7 +10912,7 @@ class CustomerCardManager {
             <span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">
                 ${this._esc(c.label)}
                 <em>${this._esc(c.badge)}</em>
-                ${editable ? `<button type="button" class="kyc-lander-chip-x" title="Ta bort" onclick="customerCardManager._removeKycLander(${JSON.stringify(c.label)})">×</button>` : ''}
+                ${editable ? `<button type="button" class="kyc-lander-chip-x" title="Ta bort" data-land="${this._esc(c.label)}" aria-label="Ta bort ${this._esc(c.label)}">×</button>` : ''}
             </span>`;
         const editableHtml = result.countries.map((c) => chipInner(c, true)).join('');
         let readonlyHtml = result.countries.map((c) => chipInner(c, false)).join('');
@@ -10949,7 +10960,11 @@ class CustomerCardManager {
         const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
         const labels = this._kycLanderLabels();
         const opts = this._geoLanderOpts();
-        if (!opts.onlySweden && !labels.length) return allChecked;
+        if (!opts.onlySweden && !labels.length) {
+            const steered = new Set(Eu.steeredRecordIds(recs));
+            steered.forEach((id) => allChecked.delete(id));
+            return allChecked;
+        }
         const steered = new Set(Eu.steeredRecordIds(recs));
         const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
         steered.forEach((id) => allChecked.delete(id));
@@ -10963,9 +10978,18 @@ class CustomerCardManager {
         const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
         const labels = this._kycLanderLabels();
         const opts = this._geoLanderOpts();
-        if (!opts.onlySweden && !labels.length) return;
         const steered = new Set(Eu.steeredRecordIds(recs));
         const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+        if (!opts.onlySweden && !labels.length) {
+            document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
+                if (!steered.has(cb.value)) return;
+                cb.checked = false;
+                cb.disabled = false;
+                const item = cb.closest('.risker-check-item');
+                if (item) item.classList.remove('is-geo-steered');
+            });
+            return;
+        }
         document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
             if (!steered.has(cb.value)) return;
             cb.checked = suggested.has(cb.value);
@@ -10999,7 +11023,6 @@ class CustomerCardManager {
     async _persistGeoFromLander(opts = {}) {
         const labels = this._kycLanderLabels();
         const landerOpts = this._geoLanderOpts();
-        if (!landerOpts.onlySweden && !labels.length) return;
         if (!this._allaRisker) await this.loadKundRisker();
         const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
         const next = this._mergeSteeredGeoIds(new Set(this._linkedRiskIds || []));
@@ -11009,7 +11032,7 @@ class CustomerCardManager {
         const result = await this._patchKunddataFields(fields);
         if (!result.ok) return;
         this._linkedRiskIds = next;
-        if (!opts.skipKycPost && this.customerId && (labels.length || landerOpts.onlySweden)) {
+        if (!opts.skipKycPost && this.customerId) {
             try {
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
                 await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, {
