@@ -454,9 +454,21 @@
       initCards(canEdit);
       initCardSaveButtons(canEdit);
       var live = getEl('identifierade-risker-live');
+      var source = data.identifieradeRiskerSource || { tjanster: [], ovriga: [] };
       if (live && window.IdentifieradeRiskerView) {
-        IdentifieradeRiskerView.mount(live, data.identifieradeRiskerSource || { tjanster: [], ovriga: [] });
+        IdentifieradeRiskerView.mount(live, source, { only: 'tjanster' });
       }
+      var distLive = getEl('ar-distribution-live');
+      if (distLive && window.IdentifieradeRiskerView) {
+        IdentifieradeRiskerView.mount(distLive, source, { only: 'distribution' });
+      }
+      var verkLive = getEl('ar-verksamhet-live');
+      if (verkLive && window.IdentifieradeRiskerView) {
+        IdentifieradeRiskerView.mount(verkLive, source, { only: 'verksamhet' });
+      }
+      window._arIdentifieradeSource = source;
+      initCollapsibleCards();
+      loadArStatistikBlock();
       if (content) content.style.display = 'block';
       var headerActions = getEl('allman-risk-header-actions');
       if (headerActions) headerActions.style.display = 'flex';
@@ -537,6 +549,195 @@
         btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
       }
     });
+  }
+
+  function initCollapsibleCards() {
+    document.querySelectorAll('.byra-card--collapsible').forEach(function (card) {
+      if (card.getAttribute('data-collapse-bound') === '1') return;
+      card.setAttribute('data-collapse-bound', '1');
+      var toggle = card.querySelector('.byra-card-collapse-toggle');
+      var label = card.querySelector('.byra-card-label');
+      function flip() {
+        var open = !card.classList.contains('is-collapsed');
+        card.classList.toggle('is-collapsed', open);
+        card.classList.toggle('open', !open);
+        if (toggle) toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+      }
+      if (toggle) toggle.addEventListener('click', function (ev) { ev.preventDefault(); flip(); });
+      if (label) {
+        label.style.cursor = 'pointer';
+        label.addEventListener('click', function () { flip(); });
+      }
+    });
+  }
+
+  function renderTjansterBarChart(tjanster) {
+    var wrap = getEl('ar-tjanster-chart');
+    if (!wrap) return;
+    var rows = (tjanster || []).filter(function (t) { return t && t.namn; });
+    if (!rows.length) {
+      wrap.innerHTML = '<p class="identifierade-empty">Inga kunder har en kopplad tjänst ännu.</p>';
+      return;
+    }
+    var max = rows.reduce(function (m, t) { return Math.max(m, Number(t.antal) || 0); }, 0) || 1;
+    wrap.innerHTML = '<h4 class="ar-chart-title">Kunder per tjänst</h4>'
+      + '<p class="byra-card-source-hint">Antal kunder på inloggad byrå som har respektive tjänst kopplad.</p>'
+      + '<div class="ar-bar-chart" role="img" aria-label="Stapeldiagram över kunder per tjänst">'
+      + rows.map(function (t) {
+        var n = Number(t.antal) || 0;
+        var pct = Math.round((n / max) * 100);
+        return '<div class="ar-bar-row">'
+          + '<span class="ar-bar-label">' + escapeHtml(t.namn) + '</span>'
+          + '<div class="ar-bar-track"><div class="ar-bar-fill" style="width:' + pct + '%"></div></div>'
+          + '<span class="ar-bar-value">' + n + '</span>'
+          + '</div>';
+      }).join('')
+      + '</div>';
+  }
+
+  function mergeVarningsflaggor(katalog, kategorier, counts) {
+    var countMap = {};
+    (counts || []).forEach(function (row) {
+      if (!row || !row.namn) return;
+      countMap[String(row.namn)] = Number(row.antal) || 0;
+    });
+    var Kat = window.OvrigaRiskKategorier;
+    var KP = window.KundRiskprofil;
+    var labels = [];
+    if (katalog && typeof katalog === 'object') labels = Object.keys(katalog);
+    else if (Kat && Kat.FACTORS) labels = Kat.FACTORS.map(function (f) { return f.label; });
+    var seen = {};
+    var out = [];
+    labels.forEach(function (namn) {
+      var label = KP && KP.canonicalRiskhojandeLabel ? KP.canonicalRiskhojandeLabel(namn) : namn;
+      if (!label || seen[label.toLowerCase()]) return;
+      seen[label.toLowerCase()] = true;
+      var klass = (katalog && katalog[namn]) || (katalog && katalog[label]) || '';
+      var cat = (kategorier && (kategorier[namn] || kategorier[label])) || (Kat && Kat.categoryFor && Kat.categoryFor(label)) || '';
+      out.push({ namn: label, antal: countMap[label] || countMap[namn] || 0, klass: klass, category: cat });
+    });
+    (counts || []).forEach(function (row) {
+      var label = row && row.namn;
+      if (!label || seen[String(label).toLowerCase()]) return;
+      seen[String(label).toLowerCase()] = true;
+      out.push({ namn: label, antal: Number(row.antal) || 0, klass: '', category: '' });
+    });
+    out.sort(function (a, b) {
+      if (b.antal !== a.antal) return b.antal - a.antal;
+      return String(a.namn).localeCompare(String(b.namn), 'sv');
+    });
+    return out;
+  }
+
+  function countsForDimension(stat, dimId) {
+    var Dim = window.RiskDimensioner;
+    var groups = (stat && stat.riskfaktorerPerTyp) || [];
+    var out = [];
+    groups.forEach(function (g) {
+      if (!g) return;
+      if (Dim && Dim.typMatchesDimension && !Dim.typMatchesDimension(g.typ, dimId)) return;
+      if (!Dim && String(g.typ || '').toLowerCase().indexOf(dimId) === -1) return;
+      (g.riskfaktorer || []).forEach(function (r) {
+        if (r && r.namn) out.push({ namn: r.namn, antal: Number(r.antal) || 0 });
+      });
+    });
+    return out;
+  }
+
+  function percentOf(antal, total) {
+    if (!total) return 0;
+    return Math.round((Number(antal) || 0) * 1000 / total) / 10;
+  }
+
+  function renderKanalStats(elId, rows, total, emptyText) {
+    var el = getEl(elId);
+    if (!el) return;
+    if (!rows.length) {
+      el.innerHTML = emptyText ? '<p class="identifierade-empty">' + emptyText + '</p>' : '';
+      return;
+    }
+    el.innerHTML = '<ul class="ar-kanal-list">' + rows.map(function (r) {
+      var pct = percentOf(r.antal, total);
+      return '<li><span class="ar-flaggor-namn">' + escapeHtml(r.namn) + '</span>'
+        + ' <span class="ar-flaggor-antal">' + r.antal + ' kunder (' + pct + '%)</span></li>';
+    }).join('') + '</ul>';
+  }
+
+  function renderGeografi(stat) {
+    var el = getEl('ar-geografi-body');
+    if (!el) return;
+    var rows = (stat && stat.hemvist) || [];
+    var total = Number(stat && stat.antalKunder) || 0;
+    var list = rows.length
+      ? '<ul class="ar-kanal-list">' + rows.map(function (r) {
+        var pct = percentOf(r.antal, total);
+        var badge = r.badge ? ' <em class="ar-flaggor-klass">' + escapeHtml(r.badge) + '</em>' : '';
+        return '<li><span class="ar-flaggor-namn">' + escapeHtml(r.namn) + '</span>' + badge
+          + ' <span class="ar-flaggor-antal">' + r.antal + ' kunder (' + pct + '%)</span></li>';
+      }).join('') + '</ul>'
+      : '<p class="identifierade-empty">Inga skatterättsliga hemvister är ifyllda i KYC ännu.</p>';
+    el.innerHTML = '<p>Företagen och deras verkliga huvudmän/företrädare som anlitar oss har sin skatterättsliga hemvist i följande länder:</p>'
+      + list
+      + '<p>Risken för att tjänsten kan utnyttjas blir högre när du till exempel erbjuder tjänsten i ett land där det förekommer korruption, det saknas ett effektivt regelverk mot penningtvätt, eller som är ett högrisktredjeland enligt EU-kommissionen. '
+      + '<a href="https://www.lansstyrelsen.se/stockholm/samhalle/betalning-ekonomi-och-pengar/forhindra-penningtvatt-och-finansiering-av-terrorism/gor-en-allman-riskbedomning.html" target="_blank" rel="noopener">Länsstyrelsens vägledning</a>.</p>'
+      + '<p>Den skatterättsliga hemvisten kontrolleras mot EU:s lista gällande risknivåer i olika länder och påverkar kundens risknivå.</p>';
+  }
+
+  function renderKundtyper(stat, katalogPayload) {
+    var el = getEl('ar-kundtyper-body');
+    if (!el) return;
+    var r = (stat && stat.riskniva) || {};
+    var n = Number(stat && stat.antalKunder) || 0;
+    var lagNormal = (Number(r['Låg']) || 0) + (Number(r['Normal']) || 0) + (Number(r['Medel']) || 0);
+    var forhojd = Number(r['Förhöjd']) || 0;
+    var hog = Number(r['Hög']) || 0;
+    var oacc = Number(r['Oacceptabel']) || 0;
+    var pep = Number(stat && stat.antalPepEllerSanktion) || 0;
+    var flags = mergeVarningsflaggor(
+      katalogPayload && katalogPayload.katalog,
+      katalogPayload && katalogPayload.kategorier,
+      stat && stat.varningsflaggor
+    );
+    el.innerHTML = '<p>Vår byrå har <strong>' + n + '</strong> antal kunder. Av dessa har vi kategoriserat <strong>'
+      + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
+      + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
+      + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
+      + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder. Vi har även utifrån information från Finanspolisen, AMLA, Länsstyrelser, Ekobrottsmyndigheten m.fl. lagt till relevanta varningstecken för sådana kunder som vi har. Vi har bedömt omständigheterna som kan tyda på högre risk som antingen sådana som alltid är riskhöjande eller sådana som bidrar i kombination.</p>'
+      + '<h5 class="ar-flaggor-title">Våra varningsflaggor</h5>'
+      + (flags.length
+        ? '<ul class="ar-flaggor-list">' + flags.map(function (f) {
+          var badge = '';
+          var Kat = window.OvrigaRiskKategorier;
+          if (Kat && Kat.klassBadge) badge = Kat.klassBadge(f.klass);
+          else if (f.klass === 'GOLV_HOG') badge = 'Hög-aktiv';
+          else if (f.klass === 'BIDRAR_VID_KOMBINATION') badge = 'Bidrar vid kombination';
+          return '<li><span class="ar-flaggor-namn">' + escapeHtml(f.namn) + '</span>'
+            + (badge ? ' <em class="ar-flaggor-klass">' + escapeHtml(badge) + '</em>' : '')
+            + ' <span class="ar-flaggor-antal">' + f.antal + ' kunder</span></li>';
+        }).join('') + '</ul>'
+        : '<p class="identifierade-empty">Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>');
+  }
+
+  async function loadArStatistikBlock() {
+    try {
+      var [statRes, katRes] = await Promise.all([
+        fetch(getBaseUrl() + '/api/statistik-riskbedomning', getAuthOpts()),
+        fetch(getBaseUrl() + '/api/riskhojande-katalog', getAuthOpts())
+      ]);
+      var stat = statRes.ok ? await statRes.json() : {};
+      var kat = katRes.ok ? await katRes.json() : {};
+      var total = Number(stat.antalKunder) || 0;
+      renderTjansterBarChart(stat.tjänster || stat.tjanster || []);
+      renderKundtyper(stat, kat);
+      renderKanalStats('ar-distribution-stats', countsForDimension(stat, 'distribution'), total);
+      renderKanalStats('ar-verksamhet-stats', countsForDimension(stat, 'verksamhet'), total);
+      renderGeografi(stat);
+    } catch (err) {
+      console.warn('Kunde inte ladda AR-statistik:', err);
+      var el = getEl('ar-kundtyper-body');
+      if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för inloggad byrå.</p>';
+      renderTjansterBarChart([]);
+    }
   }
 
   function init() {

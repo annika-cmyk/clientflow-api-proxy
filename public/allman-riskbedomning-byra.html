@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Allmän riskbedömning byrå</title>
-    <link rel="stylesheet" href="styles.css?v=20260822m">
+    <link rel="stylesheet" href="styles.css?v=20260825d">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -120,32 +120,79 @@
                             </div>
                                 </div>
                             </div>
-                            <div class="byra-card byra-card--live-source" data-field-id="fld-identifierade-risker">
+                            <div class="byra-card byra-card--live-source byra-card--collapsible open" data-field-id="fld-identifierade-risker">
                                 <div class="byra-card-view">
-                                    <div class="byra-card-label">4. Identifierade Risker och Sårbarheter</div>
+                                    <button type="button" class="byra-card-collapse-toggle" aria-expanded="true" title="Fäll in eller ut">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="byra-card-label">4. Analys av våra produkter och tjänster</div>
                                     <p class="byra-card-source-hint" style="margin-top:0;">
-                                        Fylls i på
-                                        <a href="riskbedomning-byra.html">Byråns tjänster</a>
-                                        och
-                                        <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
-                                        Hela underlaget visas i
-                                        <a href="dokumentation.html">Dokumentationen</a>
-                                        och i den exporterade PDF:en.
+                                        Underlaget kommer från
+                                        <a href="riskbedomning-byra.html">Byråns tjänster – analys av hot, sårbarheter och våra åtgärder</a>.
+                                        Fäll ut varje tjänst för att se samma layout som på den sidan.
+                                        Staplarna visar hur många av byråns kunder som har respektive tjänst.
                                     </p>
-                                    <div id="identifierade-risker-live" class="identifierade-live"></div>
+                                    <div class="byra-card-collapse-body">
+                                        <div id="ar-tjanster-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
+                                        <div id="identifierade-risker-live" class="identifierade-live"></div>
+                                    </div>
                                 </div>
                                 <div class="byra-card-edit" style="display:none;">
                             <div class="form-group full-width">
-                                <label for="fld-identifierade-risker">4. Identifierade Risker och Sårbarheter</label>
+                                <label for="fld-identifierade-risker">4. Analys av våra produkter och tjänster</label>
                                 <textarea id="fld-identifierade-risker" class="form-input form-textarea" rows="8" readonly hidden></textarea>
                             </div>
                                 </div>
+                            </div>
+                            <div class="byra-card byra-card--live-source byra-card--collapsible open" data-card-id="fld-identifierade-nya">
+                                <div class="byra-card-view">
+                                    <button type="button" class="byra-card-collapse-toggle" aria-expanded="true" title="Fäll in eller ut">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="byra-card-label">5. Identifierade risker och sårbarheter</div>
+                                    <p class="byra-card-source-hint" style="margin-top:0;">
+                                        Kundtyper, varningsflaggor, distribution, geografisk hemvist och
+                                        verksamhetsspecifika faktorer hämtas från
+                                        <a href="statistik-riskbedomning.html">Statistik</a>,
+                                        <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
+                                        och KYC för inloggad byrå.
+                                    </p>
+                                    <div class="byra-card-collapse-body">
+                                        <div class="ar-underkort">
+                                            <section class="ar-underkort-card" id="ar-kundtyper">
+                                                <h4>5.1 Våra olika kundtyper</h4>
+                                                <div id="ar-kundtyper-body" class="ar-underkort-body">
+                                                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar kundstatistik...</p>
+                                                </div>
+                                            </section>
+                                            <section class="ar-underkort-card" id="ar-distribution">
+                                                <h4>5.2 Distribution</h4>
+                                                <p>Byrån har följande möjliga distributionskanaler:</p>
+                                                <div id="ar-distribution-stats" class="ar-kanal-stats"></div>
+                                                <div id="ar-distribution-live" class="identifierade-live"></div>
+                                            </section>
+                                            <section class="ar-underkort-card" id="ar-geografi">
+                                                <h4>5.3 Geografisk risk</h4>
+                                                <div id="ar-geografi-body" class="ar-underkort-body">
+                                                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar hemviststatistik...</p>
+                                                </div>
+                                            </section>
+                                            <section class="ar-underkort-card" id="ar-verksamhet">
+                                                <h4>5.4 Verksamhetsspecifika omständigheter</h4>
+                                                <p>Byrån har bedömt följande verksamhetsspecifika riskfaktorer:</p>
+                                                <div id="ar-verksamhet-stats" class="ar-kanal-stats"></div>
+                                                <div id="ar-verksamhet-live" class="identifierade-live"></div>
+                                            </section>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="byra-card-edit" style="display:none;"></div>
                             </div>
                             <div class="byra-card" data-field-id="fld-riskreducerande">
                                 <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
-                                <label for="fld-riskreducerande">5. Riskreducerande Åtgärder och Rutiner</label>
+                                <label for="fld-riskreducerande">6. Riskreducerande Åtgärder och Rutiner</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -162,7 +209,7 @@
                                 <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
-                                <label for="fld-utvardering">6. Utvärdering och Uppdatering</label>
+                                <label for="fld-utvardering">7. Utvärdering och Uppdatering</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -179,7 +226,7 @@
                                 <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
-                                <label for="fld-kommunikation-risk">7. Kommunikation</label>
+                                <label for="fld-kommunikation-risk">8. Kommunikation</label>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
                                         <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
@@ -202,7 +249,7 @@
                                 </div>
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
-                                <label for="fld-vardering-risk">8. Värdering av sammantagen risk</label>
+                                <label for="fld-vardering-risk">9. Värdering av sammantagen risk</label>
                                 <div class="form-group" style="margin-bottom:0.75rem;">
                                     <label for="fld-sammantagen-niva">Sammantagen risknivå</label>
                                     <select id="fld-sammantagen-niva" class="form-input form-select">
@@ -231,7 +278,7 @@
                                 <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
                                 <div class="byra-card-edit">
                             <div class="form-group full-width">
-                                <label for="fld-riskaptit-policy">9. Riskaptit</label>
+                                <label for="fld-riskaptit-policy">10. Riskaptit</label>
                                 <p class="byra-card-source-hint">Kundbeslut ligger på kundkortet. Här beskriver ni byråns riskaptit.</p>
                                 <div class="byrarutiner-rich-field">
                                     <div class="byrarutiner-format-toolbar">
@@ -278,9 +325,12 @@
     <script src="js/risk-skala.js?v=7"></script>
     <script src="js/tjanst-tf-tackning.js?v=2"></script>
     <script src="js/risk-dimensioner.js?v=1"></script>
-    <script src="js/identifierade-risker-view.js?v=3"></script>
+    <script src="js/ovriga-risk-kategorier.js?v=8"></script>
+    <script src="js/eu-hogrisk-lander.js?v=3"></script>
+    <script src="js/kund-riskprofil.js?v=14"></script>
+    <script src="js/identifierade-risker-view.js?v=5"></script>
     <script src="js/riskaptit.js?v=2"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=2.0"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=2.2"></script>
     <script src="app.js"></script>
 </body>
 </html>

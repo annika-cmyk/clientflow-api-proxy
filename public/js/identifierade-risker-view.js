@@ -253,10 +253,18 @@
     return '<h4 class="identifierade-group-title">' + esc(title) + '</h4>';
   }
 
-  function render(source) {
+  function render(source, opts) {
     const data = source || {};
-    const tjanster = Array.isArray(data.tjanster) ? data.tjanster : [];
-    const ovriga = Array.isArray(data.ovriga) ? data.ovriga : [];
+    const only = opts && opts.only ? String(opts.only) : '';
+    let tjanster = Array.isArray(data.tjanster) ? data.tjanster : [];
+    let ovriga = Array.isArray(data.ovriga) ? data.ovriga : [];
+    if (only === 'tjanster') ovriga = [];
+    if (only && only !== 'tjanster') tjanster = [];
+    if (only && only !== 'tjanster' && only !== 'ovriga') {
+      const Dim = (typeof window !== 'undefined' && window.RiskDimensioner)
+        || (typeof require === 'function' ? require('./risk-dimensioner') : null);
+      ovriga = ovriga.filter((r) => Dim && Dim.typMatchesDimension && Dim.typMatchesDimension(r && r.typ, only));
+    }
     const Dim = (typeof window !== 'undefined' && window.RiskDimensioner)
       || (typeof require === 'function' ? require('./risk-dimensioner') : null);
     const tjanstCards = tjanster.filter((t) => text(t && (t.namn || t.title))).map(renderTjanstCard);
@@ -268,17 +276,35 @@
       return renderOvrigCard(Object.assign({}, r, { typ: typ }));
     }));
     if (!tjanstCards.length && !ovrigCards.length) {
+      if (only === 'tjanster') {
+        return '<p class="identifierade-empty">Inga tjänster är ifyllda ännu. '
+          + 'Gå till <a href="riskbedomning-byra.html">Byråns tjänster</a>.</p>';
+      }
+      if (only === 'distribution') {
+        return '<p class="identifierade-empty">Inga distributionskanaler är ifyllda ännu. '
+          + 'Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>';
+      }
+      if (only === 'verksamhet') {
+        return '<p class="identifierade-empty">Inga verksamhetsspecifika riskfaktorer är ifyllda ännu. '
+          + 'Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>';
+      }
+      if (only === 'geografiska') {
+        return '<p class="identifierade-empty">Inga geografiska riskfaktorer är ifyllda ännu. '
+          + 'Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>';
+      }
       return '<p class="identifierade-empty">Inga tjänster eller övriga riskfaktorer är ifyllda ännu. '
         + 'Gå till <a href="riskbedomning-byra.html">Byråns tjänster</a> och '
         + '<a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>';
     }
     const parts = [];
     if (tjanstCards.length) {
-      parts.push(heading('Produkter och tjänster'));
+      if (only !== 'tjanster') parts.push(heading('Produkter och tjänster'));
       parts.push('<div class="risk-items">' + tjanstCards.join('') + '</div>');
     }
     if (ovrigCards.length) {
-      parts.push(heading('Övriga riskfaktorer'));
+      if (only !== 'distribution' && only !== 'verksamhet' && only !== 'geografiska' && only !== 'kund' && only !== 'ovriga') {
+        parts.push(heading('Övriga riskfaktorer'));
+      }
       grouped.forEach((group) => {
         const cards = (group.items || []).map((r) => {
           const typ = (Dim && Dim.normalizeTyp) ? Dim.normalizeTyp(r.typ) : text(r.typ);
@@ -308,9 +334,9 @@
     });
   }
 
-  function mount(el, source) {
+  function mount(el, source, opts) {
     if (!el) return '';
-    const html = render(source);
+    const html = render(source, opts);
     el.innerHTML = html;
     bind(el);
     return html;

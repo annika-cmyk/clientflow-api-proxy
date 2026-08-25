@@ -19701,14 +19701,27 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const policyRev = getByraField('Policydokumentet reviderat och godkänt') || '';
     htmlParts.push(`<p><strong>Policydokumentet reviderat och godkänt:</strong> ${escape(policyRev) || '—'}</p></div>`);
 
-    const allmanKeys = ['1. Syfte och Omfattning', '2. Beskrivning av Byråns verksamhet', '3. Metod för Riskbedömning ', '4. Identifierade Risker och Sårbarheter', '5. Riskreducerande Åtgärder och Rutiner', '6. Utvärdering och Uppdatering', '7. Kommunikation.', '8. Värdering av sammantagen risk'];
+    const allmanKeys = [
+      ['1. Syfte och Omfattning', '1. Syfte och Omfattning'],
+      ['2. Beskrivning av Byråns verksamhet', '2. Beskrivning av Byråns verksamhet'],
+      ['3. Metod för Riskbedömning ', '3. Metod för Riskbedömning'],
+      ['4. Identifierade Risker och Sårbarheter', '4. Analys av våra produkter och tjänster'],
+      ['5. Riskreducerande Åtgärder och Rutiner', '6. Riskreducerande Åtgärder och Rutiner'],
+      ['6. Utvärdering och Uppdatering', '7. Utvärdering och Uppdatering'],
+      ['7. Kommunikation.', '8. Kommunikation'],
+      ['8. Värdering av sammantagen risk', '9. Värdering av sammantagen risk']
+    ];
     htmlParts.push(`<div class="doc-page"><h2>2. Allmän riskbedömning byrå</h2>`);
-    for (const k of allmanKeys) {
-      const val = getByraField(k) || '';
-      htmlParts.push(`<h3>${escape(k)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
+    for (const [airtableKey, title] of allmanKeys) {
+      const val = getByraField(airtableKey) || '';
+      htmlParts.push(`<h3>${escape(title)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
+      if (airtableKey === '4. Identifierade Risker och Sårbarheter') {
+        htmlParts.push('<h3>5. Identifierade risker och sårbarheter</h3>');
+        htmlParts.push('<p class="doc-text">Kundtyper, varningsflaggor och distributionskanaler hämtas från Statistik och Övriga riskfaktorer för inloggad byrå.</p>');
+      }
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
-    htmlParts.push(`<h3>9. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText(getByraField('9. Riskaptit')))}</div>`);
+    htmlParts.push(`<h3>10. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText(getByraField('9. Riskaptit')))}</div>`);
     const uppdateradDatum = getByraField('Uppdaterad datum') || '';
     htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
 
