@@ -865,12 +865,14 @@ function persistAmlNewsEnrichment(rows) {
     const store = getAmlNewsStore();
     for (const row of rows || []) {
       if (!row.id || !String(row.id).startsWith('rec')) continue;
-      if (!row.raw_content && !row.summary_sv) continue;
-      store.updateFields(row.id, {
+      if (!row.raw_content && !row.summary_sv && !row.published_at) continue;
+      const fields = {
         raw_content: row.raw_content,
         summary_sv: row.summary_sv,
         fetched_at: row.fetched_at
-      }).catch((err) => {
+      };
+      if (row.published_at) fields.published_at = row.published_at;
+      store.updateFields(row.id, fields).catch((err) => {
         console.warn('AML-nyheter updateFields:', err.message);
       });
     }
