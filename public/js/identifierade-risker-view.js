@@ -311,7 +311,7 @@
           return renderOvrigCard(Object.assign({}, r, { typ: typ }));
         });
         if (!cards.length) return;
-        if (group.typ) parts.push(heading(group.typ));
+        if (group.typ && only !== 'distribution' && only !== 'verksamhet') parts.push(heading(group.typ));
         parts.push('<div class="risk-items">' + cards.join('') + '</div>');
       });
     }

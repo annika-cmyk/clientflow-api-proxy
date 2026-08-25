@@ -13009,6 +13009,8 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ar-bar-fill--bidrar { background: #f59e0b; }
 .ar-bar-chart--flaggor .ar-bar-row:has(.ar-bar-fill--golv) .ar-flaggor-klass { color: #991b1b; }
 .ar-pie-chart-wrap { margin: 0.85rem 0 0.25rem; }
+#ar-distribution-chart,
+#ar-verksamhet-chart { margin-top: 1.15rem; padding-top: 0.35rem; border-top: 1px solid #e2e8f0; }
 .ar-pie-wrap {
     display: flex;
     flex-wrap: wrap;

@@ -703,19 +703,49 @@
     return out;
   }
 
-  function countsForDimension(stat, dimId) {
+  function foldNamn(namn) {
+    return String(namn || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function countsForDimension(stat, dimId, source) {
     var Dim = window.RiskDimensioner;
     var groups = (stat && stat.riskfaktorerPerTyp) || [];
-    var out = [];
+    var byKey = {};
+    function add(namn, antal) {
+      var label = String(namn || '').trim();
+      if (!label) return;
+      var key = foldNamn(label);
+      if (!byKey[key]) byKey[key] = { namn: label, antal: 0 };
+      var n = Number(antal) || 0;
+      if (n > byKey[key].antal) byKey[key].antal = n;
+    }
     groups.forEach(function (g) {
       if (!g) return;
       if (Dim && Dim.typMatchesDimension && !Dim.typMatchesDimension(g.typ, dimId)) return;
       if (!Dim && String(g.typ || '').toLowerCase().indexOf(dimId) === -1) return;
       (g.riskfaktorer || []).forEach(function (r) {
-        if (r && r.namn) out.push({ namn: r.namn, antal: Number(r.antal) || 0 });
+        if (r && r.namn) add(r.namn, r.antal);
       });
     });
-    return out;
+    var liveNames = [];
+    ((source && source.ovriga) || []).forEach(function (r) {
+      if (!r || !r.namn) return;
+      if (Dim && Dim.typMatchesDimension && !Dim.typMatchesDimension(r.typ, dimId)) return;
+      liveNames.push(r.namn);
+      if (!byKey[foldNamn(r.namn)]) add(r.namn, 0);
+    });
+    ((stat && stat.varningsflaggor) || []).forEach(function (f) {
+      if (!f || !f.namn) return;
+      var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
+      if (match || (dimId === 'distribution' && /distans|fysiskt möte|ombud/i.test(f.namn))) {
+        add(f.namn, f.antal);
+      }
+    });
+    return Object.keys(byKey).map(function (k) { return byKey[k]; })
+      .sort(function (a, b) {
+        if (b.antal !== a.antal) return b.antal - a.antal;
+        return String(a.namn).localeCompare(String(b.namn), 'sv');
+      });
   }
 
   function percentOf(antal, total) {
@@ -809,13 +839,13 @@
       var kat = katRes.ok ? await katRes.json() : {};
       renderTjansterBarChart(stat.tjänster || stat.tjanster || []);
       renderKundtyper(stat, kat);
-      renderPieChart('ar-distribution-chart', countsForDimension(stat, 'distribution'), {
+      renderPieChart('ar-distribution-chart', countsForDimension(stat, 'distribution', window._arIdentifieradeSource), {
         title: 'Andel kunder per distributionskanal',
-        hint: 'Hur stor andel av byråns kunder som är kopplade till respektive kanal.',
+        hint: 'Andel av kunderna som har respektive distributionskanal.',
         aria: 'Cirkeldiagram över distributionskanaler',
         empty: 'Inga kunder är kopplade till en distributionskanal ännu.'
       });
-      renderPieChart('ar-verksamhet-chart', countsForDimension(stat, 'verksamhet'), {
+      renderPieChart('ar-verksamhet-chart', countsForDimension(stat, 'verksamhet', window._arIdentifieradeSource), {
         title: 'Andel kunder per verksamhetsfaktor',
         hint: 'Hur stor andel av byråns kunder som har respektive verksamhetsspecifik riskfaktor.',
         aria: 'Cirkeldiagram över verksamhetsspecifika riskfaktorer',
