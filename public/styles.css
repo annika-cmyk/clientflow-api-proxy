@@ -12992,6 +12992,42 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #1e293b;
     text-align: right;
 }
+.ar-pie-chart-wrap { margin: 0.85rem 0 0.25rem; }
+.ar-pie-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.1rem 1.5rem;
+    align-items: center;
+    margin: 0.55rem 0 0.25rem;
+}
+.ar-pie-svg {
+    width: 10.5rem;
+    height: 10.5rem;
+    flex: 0 0 auto;
+}
+.ar-pie-legend {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-width: 12rem;
+    flex: 1 1 14rem;
+}
+.ar-pie-legend li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    margin: 0.28rem 0;
+    font-size: 0.82rem;
+    color: #334155;
+}
+.ar-pie-swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    position: relative;
+    top: 0.08rem;
+}
 .ar-underkort {
     display: flex;
     flex-direction: column;

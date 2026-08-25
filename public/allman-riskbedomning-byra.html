@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Allmän riskbedömning byrå</title>
-    <link rel="stylesheet" href="styles.css?v=20260825d">
+    <link rel="stylesheet" href="styles.css?v=20260825e">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -168,20 +168,21 @@
                                             <section class="ar-underkort-card" id="ar-distribution">
                                                 <h4>5.2 Distribution</h4>
                                                 <p>Byrån har följande möjliga distributionskanaler:</p>
-                                                <div id="ar-distribution-stats" class="ar-kanal-stats"></div>
                                                 <div id="ar-distribution-live" class="identifierade-live"></div>
+                                                <div id="ar-distribution-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
                                             </section>
                                             <section class="ar-underkort-card" id="ar-geografi">
                                                 <h4>5.3 Geografisk risk</h4>
                                                 <div id="ar-geografi-body" class="ar-underkort-body">
                                                     <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar hemviststatistik...</p>
                                                 </div>
+                                                <div id="ar-geografi-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
                                             </section>
                                             <section class="ar-underkort-card" id="ar-verksamhet">
                                                 <h4>5.4 Verksamhetsspecifika omständigheter</h4>
                                                 <p>Byrån har bedömt följande verksamhetsspecifika riskfaktorer:</p>
-                                                <div id="ar-verksamhet-stats" class="ar-kanal-stats"></div>
                                                 <div id="ar-verksamhet-live" class="identifierade-live"></div>
+                                                <div id="ar-verksamhet-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
                                             </section>
                                         </div>
                                     </div>
@@ -330,7 +331,7 @@
     <script src="js/kund-riskprofil.js?v=14"></script>
     <script src="js/identifierade-risker-view.js?v=5"></script>
     <script src="js/riskaptit.js?v=2"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=2.2"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=2.3"></script>
     <script src="app.js"></script>
 </body>
 </html>

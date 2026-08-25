@@ -571,19 +571,19 @@
     });
   }
 
-  function renderTjansterBarChart(tjanster) {
-    var wrap = getEl('ar-tjanster-chart');
-    if (!wrap) return;
-    var rows = (tjanster || []).filter(function (t) { return t && t.namn; });
-    if (!rows.length) {
-      wrap.innerHTML = '<p class="identifierade-empty">Inga kunder har en kopplad tjänst ännu.</p>';
-      return;
+  var PIE_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f43f5e', '#64748b', '#d946ef'];
+
+  function renderBarChartHtml(rows, opts) {
+    opts = opts || {};
+    var list = (rows || []).filter(function (t) { return t && t.namn; });
+    if (!list.length) {
+      return '<p class="identifierade-empty">' + (opts.empty || 'Inga värden att visa.') + '</p>';
     }
-    var max = rows.reduce(function (m, t) { return Math.max(m, Number(t.antal) || 0); }, 0) || 1;
-    wrap.innerHTML = '<h4 class="ar-chart-title">Kunder per tjänst</h4>'
-      + '<p class="byra-card-source-hint">Antal kunder på inloggad byrå som har respektive tjänst kopplad.</p>'
-      + '<div class="ar-bar-chart" role="img" aria-label="Stapeldiagram över kunder per tjänst">'
-      + rows.map(function (t) {
+    var max = list.reduce(function (m, t) { return Math.max(m, Number(t.antal) || 0); }, 0) || 1;
+    return (opts.title ? '<h4 class="ar-chart-title">' + opts.title + '</h4>' : '')
+      + (opts.hint ? '<p class="byra-card-source-hint">' + opts.hint + '</p>' : '')
+      + '<div class="ar-bar-chart" role="img" aria-label="' + escapeHtml(opts.aria || opts.title || 'Stapeldiagram') + '">'
+      + list.map(function (t) {
         var n = Number(t.antal) || 0;
         var pct = Math.round((n / max) * 100);
         return '<div class="ar-bar-row">'
@@ -592,6 +592,66 @@
           + '<span class="ar-bar-value">' + n + '</span>'
           + '</div>';
       }).join('')
+      + '</div>';
+  }
+
+  function renderTjansterBarChart(tjanster) {
+    var wrap = getEl('ar-tjanster-chart');
+    if (!wrap) return;
+    wrap.innerHTML = renderBarChartHtml(tjanster, {
+      title: 'Kunder per tjänst',
+      hint: 'Antal kunder på inloggad byrå som har respektive tjänst kopplad.',
+      aria: 'Stapeldiagram över kunder per tjänst',
+      empty: 'Inga kunder har en kopplad tjänst ännu.'
+    });
+  }
+
+  function pieSlicePath(cx, cy, radius, start, end) {
+    var slice = end - start;
+    if (slice >= Math.PI * 2 - 1e-6) {
+      return 'M ' + (cx - radius) + ' ' + cy
+        + ' a ' + radius + ' ' + radius + ' 0 1 0 ' + (radius * 2) + ' 0'
+        + ' a ' + radius + ' ' + radius + ' 0 1 0 ' + (-radius * 2) + ' 0';
+    }
+    var x1 = cx + radius * Math.cos(start);
+    var y1 = cy + radius * Math.sin(start);
+    var x2 = cx + radius * Math.cos(end);
+    var y2 = cy + radius * Math.sin(end);
+    var large = slice > Math.PI ? 1 : 0;
+    return 'M ' + cx + ' ' + cy + ' L ' + x1 + ' ' + y1
+      + ' A ' + radius + ' ' + radius + ' 0 ' + large + ' 1 ' + x2 + ' ' + y2 + ' Z';
+  }
+
+  function renderPieChart(elId, rows, opts) {
+    opts = opts || {};
+    var el = getEl(elId);
+    if (!el) return;
+    var items = (rows || []).filter(function (r) { return r && r.namn && (Number(r.antal) || 0) > 0; });
+    if (!items.length) {
+      el.innerHTML = opts.empty ? '<p class="identifierade-empty">' + opts.empty + '</p>' : '';
+      return;
+    }
+    var total = items.reduce(function (s, r) { return s + (Number(r.antal) || 0); }, 0) || 1;
+    var angle = -Math.PI / 2;
+    var paths = items.map(function (item, i) {
+      var slice = ((Number(item.antal) || 0) / total) * Math.PI * 2;
+      var start = angle;
+      angle += slice;
+      return '<path d="' + pieSlicePath(80, 80, 70, start, angle) + '" fill="' + PIE_COLORS[i % PIE_COLORS.length] + '"></path>';
+    }).join('');
+    var legend = items.map(function (item, i) {
+      var pct = percentOf(item.antal, total);
+      return '<li><span class="ar-pie-swatch" style="background:' + PIE_COLORS[i % PIE_COLORS.length] + '"></span>'
+        + '<span class="ar-flaggor-namn">' + escapeHtml(item.namn) + '</span>'
+        + ' <span class="ar-flaggor-antal">' + item.antal + ' kunder (' + pct + '%)</span></li>';
+    }).join('');
+    el.innerHTML = (opts.title ? '<h5 class="ar-chart-title">' + opts.title + '</h5>' : '')
+      + (opts.hint ? '<p class="byra-card-source-hint">' + opts.hint + '</p>' : '')
+      + '<div class="ar-pie-wrap">'
+      + '<svg class="ar-pie-svg" viewBox="0 0 160 160" role="img" aria-label="' + escapeHtml(opts.aria || opts.title || 'Cirkeldiagram') + '">'
+      + paths
+      + '</svg>'
+      + '<ul class="ar-pie-legend">' + legend + '</ul>'
       + '</div>';
   }
 
@@ -681,6 +741,12 @@
       + '<p>Risken för att tjänsten kan utnyttjas blir högre när du till exempel erbjuder tjänsten i ett land där det förekommer korruption, det saknas ett effektivt regelverk mot penningtvätt, eller som är ett högrisktredjeland enligt EU-kommissionen. '
       + '<a href="https://www.lansstyrelsen.se/stockholm/samhalle/betalning-ekonomi-och-pengar/forhindra-penningtvatt-och-finansiering-av-terrorism/gor-en-allman-riskbedomning.html" target="_blank" rel="noopener">Länsstyrelsens vägledning</a>.</p>'
       + '<p>Den skatterättsliga hemvisten kontrolleras mot EU:s lista gällande risknivåer i olika länder och påverkar kundens risknivå.</p>';
+    renderPieChart('ar-geografi-chart', rows, {
+      title: 'Andel kunder per hemvist',
+      hint: 'Fördelning av byråns kunder utifrån skatterättslig hemvist i KYC.',
+      aria: 'Cirkeldiagram över skatterättslig hemvist',
+      empty: 'Inga skatterättsliga hemvister är ifyllda i KYC ännu.'
+    });
   }
 
   function renderKundtyper(stat, katalogPayload) {
@@ -705,16 +771,10 @@
       + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder. Vi har även utifrån information från Finanspolisen, AMLA, Länsstyrelser, Ekobrottsmyndigheten m.fl. lagt till relevanta varningstecken för sådana kunder som vi har. Vi har bedömt omständigheterna som kan tyda på högre risk som antingen sådana som alltid är riskhöjande eller sådana som bidrar i kombination.</p>'
       + '<h5 class="ar-flaggor-title">Våra varningsflaggor</h5>'
       + (flags.length
-        ? '<ul class="ar-flaggor-list">' + flags.map(function (f) {
-          var badge = '';
-          var Kat = window.OvrigaRiskKategorier;
-          if (Kat && Kat.klassBadge) badge = Kat.klassBadge(f.klass);
-          else if (f.klass === 'GOLV_HOG') badge = 'Hög-aktiv';
-          else if (f.klass === 'BIDRAR_VID_KOMBINATION') badge = 'Bidrar vid kombination';
-          return '<li><span class="ar-flaggor-namn">' + escapeHtml(f.namn) + '</span>'
-            + (badge ? ' <em class="ar-flaggor-klass">' + escapeHtml(badge) + '</em>' : '')
-            + ' <span class="ar-flaggor-antal">' + f.antal + ' kunder</span></li>';
-        }).join('') + '</ul>'
+        ? renderBarChartHtml(flags, {
+          hint: 'Antal kunder på inloggad byrå som har respektive varningsflagga ibockad.',
+          aria: 'Stapeldiagram över kunder per varningsflagga'
+        })
         : '<p class="identifierade-empty">Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.</p>');
   }
 
@@ -726,11 +786,20 @@
       ]);
       var stat = statRes.ok ? await statRes.json() : {};
       var kat = katRes.ok ? await katRes.json() : {};
-      var total = Number(stat.antalKunder) || 0;
       renderTjansterBarChart(stat.tjänster || stat.tjanster || []);
       renderKundtyper(stat, kat);
-      renderKanalStats('ar-distribution-stats', countsForDimension(stat, 'distribution'), total);
-      renderKanalStats('ar-verksamhet-stats', countsForDimension(stat, 'verksamhet'), total);
+      renderPieChart('ar-distribution-chart', countsForDimension(stat, 'distribution'), {
+        title: 'Andel kunder per distributionskanal',
+        hint: 'Hur stor andel av byråns kunder som är kopplade till respektive kanal.',
+        aria: 'Cirkeldiagram över distributionskanaler',
+        empty: 'Inga kunder är kopplade till en distributionskanal ännu.'
+      });
+      renderPieChart('ar-verksamhet-chart', countsForDimension(stat, 'verksamhet'), {
+        title: 'Andel kunder per verksamhetsfaktor',
+        hint: 'Hur stor andel av byråns kunder som har respektive verksamhetsspecifik riskfaktor.',
+        aria: 'Cirkeldiagram över verksamhetsspecifika riskfaktorer',
+        empty: 'Inga verksamhetsspecifika riskfaktorer är kopplade till kunder ännu.'
+      });
       renderGeografi(stat);
     } catch (err) {
       console.warn('Kunde inte ladda AR-statistik:', err);
