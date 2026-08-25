@@ -1222,6 +1222,7 @@ class CustomerCardManager {
             if (kycRes?.ok) {
                 const kycData = await kycRes.json().catch(() => ({}));
                 this._savedKycFormular = kycData.kyc || {};
+                this._kycFormularFetched = true;
             }
 
             if (avtalRes?.ok) {
@@ -6749,6 +6750,7 @@ class CustomerCardManager {
 
         this.renderOvrigKYCBase();
         this._updateKlarTabIndicators(this.customerData?.fields || {});
+        await this._ensureSavedKycFormular();
         this.loadServices(); // fyller #ovrigkyc-tjanster
         await this.loadKundRisker();
     }
@@ -9942,8 +9944,13 @@ class CustomerCardManager {
         }
 
         this._savedKycFormular = savedKyc;
+        this._kycFormularFetched = true;
         this._updateKlarTabIndicators(this.customerData?.fields || {});
         this.renderKYCFormular(savedKyc);
+        if (document.getElementById('ovrigkyc-risker-geografiska')) {
+            this._renderKycLanderOnGeo();
+            this._maybeSteerGeoFromSavedLander();
+        }
     }
 
     renderKYCFormular(saved = {}) {
@@ -10723,11 +10730,29 @@ class CustomerCardManager {
         }
     }
 
+    async _ensureSavedKycFormular() {
+        if (this._kycFormularFetched) return this._savedKycFormular || {};
+        if (!this.customerId) return {};
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, { ...getAuthOptsKundkort() });
+            if (res.ok) {
+                const data = await res.json();
+                this._savedKycFormular = data.kyc || {};
+            }
+        } catch (e) {
+            console.warn('Kunde inte hämta KYC-länder:', e.message);
+        }
+        this._kycFormularFetched = true;
+        return this._savedKycFormular || {};
+    }
+
     _kycLanderLabels() {
         const Eu = window.EuHogriskLander;
-        const raw = document.getElementById('kyc-internationella-lander')?.value
-            || this._savedKycFormular?.internationellaLander
-            || '';
+        const formEl = document.getElementById('kyc-internationella-lander');
+        const formVal = formEl ? String(formEl.value || '').trim() : '';
+        const savedVal = String(this._savedKycFormular?.internationellaLander || '').trim();
+        const raw = formVal || savedVal;
         return Eu && Eu.parseLabels ? Eu.parseLabels(raw) : String(raw || '').split(',').map((s) => s.trim()).filter(Boolean);
     }
 
@@ -10819,14 +10844,25 @@ class CustomerCardManager {
 
     _refreshKycLanderPicker() {
         const Eu = window.EuHogriskLander;
-        const result = Eu && Eu.assess ? Eu.assess(this._kycLanderLabels()) : { countries: [], hasHogrisk: false };
-        const chipsHtml = result.countries.map((c) => `
+        const labels = this._kycLanderLabels();
+        const result = Eu && Eu.assess ? Eu.assess(labels) : { countries: [], hasHogrisk: false };
+        const chipInner = (c, editable) => `
             <span class="kyc-chip kyc-lander-chip kyc-lander-chip--${this._esc(c.klass)}">
                 ${this._esc(c.label)}
                 <em>${this._esc(c.badge)}</em>
-                <button type="button" class="kyc-lander-chip-x" title="Ta bort" onclick="customerCardManager._removeKycLander(${JSON.stringify(c.label)})">×</button>
-            </span>`).join('');
-        document.querySelectorAll('.kyc-lander-chips').forEach((chips) => { chips.innerHTML = chipsHtml; });
+                ${editable ? `<button type="button" class="kyc-lander-chip-x" title="Ta bort" onclick="customerCardManager._removeKycLander(${JSON.stringify(c.label)})">×</button>` : ''}
+            </span>`;
+        const editableHtml = result.countries.map((c) => chipInner(c, true)).join('');
+        let readonlyHtml = result.countries.map((c) => chipInner(c, false)).join('');
+        if (!readonlyHtml && this._geoLanderOpts().onlySweden) {
+            readonlyHtml = '<span class="kyc-chip kyc-lander-chip kyc-lander-chip--lag">Sverige <em>enligt KYC</em></span>';
+        }
+        document.querySelectorAll('.kyc-lander-chips').forEach((chips) => {
+            chips.innerHTML = chips.classList.contains('kyc-lander-chips--readonly') ? readonlyHtml : editableHtml;
+        });
+        document.querySelectorAll('.kyc-lander-geo-empty').forEach((el) => {
+            el.hidden = !!(readonlyHtml);
+        });
         const warn = Eu && Eu.warningText ? Eu.warningText(result) : '';
         const assessHtml = warn
             ? `<p class="kyc-lander-warn${result.hasHogrisk ? ' kyc-lander-warn--hog' : ''}">${this._esc(warn)}</p>
@@ -10947,7 +10983,7 @@ class CustomerCardManager {
 
     _renderKycLanderOnGeo() {
         const container = document.getElementById('ovrigkyc-risker-geografiska');
-        if (!container || !window.EuHogriskLander) return;
+        if (!container) return;
         let box = container.querySelector('.kyc-lander-geo');
         if (!box) {
             box = document.createElement('div');
@@ -10958,15 +10994,12 @@ class CustomerCardManager {
         }
         box.innerHTML = `
             <div class="risker-checkgrupp-titel">Länder kunden handlar med</div>
-            <p class="kyc-hint">Valda länder styr geografisk residual. Närområde, Europa, Utanför EU och högriskland kryssas automatiskt.</p>
-            <div class="kyc-lander-picker" id="geo-internationella-lander-picker">
-                <div class="kyc-lander-chips"></div>
-                <input type="search" class="uppdrag-input kyc-lander-sok" placeholder="Sök land, t.ex. Norge eller Iran" autocomplete="off">
-                <div class="kyc-lander-suggest" hidden></div>
-                <p class="kyc-lander-geo-styr"></p>
-                <div class="kyc-lander-assess"></div>
-            </div>`;
-        this._initKycLanderPicker();
+            <p class="kyc-hint">Hämtas från KYC-formuläret, avsnitt 6. Internationell handel. Valda länder styr geografisk residual: Närområde, Europa, Utanför EU och högriskland.</p>
+            <div class="kyc-lander-chips kyc-lander-chips--readonly"></div>
+            <p class="kyc-lander-geo-empty">Inga länder ifyllda i KYC-formuläret ännu.</p>
+            <p class="kyc-lander-geo-styr"></p>
+            <div class="kyc-lander-assess"></div>`;
+        this._refreshKycLanderPicker();
         this._applyGeoChecksFromLander();
     }
 
@@ -11076,6 +11109,8 @@ class CustomerCardManager {
                 this.customerData.fields['Kostnader'] = data.kostnader;
                 this.customerData.fields['Intäkterna'] = data.intakterna;
             }
+            this._savedKycFormular = Object.assign({}, this._savedKycFormular || {}, data);
+            this._kycFormularFetched = true;
             this.showNotification('KYC-formuläret sparat!', 'success');
             await this._persistGeoFromLander({ skipKycPost: true });
             await this._persistUtlandskaUboFromKyc();
