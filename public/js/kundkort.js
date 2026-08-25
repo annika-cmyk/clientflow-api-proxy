@@ -7403,8 +7403,7 @@ class CustomerCardManager {
                     </span>
                 </label>`;
             }).join('')}
-        </div>
-        <p class="kyc-hint" style="margin-top:0.5rem;">Röd markering höjer till Hög ensam. Orange höjer till Hög tillsammans med minst en annan.</p>`;
+        </div>`;
 
         return `
             <div class="kyc-section collapsible-card collapsible-card--kyc" id="riskf-card-${id}"${headerKyc ? ` data-kyc-field="${String(headerKyc).replace(/"/g, '&quot;')}"` : ''}>
