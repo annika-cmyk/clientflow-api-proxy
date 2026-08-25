@@ -7304,15 +7304,10 @@ class CustomerCardManager {
         const cards = (Kat && Kat.CATEGORIES ? Kat.CATEGORIES : []).map((cat) => (
             this.renderOvrigaRiskKategoriCard(cat, valda, kycFält, kycVärde)
         )).join('\n');
-        return `
-            <div class="ovriga-risk-kategori-intro kyc-section">
-                <h3 class="ovriga-risk-kategori-intro-title">Riskfaktorer</h3>
-                <p class="kyc-hint">Tre kategorier så att samarbete, kund och verksamhet inte blandas ihop. Varje kort har byråns vanliga riskfaktorer och kompletterande varningsflaggor. Länder kunden handlar med ligger under <strong>Vad gör kunden?</strong> och styr geografisk residual. <strong>Hög-aktiv</strong> höjer beräknad residual till Hög. Två som <strong>bidrar vid kombination</strong> gör samma sak tillsammans.</p>
-            </div>
-            ${cards || this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
+        return cards || this.renderRiskfaktorCard('riskhojande-ovrigt', 'Riskhöjande faktorer övrigt', 'fa-arrow-trend-up',
                 valda,
                 this._riskhojAlternativ?.length ? this._riskhojAlternativ : this._defaultRiskhojAlternativ(),
-                'multi', 'high', kycFält, kycVärde)}`;
+                'multi', 'high', kycFält, kycVärde);
     }
 
     _ovrigaRiskKategoriItems(cat, valda) {
