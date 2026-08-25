@@ -19717,7 +19717,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
       htmlParts.push(`<h3>${escape(title)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
       if (airtableKey === '4. Identifierade Risker och Sårbarheter') {
         htmlParts.push('<h3>5. Identifierade risker och sårbarheter</h3>');
-        htmlParts.push('<p class="doc-text">Kundtyper, varningsflaggor och distributionskanaler hämtas från Statistik och Övriga riskfaktorer för inloggad byrå.</p>');
+        htmlParts.push('<p class="doc-text">Kundtyper, varningsflaggor, distribution, geografisk hemvist och verksamhetsspecifika faktorer hämtas från Statistik, Övriga riskfaktorer och KYC för inloggad byrå.</p>');
       }
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
