@@ -1400,11 +1400,12 @@ class RiskFactorsManager {
             btn.addEventListener('click', () => {
                 const namn = btn.getAttribute('data-namn');
                 if (!namn) return;
-                if (!window.confirm('Ta bort faktorn "' + namn + '"? Ändringen sparas när du klickar Spara katalogen.')) return;
+                if (!window.confirm('Ta bort faktorn "' + namn + '"? Den försvinner från byråns lista och kundkortet.')) return;
                 const next = Object.assign({}, this._risksankEntries);
                 delete next[namn];
                 this._risksankEntries = next;
                 this.renderRisksankandeKatalog();
+                this.saveRisksankandeKatalog();
             });
         });
     }
