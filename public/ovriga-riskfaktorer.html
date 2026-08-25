@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Övriga riskfaktorer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260825a">
+    <link rel="stylesheet" href="styles.css?v=20260825b">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -144,17 +144,19 @@
                             <div id="riskhoj-katalog-list" class="riskhoj-katalog-list"></div>
                             <div class="riskhoj-katalog-add">
                                 <input id="riskhoj-katalog-ny" class="form-input" placeholder="Ny flagga, t.ex. många byten av redovisningsbyråer">
-                                <select id="riskhoj-katalog-ny-kategori" class="form-select">
+                                <select id="riskhoj-katalog-ny-kategori" class="form-select riskhoj-katalog-kategori">
                                     <option value="samarbete">A. Hur samarbetar vi?</option>
                                     <option value="kunden">B. Vem är kunden?</option>
                                     <option value="verksamheten" selected>C. Vad gör kunden?</option>
                                 </select>
-                                <select id="riskhoj-katalog-ny-klass" class="form-select">
+                                <select id="riskhoj-katalog-ny-klass" class="form-select riskhoj-katalog-klass">
                                     <option value="BIDRAR_VID_KOMBINATION">Bidrar vid kombination</option>
                                     <option value="GOLV_HOG">Hög-aktiv</option>
                                     <option value="INFORMATIV">Informativ</option>
                                 </select>
-                                <button type="button" class="btn btn-primary btn-sm" id="riskhoj-katalog-add">Lägg till</button>
+                                <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="riskhoj-katalog-add" title="Lägg till flagga" aria-label="Lägg till flagga">
+                                    <i class="fas fa-plus"></i>
+                                </button>
                             </div>
                             <button type="button" class="btn btn-primary" id="riskhoj-katalog-save">Spara katalogen</button>
                         </div>
