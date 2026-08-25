@@ -291,12 +291,74 @@
     }
   ];
 
+  var INGA_VARNINGSFLAGGOR = 'Inga varningsflaggor';
+  var INGA_RISKFAKTORER = 'Inga riskfaktorer';
+  var NONE_KIND = {
+    VARNINGSFLAGGOR: 'varningsflaggor',
+    RISKFAKTORER: 'riskfaktorer'
+  };
+
   function fold(value) {
     return String(value == null ? '' : value)
       .trim()
       .toLowerCase()
       .normalize('NFC')
       .replace(/\s+/g, ' ');
+  }
+
+  function noneKindLabel(kind) {
+    if (kind === NONE_KIND.VARNINGSFLAGGOR) return INGA_VARNINGSFLAGGOR;
+    if (kind === NONE_KIND.RISKFAKTORER) return INGA_RISKFAKTORER;
+    return '';
+  }
+
+  function storedNoneLabel(kind, categoryId) {
+    var label = noneKindLabel(kind);
+    var cat = String(categoryId || '').trim();
+    if (!label || !cat) return label;
+    return label + ' · ' + cat;
+  }
+
+  function noneOptionOf(namn) {
+    var folded = fold(namn);
+    var match = /^(inga varningsflaggor|inga riskfaktorer)(?:\s*[·•\-–—]\s*(samarbete|kunden|verksamheten))?$/.exec(folded);
+    if (!match) return null;
+    return {
+      kind: match[1] === 'inga varningsflaggor' ? NONE_KIND.VARNINGSFLAGGOR : NONE_KIND.RISKFAKTORER,
+      category: match[2] || '',
+      label: match[1] === 'inga varningsflaggor' ? INGA_VARNINGSFLAGGOR : INGA_RISKFAKTORER
+    };
+  }
+
+  function isNoneOption(namn) {
+    return !!noneOptionOf(namn);
+  }
+
+  function isIngaVarningsflaggor(namn) {
+    var hit = noneOptionOf(namn);
+    return !!(hit && hit.kind === NONE_KIND.VARNINGSFLAGGOR);
+  }
+
+  function isIngaRiskfaktorer(namn) {
+    var hit = noneOptionOf(namn);
+    return !!(hit && hit.kind === NONE_KIND.RISKFAKTORER);
+  }
+
+  function displayNoneLabel(namn) {
+    var hit = noneOptionOf(namn);
+    return hit ? hit.label : String(namn == null ? '' : namn).trim();
+  }
+
+  function matchesNoneOption(namn, kind, categoryId) {
+    var hit = noneOptionOf(namn);
+    if (!hit || hit.kind !== kind) return false;
+    return !hit.category || hit.category === categoryId;
+  }
+
+  function hasNoneOption(labels, kind, categoryId) {
+    return (Array.isArray(labels) ? labels : []).some(function (label) {
+      return matchesNoneOption(label, kind, categoryId);
+    });
   }
 
   function factorByFold() {
@@ -361,6 +423,8 @@
   }
 
   function categoryFor(namn, categoryMap) {
+    var none = noneOptionOf(namn);
+    if (none && none.category) return none.category;
     var label = canonicalLabel(namn);
     if (!label) return '';
     var mapped = '';
@@ -392,7 +456,7 @@
     return (Array.isArray(allLabels) ? allLabels : [])
       .map(canonicalLabel)
       .filter(function (label) {
-        if (!label || fold(label) === 'inga') return false;
+        if (!label || fold(label) === 'inga' || isNoneOption(label)) return false;
         if (isCoveredByDimension(label)) return false;
         if (known[fold(label)]) return false;
         return categoryFor(label, categoryMap) === categoryId;
@@ -456,6 +520,17 @@
     KLASS: KLASS,
     CATEGORIES: CATEGORIES,
     FACTORS: FACTORS,
+    INGA_VARNINGSFLAGGOR: INGA_VARNINGSFLAGGOR,
+    INGA_RISKFAKTORER: INGA_RISKFAKTORER,
+    NONE_KIND: NONE_KIND,
+    storedNoneLabel: storedNoneLabel,
+    noneOptionOf: noneOptionOf,
+    isNoneOption: isNoneOption,
+    isIngaVarningsflaggor: isIngaVarningsflaggor,
+    isIngaRiskfaktorer: isIngaRiskfaktorer,
+    displayNoneLabel: displayNoneLabel,
+    matchesNoneOption: matchesNoneOption,
+    hasNoneOption: hasNoneOption,
     fold: fold,
     findFactor: findFactor,
     canonicalLabel: canonicalLabel,

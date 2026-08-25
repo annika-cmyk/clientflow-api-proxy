@@ -6849,6 +6849,12 @@ class CustomerCardManager {
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
+        const embedded = !!(opts && opts.embedded);
+        const parentEditing = !!(container.closest('.collapsible-card')?.querySelector('.card-edit-fab.is-active'));
+        const Kat = window.OvrigaRiskKategorier;
+        const catId = Kat && Kat.categoryIdForDimension ? Kat.categoryIdForDimension(typId) : '';
+        const allowIngaRf = !!(embedded && catId && (typId === 'kund' || typId === 'verksamhet'));
+        const hasIngaRf = allowIngaRf && this._hasSavedNoneOption('riskfaktorer', catId);
 
         // Högriskbransch – bara för kund-kortet. SNI-träffar visas alltid.
         const valdaHogrisk = typId === 'kund'
@@ -6866,7 +6872,7 @@ class CustomerCardManager {
         const hogriskBadge = hogriskTemplate
             ? (riskBadge(hogriskTemplate) || `<span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>`)
             : `<span class="risk-pill risk-pill--high">${valdaHogrisk.length} valda</span>`;
-        const hogriskViewHtml = (typId === 'kund' && valdaHogrisk.length > 0) ? `
+        const hogriskViewHtml = (typId === 'kund' && !hasIngaRf && valdaHogrisk.length > 0) ? `
             <div class="tjanst-collapsible-item" onclick="customerCardManager.toggleTjanstDetails('${hogriskUid}')">
                 <div class="tjanst-collapsible-header">
                     <span class="risker-vald-namn"><i class="fas fa-industry" style="color:#ef4444;margin-right:0.4rem;font-size:0.85em;"></i>Kunden verkar i en högriskbransch</span>
@@ -6883,16 +6889,14 @@ class CustomerCardManager {
                 </div>
             </div>` : '';
 
-        const embedded = !!(opts && opts.embedded);
-        const parentEditing = !!(container.closest('.collapsible-card')?.querySelector('.card-edit-fab.is-active'));
         const hogriskEditHtml = typId === 'kund' ? `
-            <div class="risker-checkgrupp hogrisk-edit-grupp${valdaHogrisk.length ? ' hogrisk-edit-grupp--aktiv' : ''}">
+            <div class="risker-checkgrupp hogrisk-edit-grupp${!hasIngaRf && valdaHogrisk.length ? ' hogrisk-edit-grupp--aktiv' : ''}">
                 <div class="hogrisk-edit-header" onclick="customerCardManager.toggleTjanstDetails('${hogriskEditUid}')">
                     <div class="risker-checkgrupp-titel">
                         <i class="fas fa-industry" style="margin-right:0.35rem;"></i>Kunden verkar i en högriskbransch
                     </div>
                     <div class="hogrisk-edit-summary-wrap">
-                        <div id="hogrisk-edit-summary">${this._hogriskSummaryChipsHtml(valdaHogrisk, sniHogrisk)}</div>
+                        <div id="hogrisk-edit-summary">${this._hogriskSummaryChipsHtml(hasIngaRf ? [] : valdaHogrisk, hasIngaRf ? [] : sniHogrisk)}</div>
                         ${hogriskBadge}
                         <i class="fas fa-chevron-down tjanst-chevron" id="chevron-${hogriskEditUid}"></i>
                     </div>
@@ -6902,7 +6906,7 @@ class CustomerCardManager {
                     <div id="hogrisk-edit-list">
                         ${hogriskAlternativ.map((alt) => {
                             const fromSni = sniHogrisk.some((x) => String(x).toLowerCase() === String(alt).toLowerCase());
-                            return this._hogriskCheckItemHtml(alt, fromSni, hogriskIsVald(alt) || fromSni);
+                            return this._hogriskCheckItemHtml(alt, fromSni, !hasIngaRf && (hogriskIsVald(alt) || fromSni));
                         }).join('')}
                     </div>
                     <div class="hogrisk-manuell-rad">
@@ -6915,7 +6919,7 @@ class CustomerCardManager {
             </div>
             ${embedded ? '' : '<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">Övriga riskfaktorer kopplat till kund</div>'}` : '';
 
-        const riskListViewHtml = valda.length === 0
+        const riskListViewHtml = hasIngaRf || valda.length === 0
             ? (typId === 'kund' || embedded ? '' : '<p class="lead-empty">Inga risker valda. Minst ett val krävs. Klicka Redigera för att välja.</p>')
             : valda.map((r, i) => {
                 const uid = `risk-details-${typId}-${i}`;
@@ -6941,23 +6945,39 @@ class CustomerCardManager {
                 </div>`;
             }).join('');
 
-        const emptyMsg = (valda.length === 0 && valdaHogrisk.length === 0 && (typId === 'kund' || embedded))
+        const emptyMsg = (!hasIngaRf && valda.length === 0 && valdaHogrisk.length === 0 && (typId === 'kund' || embedded))
             ? `<p class="lead-empty">${embedded ? 'Inga riskfaktorer valda.' : 'Inga risker valda. Klicka Redigera för att välja.'}</p>` : '';
+        const ingaRfViewHtml = hasIngaRf
+            ? '<div class="riskf-chips"><span class="kyc-chip riskf-chip">Inga riskfaktorer</span></div>'
+            : '';
+        const ingaRfEditHtml = allowIngaRf ? `
+                    <label class="risker-check-item risker-check-item--inga">
+                        <input type="checkbox" name="inga-risker-${typId}" value="Inga riskfaktorer" ${hasIngaRf ? 'checked' : ''}
+                            onchange="customerCardManager._syncIngaRiskfaktorer('${typId}', this)">
+                        <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
+                        <span class="risker-check-label">
+                            <span class="risker-check-top">
+                                <span class="risker-check-namn">Inga riskfaktorer</span>
+                            </span>
+                        </span>
+                    </label>` : '';
 
         container.innerHTML = `
             <div class="risker-selector">
                 <div id="${viewId}"${embedded && parentEditing ? ' style="display:none;"' : ''}>
+                    ${ingaRfViewHtml}
                     ${hogriskViewHtml}
                     ${riskListViewHtml}
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="${embedded && parentEditing ? '' : 'display:none;'}">
                     ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? 'Geografisk residual' : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
+                    ${ingaRfEditHtml}
                     ${hogriskEditHtml}
                     ${riskerForList.map(r => `
                         <label class="risker-check-item">
-                            <input type="checkbox" name="risk-${typId}" value="${r.id}" ${linkedIds.has(r.id) ? 'checked' : ''}
-                                onchange="customerCardManager.updateRiskerCount('${typId}')">
+                            <input type="checkbox" name="risk-${typId}" value="${r.id}" ${!hasIngaRf && linkedIds.has(r.id) ? 'checked' : ''}
+                                onchange="customerCardManager.updateRiskerCount('${typId}', this)">
                             <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
                             <span class="risker-check-label">
                                 <span class="risker-check-top">
@@ -6995,6 +7015,37 @@ class CustomerCardManager {
         if (typId === 'kund') this._applyUtlandskaUboFromKyc();
     }
 
+    _hasSavedNoneOption(kind, categoryId) {
+        const Kat = window.OvrigaRiskKategorier;
+        if (!Kat || !Kat.hasNoneOption || !categoryId) return false;
+        const valda = this._normalizeRiskhojValda(this.customerData?.fields?.['Riskhöjande faktorer övrigt']);
+        return Kat.hasNoneOption(valda, kind, categoryId);
+    }
+
+    _ingaRiskfaktorerChecked(typId) {
+        const el = document.querySelector(`#risker-edit-${typId} input[name="inga-risker-${typId}"]`);
+        return !!(el && el.checked);
+    }
+
+    _syncIngaRiskfaktorer(typId, changed) {
+        const inga = document.querySelector(`#risker-edit-${typId} input[name="inga-risker-${typId}"]`);
+        if (!inga) return;
+        const riskBoxes = document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]`);
+        const hogBoxes = document.querySelectorAll(`#risker-edit-${typId} input[name="hogrisk-kund"]`);
+        if (changed === inga && inga.checked) {
+            riskBoxes.forEach((cb) => { cb.checked = false; });
+            hogBoxes.forEach((cb) => { cb.checked = false; });
+            if (typId === 'kund') this._refreshHogriskEditSummary();
+        } else if (changed === inga && !inga.checked) {
+            hogBoxes.forEach((cb) => {
+                if (cb.disabled) cb.checked = true;
+            });
+            if (typId === 'kund') this._refreshHogriskEditSummary();
+        } else if (changed && changed !== inga && changed.checked) {
+            inga.checked = false;
+        }
+    }
+
     _typIdForOvrigaCardId(id) {
         const catId = String(id || '').replace(/^ovriga-/, '');
         const Kat = window.OvrigaRiskKategorier;
@@ -7025,6 +7076,21 @@ class CustomerCardManager {
         const allChecked = startSet instanceof Set ? new Set(startSet) : new Set(this._linkedRiskIds || []);
         const riskerForTyp = this._riskerForTypId(typId, this._allaRisker || []);
         riskerForTyp.forEach((r) => allChecked.delete(r.id));
+        if (this._ingaRiskfaktorerChecked(typId)) {
+            let nyaHogrisk = null;
+            if (typId === 'kund') {
+                nyaHogrisk = [];
+                const hogriskRecs = (this._allaRisker || []).filter((r) => {
+                    const namn = (r.fields && (r.fields.Riskfaktor || r.fields['Riskfaktor'])) || '';
+                    return window.KundRiskprofil && KundRiskprofil.isHogriskBranschNamn
+                        ? KundRiskprofil.isHogriskBranschNamn(namn)
+                        : /h[öo]griskbransch/i.test(namn);
+                });
+                hogriskRecs.forEach((r) => allChecked.delete(r.id));
+                this._utlandskaUboRecords().forEach((r) => allChecked.delete(r.id));
+            }
+            return { allChecked, nyaChecked: [], nyaHogrisk };
+        }
         const nyaChecked = [...document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]:checked`)]
             .map((cb) => cb.value);
         nyaChecked.forEach((id) => allChecked.add(id));
@@ -7093,10 +7159,11 @@ class CustomerCardManager {
         }
     }
 
-    updateRiskerCount(typId) {
+    updateRiskerCount(typId, el) {
+        this._syncIngaRiskfaktorer(typId, el);
         const checked = document.querySelectorAll(`#risker-edit-${typId} input[name="risk-${typId}"]:checked`);
-        const el = document.getElementById(`risker-count-${typId}`);
-        if (el) el.textContent = `${checked.length} valda`;
+        const countEl = document.getElementById(`risker-count-${typId}`);
+        if (countEl) countEl.textContent = `${checked.length} valda`;
     }
 
     async saveRisker(typId) {
@@ -7368,8 +7435,15 @@ class CustomerCardManager {
     }
 
     renderOvrigaRiskKategoriCard(cat, valda, kycFält, kycVärde) {
+        const Kat = window.OvrigaRiskKategorier;
         const items = this._ovrigaRiskKategoriItems(cat, valda);
-        const selected = items.filter((item) => valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase()));
+        const hasIngaVf = !!(Kat && Kat.hasNoneOption && Kat.hasNoneOption(valda, 'varningsflaggor', cat.id));
+        const ingaVfStored = Kat && Kat.storedNoneLabel
+            ? Kat.storedNoneLabel('varningsflaggor', cat.id)
+            : 'Inga varningsflaggor';
+        const selected = hasIngaVf
+            ? [{ label: 'Inga varningsflaggor', noneKind: 'varningsflaggor' }]
+            : items.filter((item) => valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase()));
         const id = `ovriga-${cat.id}`;
         const typId = this._typIdForOvrigaCardId(id);
         const dimKyc = typId ? this._kycFieldForRiskerTyp(typId) : null;
@@ -7378,6 +7452,9 @@ class CustomerCardManager {
         const chipClass = 'kyc-chip riskf-chip riskf-chip--high';
         const viewContent = selected.length
             ? `<div class="riskf-chips">${selected.map((item) => {
+                if (item.noneKind === 'varningsflaggor') {
+                    return `<span class="kyc-chip riskf-chip">${this._esc(item.label)}</span>`;
+                }
                 const kind = window.KundRiskprofil && KundRiskprofil.markKindForRiskhojande
                     ? KundRiskprofil.markKindForRiskhojande(item.label, valda, this._riskhojKatalog)
                     : '';
@@ -7385,10 +7462,20 @@ class CustomerCardManager {
                 return `<span class="${chipClass}${extra}">${this._esc(item.label)}</span>`;
             }).join('')}</div>`
             : '<span class="missing-data">Inga valda</span>';
+        const ingaVfRow = `
+                <label class="riskf-check-item riskf-check-item--inga">
+                    <input type="checkbox" name="riskf-${id}" value="${this._esc(ingaVfStored)}" data-klass="" data-group="inga-varningsflaggor" ${hasIngaVf ? 'checked' : ''}
+                        onchange="customerCardManager.updateOvrigaRiskKategoriChips('${cat.id}', this)">
+                    <span class="tjanst-check-box"></span>
+                    <span class="tjanst-check-label">
+                        <strong>Inga varningsflaggor</strong>
+                    </span>
+                </label>`;
         const editContent = `<div class="riskf-checkgrid">
+            ${ingaVfRow}
             ${items.map((item) => {
                 const klass = item.klass || '';
-                const checked = valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase());
+                const checked = !hasIngaVf && valda.some((v) => String(v).trim().toLowerCase() === item.label.toLowerCase());
                 const golv = checked && klass === 'GOLV_HOG';
                 const kombi = checked && klass === 'BIDRAR_VID_KOMBINATION';
                 const hint = this._ovrigaRiskFlagHint(item.hint);
@@ -7449,6 +7536,18 @@ class CustomerCardManager {
 
     updateOvrigaRiskKategoriChips(catId, changed) {
         const id = catId === 'alla' ? 'ovriga-alla' : `ovriga-${catId}`;
+        const Kat = window.OvrigaRiskKategorier;
+        const isIngaVf = (cb) => (cb && cb.dataset.group === 'inga-varningsflaggor')
+            || (Kat && Kat.isIngaVarningsflaggor && Kat.isIngaVarningsflaggor(cb && cb.value));
+        if (changed && changed.checked && isIngaVf(changed)) {
+            document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]`).forEach((cb) => {
+                if (cb !== changed) cb.checked = false;
+            });
+        } else if (changed && changed.checked && !isIngaVf(changed)) {
+            document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]`).forEach((cb) => {
+                if (isIngaVf(cb)) cb.checked = false;
+            });
+        }
         if (changed && changed.checked && changed.dataset.group === 'kanal') {
             document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"][data-group="kanal"]`).forEach((cb) => {
                 if (cb !== changed) cb.checked = false;
@@ -7476,10 +7575,19 @@ class CustomerCardManager {
 
     async saveOvrigaRiskKategori(catId) {
         const id = `ovriga-${catId}`;
-        const checked = [...document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]:checked`)]
-            .map((cb) => cb.value);
-        const existing = this._normalizeRiskhojValda(this.customerData?.fields?.['Riskhöjande faktorer övrigt']);
         const Kat = window.OvrigaRiskKategorier;
+        const boxes = [...document.querySelectorAll(`#riskf-edit-${id} input[name="riskf-${id}"]:checked`)];
+        const ingaVf = boxes.find((cb) => Kat && Kat.isIngaVarningsflaggor && Kat.isIngaVarningsflaggor(cb.value));
+        const checked = ingaVf
+            ? [Kat.storedNoneLabel ? Kat.storedNoneLabel('varningsflaggor', catId) : ingaVf.value]
+            : boxes
+                .map((cb) => cb.value)
+                .filter((v) => !Kat || !Kat.isNoneOption || !Kat.isNoneOption(v));
+        const typId = this._typIdForOvrigaCardId(id);
+        if (this._ingaRiskfaktorerChecked(typId) && Kat && Kat.storedNoneLabel) {
+            checked.push(Kat.storedNoneLabel('riskfaktorer', catId));
+        }
+        const existing = this._normalizeRiskhojValda(this.customerData?.fields?.['Riskhöjande faktorer övrigt']);
         const värde = this._normalizeRiskhojValda(
             Kat && Kat.mergeValForCategory
                 ? Kat.mergeValForCategory(existing, catId, checked, this._riskhojKategorier)
@@ -7528,12 +7636,18 @@ class CustomerCardManager {
             const kycField = 'KYC genomgången - Riskhöjande faktorer övrigt';
             if (värde.length) this._saveKycStatus(kycField, true);
             if (riskerPayload) {
+                const Kat = window.OvrigaRiskKategorier;
+                const catId = String(id || '').replace(/^ovriga-/, '');
                 this._embeddedTypIdsForOvrigaCard(id).forEach((typId) => {
                     const dimKyc = this._kycFieldForRiskerTyp(typId);
                     if (!dimKyc) return;
                     const recs = this._riskerForTypId(typId, this._allaRisker || []);
+                    const hasIngaRf = Kat && Kat.hasNoneOption && Kat.hasNoneOption(värde, 'riskfaktorer', catId);
+                    const hasIngaVf = Kat && Kat.hasNoneOption && Kat.hasNoneOption(värde, 'varningsflaggor', catId);
                     const dimHasValue = recs.some((r) => riskerPayload.allChecked && riskerPayload.allChecked.has(r.id))
-                        || (typId === 'kund' && Array.isArray(riskerPayload.nyaHogrisk) && riskerPayload.nyaHogrisk.length > 0);
+                        || (typId === 'kund' && Array.isArray(riskerPayload.nyaHogrisk) && riskerPayload.nyaHogrisk.length > 0)
+                        || hasIngaRf
+                        || hasIngaVf;
                     if (dimHasValue) this._saveKycStatus(dimKyc, true);
                 });
             }
@@ -8195,8 +8309,8 @@ class CustomerCardManager {
         const safe = this._esc(alt);
         return `
                     <label class="risker-check-item">
-                        <input type="checkbox" name="hogrisk-kund" value="${safe}" ${checked || fromSni ? 'checked' : ''} ${fromSni ? 'disabled' : ''}
-                            onchange="customerCardManager._refreshHogriskEditSummary()">
+                        <input type="checkbox" name="hogrisk-kund" value="${safe}" ${checked ? 'checked' : ''} ${fromSni ? 'disabled' : ''}
+                            onchange="customerCardManager.updateRiskerCount('kund', this); customerCardManager._refreshHogriskEditSummary()">
                         <span class="tjanst-check-box" style="margin-top:3px;flex-shrink:0;"></span>
                         <span class="risker-check-label"><span class="risker-check-namn">${safe}${fromSni ? ' <em class="risker-sni-hint">från SNI</em>' : ''}</span></span>
                     </label>`;
@@ -8217,6 +8331,12 @@ class CustomerCardManager {
     _refreshHogriskEditSummary() {
         const el = document.getElementById('hogrisk-edit-summary');
         if (!el) return;
+        if (this._ingaRiskfaktorerChecked('kund')) {
+            el.innerHTML = this._hogriskSummaryChipsHtml([], []);
+            const grupp = el.closest('.hogrisk-edit-grupp');
+            if (grupp) grupp.classList.toggle('hogrisk-edit-grupp--aktiv', false);
+            return;
+        }
         const fromBoxes = [...document.querySelectorAll('#risker-edit-kund input[name="hogrisk-kund"]:checked')]
             .map((cb) => cb.value);
         const sni = this._hogriskSniBranscher();
@@ -8242,6 +8362,8 @@ class CustomerCardManager {
             list.insertAdjacentHTML('beforeend', this._hogriskCheckItemHtml(raw, false, true));
         }
         if (input) input.value = '';
+        const inga = document.querySelector('#risker-edit-kund input[name="inga-risker-kund"]');
+        if (inga) inga.checked = false;
         this._refreshHogriskEditSummary();
     }
 
@@ -10698,15 +10820,23 @@ class CustomerCardManager {
         const recs = this._utlandskaUboRecords();
         const on = this._hasForeignKycUbo();
         const ids = new Set(recs.map((r) => r.id));
-        document.querySelectorAll('input[name="risk-kund"]').forEach((cb) => {
-            if (!ids.has(cb.value)) return;
-            cb.checked = on;
-            cb.disabled = on;
-            const item = cb.closest('.risker-check-item');
-            if (item) item.classList.toggle('is-ubo-steered', on);
-        });
+        const skipRisker = this._ingaRiskfaktorerChecked('kund') || this._hasSavedNoneOption('riskfaktorer', 'kunden');
+        if (!skipRisker) {
+            document.querySelectorAll('input[name="risk-kund"]').forEach((cb) => {
+                if (!ids.has(cb.value)) return;
+                cb.checked = on;
+                cb.disabled = on;
+                const item = cb.closest('.risker-check-item');
+                if (item) item.classList.toggle('is-ubo-steered', on);
+            });
+        }
         document.querySelectorAll('input[name="riskf-ovriga-kunden"]').forEach((cb) => {
             const HM = window.KycHuvudman;
+            const Kat = window.OvrigaRiskKategorier;
+            if (Kat && Kat.isIngaVarningsflaggor && Kat.isIngaVarningsflaggor(cb.value)) {
+                if (on) cb.checked = false;
+                return;
+            }
             if (!HM || !HM.isUboFlagLabel || !HM.isUboFlagLabel(cb.value)) return;
             cb.checked = on;
             cb.disabled = on;

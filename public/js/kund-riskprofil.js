@@ -513,6 +513,7 @@
     list.forEach(function (item) {
       var v = canonicalRiskhojandeLabel(item && item.name ? item.name : item);
       if (!v || v === '---' || v.toLowerCase() === 'inga') return;
+      if (isNoneRiskOption(v)) return;
       var key = v.toLowerCase();
       if (seen[key]) return;
       seen[key] = true;
@@ -527,6 +528,14 @@
 
   function isIngaLabel(namn) {
     return foldNamn(namn) === 'inga';
+  }
+
+  function isNoneRiskOption(namn) {
+    if (OvrigaRiskKategorier && OvrigaRiskKategorier.isNoneOption) {
+      return OvrigaRiskKategorier.isNoneOption(namn);
+    }
+    var folded = foldNamn(namn);
+    return folded.indexOf('inga varningsflaggor') === 0 || folded.indexOf('inga riskfaktorer') === 0;
   }
 
   function multiSelectList(raw) {
@@ -556,7 +565,7 @@
     var bidrar = [];
     (Array.isArray(labels) ? labels : []).forEach(function (namn) {
       var canon = canonicalRiskhojandeLabel(namn);
-      if (!canon || isIngaLabel(canon)) return;
+      if (!canon || isIngaLabel(canon) || isNoneRiskOption(canon)) return;
       var klass = klassForRiskhojande(canon, map);
       if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golvHog.push(canon);
       else if (klass === RISKHOJANDE_KLASS.BIDRAR) bidrar.push(canon);
@@ -569,7 +578,7 @@
 
   function markKindForRiskhojande(namn, checkedLabels, katalog) {
     var canon = canonicalRiskhojandeLabel(namn);
-    if (!canon || isIngaLabel(canon)) return '';
+    if (!canon || isIngaLabel(canon) || isNoneRiskOption(canon)) return '';
     var map = mergeRiskhojandeKatalog(katalog);
     if (klassForRiskhojande(canon, map) === RISKHOJANDE_KLASS.GOLV_HOG) return RISKHOJANDE_KLASS.GOLV_HOG;
     var marks = marksForRiskhojandeVal(checkedLabels, map);
@@ -1084,6 +1093,7 @@
     pdfBulletList: pdfBulletList,
     withSharedResidual: withSharedResidual,
     isIngaLabel: isIngaLabel,
+    isNoneRiskOption: isNoneRiskOption,
     exclusiveIngaCheck: exclusiveIngaCheck,
     marksForRiskhojandeVal: marksForRiskhojandeVal,
     markKindForRiskhojande: markKindForRiskhojande,
