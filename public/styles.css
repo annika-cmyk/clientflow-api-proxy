@@ -6221,6 +6221,12 @@ body.sidebar-collapsed .logout-btn {
     border-color: var(--accent, #6366f1);
     color: var(--accent, #6366f1);
 }
+.kyc-lander-geo-titel {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.kyc-lander-geo-titel .help-qmark { margin-left: 0; }
 
 /* Klick-popover för hjälptext */
 .help-popover{

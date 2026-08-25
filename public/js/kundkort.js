@@ -5192,7 +5192,7 @@ class CustomerCardManager {
                             aria-label="Hjälp för Beskrivning av kunden"
                             data-help-text="${this._esc(BESKRIVNING_HELP_TEXT)}"
                             title="Vad ska beskrivas?"
-                            onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this);"
+                            onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);"
                         >?</button>
                     </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
@@ -6063,17 +6063,17 @@ class CustomerCardManager {
         }
     }
 
-    showHelpPopover(btn) {
+    showHelpPopover(btn, fromClick) {
         try {
             const text = (btn?.getAttribute('data-help-text') || '').toString();
             if (!text) return;
 
-            // Toggle: stäng om den redan är öppen på samma knapp
+            // Toggle: stäng om den redan är öppen på samma knapp (bara vid klick)
             const existing = document.getElementById('help-popover');
             const existingFor = existing?.getAttribute('data-for') || '';
             const id = btn.id || '';
             if (existing && existingFor && existingFor === id) {
-                existing.remove();
+                if (fromClick) existing.remove();
                 return;
             }
             if (existing) existing.remove();
@@ -11066,13 +11066,19 @@ class CustomerCardManager {
             if (selector) container.insertBefore(box, selector);
             else container.prepend(box);
         }
+        const landerHelp = 'Hämtas från KYC-formuläret, avsnitt 6. Internationell handel. Handel utanför EU/EES. Kontrollera geografisk residual mot tredjeland. Kommissionens delegerade förordning (EU) 2016/1675, konsoliderad 29 januari 2026.';
         box.innerHTML = `
-            <div class="risker-checkgrupp-titel">Länder kunden handlar med</div>
-            <p class="kyc-hint">Hämtas från KYC-formuläret, avsnitt 6. Internationell handel. Valda länder styr geografisk residual: Närområde, Europa, Utanför EU och högriskland.</p>
+            <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
+                <span>Länder kunden handlar med</span>
+                <button type="button" class="help-qmark" id="kyc-lander-geo-help"
+                    aria-label="Information om länder kunden handlar med"
+                    data-help-text="${this._esc(landerHelp)}"
+                    onmouseenter="customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this)"
+                    onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);">?</button>
+            </div>
             <div class="kyc-lander-chips kyc-lander-chips--readonly"></div>
             <p class="kyc-lander-geo-empty">Inga länder ifyllda i KYC-formuläret ännu.</p>
-            <p class="kyc-lander-geo-styr"></p>
-            <div class="kyc-lander-assess"></div>`;
+            <p class="kyc-lander-geo-styr"></p>`;
         this._refreshKycLanderPicker();
         this._applyGeoChecksFromLander();
     }
