@@ -7497,6 +7497,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 700;
     color: var(--title-text);
 }
+.kyc-beskrivning-card .kyc-beskrivning-block {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+}
+.kyc-beskrivning-card .kyc-beskrivning-title {
+    margin: 0;
+}
 
 .kunduppgifter-actions {
     display: flex;

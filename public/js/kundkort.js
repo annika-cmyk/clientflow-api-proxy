@@ -10497,24 +10497,6 @@ class CustomerCardManager {
                                 <label>Syfte med affärsrelationen</label>
                                 <textarea id="kyc-syfte-affarsrelation" class="uppdrag-input uppdrag-textarea" rows="2" placeholder="Varför ingås affärsrelationen och hur ska byråns tjänster användas?">${esc(savedSyfteAffarsrelation)}</textarea>
                             </div>
-                            <div class="kyc-beskrivning-block">
-                                <h4 class="kyc-beskrivning-title">Beskrivning av kunden</h4>
-                                <div class="uppdrag-field uppdrag-field--full">
-                                    <label>Verksamhet</label>
-                                    <p class="uppdrag-hint">Vad gör kunden</p>
-                                    <textarea id="kyc-verksamhet" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Vad gör kunden">${esc(savedVerksamhet)}</textarea>
-                                </div>
-                                <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                    <label>Kostnader</label>
-                                    <p class="uppdrag-hint">Beskriv vilka kostnader kunden har, vilka leverantörerna är och hur betalning sker</p>
-                                    <textarea id="kyc-kostnader" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Kostnader, leverantörer och hur betalning sker">${esc(savedKostnader)}</textarea>
-                                </div>
-                                <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
-                                    <label>Intäkterna</label>
-                                    <p class="uppdrag-hint">Vilka är kundens kunder, hur möter de sina kunder (digitalt, fysiskt möte?) hur tar de betalt, använder de faktureringsprogram eller andra systemstöd?</p>
-                                    <textarea id="kyc-intakterna" class="uppdrag-input uppdrag-textarea" rows="4" placeholder="Kunder, mötesform, betalning och systemstöd">${esc(savedIntakterna)}</textarea>
-                                </div>
-                            </div>
                             <div class="uppdrag-grid" style="margin-top:0.75rem;">
                                 <div class="uppdrag-field">
                                     <label>Byråns tjänster</label>
@@ -10532,6 +10514,30 @@ class CustomerCardManager {
                                     <label>Uppskattad årsomsättning</label>
                                     <input type="text" id="kyc-omsattning" class="uppdrag-input" value="${esc(savedOmsattning)}" placeholder="t.ex. 2 000 000 kr">
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="uppdrag-section uppdrag-section--card kyc-beskrivning-card">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title kyc-beskrivning-title"><i class="fas fa-align-left"></i> Beskrivning av kunden</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body kyc-beskrivning-block">
+                            <div class="uppdrag-field uppdrag-field--full">
+                                <label>Verksamhet</label>
+                                <p class="uppdrag-hint">Vad gör kunden</p>
+                                <textarea id="kyc-verksamhet" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Vad gör kunden">${esc(savedVerksamhet)}</textarea>
+                            </div>
+                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
+                                <label>Kostnader</label>
+                                <p class="uppdrag-hint">Beskriv vilka kostnader kunden har, vilka leverantörerna är och hur betalning sker</p>
+                                <textarea id="kyc-kostnader" class="uppdrag-input uppdrag-textarea" rows="3" placeholder="Kostnader, leverantörer och hur betalning sker">${esc(savedKostnader)}</textarea>
+                            </div>
+                            <div class="uppdrag-field uppdrag-field--full" style="margin-top:0.75rem;">
+                                <label>Intäkterna</label>
+                                <p class="uppdrag-hint">Vilka är kundens kunder, hur möter de sina kunder (digitalt, fysiskt möte?) hur tar de betalt, använder de faktureringsprogram eller andra systemstöd?</p>
+                                <textarea id="kyc-intakterna" class="uppdrag-input uppdrag-textarea" rows="4" placeholder="Kunder, mötesform, betalning och systemstöd">${esc(savedIntakterna)}</textarea>
                             </div>
                         </div>
                     </div>
