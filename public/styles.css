@@ -13062,7 +13062,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     text-align: right;
 }
 .ar-bar-chart--flaggor .ar-bar-row {
-    grid-template-columns: minmax(14rem, 22rem) 1fr 3.25rem;
+    grid-template-columns: minmax(22rem, 1fr) minmax(4.5rem, 8.5rem) 2.4rem;
     align-items: start;
 }
 .ar-bar-chart--flaggor .ar-bar-label {
