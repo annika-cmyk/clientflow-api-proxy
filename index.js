@@ -8343,44 +8343,6 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    if (plan.moved && plan.attachment) {
-      try {
-        const latestRes = await axios.get(
-          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
-          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-        );
-        const latest = latestRes.data.fields || {};
-        const destList = Array.isArray(latest[plan.destField]) ? latest[plan.destField] : [];
-        const newAtt = destList.filter((a) => dokumentKategori.filenamesMatch(a?.filename, plan.attachment.filename)).pop();
-        if (newAtt?.id) {
-          const priorMeta = dokumentKategori.findDokumentKategori(
-            plan.nextKategorier || [],
-            { id: plan.attachment.id, filename: plan.attachment.filename }
-          );
-          const refreshed = dokumentKategori.upsertDokumentKategori(
-            dokumentKategori.parseDokumentKategorier(latest['Dokumentation Kategorier']),
-            { id: plan.attachment.id, filename: plan.attachment.filename },
-            {
-              category: plan.nextCategory,
-              customCategory: plan.customCategory || '',
-              displayName: plan.displayName,
-              attachmentId: newAtt.id,
-              filename: newAtt.filename,
-              ...(plan.createdDate ? { createdDate: plan.createdDate } : {}),
-              ...(dokumentKategori.isSystemCreatedMeta(priorMeta) ? { systemCreated: true } : {})
-            }
-          );
-          await axios.patch(
-            `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
-            { fields: { 'Dokumentation Kategorier': JSON.stringify(refreshed) } },
-            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-          );
-        }
-      } catch (e) {
-        console.warn('Kunde inte uppdatera attachment-id efter dokumentflytt:', e.message);
-      }
-    }
-
     res.json({
       success: true,
       message: 'Dokument uppdaterat',
@@ -8390,8 +8352,17 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       moved: plan.moved
     });
   } catch (error) {
-    console.error('\u274c PATCH document:', error.message);
-    res.status(500).json({ error: error.message });
+    const status = error.response?.status;
+    const airtableMsg = error.response?.data?.error?.message || error.message;
+    console.error('\u274c PATCH document:', airtableMsg);
+    if (status === 422 && /Unknown field name.*Dokumentation Kategorier/i.test(String(airtableMsg))) {
+      return res.status(422).json({
+        error: 'Fältet "Dokumentation Kategorier" saknas i Airtable. Skapa det som Long text i KUNDDATA (via Inställningar eller POST /api/setup/airtable-dokumentation-kategorier).'
+      });
+    }
+    res.status(status && status >= 400 && status < 600 ? status : 500).json({
+      error: status === 422 ? `Airtable avvisade ändringen: ${airtableMsg}` : airtableMsg
+    });
   }
 });
 
