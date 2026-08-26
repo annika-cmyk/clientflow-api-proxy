@@ -6,7 +6,9 @@
   const TJANST_FALT = {
     tjanstebeskrivning: { etikett: 'Tjänstebeskrivning och inneboende risk' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },
+    motiveringInneboende: { etikett: 'Motivering av S och K (inneboende risk)' },
     residual: { etikett: 'Risk efter åtgärder' },
+    motiveringResidual: { etikett: 'Motivering av residual-S och K' },
     hot: { etikett: 'Hot' },
     sarbarheter: { etikett: 'Sårbarheter' },
     atgarder: { etikett: 'Åtgärder' },
@@ -18,12 +20,18 @@
     atgard: { etikett: 'Åtgärd' },
     ptTfRelevans: { etikett: 'PT/TF-relevans' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },
-    residual: { etikett: 'Risk efter åtgärd' }
+    motiveringInneboende: { etikett: 'Motivering av S och K (inneboende risk)' },
+    residual: { etikett: 'Risk efter åtgärd' },
+    motiveringResidual: { etikett: 'Motivering av residual-S och K' }
   };
+
+  const MOTIVERING_AI_RULES = `- MOTIVERING AV S×K (krav vid tillsyn): Skriv alltid motiveringInneboende och motiveringResidual när du sätter S/K.
+- motiveringInneboende: 2–4 meningar som förklarar VARFÖR sannolikheten är som den är (hot/sårbarhet) och VARFÖR konsekvensen är som den är (skada/regulatorisk påverkan). Minst 50 tecken om inneboende risk blir Förhöjd, Hög eller Oacceptabel.
+- motiveringResidual: 2–4 meningar om hur åtgärderna sänkt sannolikhet och/eller konsekvens. Minst 50 tecken om residual blir Förhöjd+. Om residual är Hög eller Oacceptabel: nämn riskaptit eller fattat beslut.`;
 
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
-- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot), och TF-täckning.
+- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot), och TF-täckning.
 - Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, lägg till saknade hot (särskilt TF), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn.
 - Kopiera inte rakt av. En lätt omskrivning räcker inte.
 - Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
@@ -71,12 +79,22 @@
     return asList(v).some((item) => item && (isFilledText(item.titel || item.namn || item.beskrivning || item.title)));
   }
 
+  function readMotiveringInneboende(o) {
+    return trimStr((o && (o.motiveringInneboende || o.motivering_inneboende_risk)) || '');
+  }
+
+  function readMotiveringResidual(o) {
+    return trimStr((o && (o.motiveringResidual || o.motivering_residual_risk)) || '');
+  }
+
   function filledTjanstKeys(befintligt) {
     const o = befintligt || {};
     const keys = [];
     if (isFilledText(o.tjanstebeskrivning)) keys.push('tjanstebeskrivning');
     if (isFilledScore(o.sannolikhet) || isFilledScore(o.konsekvens)) keys.push('sxk');
+    if (readMotiveringInneboende(o)) keys.push('motiveringInneboende');
     if (isFilledScore(o.sannolikhetEfter) || isFilledScore(o.konsekvensEfter)) keys.push('residual');
+    if (readMotiveringResidual(o)) keys.push('motiveringResidual');
     if (hasListItems(o.hot)) keys.push('hot');
     if (hasListItems(o.sarbarheter)) keys.push('sarbarheter');
     if (hasListItems(o.atgarder)) keys.push('atgarder');
@@ -91,7 +109,9 @@
     if (isFilledText(o.atgard)) keys.push('atgard');
     if (isFilledText(o.ptTfRelevans)) keys.push('ptTfRelevans');
     if (isFilledScore(o.sannolikhet) || isFilledScore(o.konsekvens)) keys.push('sxk');
+    if (readMotiveringInneboende(o)) keys.push('motiveringInneboende');
     if (isFilledScore(o.sannolikhetEfter) || isFilledScore(o.konsekvensEfter)) keys.push('residual');
+    if (readMotiveringResidual(o)) keys.push('motiveringResidual');
     return keys;
   }
 
@@ -120,8 +140,14 @@
     if (keys.includes('sxk')) {
       parts.push(`Inneboende S×K: sannolikhet ${o.sannolikhet || '–'}, konsekvens ${o.konsekvens || '–'}`);
     }
+    if (keys.includes('motiveringInneboende')) {
+      parts.push(`Motivering inneboende risk:\n${readMotiveringInneboende(o)}`);
+    }
     if (keys.includes('residual')) {
       parts.push(`Residual S×K: sannolikhet ${o.sannolikhetEfter || '–'}, konsekvens ${o.konsekvensEfter || '–'}`);
+    }
+    if (keys.includes('motiveringResidual')) {
+      parts.push(`Motivering residualrisk:\n${readMotiveringResidual(o)}`);
     }
     if (keys.includes('hot')) {
       parts.push('Hot:\n' + formatList(o.hot, (h) => {
@@ -160,8 +186,14 @@
     if (keys.includes('sxk')) {
       parts.push(`Inneboende S×K: sannolikhet ${o.sannolikhet || '–'}, konsekvens ${o.konsekvens || '–'}`);
     }
+    if (keys.includes('motiveringInneboende')) {
+      parts.push(`Motivering inneboende risk:\n${readMotiveringInneboende(o)}`);
+    }
     if (keys.includes('residual')) {
       parts.push(`Residual S×K: sannolikhet ${o.sannolikhetEfter || '–'}, konsekvens ${o.konsekvensEfter || '–'}`);
+    }
+    if (keys.includes('motiveringResidual')) {
+      parts.push(`Motivering residualrisk:\n${readMotiveringResidual(o)}`);
     }
     return parts.join('\n\n');
   }
@@ -175,6 +207,8 @@
     hot: ['hot'],
     sarbarheter: ['sarbarheter', 'sarbarhet'],
     sxk: ['sxk', 'sannolikhet', 'konsekvens', 'inneboende', 'riskniva'],
+    motiveringInneboende: ['motiveringinneboende', 'motivering inneboende', 'motivering av riskniva', 'motivering av s och k'],
+    motiveringResidual: ['motiveringresidual', 'motivering residual', 'motivering av residual'],
     residual: ['residual', 'sannolikhetefter', 'konsekvensefter', 'risk efter'],
     ptTfRelevans: ['pttfrelevans', 'pt tf', 'pttf']
   };
@@ -272,7 +306,9 @@
     if (falt === 'sarbarheter') return asList(g.sarbarheter);
     if (falt === 'atgarder') return asList(g.atgarder);
     if (falt === 'sxk') return { sannolikhet: g.sannolikhet, konsekvens: g.konsekvens };
+    if (falt === 'motiveringInneboende') return readMotiveringInneboende(g);
     if (falt === 'residual') return { sannolikhet: g.sannolikhetEfter, konsekvens: g.konsekvensEfter };
+    if (falt === 'motiveringResidual') return readMotiveringResidual(g);
     return '';
   }
 
@@ -305,7 +341,9 @@
     if (falt === 'sarbarheter') return asList(o.sarbarheter);
     if (falt === 'atgarder') return asList(o.atgarder);
     if (falt === 'sxk') return { sannolikhet: o.sannolikhet, konsekvens: o.konsekvens };
+    if (falt === 'motiveringInneboende') return readMotiveringInneboende(o);
     if (falt === 'residual') return { sannolikhet: o.sannolikhetEfter, konsekvens: o.konsekvensEfter };
+    if (falt === 'motiveringResidual') return readMotiveringResidual(o);
     return '';
   }
 
@@ -709,19 +747,23 @@
   const TJANST_TAB_FOR_FALT = {
     tjanstebeskrivning: 'oversikt',
     sxk: 'oversikt',
+    motiveringInneboende: 'oversikt',
     hot: 'hot',
     tfMotivering: 'hot',
     sarbarheter: 'sarbarhet',
     atgarder: 'atgard',
-    residual: 'atgard'
+    residual: 'atgard',
+    motiveringResidual: 'atgard'
   };
 
   const OVRIG_HOST_FOR_FALT = {
     beskrivning: 'beskrivning',
     ptTfRelevans: 'beskrivning',
     sxk: 'sxk',
+    motiveringInneboende: 'sxk',
     atgard: 'atgard',
-    residual: 'atgard'
+    residual: 'atgard',
+    motiveringResidual: 'atgard'
   };
 
   function tabForFalt(falt, kind) {
@@ -942,6 +984,7 @@
     TJANST_FALT,
     OVRIG_FALT,
     REVIEW_PROMPT_RULES,
+    MOTIVERING_AI_RULES,
     isFilledText,
     isFilledScore,
     filledTjanstKeys,

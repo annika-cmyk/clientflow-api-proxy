@@ -746,6 +746,18 @@ class RiskFactorsManager {
         document.getElementById('completed-count').textContent = completedCount;
     }
 
+    applyOvrigAiMotivering(prefix, data, { onlyEmpty = false, existing = {} } = {}) {
+        const Ai = window.AiFaltGranskning;
+        const motIn = data.motiveringInneboende || data.motivering_inneboende_risk || '';
+        const motRes = data.motiveringResidual || data.motivering_residual_risk || '';
+        const emptyIn = !onlyEmpty || !(Ai && Ai.isFilledText(existing.motiveringInneboende || existing.motivering_inneboende_risk));
+        const emptyRes = !onlyEmpty || !(Ai && Ai.isFilledText(existing.motiveringResidual || existing.motivering_residual_risk));
+        const inEl = document.getElementById(`${prefix}motivering-inneboende`);
+        const resEl = document.getElementById(`${prefix}motivering-residual`);
+        if (emptyIn && motIn && inEl) inEl.value = motIn;
+        if (emptyRes && motRes && resEl) resEl.value = motRes;
+    }
+
     applyOvrigAiAll(prefix, data) {
         if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
         if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
@@ -762,6 +774,7 @@ class RiskFactorsManager {
             if (data.sannolikhet == null) this.setScoreSelect(`${prefix}sannolikhet`, inferred.sannolikhet);
             if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
         }
+        this.applyOvrigAiMotivering(prefix, data);
     }
 
     applyOvrigAiIfEmpty(prefix, existing, data) {
@@ -778,6 +791,7 @@ class RiskFactorsManager {
         if (emptySxk && data.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens`, data.konsekvens);
         if (emptyRes && data.sannolikhetEfter != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, data.sannolikhetEfter);
         if (emptyRes && data.konsekvensEfter != null) this.setScoreSelect(`${prefix}konsekvens-efter`, data.konsekvensEfter);
+        this.applyOvrigAiMotivering(prefix, data, { onlyEmpty: true, existing });
     }
 
     attachOvrigFieldAi(afterEl, { label, html, comment, onApply }) {
@@ -829,6 +843,20 @@ class RiskFactorsManager {
                     onApply: (box) => {
                         document.getElementById(`${prefix}action`).value = box.querySelector('[data-ai-forslag]')?.value || '';
                     }
+                });
+                changed = true;
+            } else if (item.falt === 'motiveringInneboende') {
+                this.attachOvrigFieldAi(document.getElementById(`${prefix}motivering-inneboende`), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${String(item.forslag || '').replace(/</g, '&lt;')}</textarea>`,
+                    onApply: (box) => this.applyOvrigAiField(prefix, item.falt, box.querySelector('[data-ai-forslag]')?.value || '')
+                });
+                changed = true;
+            } else if (item.falt === 'motiveringResidual') {
+                this.attachOvrigFieldAi(document.getElementById(`${prefix}motivering-residual`), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${String(item.forslag || '').replace(/</g, '&lt;')}</textarea>`,
+                    onApply: (box) => this.applyOvrigAiField(prefix, item.falt, box.querySelector('[data-ai-forslag]')?.value || '')
                 });
                 changed = true;
             } else if (item.falt === 'sxk' || item.falt === 'residual') {
@@ -891,6 +919,12 @@ class RiskFactorsManager {
             const scores = forslag && typeof forslag === 'object' ? forslag : {};
             if (scores.sannolikhet != null) this.setScoreSelect(`${prefix}sannolikhet-efter`, scores.sannolikhet);
             if (scores.konsekvens != null) this.setScoreSelect(`${prefix}konsekvens-efter`, scores.konsekvens);
+        } else if (falt === 'motiveringInneboende') {
+            const el = document.getElementById(`${prefix}motivering-inneboende`);
+            if (el) el.value = String(forslag || '');
+        } else if (falt === 'motiveringResidual') {
+            const el = document.getElementById(`${prefix}motivering-residual`);
+            if (el) el.value = String(forslag || '');
         }
         this.updateRiskBadges(prefix ? 'edit' : 'add');
     }
@@ -923,7 +957,9 @@ class RiskFactorsManager {
             sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value || '',
             konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value || '',
             ptTfRelevans: document.getElementById(`${prefix}pt-tf`)?.value || '',
-            riskbedomning: inherent.level || ''
+            riskbedomning: inherent.level || '',
+            motiveringInneboende: document.getElementById(`${prefix}motivering-inneboende`)?.value.trim() || '',
+            motiveringResidual: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || ''
         };
         const reviewMode = !!(Ai && Ai.hasExistingOvrigContent(befintligt));
         if (btn) {

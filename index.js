@@ -22234,6 +22234,7 @@ ${AmlKalla.KALLA_AI_RULES}
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AtgardKonkret.AI_RULES}
+${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
 Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
@@ -22264,13 +22265,15 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y.",
+  "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — Undersida — https://.../undersida" } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör." } ],
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|residual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
+      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }
@@ -22387,6 +22390,8 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
       konsekvens: fallbackScores.konsekvens,
       sannolikhetEfter: residualOut.sannolikhet,
       konsekvensEfter: residualOut.konsekvens,
+      motiveringInneboende: cleanStr(result.motiveringInneboende ?? result.motivering_inneboende_risk),
+      motiveringResidual: cleanStr(result.motiveringResidual ?? result.motivering_residual_risk),
       riskniva: fallbackScores.level || fallbackLevel,
       hot,
       sarbarheter,
@@ -22413,7 +22418,7 @@ ${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTa
       entityId: req.body?.recordId || namn || 'tjanst',
       fieldChanged: 'Tjänstebeskrivning',
       aiOutputRaw: tjanstAiPayload.tjanstebeskrivning || JSON.stringify(tjanstAiPayload),
-      extra: { faltSomGenererades: 'tjanstebeskrivning,hot,sarbarheter,atgarder,sxk' }
+      extra: { faltSomGenererades: 'tjanstebeskrivning,hot,sarbarheter,atgarder,sxk,motivering' }
     });
     res.json({
       ...tjanstAiPayload,
@@ -22472,6 +22477,7 @@ Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärd
 
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AtgardKonkret.AI_RULES}
+${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -22482,10 +22488,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y.",
+  "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
   "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|residual", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
+      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }
@@ -22522,6 +22530,7 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
     return JSON.parse(candidate);
   };
   const normRiskfaktorNiva = (v) => RiskSkala.riskLabelSv(v) || 'Normal';
+  const cleanStr = (v) => (v == null ? '' : String(v).trim());
 
   try {
     const aiText = await runOpenAIAssistantRunWithRetry(
@@ -22554,6 +22563,8 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       konsekvens: fallbackScores.konsekvens,
       sannolikhetEfter: residualOut.sannolikhet,
       konsekvensEfter: residualOut.konsekvens,
+      motiveringInneboende: cleanStr(result.motiveringInneboende ?? result.motivering_inneboende_risk),
+      motiveringResidual: cleanStr(result.motiveringResidual ?? result.motivering_residual_risk),
       riskbedomning: fallbackScores.level || fallbackLevel,
       atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
     };

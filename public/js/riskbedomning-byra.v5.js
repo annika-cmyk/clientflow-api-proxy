@@ -1118,6 +1118,19 @@ class RiskAssessmentManager {
         this.updateRiskBadges();
     }
 
+    applyTjanstAiMotivering(data, { onlyEmpty = false, existing = {} } = {}) {
+        const Ai = window.AiFaltGranskning;
+        const motIn = data.motiveringInneboende || data.motivering_inneboende_risk || '';
+        const motRes = data.motiveringResidual || data.motivering_residual_risk || '';
+        const emptyIn = !onlyEmpty || !(Ai && Ai.isFilledText(existing.motiveringInneboende || existing.motivering_inneboende_risk));
+        const emptyRes = !onlyEmpty || !(Ai && Ai.isFilledText(existing.motiveringResidual || existing.motivering_residual_risk));
+        const inEl = document.getElementById('tjanst-motivering-inneboende');
+        const resEl = document.getElementById('tjanst-motivering-residual');
+        if (emptyIn && motIn && inEl) inEl.value = motIn;
+        if (emptyRes && motRes && resEl) resEl.value = motRes;
+        this.updateMotiveringWarnings();
+    }
+
     replaceTjanstList(kind, items) {
         const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
         const el = document.getElementById(listId);
@@ -1134,6 +1147,7 @@ class RiskAssessmentManager {
     applyTjanstAiAll(data) {
         if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
         this.applyTjanstAiScores(data);
+        this.applyTjanstAiMotivering(data);
         this.replaceTjanstList('hot', data.hot);
         this.replaceTjanstList('sarbarheter', data.sarbarheter);
         this.replaceTjanstList('atgarder', data.atgarder);
@@ -1148,6 +1162,7 @@ class RiskAssessmentManager {
             document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
         }
         this.applyTjanstAiScores(data, { onlyEmpty: true, existing });
+        this.applyTjanstAiMotivering(data, { onlyEmpty: true, existing });
         if (!(existing.hot || []).length && (data.hot || []).length) this.replaceTjanstList('hot', data.hot);
         if (!(existing.sarbarheter || []).length && (data.sarbarheter || []).length) {
             this.replaceTjanstList('sarbarheter', data.sarbarheter);
@@ -1191,6 +1206,16 @@ class RiskAssessmentManager {
             if (tfEl) tfEl.value = String(forslag || '');
             this.setTjanstTab('hot');
             this.updateTfBanner();
+        } else if (falt === 'motiveringInneboende') {
+            const el = document.getElementById('tjanst-motivering-inneboende');
+            if (el) el.value = String(forslag || '');
+            this.setTjanstTab('oversikt');
+            this.updateMotiveringWarnings();
+        } else if (falt === 'motiveringResidual') {
+            const el = document.getElementById('tjanst-motivering-residual');
+            if (el) el.value = String(forslag || '');
+            this.setTjanstTab('atgard');
+            this.updateMotiveringWarnings();
         }
     }
 
@@ -1397,6 +1422,34 @@ class RiskAssessmentManager {
                 if (!firstTab) firstTab = 'oversikt';
                 return;
             }
+            if (item.falt === 'motiveringInneboende') {
+                this.attachFieldAiForslag(document.getElementById('tjanst-motivering-inneboende'), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${this.esc(item.forslag || '')}</textarea>`,
+                    onApply: (box) => {
+                        const el = document.getElementById('tjanst-motivering-inneboende');
+                        if (el) el.value = box.querySelector('[data-ai-forslag]')?.value || '';
+                        this.updateMotiveringWarnings();
+                    }
+                });
+                changed = true;
+                if (!firstTab) firstTab = 'oversikt';
+                return;
+            }
+            if (item.falt === 'motiveringResidual') {
+                this.attachFieldAiForslag(document.getElementById('tjanst-motivering-residual'), {
+                    comment,
+                    html: `<textarea data-ai-forslag rows="4">${this.esc(item.forslag || '')}</textarea>`,
+                    onApply: (box) => {
+                        const el = document.getElementById('tjanst-motivering-residual');
+                        if (el) el.value = box.querySelector('[data-ai-forslag]')?.value || '';
+                        this.updateMotiveringWarnings();
+                    }
+                });
+                changed = true;
+                if (!firstTab) firstTab = 'atgard';
+                return;
+            }
             if (item.falt === 'tfMotivering') {
                 const tf = document.getElementById('tjanst-tf-motivering');
                 this.attachFieldAiForslag(tf, {
@@ -1440,10 +1493,10 @@ class RiskAssessmentManager {
         });
         if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
         this.updateTjanstAiSummary({
-            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag').length,
+            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
             hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag, #tjanst-tf-motivering ~ .field-ai-forslag').length,
             sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag').length,
-            atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag').length
+            atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag, #tjanst-motivering-residual ~ .field-ai-forslag').length
         });
         if (firstTab) this.setTjanstTab(firstTab);
         return changed;
@@ -1474,7 +1527,9 @@ class RiskAssessmentManager {
             hot: this.collectHot(),
             sarbarheter: this.collectSarbarhet(),
             atgarder: this.collectAtgard(),
-            tfMotivering: document.getElementById('tjanst-tf-motivering')?.value.trim() || ''
+            tfMotivering: document.getElementById('tjanst-tf-motivering')?.value.trim() || '',
+            motiveringInneboende: poang.motivering_inneboende_risk || '',
+            motiveringResidual: poang.motivering_residual_risk || ''
         };
         const reviewMode = !!(Ai && Ai.hasExistingTjanstContent(befintligt));
         btn.disabled = true;
