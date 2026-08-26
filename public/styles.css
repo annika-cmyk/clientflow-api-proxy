@@ -6682,7 +6682,7 @@ body.riskbedomning-byra-page h5 {
 .document-list-head,
 .document-list-item {
     display: grid;
-    grid-template-columns: 1.6rem 1rem minmax(0, 1fr) 9.5rem auto;
+    grid-template-columns: 1.6rem 1rem minmax(0, 1fr) 7.5rem auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 0.85rem;
@@ -6710,6 +6710,9 @@ body.riskbedomning-byra-page h5 {
 .document-list-item:hover {
     background: var(--line);
 }
+.document-list-item--openable {
+    cursor: pointer;
+}
 .document-list-icon {
     color: var(--error);
     font-size: 1rem;
@@ -6728,9 +6731,44 @@ body.riskbedomning-byra-page h5 {
     color: var(--text);
     white-space: nowrap;
 }
+button.document-list-date--editable {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0.15rem 0.2rem;
+    margin: 0;
+    font: inherit;
+    font-size: 0.82rem;
+    color: var(--text);
+    white-space: nowrap;
+    cursor: pointer;
+    border-radius: 4px;
+}
+button.document-list-date--editable:hover,
+button.document-list-date--editable:focus-visible {
+    background: #fff;
+    color: var(--title-text);
+    outline: 1px solid var(--line);
+}
+.document-list-date-missing {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+.document-list-date-missing:hover,
+.document-list-date-missing:focus-visible {
+    background: #fff;
+    color: var(--title-text);
+    outline: 1px solid var(--line);
+}
 .document-created-date-input {
     width: 100%;
-    max-width: 9.25rem;
+    max-width: 7.25rem;
     padding: 0.3rem 0.45rem;
     font-size: 0.82rem;
     border: 1px solid var(--line);
@@ -6763,8 +6801,6 @@ body.riskbedomning-byra-page h5 {
     flex-shrink: 0;
     justify-self: end;
 }
-.document-list-item .document-download-btn,
-.document-list-item .document-preview-btn,
 .document-list-item .document-edit-btn {
     padding: 0.35rem 0.7rem;
     font-size: 0.8rem;
@@ -6792,6 +6828,11 @@ body.riskbedomning-byra-page h5 {
     height: 90vh;
     max-height: 90vh;
     overflow: hidden;
+}
+.document-preview-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 .document-preview-body {
     padding: 0 !important;

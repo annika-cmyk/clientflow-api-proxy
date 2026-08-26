@@ -13993,48 +13993,145 @@ class CustomerCardManager {
         const hasSource = doc.sourceField != null && doc.sourceIndex != null;
         const canOpen = !!(url || hasSource);
         const previewAttrs = `data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${hasSource ? doc.sourceIndex : ''}" data-doc-name="${safeNamn}" data-filename="${safeFilename}" data-direct-url="${this.escapeDocHtml(url)}"`;
-        const previewBtn = canOpen
-            ? `<button type="button" class="btn btn-secondary btn-sm document-preview-btn" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)"><i class="fas fa-eye"></i> Visa</button>`
-            : `<button type="button" class="btn btn-secondary btn-sm" disabled><i class="fas fa-eye"></i> Visa</button>`;
-        const downloadBtn = url
-            ? `<a href="${this.escapeDocHtml(url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm document-download-btn" download="${safeFilename}"><i class="fas fa-download"></i> Ladda ner</a>`
-            : `<button class="btn btn-primary btn-sm" disabled><i class="fas fa-download"></i> Ladda ner</button>`;
         const deleteBtn = hasSource
-            ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="event.stopPropagation(); customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
             : '';
         const editBtn = hasSource
-            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" data-created-date="${this.escapeDocHtml(skapatDatum)}" data-created-date-editable="${createdDateEditable ? '1' : '0'}" title="Redigera namn och kategori" onclick="customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" data-created-date="${this.escapeDocHtml(skapatDatum)}" data-created-date-editable="${createdDateEditable ? '1' : '0'}" title="Redigera namn och kategori" onclick="event.stopPropagation(); customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
             : '';
         const nameHtml = canOpen
-            ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
+            ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Visa dokument" onclick="event.stopPropagation(); customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
             : `<span class="document-list-name">${safeNamn}</span>`;
         const checkHtml = hasSource
             ? `<label class="document-export-pick" onclick="event.stopPropagation()">
                     <input type="checkbox" class="document-export-check" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" aria-label="Välj ${safeNamn} för export">
                </label>`
             : `<span class="document-export-pick document-export-pick--empty"></span>`;
-        const dateHtml = hasSource && createdDateEditable
-            ? `<input type="date" class="document-created-date-input" value="${this.escapeDocHtml(skapatDatum)}" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" title="Skapat datum" onchange="customerCardManager.saveCreatedDateFromInput(this)">`
-            : `<span class="document-list-date" title="${createdDateEditable ? '' : 'Datum från signering i ClientFlow'}">${this.escapeDocHtml(skapatDatum || '–')}</span>`;
+        const dateAttrs = `data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${hasSource ? doc.sourceIndex : ''}" data-created-date="${this.escapeDocHtml(skapatDatum)}"`;
+        let dateHtml;
+        if (hasSource && createdDateEditable) {
+            dateHtml = skapatDatum
+                ? `<button type="button" class="document-list-date document-list-date--editable" ${dateAttrs} title="Klicka för att ändra datum" onclick="event.stopPropagation(); customerCardManager.beginEditCreatedDate(this)">${this.escapeDocHtml(skapatDatum)}</button>`
+                : `<button type="button" class="document-list-date-missing" ${dateAttrs} title="Ange skapat datum" onclick="event.stopPropagation(); customerCardManager.beginEditCreatedDate(this)" aria-label="Ange skapat datum"><i class="fas fa-pencil-alt"></i></button>`;
+        } else {
+            dateHtml = `<span class="document-list-date" title="${createdDateEditable ? '' : 'Datum från signering i ClientFlow'}">${this.escapeDocHtml(skapatDatum || '–')}</span>`;
+        }
+        const rowOpenAttrs = canOpen
+            ? `${previewAttrs} role="button" tabindex="0" title="Visa dokument" onclick="customerCardManager.previewDocumentFromBtn(this)" onkeydown="customerCardManager.onDocumentRowKeydown(event, this)"`
+            : '';
         return `
-            <li class="document-list-item">
+            <li class="document-list-item${canOpen ? ' document-list-item--openable' : ''}" ${rowOpenAttrs}>
                 ${checkHtml}
                 <i class="fas fa-file-pdf document-list-icon"></i>
                 <div class="document-list-info">
                     ${nameHtml}
                     ${safeBeskr ? `<span class="document-list-meta">${safeBeskr}</span>` : ''}
                 </div>
-                <div class="document-list-date-col">
+                <div class="document-list-date-col" onclick="event.stopPropagation()">
                     ${dateHtml}
                 </div>
-                <div class="document-list-buttons">
-                    ${previewBtn}
+                <div class="document-list-buttons" onclick="event.stopPropagation()">
                     ${editBtn}
-                    ${downloadBtn}
                     ${deleteBtn}
                 </div>
             </li>
         `;
+    }
+
+    onDocumentRowKeydown(event, el) {
+        if (!event || !el) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.previewDocumentFromBtn(el);
+    }
+
+    beginEditCreatedDate(trigger) {
+        if (!trigger) return;
+        const col = trigger.closest('.document-list-date-col') || trigger.parentElement;
+        if (!col) return;
+        if (col.querySelector('.document-created-date-input')) return;
+
+        const sourceField = trigger.getAttribute('data-source-field') || '';
+        const sourceIndex = trigger.getAttribute('data-source-index') || '';
+        const current = (trigger.getAttribute('data-created-date') || trigger.textContent || '').trim();
+        const normalizedCurrent = (window.DateInput && DateInput.parseTypedDate(current)) || current;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'document-created-date-input';
+        input.inputMode = 'numeric';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.maxLength = 10;
+        input.placeholder = 'åååå-mm-dd';
+        input.value = normalizedCurrent || '';
+        input.setAttribute('data-source-field', sourceField);
+        input.setAttribute('data-source-index', sourceIndex);
+        input.setAttribute('data-created-date', normalizedCurrent || '');
+        input.setAttribute('aria-label', 'Skapat datum');
+        input.title = 'Skriv 2026-01-01, 20260101 eller 260101';
+
+        const restore = (iso) => {
+            const nextDate = iso || '';
+            const attrs = `data-source-field="${this.escapeDocHtml(sourceField)}" data-source-index="${this.escapeDocHtml(sourceIndex)}" data-created-date="${this.escapeDocHtml(nextDate)}"`;
+            if (nextDate) {
+                col.innerHTML = `<button type="button" class="document-list-date document-list-date--editable" ${attrs} title="Klicka för att ändra datum" onclick="event.stopPropagation(); customerCardManager.beginEditCreatedDate(this)">${this.escapeDocHtml(nextDate)}</button>`;
+            } else {
+                col.innerHTML = `<button type="button" class="document-list-date-missing" ${attrs} title="Ange skapat datum" onclick="event.stopPropagation(); customerCardManager.beginEditCreatedDate(this)" aria-label="Ange skapat datum"><i class="fas fa-pencil-alt"></i></button>`;
+            }
+        };
+
+        let finishing = false;
+        const finish = async (commit) => {
+            if (finishing) return;
+            finishing = true;
+            if (!commit) {
+                restore(normalizedCurrent || '');
+                return;
+            }
+            const raw = (input.value || '').trim();
+            if (!raw) {
+                this.showNotification('Ange ett giltigt skapat datum.', 'error');
+                finishing = false;
+                input.focus();
+                return;
+            }
+            const iso = (window.DateInput && DateInput.parseTypedDate(raw)) || '';
+            if (!iso) {
+                this.showNotification('Ogiltigt datum. Använd 2026-01-01, 20260101 eller 260101.', 'error');
+                finishing = false;
+                input.focus();
+                return;
+            }
+            input.value = iso;
+            const ok = await this.saveCreatedDateFromInput(input);
+            if (ok) restore(iso);
+            else {
+                finishing = false;
+                input.focus();
+            }
+        };
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                finish(true);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                finish(false);
+            }
+        });
+        input.addEventListener('blur', () => {
+            setTimeout(() => finish(true), 0);
+        });
+        input.addEventListener('click', (e) => e.stopPropagation());
+
+        col.innerHTML = '';
+        col.appendChild(input);
+        input.focus();
+        input.select();
     }
 
     bindDocumentExportChecks(root) {
@@ -14169,8 +14266,13 @@ class CustomerCardManager {
         modal.innerHTML = `
             <div class="modal-box document-preview-box">
                 <div class="modal-header">
-                    <h3><i class="fas fa-eye"></i> <span id="document-preview-title">${this.escapeDocHtml(name || 'Dokument')}</span></h3>
-                    <button type="button" class="modal-close" title="Stäng" onclick="customerCardManager.closeDocumentPreviewModal()"><i class="fas fa-times"></i></button>
+                    <h3><i class="fas fa-file-alt"></i> <span id="document-preview-title">${this.escapeDocHtml(name || 'Dokument')}</span></h3>
+                    <div class="document-preview-header-actions">
+                        <a id="document-preview-download" class="btn btn-primary btn-sm" style="display:none;" download>
+                            <i class="fas fa-download"></i> Ladda ner
+                        </a>
+                        <button type="button" class="modal-close" title="Stäng" onclick="customerCardManager.closeDocumentPreviewModal()"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>
                 <div class="modal-body document-preview-body" id="document-preview-body">
                     <p class="section-desc"><i class="fas fa-spinner fa-spin"></i> Öppnar dokumentet...</p>
@@ -14187,6 +14289,7 @@ class CustomerCardManager {
         const title = name || filename || 'Dokument';
         const modal = this._ensureDocumentPreviewModal(title);
         const body = document.getElementById('document-preview-body');
+        const downloadLink = document.getElementById('document-preview-download');
         try {
             let blob = null;
             const hasSource = sourceField && sourceIndex !== '' && sourceIndex != null;
@@ -14216,6 +14319,11 @@ class CustomerCardManager {
             const type = this._guessPreviewType(filename || title, blob.type);
             const objectUrl = URL.createObjectURL(blob);
             modal._objectUrl = objectUrl;
+            if (downloadLink) {
+                downloadLink.href = objectUrl;
+                downloadLink.download = filename || title || 'dokument';
+                downloadLink.style.display = '';
+            }
             if (!body) return;
             if (this._canPreviewInline(type)) {
                 if (type.startsWith('image/')) {
@@ -14227,8 +14335,7 @@ class CustomerCardManager {
                     body.innerHTML = `<iframe class="document-preview-frame" title="${this.escapeDocHtml(title)}" src="${this.escapeDocHtml(objectUrl)}"></iframe>`;
                 }
             } else {
-                body.innerHTML = `<p class="section-desc">Den här filtypen kan inte förhandsgranskas i webbläsaren.</p>
-                    <a class="btn btn-primary btn-sm" href="${this.escapeDocHtml(objectUrl)}" download="${this.escapeDocHtml(filename || title)}"><i class="fas fa-download"></i> Ladda ner</a>`;
+                body.innerHTML = `<p class="section-desc">Den här filtypen kan inte förhandsgranskas i webbläsaren. Ladda ner filen istället.</p>`;
             }
         } catch (err) {
             console.error('❌ Förhandsgranska dokument:', err);
@@ -14269,8 +14376,8 @@ class CustomerCardManager {
         const createdDateField = createdDateEditable
             ? `<div class="form-group">
                 <label for="edit-doc-created-date">Skapat datum</label>
-                <input type="date" id="edit-doc-created-date" name="createdDate" value="${this.escapeDocHtml(createdDate || '')}">
-                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Ange när dokumentet ursprungligen skapades eller signerades.</p>
+                <input type="text" id="edit-doc-created-date" name="createdDate" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="åååå-mm-dd" value="${this.escapeDocHtml(createdDate || '')}">
+                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Skriv 2026-01-01, 20260101 eller 260101.</p>
                </div>`
             : (createdDate
                 ? `<div class="form-group">
@@ -14368,7 +14475,21 @@ class CustomerCardManager {
         const category = categorySelect.value;
         const customCategory = (customInput?.value || '').trim();
         const createdDateInput = document.getElementById('edit-doc-created-date');
-        const createdDate = createdDateInput ? (createdDateInput.value || '').trim() : undefined;
+        let createdDate;
+        if (createdDateInput) {
+            const raw = (createdDateInput.value || '').trim();
+            if (!raw) {
+                this.showNotification('Ange ett skapat datum.', 'error');
+                return;
+            }
+            createdDate = (window.DateInput && DateInput.parseTypedDate(raw)) || '';
+            if (!createdDate) {
+                this.showNotification('Ogiltigt datum. Använd 2026-01-01, 20260101 eller 260101.', 'error');
+                createdDateInput.focus();
+                return;
+            }
+            createdDateInput.value = createdDate;
+        }
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         if (submitBtn) {
             submitBtn.disabled = true;
@@ -14408,15 +14529,17 @@ class CustomerCardManager {
     }
 
     async saveCreatedDateFromInput(input) {
-        if (!input) return;
+        if (!input) return false;
         const sourceField = input.getAttribute('data-source-field') || '';
         const sourceIndexRaw = input.getAttribute('data-source-index');
-        const createdDate = (input.value || '').trim();
-        if (!sourceField || sourceIndexRaw === '' || sourceIndexRaw == null) return;
-        if (!createdDate) {
-            this.showNotification('Välj ett giltigt skapat datum.', 'error');
-            return;
+        const raw = (input.value || '').trim();
+        if (!sourceField || sourceIndexRaw === '' || sourceIndexRaw == null) return false;
+        const createdDate = (window.DateInput && DateInput.parseTypedDate(raw)) || raw;
+        if (!createdDate || !/^\d{4}-\d{2}-\d{2}$/.test(createdDate)) {
+            this.showNotification('Ange ett giltigt skapat datum (t.ex. 2026-01-01).', 'error');
+            return false;
         }
+        input.value = createdDate;
         input.disabled = true;
         try {
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -14435,10 +14558,11 @@ class CustomerCardManager {
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
             this.showNotification('Skapat datum sparat.', 'success');
+            return true;
         } catch (err) {
             console.error('❌ Spara skapat datum:', err);
             this.showNotification('Kunde inte spara datum: ' + (err.message || 'Okänt fel'), 'error');
-            this.loadDocuments();
+            return false;
         } finally {
             input.disabled = false;
         }

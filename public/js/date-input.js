@@ -32,6 +32,12 @@
             const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
             return isValidDateIso(iso) ? iso : '';
         }
+        // ÅÅMMDD → 20ÅÅ-MM-DD (t.ex. 260101 → 2026-01-01). Bara rena 6 siffror,
+        // så att 2024/2/6 fortfarande tolkas via delarna nedan.
+        if (/^\d{6}$/.test(s)) {
+            const iso = `20${s.slice(0, 2)}-${s.slice(2, 4)}-${s.slice(4, 6)}`;
+            return isValidDateIso(iso) ? iso : '';
+        }
         const parts = s.split(/[./-]/).filter(Boolean);
         if (parts.length === 3 && parts[0].length === 4) {
             const iso = `${parts[0]}-${pad2(parts[1])}-${pad2(parts[2])}`;
