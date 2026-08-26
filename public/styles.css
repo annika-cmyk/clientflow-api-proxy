@@ -13409,6 +13409,29 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     background: #ecfdf3;
     color: #047857;
 }
+.tjanst-risk-summary {
+    margin: 0 0 0.65rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    background: #eff6ff;
+    font-size: 0.84rem;
+    color: #334155;
+    line-height: 1.45;
+}
+.tjanst-risk-summary-label {
+    color: #64748b;
+    margin-right: 0.35rem;
+}
+.tjanst-risk-summary-meta {
+    color: #64748b;
+    font-size: 0.78rem;
+    margin-left: 0.25rem;
+}
+.tjanst-risk-summary-reason {
+    color: #64748b;
+    font-size: 0.78rem;
+}
 .tjanst-risk-pair {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -13509,11 +13532,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .forutsattning-group { margin-bottom: 1rem; }
 .forutsattning-group-title {
-    margin: 0 0 0.55rem;
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
+    margin: 0 0 0.35rem;
+    font-size: 0.92rem;
     font-weight: 700;
-    color: #475569;
+    color: var(--title-text);
+}
+.forutsattning-group-lead {
+    margin: 0 0 0.85rem;
+    font-size: 0.82rem;
+    color: #64748b;
+    line-height: 1.45;
 }
 .forutsattning-row--tri {
     padding: 0.35rem 0.4rem;
@@ -13522,11 +13550,48 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .forutsattning-row--tri[data-state="ej_uppfylld"] { background: #fef2f2; }
 .forutsattning-row--tri[data-state="uppfylld"] { background: #f0fdf4; }
 .forutsattning-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: none;
-    background: none;
+    background: transparent;
     padding: 0;
     cursor: pointer;
-    line-height: 0;
+}
+.forutsattning-check-label,
+.forutsattning-nej-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
+}
+.forutsattning-nej {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 1.6rem;
+    min-height: 1.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    background: #fff;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.72rem;
+    color: #64748b;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.forutsattning-override-details {
+    margin-top: 0.55rem;
+    font-size: 0.8rem;
+    color: #475569;
+}
+.forutsattning-override-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.35rem;
+}
+.forutsattning-override-details .forutsattning-override {
+    margin-top: 0.35rem;
 }
 .forutsattning-check-box {
     display: inline-block;
@@ -13552,18 +13617,6 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border: solid #fff;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
-}
-.forutsattning-nej {
-    width: 1.6rem;
-    height: 1.6rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    background: #fff;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: 0.85rem;
-    line-height: 1;
-    flex-shrink: 0;
 }
 .forutsattning-row--tri[data-state="ej_uppfylld"] .forutsattning-nej {
     background: #dc2626;
