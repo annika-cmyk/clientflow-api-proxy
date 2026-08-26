@@ -52,6 +52,10 @@ function buildPatch(fields) {
 async function fetchAllRecords(tableName) {
   const records = [];
   let offset;
+  const isTjanst = /tjänster|tjanster/i.test(tableName);
+  const fieldCandidates = isTjanst
+    ? ['Riskpoäng', 'Samspelsexempel', 'Task Name', 'Riskbedömning', 'Byrå ID', 'Aktuell']
+    : ['Riskpoäng', 'Riskfaktor', 'Riskbedömning', 'Byrå ID', 'Typ av riskfaktor'];
   do {
     // eslint-disable-next-line no-await-in-loop
     const res = await axios.get(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}`, {
@@ -59,7 +63,7 @@ async function fetchAllRecords(tableName) {
       params: {
         pageSize: 100,
         offset,
-        'fields[]': ['Riskpoäng', 'Riskpoang', 'Samspelsexempel', 'Task Name', 'Riskfaktor', 'Riskbedömning']
+        'fields[]': fieldCandidates
       },
       timeout: 30000
     });
@@ -70,16 +74,26 @@ async function fetchAllRecords(tableName) {
 }
 
 async function migrateTable(tableName, dryRun) {
+  const isTjanst = /tjänster|tjanster/i.test(tableName);
   const records = await fetchAllRecords(tableName);
   const pending = [];
   records.forEach((rec) => {
     const patch = buildPatch(rec.fields || {});
     if (!patch) return;
-    pending.push({ id: rec.id, name: rec.fields?.['Task Name'] || rec.fields?.Riskfaktor || rec.id, patch });
+    pending.push({
+      id: rec.id,
+      name: rec.fields?.['Task Name'] || rec.fields?.Riskfaktor || rec.id,
+      byraId: rec.fields?.['Byrå ID'] || '',
+      typ: rec.fields?.['Typ av riskfaktor'] || (isTjanst ? 'Tjänst' : ''),
+      riskbedomning: rec.fields?.['Riskbedömning'] || '',
+      patch
+    });
   });
   console.log(`\n${tableName}: ${pending.length} av ${records.length} poster behöver flagga kraver_uppdaterad_motivering`);
-  pending.slice(0, 20).forEach((p) => console.log(`  - ${p.name} (${p.id})`));
-  if (pending.length > 20) console.log(`  … och ${pending.length - 20} till`);
+  pending.slice(0, 30).forEach((p) => {
+    console.log(`  - ${p.name}${p.byraId ? ` (byrå ${p.byraId})` : ''}${p.riskbedomning ? ` — ${p.riskbedomning}` : ''}`);
+  });
+  if (pending.length > 30) console.log(`  … och ${pending.length - 30} till`);
 
   if (dryRun) {
     console.log('Dry-run — inga ändringar skrivna.');
