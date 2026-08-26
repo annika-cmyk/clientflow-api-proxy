@@ -101,6 +101,7 @@ const dokumentRedigera = require('./lib/dokument-redigera');
 const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const kycDokumentSync = require('./lib/kyc-dokument-sync');
+const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
 const auditLog = require('./lib/audit-log');
@@ -6864,6 +6865,33 @@ app.get('/api/riskaptit/rapport', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('GET riskaptit/rapport:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte skapa rapporten' });
+  }
+});
+
+app.get('/api/dashboard/utan-aktuell-riskbedomning', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const today = new Date().toISOString().slice(0, 10);
+    const kunder = records
+      .filter((rec) => aktuellRiskbedomning.saknarAktuellRiskbedomning(rec.fields, today))
+      .map((rec) => aktuellRiskbedomning.dashboardRowFromRecord(rec, today))
+      .sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      count: kunder.length,
+      kunder
+    });
+  } catch (error) {
+    console.error('GET dashboard/utan-aktuell-riskbedomning:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa listan' });
   }
 });
 

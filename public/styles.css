@@ -3166,6 +3166,24 @@ body.sidebar-collapsed .logout-btn {
     font-size: 0.8rem;
     color: var(--text);
 }
+.dashboard-row-link--risk {
+    align-items: flex-start;
+    padding-top: 0.65rem;
+    padding-bottom: 0.65rem;
+}
+.dashboard-row-link--risk .dashboard-row-details {
+    flex: 1.4;
+    min-width: 0;
+}
+.dashboard-row-link--risk .kundlista-row-meta {
+    flex-shrink: 1;
+}
+.dashboard-missing-hint {
+    margin-top: 0.25rem;
+    font-size: 0.74rem;
+    line-height: 1.35;
+    color: #b45309;
+}
 .dashboard-row-link .kundlista-row-icon {
     flex-shrink: 0;
 }

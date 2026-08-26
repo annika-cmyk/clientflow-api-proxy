@@ -557,35 +557,19 @@ class ClientFlowApp {
         container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/kunddata`, {
-                method: 'POST',
-                ...opts,
-                body: JSON.stringify({})
-            });
+            const response = await fetch(`${this.baseUrl}/api/dashboard/utan-aktuell-riskbedomning`, opts);
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const data = await response.json();
-            const records = (data.success && data.data) ? data.data : [];
-
-            const utanRiskbedomning = records.filter(r => {
-                const f = r.fields || {};
-                const riskniva = (f['Riskniva'] || '').trim();
-                const bedomning = (f['Byrans riskbedomning'] || '').trim();
-                return !riskniva && !bedomning;
-            }).map(r => ({
-                id: r.id,
-                namn: r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas',
-                organisationsnummer: r.fields?.Orgnr || r.fields?.Organisationsnummer || '',
-                bolagsform: r.fields?.Bolagsform || ''
-            })).sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
+            const utanRiskbedomning = Array.isArray(data.kunder) ? data.kunder : [];
 
             this.updateDashboardCount('riskbedomning', utanRiskbedomning.length);
             if (utanRiskbedomning.length === 0) {
                 container.innerHTML = `
                     <div class="kundlista-empty">
                         <i class="fas fa-check-circle"></i>
-                        <p>Alla kunder har genomgången riskbedömning.</p>
+                        <p>Alla kunder har aktuell riskbedömning enligt kraven.</p>
                     </div>`;
                 return;
             }
@@ -593,14 +577,19 @@ class ClientFlowApp {
             container.innerHTML = `
                 <div class="kundlista-table">
                     ${utanRiskbedomning.map(c => `
-                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link">
+                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link dashboard-row-link--risk">
                             <div class="kundlista-row-name">
                                 <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
                                 <span class="kundlista-row-namn">${this.escapeHtml(c.namn)}</span>
                             </div>
-                            <div class="kundlista-row-meta">
-                                ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
-                                ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
+                            <div class="dashboard-row-details">
+                                <div class="kundlista-row-meta">
+                                    ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
+                                    ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
+                                </div>
+                                ${Array.isArray(c.missingLabels) && c.missingLabels.length
+                                    ? `<div class="dashboard-missing-hint">${this.escapeHtml(c.missingLabels.join(' · '))}</div>`
+                                    : ''}
                             </div>
                             <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
                         </a>
@@ -608,7 +597,7 @@ class ClientFlowApp {
                 </div>`;
 
         } catch (error) {
-            console.error('Fel vid laddning av kunder utan riskbedömning:', error);
+            console.error('Fel vid laddning av kunder utan aktuell riskbedömning:', error);
             this.updateDashboardCount('riskbedomning', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
