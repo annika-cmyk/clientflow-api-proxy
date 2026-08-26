@@ -12790,10 +12790,11 @@ class CustomerCardManager {
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
         if (!content) return;
-        const categoryOrder = ['riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
+        const categoryOrder = ['riskbedomning', 'historik_riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
         const alwaysShow = ['historik'];
         const categoryIcons = {
             riskbedomning: 'fa-clipboard-check',
+            historik_riskbedomning: 'fa-clipboard-list',
             historik: 'fa-clock-rotate-left',
             arsredovisning: 'fa-file-invoice',
             uppdragsavtal: 'fa-file-signature',
@@ -12875,6 +12876,7 @@ class CustomerCardManager {
     getCategoryLabel(cat) {
         const labels = {
             riskbedomning: 'Dokumentation riskbedömning',
+            historik_riskbedomning: 'Historik Riskbedömning',
             historik: 'Dokumentation - historik',
             arsredovisning: 'Årsredovisningar',
             uppdragsavtal: 'Uppdragsavtal',
@@ -14256,6 +14258,7 @@ class CustomerCardManager {
                                 <label for="edit-doc-category">Kategori</label>
                                 <select id="edit-doc-category" name="category" required>
                                     <option value="riskbedomning">Dokumentation riskbedömning</option>
+                                    <option value="historik_riskbedomning">Historik Riskbedömning</option>
                                     <option value="historik">Dokumentation - historik</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>
@@ -15568,6 +15571,7 @@ class CustomerCardManager {
                                 <label for="upload-doc-category">Kategori *</label>
                                 <select id="upload-doc-category" name="category" required>
                                     <option value="riskbedomning">Dokumentation riskbedömning</option>
+                                    <option value="historik_riskbedomning">Historik Riskbedömning</option>
                                     <option value="historik">Dokumentation - historik</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>

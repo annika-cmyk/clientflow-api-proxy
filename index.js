@@ -7987,15 +7987,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       if (item && (item.url || item.filename)) allItems.push(item);
     });
 
-    const categoryLabels = {
-      riskbedomning: 'Dokumentation riskbedömning',
-      historik: 'Dokumentation - historik',
-      arsredovisning: 'Årsredovisningar',
-      uppdragsavtal: 'Uppdragsavtal',
-      kyc: 'KYC-formulär',
-      bolagsverket_skatteverket: 'Bolagsverket och Skatteverket',
-      ovrigt: 'Övrigt'
-    };
+    const categoryLabels = dokumentKategori.CATEGORY_LABELS;
 
     const documents = allItems.map((a, i) => {
       const isPep = a._typ === 'pep';
