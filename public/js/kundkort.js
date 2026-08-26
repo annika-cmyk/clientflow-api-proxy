@@ -14393,7 +14393,7 @@ class CustomerCardManager {
             ['kyc', 'KYC-formulär'],
             ['kund_riskbedomning', 'Kundens riskbedömning'],
             ['pep_sanktion', 'PEP-sanktionssökningar'],
-            ['ovrigt_risk', 'Övrigt dokumentation riskbedömning']
+            ['ovrigt_risk', 'Övrigt']
         ];
         const cur = selected || 'ovrigt_risk';
         return `<select id="${selectId}" name="subcategory">
@@ -14462,7 +14462,6 @@ class CustomerCardManager {
                             <div class="form-group" id="edit-doc-subcategory-wrap" style="display:none;">
                                 <label for="edit-doc-subcategory">Underkategori</label>
                                 ${this._riskSubcategorySelectHtml('edit-doc-subcategory', subcategory || (category === 'kyc' ? 'kyc' : 'ovrigt_risk'))}
-                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">KYC-formulär bockar automatiskt i ”Finns utanför ClientFlow” och sätter utfört datum.</p>
                             </div>
                             <div class="form-group" id="edit-doc-custom-wrap" style="display:none;">
                                 <label for="edit-doc-custom">Egen kategori (valfritt)</label>
@@ -15811,7 +15810,6 @@ class CustomerCardManager {
                             <div class="form-group" id="upload-doc-subcategory-wrap" style="display:none;">
                                 <label for="upload-doc-subcategory">Underkategori</label>
                                 ${this._riskSubcategorySelectHtml('upload-doc-subcategory', 'ovrigt_risk')}
-                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Välj KYC-formulär för att markera fliken KYC som klar med dokumentets datum.</p>
                             </div>
                             <div class="form-group" id="upload-doc-custom-wrap" style="display:none;">
                                 <label for="upload-doc-custom">Egen kategori (valfritt)</label>
