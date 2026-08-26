@@ -14027,7 +14027,7 @@ class CustomerCardManager {
                     ${nameHtml}
                     ${safeBeskr ? `<span class="document-list-meta">${safeBeskr}</span>` : ''}
                 </div>
-                <div class="document-list-date-col" onclick="event.stopPropagation()">
+                <div class="document-list-date-col" onclick="event.stopPropagation(); customerCardManager.onDocumentDateColClick(event, this)">
                     ${dateHtml}
                 </div>
                 <div class="document-list-buttons" onclick="event.stopPropagation()">
@@ -14036,6 +14036,18 @@ class CustomerCardManager {
                 </div>
             </li>
         `;
+    }
+
+    onDocumentDateColClick(event, col) {
+        if (!col) return;
+        if (col.querySelector('.document-created-date-input')) return;
+        const trigger = col.querySelector('.document-list-date--editable, .document-list-date-missing');
+        if (!trigger) return;
+        if (event && event.target && (event.target === trigger || trigger.contains(event.target))) {
+            // Knappen hanterar själv via onclick
+            return;
+        }
+        this.beginEditCreatedDate(trigger);
     }
 
     onDocumentRowKeydown(event, el) {

@@ -6735,7 +6735,7 @@ button.document-list-date--editable {
     appearance: none;
     border: 0;
     background: transparent;
-    padding: 0.15rem 0.2rem;
+    padding: 0.25rem 0.35rem;
     margin: 0;
     font: inherit;
     font-size: 0.82rem;
@@ -6743,6 +6743,9 @@ button.document-list-date--editable {
     white-space: nowrap;
     cursor: pointer;
     border-radius: 4px;
+    min-width: 6.5rem;
+    text-align: right;
+    width: 100%;
 }
 button.document-list-date--editable:hover,
 button.document-list-date--editable:focus-visible {
@@ -6759,6 +6762,9 @@ button.document-list-date--editable:focus-visible {
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.82rem;
+    min-width: 6.5rem;
+    width: 100%;
+    text-align: right;
 }
 .document-list-date-missing:hover,
 .document-list-date-missing:focus-visible {
