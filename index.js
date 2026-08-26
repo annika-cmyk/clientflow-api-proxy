@@ -100,6 +100,7 @@ const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
 const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const kycUppfoljning = require('./lib/kyc-uppfoljning');
+const kycDokumentSync = require('./lib/kyc-dokument-sync');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
 const auditLog = require('./lib/audit-log');
@@ -4888,6 +4889,27 @@ async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, 
   return saved;
 }
 
+async function applyKycDokumentUtanforSync(airtableToken, baseId, customerId, fields, kategorier) {
+  const patch = kycDokumentSync.buildKycUtanforSyncPatch(fields || {}, kategorier);
+  if (!patch) return { changed: false, patch: null };
+  const tableId = kunddataTableId();
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}/${customerId}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  try {
+    await axios.patch(url, { fields: patch, typecast: true }, { headers });
+  } catch (e) {
+    const unknown = String(e.response?.data?.error?.message || '').match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+    if (unknown && unknown in patch) {
+      delete patch[unknown];
+      if (!Object.keys(patch).length) return { changed: false, patch: null };
+      await axios.patch(url, { fields: patch, typecast: true }, { headers });
+    } else {
+      throw e;
+    }
+  }
+  return { changed: true, patch };
+}
+
 async function applyKycTriggerUpdates(airtableToken, baseId, customerId, prevFields, nextFields, opts = {}) {
   const existingRaw = nextFields[kycUppfoljning.UPPFOLJNING_FIELD] ?? prevFields[kycUppfoljning.UPPFOLJNING_FIELD];
   const { changed, uppfoljning, detected } = kycUppfoljning.applyDetectedTriggers(
@@ -8101,6 +8123,22 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       }
     }
 
+    let kycUtanforSync = null;
+    try {
+      kycUtanforSync = await applyKycDokumentUtanforSync(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        f,
+        dokumentationKategorier
+      );
+      if (kycUtanforSync?.changed && kycUtanforSync.patch) {
+        Object.assign(f, kycUtanforSync.patch);
+      }
+    } catch (kycSyncErr) {
+      console.warn('Kunde inte synka KYC utanför ClientFlow från dokument:', kycSyncErr.message);
+    }
+
     const categoryLabels = dokumentKategori.CATEGORY_LABELS;
     const subcategoryLabels = dokumentRiskSubkategori.SUBCATEGORY_LABELS;
 
@@ -8159,7 +8197,15 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     });
 
     res.set('Cache-Control', 'no-store');
-    res.json({ documents });
+    res.json({
+      documents,
+      kycUtanforSync: kycUtanforSync?.changed
+        ? {
+          utanfor: !!f[kycDokumentSync.UTANFOR_FIELD],
+          utfordDatum: dokumentKategori.toDateOnly(f[kycDokumentSync.UTFOERD_DATUM_FIELD]) || ''
+        }
+        : undefined
+    });
   } catch (error) {
     console.error('\u274c GET documents:', error.message);
     res.status(500).json({ error: error.message });
@@ -8418,7 +8464,7 @@ const DOCUMENT_CATEGORIES = dokumentKategori.DOCUMENT_CATEGORIES;
 app.patch('/api/documents', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
-    const { customerId, sourceField, sourceIndex, displayName, category, customCategory, createdDate } = req.body || {};
+    const { customerId, sourceField, sourceIndex, displayName, category, customCategory, createdDate, subcategory } = req.body || {};
     if (!customerId || !sourceField || sourceIndex == null) {
       return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
     }
@@ -8448,7 +8494,8 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       displayName,
       category,
       customCategory,
-      createdDate
+      createdDate,
+      subcategory
     });
     if (plan.error) return res.status(plan.status || 400).json({ error: plan.error });
 
@@ -8458,13 +8505,37 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
+    let kycUtanforSync = null;
+    try {
+      const mergedFields = { ...f, ...plan.patchFields };
+      kycUtanforSync = await applyKycDokumentUtanforSync(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        mergedFields,
+        plan.nextKategorier
+      );
+    } catch (kycSyncErr) {
+      console.warn('Kunde inte synka KYC utanför ClientFlow efter dokumentredigering:', kycSyncErr.message);
+    }
+
     res.json({
       success: true,
       message: 'Dokument uppdaterat',
       displayName: plan.displayName,
       category: plan.nextCategory,
+      subcategory: plan.subcategory,
       sourceField: plan.destField,
-      moved: plan.moved
+      moved: plan.moved,
+      kycUtanforSync: kycUtanforSync?.changed
+        ? {
+          utanfor: true,
+          utfordDatum: kycUtanforSync.patch?.[kycDokumentSync.UTFOERD_DATUM_FIELD]
+            || dokumentKategori.toDateOnly(f[kycDokumentSync.UTFOERD_DATUM_FIELD])
+            || plan.createdDate
+            || ''
+        }
+        : undefined
     });
   } catch (error) {
     const status = error.response?.status;
@@ -8485,7 +8556,7 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
 app.post('/api/documents/upload', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
-    const { customerId, file: fileBase64, filename, category, customCategory, createdDate: createdDateInput } = req.body;
+    const { customerId, file: fileBase64, filename, category, customCategory, createdDate: createdDateInput, subcategory: subcategoryInput } = req.body;
     if (!customerId || !filename) return res.status(400).json({ error: 'customerId och filename krävs' });
     const cat = dokumentKategori.normalizeDokumentCategory(category);
     if ((category || '').trim() && !dokumentKategori.DOCUMENT_CATEGORIES.includes(String(category).trim())) {
@@ -8601,7 +8672,7 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
         metaCategory = dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY;
         subcategory = 'kyc';
       } else if (cat === dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY || cat === dokumentRiskSubkategori.HISTORIK_RISK_CATEGORY) {
-        subcategory = 'ovrigt_risk';
+        subcategory = dokumentRiskSubkategori.normalizeSubcategory(subcategoryInput) || 'ovrigt_risk';
       }
       const entry = {
         filename,
@@ -8617,6 +8688,42 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
         { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       );
+
+      let kycUtanforSync = null;
+      try {
+        kycUtanforSync = await applyKycDokumentUtanforSync(
+          airtableAccessToken,
+          airtableBaseId,
+          customerId,
+          latestFields,
+          kategorier
+        );
+      } catch (kycSyncErr) {
+        console.warn('Kunde inte synka KYC utanför ClientFlow efter uppladdning:', kycSyncErr.message);
+      }
+      if (uploadedToHistorikField) {
+        return res.json({
+          success: true,
+          message: 'Dokument uppladdat',
+          category: cat,
+          subcategory: subcategory || undefined,
+          createdDate: uploadCreatedDate,
+          kycUtanforSync: kycUtanforSync?.changed || undefined
+        });
+      }
+      return res.json({
+        success: true,
+        message: 'Dokument uppladdat',
+        category: cat,
+        subcategory: subcategory || undefined,
+        createdDate: uploadCreatedDate,
+        kycUtanforSync: kycUtanforSync?.changed
+          ? {
+            utanfor: true,
+            utfordDatum: kycUtanforSync.patch?.[kycDokumentSync.UTFOERD_DATUM_FIELD] || uploadCreatedDate
+          }
+          : undefined
+      });
     } catch (e) {
       console.warn('Kunde inte spara kategori (lägg till fältet "Dokumentation Kategorier" i Airtable om kategorier ska sparas):', e.message);
     }
@@ -16040,7 +16147,37 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
       } catch (_) { /* GET ska inte fallera om Inleed är otillgängligt */ }
     }
 
-    res.json({ kyc, inleed });
+    let kycUtanforSync = null;
+    try {
+      const kategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
+      // Om Inleed just markerade Signerat, använd uppdaterad kyc i fields-bilden
+      const fieldsForSync = {
+        ...f,
+        'KYC-formular (JSON)': JSON.stringify(kyc)
+      };
+      kycUtanforSync = await applyKycDokumentUtanforSync(
+        airtableAccessToken,
+        baseId,
+        customerId,
+        fieldsForSync,
+        kategorier
+      );
+      if (kycUtanforSync?.changed && kycUtanforSync.patch) {
+        Object.assign(f, kycUtanforSync.patch);
+      }
+    } catch (kycSyncErr) {
+      console.warn('Kunde inte synka KYC utanför ClientFlow vid KYC-hämtning:', kycSyncErr.message);
+    }
+
+    res.json({
+      kyc,
+      inleed,
+      customerFields: {
+        [kycDokumentSync.UTANFOR_FIELD]: f[kycDokumentSync.UTANFOR_FIELD],
+        [kycDokumentSync.UTFOERD_DATUM_FIELD]: f[kycDokumentSync.UTFOERD_DATUM_FIELD]
+      },
+      kycUtanforSync: kycUtanforSync?.changed || undefined
+    });
   } catch (error) {
     console.error('❌ Error fetching KYC-formular:', error.message);
     res.status(500).json({ error: 'Kunde inte hämta KYC-formulär.' });

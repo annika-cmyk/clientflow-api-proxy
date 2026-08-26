@@ -10120,6 +10120,9 @@ class CustomerCardManager {
                 const data = await res.json();
                 savedKyc = data.kyc || {};
                 this._kycInleed = data.inleed || null;
+                if (data.customerFields && this.customerData?.fields) {
+                    Object.assign(this.customerData.fields, data.customerFields);
+                }
             }
         } catch (e) {
             console.warn('Kunde inte hämta sparat KYC-formulär:', e.message);
@@ -12777,6 +12780,7 @@ class CustomerCardManager {
             });
             if (response.ok) {
                 const data = await response.json();
+                this._applyKycUtanforSyncFromResponse(data);
                 this.displayDocuments(data.documents || []);
             } else {
                 this.displayEmptyDocuments();
@@ -13997,7 +14001,7 @@ class CustomerCardManager {
             ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="event.stopPropagation(); customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
             : '';
         const editBtn = hasSource
-            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" data-created-date="${this.escapeDocHtml(skapatDatum)}" data-created-date-editable="${createdDateEditable ? '1' : '0'}" title="Redigera namn och kategori" onclick="event.stopPropagation(); customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-subcategory="${this.escapeDocHtml(doc.subcategory || '')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" data-created-date="${this.escapeDocHtml(skapatDatum)}" data-created-date-editable="${createdDateEditable ? '1' : '0'}" title="Redigera namn och kategori" onclick="event.stopPropagation(); customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
             : '';
         const nameHtml = canOpen
             ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Visa dokument" onclick="event.stopPropagation(); customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
@@ -14372,6 +14376,7 @@ class CustomerCardManager {
             sourceIndex: btn.getAttribute('data-source-index'),
             name: btn.getAttribute('data-doc-name') || 'Dokument',
             category: btn.getAttribute('data-category') || 'ovrigt',
+            subcategory: btn.getAttribute('data-subcategory') || '',
             customCategory: btn.getAttribute('data-custom-category') || '',
             createdDate: btn.getAttribute('data-created-date') || '',
             createdDateEditable: btn.getAttribute('data-created-date-editable') === '1'
@@ -14383,7 +14388,34 @@ class CustomerCardManager {
         if (modal) modal.remove();
     }
 
-    showEditDocumentModal({ sourceField, sourceIndex, name, category, customCategory, createdDate, createdDateEditable }) {
+    _riskSubcategorySelectHtml(selectId, selected) {
+        const opts = [
+            ['kyc', 'KYC-formulär'],
+            ['kund_riskbedomning', 'Kundens riskbedömning'],
+            ['pep_sanktion', 'PEP-sanktionssökningar'],
+            ['ovrigt_risk', 'Övrigt dokumentation riskbedömning']
+        ];
+        const cur = selected || 'ovrigt_risk';
+        return `<select id="${selectId}" name="subcategory">
+            ${opts.map(([v, label]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>`;
+    }
+
+    _toggleRiskSubcategoryWrap(catSelect, subWrap) {
+        if (!catSelect || !subWrap) return;
+        const show = catSelect.value === 'riskbedomning' || catSelect.value === 'historik_riskbedomning';
+        subWrap.style.display = show ? 'block' : 'none';
+    }
+
+    _applyKycUtanforSyncFromResponse(data) {
+        if (!data?.kycUtanforSync || !this.customerData?.fields) return;
+        this.customerData.fields['KYC-formulär utanför ClientFlow'] = !!data.kycUtanforSync.utanfor;
+        if (data.kycUtanforSync.utfordDatum) {
+            this.customerData.fields['KYC UTFÖRD DATUM'] = data.kycUtanforSync.utfordDatum;
+        }
+    }
+
+    showEditDocumentModal({ sourceField, sourceIndex, name, category, subcategory, customCategory, createdDate, createdDateEditable }) {
         this.closeEditDocumentModal();
         const createdDateField = createdDateEditable
             ? `<div class="form-group">
@@ -14427,6 +14459,11 @@ class CustomerCardManager {
                                     <option value="ovrigt">Övrigt</option>
                                 </select>
                             </div>
+                            <div class="form-group" id="edit-doc-subcategory-wrap" style="display:none;">
+                                <label for="edit-doc-subcategory">Underkategori</label>
+                                ${this._riskSubcategorySelectHtml('edit-doc-subcategory', subcategory || (category === 'kyc' ? 'kyc' : 'ovrigt_risk'))}
+                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">KYC-formulär bockar automatiskt i ”Finns utanför ClientFlow” och sätter utfört datum.</p>
+                            </div>
                             <div class="form-group" id="edit-doc-custom-wrap" style="display:none;">
                                 <label for="edit-doc-custom">Egen kategori (valfritt)</label>
                                 <input type="text" id="edit-doc-custom" name="customCategory" placeholder="t.ex. Specifikation, Avtal 2024" value="${this.escapeDocHtml(customCategory || '')}">
@@ -14448,14 +14485,17 @@ class CustomerCardManager {
         const form = document.getElementById('edit-document-form');
         const catSelect = document.getElementById('edit-doc-category');
         const customWrap = document.getElementById('edit-doc-custom-wrap');
+        const subWrap = document.getElementById('edit-doc-subcategory-wrap');
         if (catSelect && customWrap) {
             const normalizedCategory = category === 'kyc' ? 'riskbedomning' : category;
             if (normalizedCategory && catSelect.querySelector(`option[value="${normalizedCategory}"]`)) {
                 catSelect.value = normalizedCategory;
             }
             customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+            this._toggleRiskSubcategoryWrap(catSelect, subWrap);
             catSelect.addEventListener('change', () => {
                 customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+                this._toggleRiskSubcategoryWrap(catSelect, subWrap);
             });
         }
         if (form) {
@@ -14486,6 +14526,10 @@ class CustomerCardManager {
         }
         const category = categorySelect.value;
         const customCategory = (customInput?.value || '').trim();
+        const subcategorySelect = document.getElementById('edit-doc-subcategory');
+        const subcategory = (category === 'riskbedomning' || category === 'historik_riskbedomning')
+            ? (subcategorySelect?.value || 'ovrigt_risk')
+            : undefined;
         const createdDateInput = document.getElementById('edit-doc-created-date');
         let createdDate;
         if (createdDateInput) {
@@ -14519,15 +14563,21 @@ class CustomerCardManager {
                     sourceIndex: parseInt(sourceIndexRaw, 10),
                     displayName,
                     category,
+                    subcategory,
                     customCategory: customCategory || undefined,
                     ...(createdDate !== undefined ? { createdDate: createdDate || undefined } : {})
                 })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+            this._applyKycUtanforSyncFromResponse(data);
             this.showNotification('Dokument uppdaterat.', 'success');
             this.closeEditDocumentModal();
             this.loadDocuments();
+            if (data.kycUtanforSync && typeof this.loadKYCFormular === 'function') {
+                const kycTab = document.getElementById('kycformular-content');
+                if (kycTab) this.loadKYCFormular();
+            }
         } catch (err) {
             console.error('❌ Redigera dokument:', err);
             this.showNotification('Kunde inte spara: ' + (err.message || 'Okänt fel'), 'error');
@@ -14569,6 +14619,7 @@ class CustomerCardManager {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+            this._applyKycUtanforSyncFromResponse(data);
             this.showNotification('Skapat datum sparat.', 'success');
             return true;
         } catch (err) {
@@ -15757,6 +15808,11 @@ class CustomerCardManager {
                                     <option value="ovrigt">Övrigt</option>
                                 </select>
                             </div>
+                            <div class="form-group" id="upload-doc-subcategory-wrap" style="display:none;">
+                                <label for="upload-doc-subcategory">Underkategori</label>
+                                ${this._riskSubcategorySelectHtml('upload-doc-subcategory', 'ovrigt_risk')}
+                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Välj KYC-formulär för att markera fliken KYC som klar med dokumentets datum.</p>
+                            </div>
                             <div class="form-group" id="upload-doc-custom-wrap" style="display:none;">
                                 <label for="upload-doc-custom">Egen kategori (valfritt)</label>
                                 <input type="text" id="upload-doc-custom" name="customCategory" placeholder="t.ex. Specifikation, Avtal 2024">
@@ -15826,8 +15882,11 @@ class CustomerCardManager {
                 catSelect.value = preselectedCategory;
             }
             customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+            const subWrap = document.getElementById('upload-doc-subcategory-wrap');
+            this._toggleRiskSubcategoryWrap(catSelect, subWrap);
             catSelect.addEventListener('change', () => {
                 customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
+                this._toggleRiskSubcategoryWrap(catSelect, subWrap);
             });
         }
         if (form) {
@@ -15847,16 +15906,21 @@ class CustomerCardManager {
         const fileInput = document.getElementById('upload-doc-file');
         const categorySelect = document.getElementById('upload-doc-category');
         const customInput = document.getElementById('upload-doc-custom');
+        const subcategorySelect = document.getElementById('upload-doc-subcategory');
         const submitBtn = document.getElementById('upload-doc-submit');
         const files = (fileInput?.files?.length ? Array.from(fileInput.files) : (this._pendingUploadFiles || []));
         if (!files.length || !categorySelect) {
             this.showNotification('Välj minst en fil att ladda upp.', 'error');
             return;
         }
-        await this.uploadDocumentFiles(files, categorySelect.value, (customInput?.value || '').trim(), { submitBtn });
+        const category = categorySelect.value;
+        const subcategory = (category === 'riskbedomning' || category === 'historik_riskbedomning')
+            ? (subcategorySelect?.value || 'ovrigt_risk')
+            : undefined;
+        await this.uploadDocumentFiles(files, category, (customInput?.value || '').trim(), { submitBtn, subcategory });
     }
 
-    async uploadDocumentFiles(files, category, customCategory, { submitBtn } = {}) {
+    async uploadDocumentFiles(files, category, customCategory, { submitBtn, subcategory } = {}) {
         const list = Array.from(files || []);
         if (!list.length || !category) return;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -15869,6 +15933,7 @@ class CustomerCardManager {
         }
         const errors = [];
         let uploaded = 0;
+        let lastKycSync = null;
         try {
             for (let i = 0; i < list.length; i++) {
                 const file = list[i];
@@ -15887,20 +15952,24 @@ class CustomerCardManager {
                             file: base64,
                             filename: file.name,
                             category,
+                            subcategory,
                             customCategory: customCategory || undefined
                         })
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+                    if (data.kycUtanforSync) lastKycSync = data;
                     uploaded += 1;
                 } catch (err) {
                     errors.push(`${file.name}: ${err.message || 'Okänt fel'}`);
                 }
             }
+            if (lastKycSync) this._applyKycUtanforSyncFromResponse(lastKycSync);
             if (uploaded && !errors.length) {
                 this.showNotification(uploaded === 1 ? 'Dokument uppladdat.' : `${uploaded} dokument uppladdade.`, 'success');
                 this.closeUploadDocumentModal();
                 this.loadDocuments();
+                if (lastKycSync && document.getElementById('kycformular-content')) this.loadKYCFormular();
             } else if (uploaded && errors.length) {
                 this.showNotification(`${uploaded} uppladdade, ${errors.length} misslyckades. ${errors[0]}`, 'warning');
                 this.closeUploadDocumentModal();
