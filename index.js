@@ -99,6 +99,7 @@ const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
 const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
+const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
 const auditLog = require('./lib/audit-log');
@@ -2468,7 +2469,8 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   { name: 'Verksamhet', type: 'multilineText', description: 'Vad gör kunden (byråns beskrivning av verksamheten).' },
   { name: 'Kostnader', type: 'multilineText', description: 'Kundens kostnader, leverantörer och hur betalning sker.' },
   { name: 'Intäkterna', type: 'multilineText', description: 'Kundens kunder, hur de möts, hur de tar betalt och systemstöd.' },
-  { name: 'Bokföring beskrivning', type: 'multilineText', description: 'Hur underlag kommer in, bankinlogg, ordning och kännedom om kunden/branschen.' }
+  { name: 'Bokföring beskrivning', type: 'multilineText', description: 'Hur underlag kommer in, bankinlogg, ordning och kännedom om kunden/branschen.' },
+  { name: kycUppfoljning.UPPFOLJNING_FIELD, type: 'multilineText', description: 'JSON: KYC-uppföljning – intervalltriggers (adress, ägare, stor transaktion) och snapshots.' }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -4886,6 +4888,45 @@ async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, 
   return saved;
 }
 
+async function applyKycTriggerUpdates(airtableToken, baseId, customerId, prevFields, nextFields, opts = {}) {
+  const existingRaw = nextFields[kycUppfoljning.UPPFOLJNING_FIELD] ?? prevFields[kycUppfoljning.UPPFOLJNING_FIELD];
+  const { changed, uppfoljning, detected } = kycUppfoljning.applyDetectedTriggers(
+    existingRaw,
+    prevFields || {},
+    nextFields || {},
+    { avvikelseTyp: opts.avvikelseTyp }
+  );
+  if (!changed || !detected.length) return { changed: false, archived: false, detected: [] };
+
+  const patchFields = {
+    [kycUppfoljning.UPPFOLJNING_FIELD]: kycUppfoljning.serializeUppfoljning(uppfoljning)
+  };
+  let kategorier = dokumentKategori.parseDokumentKategorier(nextFields['Dokumentation Kategorier']);
+  const archivedKategorier = dokumentRiskSubkategori.archiveAktuellKyc(kategorier);
+  if (dokumentRiskSubkategori.kategorierChanged(kategorier, archivedKategorier)) {
+    patchFields['Dokumentation Kategorier'] = JSON.stringify(archivedKategorier);
+  }
+
+  await ensureKunddataOptionalFields(airtableToken, baseId);
+  const tableId = kunddataTableId();
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}/${customerId}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  try {
+    await axios.patch(url, { fields: patchFields }, { headers });
+  } catch (e) {
+    const unknown = String(e.response?.data?.error?.message || '').match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+    if (unknown === kycUppfoljning.UPPFOLJNING_FIELD) {
+      delete patchFields[kycUppfoljning.UPPFOLJNING_FIELD];
+      if (Object.keys(patchFields).length) {
+        await axios.patch(url, { fields: patchFields }, { headers });
+      }
+    } else {
+      throw e;
+    }
+  }
+  return { changed: true, archived: !!patchFields['Dokumentation Kategorier'], detected };
+}
+
 async function upsertCustomerDokumentMetadata(airtableToken, baseId, customerId, attachment, updates, archiveOpts) {
   try {
     const custRes = await axios.get(
@@ -4898,7 +4939,11 @@ async function upsertCustomerDokumentMetadata(airtableToken, baseId, customerId,
       kategorier = dokumentRiskSubkategori.archivePriorOnNew(kategorier, archiveOpts);
     }
     kategorier = dokumentKategori.upsertDokumentKategori(kategorier, attachment, updates);
-    kategorier = dokumentRiskSubkategori.applyAgeBasedArchive(kategorier, new Date().toISOString().slice(0, 10));
+    kategorier = dokumentRiskSubkategori.applyAgeBasedArchive(
+      kategorier,
+      new Date().toISOString().slice(0, 10),
+      { customerFields: f }
+    );
     await axios.patch(
       `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
       { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
@@ -6607,9 +6652,23 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (!airtableRes) {
       return res.status(422).json({ error: 'Kunde inte spara något fält', skipped });
     }
+    const afterFields = airtableRes.data.fields || { ...(customerRecord.fields || {}), ...payload };
+    const kycTriggerTouched = ['Address', 'Verklig huvudman'].some((k) => Object.prototype.hasOwnProperty.call(payload, k));
+    if (kycTriggerTouched) {
+      try {
+        await applyKycTriggerUpdates(
+          airtableAccessToken,
+          airtableBaseId,
+          id,
+          customerRecord.fields || {},
+          afterFields
+        );
+      } catch (kycErr) {
+        console.warn('⚠️ KYC trigger-uppföljning:', kycErr.message);
+      }
+    }
     console.log('✅ Kund uppdaterad i Airtable:', airtableRes.data.id);
     res.json({ success: true, id: airtableRes.data.id, record: airtableRes.data, skipped });
-    const afterFields = airtableRes.data.fields || { ...(customerRecord.fields || {}), ...payload };
     const aiAudit = req.body && req.body.aiAudit;
     actorForRequest(req, userData).then(async (actor) => {
       const byraId = afterFields['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || userData.byraId || '';
@@ -8028,7 +8087,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
     });
 
     const todayIso = new Date().toISOString().slice(0, 10);
-    const sync = dokumentRiskSubkategori.syncRiskMetadata(dokumentationKategorier, allItems, todayIso);
+    const sync = dokumentRiskSubkategori.syncRiskMetadata(dokumentationKategorier, allItems, todayIso, { customerFields: f });
     if (sync.changed) {
       dokumentationKategorier = sync.nextKategorier;
       try {
@@ -15596,6 +15655,27 @@ app.post('/api/avvikelser', authenticateToken, async (req, res) => {
     );
 
     console.log('✅ Avvikelse sparad:', response.data.id);
+    const avvikelseTyp = avvikelseData.typ || '';
+    if (/ovanlig transaktion/i.test(avvikelseTyp) && avvikelseData.customerId) {
+      try {
+        const KUNDDATA_TABLE = kunddataTableId();
+        const custRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${avvikelseData.customerId}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        const custFields = custRes.data.fields || {};
+        await applyKycTriggerUpdates(
+          airtableAccessToken,
+          airtableBaseId,
+          avvikelseData.customerId,
+          custFields,
+          custFields,
+          { avvikelseTyp }
+        );
+      } catch (kycErr) {
+        console.warn('⚠️ KYC trigger vid avvikelse:', kycErr.message);
+      }
+    }
     res.json({ success: true, record: response.data, message: 'Avvikelse sparad' });
     actorForRequest(req, userData).then((actor) => auditHooks.logAvvikelse({
       write: writeAuditEvent,
@@ -16482,9 +16562,19 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       });
       if (sent.receipt) kycData.receipt = sent.receipt;
     }
+    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+    const clearedUppfoljning = kycUppfoljning.clearTriggersAfterNewKyc(
+      custFields[kycUppfoljning.UPPFOLJNING_FIELD],
+      custFields
+    );
     await axios.patch(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-      { fields: { 'KYC-formular (JSON)': JSON.stringify(kycData) } },
+      {
+        fields: {
+          'KYC-formular (JSON)': JSON.stringify(kycData),
+          [kycUppfoljning.UPPFOLJNING_FIELD]: kycUppfoljning.serializeUppfoljning(clearedUppfoljning)
+        }
+      },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
