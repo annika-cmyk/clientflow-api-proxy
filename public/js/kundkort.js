@@ -12830,7 +12830,14 @@ class CustomerCardManager {
                    </label>`
                 : '';
             const listHtml = list.length
-                ? `<ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
+                ? `<div class="document-list-head" aria-hidden="true">
+                        <span class="document-list-head-pick"></span>
+                        <span class="document-list-head-icon"></span>
+                        <span class="document-list-head-name">Dokument</span>
+                        <span class="document-list-head-date">Skapat datum</span>
+                        <span class="document-list-head-actions">Åtgärder</span>
+                   </div>
+                   <ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
                 : `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
             return `
                     <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc" data-doc-category="${this.escapeDocHtml(cat)}">
@@ -13933,8 +13940,9 @@ class CustomerCardManager {
         const fields = doc.fields || {};
         const namn = fields['Namn'] || doc.filename || 'Namnlös fil';
         const url = doc.url || '';
-        const datum = fields['UppladdadDatum'] || (typeof namn === 'string' ? namn.match(/\d{4}-\d{2}-\d{2}/)?.[0] : null) || '-';
+        const skapatDatum = fields['SkapatDatum'] || fields['UppladdadDatum'] || '';
         const beskrivning = fields['Beskrivning'] || '';
+        const createdDateEditable = fields['SkapatDatumRedigerbart'] !== false;
         const safeNamn = this.escapeDocHtml(namn);
         const safeBeskr = this.escapeDocHtml(beskrivning);
         const safeFilename = this.escapeDocHtml((doc.filename || namn || '').replace(/"/g, ''));
@@ -13951,7 +13959,7 @@ class CustomerCardManager {
             ? `<button type="button" class="btn btn-ghost btn-sm document-delete-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" title="Ta bort dokument" onclick="customerCardManager.deleteDocumentFromBtn(this)"><i class="fas fa-trash-alt"></i></button>`
             : '';
         const editBtn = hasSource
-            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" title="Redigera namn och kategori" onclick="customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm document-edit-btn" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" data-doc-name="${safeNamn}" data-category="${this.escapeDocHtml(doc.category || 'ovrigt')}" data-custom-category="${this.escapeDocHtml(doc.customCategory || '')}" data-created-date="${this.escapeDocHtml(skapatDatum)}" data-created-date-editable="${createdDateEditable ? '1' : '0'}" title="Redigera namn och kategori" onclick="customerCardManager.editDocumentFromBtn(this)"><i class="fas fa-pencil-alt"></i> Redigera</button>`
             : '';
         const nameHtml = canOpen
             ? `<button type="button" class="document-list-name document-list-name--preview" ${previewAttrs} title="Förhandsgranska" onclick="customerCardManager.previewDocumentFromBtn(this)">${safeNamn}</button>`
@@ -13961,13 +13969,19 @@ class CustomerCardManager {
                     <input type="checkbox" class="document-export-check" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" aria-label="Välj ${safeNamn} för export">
                </label>`
             : `<span class="document-export-pick document-export-pick--empty"></span>`;
+        const dateHtml = hasSource && createdDateEditable
+            ? `<input type="date" class="document-created-date-input" value="${this.escapeDocHtml(skapatDatum)}" data-source-field="${this.escapeDocHtml(doc.sourceField || '')}" data-source-index="${doc.sourceIndex}" title="Skapat datum" onchange="customerCardManager.saveCreatedDateFromInput(this)">`
+            : `<span class="document-list-date" title="${createdDateEditable ? '' : 'Datum från signering i ClientFlow'}">${this.escapeDocHtml(skapatDatum || '–')}</span>`;
         return `
             <li class="document-list-item">
                 ${checkHtml}
                 <i class="fas fa-file-pdf document-list-icon"></i>
                 <div class="document-list-info">
                     ${nameHtml}
-                    <span class="document-list-meta">${safeBeskr ? safeBeskr + ' · ' : ''}${this.escapeDocHtml(datum)}</span>
+                    ${safeBeskr ? `<span class="document-list-meta">${safeBeskr}</span>` : ''}
+                </div>
+                <div class="document-list-date-col">
+                    ${dateHtml}
                 </div>
                 <div class="document-list-buttons">
                     ${previewBtn}
@@ -14195,7 +14209,9 @@ class CustomerCardManager {
             sourceIndex: btn.getAttribute('data-source-index'),
             name: btn.getAttribute('data-doc-name') || 'Dokument',
             category: btn.getAttribute('data-category') || 'ovrigt',
-            customCategory: btn.getAttribute('data-custom-category') || ''
+            customCategory: btn.getAttribute('data-custom-category') || '',
+            createdDate: btn.getAttribute('data-created-date') || '',
+            createdDateEditable: btn.getAttribute('data-created-date-editable') === '1'
         });
     }
 
@@ -14204,8 +14220,20 @@ class CustomerCardManager {
         if (modal) modal.remove();
     }
 
-    showEditDocumentModal({ sourceField, sourceIndex, name, category, customCategory }) {
+    showEditDocumentModal({ sourceField, sourceIndex, name, category, customCategory, createdDate, createdDateEditable }) {
         this.closeEditDocumentModal();
+        const createdDateField = createdDateEditable
+            ? `<div class="form-group">
+                <label for="edit-doc-created-date">Skapat datum</label>
+                <input type="date" id="edit-doc-created-date" name="createdDate" value="${this.escapeDocHtml(createdDate || '')}">
+                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Ange när dokumentet ursprungligen skapades eller signerades.</p>
+               </div>`
+            : (createdDate
+                ? `<div class="form-group">
+                    <label>Skapat datum</label>
+                    <p class="bv-verksam-hint" style="margin:0;">${this.escapeDocHtml(createdDate)} (låst – dokument skapat i ClientFlow)</p>
+                   </div>`
+                : '');
         const modalHTML = `
             <div id="edit-document-modal" class="modal-overlay">
                 <div class="modal-content">
@@ -14240,6 +14268,7 @@ class CustomerCardManager {
                                 <label for="edit-doc-custom">Egen kategori (valfritt)</label>
                                 <input type="text" id="edit-doc-custom" name="customCategory" placeholder="t.ex. Specifikation, Avtal 2024" value="${this.escapeDocHtml(customCategory || '')}">
                             </div>
+                            ${createdDateField}
                             <div class="form-actions">
                                 <button type="button" class="btn btn-ghost" onclick="customerCardManager.closeEditDocumentModal()">Avbryt</button>
                                 <button type="submit" class="btn btn-primary" id="edit-doc-submit">
@@ -14293,6 +14322,8 @@ class CustomerCardManager {
         }
         const category = categorySelect.value;
         const customCategory = (customInput?.value || '').trim();
+        const createdDateInput = document.getElementById('edit-doc-created-date');
+        const createdDate = createdDateInput ? (createdDateInput.value || '').trim() : undefined;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
         if (submitBtn) {
             submitBtn.disabled = true;
@@ -14310,7 +14341,8 @@ class CustomerCardManager {
                     sourceIndex: parseInt(sourceIndexRaw, 10),
                     displayName,
                     category,
-                    customCategory: customCategory || undefined
+                    customCategory: customCategory || undefined,
+                    ...(createdDate !== undefined ? { createdDate: createdDate || undefined } : {})
                 })
             });
             const data = await res.json().catch(() => ({}));
@@ -14327,6 +14359,43 @@ class CustomerCardManager {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-save"></i> Spara';
             }
+        }
+    }
+
+    async saveCreatedDateFromInput(input) {
+        if (!input) return;
+        const sourceField = input.getAttribute('data-source-field') || '';
+        const sourceIndexRaw = input.getAttribute('data-source-index');
+        const createdDate = (input.value || '').trim();
+        if (!sourceField || sourceIndexRaw === '' || sourceIndexRaw == null) return;
+        if (!createdDate) {
+            this.showNotification('Välj ett giltigt skapat datum.', 'error');
+            return;
+        }
+        input.disabled = true;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const opts = getAuthOptsKundkort();
+            const res = await fetch(`${baseUrl}/api/documents`, {
+                method: 'PATCH',
+                ...opts,
+                headers: { ...(opts.headers || {}), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerId: this.customerId,
+                    sourceField,
+                    sourceIndex: parseInt(sourceIndexRaw, 10),
+                    createdDate
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+            this.showNotification('Skapat datum sparat.', 'success');
+        } catch (err) {
+            console.error('❌ Spara skapat datum:', err);
+            this.showNotification('Kunde inte spara datum: ' + (err.message || 'Okänt fel'), 'error');
+            this.loadDocuments();
+        } finally {
+            input.disabled = false;
         }
     }
 

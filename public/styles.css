@@ -6679,11 +6679,30 @@ body.riskbedomning-byra-page h5 {
     flex-direction: column;
     gap: 1px;
 }
+.document-list-head,
 .document-list-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1.6rem 1rem minmax(0, 1fr) 9.5rem auto;
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 0.85rem;
+}
+.document-list-head {
+    background: transparent;
+    border: 0;
+    padding-top: 0.15rem;
+    padding-bottom: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text);
+}
+.document-list-head-date,
+.document-list-head-actions {
+    text-align: right;
+}
+.document-list-item {
     background: #f8fafc;
     border-radius: 6px;
     border: 1px solid var(--line);
@@ -6697,8 +6716,31 @@ body.riskbedomning-byra-page h5 {
     flex-shrink: 0;
 }
 .document-list-info {
-    flex: 1;
     min-width: 0;
+}
+.document-list-date-col {
+    justify-self: end;
+    min-width: 0;
+}
+.document-list-date {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text);
+    white-space: nowrap;
+}
+.document-created-date-input {
+    width: 100%;
+    max-width: 9.25rem;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.82rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--title-text);
+}
+.document-created-date-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    border-color: var(--accent);
 }
 .document-list-name {
     display: block;
@@ -6719,6 +6761,7 @@ body.riskbedomning-byra-page h5 {
     justify-content: flex-end;
     gap: 0.5rem;
     flex-shrink: 0;
+    justify-self: end;
 }
 .document-list-item .document-download-btn,
 .document-list-item .document-preview-btn,

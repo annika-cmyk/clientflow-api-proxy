@@ -4811,6 +4811,8 @@ async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, 
   const contentType = options.contentType || 'application/pdf';
   const customCategory = (options.customCategory || '').trim();
   const baseUrl = options.baseUrl || null;
+  const createdDate = dokumentKategori.toDateOnly(options.createdDate) || new Date().toISOString().slice(0, 10);
+  const systemCreated = options.systemCreated === true;
 
   let saved = await uploadAttachmentToAirtableField(
     airtableToken, baseId, customerId, fileBuffer, filename, contentType, KUNDDATA_TABLE_DOCS, 'Dokumentation'
@@ -4862,7 +4864,14 @@ async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, 
       const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
       if (raw) kategorier = JSON.parse(raw);
       if (!Array.isArray(kategorier)) kategorier = [];
-      kategorier.push({ filename, category, customCategory });
+      const entry = {
+        filename,
+        category,
+        customCategory,
+        createdDate,
+        ...(systemCreated ? { systemCreated: true } : {})
+      };
+      kategorier.push(entry);
       await axios.patch(
         `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
         { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
@@ -7995,7 +8004,17 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       const overlay = dokumentKategori.applyDokumentKategoriMeta(a, dokumentationKategorier);
       const category = overlay.category || a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt'));
       const customCategory = overlay.customCategory || a._customCategory || '';
-      const datum = a._datum || a.createdTime || (a.filename || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      const meta = dokumentKategori.findDokumentKategori(dokumentationKategorier, a);
+      const skapatDatum = dokumentKategori.resolveCreatedDate({
+        meta,
+        attachment: a,
+        fallbackDatum: a._datum
+      });
+      const createdDateEditable = dokumentKategori.isCreatedDateEditable({
+        meta,
+        sourceField: a._sourceField,
+        typ: a._typ
+      });
       let namn = overlay.displayName || a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
       const fnLower = (a.filename || '').toLowerCase();
       const autoDesc = fnLower.includes('uppdragsavtal') ? 'Uppdragsavtal' : fnLower.includes('kyc') ? 'KYC-formulär' : (a._typ === 'riskbedomning' ? 'Dokumenterad riskbedömning' : '');
@@ -8014,7 +8033,9 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
           Namn: namn,
           Filtyp: 'PDF',
           Beskrivning: beskrivning,
-          UppladdadDatum: datum,
+          UppladdadDatum: skapatDatum,
+          SkapatDatum: skapatDatum,
+          SkapatDatumRedigerbart: createdDateEditable,
           UppladdadAv: ''
         },
         url: a.url,
@@ -8282,7 +8303,7 @@ const DOCUMENT_CATEGORIES = dokumentKategori.DOCUMENT_CATEGORIES;
 app.patch('/api/documents', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
-    const { customerId, sourceField, sourceIndex, displayName, category, customCategory } = req.body || {};
+    const { customerId, sourceField, sourceIndex, displayName, category, customCategory, createdDate } = req.body || {};
     if (!customerId || !sourceField || sourceIndex == null) {
       return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
     }
@@ -8311,7 +8332,8 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       sourceIndex,
       displayName,
       category,
-      customCategory
+      customCategory,
+      createdDate
     });
     if (plan.error) return res.status(plan.status || 400).json({ error: plan.error });
 
@@ -8331,6 +8353,10 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
         const destList = Array.isArray(latest[plan.destField]) ? latest[plan.destField] : [];
         const newAtt = destList.filter((a) => dokumentKategori.filenamesMatch(a?.filename, plan.attachment.filename)).pop();
         if (newAtt?.id) {
+          const priorMeta = dokumentKategori.findDokumentKategori(
+            plan.nextKategorier || [],
+            { id: plan.attachment.id, filename: plan.attachment.filename }
+          );
           const refreshed = dokumentKategori.upsertDokumentKategori(
             dokumentKategori.parseDokumentKategorier(latest['Dokumentation Kategorier']),
             { id: plan.attachment.id, filename: plan.attachment.filename },
@@ -8339,7 +8365,9 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
               customCategory: plan.customCategory || '',
               displayName: plan.displayName,
               attachmentId: newAtt.id,
-              filename: newAtt.filename
+              filename: newAtt.filename,
+              ...(plan.createdDate ? { createdDate: plan.createdDate } : {}),
+              ...(dokumentKategori.isSystemCreatedMeta(priorMeta) ? { systemCreated: true } : {})
             }
           );
           await axios.patch(
@@ -8371,7 +8399,7 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
 app.post('/api/documents/upload', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
-    const { customerId, file: fileBase64, filename, category, customCategory } = req.body;
+    const { customerId, file: fileBase64, filename, category, customCategory, createdDate: createdDateInput } = req.body;
     if (!customerId || !filename) return res.status(400).json({ error: 'customerId och filename krävs' });
     const cat = dokumentKategori.normalizeDokumentCategory(category);
     if ((category || '').trim() && !dokumentKategori.DOCUMENT_CATEGORIES.includes(String(category).trim())) {
@@ -8472,10 +8500,8 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
     }
 
     // Spara kategori per filnamn (och attachment-id om vi fick det), inte per index.
-    // Filer i "Dokumentation - historik" kategoriseras av fältet, inte JSON-listan.
-    if (uploadedToHistorikField) {
-      return res.json({ success: true, message: 'Dokument uppladdat', category: cat });
-    }
+    // Historik-filer får också metadata (t.ex. skapat datum) i Dokumentation Kategorier.
+    const uploadCreatedDate = dokumentKategori.toDateOnly(createdDateInput) || new Date().toISOString().slice(0, 10);
     try {
       const latestRes = await axios.get(
         `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
@@ -8486,7 +8512,8 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       const entry = {
         filename,
         category: cat,
-        customCategory: (customCategory || '').trim()
+        customCategory: (customCategory || '').trim(),
+        createdDate: uploadCreatedDate
       };
       if (uploadedAtt?.id) entry.attachmentId = uploadedAtt.id;
       kategorier.push(entry);
@@ -8499,7 +8526,11 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       console.warn('Kunde inte spara kategori (lägg till fältet "Dokumentation Kategorier" i Airtable om kategorier ska sparas):', e.message);
     }
 
-    res.json({ success: true, message: 'Dokument uppladdat', category: cat });
+    if (uploadedToHistorikField) {
+      return res.json({ success: true, message: 'Dokument uppladdat', category: cat, createdDate: uploadCreatedDate });
+    }
+
+    res.json({ success: true, message: 'Dokument uppladdat', category: cat, createdDate: uploadCreatedDate });
   } catch (error) {
     console.error('\u274c POST documents/upload:', error.message);
     const status = error.response?.status;
@@ -16373,7 +16404,7 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
     const pdfDownload = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 60000 });
     const signedPdfBuffer = Buffer.from(pdfDownload.data);
 
-    const datum = new Date().toISOString().split('T')[0];
+    const datum = inleedLinks.extractSignedDate(doc) || new Date().toISOString().split('T')[0];
     const safeNamn = (kundnamn).replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '');
     const docFilename = `${safeNamn}-KYC-signerat-${datum}.pdf`;
 
@@ -16388,7 +16419,7 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       signedPdfBuffer,
       docFilename,
       'kyc',
-      { baseUrl: publicBaseUrl, customCategory: 'KYC-formulär (signerat)' }
+      { baseUrl: publicBaseUrl, customCategory: 'KYC-formulär (signerat)', createdDate: datum, systemCreated: true }
     );
     if (!savedToDocs) {
       console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation');
@@ -20938,7 +20969,7 @@ app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req,
     }
 
     const kundnamn = avtalFields['Kundnamn'] || avtalFields['Namn'] || 'Kund';
-    const datumStr = new Date().toISOString().split('T')[0];
+    const datumStr = inleedLinks.extractSignedDate(doc) || new Date().toISOString().split('T')[0];
     const filnamn = `Uppdragsavtal-signerat_${(kundnamn || 'kund').replace(/\s+/g, '_')}_${datumStr}.pdf`;
 
     const pdfRes = await axios.get(doc.signed_pdf_url, { responseType: 'arraybuffer' });
@@ -21007,7 +21038,7 @@ app.post('/api/uppdragsavtal/:id/hamta-signerat', authenticateToken, async (req,
         const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
         if (raw) kategorier = JSON.parse(raw);
         if (!Array.isArray(kategorier)) kategorier = [];
-        kategorier.push({ filename: filnamn, category: 'uppdragsavtal' });
+        kategorier.push({ filename: filnamn, category: 'uppdragsavtal', createdDate: datumStr, systemCreated: true });
         await axios.patch(
           `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${kundId}`,
           { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
