@@ -12787,10 +12787,62 @@ class CustomerCardManager {
         }
     }
 
+    getRiskSubcategoryOrder() {
+        return ['kyc', 'kund_riskbedomning', 'pep_sanktion', 'ovrigt_risk'];
+    }
+
+    getRiskSubcategoryLabel(sub) {
+        const labels = {
+            kyc: 'KYC-formulär',
+            kund_riskbedomning: 'Kundens riskbedömning',
+            pep_sanktion: 'PEP-sanktionssökningar',
+            ovrigt_risk: 'Övrigt dokumentation riskbedömning'
+        };
+        return labels[sub] || sub;
+    }
+
+    normalizeDocumentCategory(cat) {
+        const c = String(cat || '').trim();
+        return c === 'kyc' ? 'riskbedomning' : (c || 'ovrigt');
+    }
+
+    buildDocumentListHtml(docs, { withRiskSubsections = false } = {}) {
+        if (!docs.length) {
+            return `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
+        }
+        const headHtml = `<div class="document-list-head" aria-hidden="true">
+                <span class="document-list-head-pick"></span>
+                <span class="document-list-head-icon"></span>
+                <span class="document-list-head-name">Dokument</span>
+                <span class="document-list-head-date">Skapat datum</span>
+                <span class="document-list-head-actions">Åtgärder</span>
+           </div>`;
+        if (!withRiskSubsections) {
+            return `${headHtml}<ul class="document-list">${docs.map((doc) => this.createDocumentListItem(doc)).join('')}</ul>`;
+        }
+        const bySub = {};
+        docs.forEach((doc) => {
+            const sub = doc.subcategory || 'ovrigt_risk';
+            if (!bySub[sub]) bySub[sub] = [];
+            bySub[sub].push(doc);
+        });
+        const orderedSubs = this.getRiskSubcategoryOrder().filter((sub) => bySub[sub]?.length);
+        Object.keys(bySub).forEach((sub) => {
+            if (!orderedSubs.includes(sub)) orderedSubs.push(sub);
+        });
+        const sections = orderedSubs.map((sub) => {
+            const safeSub = this.escapeDocHtml(this.getRiskSubcategoryLabel(sub));
+            const items = (bySub[sub] || []).map((doc) => this.createDocumentListItem(doc)).join('');
+            return `<h4 class="document-subsection-title">${safeSub}</h4>
+                    <ul class="document-list">${items}</ul>`;
+        }).join('');
+        return `${headHtml}${sections}`;
+    }
+
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
         if (!content) return;
-        const categoryOrder = ['riskbedomning', 'historik_riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'kyc', 'bolagsverket_skatteverket', 'ovrigt'];
+        const categoryOrder = ['riskbedomning', 'historik_riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'];
         const alwaysShow = ['historik'];
         const categoryIcons = {
             riskbedomning: 'fa-clipboard-check',
@@ -12798,30 +12850,27 @@ class CustomerCardManager {
             historik: 'fa-clock-rotate-left',
             arsredovisning: 'fa-file-invoice',
             uppdragsavtal: 'fa-file-signature',
-            kyc: 'fa-id-card',
             bolagsverket_skatteverket: 'fa-landmark',
             ovrigt: 'fa-folder-open'
         };
 
         const byCategory = {};
-        (documents || []).forEach(doc => {
-            const label = doc.categoryLabel || doc.category || 'Övrigt';
-            if (!byCategory[label]) byCategory[label] = [];
-            byCategory[label].push(doc);
+        (documents || []).forEach((doc) => {
+            const cat = this.normalizeDocumentCategory(doc.category);
+            if (!byCategory[cat]) byCategory[cat] = [];
+            byCategory[cat].push(doc);
         });
-        const orderedLabels = [];
-        categoryOrder.forEach(cat => {
+        const orderedCategories = [];
+        categoryOrder.forEach((cat) => {
+            const hasFiles = byCategory[cat] && byCategory[cat].length;
+            if (hasFiles || alwaysShow.includes(cat)) orderedCategories.push(cat);
+        });
+        Object.keys(byCategory).forEach((cat) => {
+            if (!orderedCategories.includes(cat)) orderedCategories.push(cat);
+        });
+        const bodyHTML = orderedCategories.map((cat) => {
+            const list = byCategory[cat] || [];
             const label = this.getCategoryLabel(cat);
-            const hasFiles = byCategory[label] && byCategory[label].length;
-            if (hasFiles || alwaysShow.includes(cat)) orderedLabels.push(label);
-        });
-        Object.keys(byCategory).forEach(label => {
-            if (!orderedLabels.includes(label)) orderedLabels.push(label);
-        });
-        const bodyHTML = orderedLabels.map(label => {
-            const list = byCategory[label] || [];
-            const historikLabel = this.getCategoryLabel('historik');
-            const cat = list[0]?.category || (label === historikLabel ? 'historik' : 'ovrigt');
             const icon = categoryIcons[cat] || 'fa-file-alt';
             const safeLabel = (label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             const exportable = list.filter((doc) => doc.sourceField != null && doc.sourceIndex != null);
@@ -12830,18 +12879,11 @@ class CustomerCardManager {
                         <input type="checkbox" class="document-export-check-all"> Markera alla
                    </label>`
                 : '';
-            const listHtml = list.length
-                ? `<div class="document-list-head" aria-hidden="true">
-                        <span class="document-list-head-pick"></span>
-                        <span class="document-list-head-icon"></span>
-                        <span class="document-list-head-name">Dokument</span>
-                        <span class="document-list-head-date">Skapat datum</span>
-                        <span class="document-list-head-actions">Åtgärder</span>
-                   </div>
-                   <ul class="document-list">${list.map(doc => this.createDocumentListItem(doc)).join('')}</ul>`
-                : `<p class="lead-empty">Inga filer i den här sektionen ännu.</p>`;
+            const withRiskSubsections = cat === 'riskbedomning' || cat === 'historik_riskbedomning';
+            const listHtml = this.buildDocumentListHtml(list, { withRiskSubsections });
+            const uploadCat = cat;
             return `
-                    <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc" data-doc-category="${this.escapeDocHtml(cat)}">
+                    <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc" data-doc-category="${this.escapeDocHtml(uploadCat)}">
                         <div class="collapsible-header">
                             <div class="collapsible-title"><i class="fas ${icon}"></i> ${safeLabel}</div>
                             ${selectAll}
@@ -12849,7 +12891,7 @@ class CustomerCardManager {
                         <div class="collapsible-body">
                             ${listHtml}
                             <p class="document-drop-hint">Släpp filer här för att ladda upp till ${safeLabel}</p>
-                            <button class="card-edit-fab" title="Ladda upp dokument till denna kategori" onclick="event.stopPropagation(); customerCardManager.uploadDocument('${cat}')">
+                            <button class="card-edit-fab" title="Ladda upp dokument till denna kategori" onclick="event.stopPropagation(); customerCardManager.uploadDocument('${uploadCat}')">
                                 <i class="fas fa-pencil-alt"></i>
                             </button>
                         </div>
@@ -12875,12 +12917,12 @@ class CustomerCardManager {
 
     getCategoryLabel(cat) {
         const labels = {
-            riskbedomning: 'Dokumentation riskbedömning',
-            historik_riskbedomning: 'Historik Riskbedömning',
+            riskbedomning: 'Aktuell riskbedömning',
+            historik_riskbedomning: 'Historik riskbedömning',
             historik: 'Dokumentation - historik',
             arsredovisning: 'Årsredovisningar',
             uppdragsavtal: 'Uppdragsavtal',
-            kyc: 'KYC-formulär',
+            kyc: 'Aktuell riskbedömning',
             bolagsverket_skatteverket: 'Bolagsverket och Skatteverket',
             ovrigt: 'Övrigt'
         };
@@ -14257,12 +14299,11 @@ class CustomerCardManager {
                             <div class="form-group">
                                 <label for="edit-doc-category">Kategori</label>
                                 <select id="edit-doc-category" name="category" required>
-                                    <option value="riskbedomning">Dokumentation riskbedömning</option>
-                                    <option value="historik_riskbedomning">Historik Riskbedömning</option>
+                                    <option value="riskbedomning">Aktuell riskbedömning</option>
+                                    <option value="historik_riskbedomning">Historik riskbedömning</option>
                                     <option value="historik">Dokumentation - historik</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>
-                                    <option value="kyc">KYC-formulär</option>
                                     <option value="bolagsverket_skatteverket">Bolagsverket och Skatteverket</option>
                                     <option value="ovrigt">Övrigt</option>
                                 </select>
@@ -14289,8 +14330,9 @@ class CustomerCardManager {
         const catSelect = document.getElementById('edit-doc-category');
         const customWrap = document.getElementById('edit-doc-custom-wrap');
         if (catSelect && customWrap) {
-            if (category && catSelect.querySelector(`option[value="${category}"]`)) {
-                catSelect.value = category;
+            const normalizedCategory = category === 'kyc' ? 'riskbedomning' : category;
+            if (normalizedCategory && catSelect.querySelector(`option[value="${normalizedCategory}"]`)) {
+                catSelect.value = normalizedCategory;
             }
             customWrap.style.display = catSelect.value === 'ovrigt' ? 'block' : 'none';
             catSelect.addEventListener('change', () => {
@@ -15570,12 +15612,11 @@ class CustomerCardManager {
                             <div class="form-group">
                                 <label for="upload-doc-category">Kategori *</label>
                                 <select id="upload-doc-category" name="category" required>
-                                    <option value="riskbedomning">Dokumentation riskbedömning</option>
-                                    <option value="historik_riskbedomning">Historik Riskbedömning</option>
+                                    <option value="riskbedomning">Aktuell riskbedömning</option>
+                                    <option value="historik_riskbedomning">Historik riskbedömning</option>
                                     <option value="historik">Dokumentation - historik</option>
                                     <option value="arsredovisning">Årsredovisningar</option>
                                     <option value="uppdragsavtal">Uppdragsavtal</option>
-                                    <option value="kyc">KYC-formulär</option>
                                     <option value="bolagsverket_skatteverket">Bolagsverket och Skatteverket</option>
                                     <option value="ovrigt">Övrigt</option>
                                 </select>

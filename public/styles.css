@@ -6852,6 +6852,19 @@ body.riskbedomning-byra-page h5 {
 .documentation-card .document-list {
     margin-bottom: 0;
 }
+.document-subsection-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #64748b;
+    margin: 1rem 0 0.35rem;
+    padding: 0;
+}
+.documentation-card .document-list-head + .document-subsection-title {
+    margin-top: 0.5rem;
+}
+.document-subsection-title + .document-list {
+    margin-bottom: 0.25rem;
+}
 .documentation-category {
     margin-bottom: 1.5rem;
 }

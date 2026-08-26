@@ -98,6 +98,7 @@ const personRegister = require('./lib/person-register');
 const dokumentKategori = require('./lib/dokument-kategori');
 const dokumentHistorik = require('./lib/dokument-historik');
 const dokumentRedigera = require('./lib/dokument-redigera');
+const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
 const auditLog = require('./lib/audit-log');
@@ -4854,35 +4855,60 @@ async function savePdfToKundDokumentationTab(airtableToken, baseId, customerId, 
   }
 
   if (saved && category) {
-    try {
-      const custRes = await axios.get(
-        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
-        { headers: { Authorization: `Bearer ${airtableToken}` } }
-      );
-      const f = custRes.data.fields || {};
-      let kategorier = [];
-      const raw = (f['Dokumentation Kategorier'] || '').toString().trim();
-      if (raw) kategorier = JSON.parse(raw);
-      if (!Array.isArray(kategorier)) kategorier = [];
-      const entry = {
-        filename,
-        category,
+    const metaCategory = options.subcategory
+      ? dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY
+      : category;
+    await upsertCustomerDokumentMetadata(
+      airtableToken,
+      baseId,
+      customerId,
+      { filename, attachmentId: options.attachmentId },
+      {
+        category: metaCategory,
+        subcategory: options.subcategory || undefined,
         customCategory,
         createdDate,
-        ...(systemCreated ? { systemCreated: true } : {})
-      };
-      kategorier.push(entry);
-      await axios.patch(
-        `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
-        { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
-        { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' } }
-      );
-    } catch (e) {
-      console.warn('⚠️ Kunde inte spara Dokumentation Kategorier:', e.message);
-    }
+        systemCreated: systemCreated || undefined,
+        screeningKey: options.screeningKey || undefined,
+        filename
+      },
+      options.archivePrior
+        ? {
+          subcategory: options.subcategory,
+          screeningKey: options.screeningKey,
+          keepFilename: filename,
+          keepAttachmentId: options.attachmentId
+        }
+        : null
+    );
   }
 
   return saved;
+}
+
+async function upsertCustomerDokumentMetadata(airtableToken, baseId, customerId, attachment, updates, archiveOpts) {
+  try {
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableToken}` } }
+    );
+    const f = custRes.data.fields || {};
+    let kategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
+    if (archiveOpts) {
+      kategorier = dokumentRiskSubkategori.archivePriorOnNew(kategorier, archiveOpts);
+    }
+    kategorier = dokumentKategori.upsertDokumentKategori(kategorier, attachment, updates);
+    kategorier = dokumentRiskSubkategori.applyAgeBasedArchive(kategorier, new Date().toISOString().slice(0, 10));
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${KUNDDATA_TABLE_DOCS}/${customerId}`,
+      { fields: { 'Dokumentation Kategorier': JSON.stringify(kategorier) } },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' } }
+    );
+    return true;
+  } catch (e) {
+    console.warn('⚠️ Kunde inte spara Dokumentation Kategorier:', e.message);
+    return false;
+  }
 }
 
 // Funktion för att spara fil lokalt och returnera URL
@@ -7856,6 +7882,20 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
           );
           reloadedDocuments = true;
           console.log('✅ Riskbedömning-PDF sparad i fält:', fieldName);
+          await upsertCustomerDokumentMetadata(
+            airtableAccessToken,
+            airtableBaseId,
+            customerId,
+            { filename },
+            {
+              category: dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY,
+              subcategory: 'kund_riskbedomning',
+              createdDate: datumIso,
+              systemCreated: true,
+              filename
+            },
+            { subcategory: 'kund_riskbedomning', keepFilename: filename }
+          );
           break;
         } catch (patchErr) {
           if (patchErr.response?.status === 422) continue;
@@ -7911,7 +7951,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
     const attachments = Array.isArray(f['Attachments']) ? f['Attachments'] : [];
     const dokumentationAttachments = Array.isArray(f['Dokumentation']) ? f['Dokumentation'] : [];
-    const dokumentationKategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
+    let dokumentationKategorier = dokumentKategori.parseDokumentKategorier(f['Dokumentation Kategorier']);
     const usedDokumentKategorier = new Set();
 
     const riskField = Array.isArray(f['Riskbedömning dokument']) ? 'Riskbedömning dokument' : 'Riskbedomning dokument';
@@ -7987,16 +8027,36 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       if (item && (item.url || item.filename)) allItems.push(item);
     });
 
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const sync = dokumentRiskSubkategori.syncRiskMetadata(dokumentationKategorier, allItems, todayIso);
+    if (sync.changed) {
+      dokumentationKategorier = sync.nextKategorier;
+      try {
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+          { fields: { 'Dokumentation Kategorier': JSON.stringify(dokumentationKategorier) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (syncErr) {
+        console.warn('Kunde inte synka Dokumentation Kategorier:', syncErr.message);
+      }
+    }
+
     const categoryLabels = dokumentKategori.CATEGORY_LABELS;
+    const subcategoryLabels = dokumentRiskSubkategori.SUBCATEGORY_LABELS;
 
     const documents = allItems.map((a, i) => {
       const isPep = a._typ === 'pep';
       const isArs = a._typ === 'arsredovisning';
       const isDok = a._typ === 'dokumentation';
       const overlay = dokumentKategori.applyDokumentKategoriMeta(a, dokumentationKategorier);
-      const category = overlay.category || a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? 'riskbedomning' : isArs ? 'arsredovisning' : 'ovrigt'));
-      const customCategory = overlay.customCategory || a._customCategory || '';
       const meta = dokumentKategori.findDokumentKategori(dokumentationKategorier, a);
+      let category = overlay.category || a._category || (a._typ === 'historik' ? 'historik' : (isPep || (a._typ === 'riskbedomning') ? dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY : isArs ? 'arsredovisning' : 'ovrigt'));
+      if (category === 'kyc') category = dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY;
+      const customCategory = overlay.customCategory || a._customCategory || '';
+      const subcategory = dokumentRiskSubkategori.normalizeSubcategory(overlay.subcategory || meta?.subcategory)
+        || dokumentRiskSubkategori.inferSubcategoryFromAttachment(a, meta)
+        || '';
       const skapatDatum = dokumentKategori.resolveCreatedDate({
         meta,
         attachment: a,
@@ -8009,17 +8069,21 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       });
       let namn = overlay.displayName || a.filename || (isArs ? a._label : (isPep ? `PEP-screening ${i + 1}` : isDok ? 'Uppladdad fil' : (a._typ === 'riskbedomning' ? `Riskbedömning ${i + 1}` : 'Dokument')));
       const fnLower = (a.filename || '').toLowerCase();
-      const autoDesc = fnLower.includes('uppdragsavtal') ? 'Uppdragsavtal' : fnLower.includes('kyc') ? 'KYC-formulär' : (a._typ === 'riskbedomning' ? 'Dokumenterad riskbedömning' : '');
-      let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isPep ? 'PEP & sanktionsscreening' : isDok ? (customCategory || categoryLabels[category] || 'Dokument') : (autoDesc || categoryLabels[category] || ''));
-      if (customCategory) beskrivning = customCategory;
-      else if (overlay.category) beskrivning = categoryLabels[category] || beskrivning;
+      const autoDesc = fnLower.includes('uppdragsavtal') ? 'Uppdragsavtal' : fnLower.includes('kyc') ? 'KYC-formulär' : (a._typ === 'riskbedomning' ? 'Dokumenterad riskbedömning' : (isPep ? 'PEP & sanktionsscreening' : ''));
+      let beskrivning = isArs ? (a._label + ' från Bolagsverket') : (isDok ? (customCategory || categoryLabels[category] || 'Dokument') : (autoDesc || categoryLabels[category] || ''));
+      if (customCategory && category === 'ovrigt') beskrivning = customCategory;
+      else if (subcategory && (category === dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY || category === dokumentRiskSubkategori.HISTORIK_RISK_CATEGORY)) {
+        beskrivning = subcategoryLabels[subcategory] || beskrivning;
+      }
       return {
         id: `${a._typ}-${i}`,
         sourceField: a._sourceField,
         sourceIndex: a._sourceIndex,
         category,
+        subcategory: subcategory || undefined,
+        subcategoryLabel: subcategory ? (subcategoryLabels[subcategory] || subcategory) : undefined,
         customCategory: customCategory || undefined,
-        categoryLabel: customCategory || categoryLabels[category] || category,
+        categoryLabel: categoryLabels[category] || category,
         displayName: overlay.displayName || undefined,
         fields: {
           Namn: namn,
@@ -8472,12 +8536,21 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       );
       const latestFields = latestRes.data.fields || {};
       const kategorier = dokumentKategori.parseDokumentKategorier(latestFields['Dokumentation Kategorier']);
+      let metaCategory = cat;
+      let subcategory;
+      if (cat === 'kyc') {
+        metaCategory = dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY;
+        subcategory = 'kyc';
+      } else if (cat === dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY || cat === dokumentRiskSubkategori.HISTORIK_RISK_CATEGORY) {
+        subcategory = 'ovrigt_risk';
+      }
       const entry = {
         filename,
-        category: cat,
+        category: metaCategory,
         customCategory: (customCategory || '').trim(),
         createdDate: uploadCreatedDate
       };
+      if (subcategory) entry.subcategory = subcategory;
       if (uploadedAtt?.id) entry.attachmentId = uploadedAtt.id;
       kategorier.push(entry);
       await axios.patch(
@@ -16382,7 +16455,13 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
       signedPdfBuffer,
       docFilename,
       'kyc',
-      { baseUrl: publicBaseUrl, customCategory: 'KYC-formulär (signerat)', createdDate: datum, systemCreated: true }
+      {
+        baseUrl: publicBaseUrl,
+        createdDate: datum,
+        systemCreated: true,
+        subcategory: 'kyc',
+        archivePrior: true
+      }
     );
     if (!savedToDocs) {
       console.warn('⚠️ KYC signerat: kunde inte spara till Dokumentation');
@@ -20297,6 +20376,25 @@ app.post('/api/pep-screening/:kundId', authenticateToken, async (req, res) => {
 
         console.log(`✅ PEP-screening klar: ${totalHits} träffar för ${namn}`);
 
+        if (savedToDocs && token && kundId) {
+            const screeningKey = dokumentRiskSubkategori.buildPersonScreeningKey(namn, personnr);
+            await upsertCustomerDokumentMetadata(
+                token,
+                baseId,
+                kundId,
+                { filename: filnamn },
+                {
+                    category: dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY,
+                    subcategory: 'pep_sanktion',
+                    createdDate: datumStr,
+                    systemCreated: true,
+                    screeningKey,
+                    filename: filnamn
+                },
+                { subcategory: 'pep_sanktion', screeningKey, keepFilename: filnamn }
+            );
+        }
+
         // Spara träffar till kundkortet så risk-PDF kan visa sanktionsstatus.
         // PEP-status (KYC punkt 4) sätts fortfarande av användaren / KYC-formuläret.
         if (token && kundId) {
@@ -20557,6 +20655,25 @@ app.post('/api/entity-screening/:kundId', authenticateToken, async (req, res) =>
         }
 
         console.log(`✅ Entity-screening klar: ${totalHits} träffar för ${namn}`);
+
+        if (savedToDocs && token && kundId) {
+            const screeningKey = dokumentRiskSubkategori.buildEntityScreeningKey(namn, orgnr);
+            await upsertCustomerDokumentMetadata(
+                token,
+                baseId,
+                kundId,
+                { filename: filnamn },
+                {
+                    category: dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY,
+                    subcategory: 'pep_sanktion',
+                    createdDate: datumStr,
+                    systemCreated: true,
+                    screeningKey,
+                    filename: filnamn
+                },
+                { subcategory: 'pep_sanktion', screeningKey, keepFilename: filnamn }
+            );
+        }
 
         if (token && kundId) {
             await saveDilisenseTraffarToKund(token, baseId, kundId, totalHits, 'max');
