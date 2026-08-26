@@ -13530,9 +13530,42 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     border-radius: 10px;
     background: #f8fafc;
 }
-.forutsattning-group { margin-bottom: 1rem; }
+.forutsattning-group {
+    margin-bottom: 0.75rem;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    background: #fff;
+    overflow: hidden;
+}
+.forutsattning-group-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    cursor: pointer;
+    list-style: none;
+}
+.forutsattning-group-summary::-webkit-details-marker { display: none; }
+.forutsattning-group-summary::after {
+    content: '▸';
+    color: #94a3b8;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+.forutsattning-group[open] > .forutsattning-group-summary::after { content: '▾'; }
+.forutsattning-group-body {
+    padding: 0 0.85rem 0.85rem;
+    border-top: 1px solid #e2e8f0;
+}
+.forutsattning-group-collapsed-risk {
+    font-size: 0.78rem;
+    color: #475569;
+    text-align: right;
+    line-height: 1.35;
+}
 .forutsattning-group-title {
-    margin: 0 0 0.35rem;
+    margin: 0;
     font-size: 0.92rem;
     font-weight: 700;
     color: var(--title-text);

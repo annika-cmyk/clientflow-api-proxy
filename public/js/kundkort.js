@@ -7829,35 +7829,69 @@ class CustomerCardManager {
         );
     }
 
-    _renderTjanstRiskPairHtml(item) {
+    _renderTjanstRiskPairHtml(item, compact) {
         if (!item) return '';
-        const used = item.residualSource || 'mall';
-        const inherentLabel = this._riskLabel(item.inherentLevel) || '–';
-        const mallLabel = this._riskLabel(item.mallResidualLevel) || this._riskLabel(item.residualLevel) || '–';
-        const usedLabel = this._riskLabel(item.residualLevel) || mallLabel;
-        const usedProduct = used === 'override' || used === 'inneboende'
-            ? item.residualProduct
-            : item.mallResidualProduct;
-        let reason = 'Åtgärden görs hos kunden';
-        if (used === 'inneboende') reason = 'Åtgärden görs inte hos kunden';
-        else if (used === 'override') reason = 'Eget riskvärde';
+        const inhS = item.sannolikhet;
+        const inhK = item.konsekvens;
+        const inhP = item.inherentProduct;
+        const inhL = this._riskLabel(item.inherentLevel) || '–';
+        const resS = item.sannolikhetEfter;
+        const resK = item.konsekvensEfter;
+        const resP = item.residualProduct;
+        const resL = this._riskLabel(item.residualLevel) || '–';
+        const sk = (s, k, p) => (s != null && k != null)
+            ? `S ${s} × K ${k}${p != null ? ` = ${p}` : ''}`
+            : '';
+        if (compact) {
+            return `<span class="forutsattning-group-collapsed-risk" data-risk-pair-compact>Residual: <strong>${this._esc(resL)}</strong> · ${this._esc(sk(resS, resK, resP))}</span>`;
+        }
+        let resHint = 'Mallens residual när åtgärderna görs hos kunden';
+        if (item.residualSource === 'inneboende') resHint = 'Inneboende gäller — standardåtgärderna görs inte';
+        else if (item.residualSource === 'override') resHint = 'Korrigerat riskvärde för denna kund';
         return `
-            <p class="tjanst-risk-summary" data-risk-pair>
-                <span class="tjanst-risk-summary-label">Påverkar beräkningen:</span>
-                <strong>${this._esc(usedLabel)}</strong>
-                <span class="tjanst-risk-summary-meta">S×K ${usedProduct != null ? usedProduct : '–'}</span>
-                <span class="tjanst-risk-summary-reason">· ${this._esc(reason)}</span>
-            </p>`;
+            <div class="tjanst-risk-pair" data-risk-pair>
+                <div class="tjanst-risk-pair-item">
+                    <span class="tjanst-risk-pair-kicker">Inneboende</span>
+                    <span class="tjanst-risk-pair-value">${this._esc(inhL)} <small>${this._esc(sk(inhS, inhK, inhP))}</small></span>
+                </div>
+                <div class="tjanst-risk-pair-item is-default">
+                    <span class="tjanst-risk-pair-kicker">Residual · gäller nu</span>
+                    <span class="tjanst-risk-pair-value">${this._esc(resL)} <small>${this._esc(sk(resS, resK, resP))}</small></span>
+                    <span class="tjanst-risk-pair-hint">${this._esc(resHint)}</span>
+                </div>
+            </div>`;
+    }
+
+    _forutsattningGroupIsComplete(g) {
+        const assess = g?.assess || {};
+        if (assess.status === 'ok') return true;
+        if (assess.status === 'nej' && assess.override) return true;
+        return false;
+    }
+
+    _renderForutsattningGroup(g) {
+        const sid = this._esc(g.tjanstId);
+        const open = !this._forutsattningGroupIsComplete(g);
+        return `
+                <details class="forutsattning-group" data-tjanst-id="${sid}"${open ? ' open' : ''}>
+                    <summary class="forutsattning-group-summary">
+                        <span class="forutsattning-group-title">${this._esc(g.namn || 'Tjänst')}</span>
+                        ${this._renderTjanstRiskPairHtml(g.item, true)}
+                    </summary>
+                    <div class="forutsattning-group-body">
+                        ${this._renderTjanstRiskPairHtml(g.item)}
+                        ${this._renderForutsattningGroupInner(g)}
+                        <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar(this)">
+                            <i class="fas fa-save"></i> Spara
+                        </button>
+                    </div>
+                </details>`;
     }
 
     _renderForutsattningGroupInner(g) {
         const TF = window.TjanstForutsattning;
         const sid = this._esc(g.tjanstId);
         const assess = g.assess || {};
-        const warnClass = assess.status === 'nej' ? 'forutsattning-warn--nej' : (assess.status === 'delvis' ? 'forutsattning-warn--delvis' : '');
-        const warn = assess.warning
-            ? `<p class="forutsattning-warn ${warnClass}">${this._esc(assess.warning)}</p>`
-            : '';
         const rows = (g.rows || []).map((row) => {
             const state = row.triState || (TF ? TF.triState(row.uppfylld) : 'ej_bedomd');
             const needMot = state === 'ej_uppfylld';
@@ -7885,7 +7919,6 @@ class CustomerCardManager {
         const overrideReq = assess.status === 'nej' && !assess.override;
         const overrideOpen = overrideReq || sVal || kVal ? ' open' : '';
         return `
-                    ${warn}
                     ${rows}
                     <details class="forutsattning-override-details"${overrideOpen}>
                         <summary>Justera risk (valfritt)</summary>
@@ -7917,19 +7950,10 @@ class CustomerCardManager {
         if (!groups.length) {
             return '<div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" hidden></div>';
         }
-        const html = groups.map((g) => `
-                <section class="forutsattning-group" data-tjanst-id="${this._esc(g.tjanstId)}">
-                    <h4 class="forutsattning-group-title">${this._esc(g.namn || 'Tjänst')}</h4>
-                    ${this._renderTjanstRiskPairHtml(g.item)}
-                    ${this._renderForutsattningGroupInner(g)}
-                </section>`).join('');
+        const html = groups.map((g) => this._renderForutsattningGroup(g)).join('');
         return `
             <div id="ai-rb-forutsattningar" class="ai-rb-forutsattningar" onclick="event.stopPropagation()">
-                <p class="forutsattning-group-lead">Markera om kundens åtgärder görs — det påverkar den beräknade risken.</p>
                 ${html}
-                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar()">
-                    <i class="fas fa-save"></i> Spara
-                </button>
             </div>`;
     }
 
@@ -7966,16 +7990,17 @@ class CustomerCardManager {
 
     _refreshTjanstForutsattningPreview(group) {
         if (!group) return;
-        const pair = group.querySelector('[data-risk-pair]')
-            || group.querySelector('.tjanst-risk-pair')
-            || (group.closest('.tjanst-forutsattning-editor') || group).querySelector('[data-risk-pair], .tjanst-risk-pair');
         const tjanst = this._tjanstById(group.getAttribute('data-tjanst-id'));
-        if (!pair || !tjanst) return;
+        if (!tjanst) return;
         const draft = this._draftForutsattningState(group);
         const TF = window.TjanstForutsattning;
         if (!TF || !TF.applyToResidualItem) return;
         const item = TF.applyToResidualItem(tjanst, draft);
-        pair.outerHTML = this._renderTjanstRiskPairHtml(item);
+        const pairHtml = this._renderTjanstRiskPairHtml(item);
+        const compactHtml = this._renderTjanstRiskPairHtml(item, true);
+        group.querySelectorAll('[data-risk-pair]').forEach((el) => { el.outerHTML = pairHtml; });
+        const compactEl = group.querySelector('[data-risk-pair-compact]');
+        if (compactEl) compactEl.outerHTML = compactHtml;
     }
 
     _tjanstById(tjanstId) {
@@ -9677,13 +9702,7 @@ class CustomerCardManager {
         return `
             <div class="tjanst-forutsattning-editor" onclick="event.stopPropagation()">
                 <div class="risker-vald-section-label">Kundspecifika åtgärder</div>
-                ${this._renderTjanstRiskPairHtml(g.item)}
-                <section class="forutsattning-group" data-tjanst-id="${this._esc(g.tjanstId)}">
-                    ${this._renderForutsattningGroupInner(g)}
-                </section>
-                <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation(); customerCardManager.saveRiskForutsattningar(this)">
-                    <i class="fas fa-save"></i> Spara
-                </button>
+                ${this._renderForutsattningGroup(g)}
             </div>`;
     }
 
@@ -9705,7 +9724,8 @@ class CustomerCardManager {
         const root = (fromEl && fromEl.closest
             && (fromEl.closest('.tjanst-forutsattning-editor') || fromEl.closest('#ai-rb-forutsattningar')))
             || document.getElementById('ai-rb-forutsattningar');
-        const groups = (root || document).querySelectorAll('.forutsattning-group');
+        const clickedGroup = fromEl && fromEl.closest('.forutsattning-group');
+        const groups = clickedGroup ? [clickedGroup] : (root || document).querySelectorAll('.forutsattning-group');
         if (!TF || !customerId || !groups.length) return;
         const state = TF.readKundState(this.customerData?.fields || {});
         for (const group of groups) {
@@ -9741,6 +9761,10 @@ class CustomerCardManager {
                 this.customerData.fields[TF.FIELD] = TF.serializeKundState(state);
             }
             this.showNotification('Förutsättningar sparade.', 'success');
+            if (clickedGroup && clickedGroup.tagName === 'DETAILS') {
+                clickedGroup.removeAttribute('open');
+            }
+            this._refreshRiskForutsattningUi();
             this._refreshServicesAndRisk();
             await this._maybeCreateUppdragsatgarder(state);
         } catch (error) {
