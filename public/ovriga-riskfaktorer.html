@@ -263,6 +263,13 @@
                                 </div>
                                 <div id="add-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
                             </div>
+                            <div class="form-group risk-motivering-field">
+                                <label for="motivering-inneboende">Motivering av S och K (inneboende risk)
+                                    <span id="add-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                </label>
+                                <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                <textarea id="motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                            </div>
                         </section>
                         <section class="risk-sxk-section">
                             <h4>Residualrisk (efter åtgärd)</h4>
@@ -296,6 +303,13 @@
                                     </select>
                                 </div>
                                 <div id="add-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                            </div>
+                            <div class="form-group risk-motivering-field">
+                                <label for="motivering-residual">Motivering av residual-S och K
+                                    <span id="add-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                </label>
+                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
+                                <textarea id="motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärd…"></textarea>
                             </div>
                         </section>
                         <div class="form-actions">
@@ -389,6 +403,13 @@
                                 </div>
                                 <div id="edit-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
                             </div>
+                            <div class="form-group risk-motivering-field">
+                                <label for="edit-motivering-inneboende">Motivering av S och K (inneboende risk)
+                                    <span id="edit-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                </label>
+                                <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                <textarea id="edit-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                            </div>
                             <p id="edit-review-flag" class="tjanst-panel-hint" hidden>Migrerad från gammal risknivå — gå igenom och justera S×K.</p>
                         </section>
                         <section class="risk-sxk-section">
@@ -424,6 +445,13 @@
                                 </div>
                                 <div id="edit-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
                             </div>
+                            <div class="form-group risk-motivering-field">
+                                <label for="edit-motivering-residual">Motivering av residual-S och K
+                                    <span id="edit-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                </label>
+                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
+                                <textarea id="edit-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärd…"></textarea>
+                            </div>
                         </section>
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="closeModal('edit-risk-modal')">
@@ -453,13 +481,14 @@
     <script src="js/navigation.js"></script>
     <script src="js/components.js?v=2.2"></script>
     <script src="app.js?v=1.1"></script>
-    <script src="js/risk-skala.js?v=7"></script>
+    <script src="js/risk-skala.js?v=8"></script>
+    <script src="js/risk-motivering.js?v=1"></script>
     <script src="js/risk-dimensioner.js?v=2"></script>
     <script src="js/tjanst-forutsattning.js?v=1"></script>
     <script src="js/ovriga-risk-kategorier.js?v=9"></script>
     <script src="js/kund-riskprofil.js?v=15"></script>
     <script src="js/risksankande-katalog.js?v=2"></script>
     <script src="js/ai-falt-granskning.js?v=9"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=21"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=22"></script>
 </body>
 </html>

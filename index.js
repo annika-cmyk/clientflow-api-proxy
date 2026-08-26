@@ -60,6 +60,7 @@ const hogriskSni = require('./public/js/hogrisk-sni');
 const EuHogriskLander = require('./public/js/eu-hogrisk-lander');
 const KycHuvudman = require('./public/js/kyc-huvudman');
 const RiskSkala = require('./public/js/risk-skala');
+const RiskMotivering = require('./public/js/risk-motivering');
 const {
   isRiskSelectFieldName,
   planSelectChoiceMigration,
@@ -5057,6 +5058,57 @@ function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
   return true;
 }
 
+function rejectRiskWithoutMotivering(res, riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  const asDraft = incoming.utkast === true || incoming.Aktuell === false
+    || (incoming.Aktuell == null && existing.Aktuell === false);
+  const incomingPoangRaw = incoming['Riskpoäng'] || incoming.Riskpoang || incoming.Samspelsexempel;
+  let incomingPoang = null;
+  if (incomingPoangRaw) {
+    try {
+      incomingPoang = typeof incomingPoangRaw === 'string' ? JSON.parse(incomingPoangRaw) : incomingPoangRaw;
+    } catch (_) {
+      incomingPoang = null;
+    }
+  }
+  const merged = { ...existing, ...incoming };
+  const check = RiskMotivering.validateFieldsMotivering(merged, { asDraft, incomingPoang });
+  if (check.ok) return false;
+  const first = check.errors[0] || {};
+  res.status(400).json({
+    error: first.error || 'Motivering krävs för den angivna risknivån.',
+    message: first.error || 'Motivering krävs för den angivna risknivån.',
+    code: first.code || 'motivering_kravs',
+    details: check.errors
+  });
+  return true;
+}
+
+function applyMotiveringMigrationFlag(riskData, existingFields = {}) {
+  const incoming = riskData || {};
+  const existing = existingFields || {};
+  const incomingRaw = incoming['Riskpoäng'] || incoming.Riskpoang || incoming.Samspelsexempel;
+  if (!incomingRaw) return riskData;
+  let incomingPoang = null;
+  try {
+    incomingPoang = typeof incomingRaw === 'string' ? JSON.parse(incomingRaw) : { ...incomingRaw };
+  } catch (_) {
+    return riskData;
+  }
+  const merged = RiskMotivering.mergeRiskPoang(
+    existing['Riskpoäng'] || existing.Riskpoang || existing.Samspelsexempel,
+    incomingPoang
+  );
+  const needsFlag = RiskMotivering.migrationFlagForPoang(merged);
+  const next = { ...merged };
+  if (needsFlag) next.kraver_uppdaterad_motivering = true;
+  else if (RiskMotivering.assessMotivering(merged).complete) next.kraver_uppdaterad_motivering = false;
+  const key = incoming['Riskpoäng'] != null ? 'Riskpoäng'
+    : (incoming.Riskpoang != null ? 'Riskpoang' : 'Riskpoäng');
+  return { ...incoming, [key]: RiskSkala.serializeRiskPoang(next) };
+}
+
 function mapNamedFieldsToAirtable(data, fieldMapping, { dropUnknown = false } = {}) {
   const normalized = normalizeRiskFields(data || {});
   const out = {};
@@ -5671,9 +5723,11 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     delete riskData.utkast;
     if (asDraftCreate) riskData.Aktuell = false;
     if (rejectTjanstWithoutTfTackning(res, riskData)) return;
-    console.log('📝 Mottaget riskbedömningsdata:', riskData);
+    const riskDataWithFlag = applyMotiveringMigrationFlag(riskData);
+    if (rejectRiskWithoutMotivering(res, riskDataWithFlag)) return;
+    console.log('📝 Mottaget riskbedömningsdata:', riskDataWithFlag);
 
-    const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
+    const airtableData = mapNamedFieldsToAirtable(riskDataWithFlag, RISK_ASSESSMENT_FIELD_MAPPING);
     Object.keys(airtableData).forEach((key) => {
       console.log(`📝 Mappat fält ${key}`);
     });
@@ -5778,7 +5832,6 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
     if (asDraftUpdate) riskData.Aktuell = false;
     console.log(`📝 Mottaget uppdateringsdata för ${id}:`, riskData);
 
-    const airtableData = mapNamedFieldsToAirtable(riskData, RISK_ASSESSMENT_FIELD_MAPPING);
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_ASSESSMENT_TABLE}/${id}`;
     const headers = {
       'Authorization': `Bearer ${airtableAccessToken}`,
@@ -5790,6 +5843,9 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
+    const riskDataWithFlag = applyMotiveringMigrationFlag(riskData, beforeTjanst);
+    if (rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeTjanst)) return;
+    const airtableData = mapNamedFieldsToAirtable(riskDataWithFlag, RISK_ASSESSMENT_FIELD_MAPPING);
 
     const response = await writeAirtableRecordWithRiskChoices({
       token: airtableAccessToken,
@@ -14781,11 +14837,13 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
       });
     }
     riskData['PT/TF-relevans'] = ptTf;
-    console.log('Mottaget riskfaktordata:', riskData);
+    const riskDataWithFlag = applyMotiveringMigrationFlag(riskData);
+    if (rejectRiskWithoutMotivering(res, riskDataWithFlag)) return;
+    console.log('Mottaget riskfaktordata:', riskDataWithFlag);
 
     const airtableFields = applyOvrigExtraAirtableFields(
-      riskData,
-      mapNamedFieldsToAirtable(riskData, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true })
+      riskDataWithFlag,
+      mapNamedFieldsToAirtable(riskDataWithFlag, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true })
     );
     console.log('Airtable-fält:', airtableFields);
 
@@ -14879,12 +14937,6 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     console.log('Uppdateringsdata:', riskData);
 
     const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
-    const airtableFields = applyOvrigExtraAirtableFields(
-      riskData,
-      mapNamedFieldsToAirtable(riskData, factorMapping, { dropUnknown: true })
-    );
-    console.log('Airtable-fält:', airtableFields);
-
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
     const headers = {
       'Authorization': `Bearer ${airtableAccessToken}`,
@@ -14895,6 +14947,13 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       const prev = await axios.get(url, { headers, timeout: 10000 });
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
+    const riskDataWithFlag = applyMotiveringMigrationFlag(riskData, beforeFaktor);
+    if (rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeFaktor)) return;
+    const airtableFields = applyOvrigExtraAirtableFields(
+      riskDataWithFlag,
+      mapNamedFieldsToAirtable(riskDataWithFlag, factorMapping, { dropUnknown: true })
+    );
+    console.log('Airtable-fält:', airtableFields);
 
     await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, RISK_FACTORS_TABLE, OVRIGA_RISK_SCHEMA_FIELDS);
     const response = await writeAirtableFieldsRetryUnknown({
@@ -20061,6 +20120,16 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const exportStamp = new Date().toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' });
     const tjanster = (tjansterRes.data?.tjanster || []);
     const riskRecords = riskRes.data?.records || [];
+    const exportWarnings = RiskMotivering.collectExportWarnings([
+      ...tjanster,
+      ...riskRecords.map((r) => {
+        const mapped = mapOvrigRiskRecord(r);
+        return Object.assign({}, mapped, {
+          namn: mapped.namn || r.fields?.Riskfaktor || ''
+        });
+      })
+    ]);
+    const motiveringWarningBanner = RiskMotivering.exportWarningBanner(exportWarnings);
 
     const escape = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const nl2br = (s) => (s == null ? '' : String(s)).replace(/\n/g, '<br>');
@@ -20075,7 +20144,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const ACCENT = '#2c4a8f';
     const htmlParts = [];
 
-    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Byråns allmänna riskbedömning och rutiner</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Exporterad: ${escape(exportStamp)}</p><p class="doc-meta">Dokumentation enligt penningtvättslagen (4 kap. 3 §) – för tillsyn och arkivering.</p></div>`);
+    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Byråns allmänna riskbedömning och rutiner</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Exporterad: ${escape(exportStamp)}</p><p class="doc-meta">Dokumentation enligt penningtvättslagen (4 kap. 3 §) – för tillsyn och arkivering.</p>${motiveringWarningBanner ? `<div class="doc-text doc-warning">${richToHtml(motiveringWarningBanner)}</div>` : ''}</div>`);
 
     const rutinerFields = [
       ['1. Syfte och omfattning policy', '1. Syfte och omfattning policy'],

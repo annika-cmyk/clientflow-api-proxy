@@ -294,7 +294,15 @@
         return toScore(obj.sannolikhet ?? obj.s ?? obj.likelihood) != null
             || toScore(obj.konsekvens ?? obj.k ?? obj.consequence) != null
             || toScore(obj.sannolikhetEfter ?? obj.sEfter ?? obj.residualLikelihood) != null
-            || toScore(obj.konsekvensEfter ?? obj.kEfter ?? obj.residualConsequence) != null;
+            || toScore(obj.konsekvensEfter ?? obj.kEfter ?? obj.residualConsequence) != null
+            || trimMotiveringText(obj.motivering_inneboende_risk ?? obj.motiveringInneboende) !== ''
+            || trimMotiveringText(obj.motivering_residual_risk ?? obj.motiveringResidual) !== ''
+            || obj.kraver_uppdaterad_motivering === true
+            || obj.kraverUppdateradMotivering === true;
+    }
+
+    function trimMotiveringText(value) {
+        return String(value == null ? '' : value).trim();
     }
 
     function normalizePoang(obj) {
@@ -303,7 +311,15 @@
             sannolikhet: toScore(raw.sannolikhet ?? raw.s ?? raw.likelihood),
             konsekvens: toScore(raw.konsekvens ?? raw.k ?? raw.consequence),
             sannolikhetEfter: toScore(raw.sannolikhetEfter ?? raw.sEfter ?? raw.residualLikelihood),
-            konsekvensEfter: toScore(raw.konsekvensEfter ?? raw.kEfter ?? raw.residualConsequence)
+            konsekvensEfter: toScore(raw.konsekvensEfter ?? raw.kEfter ?? raw.residualConsequence),
+            motivering_inneboende_risk: trimMotiveringText(
+                raw.motivering_inneboende_risk ?? raw.motiveringInneboende ?? raw.inneboendeMotivering
+            ),
+            motivering_residual_risk: trimMotiveringText(
+                raw.motivering_residual_risk ?? raw.motiveringResidual ?? raw.residualMotivering
+            ),
+            kraver_uppdaterad_motivering: raw.kraver_uppdaterad_motivering === true
+                || raw.kraverUppdateradMotivering === true
         };
     }
 
@@ -331,6 +347,9 @@
             sannolikhetEfter: n.sannolikhetEfter,
             konsekvensEfter: n.konsekvensEfter
         };
+        if (n.motivering_inneboende_risk) out.motivering_inneboende_risk = n.motivering_inneboende_risk;
+        if (n.motivering_residual_risk) out.motivering_residual_risk = n.motivering_residual_risk;
+        if (n.kraver_uppdaterad_motivering) out.kraver_uppdaterad_motivering = true;
         if (poang && (poang.kraverManualOversyn === true || poang.requiresReview === true)) {
             out.kraverManualOversyn = true;
         }
@@ -396,6 +415,11 @@
         }
         var inherent = assessRisk(sannolikhet, konsekvens);
         var residual = assessRisk(stored && stored.sannolikhetEfter, stored && stored.konsekvensEfter);
+        var mot = stored ? {
+            motivering_inneboende_risk: stored.motivering_inneboende_risk,
+            motivering_residual_risk: stored.motivering_residual_risk,
+            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering
+        } : {};
         return {
             sannolikhet: inherent.sannolikhet,
             konsekvens: inherent.konsekvens,
@@ -406,7 +430,10 @@
             konsekvensEfter: residual.konsekvens,
             residualProduct: residual.product,
             residualLevel: residual.level,
-            residualBadge: residual.badge
+            residualBadge: residual.badge,
+            motivering_inneboende_risk: mot.motivering_inneboende_risk || '',
+            motivering_residual_risk: mot.motivering_residual_risk || '',
+            kraver_uppdaterad_motivering: mot.kraver_uppdaterad_motivering === true
         };
     }
 
@@ -421,6 +448,11 @@
         }
         var inherent = assessRisk(stored && stored.sannolikhet, stored && stored.konsekvens);
         var residual = assessRisk(stored && stored.sannolikhetEfter, stored && stored.konsekvensEfter);
+        var mot = stored ? {
+            motivering_inneboende_risk: stored.motivering_inneboende_risk,
+            motivering_residual_risk: stored.motivering_residual_risk,
+            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering
+        } : {};
         return {
             sannolikhet: inherent.sannolikhet,
             konsekvens: inherent.konsekvens,
@@ -432,6 +464,9 @@
             residualProduct: residual.product,
             residualLevel: residual.level,
             residualBadge: residual.badge,
+            motivering_inneboende_risk: mot.motivering_inneboende_risk || '',
+            motivering_residual_risk: mot.motivering_residual_risk || '',
+            kraver_uppdaterad_motivering: mot.kraver_uppdaterad_motivering === true,
             ptTfRelevans: normalizePtTf(f['PT/TF-relevans'] || f.ptTfRelevans),
             kraverManualOversyn: fromLegacy || poangNeedsReview(f['Riskpoäng'] || f.Riskpoang)
         };

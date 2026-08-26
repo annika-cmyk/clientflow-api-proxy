@@ -224,6 +224,10 @@ class RiskFactorsManager {
                 this.updateRiskBadges('edit');
             });
         });
+        ['motivering-inneboende', 'motivering-residual'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', () => this.updateMotiveringWarnings('add'));
+            document.getElementById(`edit-${id}`)?.addEventListener('input', () => this.updateMotiveringWarnings('edit'));
+        });
 
         // Modal controls
         document.addEventListener('click', (e) => {
@@ -405,7 +409,31 @@ class RiskFactorsManager {
         );
         const flag = document.getElementById('edit-review-flag');
         if (flag) flag.hidden = mode !== 'edit' || !this.editNeedsReview;
+        this.updateMotiveringWarnings(mode);
         return { inherent, residual };
+    }
+
+    updateMotiveringWarnings(mode) {
+        const RM = window.RiskMotivering;
+        if (!RM) return;
+        const prefix = mode === 'edit' ? 'edit-' : '';
+        const poang = {
+            sannolikhet: document.getElementById(`${prefix}sannolikhet`)?.value,
+            konsekvens: document.getElementById(`${prefix}konsekvens`)?.value,
+            sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value,
+            konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value,
+            motivering_inneboende_risk: document.getElementById(`${prefix}motivering-inneboende`)?.value.trim() || '',
+            motivering_residual_risk: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || ''
+        };
+        const status = RM.assessMotivering(poang);
+        const warnPrefix = mode === 'edit' ? 'edit-' : 'add-';
+        const setWarn = (suffix, show) => {
+            const el = document.getElementById(`${warnPrefix}motivering-${suffix}-warn`);
+            if (el) el.hidden = !show;
+        };
+        setWarn('inneboende', status.inneboendeNeedsMotivering && !status.inneboendeOk);
+        setWarn('residual', (status.residualNeedsMotivering && !status.residualOk)
+            || (status.residualNeedsDecision && !status.residualDecisionOk));
     }
 
     requirePtTf(raw) {
@@ -422,6 +450,8 @@ class RiskFactorsManager {
             konsekvens: formData.get('konsekvens'),
             sannolikhetEfter: formData.get('sannolikhet-efter'),
             konsekvensEfter: formData.get('konsekvens-efter'),
+            motivering_inneboende_risk: String(formData.get('motivering-inneboende') || '').trim(),
+            motivering_residual_risk: String(formData.get('motivering-residual') || '').trim(),
             kraverManualOversyn: this.editNeedsReview === true
         };
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
@@ -434,6 +464,16 @@ class RiskFactorsManager {
             'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
             'PT/TF-relevans': this.requirePtTf(formData.get('pt-tf'))
         };
+    }
+
+    validateMotiveringBeforeSave(poang) {
+        const RM = window.RiskMotivering;
+        if (!RM) return { ok: true };
+        const check = RM.validatePoangMotivering(poang, { asDraft: false });
+        if (check.ok) return check;
+        const first = check.errors[0] || {};
+        this.showNotification(first.error || 'Motivering krävs.', 'error');
+        return check;
     }
 
     createRiskItem(risk) {
@@ -451,6 +491,12 @@ class RiskFactorsManager {
         const isChecked = risk.fields['Aktuell'] === true;
         const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
         const riskFactor = risk.fields['Riskfaktor'] || '';
+        const motStatus = (window.RiskMotivering && RiskMotivering.assessMotivering(scored)) || { complete: true };
+        const motWarn = (!motStatus.complete && isChecked)
+            ? '<span class="risk-motivering-warn risk-motivering-warn--list" title="Motivering saknas eller är för kort">✗</span>'
+            : (scored.kraver_uppdaterad_motivering
+                ? '<span class="risk-motivering-warn risk-motivering-warn--list risk-motivering-warn--flag" title="Kräver uppdaterad motivering">!</span>'
+                : '');
         const approvalDate = risk.fields['Riskbedömning godkänd datum'] || '';
         const tfTag = (window.RiskSkala && RiskSkala.isTfRelevant(scored.ptTfRelevans))
             ? '<span class="pt-tf-tag">TF</span>'
@@ -464,7 +510,7 @@ class RiskFactorsManager {
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${riskFactor} ${tfTag}</h4>
+                            <h4 class="risk-task-name">${riskFactor} ${tfTag} ${motWarn}</h4>
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
@@ -933,6 +979,7 @@ class RiskFactorsManager {
         if (pt) pt.value = '';
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
+        this.updateMotiveringWarnings('add');
         document.getElementById('add-risk-modal').style.display = 'flex';
     }
 
@@ -971,6 +1018,10 @@ class RiskFactorsManager {
         this.setScoreSelect('edit-konsekvens', scored.konsekvens);
         this.setScoreSelect('edit-sannolikhet-efter', scored.sannolikhetEfter);
         this.setScoreSelect('edit-konsekvens-efter', scored.konsekvensEfter);
+        const motIn = document.getElementById('edit-motivering-inneboende');
+        const motRes = document.getElementById('edit-motivering-residual');
+        if (motIn) motIn.value = scored.motivering_inneboende_risk || '';
+        if (motRes) motRes.value = scored.motivering_residual_risk || '';
         this.editNeedsReview = scored.kraverManualOversyn === true;
         this.updateRiskBadges('edit');
 
@@ -998,6 +1049,15 @@ class RiskFactorsManager {
                 'Byrå ID': userByraId,
                 'Aktuell': true
             };
+            const poang = RiskSkala && RiskSkala.parseRiskPoang ? RiskSkala.parseRiskPoang(riskData['Riskpoäng']) : null;
+            const motCheck = this.validateMotiveringBeforeSave(poang || {});
+            if (!motCheck.ok) {
+                const first = motCheck.errors[0] || {};
+                const prefix = first.field === 'motivering_residual_risk' ? 'motivering-residual' : 'motivering-inneboende';
+                document.getElementById(prefix)?.focus();
+                this.updateMotiveringWarnings('add');
+                return;
+            }
             const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors`, 'POST', riskData);
             if (response.ok) {
                 this.closeModal('add-risk-modal');
@@ -1032,6 +1092,15 @@ class RiskFactorsManager {
                 ...this.collectRiskPayload(formData),
                 'Byrå ID': userByraId
             };
+            const poang = RiskSkala && RiskSkala.parseRiskPoang ? RiskSkala.parseRiskPoang(riskData['Riskpoäng']) : null;
+            const motCheck = this.validateMotiveringBeforeSave(poang || {});
+            if (!motCheck.ok) {
+                const first = motCheck.errors[0] || {};
+                const prefix = first.field === 'motivering_residual_risk' ? 'edit-motivering-residual' : 'edit-motivering-inneboende';
+                document.getElementById(prefix)?.focus();
+                this.updateMotiveringWarnings('edit');
+                return;
+            }
             const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`, 'PUT', riskData);
             if (response.ok) {
                 this.closeModal('edit-risk-modal');

@@ -197,6 +197,13 @@
                                         <span class="ai-btn-label">Generera med AI</span>
                                     </button>
                                     <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
+                                    <div class="form-group risk-motivering-field">
+                                        <label for="tjanst-motivering-inneboende">Motivering av S och K (inneboende risk)
+                                            <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                        </label>
+                                        <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                        <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                                    </div>
                                 </div>
                                 <label for="tjanst-beskrivning">Tjänstebeskrivning och inneboende risk</label>
                                 <p class="tjanst-panel-hint">Beskriv tjänsten och den risk den utgör i sig — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
@@ -285,6 +292,13 @@
                                         </div>
                                         <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
                                     </div>
+                                    <div class="form-group risk-motivering-field">
+                                        <label for="tjanst-motivering-residual">Motivering av residual-S och K
+                                            <span id="tjanst-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                        </label>
+                                        <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
+                                        <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
+                                    </div>
                                 </div>
                             </section>
                         </div>
@@ -321,11 +335,12 @@
     <script src="js/components.js?v=2.2"></script>
     <script src="app.js?v=1.1"></script>
     <script src="js/aml-kalla.js?v=2"></script>
-    <script src="js/risk-skala.js?v=7"></script>
+    <script src="js/risk-skala.js?v=8"></script>
+    <script src="js/risk-motivering.js?v=1"></script>
     <script src="js/tjanst-tf-tackning.js?v=1"></script>
     <script src="js/hot-aml-tf.js?v=2"></script>
     <script src="js/tjanst-forutsattning.js?v=3"></script>
     <script src="js/ai-falt-granskning.js?v=9"></script>
-    <script src="js/riskbedomning-byra.v5.js?v=25"></script>
+    <script src="js/riskbedomning-byra.v5.js?v=26"></script>
 </body>
 </html>

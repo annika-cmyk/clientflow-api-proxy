@@ -156,6 +156,9 @@ class RiskAssessmentManager {
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });
+        ['tjanst-motivering-inneboende', 'tjanst-motivering-residual'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', () => this.updateMotiveringWarnings());
+        });
 
         // Lägg till-rad-knappar i modalen
         document.querySelectorAll('.btn-add-row').forEach(btn => {
@@ -305,6 +308,12 @@ class RiskAssessmentManager {
         };
         const isChecked = f['Aktuell'] === true;
         const taskName = f['Task Name'] || 'Namnlös tjänst';
+        const motStatus = (window.RiskMotivering && RiskMotivering.assessMotivering(scored)) || { complete: true };
+        const motWarn = (!motStatus.complete && isChecked)
+            ? '<span class="risk-motivering-warn risk-motivering-warn--list" title="Motivering saknas eller är för kort">✗</span>'
+            : (scored.kraver_uppdaterad_motivering
+                ? '<span class="risk-motivering-warn risk-motivering-warn--list risk-motivering-warn--flag" title="Kräver uppdaterad motivering">!</span>'
+                : '');
 
         const beskrivning = f['Tjänstebeskrivning'] || '';
         const hot = this.parseJsonField(f['Hot']);
@@ -413,7 +422,7 @@ class RiskAssessmentManager {
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${this.esc(taskName)}</h4>
+                            <h4 class="risk-task-name">${this.esc(taskName)} ${motWarn}</h4>
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
@@ -955,7 +964,22 @@ class RiskAssessmentManager {
             (window.RiskSkala && RiskSkala.formatResidualBadge(residual)) || 'Residualrisk: Ej satt',
             residual.level
         );
+        this.updateMotiveringWarnings();
         return { inherent, residual };
+    }
+
+    updateMotiveringWarnings() {
+        const RM = window.RiskMotivering;
+        if (!RM) return;
+        const poang = this.collectRiskPoang();
+        const status = RM.assessMotivering(poang);
+        const setWarn = (id, show) => {
+            const el = document.getElementById(id);
+            if (el) el.hidden = !show;
+        };
+        setWarn('tjanst-motivering-inneboende-warn', status.inneboendeNeedsMotivering && !status.inneboendeOk);
+        setWarn('tjanst-motivering-residual-warn', (status.residualNeedsMotivering && !status.residualOk)
+            || (status.residualNeedsDecision && !status.residualDecisionOk));
     }
 
     collectRiskPoang() {
@@ -963,7 +987,9 @@ class RiskAssessmentManager {
             sannolikhet: document.getElementById('tjanst-sannolikhet')?.value,
             konsekvens: document.getElementById('tjanst-konsekvens')?.value,
             sannolikhetEfter: document.getElementById('tjanst-sannolikhet-efter')?.value,
-            konsekvensEfter: document.getElementById('tjanst-konsekvens-efter')?.value
+            konsekvensEfter: document.getElementById('tjanst-konsekvens-efter')?.value,
+            motivering_inneboende_risk: document.getElementById('tjanst-motivering-inneboende')?.value.trim() || '',
+            motivering_residual_risk: document.getElementById('tjanst-motivering-residual')?.value.trim() || ''
         };
     }
 
@@ -979,6 +1005,11 @@ class RiskAssessmentManager {
         this.updateRiskBadges();
         const tfEl = document.getElementById('tjanst-tf-motivering');
         if (tfEl) tfEl.value = '';
+        const motIn = document.getElementById('tjanst-motivering-inneboende');
+        const motRes = document.getElementById('tjanst-motivering-residual');
+        if (motIn) motIn.value = '';
+        if (motRes) motRes.value = '';
+        this.updateMotiveringWarnings();
         this.updateTfBanner();
         if (window.AiFaltGranskning) {
             AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
@@ -996,6 +1027,10 @@ class RiskAssessmentManager {
         this.setScoreSelect('tjanst-konsekvens', scored.konsekvens);
         this.setScoreSelect('tjanst-sannolikhet-efter', scored.sannolikhetEfter);
         this.setScoreSelect('tjanst-konsekvens-efter', scored.konsekvensEfter);
+        const motIn = document.getElementById('tjanst-motivering-inneboende');
+        const motRes = document.getElementById('tjanst-motivering-residual');
+        if (motIn) motIn.value = scored.motivering_inneboende_risk || '';
+        if (motRes) motRes.value = scored.motivering_residual_risk || '';
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
         const tfEl = document.getElementById('tjanst-tf-motivering');
         if (tfEl) tfEl.value = (window.TjanstTfTackning && TjanstTfTackning.readTfMotivering(f)) || '';
@@ -1533,6 +1568,22 @@ class RiskAssessmentManager {
                 this.updateTfBanner();
                 this.showNotification(check.error, 'error');
                 document.getElementById('tjanst-tf-motivering')?.focus();
+                return;
+            }
+        }
+        const RM = window.RiskMotivering;
+        if (RM && !asDraft) {
+            const motCheck = RM.validatePoangMotivering(this.collectRiskPoang(), { asDraft: false });
+            if (!motCheck.ok) {
+                const first = motCheck.errors[0] || {};
+                this.showNotification(first.error || 'Motivering krävs.', 'error');
+                const field = first.field === 'motivering_residual_risk'
+                    ? 'tjanst-motivering-residual'
+                    : 'tjanst-motivering-inneboende';
+                if (first.field === 'motivering_residual_risk') this.setTjanstTab('atgard');
+                else this.setTjanstTab('oversikt');
+                document.getElementById(field)?.focus();
+                this.updateMotiveringWarnings();
                 return;
             }
         }
