@@ -198,6 +198,26 @@
         ].join('\n');
     }
 
+    function motiveringDisplayParts(item) {
+        var mot = readMotivering(item);
+        var parts = [];
+        if (mot.motivering_inneboende_risk) {
+            parts.push({
+                key: 'inneboende',
+                title: 'Motivering av S och K (inneboende risk)',
+                text: mot.motivering_inneboende_risk
+            });
+        }
+        if (mot.motivering_residual_risk) {
+            parts.push({
+                key: 'residual',
+                title: 'Motivering av residual-S och K',
+                text: mot.motivering_residual_risk
+            });
+        }
+        return parts;
+    }
+
     var api = {
         MIN_MOTIVERING_LENGTH: MIN_MOTIVERING_LENGTH,
         trimMotivering: trimMotivering,
@@ -214,7 +234,8 @@
         formatInherentRiskLine: formatInherentRiskLine,
         formatResidualRiskLine: formatResidualRiskLine,
         collectExportWarnings: collectExportWarnings,
-        exportWarningBanner: exportWarningBanner
+        exportWarningBanner: exportWarningBanner,
+        motiveringDisplayParts: motiveringDisplayParts
     };
 
     if (typeof module !== 'undefined' && module.exports) {

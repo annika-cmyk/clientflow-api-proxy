@@ -539,6 +539,8 @@ class RiskFactorsManager {
                             ${this.formatDescription(risk.fields['Beskrivning'] || '')}
                         </p>
                     </div>
+
+                    ${this.renderMotiveringSections(scored, { keys: ['inneboende'] })}
                     
                     <div class="risk-content-section">
                         <h5><i class="fas fa-tools"></i> Åtgärd</h5>
@@ -546,6 +548,8 @@ class RiskFactorsManager {
                             ${this.formatDescription(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '')}
                         </p>
                     </div>
+
+                    ${this.renderMotiveringSections(scored, { keys: ['residual'] })}
                     
                     <div class="risk-item-footer">
                         <button class="btn btn-secondary btn-sm edit-risk" data-record-id="${risk.id}">
@@ -580,6 +584,27 @@ class RiskFactorsManager {
         
         // Convert line breaks to HTML
         return text.replace(/\n/g, '<br>');
+    }
+
+    renderMotiveringSection(part) {
+        if (!part || !part.text) return '';
+        const icon = part.key === 'residual' ? 'fa-shield-halved' : 'fa-scale-balanced';
+        return `
+            <div class="risk-content-section">
+                <h5><i class="fas ${icon}"></i> ${this.esc(part.title)}</h5>
+                <p class="risk-content-text">${this.esc(part.text).replace(/\n/g, '<br>')}</p>
+            </div>
+        `;
+    }
+
+    renderMotiveringSections(scored, { keys } = {}) {
+        const RM = window.RiskMotivering;
+        if (!RM || !RM.motiveringDisplayParts) return '';
+        const allowed = keys ? new Set(keys) : null;
+        return RM.motiveringDisplayParts(scored)
+            .filter((part) => !allowed || allowed.has(part.key))
+            .map((part) => this.renderMotiveringSection(part))
+            .join('');
     }
 
     getRiskLevelClass(level) {

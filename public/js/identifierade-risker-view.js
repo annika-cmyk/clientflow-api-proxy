@@ -152,6 +152,25 @@
       + '</h5>' + html + '</div>';
   }
 
+  function motiveringLib() {
+    if (typeof window !== 'undefined' && window.RiskMotivering) return window.RiskMotivering;
+    try { return require('./risk-motivering'); } catch (_) { return null; }
+  }
+
+  function renderMotiveringSections(item, keys) {
+    const RM = motiveringLib();
+    if (!RM || !RM.motiveringDisplayParts) return '';
+    const allowed = keys ? new Set(keys) : null;
+    return RM.motiveringDisplayParts(item)
+      .filter((part) => !allowed || allowed.has(part.key))
+      .map((part) => section(
+        part.key === 'residual' ? 'fa-shield-halved' : 'fa-scale-balanced',
+        part.title,
+        '<p class="risk-content-text">' + nl(part.text) + '</p>'
+      ))
+      .join('');
+  }
+
   function cardShell(opts) {
     const checked = opts.aktuell === true;
     const tfTag = renderPtTfPills(opts.ptTf);
@@ -195,6 +214,7 @@
       parts.push(section('fa-file-lines', 'Tjänstebeskrivning och inneboende risk',
         '<p class="risk-content-text">' + nl(beskrivning) + '</p>'));
     }
+    parts.push(renderMotiveringSections(item, ['inneboende']));
     parts.push(renderHot(item.hot));
     parts.push(renderSarbarheter(item.sarbarheter));
     if (!Tf || !Tf.hasTfHot || !Tf.hasTfHot(item.hot)) {
@@ -205,6 +225,7 @@
       }
     }
     parts.push(renderAtgarder(item.atgarder, item.atgard));
+    parts.push(renderMotiveringSections(item, ['residual']));
     const body = parts.filter(Boolean).join('') || section('fa-circle-info', 'Innehåll',
       '<p class="risk-content-text"><em>Inget innehåll ännu.</em></p>');
     return cardShell({
@@ -233,7 +254,9 @@
       parts.push(section('fa-info-circle', 'Beskrivning och inneboende risk',
         '<p class="risk-content-text">' + nl(item.beskrivning) + '</p>'));
     }
+    parts.push(renderMotiveringSections(item, ['inneboende']));
     parts.push(renderAtgarder([], item.atgard));
+    parts.push(renderMotiveringSections(item, ['residual']));
     const body = parts.filter(Boolean).join('') || section('fa-circle-info', 'Innehåll',
       '<p class="risk-content-text"><em>Inget innehåll ännu.</em></p>');
     return cardShell({

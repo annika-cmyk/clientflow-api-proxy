@@ -267,6 +267,27 @@ class RiskAssessmentManager {
         return this.esc(text).replace(/\n/g, '<br>');
     }
 
+    renderMotiveringSection(part) {
+        if (!part || !part.text) return '';
+        const icon = part.key === 'residual' ? 'fa-shield-halved' : 'fa-scale-balanced';
+        return `
+            <div class="risk-content-section">
+                <h5><i class="fas ${icon}"></i> ${this.esc(part.title)}</h5>
+                <p class="risk-content-text">${this.formatDescription(part.text)}</p>
+            </div>
+        `;
+    }
+
+    renderMotiveringSections(scored, { keys } = {}) {
+        const RM = window.RiskMotivering;
+        if (!RM || !RM.motiveringDisplayParts) return '';
+        const allowed = keys ? new Set(keys) : null;
+        return RM.motiveringDisplayParts(scored)
+            .filter((part) => !allowed || allowed.has(part.key))
+            .map((part) => this.renderMotiveringSection(part))
+            .join('');
+    }
+
     // ---- Rendering ----
     renderRiskList() {
         const riskList = document.getElementById('risk-list');
@@ -341,6 +362,9 @@ class RiskAssessmentManager {
             `);
         }
 
+        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
+        if (motInneboende) sections.push(motInneboende);
+
         if (hot.length) {
             const rows = hot.map(h => {
                 const typ = (window.RiskSkala && RiskSkala.normalizePtTf(h.typ)) || ((h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT');
@@ -405,6 +429,9 @@ class RiskAssessmentManager {
                 </div>
             `);
         }
+
+        const motResidual = this.renderMotiveringSections(scored, { keys: ['residual'] });
+        if (motResidual) sections.push(motResidual);
 
         if (!sections.length) {
             sections.push(`
