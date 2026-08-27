@@ -437,11 +437,13 @@ class CustomerCardManager {
                         createdTime: data.createdTime,
                         fields: data.fields
                     };
+                    this._utsattRecheckAttempted = false;
                     this._applyHogriskSni(data.hogriskSni);
                     console.log('✅ Customer data loaded:', this.customerData);
                 } else if (data.id && data.fields) {
                     // Direct record format (fallback)
                     this.customerData = data;
+                    this._utsattRecheckAttempted = false;
                     this._applyHogriskSni(data.hogriskSni);
                     console.log('✅ Customer data loaded (fallback):', this.customerData);
                 } else {
@@ -4986,6 +4988,17 @@ class CustomerCardManager {
         el.innerHTML = this._adressMedUtsattHtml(fields, adress);
     }
 
+    _maybeAutoRecheckUtsattOmrade() {
+        if (this._utsattRecheckAttempted) return;
+        const fields = this.customerData?.fields || {};
+        const adress = String(fields.Address || fields.Adress || '').trim();
+        if (!adress) return;
+        const data = this._parseUtsattOmrade(fields);
+        if (!this._utsattOmradeGeoFailed(data)) return;
+        this._utsattRecheckAttempted = true;
+        this.recheckUtsattOmrade();
+    }
+
     async recheckUtsattOmrade() {
         const customerId = this.customerId;
         if (!customerId) return;
@@ -5559,6 +5572,7 @@ class CustomerCardManager {
             });
         }
         this._maybeMigrateBeskrivningTillVerksamhet();
+        this._maybeAutoRecheckUtsattOmrade();
     }
 
     async refreshBolagsverketData() {
