@@ -755,10 +755,22 @@
     document.body.appendChild(modal);
 
     document.getElementById('uppdrag-complete-confirm').addEventListener('click', async () => {
+      const confirmBtn = document.getElementById('uppdrag-complete-confirm');
+      if (confirmBtn?.dataset.busy === '1') return;
       try {
+        if (confirmBtn) {
+          confirmBtn.dataset.busy = '1';
+          confirmBtn.disabled = true;
+          confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+        }
         const note = (document.getElementById('uppdrag-complete-note')?.value || '').trim();
         if (riskOn && riskValda.length && !riskAtgarderAllChecked(riskValda, done)) {
           alert('Bocka i alla åtgärder enligt kundens riskbedömning innan du klarmarkerar körningen.');
+          if (confirmBtn) {
+            confirmBtn.dataset.busy = '0';
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera';
+          }
           return;
         }
 
@@ -805,11 +817,52 @@
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
         document.getElementById('uppdrag-complete-modal')?.remove();
-        await load();
+        applyCompleteLocally({
+          uppdragId,
+          periodKey,
+          runId,
+          nextDeadline: data.nextDeadline || null,
+          doneAt: (data.record?.fields?.['Senast utförd'] || '').toString().slice(0, 10) || null
+        });
+        // Bakgrundsuppdatering utan att tömma boarden
+        load({ quiet: true });
       } catch (e) {
         alert('Kunde inte klarmarkera: ' + (e.message || 'fel'));
+        if (confirmBtn) {
+          confirmBtn.dataset.busy = '0';
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera';
+        }
       }
     });
+  }
+
+  function applyCompleteLocally({ uppdragId, periodKey, runId, nextDeadline, doneAt }) {
+    const uid = String(uppdragId || '').trim();
+    const pk = String(periodKey || '').trim();
+    const rid = String(runId || '').trim();
+    if (rid) {
+      const rr = allRunRecords.find((r) => r && r.id === rid);
+      if (rr) rr.fields = { ...(rr.fields || {}), Status: 'Klar' };
+    } else if (uid && pk) {
+      for (const rr of allRunRecords) {
+        const f = rr?.fields || {};
+        if (String(f['Uppdrag ID'] || '') === uid && String(f['PeriodKey'] || '') === pk) {
+          rr.fields = { ...f, Status: 'Klar' };
+        }
+      }
+    }
+    if (uid) {
+      const ur = allRecords.find((r) => r && r.id === uid);
+      if (ur) {
+        const patch = { ...(ur.fields || {}) };
+        if (nextDeadline) patch['Nästa deadline'] = nextDeadline;
+        if (doneAt) patch['Senast utförd'] = doneAt;
+        ur.fields = patch;
+      }
+    }
+    runsByUppdragId = indexRunsByUppdrag(allRunRecords);
+    render();
   }
 
   function render() {
@@ -1239,7 +1292,8 @@
     return fetch(url, merged).finally(() => clearTimeout(timer));
   }
 
-  async function load() {
+  async function load(opts = {}) {
+    const quiet = !!opts.quiet;
     if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
       setVisible(els.loading, false);
       setVisible(els.content, false);
@@ -1248,8 +1302,10 @@
     }
 
     setVisible(els.noAuth, false);
-    setVisible(els.loading, true);
-    setVisible(els.content, false);
+    if (!quiet) {
+      setVisible(els.loading, true);
+      setVisible(els.content, false);
+    }
 
     try {
       const mine = scope === 'mine' ? '1' : '0';
@@ -1265,9 +1321,11 @@
     } catch (e) {
       const aborted = e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')));
       console.error('❌ Uppdrag översikt:', e);
-      tbodyEl.innerHTML = `<tr><td colspan="4" class="uppdragboard-empty">${aborted
-        ? 'Hämtningen tog för lång tid. Ladda om sidan eller prova igen om en stund.'
-        : `Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}`}</td></tr>`;
+      if (!quiet) {
+        tbodyEl.innerHTML = `<tr><td colspan="4" class="uppdragboard-empty">${aborted
+          ? 'Hämtningen tog för lång tid. Ladda om sidan eller prova igen om en stund.'
+          : `Kunde inte ladda uppdrag: ${esc(e.message || 'fel')}`}</td></tr>`;
+      }
       setVisible(els.loading, false);
       setVisible(els.content, true);
     }

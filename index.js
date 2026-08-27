@@ -17667,14 +17667,29 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Uppdaterad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } }
 ];
 
+const AIRTABLE_META_CACHE_MS = 5 * 60 * 1000;
+const _airtableTablesMetaCache = new Map(); // baseId -> { at, tables }
+const _uppdragRunsTableIdCache = new Map(); // baseId -> { at, id }
+
+async function getAirtableTablesMetaCached(airtableToken, baseId) {
+  const key = String(baseId || '');
+  const hit = _airtableTablesMetaCache.get(key);
+  if (hit && (Date.now() - hit.at) < AIRTABLE_META_CACHE_MS && Array.isArray(hit.tables)) {
+    return hit.tables;
+  }
+  const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+    headers: { Authorization: `Bearer ${airtableToken}` },
+    timeout: 10000
+  });
+  const tables = res.data?.tables || [];
+  _airtableTablesMetaCache.set(key, { at: Date.now(), tables });
+  return tables;
+}
+
 async function getUppdragTableMeta(airtableToken, baseId) {
   const forcedId = process.env.AIRTABLE_TABLE_UPPDRAG_ID;
   try {
-    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
-      headers: { Authorization: `Bearer ${airtableToken}` },
-      timeout: 10000
-    });
-    const tables = res.data?.tables || [];
+    const tables = await getAirtableTablesMetaCached(airtableToken, baseId);
     const t = forcedId
       ? tables.find(x => (x.id || '').trim() === forcedId.trim())
       : tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_TABLE_NAME.toLowerCase());
@@ -17687,11 +17702,7 @@ async function getUppdragTableMeta(airtableToken, baseId) {
 async function getUppdragRunsTableMeta(airtableToken, baseId) {
   const forcedId = (process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || '').trim();
   try {
-    const res = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
-      headers: { Authorization: `Bearer ${airtableToken}` },
-      timeout: 10000
-    });
-    const tables = res.data?.tables || [];
+    const tables = await getAirtableTablesMetaCached(airtableToken, baseId);
     const byName = tables.find(x => (x.name || '').trim().toLowerCase() === UPPDRAG_RUNS_TABLE_NAME.toLowerCase());
     if (byName) return byName;
     if (forcedId) {
@@ -17709,8 +17720,17 @@ async function resolveUppdragRunsTableId(airtableToken, baseId) {
   const forcedId = (process.env.AIRTABLE_TABLE_UPPDRAG_RUNS_ID || '').trim();
   if (forcedId) return forcedId;
 
+  const cacheKey = String(baseId || '');
+  const cached = _uppdragRunsTableIdCache.get(cacheKey);
+  if (cached && (Date.now() - cached.at) < AIRTABLE_META_CACHE_MS && cached.id) {
+    return cached.id;
+  }
+
   const meta = await getUppdragRunsTableMeta(airtableToken, baseId);
-  if (meta?.id) return meta.id;
+  if (meta?.id) {
+    _uppdragRunsTableIdCache.set(cacheKey, { id: meta.id, at: Date.now() });
+    return meta.id;
+  }
 
   // Meta API kräver schema.bases:read – fall tillbaka till tabellnamn via data-API.
   const tableRef = encodeURIComponent(UPPDRAG_RUNS_TABLE_NAME);
@@ -17719,6 +17739,7 @@ async function resolveUppdragRunsTableId(airtableToken, baseId) {
       headers: { Authorization: `Bearer ${airtableToken}` },
       timeout: 10000
     });
+    _uppdragRunsTableIdCache.set(cacheKey, { id: tableRef, at: Date.now() });
     return tableRef;
   } catch (e) {
     const msg = e.response?.data?.error?.message || e.message || '';
@@ -19523,18 +19544,8 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
     );
 
-    let runsEnsure = null;
-    try {
-      runsEnsure = await ensureRunsForUppdragRecord(
-        mergeUppdragRecordFields(updateRes.data, fields),
-        airtableAccessToken,
-        airtableBaseId
-      );
-    } catch (e) {
-      console.warn('ensure runs after uppdrag complete:', e.message);
-      runsEnsure = { created: 0, skipped: true, reason: 'error', message: e.message };
-    }
-
+    const tComplete0 = Date.now();
+    // Markera den aktuella körningen Klar först – det är det användaren väntar på.
     let runSync = null;
     try {
       runSync = await syncUppdragRunStatusKlar({
@@ -19551,8 +19562,41 @@ app.post('/api/uppdrag/complete', authenticateToken, async (req, res) => {
       console.warn('sync run status after uppdrag complete:', e.message);
       runSync = { synced: false, reason: 'error', message: e.message };
     }
+    const syncMs = Date.now() - tComplete0;
 
-    return res.json({ record: updateRes.data, nextDeadline: next || null, periodKey, runsEnsure, runSync });
+    // Horisont/schema-ensure (skapa kommande körningar) körs i bakgrunden –
+    // tidigare blockerade det klarmarkeringen i flera sekunder via meta + N Airtable-skrivningar.
+    const mergedForEnsure = mergeUppdragRecordFields(updateRes.data, fields);
+    setImmediate(() => {
+      const tBg = Date.now();
+      ensureRunsForUppdragRecord(mergedForEnsure, airtableAccessToken, airtableBaseId)
+        .then((runsEnsure) => {
+          console.log(`⏱️ uppdrag/complete background ensureRuns: ${Date.now() - tBg}ms`, {
+            uppdragId: existing.id,
+            created: runsEnsure?.created,
+            skipped: runsEnsure?.skipped,
+            reason: runsEnsure?.reason
+          });
+        })
+        .catch((e) => {
+          console.warn('ensure runs after uppdrag complete (bg):', e.message);
+        });
+    });
+
+    console.log(`⏱️ uppdrag/complete syncKlar: ${syncMs}ms totalHandler=${Date.now() - tComplete0}ms`, {
+      uppdragId: existing.id,
+      typ,
+      periodKey,
+      synced: runSync?.synced
+    });
+
+    return res.json({
+      record: updateRes.data,
+      nextDeadline: next || null,
+      periodKey,
+      runsEnsure: { deferred: true },
+      runSync
+    });
   } catch (error) {
     console.error('❌ POST /api/uppdrag/complete:', error.response?.data || error.message);
     const status = error.response?.status || 500;
