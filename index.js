@@ -5341,9 +5341,12 @@ async function ensureAirtableTableFields(token, baseId, tableName, wantedFields)
     if (existing.has(field.name)) continue;
     try {
       // eslint-disable-next-line no-await-in-loop
+      const payload = { name: field.name, type: field.type || 'singleLineText' };
+      if (field.options) payload.options = field.options;
+      if (field.description) payload.description = field.description;
       await axios.post(
         `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields`,
-        { name: field.name, type: field.type || 'singleLineText' },
+        payload,
         {
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           timeout: 15000
@@ -15376,7 +15379,7 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     }
     console.log('Uppdateringsdata:', riskData);
 
-    const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
+    const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING };
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}/${id}`;
     const headers = {
       'Authorization': `Bearer ${airtableAccessToken}`,
@@ -15388,7 +15391,7 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     const riskDataWithFlag = applyMotiveringMigrationFlag(riskData, beforeFaktor);
-    if (rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeFaktor)) return;
+    if (!aktuellOnlyToggle && rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeFaktor)) return;
     const airtableFields = applyOvrigExtraAirtableFields(
       riskDataWithFlag,
       mapNamedFieldsToAirtable(riskDataWithFlag, factorMapping, { dropUnknown: true })
