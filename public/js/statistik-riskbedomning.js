@@ -103,14 +103,28 @@
       } else {
         const summary = data.utsattOmrade || {};
         const meta = typeof summary.antalTrff === 'number'
-          ? `<p class="statistik-section-desc">${summary.antalKontrollerade || 0} kontrollerade adresser, ${summary.antalTrff} träffar.</p>`
+          ? `<p class="statistik-section-desc">${summary.antalKontrollerade || 0} kontrollerade adresser, ${summary.antalTrff} träffar. Endast pågående kunder. Klicka på träffar eller geokodningsfel för kundlista.</p>`
           : '';
-        utsattList.innerHTML = meta + utsatt.map(u => `
+        const actionable = new Set([
+          'Kunde inte geokoda',
+          'Särskilt utsatt område (SEU)',
+          'Utsatt område'
+        ]);
+        utsattList.innerHTML = meta + utsatt.map(u => {
+          const canOpen = actionable.has(u.namn);
+          if (canOpen) {
+            return `
           <div class="stat-list-row stat-list-row-clickable" data-typ="utsatt-omrade" data-namn="${escapeAttr(u.namn)}" data-titel="${escapeAttr('Utsatt område: ' + u.namn)}" title="Klicka för att se kunder">
             <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
             <span class="stat-list-antal">${u.antal} kunder</span>
-          </div>
-        `).join('');
+          </div>`;
+          }
+          return `
+          <div class="stat-list-row">
+            <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
+            <span class="stat-list-antal">${u.antal} kunder</span>
+          </div>`;
+        }).join('');
       }
     }
 
