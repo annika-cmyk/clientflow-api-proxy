@@ -14708,16 +14708,95 @@ h5.ar-subsection-title {
     color: #64748b;
 }
 .dyn-ai-forslag,
-.dyn-ai-bar,
+.dyn-ai-bar {
+    margin: 0;
+    padding: 0.75rem 0.85rem;
+    border: none;
+    border-top: 1px solid #86efac;
+    border-radius: 0;
+    background: #f0fdf4;
+}
 .field-ai-forslag {
     margin: 0.55rem 0 0;
-    padding: 0.65rem 0.75rem;
+    padding: 0.75rem 0.85rem;
     border: 1px solid #86efac;
     border-radius: 10px;
     background: #f0fdf4;
 }
+.dyn-card .dyn-ai-forslag,
+.dyn-card .dyn-ai-bar {
+    margin-top: 0;
+}
+.dyn-ai-forslag-head {
+    margin-bottom: 0.35rem;
+}
+.dyn-ai-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-top: 0.45rem;
+}
+.dyn-ai-form--with-meta {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, auto) 1fr;
+    gap: 0.55rem 0.65rem;
+    align-items: end;
+}
+.dyn-ai-form--with-meta .dyn-ai-field--meta {
+    grid-column: 1;
+    align-self: end;
+}
+.dyn-ai-form--with-meta .dyn-ai-field--titel {
+    grid-column: 2;
+}
+.dyn-ai-form--with-meta .dyn-ai-field--besk,
+.dyn-ai-form--with-meta .dyn-ai-field--kalla {
+    grid-column: 1 / -1;
+}
+.dyn-ai-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.dyn-ai-field-label,
+.ai-review-field-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    letter-spacing: 0.01em;
+}
+.dyn-ai-forslag .dyn-ai-control,
+.dyn-ai-forslag .dyn-ai-titel,
+.dyn-ai-forslag .dyn-ai-besk,
+.dyn-ai-forslag .dyn-ai-kalla,
+.dyn-ai-forslag .dyn-ai-typ,
+.dyn-ai-forslag .dyn-ai-kat,
+.field-ai-forslag textarea,
+.field-ai-forslag select {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+    font: inherit;
+    background: #fff;
+    color: #0f172a;
+}
+.dyn-ai-forslag .dyn-ai-besk,
+.field-ai-forslag textarea {
+    min-height: 4.2rem;
+    resize: vertical;
+    line-height: 1.45;
+}
+.dyn-ai-forslag .dyn-ai-typ,
+.dyn-ai-forslag .dyn-ai-kat {
+    min-width: 5.5rem;
+}
 .dyn-ai-bar {
-    border-color: #fecaca;
+    border-top-color: #fecaca;
     background: #fef2f2;
 }
 .dyn-ai-label,
@@ -14756,42 +14835,72 @@ h5.ar-subsection-title {
     line-height: 1.45;
     color: #334155;
 }
-.dyn-ai-forslag .dyn-titel,
-.dyn-ai-forslag .dyn-besk,
-.dyn-ai-forslag .dyn-kalla,
-.field-ai-forslag textarea,
-.field-ai-forslag select {
-    width: 100%;
-    box-sizing: border-box;
-    margin: 0 0 0.4rem;
-    border: 1px solid #bbf7d0;
-    border-radius: 8px;
-    padding: 0.45rem 0.55rem;
-    font: inherit;
-    background: #fff;
-}
 .dyn-ai-actions,
 .field-ai-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+    margin-top: 0.65rem;
 }
 .ai-review.is-inline-summary {
     max-height: none;
 }
-.ai-review-item-head {
+.ai-review-items {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    align-items: center;
-    margin-bottom: 0.4rem;
+    flex-direction: column;
+    gap: 0.55rem;
 }
-.ai-review-item-head input[data-ai-titel] {
-    flex: 1 1 10rem;
+.ai-review-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.65rem 0.7rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+.ai-review-item-head {
+    display: grid;
+    grid-template-columns: auto minmax(5.5rem, auto) 1fr;
+    gap: 0.45rem 0.55rem;
+    align-items: end;
+}
+.ai-review-item-head .ai-review-item-new,
+.ai-review-item-head .ai-review-item-changed {
+    grid-column: 1;
+    align-self: center;
+}
+.ai-review-item-meta {
+    grid-column: 2;
+    min-width: 0;
+}
+.ai-review-item-titel {
+    grid-column: 3;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.ai-review-item-besk,
+.ai-review-item-kalla {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.ai-review-item input,
+.ai-review-item textarea,
+.ai-review-item select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    padding: 0.45rem 0.55rem;
+    font: inherit;
+    background: #fff;
+    color: #0f172a;
 }
 .ai-review-item-head select {
-    width: auto;
-    min-width: 6.5rem;
+    min-width: 5.5rem;
 }
 .ai-review-item-new {
     padding: 0.1rem 0.4rem;
@@ -14804,11 +14913,9 @@ h5.ar-subsection-title {
     text-transform: uppercase;
 }
 .ai-review-item textarea {
-    min-height: 3.4rem;
+    min-height: 4rem;
     resize: vertical;
-}
-.ai-review-item input[data-ai-kalla] {
-    margin-top: 0.4rem;
+    line-height: 1.45;
 }
 .ai-review-actions {
     display: flex;

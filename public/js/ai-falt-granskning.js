@@ -733,11 +733,20 @@
       <div class="ai-review-item"${isNew ? ' data-ai-new' : ''}${descChanged || kallaChanged ? ' data-ai-changed' : ''} data-ai-item>
         <div class="ai-review-item-head">
           ${isNew ? '<span class="ai-review-item-new">Ny</span>' : descChanged || kallaChanged ? '<span class="ai-review-item-changed">Ändrad</span>' : ''}
-          ${extra}
-          <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
+          ${extra ? `<div class="ai-review-item-meta">${extra}</div>` : ''}
+          <div class="ai-review-item-titel">
+            <label class="ai-review-field-label">Titel</label>
+            <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
+          </div>
         </div>
-        <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
-        ${falt === 'hot' ? `<input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Källa">` : ''}
+        <div class="ai-review-item-besk">
+          <label class="ai-review-field-label">Beskrivning</label>
+          <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
+        </div>
+        ${falt === 'hot' ? `<div class="ai-review-item-kalla">
+          <label class="ai-review-field-label">Källa</label>
+          <input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Myndighet — undersida — https://…">
+        </div>` : ''}
       </div>
     `;
   }

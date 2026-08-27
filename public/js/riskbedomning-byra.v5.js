@@ -1370,13 +1370,13 @@ class RiskAssessmentManager {
         const kat = forslag.kategori || 'Verksamhet';
         const fieldChanges = Ai ? Ai.listItemFieldChanges(kind, current, forslag) : [];
         const extra = kind === 'hot'
-            ? `<select class="dyn-ai-typ" aria-label="PT eller TF">
+            ? `<select class="dyn-ai-typ dyn-ai-control" aria-label="PT eller TF">
                 <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
                 <option value="TF"${typ === 'TF' ? ' selected' : ''}>TF</option>
                 <option value="Båda"${typ === 'Båda' ? ' selected' : ''}>Båda</option>
               </select>`
             : kind === 'sarbarheter'
-                ? `<select class="dyn-ai-kat" aria-label="Kategori">
+                ? `<select class="dyn-ai-kat dyn-ai-control" aria-label="Kategori">
                     <option${kat === 'Verksamhet' ? ' selected' : ''}>Verksamhet</option>
                     <option${kat === 'Kunder' ? ' selected' : ''}>Kunder</option>
                     <option${kat === 'Distribution' ? ' selected' : ''}>Distribution</option>
@@ -1384,13 +1384,26 @@ class RiskAssessmentManager {
                   </select>`
                 : '';
         box.innerHTML = `
-            <span class="dyn-ai-label">AI föreslår ändring</span>
+            <div class="dyn-ai-forslag-head">
+                <span class="dyn-ai-label">AI föreslår ändring</span>
+            </div>
             ${comment ? `<p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
             ${fieldChanges.length ? `<p class="dyn-ai-change-hint"><strong>Ändras:</strong> ${this.esc(fieldChanges.join(', '))}</p>` : ''}
-            ${extra}
-            <input type="text" class="dyn-ai-titel" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
-            <textarea class="dyn-ai-besk" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
-            ${kind === 'hot' ? `<input type="text" class="dyn-ai-kalla" value="${this.esc(forslag.kalla || '')}" placeholder="Källa">` : ''}
+            <div class="dyn-ai-form${extra ? ' dyn-ai-form--with-meta' : ''}">
+                ${extra ? `<div class="dyn-ai-field dyn-ai-field--meta">${extra}</div>` : ''}
+                <div class="dyn-ai-field dyn-ai-field--titel">
+                    <label class="dyn-ai-field-label">Titel</label>
+                    <input type="text" class="dyn-ai-titel dyn-ai-control" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
+                </div>
+                <div class="dyn-ai-field dyn-ai-field--besk">
+                    <label class="dyn-ai-field-label">Beskrivning</label>
+                    <textarea class="dyn-ai-besk dyn-ai-control" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
+                </div>
+                ${kind === 'hot' ? `<div class="dyn-ai-field dyn-ai-field--kalla">
+                    <label class="dyn-ai-field-label">Källa</label>
+                    <input type="text" class="dyn-ai-kalla dyn-ai-control" value="${this.esc(forslag.kalla || '')}" placeholder="Myndighet — undersida — https://…">
+                </div>` : ''}
+            </div>
             <div class="dyn-ai-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
                 <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
