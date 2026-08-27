@@ -969,6 +969,23 @@
     return String(namn || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
+  function isDistributionKanal(namn) {
+    var Kat = window.OvrigaRiskKategorier;
+    return !!(Kat && Kat.isDistributionKanal && Kat.isDistributionKanal(namn));
+  }
+
+  function linkedDistributionNameKeys(stat) {
+    var Dim = window.RiskDimensioner;
+    var keys = {};
+    ((stat && stat.riskfaktorerPerTyp) || []).forEach(function (g) {
+      if (!g || !Dim || !Dim.typMatchesDimension || !Dim.typMatchesDimension(g.typ, 'distribution')) return;
+      (g.riskfaktorer || []).forEach(function (r) {
+        if (r && r.namn) keys[foldNamn(r.namn)] = true;
+      });
+    });
+    return keys;
+  }
+
   function countsForDimension(stat, dimId, source) {
     var Dim = window.RiskDimensioner;
     var groups = (stat && stat.riskfaktorerPerTyp) || [];
@@ -993,6 +1010,7 @@
     ((source && source.ovriga) || []).forEach(function (r) {
       if (!r || !r.namn) return;
       if (Dim && Dim.typMatchesDimension && !Dim.typMatchesDimension(r.typ, dimId)) return;
+      if (dimId === 'distribution' && !isDistributionKanal(r.namn)) return;
       liveNames.push(r.namn);
       if (!byKey[foldNamn(r.namn)]) add(r.namn, 0);
     });
@@ -1001,13 +1019,23 @@
       var Kat = window.OvrigaRiskKategorier;
       var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
       var catId = Kat && Kat.categoryFor ? Kat.categoryFor(f.namn) : '';
+      if (dimId === 'distribution') {
+        if (isDistributionKanal(f.namn) || match) add(f.namn, f.antal);
+        return;
+      }
       if (match
-        || (dimId === 'distribution' && catId === 'samarbete')
         || (dimId === 'verksamhet' && (catId === 'verksamheten' || /verksamhetsspecifik|betalkort|kontant/i.test(f.namn)))) {
         add(f.namn, f.antal);
       }
     });
-    return Object.keys(byKey).map(function (k) { return byKey[k]; })
+    var rows = Object.keys(byKey).map(function (k) { return byKey[k]; });
+    if (dimId === 'distribution') {
+      var linkedKeys = linkedDistributionNameKeys(stat);
+      rows = rows.filter(function (row) {
+        return isDistributionKanal(row.namn) || linkedKeys[foldNamn(row.namn)];
+      });
+    }
+    return rows
       .sort(function (a, b) {
         if (b.antal !== a.antal) return b.antal - a.antal;
         return String(a.namn).localeCompare(String(b.namn), 'sv');

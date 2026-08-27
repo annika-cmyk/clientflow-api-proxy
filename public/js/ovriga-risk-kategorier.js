@@ -521,6 +521,11 @@
     return FACTORS.filter(function (f) { return f.group === 'kanal'; }).map(function (f) { return f.label; });
   }
 
+  function isDistributionKanal(namn) {
+    var hit = findFactor(namn);
+    return !!(hit && hit.group === 'kanal');
+  }
+
   function klassBadge(klass, badge) {
     if (badge) return badge;
     if (klass === KLASS.GOLV_HOG) return 'Hög-aktiv';
@@ -558,6 +563,7 @@
     mergeValForCategory: mergeValForCategory,
     mergeVisibleVal: mergeVisibleVal,
     channelLabels: channelLabels,
+    isDistributionKanal: isDistributionKanal,
     klassBadge: klassBadge
   };
 
