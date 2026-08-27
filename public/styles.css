@@ -13256,9 +13256,54 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-size: 0.95rem;
     font-weight: 700;
     color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
 }
 h5.ar-subsection-title {
     font-size: 0.88rem;
+}
+.ar-info-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    cursor: help;
+    font-size: 0.82rem;
+    line-height: 1;
+}
+.ar-info-tip:hover,
+.ar-info-tip:focus {
+    color: #334155;
+    outline: none;
+}
+.ar-info-tip-bubble {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 30;
+    width: max-content;
+    max-width: 340px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 12px 34px rgba(2, 6, 23, 0.12);
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: #475569;
+    line-height: 1.5;
+    white-space: normal;
+}
+.ar-info-tip-bubble strong {
+    color: #334155;
+}
+.ar-info-tip:hover .ar-info-tip-bubble,
+.ar-info-tip:focus .ar-info-tip-bubble {
+    display: block;
 }
 .byra-card--flat {
     margin-bottom: 0;

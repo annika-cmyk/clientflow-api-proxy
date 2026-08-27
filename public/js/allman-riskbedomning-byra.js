@@ -63,9 +63,12 @@
   }
 
   function initKartlaggningInfotext() {
-    Object.keys(LANSSTYRELSEN_INFOTEXT).forEach(function (key) {
-      var el = getEl('ar-infotext-' + key);
-      if (el) el.textContent = LANSSTYRELSEN_INFOTEXT[key];
+    document.querySelectorAll('.ar-info-tip[data-lansstyrelse]').forEach(function (tip) {
+      var key = tip.getAttribute('data-lansstyrelse');
+      var bubble = tip.querySelector('.ar-info-tip-bubble');
+      if (!bubble || !key || !LANSSTYRELSEN_INFOTEXT[key]) return;
+      var text = LANSSTYRELSEN_INFOTEXT[key].replace(/^Länsstyrelsens krav:\s*/i, '');
+      bubble.innerHTML = '<strong>Länsstyrelsens krav</strong><br>' + escapeHtml(text);
     });
     var bankId = getEl('ar-bankid-text');
     if (bankId) bankId.textContent = BANKID_KYC_TEXT;
@@ -875,13 +878,15 @@
     var langRelation = (stat && stat.risksankande || []).find(function (x) {
       return /lång/i.test(String(x.namn || ''));
     });
+    var branschText = (stat && stat.kundDisplay && stat.kundDisplay.bransch) || '';
+    var omsText = (stat && stat.kundDisplay && stat.kundDisplay.omsAnstallda) || '';
     el.innerHTML = '<p>Vår byrå har <strong>' + n + '</strong> antal kunder. Av dessa har vi kategoriserat <strong>'
       + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
       + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
       + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
-      + renderNamedStatList('Omsättningsintervall (kundföretag)', stat && stat.omsattning)
+      + (omsText ? '<p>' + escapeHtml(omsText) + '</p>' : '')
       + renderNamedStatList('Bolagsformer', stat && stat.bolagsform)
-      + renderNamedStatList('Branscher', (stat && stat.branscher && stat.branscher.length) ? stat.branscher : (stat && stat.högriskbransch))
+      + (branschText ? '<p><strong>Branscher:</strong> ' + escapeHtml(branschText) + '</p>' : '')
       + (langRelation
         ? '<p><strong>Relationslängd:</strong> ' + langRelation.antal + ' kunder har risksänkande faktorn «' + escapeHtml(langRelation.namn) + '».</p>'
         : renderNamedStatList('Risksänkande faktorer (t.ex. långsiktig relation)', stat && stat.risksankande, 'Inga risksänkande faktorer registrerade.'))

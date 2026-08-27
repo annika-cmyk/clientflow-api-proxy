@@ -5509,6 +5509,17 @@ async function loadStatistikRiskbedomning(userData, airtableAccessToken, baseId)
   return statistikRiskbedomning.aggregateStatistik(records, { tjanstRecords, riskfaktorRecords });
 }
 
+function enrichStatistikForArDisplay(stat) {
+  if (!stat || typeof stat !== 'object') return stat;
+  return {
+    ...stat,
+    kundDisplay: {
+      bransch: arKartlaggning.formatBranschKategorier(stat),
+      omsAnstallda: arKartlaggning.formatOmsattningAnstalldaNarrative(stat)
+    }
+  };
+}
+
 function extractRecIdsFromText(text) {
   if (!text) return [];
   const ids = new Set();
@@ -14338,7 +14349,7 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Användare hittades inte' });
     }
 
-    res.json(await loadStatistikRiskbedomning(userData, airtableAccessToken, airtableBaseId));
+    res.json(enrichStatistikForArDisplay(await loadStatistikRiskbedomning(userData, airtableAccessToken, airtableBaseId)));
   } catch (err) {
     console.error('❌ statistik-riskbedomning:', err.message);
     res.status(500).json({ error: err.message || 'Kunde inte hämta statistik' });
