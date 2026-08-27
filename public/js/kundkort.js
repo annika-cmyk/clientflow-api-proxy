@@ -11594,6 +11594,7 @@ class CustomerCardManager {
             const avtalData = avtalRes.ok ? await avtalRes.json() : { avtal: null };
             const byraData  = byraRes.ok  ? await byraRes.json()  : {};
 
+            this._applyUppdragsavtalUtanforSyncFromResponse(avtalData);
             this._uppdragsavtalFields = avtalData.avtal?.fields || null;
             this._avtalInleed = avtalData.inleed || null;
             this._updateKlarTabIndicators(this.customerData?.fields || {});
@@ -12826,8 +12827,11 @@ class CustomerCardManager {
             });
             if (response.ok) {
                 const data = await response.json();
-                this._applyKycUtanforSyncFromResponse(data);
+                this._applyDocumentSyncFromResponse(data);
                 this.displayDocuments(data.documents || []);
+                if (data.uppdragsavtalUtanforSync && document.getElementById('uppdragsavtal-content')) {
+                    this.loadUppdragsavtal();
+                }
             } else {
                 this.displayEmptyDocuments();
             }
@@ -14461,6 +14465,20 @@ class CustomerCardManager {
         }
     }
 
+    _applyUppdragsavtalUtanforSyncFromResponse(data) {
+        if (!data?.uppdragsavtalUtanforSync || !this.customerData?.fields) return;
+        this.customerData.fields['Uppdragsavtal utanför ClientFlow'] = !!data.uppdragsavtalUtanforSync.utanfor;
+        if (data.uppdragsavtalUtanforSync.utfordDatum) {
+            this.customerData.fields['Uppdragsavtal UTFÖRD DATUM'] = data.uppdragsavtalUtanforSync.utfordDatum;
+        }
+        this._updateKlarTabIndicators(this.customerData.fields);
+    }
+
+    _applyDocumentSyncFromResponse(data) {
+        this._applyKycUtanforSyncFromResponse(data);
+        this._applyUppdragsavtalUtanforSyncFromResponse(data);
+    }
+
     showEditDocumentModal({ sourceField, sourceIndex, name, category, subcategory, customCategory, createdDate, createdDateEditable }) {
         this.closeEditDocumentModal();
         const createdDateField = createdDateEditable
@@ -14615,13 +14633,17 @@ class CustomerCardManager {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-            this._applyKycUtanforSyncFromResponse(data);
+            this._applyDocumentSyncFromResponse(data);
             this.showNotification('Dokument uppdaterat.', 'success');
             this.closeEditDocumentModal();
             this.loadDocuments();
             if (data.kycUtanforSync && typeof this.loadKYCFormular === 'function') {
                 const kycTab = document.getElementById('kycformular-content');
                 if (kycTab) this.loadKYCFormular();
+            }
+            if (data.uppdragsavtalUtanforSync && typeof this.loadUppdragsavtal === 'function') {
+                const uaTab = document.getElementById('uppdragsavtal-content');
+                if (uaTab) this.loadUppdragsavtal();
             }
         } catch (err) {
             console.error('❌ Redigera dokument:', err);
@@ -14664,8 +14686,11 @@ class CustomerCardManager {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-            this._applyKycUtanforSyncFromResponse(data);
+            this._applyDocumentSyncFromResponse(data);
             this.showNotification('Skapat datum sparat.', 'success');
+            if (data.uppdragsavtalUtanforSync && document.getElementById('uppdragsavtal-content')) {
+                this.loadUppdragsavtal();
+            }
             return true;
         } catch (err) {
             console.error('❌ Spara skapat datum:', err);
@@ -16000,7 +16025,7 @@ class CustomerCardManager {
         }
         const errors = [];
         let uploaded = 0;
-        let lastKycSync = null;
+        let lastDocSync = null;
         try {
             for (let i = 0; i < list.length; i++) {
                 const file = list[i];
@@ -16026,18 +16051,19 @@ class CustomerCardManager {
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-                    if (data.kycUtanforSync) lastKycSync = data;
+                    if (data.kycUtanforSync || data.uppdragsavtalUtanforSync) lastDocSync = data;
                     uploaded += 1;
                 } catch (err) {
                     errors.push(`${file.name}: ${err.message || 'Okänt fel'}`);
                 }
             }
-            if (lastKycSync) this._applyKycUtanforSyncFromResponse(lastKycSync);
+            if (lastDocSync) this._applyDocumentSyncFromResponse(lastDocSync);
             if (uploaded && !errors.length) {
                 this.showNotification(uploaded === 1 ? 'Dokument uppladdat.' : `${uploaded} dokument uppladdade.`, 'success');
                 this.closeUploadDocumentModal();
                 this.loadDocuments();
-                if (lastKycSync && document.getElementById('kycformular-content')) this.loadKYCFormular();
+                if (lastDocSync?.kycUtanforSync && document.getElementById('kycformular-content')) this.loadKYCFormular();
+                if (lastDocSync?.uppdragsavtalUtanforSync && document.getElementById('uppdragsavtal-content')) this.loadUppdragsavtal();
             } else if (uploaded && errors.length) {
                 this.showNotification(`${uploaded} uppladdade, ${errors.length} misslyckades. ${errors[0]}`, 'warning');
                 this.closeUploadDocumentModal();
