@@ -1895,7 +1895,7 @@ class CustomerCardManager {
                     </button>
                 </div>
                 <div class="collapsible-body">
-                    <p class="uppdrag-muted" style="margin-top:0;">Här redigerar du grundmallen för varje uppdrag (frekvens, handläggare, rutin, deadline m.m.). Fäll ut en rad eller klicka Redigera.</p>
+                    <p class="uppdrag-muted" style="margin-top:0;">Grundmall per uppdrag. Klicka <strong>Redigera</strong> för att ändra frekvens, handläggare, rutin eller deadline.</p>
                     <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
                         <table class="uppdragboard-table uppdrag-alla-table">
                             <thead>
@@ -4454,9 +4454,7 @@ class CustomerCardManager {
                                 <div class="uppdrag-view-label">Åtgärd enligt kundens riskbedömning</div>
                                 ${riskOn ? viewRiskSelectedHtml : `<div class="uppdrag-muted">Ej aktiverat.</div>`}
                             </div>`
-            : `<div class="uppdrag-view-field">
-                                <div class="uppdrag-view-label">Inga åtgärder hittades i kundens riskbedömning</div>
-                            </div>`;
+            : '';
 
         const editRiskSectionHtml = hasRiskAtgarder
             ? `<div class="uppdrag-riskbox">
@@ -4465,9 +4463,7 @@ class CustomerCardManager {
                                 ${riskChoicesHtml}
                             </div>
                         </div>`
-            : `<div class="uppdrag-riskbox">
-                            <div class="uppdrag-riskbox-title">Inga åtgärder hittades i kundens riskbedömning</div>
-                        </div>`;
+            : '';
 
         const ptlUnderlagRaw = (f['PTL Underlag'] || '').toString().trim();
         const ptlUnderlagJson = this._esc(ptlUnderlagRaw || '[]');
@@ -4585,89 +4581,83 @@ class CustomerCardManager {
                         </div>
                     </div>
 
-                    <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
-                        <div class="uppdrag-mall-toolbar" style="margin-bottom:0.75rem;">
-                            <div class="uppdrag-mall-toolbar-title">Redigera grundmall</div>
-                        </div>
-                        <div class="lead-fields uppdrag-lead-fields">
+                    <div class="uppdrag-edit uppdrag-edit--mall" data-uppdrag-mode="edit" style="display:none;">
+                        <p class="uppdrag-muted uppdrag-edit-hint">Ändringar gäller framtida körningar. Klarmarkering görs under Aktuella körningar.</p>
+                        <div class="uppdrag-edit-grid">
                             ${isEgetKort ? `
-                            <div class="lead-field uppdrag-span-full">
+                            <div class="uppdrag-edit-field uppdrag-edit-field--full">
                                 <label>Namn</label>
                                 <input class="kunduppgifter-input" type="text" data-field="Namn" value="${this._esc(namnValue)}" placeholder="t.ex. Styrelsemöte, Budget">
                             </div>` : ''}
-                            <div class="lead-field">
+                            <div class="uppdrag-edit-field">
                                 <label>Frekvens</label>
                                 <select class="form-control" data-field="Frekvens">${freqHtml}</select>
                             </div>
-                            <div class="lead-field">
+                            <div class="uppdrag-edit-field">
                                 <label>Startdatum</label>
                                 <input class="kunduppgifter-input" type="date" data-field="Startdatum" value="${this._esc(String(startdatum || ''))}">
                             </div>
-                            <div class="lead-field">
-                                <label>Klientansvarig</label>
-                                <select class="form-control" data-field="Klientansvarig">${klientansvarigOptHtml}</select>
-                            </div>
-                            <div class="lead-field">
-                                <label>Handläggare</label>
-                                <select class="form-control" data-field="Ansvarig">${userOptHtml}</select>
-                            </div>
-                            <div class="lead-field">
+                            <div class="uppdrag-edit-field">
                                 <label>Nästa deadline</label>
                                 <input class="kunduppgifter-input" type="date" data-field="Nästa deadline" value="${this._esc(String(deadline || ''))}">
                             </div>
-                        </div>
-
-                        <div class="uppdrag-block">
-                            <label class="uppdrag-label"><i class="fas ${icon}"></i> Rutin / instruktion</label>
-                            <textarea class="kunduppgifter-input" rows="4" data-field="Rutin" placeholder="Skriv rutin/instruktion...">${this._esc(String(rutin || ''))}</textarea>
-                        </div>
-
-                        <div class="collapsible-card uppdrag-subcard is-collapsed" style="margin-top:0.75rem;">
-                            <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
-                                <div class="collapsible-title"><i class="fas fa-paper-plane"></i><span>Schemalagd förfrågan till kund (valfritt)</span></div>
-                                <i class="fas fa-chevron-down collapsible-chevron uppdrag-chevron"></i>
+                            <div class="uppdrag-edit-field">
+                                <label>Klientansvarig</label>
+                                <select class="form-control" data-field="Klientansvarig">${klientansvarigOptHtml}</select>
                             </div>
-                            <div class="collapsible-body">
-                                <div class="uppdrag-muted" style="margin-top:0.1rem;">Skickar automatiskt en underlagsförfrågan via Samarbete enligt schema. Stöd i mall: <strong>{PERIOD}</strong> → t.ex. “mars 2026”.</div>
-                                <div style="display:grid; gap:0.65rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top:0.75rem;">
-                                    <label style="display:flex; gap:0.5rem; align-items:center;">
+                            <div class="uppdrag-edit-field">
+                                <label>Handläggare</label>
+                                <select class="form-control" data-field="Ansvarig">${userOptHtml}</select>
+                            </div>
+                        </div>
+
+                        <div class="uppdrag-edit-field uppdrag-edit-field--full">
+                            <label>Rutin / instruktion</label>
+                            <textarea class="kunduppgifter-input" rows="2" data-field="Rutin" placeholder="Valfritt – t.ex. hur uppdraget ska göras">${this._esc(String(rutin || ''))}</textarea>
+                        </div>
+
+                        <details class="uppdrag-edit-more" ${f['Auto underlagsförfrågan'] ? 'open' : ''}>
+                            <summary>Schemalagd förfrågan till kund <span class="uppdrag-edit-more-opt">(valfritt)</span></summary>
+                            <div class="uppdrag-edit-more-body">
+                                <div class="uppdrag-muted">Skickar automatiskt en underlagsförfrågan via Samarbete. Mallstöd: <strong>{PERIOD}</strong> → t.ex. “mars 2026”.</div>
+                                <div class="uppdrag-edit-grid uppdrag-edit-grid--underlag">
+                                    <label class="uppdrag-edit-check">
                                         <input type="checkbox" data-field="Auto underlagsförfrågan" ${f['Auto underlagsförfrågan'] ? 'checked' : ''}>
                                         <span>Aktivera auto-utskick</span>
                                     </label>
-                                    <div>
-                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Underlaget avser</label>
-                                    <select class="form-control" data-field="Underlagsperiod">
+                                    <div class="uppdrag-edit-field">
+                                        <label>Underlaget avser</label>
+                                        <select class="form-control" data-field="Underlagsperiod">
                                             ${(typ === 'Momsredovisning'
                                                 ? ['Föregående månad','Föregående kvartal','Föregående år']
                                                 : ['Föregående månad','Denna månad','Nästa månad']
                                             ).map(v => `<option value="${this._esc(v)}" ${(String(f['Underlagsperiod']||'Föregående månad')===v)?'selected':''}>${this._esc(v)}</option>`).join('')}
                                         </select>
                                     </div>
-                                    <div>
-                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Skickas dag i månaden</label>
+                                    <div class="uppdrag-edit-field">
+                                        <label>Skickas dag i månaden</label>
                                         <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsutskick dag" value="${this._esc(String(f['Underlagsutskick dag'] || ''))}" placeholder="t.ex. 1 eller 10">
                                     </div>
-                                    <div>
-                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Deadline dag i månaden</label>
+                                    <div class="uppdrag-edit-field">
+                                        <label>Deadline dag i månaden</label>
                                         <input class="kunduppgifter-input" type="number" min="1" max="28" step="1" data-field="Underlagsdeadline dag" value="${this._esc(String(f['Underlagsdeadline dag'] || ''))}" placeholder="t.ex. 5 eller 15">
                                     </div>
-                                    <div>
-                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare namn</label>
+                                    <div class="uppdrag-edit-field">
+                                        <label>Mottagare namn</label>
                                         <input class="kunduppgifter-input" type="text" data-field="Underlagsmottagare namn" value="${this._esc(String(f['Underlagsmottagare namn'] || ''))}" placeholder="t.ex. Kund">
                                     </div>
-                                    <div>
-                                        <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Mottagare e-post</label>
+                                    <div class="uppdrag-edit-field">
+                                        <label>Mottagare e-post</label>
                                         <input class="kunduppgifter-input" type="email" list="${this._esc(underlagEpostListId)}" data-field="Underlagsmottagare e-post" value="${this._esc(String(f['Underlagsmottagare e-post'] || ''))}" placeholder="Välj från roller eller skriv...">
                                         <datalist id="${this._esc(underlagEpostListId)}">${rollerEpostOptions}</datalist>
                                     </div>
                                 </div>
-                                <div style="margin-top:0.75rem;">
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Meddelande till kunden <span style="color:#64748b; font-weight:400;">(visas i mejlet)</span></label>
+                                <div class="uppdrag-edit-field uppdrag-edit-field--full" style="margin-top:0.75rem;">
+                                    <label>Meddelande till kunden <span class="uppdrag-edit-more-opt">(visas i mejlet)</span></label>
                                     <textarea class="kunduppgifter-input" rows="2" data-field="Underlagsmeddelande" placeholder="t.ex. Jag behöver detta senast på torsdag">${this._esc(String(f['Underlagsmeddelande'] || ''))}</textarea>
                                 </div>
-
-                                <div style="margin-top:0.75rem;">
-                                    <label style="display:block; font-weight:600; margin-bottom:0.25rem;">Begärt underlag <span style="color:#ef4444;">*</span></label>
+                                <div class="uppdrag-edit-field uppdrag-edit-field--full" style="margin-top:0.75rem;">
+                                    <label>Begärt underlag <span style="color:#ef4444;">*</span></label>
                                     <div data-underlag-items-wrap>
                                         ${(String(f['Underlagsmall'] || '').trim()
                                             ? String(f['Underlagsmall']).split(/\r?\n/).map(s => s.trim()).filter(Boolean)
@@ -4692,7 +4682,7 @@ class CustomerCardManager {
                                 </div>
                                 ${lastUnderlagInfo}
                             </div>
-                        </div>
+                        </details>
 
                         ${decExtraHtml}
 
