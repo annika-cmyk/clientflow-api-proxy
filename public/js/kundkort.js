@@ -4879,6 +4879,10 @@ class CustomerCardManager {
         return !!(data && data.geocoding && data.geocoding.ok === false);
     }
 
+    _utsattOmradeApproximate(data) {
+        return !!(data && data.geocoding && data.geocoding.ok && data.geocoding.precision === 'approximate');
+    }
+
     _utsattOmradeOutcome(data) {
         if (!data) return null;
         if (this._utsattOmradeGeoFailed(data)) {
@@ -4894,6 +4898,13 @@ class CustomerCardManager {
                 ? `Särskilt utsatt område: ${data.omrade || 'träff'}`
                 : `Utsatt område: ${data.omrade || 'träff'}`;
             return { kind: 'hit', toast: label, toastType: 'warning' };
+        }
+        if (this._utsattOmradeApproximate(data)) {
+            return {
+                kind: 'approx',
+                toast: 'Adressen ligger inte i Polisens utsatta områden (kontroll via ungefärlig ortsplats).',
+                toastType: 'success'
+            };
         }
         return {
             kind: 'clear',
@@ -4934,6 +4945,17 @@ class CustomerCardManager {
                     ? 'Adressen ligger i ett särskilt utsatt område enligt Polisen. Geografisk riskfaktor kan styras automatiskt på kundkortet.'
                     : 'Adressen ligger i ett utsatt område enligt Polisens lista uso_2025.',
                 icon: isSeu ? 'fa-shield-halved' : 'fa-location-dot'
+            };
+        }
+        if (this._utsattOmradeApproximate(data)) {
+            const place = String(data.geocoding.displayName || data.geocoding.fallbackQuery || '').split(',')[0].trim();
+            return {
+                tone: 'approx',
+                statusText: 'Ligger inte i Polisens utsatta områden (ungefärlig ortsplats).',
+                tooltip: place
+                    ? `Exakta adressen fanns inte i OpenStreetMap. Kontrollen gjordes mot närmaste kända ort (${place}).`
+                    : 'Exakta adressen fanns inte i OpenStreetMap. Kontrollen gjordes mot närmaste kända ort.',
+                icon: 'fa-location-crosshairs'
             };
         }
         return {

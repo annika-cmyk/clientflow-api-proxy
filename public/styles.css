@@ -2413,6 +2413,10 @@ body.sidebar-collapsed .logout-btn {
     color: #047857;
 }
 
+.adress-utsatt-line--approx .adress-utsatt-text {
+    color: #0f766e;
+}
+
 .adress-utsatt-line--hit .adress-utsatt-text {
     color: #b91c1c;
 }
@@ -2431,6 +2435,10 @@ body.sidebar-collapsed .logout-btn {
 
 .adress-utsatt-line--ok .adress-utsatt-icon {
     color: #059669;
+}
+
+.adress-utsatt-line--approx .adress-utsatt-icon {
+    color: #0d9488;
 }
 
 .adress-utsatt-line--hit .adress-utsatt-icon {
