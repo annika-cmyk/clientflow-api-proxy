@@ -919,7 +919,7 @@
     if (!wrap) return;
     wrap.innerHTML = renderBarChartHtml(flags, {
       title: 'Kunder per varningsflagga',
-      hint: 'Antal kunder på inloggad byrå som har respektive varningsflagga ibockad.',
+      hint: 'Antal kunder på byrån som har respektive varningsflagga ibockad.',
       aria: 'Stapeldiagram över kunder per varningsflagga',
       empty: 'Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.',
       chartClass: 'ar-bar-chart--flaggor',
@@ -953,7 +953,7 @@
     } catch (err) {
       console.warn('Kunde inte ladda AR-statistik:', err);
       var el = getEl('ar-kundtyper-body');
-      if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för inloggad byrå.</p>';
+      if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för byrån.</p>';
       renderTjansterBarChart([]);
       renderFlaggorBarChart([]);
     }
