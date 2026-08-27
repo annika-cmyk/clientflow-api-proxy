@@ -254,6 +254,27 @@
                     </div>
                 </section>
 
+                <!-- Kunder som saknar KYC -->
+                <section id="dashboard-kyc" class="dashboard-section">
+                    <div class="dashboard-card dashboard-card-collapsible collapsed">
+                        <div class="dashboard-card-header" data-toggle="collapse" aria-expanded="false" aria-controls="kyc-list">
+                            <h2><i class="fas fa-id-card"></i> Kunder som saknar KYC<span class="dashboard-card-count" id="dashboard-count-kyc"></span></h2>
+                            <div class="dashboard-card-header-actions">
+                                <button type="button" id="refresh-kyc" class="btn btn-ghost btn-sm" title="Uppdatera" onclick="event.stopPropagation()">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <span class="dashboard-collapse-icon"><i class="fas fa-chevron-down"></i></span>
+                            </div>
+                        </div>
+                        <div id="kyc-list" class="dashboard-list dashboard-card-body-collapsible">
+                            <div class="kundlista-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Laddar...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <section id="dashboard-riskaptit" class="dashboard-section">
                     <div class="dashboard-card dashboard-card-collapsible collapsed">
                         <div class="dashboard-card-header" data-toggle="collapse" aria-expanded="false" aria-controls="riskaptit-list">
@@ -486,6 +507,6 @@
     <script src="js/amla-nyheter.js?v=5"></script>
     <script src="js/whats-new.js?v=1"></script>
     <script src="js/feedback.js?v=1"></script>
-    <script src="app.js?v=2.8"></script>
+    <script src="app.js?v=2.10"></script>
 </body>
 </html>
