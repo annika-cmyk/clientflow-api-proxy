@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Allmän riskbedömning byrå</title>
-    <link rel="stylesheet" href="styles.css?v=20260825h">
+    <link rel="stylesheet" href="styles.css?v=20260827a">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -19,7 +19,9 @@
                         <h1>Allmän riskbedömning byrå</h1>
                         <p class="risk-header-sub">Grund för byråns riskbaserade förhållningssätt (enligt Lag 2017:630)</p>
                         <div class="byrarutiner-actions" id="allman-risk-header-actions" style="display:none;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-ar-save-layout" style="display:none;" title="Spara egna rubriker och dolda diagram"><i class="fas fa-sliders-h"></i> Spara anpassningar</button>
                             <span class="save-status" id="save-status"></span>
+                            <span class="save-status" id="ar-layout-save-status"></span>
                         </div>
                     </div>
                 </header>
@@ -63,7 +65,7 @@
                                                 </div>
                                             </div>
                                             <div class="ar-subsection">
-                                                <h4 class="ar-subsection-title">1.1 Metod för Riskbedömning</h4>
+                                                <h4 class="ar-subsection-title" data-ar-title-id="ar-metod"><span data-ar-title-text>1.1 Metod för Riskbedömning</span></h4>
                                                 <div class="byra-card byra-card--flat" data-field-id="fld-metod-riskbedomning">
                                                     <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
                                                     <div class="byra-card-edit">
@@ -96,7 +98,7 @@
                                     <div class="byra-card-collapse-body">
                                         <div class="ar-section-body">
                                             <div class="ar-subsection">
-                                                <h4 class="ar-subsection-title">Verksamhetsbeskrivning</h4>
+                                                <h4 class="ar-subsection-title" data-ar-title-id="ar-beskrivning"><span data-ar-title-text>Verksamhetsbeskrivning</span></h4>
                                                 <div class="byra-card byra-card--flat" data-field-id="fld-beskrivning">
                                                     <div class="byra-card-view">
                                                         <div class="byra-card-value"></div>
@@ -122,16 +124,16 @@
                                                 </div>
                                             </div>
                                             <div class="ar-subsection" id="ar-kartlaggning">
-                                                <h4 class="ar-subsection-title">2.1 Kartläggning av byråns verksamhet</h4>
-                                                <p class="byra-card-source-hint">Statistik hämtas från <a href="statistik-riskbedomning.html">Statistik</a>, <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a> och KYC. AI-förslag baseras på siffror och Länsstyrelsens krav.</p>
+                                                <h4 class="ar-subsection-title" data-ar-title-id="ar-kartlaggning"><span data-ar-title-text>2.1 Kartläggning av byråns verksamhet</span></h4>
+                                                <p class="byra-card-source-hint" id="ar-kartlaggning-hint" data-ar-block="ar-kartlaggning-hint">Statistik hämtas från <a href="statistik-riskbedomning.html">Statistik</a>, <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a> och KYC. AI-förslag baseras på siffror och Länsstyrelsens krav.</p>
                                                 <div class="ar-section-body ar-section-body--nested">
                                                     <div class="ar-subsection" id="ar-211-tjanster">
-                                                        <h5 class="ar-subsection-title">2.1.1 Våra tjänster</h5>
-                                                        <div id="ar-tjanster-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
+                                                        <h5 class="ar-subsection-title" data-ar-title-id="ar-211-tjanster"><span data-ar-title-text>2.1.1 Våra tjänster</span></h5>
+                                                        <div id="ar-tjanster-chart" class="ar-bar-chart-wrap" data-ar-block="ar-tjanster-chart" aria-live="polite"></div>
                                                     </div>
                                                     <div class="ar-subsection">
-                                                        <h5 class="ar-subsection-title">
-                                                            <span>2.1.2 Kunder</span>
+                                                        <h5 class="ar-subsection-title" data-ar-title-id="ar-kunder">
+                                                            <span data-ar-title-text>2.1.2 Kunder</span>
                                                             <span class="ar-info-tip" tabindex="0" role="button" aria-label="Länsstyrelsens krav" data-lansstyrelse="kunder">
                                                                 <i class="fas fa-circle-info" aria-hidden="true"></i>
                                                                 <span class="ar-info-tip-bubble"></span>
@@ -151,12 +153,12 @@
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div id="ar-kundtyper-body" class="ar-underkort-body"></div>
-                                                        <div id="ar-flaggor-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
+                                                        <div id="ar-kundtyper-body" class="ar-underkort-body" data-ar-block="ar-kundtyper-body"></div>
+                                                        <div id="ar-flaggor-chart" class="ar-bar-chart-wrap" data-ar-block="ar-flaggor-chart" aria-live="polite"></div>
                                                     </div>
                                                     <div class="ar-subsection">
-                                                        <h5 class="ar-subsection-title">
-                                                            <span>2.1.3 Distributionskanaler</span>
+                                                        <h5 class="ar-subsection-title" data-ar-title-id="ar-distribution">
+                                                            <span data-ar-title-text>2.1.3 Distributionskanaler</span>
                                                             <span class="ar-info-tip" tabindex="0" role="button" aria-label="Länsstyrelsens krav" data-lansstyrelse="distribution">
                                                                 <i class="fas fa-circle-info" aria-hidden="true"></i>
                                                                 <span class="ar-info-tip-bubble"></span>
@@ -176,12 +178,12 @@
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div id="ar-distribution-live" class="identifierade-live"></div>
-                                                        <div id="ar-distribution-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
+                                                        <div id="ar-distribution-live" class="identifierade-live" data-ar-block="ar-distribution-live"></div>
+                                                        <div id="ar-distribution-chart" class="ar-pie-chart-wrap" data-ar-block="ar-distribution-chart" aria-live="polite"></div>
                                                     </div>
                                                     <div class="ar-subsection">
-                                                        <h5 class="ar-subsection-title">
-                                                            <span>2.1.4 Geografiska förhållanden</span>
+                                                        <h5 class="ar-subsection-title" data-ar-title-id="ar-geografi">
+                                                            <span data-ar-title-text>2.1.4 Geografiska förhållanden</span>
                                                             <span class="ar-info-tip" tabindex="0" role="button" aria-label="Länsstyrelsens krav" data-lansstyrelse="geografi">
                                                                 <i class="fas fa-circle-info" aria-hidden="true"></i>
                                                                 <span class="ar-info-tip-bubble"></span>
@@ -201,13 +203,13 @@
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <p class="byra-card-source-hint" id="ar-bankid-text"></p>
-                                                        <div id="ar-geografi-body" class="ar-underkort-body"></div>
-                                                        <div id="ar-geografi-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
+                                                        <p class="byra-card-source-hint" id="ar-bankid-text" data-ar-block="ar-bankid-text"></p>
+                                                        <div id="ar-geografi-body" class="ar-underkort-body" data-ar-block="ar-geografi-body"></div>
+                                                        <div id="ar-geografi-chart" class="ar-pie-chart-wrap" data-ar-block="ar-geografi-chart" aria-live="polite"></div>
                                                     </div>
                                                     <div class="ar-subsection">
-                                                        <h5 class="ar-subsection-title">
-                                                            <span>2.1.5 Verksamhetsspecifika omständigheter</span>
+                                                        <h5 class="ar-subsection-title" data-ar-title-id="ar-verksamhet">
+                                                            <span data-ar-title-text>2.1.5 Verksamhetsspecifika omständigheter</span>
                                                             <span class="ar-info-tip" tabindex="0" role="button" aria-label="Länsstyrelsens krav" data-lansstyrelse="verksamhet">
                                                                 <i class="fas fa-circle-info" aria-hidden="true"></i>
                                                                 <span class="ar-info-tip-bubble"></span>
@@ -227,8 +229,6 @@
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div id="ar-verksamhet-live" class="identifierade-live"></div>
-                                                        <div id="ar-verksamhet-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -244,7 +244,7 @@
                                     </button>
                                     <div class="byra-card-label">3. Analys av våra produkter och tjänster</div>
                                     <div class="byra-card-collapse-body">
-                                        <div id="identifierade-risker-live" class="identifierade-live"></div>
+                                        <div id="identifierade-risker-live" class="identifierade-live" data-ar-block="identifierade-risker-live"></div>
                                     </div>
                                 </div>
                                 <div class="byra-card-edit" style="display:none;">
@@ -260,7 +260,7 @@
                                         <i class="fas fa-chevron-down"></i>
                                     </button>
                                     <div class="byra-card-label">4. Identifierade risker och sårbarheter</div>
-                                    <p class="byra-card-source-hint" style="margin-top:0;">
+                                    <p class="byra-card-source-hint" id="ar-identifierade-nya-hint" data-ar-block="ar-identifierade-nya-hint" style="margin-top:0;">
                                         Kundkartläggning med statistik och AI-stöd finns i avsnitt 2.1 under Beskrivning av byråns verksamhet.
                                         Här visas övriga identifierade risker från tjänster och riskfaktorer.
                                     </p>
