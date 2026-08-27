@@ -238,16 +238,32 @@
     }
   }
 
+  function cardDirectView(card) {
+    return card.querySelector(':scope > .byra-card-view');
+  }
+
+  function cardDirectEdit(card) {
+    return card.querySelector(':scope > .byra-card-edit');
+  }
+
+  function editButtonsOwnedByCard(card) {
+    var view = cardDirectView(card);
+    if (!view) return [];
+    return Array.from(view.querySelectorAll('.byra-card-edit-btn')).filter(function (btn) {
+      return btn.closest('.byra-card') === card;
+    });
+  }
+
   function showView(card) {
-    var view = card.querySelector('.byra-card-view');
-    var edit = card.querySelector('.byra-card-edit');
+    var view = cardDirectView(card);
+    var edit = cardDirectEdit(card);
     if (view) view.style.display = 'block';
     if (edit) edit.style.display = 'none';
   }
 
   function showEdit(card) {
-    var view = card.querySelector('.byra-card-view');
-    var edit = card.querySelector('.byra-card-edit');
+    var view = cardDirectView(card);
+    var edit = cardDirectEdit(card);
     if (view) view.style.display = 'none';
     if (edit) edit.style.display = 'block';
   }
@@ -350,9 +366,11 @@
 
   function initCards(canEdit) {
     document.querySelectorAll('.byra-card').forEach(function (card) {
-      var view = card.querySelector('.byra-card-view');
-      var edit = card.querySelector('.byra-card-edit');
+      if (card.hasAttribute('data-card-id') && !card.hasAttribute('data-field-id')) return;
+      var view = cardDirectView(card);
+      var edit = cardDirectEdit(card);
       if (!view || !edit) return;
+      var ownedEditBtns = editButtonsOwnedByCard(card);
       if (!view.querySelector('.byra-card-label') && !card.classList.contains('byra-card--flat')) {
         var labelText = '';
         var formGroup = edit.querySelector('.form-group.full-width');
@@ -367,12 +385,14 @@
       }
       edit.style.display = 'none';
       if (!canEdit) {
-        card.querySelectorAll('.byra-card-edit-btn').forEach(function (b) { b.style.display = 'none'; });
-        edit.style.display = 'block';
-        view.style.display = 'none';
+        ownedEditBtns.forEach(function (b) { b.style.display = 'none'; });
+        if (ownedEditBtns.length) {
+          edit.style.display = 'block';
+          view.style.display = 'none';
+        }
         return;
       }
-      card.querySelectorAll('.byra-card-edit-btn').forEach(function (btn) {
+      ownedEditBtns.forEach(function (btn) {
         btn.addEventListener('click', function () { showEdit(card); });
       });
     });
