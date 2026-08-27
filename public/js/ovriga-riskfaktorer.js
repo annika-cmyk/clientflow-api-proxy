@@ -15,8 +15,27 @@ class RiskFactorsManager {
         this.filteredRisks = [];
         this.userData = null;
         this.userByraIds = [];
-        
+        this.pageScope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
+
         this.init();
+    }
+
+    isKundriskerPage() {
+        return this.pageScope === 'kundrisker';
+    }
+
+    kundRiskTypLabel() {
+        return 'Riskfaktorer kopplat till kund';
+    }
+
+    riskBelongsToPageScope(risk) {
+        const typ = this.groupRiskTyp(risk);
+        const kundTyp = this.kundRiskTypLabel();
+        const geoTyp = this.geoRiskGroupLabel();
+        if (this.isKundriskerPage()) {
+            return typ === kundTyp || typ === geoTyp;
+        }
+        return typ !== kundTyp && typ !== geoTyp;
     }
 
     async init() {
@@ -28,8 +47,12 @@ class RiskFactorsManager {
         
         // Apply initial filtering based on user role
         this.applyFilters();
-        this.setupRiskhojandeKatalog();
-        this.setupRisksankandeKatalog();
+        if (document.getElementById('riskhoj-katalog-list')) {
+            this.setupRiskhojandeKatalog();
+        }
+        if (document.getElementById('risksank-katalog-list')) {
+            this.setupRisksankandeKatalog();
+        }
     }
 
     async loadDatasourceConfig() {
@@ -441,12 +464,15 @@ class RiskFactorsManager {
             groupedRisks[riskType].push(risk);
         });
 
-        const kundTyp = 'Riskfaktorer kopplat till kund';
+        const kundTyp = this.kundRiskTypLabel();
         const geoTyp = this.geoRiskGroupLabel();
-        const geoRisks = groupedRisks[geoTyp] || [];
-        delete groupedRisks[geoTyp];
-        if (geoRisks.length && !groupedRisks[kundTyp]) {
-            groupedRisks[kundTyp] = [];
+        let geoRisks = [];
+        if (this.isKundriskerPage()) {
+            geoRisks = groupedRisks[geoTyp] || [];
+            delete groupedRisks[geoTyp];
+            if (geoRisks.length && !groupedRisks[kundTyp]) {
+                groupedRisks[kundTyp] = [];
+            }
         }
 
         const RD = window.RiskDimensioner;
@@ -466,7 +492,7 @@ class RiskFactorsManager {
         const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
-            const geoSub = (riskType === kundTyp && geoRisks.length) ? `
+            const geoSub = (this.isKundriskerPage() && riskType === kundTyp && geoRisks.length) ? `
                     <div class="risk-subgroup">
                         <div class="risk-group-header risk-group-header--sub">
                             <h4>${this.esc(geoTyp)}</h4>
@@ -858,6 +884,10 @@ class RiskFactorsManager {
                     return false;
                 }
             }
+
+            if (!this.riskBelongsToPageScope(risk)) {
+                return false;
+            }
             
             return true;
         });
@@ -1169,6 +1199,12 @@ class RiskFactorsManager {
         document.getElementById('add-risk-form')?.reset();
         const pt = document.getElementById('pt-tf');
         if (pt) pt.value = '';
+        const typ = document.getElementById('risk-type');
+        if (typ && typ.options.length === 2) {
+            typ.selectedIndex = 1;
+        } else if (typ && this.isKundriskerPage()) {
+            typ.value = this.kundRiskTypLabel();
+        }
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
         this.updateMotiveringWarnings('add');
