@@ -6,7 +6,8 @@
   var KLASS = {
     GOLV_HOG: 'GOLV_HOG',
     BIDRAR: 'BIDRAR_VID_KOMBINATION',
-    INFORMATIV: 'INFORMATIV'
+    INFORMATIV: 'INFORMATIV',
+    OACCEPTABEL: 'OACCEPTABEL'
   };
 
   var CATEGORIES = [
@@ -744,6 +745,7 @@
 
   function klassBadge(klass, badge) {
     if (badge) return badge;
+    if (klass === KLASS.OACCEPTABEL) return 'Oacceptabel';
     if (klass === KLASS.GOLV_HOG) return 'Hög-aktiv';
     if (klass === KLASS.BIDRAR) return 'Bidrar vid kombination';
     return '';

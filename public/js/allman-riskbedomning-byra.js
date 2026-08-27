@@ -840,6 +840,7 @@
   function flaggKlassBadge(klass) {
     var Kat = window.OvrigaRiskKategorier;
     if (Kat && Kat.klassBadge) return Kat.klassBadge(klass) || '';
+    if (klass === 'OACCEPTABEL') return 'Oacceptabel';
     if (klass === 'GOLV_HOG') return 'Hög-aktiv';
     if (klass === 'BIDRAR_VID_KOMBINATION') return 'Bidrar vid kombination';
     return '';
@@ -860,8 +861,9 @@
         var n = Number(t.antal) || 0;
         var pct = Math.round((n / max) * 100);
         var badge = opts.showKlass ? flaggKlassBadge(t.klass) : '';
-        var fillClass = t.klass === 'GOLV_HOG' ? ' ar-bar-fill--golv'
-          : (t.klass === 'BIDRAR_VID_KOMBINATION' ? ' ar-bar-fill--bidrar' : '');
+        var fillClass = t.klass === 'OACCEPTABEL' ? ' ar-bar-fill--oacceptabel'
+          : (t.klass === 'GOLV_HOG' ? ' ar-bar-fill--golv'
+          : (t.klass === 'BIDRAR_VID_KOMBINATION' ? ' ar-bar-fill--bidrar' : ''));
         return '<div class="ar-bar-row">'
           + '<span class="ar-bar-label">' + escapeHtml(t.namn)
           + (badge ? ' <em class="ar-flaggor-klass">' + escapeHtml(badge) + '</em>' : '')
