@@ -9934,6 +9934,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     grid-column: 1 / -1;
     margin-bottom: 0.85rem;
 }
+.uppdrag-edit--mall textarea.kunduppgifter-input {
+    min-height: 52px;
+}
 .uppdrag-edit-field .date-input-wrap {
     max-width: none;
 }
