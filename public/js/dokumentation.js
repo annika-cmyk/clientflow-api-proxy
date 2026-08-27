@@ -224,7 +224,7 @@
       { label: 'Hög risk', value: stat.hog, icon: 'fa-exclamation-triangle', klass: 'stat-number--high' },
       { label: 'Oacceptabel', value: stat.oacceptabel, icon: 'fa-ban', klass: 'stat-number--unacceptable' },
       { label: 'Övrig risknivå', value: stat.ovrigt, icon: 'fa-question-circle' },
-      { label: 'PEP eller på sanktionslistor', value: stat.pep, icon: 'fa-user-secret' }
+      { label: 'PEP eller anhörig till PEP (KYC)', value: stat.pep, icon: 'fa-user-secret' }
     ].map(function (c) {
       return '<div class="stat-card"><div class="stat-icon"><i class="fas ' + c.icon + '"></i></div>' +
         '<div class="stat-content"><h3>' + escapeHtml(c.label) + '</h3>' +
