@@ -1554,6 +1554,9 @@ body.sidebar-collapsed .logout-btn {
     margin-right: 0.35rem;
     font-size: 0.85rem;
     line-height: 1;
+    /* Reservera plats så ikoner som dyker upp efter laddning inte ger CLS */
+    min-width: 1rem;
+    min-height: 1rem;
 }
 
 .customer-details-section .tab-status i {
@@ -1562,7 +1565,8 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .customer-details-section .tab-status:empty {
-    display: none;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .customer-details-section .tab-status--warn {
