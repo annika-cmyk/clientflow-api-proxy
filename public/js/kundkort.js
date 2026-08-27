@@ -7135,9 +7135,9 @@ class CustomerCardManager {
 
         const embedded = !!(opts && opts.embedded);
         const valda = riskerForList.filter(r => linkedIds.has(r.id));
-        const riskerForCheckboxList = embedded
-            ? valda
-            : riskerForList.filter((r) => this._isOvrigRiskAktuell(r) || linkedIds.has(r.id));
+        const riskerForCheckboxList = riskerForList.filter(
+            (r) => this._isOvrigRiskAktuell(r) || linkedIds.has(r.id)
+        );
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
