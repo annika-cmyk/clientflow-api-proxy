@@ -168,7 +168,7 @@
     { key: 'Antal anställda', label: 'Antal anställda' },
     { key: 'Omsättning', label: 'Omsättning' },
     { key: 'Antal kundföretag', label: 'Antal kundföretag' },
-    { key: '3. Metod för Riskbedömning ', label: '3. Metod för Riskbedömning' },
+    { key: '3. Metod för Riskbedömning ', label: '1.1 Metod för Riskbedömning' },
     { key: '4. Identifierade Risker och Sårbarheter', label: '4. Identifierade Risker och Sårbarheter' },
     { key: '5. Riskreducerande Åtgärder och Rutiner', label: '5. Riskreducerande Åtgärder och Rutiner' },
     { key: '6. Utvärdering och Uppdatering', label: '6. Utvärdering och Uppdatering' },

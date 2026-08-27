@@ -20177,7 +20177,6 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const allmanKeys = [
       ['1. Syfte och Omfattning', '1. Syfte och Omfattning'],
       ['2. Beskrivning av Byråns verksamhet', '2. Beskrivning av Byråns verksamhet'],
-      ['3. Metod för Riskbedömning ', '3. Metod för Riskbedömning'],
       ['4. Identifierade Risker och Sårbarheter', '4. Analys av våra produkter och tjänster'],
       ['5. Riskreducerande Åtgärder och Rutiner', '6. Riskreducerande Åtgärder och Rutiner'],
       ['6. Utvärdering och Uppdatering', '7. Utvärdering och Uppdatering'],
@@ -20188,6 +20187,10 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     for (const [airtableKey, title] of allmanKeys) {
       const val = getByraField(airtableKey) || '';
       htmlParts.push(`<h3>${escape(title)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
+      if (airtableKey === '1. Syfte och Omfattning') {
+        const metod = getByraField('3. Metod för Riskbedömning ') || getByraField('Metod för Riskbedömning') || '';
+        if (metod) htmlParts.push(`<h4>1.1 Metod för Riskbedömning</h4><div class="doc-text">${richToHtml(metod)}</div>`);
+      }
       if (airtableKey === '2. Beskrivning av Byråns verksamhet') {
         const kart = arKartlaggning.parseKartlaggningJson(getByraField(arKartlaggning.KARTLAGGNING_FIELD));
         Object.entries(arKartlaggning.SECTION_LABELS).forEach(([key, label]) => {
