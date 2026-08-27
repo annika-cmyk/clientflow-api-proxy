@@ -7121,6 +7121,7 @@ class CustomerCardManager {
         const isHogriskBranschRisk = (r) => (r.fields['Riskfaktor'] || '').toLowerCase().includes('högriskbransch');
         const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
 
+        const embedded = !!(opts && opts.embedded);
         const valda = riskerForList.filter(r => linkedIds.has(r.id));
         const riskerForCheckboxList = embedded
             ? valda
@@ -7128,7 +7129,6 @@ class CustomerCardManager {
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
-        const embedded = !!(opts && opts.embedded);
         const parentEditing = !!(container.closest('.collapsible-card')?.querySelector('.card-edit-fab.is-active'));
         const Kat = window.OvrigaRiskKategorier;
         const catId = Kat && Kat.categoryIdForDimension ? Kat.categoryIdForDimension(typId) : '';
