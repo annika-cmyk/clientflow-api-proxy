@@ -12064,6 +12064,7 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
     }
 
     ensureByraRiskaptitField(airtableAccessToken, airtableBaseId).catch(() => {});
+    ensureArKartlaggningField(airtableAccessToken, airtableBaseId).catch(() => {});
 
     const userData = await getAirtableUser(req.user.email);
     if (!userData) {
@@ -12224,6 +12225,29 @@ async function ensureByraRiskaptitField(airtableToken, baseId) {
     return { ok: true, created: true };
   } catch (err) {
     console.warn('ensureByraRiskaptitField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function ensureArKartlaggningField(airtableToken, baseId) {
+  const fieldName = arKartlaggning.KARTLAGGNING_FIELD;
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(fieldName)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: fieldName,
+        type: 'multilineText',
+        description: 'JSON: texter för AR 2.1.2 Kunder, 2.1.3 Distributionskanaler, 2.1.4 Geografi, 2.1.5 Verksamhet.'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensureArKartlaggningField:', err.response?.data?.error?.message || err.message);
     return { ok: false, error: err.message };
   }
 }
@@ -14109,6 +14133,9 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(cleanedFields, Riskaptit.POLICY_FIELD || '9. Riskaptit')) {
       await ensureByraRiskaptitField(airtableAccessToken, airtableBaseId);
     }
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, arKartlaggning.KARTLAGGNING_FIELD)) {
+      await ensureArKartlaggningField(airtableAccessToken, airtableBaseId);
+    }
 
     let updated = null;
     for (const [k, v] of Object.entries(cleanedFields)) {
@@ -14117,6 +14144,15 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
       try {
         updated = await patchByraerFieldToAirtable(id, airtableKey, rawVal);
       } catch (err) {
+        const msg = err.response?.data?.error?.message || err.message || '';
+        const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+        if (err.response?.status === 422 && unknown === arKartlaggning.KARTLAGGNING_FIELD) {
+          const ensured = await ensureArKartlaggningField(airtableAccessToken, airtableBaseId);
+          if (ensured.ok) {
+            updated = await patchByraerFieldToAirtable(id, airtableKey, rawVal);
+            continue;
+          }
+        }
         err.fieldThatFailed = k;
         err.fieldValue = v;
         throw err;
@@ -23149,23 +23185,23 @@ app.post('/api/setup/airtable-ar-kartlaggning-field', authenticateToken, async (
   const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
   try {
-    const byraTable = await getByraerTableMeta(airtableAccessToken, baseId);
-    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
-    const fieldName = arKartlaggning.KARTLAGGNING_FIELD;
-    const existingNames = (byraTable.fields || []).map((f) => (f.name || '').trim());
-    if (existingNames.includes(fieldName)) {
-      return res.json({ success: true, message: `Fältet "${fieldName}" finns redan.`, created: [], alreadyExisted: 1 });
+    const result = await ensureArKartlaggningField(airtableAccessToken, baseId);
+    if (!result.ok) {
+      const status = /behörighet|permission|403|401/i.test(String(result.error)) ? 403 : 500;
+      return res.status(status).json({
+        success: false,
+        error: result.error || 'Kunde inte skapa fältet',
+        hint: status === 403 ? 'Token behöver schema.bases:read och schema.bases:write.' : undefined
+      });
     }
-    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
-    await axios.post(createUrl, {
-      name: fieldName,
-      type: 'multilineText',
-      description: 'JSON: texter för AR 2.1.2 Kunder, 2.1.3 Distributionskanaler, 2.1.4 Geografi, 2.1.5 Verksamhet.'
-    }, {
-      headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-      timeout: 10000
+    return res.json({
+      success: true,
+      message: result.created
+        ? `Fältet "${arKartlaggning.KARTLAGGNING_FIELD}" skapades.`
+        : `Fältet "${arKartlaggning.KARTLAGGNING_FIELD}" finns redan.`,
+      created: result.created ? [arKartlaggning.KARTLAGGNING_FIELD] : [],
+      alreadyExisted: result.created ? 0 : 1
     });
-    return res.json({ success: true, message: `Fältet "${fieldName}" skapades.`, created: [fieldName], alreadyExisted: 0 });
   } catch (err) {
     const status = err.response?.status;
     const msg = (err.response?.data?.error && err.response.data.error.message) || err.message;
