@@ -282,6 +282,20 @@ class RiskFactorsManager {
             : 'Geografisk riskfaktorer - här finns byråns kunder';
     }
 
+    geoDisplayLabel() {
+        if (this.isKundriskerPage()) {
+            return 'Geografisk riskfaktorer - här finns kundens kunder';
+        }
+        return this.geoRiskGroupLabel();
+    }
+
+    displayGroupLabel(riskType) {
+        if (riskType === this.geoRiskGroupLabel()) {
+            return this.geoDisplayLabel();
+        }
+        return riskType;
+    }
+
     async migrateRenamedGeoTyp() {
         const newTyp = this.geoRiskGroupLabel();
         const oldTyp = 'Geografiska riskfaktorer';
@@ -485,7 +499,7 @@ class RiskFactorsManager {
             return `
                 <div class="risk-group">
                     <div class="risk-group-header">
-                        <h3>${this.esc(riskType)}</h3>
+                        <h3>${this.esc(this.displayGroupLabel(riskType))}</h3>
                     </div>
                     <div class="risk-items">
                         ${riskItems}
