@@ -236,8 +236,8 @@
     {
       id: 'kontanter',
       category: 'kunden',
-      label: 'Kontantintensiv verksamhet',
-      hint: 'Kunden tar emot mycket kontanter eller har stora dagskassor.',
+      label: 'Kunder med mycket kontanta transaktioner',
+      hint: 'Styrs från KYC när kunden har mycket kontanter. Täcks av kundresidual, inte varningsflagga.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
       coveredByDimension: true,
@@ -419,6 +419,7 @@
   function defaultKatalog() {
     var out = {};
     FACTORS.forEach(function (f) {
+      if (f.coveredByDimension) return;
       out[f.label] = f.klass;
     });
     return out;
@@ -516,6 +517,7 @@
     (Array.isArray(existingLabels) ? existingLabels : []).forEach(function (raw) {
       var label = canonicalLabel(raw);
       if (!label || fold(label) === 'inga') return;
+      if (isCoveredByDimension(label)) return;
       var factor = findFactor(label);
       var cat = categoryFor(label, categoryMap);
       if (cat === categoryId && !(factor && factor.steeredFromKyc)) return;
@@ -526,6 +528,7 @@
     (Array.isArray(checkedLabels) ? checkedLabels : []).forEach(function (raw) {
       var label = canonicalLabel(raw);
       if (!label || fold(label) === 'inga') return;
+      if (isCoveredByDimension(label)) return;
       if (seen[fold(label)]) return;
       seen[fold(label)] = true;
       keep.push(label);

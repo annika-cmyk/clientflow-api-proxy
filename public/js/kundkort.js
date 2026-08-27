@@ -8513,7 +8513,7 @@ class CustomerCardManager {
     _defaultRiskhojAlternativ() {
         const Kat = window.OvrigaRiskKategorier;
         if (Kat && Array.isArray(Kat.FACTORS)) {
-            return Kat.FACTORS.map((f) => f.label);
+            return Kat.FACTORS.filter((f) => !f.coveredByDimension).map((f) => f.label);
         }
         return [
             'Fysiskt möte',
@@ -8530,10 +8530,7 @@ class CustomerCardManager {
             'Historik av brott / ekonomisk brottslighet',
             'Misstänkt bulvan/målvakt',
             'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring',
-            'Högriskbransch',
-            'Kontantintensiv verksamhet',
             'Kundens egna kunder är på distans (e-handel/anonyma köpare)',
-            'Kunden har handel med högriskländer',
             'Transaktioner utan tydligt syfte',
             'Bristfälliga interna bokföringsrutiner hos kunden'
         ];

@@ -171,7 +171,6 @@
       'Svårt att bekräfta identitet': 'GOLV_HOG',
       'Svårt att få svar på frågor / undvikande beteende': 'BIDRAR_VID_KOMBINATION',
       'Komplicerad eller ovanlig ägarstruktur': 'BIDRAR_VID_KOMBINATION',
-      'Kontantintensiv verksamhet': 'GOLV_HOG',
       'Kunder som handlar med kryptovaluta': 'GOLV_HOG',
       'Kunden har handel med högriskländer': 'GOLV_HOG',
       'Bristfälliga interna bokföringsrutiner hos kunden': 'BIDRAR_VID_KOMBINATION',
@@ -515,6 +514,8 @@
       var v = canonicalRiskhojandeLabel(item && item.name ? item.name : item);
       if (!v || v === '---' || v.toLowerCase() === 'inga') return;
       if (isNoneRiskOption(v)) return;
+      if (OvrigaRiskKategorier && OvrigaRiskKategorier.isCoveredByDimension
+        && OvrigaRiskKategorier.isCoveredByDimension(v)) return;
       var key = v.toLowerCase();
       if (seen[key]) return;
       seen[key] = true;
