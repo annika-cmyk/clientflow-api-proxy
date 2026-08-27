@@ -15866,6 +15866,11 @@ class CustomerCardManager {
                                 <label for="upload-doc-custom">Egen kategori (valfritt)</label>
                                 <input type="text" id="upload-doc-custom" name="customCategory" placeholder="t.ex. Specifikation, Avtal 2024">
                             </div>
+                            <div class="form-group">
+                                <label for="upload-doc-created-date">Skapat datum</label>
+                                <input type="text" id="upload-doc-created-date" name="createdDate" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="10" placeholder="åååå-mm-dd" value="${this.escapeDocHtml(new Date().toISOString().slice(0, 10))}">
+                                <p class="bv-verksam-hint" style="margin-top:0.4rem;">Datumet visas i dokumentlistan. Skriv 2026-01-01, 20260101 eller 260101.</p>
+                            </div>
                             <div class="form-actions">
                                 <button type="button" class="btn btn-ghost" onclick="customerCardManager.closeUploadDocumentModal()">Avbryt</button>
                                 <button type="submit" class="btn btn-primary" id="upload-doc-submit">
@@ -15944,6 +15949,10 @@ class CustomerCardManager {
                 customerCardManager.submitUploadDocument();
             });
         }
+        const createdDateInput = document.getElementById('upload-doc-created-date');
+        if (createdDateInput && window.DateInput && typeof DateInput.bindDateInput === 'function') {
+            DateInput.bindDateInput(createdDateInput);
+        }
     }
 
     closeUploadDocumentModal() {
@@ -15956,20 +15965,29 @@ class CustomerCardManager {
         const categorySelect = document.getElementById('upload-doc-category');
         const customInput = document.getElementById('upload-doc-custom');
         const subcategorySelect = document.getElementById('upload-doc-subcategory');
+        const createdDateInput = document.getElementById('upload-doc-created-date');
         const submitBtn = document.getElementById('upload-doc-submit');
         const files = (fileInput?.files?.length ? Array.from(fileInput.files) : (this._pendingUploadFiles || []));
         if (!files.length || !categorySelect) {
             this.showNotification('Välj minst en fil att ladda upp.', 'error');
             return;
         }
+        const rawDate = (createdDateInput?.value || '').trim();
+        const createdDate = (window.DateInput && DateInput.parseTypedDate(rawDate)) || rawDate;
+        if (!createdDate || !/^\d{4}-\d{2}-\d{2}$/.test(createdDate)) {
+            this.showNotification('Ange ett giltigt skapat datum (t.ex. 2026-01-01).', 'error');
+            if (createdDateInput) createdDateInput.focus();
+            return;
+        }
+        if (createdDateInput) createdDateInput.value = createdDate;
         const category = categorySelect.value;
         const subcategory = (category === 'riskbedomning' || category === 'historik_riskbedomning')
             ? (subcategorySelect?.value || 'ovrigt_risk')
             : undefined;
-        await this.uploadDocumentFiles(files, category, (customInput?.value || '').trim(), { submitBtn, subcategory });
+        await this.uploadDocumentFiles(files, category, (customInput?.value || '').trim(), { submitBtn, subcategory, createdDate });
     }
 
-    async uploadDocumentFiles(files, category, customCategory, { submitBtn, subcategory } = {}) {
+    async uploadDocumentFiles(files, category, customCategory, { submitBtn, subcategory, createdDate } = {}) {
         const list = Array.from(files || []);
         if (!list.length || !category) return;
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -16002,7 +16020,8 @@ class CustomerCardManager {
                             filename: file.name,
                             category,
                             subcategory,
-                            customCategory: customCategory || undefined
+                            customCategory: customCategory || undefined,
+                            createdDate: createdDate || undefined
                         })
                     });
                     const data = await res.json().catch(() => ({}));
