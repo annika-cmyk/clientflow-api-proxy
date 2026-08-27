@@ -123,6 +123,7 @@ const dokumentationExport = require('./lib/dokumentation-export');
 const dokumentationSignering = require('./lib/dokumentation-signering');
 const statistikDokumentation = require('./lib/statistik-dokumentation');
 const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
+const arKartlaggning = require('./lib/ar-kartlaggning');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
@@ -20187,9 +20188,16 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     for (const [airtableKey, title] of allmanKeys) {
       const val = getByraField(airtableKey) || '';
       htmlParts.push(`<h3>${escape(title)}</h3><div class="doc-text">${richToHtml(val || '—')}</div>`);
+      if (airtableKey === '2. Beskrivning av Byråns verksamhet') {
+        const kart = arKartlaggning.parseKartlaggningJson(getByraField(arKartlaggning.KARTLAGGNING_FIELD));
+        Object.entries(arKartlaggning.SECTION_LABELS).forEach(([key, label]) => {
+          const text = kart[key] || '';
+          if (text) htmlParts.push(`<h4>${escape(label)}</h4><div class="doc-text">${richToHtml(text)}</div>`);
+        });
+      }
       if (airtableKey === '4. Identifierade Risker och Sårbarheter') {
         htmlParts.push('<h3>5. Identifierade risker och sårbarheter</h3>');
-        htmlParts.push('<p class="doc-text">Kundtyper, varningsflaggor, distribution, geografisk hemvist och verksamhetsspecifika faktorer hämtas från Statistik, Övriga riskfaktorer och KYC för inloggad byrå.</p>');
+        htmlParts.push('<p class="doc-text">Kundkartläggning med statistik finns i avsnitt 2.1. Här visas analys av tjänster och övriga riskfaktorer.</p>');
       }
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
@@ -23065,6 +23073,101 @@ Ge endast den färdiga texten, utan rubrik eller inledning.`;
     console.error('❌ AI beskrivning byrå:', error.message);
     const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
     res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
+  }
+});
+
+const AR_KARTLAGGNING_SECTIONS = new Set(['kunder', 'distribution', 'geografi', 'verksamhet']);
+
+// POST /api/ai-ar-kartlaggning – AI-förslag för AR avsnitt 2.1.2–2.1.5
+app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  const section = String((req.body && req.body.section) || '').trim();
+  if (!AR_KARTLAGGNING_SECTIONS.has(section)) {
+    return res.status(400).json({ error: 'Ogiltigt avsnitt. Ange kunder, distribution, geografi eller verksamhet.' });
+  }
+
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användaren hittades inte.' });
+    const byraId = (userData.byraId || '').toString().trim();
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
+
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const BYRAER_TBL = process.env.BYRAER_TABLE_ID || 'tblAIu1A83AyRTQ3B';
+
+    const [statistik, rutinerRes] = await Promise.all([
+      loadStatistikRiskbedomning(userData, token, baseId),
+      axios.get(`https://api.airtable.com/v0/${baseId}/${BYRAER_TBL}?filterByFormula=${encodeURIComponent(`{Byrå ID}="${byraId}"`)}&maxRecords=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      })
+    ]);
+
+    const rutinerFields = (rutinerRes.data && rutinerRes.data.records && rutinerRes.data.records[0] && rutinerRes.data.records[0].fields) || {};
+    const kart = arKartlaggning.parseKartlaggningJson(rutinerFields[arKartlaggning.KARTLAGGNING_FIELD]);
+    const byraProfil = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
+
+    const systemPrompt = arKartlaggning.buildAiSystemPrompt(section);
+    const userPrompt = arKartlaggning.buildAiUserPrompt(section, {
+      statistikText: arKartlaggning.formatStatBlock(statistik),
+      byraProfil,
+      befintligText: kart[section] || ''
+    });
+
+    const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
+      maxWaitMs: 120000,
+      debugMeta: { route: '/api/ai-ar-kartlaggning', section, user: req.user?.email || '' }
+    });
+    if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
+
+    const auditLogEntry = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId,
+      entityType: 'ar_dokument',
+      entityId: byraId,
+      fieldChanged: arKartlaggning.SECTION_LABELS[section] || section,
+      aiOutputRaw: text
+    });
+    res.json({ text, auditLogId: auditLogEntry && auditLogEntry.id });
+  } catch (error) {
+    console.error('❌ AI AR kartläggning:', error.message);
+    const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
+    res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
+  }
+});
+
+// POST /api/setup/airtable-ar-kartlaggning-field – Skapa JSON-fält för AR kartläggning i Byråer
+app.post('/api/setup/airtable-ar-kartlaggning-field', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const byraTable = await getByraerTableMeta(airtableAccessToken, baseId);
+    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" hittades inte i basen.' });
+    const fieldName = arKartlaggning.KARTLAGGNING_FIELD;
+    const existingNames = (byraTable.fields || []).map((f) => (f.name || '').trim());
+    if (existingNames.includes(fieldName)) {
+      return res.json({ success: true, message: `Fältet "${fieldName}" finns redan.`, created: [], alreadyExisted: 1 });
+    }
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+    await axios.post(createUrl, {
+      name: fieldName,
+      type: 'multilineText',
+      description: 'JSON: texter för AR 2.1.2 Kunder, 2.1.3 Distributionskanaler, 2.1.4 Geografi, 2.1.5 Verksamhet.'
+    }, {
+      headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+    return res.json({ success: true, message: `Fältet "${fieldName}" skapades.`, created: [fieldName], alreadyExisted: 0 });
+  } catch (err) {
+    const status = err.response?.status;
+    const msg = (err.response?.data?.error && err.response.data.error.message) || err.message;
+    console.error('Setup AR kartläggning-fält:', status, msg);
+    return res.status(status || 500).json({ success: false, error: msg || 'Kunde inte skapa fältet' });
   }
 });
 

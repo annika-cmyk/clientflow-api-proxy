@@ -54,54 +54,153 @@
                             </div>
                                 </div>
                             </div>
-                            <div class="byra-card" data-field-id="fld-beskrivning">
+                            <div class="byra-card byra-card--collapsible open" data-card-id="fld-sektion2">
                                 <div class="byra-card-view">
-                                    <div class="byra-card-value"></div>
-                                    <div class="byra-card-actions">
-                                        <button type="button" class="btn-ai-suggest" id="btn-ai-beskrivning" title="AI analyserar tjänster, statistik och syfte för att föreslå beskrivning"><i class="fas fa-robot"></i> Generera AI-förslag</button>
-                                        <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
-                                    </div>
-                                </div>
-                                <div class="byra-card-edit">
-                            <div class="form-group full-width">
-                                <label for="fld-beskrivning">2. Beskrivning av Byråns verksamhet</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-beskrivning" class="form-input form-textarea" rows="10" placeholder="Beskriv byråns verksamhet..."></textarea>
-                                </div>
-                            </div>
-                                </div>
-                            </div>
-                            <div class="byra-card byra-card--numeric-group" data-card-type="numeric-group">
-                                <div class="byra-card-view">
-                                    <div class="byra-card-value" id="view-numeric-group"></div>
-                                    <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
-                                </div>
-                                <div class="byra-card-edit">
-                                    <div class="form-grid form-grid--inline">
-                                        <div class="form-group">
-                                            <label for="fld-antal-anstallda">Antal anställda</label>
-                                            <input type="number" id="fld-antal-anstallda" class="form-input" min="0" placeholder="0">
+                                    <button type="button" class="byra-card-collapse-toggle" aria-expanded="true" title="Fäll in eller ut">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="byra-card-label">2. Beskrivning av Byråns verksamhet</div>
+                                    <div class="byra-card-collapse-body">
+                                        <div class="ar-underkort">
+                                            <section class="ar-underkort-card byra-card" data-field-id="fld-beskrivning">
+                                                <h4>Verksamhetsbeskrivning</h4>
+                                                <div class="byra-card-view">
+                                                    <div class="byra-card-value"></div>
+                                                    <div class="byra-card-actions">
+                                                        <button type="button" class="btn-ai-suggest" id="btn-ai-beskrivning" title="AI analyserar tjänster, statistik och syfte för att föreslå beskrivning"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                        <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                    </div>
+                                                </div>
+                                                <div class="byra-card-edit">
+                                                    <div class="form-group full-width">
+                                                        <label for="fld-beskrivning">Verksamhetsbeskrivning</label>
+                                                        <div class="byrarutiner-rich-field">
+                                                            <div class="byrarutiner-format-toolbar">
+                                                                <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea id="fld-beskrivning" class="form-input form-textarea" rows="8" placeholder="Beskriv byråns verksamhet..."></textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </section>
+                                            <section class="ar-underkort-card byra-card byra-card--numeric-group" data-card-type="numeric-group">
+                                                <h4>Byråns nyckeltal</h4>
+                                                <div class="byra-card-view">
+                                                    <div class="byra-card-value" id="view-numeric-group"></div>
+                                                    <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                </div>
+                                                <div class="byra-card-edit">
+                                                    <div class="form-grid form-grid--inline">
+                                                        <div class="form-group">
+                                                            <label for="fld-antal-anstallda">Antal anställda</label>
+                                                            <input type="number" id="fld-antal-anstallda" class="form-input" min="0" placeholder="0">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label for="fld-omsattning">Omsättning (SEK)</label>
+                                                            <input type="number" id="fld-omsattning" class="form-input" min="0" placeholder="0">
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <label for="fld-antal-kundforetag">Antal kundföretag</label>
+                                                            <input type="number" id="fld-antal-kundforetag" class="form-input" min="0" placeholder="0">
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-save-wrap">
+                                                        <button type="button" class="btn btn-primary btn-sm card-save-btn" id="save-numeric-group"><i class="fas fa-save"></i> Spara</button>
+                                                        <span class="card-save-status"></span>
+                                                    </div>
+                                                </div>
+                                            </section>
+                                            <section class="ar-underkort-card" id="ar-kartlaggning">
+                                                <h4>2.1 Kartläggning av byråns verksamhet</h4>
+                                                <p class="byra-card-source-hint">Statistik hämtas från <a href="statistik-riskbedomning.html">Statistik</a>, <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a> och KYC. AI-förslag baseras på siffror och Länsstyrelsens krav.</p>
+                                                <div class="ar-underkort ar-underkort--nested">
+                                                    <section class="ar-underkort-card" id="ar-211-tjanster">
+                                                        <h5>2.1.1 Tjänster</h5>
+                                                        <p>Vi erbjuder följande tjänster:</p>
+                                                        <div id="ar-tjanster-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
+                                                    </section>
+                                                    <section class="ar-underkort-card byra-card" data-field-id="fld-ar-kunder">
+                                                        <h5>2.1.2 Kunder</h5>
+                                                        <div class="byra-card-view">
+                                                            <div class="byra-card-value"></div>
+                                                            <div class="byra-card-actions">
+                                                                <button type="button" class="btn-ai-suggest" data-ai-kartlaggning="kunder" title="AI skriver kundkartläggning utifrån statistik"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                                <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="byra-card-edit">
+                                                            <div class="form-group full-width">
+                                                                <textarea id="fld-ar-kunder" class="form-input form-textarea" rows="8" placeholder="Beskriv kundtyper, omsättning, bolagsformer, branscher och relationer..."></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <p class="ar-lansstyrelsen-infotext" id="ar-infotext-kunder"></p>
+                                                        <div id="ar-kundtyper-body" class="ar-underkort-body"></div>
+                                                        <div id="ar-flaggor-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
+                                                    </section>
+                                                    <section class="ar-underkort-card byra-card" data-field-id="fld-ar-distribution">
+                                                        <h5>2.1.3 Distributionskanaler</h5>
+                                                        <div class="byra-card-view">
+                                                            <div class="byra-card-value"></div>
+                                                            <div class="byra-card-actions">
+                                                                <button type="button" class="btn-ai-suggest" data-ai-kartlaggning="distribution" title="AI skriver om distributionskanaler utifrån statistik"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                                <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="byra-card-edit">
+                                                            <div class="form-group full-width">
+                                                                <textarea id="fld-ar-distribution" class="form-input form-textarea" rows="6" placeholder="Beskriv hur tjänster levereras till kunder..."></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <p class="ar-lansstyrelsen-infotext" id="ar-infotext-distribution"></p>
+                                                        <div id="ar-distribution-live" class="identifierade-live"></div>
+                                                        <div id="ar-distribution-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
+                                                    </section>
+                                                    <section class="ar-underkort-card byra-card" data-field-id="fld-ar-geografi">
+                                                        <h5>2.1.4 Geografiska förhållanden</h5>
+                                                        <div class="byra-card-view">
+                                                            <div class="byra-card-value"></div>
+                                                            <div class="byra-card-actions">
+                                                                <button type="button" class="btn-ai-suggest" data-ai-kartlaggning="geografi" title="AI skriver geografisk analys utifrån statistik och KYC"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                                <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="byra-card-edit">
+                                                            <div class="form-group full-width">
+                                                                <textarea id="fld-ar-geografi" class="form-input form-textarea" rows="6" placeholder="Beskriv var kunder finns och internationella kopplingar..."></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <p class="ar-lansstyrelsen-infotext" id="ar-infotext-geografi"></p>
+                                                        <p class="byra-card-source-hint" id="ar-bankid-text"></p>
+                                                        <div id="ar-geografi-body" class="ar-underkort-body"></div>
+                                                        <div id="ar-geografi-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
+                                                    </section>
+                                                    <section class="ar-underkort-card byra-card" data-field-id="fld-ar-verksamhet">
+                                                        <h5>2.1.5 Verksamhetsspecifika omständigheter</h5>
+                                                        <div class="byra-card-view">
+                                                            <div class="byra-card-value"></div>
+                                                            <div class="byra-card-actions">
+                                                                <button type="button" class="btn-ai-suggest" data-ai-kartlaggning="verksamhet" title="AI skriver om verksamhetsspecifika omständigheter"><i class="fas fa-robot"></i> Generera AI-förslag</button>
+                                                                <button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button>
+                                                            </div>
+                                                        </div>
+                                                        <div class="byra-card-edit">
+                                                            <div class="form-group full-width">
+                                                                <textarea id="fld-ar-verksamhet" class="form-input form-textarea" rows="6" placeholder="Beskriv särskilda omständigheter i byråns verksamhet..."></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <p class="ar-lansstyrelsen-infotext" id="ar-infotext-verksamhet"></p>
+                                                        <div id="ar-verksamhet-live" class="identifierade-live"></div>
+                                                        <div id="ar-verksamhet-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
+                                                    </section>
+                                                </div>
+                                            </section>
                                         </div>
-                                        <div class="form-group">
-                                            <label for="fld-omsattning">Omsättning (SEK)</label>
-                                            <input type="number" id="fld-omsattning" class="form-input" min="0" placeholder="0">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="fld-antal-kundforetag">Antal kundföretag</label>
-                                            <input type="number" id="fld-antal-kundforetag" class="form-input" min="0" placeholder="0">
-                                        </div>
-                                    </div>
-                                    <div class="card-save-wrap">
-                                        <button type="button" class="btn btn-primary btn-sm card-save-btn" id="save-numeric-group"><i class="fas fa-save"></i> Spara</button>
-                                        <span class="card-save-status"></span>
                                     </div>
                                 </div>
+                                <div class="byra-card-edit" style="display:none;"></div>
                             </div>
                             <div class="byra-card" data-field-id="fld-metod-riskbedomning">
                                 <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
@@ -130,10 +229,9 @@
                                         Underlaget kommer från
                                         <a href="riskbedomning-byra.html">Byråns tjänster – analys av hot, sårbarheter och våra åtgärder</a>.
                                         Fäll ut varje tjänst för att se samma layout som på den sidan.
-                                        Staplarna visar hur många av byråns kunder som har respektive tjänst.
+                                        Stapeldiagram över kunder per tjänst finns i avsnitt 2.1.1.
                                     </p>
                                     <div class="byra-card-collapse-body">
-                                        <div id="ar-tjanster-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
                                         <div id="identifierade-risker-live" class="identifierade-live"></div>
                                     </div>
                                 </div>
@@ -151,41 +249,11 @@
                                     </button>
                                     <div class="byra-card-label">5. Identifierade risker och sårbarheter</div>
                                     <p class="byra-card-source-hint" style="margin-top:0;">
-                                        Kundtyper, varningsflaggor, distribution, geografisk hemvist och
-                                        verksamhetsspecifika faktorer hämtas från
-                                        <a href="statistik-riskbedomning.html">Statistik</a>,
-                                        <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>
-                                        och KYC för inloggad byrå.
+                                        Kundkartläggning med statistik och AI-stöd finns i avsnitt 2.1 under Beskrivning av byråns verksamhet.
+                                        Här visas övriga identifierade risker från tjänster och riskfaktorer.
                                     </p>
                                     <div class="byra-card-collapse-body">
-                                        <div class="ar-underkort">
-                                            <section class="ar-underkort-card" id="ar-kundtyper">
-                                                <h4>5.1 Våra olika kundtyper</h4>
-                                                <div id="ar-kundtyper-body" class="ar-underkort-body">
-                                                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar kundstatistik...</p>
-                                                </div>
-                                                <div id="ar-flaggor-chart" class="ar-bar-chart-wrap" aria-live="polite"></div>
-                                            </section>
-                                            <section class="ar-underkort-card" id="ar-distribution">
-                                                <h4>5.2 Distribution</h4>
-                                                <p>Byrån har följande möjliga distributionskanaler:</p>
-                                                <div id="ar-distribution-live" class="identifierade-live"></div>
-                                                <div id="ar-distribution-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
-                                            </section>
-                                            <section class="ar-underkort-card" id="ar-geografi">
-                                                <h4>5.3 Geografisk risk</h4>
-                                                <div id="ar-geografi-body" class="ar-underkort-body">
-                                                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar hemviststatistik...</p>
-                                                </div>
-                                                <div id="ar-geografi-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
-                                            </section>
-                                            <section class="ar-underkort-card" id="ar-verksamhet">
-                                                <h4>5.4 Verksamhetsspecifika omständigheter</h4>
-                                                <p>Byrån har bedömt följande verksamhetsspecifika riskfaktorer:</p>
-                                                <div id="ar-verksamhet-live" class="identifierade-live"></div>
-                                                <div id="ar-verksamhet-chart" class="ar-pie-chart-wrap" aria-live="polite"></div>
-                                            </section>
-                                        </div>
+                                        <p class="statistik-section-desc">Se avsnitt 2.1.2–2.1.5 för kundtyper, distribution, geografi och verksamhetsspecifika omständigheter med statistik från <a href="statistik-riskbedomning.html">Statistik</a>.</p>
                                     </div>
                                 </div>
                                 <div class="byra-card-edit" style="display:none;"></div>
@@ -332,7 +400,7 @@
     <script src="js/kund-riskprofil.js?v=15"></script>
     <script src="js/identifierade-risker-view.js?v=8"></script>
     <script src="js/riskaptit.js?v=2"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=2.6"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=3.0"></script>
     <script src="app.js"></script>
 </body>
 </html>

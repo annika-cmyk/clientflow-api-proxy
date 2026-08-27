@@ -20,6 +20,60 @@
     { id: 'fld-uppdaterad-datum', airtable: 'Uppdaterad datum', type: 'date' }
   ];
 
+  const KARTLAGGNING_AIRTABLE = 'AR Kartläggning (JSON)';
+  const KARTLAGGNING_FIELDS = [
+    { id: 'fld-ar-kunder', key: 'kunder' },
+    { id: 'fld-ar-distribution', key: 'distribution' },
+    { id: 'fld-ar-geografi', key: 'geografi' },
+    { id: 'fld-ar-verksamhet', key: 'verksamhet' }
+  ];
+
+  const LANSSTYRELSEN_INFOTEXT = {
+    kunder: 'Länsstyrelsens krav: Finns det omständigheter hos dina kunder, dina kunders verksamheter och branscher som kan innebära risker för din verksamhet? I penningtvättslagen (kapitel 2, paragraf 4 och 5) finns exempel på omständigheter som kan tyda på låg eller hög risk. Observera! Exemplen i de två lagparagraferna är inte heltäckande och du måste utgå från relevanta omständigheter hos kundtyperna i din verksamhet.',
+    distribution: 'Länsstyrelsens krav: Erbjuder din verksamhet produkter och tjänster som gör det svårare för dig att överblicka hur och vad kunden använder produkter och tjänster till? Det handlar om vilken kontroll du har över din verksamhets produkter och tjänster när du tillhandahåller dem till kunden. Till exempel om tjänsten erbjuds på distans, genom en tredje part eller via ett webbaserat forum. Det kan vara så att du erbjuder en produkt som i sig innebär en låg risk, men ditt leveranssätt innebär en hög risk, vilket i kombination kan göra att risken för att produkten kan utnyttjas blir högre. Om du använder en extern tjänsteleverantör för olika delar av dina skyldigheter avseende bekämpning av penningtvätt och finansiering av terrorism kan det också innebära risker, och ett sådant system är inte en ersättning för personalens vaksamhet.',
+    geografi: 'Länsstyrelsens krav: Du behöver ha kunskap om de länder och områden som du och dina kunder är verksamma eller bosatta i, eller har anknytning till, och relevanta förhållanden kopplade till dessa länder och områden som kan leda till att dina produkter och tjänster utnyttjas. Du kan erbjuda en tjänst som i sig innebär en låg risk, men risken för att tjänsten kan utnyttjas blir högre när du till exempel erbjuder tjänsten i ett land där det förekommer korruption, det saknas ett effektivt regelverk mot penningtvätt, eller som är ett högrisktredjeland enligt EU-kommissionen.',
+    verksamhet: 'Länsstyrelsens krav: Finns det specifika omständigheter i din verksamhet? Det handlar alltså inte om sårbarheter i allmänhet, utan du behöver analysera din egen verksamhet. Till exempel din verksamhets storlek eller hur komplex organisationen är.'
+  };
+
+  const BANKID_KYC_TEXT = 'I ClientFlow gör vi identifiering av kunden med BankID. Saknas möjlighet till BankID tas kopia av körkort eller pass och sparas i ClientFlow. För distanskunder begär vi vidimerad kopia av motsvarande handlingar.';
+
+  function parseKartlaggningJson(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+    try {
+      var parsed = JSON.parse(String(raw));
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function readKartlaggningFromForm() {
+    var out = {};
+    KARTLAGGNING_FIELDS.forEach(function (m) {
+      var el = getEl(m.id);
+      out[m.key] = el ? String(el.value || '').trim() : '';
+    });
+    return out;
+  }
+
+  function populateKartlaggning(fields) {
+    var data = parseKartlaggningJson(getFieldValue(fields, KARTLAGGNING_AIRTABLE));
+    KARTLAGGNING_FIELDS.forEach(function (m) {
+      var el = getEl(m.id);
+      if (el) el.value = data[m.key] == null ? '' : String(data[m.key]);
+    });
+  }
+
+  function initKartlaggningInfotext() {
+    Object.keys(LANSSTYRELSEN_INFOTEXT).forEach(function (key) {
+      var el = getEl('ar-infotext-' + key);
+      if (el) el.textContent = LANSSTYRELSEN_INFOTEXT[key];
+    });
+    var bankId = getEl('ar-bankid-text');
+    if (bankId) bankId.textContent = BANKID_KYC_TEXT;
+  }
+
   const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
   const RISK_FALT_AIRTABLE = '4. Identifierade Risker och Sårbarheter';
   var tjanstIdToNamn = {};
@@ -151,6 +205,16 @@
   function updateCardView(card) {
     var fid = card.getAttribute('data-field-id');
     if (fid === 'fld-identifierade-risker') return;
+    var kartField = KARTLAGGNING_FIELDS.find(function (x) { return x.id === fid; });
+    if (kartField) {
+      var elK = getEl(kartField.id);
+      var viewK = card.querySelector('.byra-card-value');
+      if (viewK && elK) {
+        var rawK = String(elK.value || '').trim() || '—';
+        viewK.innerHTML = rawK === '—' ? '—' : '<div class="byra-card-formatted">' + markdownToHtml(rawK) + '</div>';
+      }
+      return;
+    }
     if (fid) {
       var el = getEl(fid);
       var m = FIELD_MAP.find(function (x) { return x.id === fid; });
@@ -238,6 +302,8 @@
       else el.value = val == null ? '' : String(val);
     });
     applySammantagenFromText(getEl('fld-vardering-risk') ? getEl('fld-vardering-risk').value : '');
+    populateKartlaggning(fields);
+    initKartlaggningInfotext();
     var riskaptitEl = getEl('fld-riskaptit-policy');
     if (riskaptitEl && !String(riskaptitEl.value || '').trim() && window.Riskaptit && Riskaptit.policyText) {
       riskaptitEl.value = Riskaptit.policyText();
@@ -334,6 +400,28 @@
     document.querySelectorAll('.byra-card[data-field-id]').forEach(function (card) {
       var fid = card.getAttribute('data-field-id');
       if (fid === 'fld-identifierade-risker') return;
+      var kartField = KARTLAGGNING_FIELDS.find(function (x) { return x.id === fid; });
+      if (kartField) {
+        var formGroup = card.querySelector('.form-group');
+        if (!formGroup || formGroup.querySelector('.card-save-btn')) return;
+        var wrapK = document.createElement('div');
+        wrapK.className = 'card-save-wrap';
+        var btnK = document.createElement('button');
+        btnK.type = 'button';
+        btnK.className = 'btn btn-primary btn-sm card-save-btn';
+        btnK.innerHTML = '<i class="fas fa-save"></i> Spara';
+        var statusK = document.createElement('span');
+        statusK.className = 'card-save-status';
+        wrapK.appendChild(btnK);
+        wrapK.appendChild(statusK);
+        formGroup.appendChild(wrapK);
+        btnK.addEventListener('click', function () {
+          var fieldsK = {};
+          fieldsK[KARTLAGGNING_AIRTABLE] = JSON.stringify(readKartlaggningFromForm());
+          saveFields(fieldsK, card);
+        });
+        return;
+      }
       var m = FIELD_MAP.find(function (x) { return x.id === fid; });
       if (!m) return;
       var formGroup = card.querySelector('.form-group');
@@ -784,8 +872,7 @@
       : '<p class="identifierade-empty">Inga skatterättsliga hemvister är ifyllda i KYC ännu.</p>';
     el.innerHTML = '<p>Företagen och deras verkliga huvudmän/företrädare som anlitar oss har sin skatterättsliga hemvist i följande länder:</p>'
       + list
-      + '<p>Risken för att tjänsten kan utnyttjas blir högre när du till exempel erbjuder tjänsten i ett land där det förekommer korruption, det saknas ett effektivt regelverk mot penningtvätt, eller som är ett högrisktredjeland enligt EU-kommissionen. '
-      + '<a href="https://www.lansstyrelsen.se/stockholm/samhalle/betalning-ekonomi-och-pengar/forhindra-penningtvatt-och-finansiering-av-terrorism/gor-en-allman-riskbedomning.html" target="_blank" rel="noopener">Länsstyrelsens vägledning</a>.</p>'
+      + renderNamedStatList('Länder kunderna handlar med (KYC avsnitt 6)', stat && stat.handelslander)
       + '<p>Den skatterättsliga hemvisten kontrolleras mot EU:s lista gällande risknivåer i olika länder och påverkar kundens risknivå.</p>';
     renderPieChart('ar-geografi-chart', rows, {
       title: 'Andel kunder per hemvist',
@@ -793,6 +880,13 @@
       aria: 'Cirkeldiagram över skatterättslig hemvist',
       empty: 'Inga skatterättsliga hemvister är ifyllda i KYC ännu.'
     });
+  }
+
+  function renderNamedStatList(title, rows, emptyText) {
+    if (!rows || !rows.length) return '';
+    return '<p><strong>' + escapeHtml(title) + ':</strong> ' + rows.map(function (r) {
+      return escapeHtml(r.namn) + ' (' + r.antal + ')';
+    }).join(', ') + '</p>';
   }
 
   function renderKundtyper(stat, katalogPayload) {
@@ -810,11 +904,20 @@
       katalogPayload && katalogPayload.kategorier,
       stat && stat.varningsflaggor
     );
+    var langRelation = (stat && stat.risksankande || []).find(function (x) {
+      return /lång/i.test(String(x.namn || ''));
+    });
     el.innerHTML = '<p>Vår byrå har <strong>' + n + '</strong> antal kunder. Av dessa har vi kategoriserat <strong>'
       + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
       + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
       + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
-      + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder. Vi har även utifrån information från Finanspolisen, AMLA, Länsstyrelser, Ekobrottsmyndigheten m.fl. lagt till relevanta varningstecken för sådana kunder som vi har. Vi har bedömt omständigheterna som kan tyda på högre risk som antingen sådana som alltid är riskhöjande eller sådana som bidrar i kombination.</p>';
+      + renderNamedStatList('Omsättningsintervall (kundföretag)', stat && stat.omsattning)
+      + renderNamedStatList('Bolagsformer', stat && stat.bolagsform)
+      + renderNamedStatList('Branscher', (stat && stat.branscher && stat.branscher.length) ? stat.branscher : (stat && stat.högriskbransch))
+      + (langRelation
+        ? '<p><strong>Relationslängd:</strong> ' + langRelation.antal + ' kunder har risksänkande faktorn «' + escapeHtml(langRelation.namn) + '».</p>'
+        : renderNamedStatList('Risksänkande faktorer (t.ex. långsiktig relation)', stat && stat.risksankande, 'Inga risksänkande faktorer registrerade.'))
+      + '<p>Vid bedömning av våra kunders risknivåer utgår vi från de omständigheter som kan tyda på låg eller hög risk enligt penningtvättslagen (kapitel 2, paragraf 4 och 5) hos våra kunder.</p>';
     renderFlaggorBarChart(flags);
   }
 
@@ -863,11 +966,53 @@
     }
   }
 
+  function initAiKartlaggning() {
+    document.querySelectorAll('[data-ai-kartlaggning]').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        var section = btn.getAttribute('data-ai-kartlaggning');
+        var field = KARTLAGGNING_FIELDS.find(function (x) { return x.key === section; });
+        if (!field) return;
+        var card = document.querySelector('.byra-card[data-field-id="' + field.id + '"]');
+        var ta = getEl(field.id);
+        if (!card || !ta) return;
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+        if (typeof window.showAiThinking === 'function') window.showAiThinking();
+        showEdit(card);
+        ta.focus();
+        try {
+          var res = await fetch(getBaseUrl() + '/api/ai-ar-kartlaggning', {
+            method: 'POST',
+            ...getAuthOpts(),
+            body: JSON.stringify({ section: section })
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (res.ok && data.text) {
+            if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
+            ta.value = data.text;
+            updateCardView(card);
+          } else {
+            alert(data.error || data.message || 'Kunde inte generera AI-förslag');
+          }
+        } catch (err) {
+          console.error('AI kartläggning:', err);
+          alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
+        } finally {
+          if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      });
+    });
+  }
+
   function init() {
     load();
     initFormatToolbars();
     initAiBeskrivning();
     initAiVarderingRisk();
+    initAiKartlaggning();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
