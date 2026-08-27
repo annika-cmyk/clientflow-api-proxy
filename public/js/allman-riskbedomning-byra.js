@@ -764,6 +764,7 @@
     labels.forEach(function (namn) {
       var label = KP && KP.canonicalRiskhojandeLabel ? KP.canonicalRiskhojandeLabel(namn) : namn;
       if (!label || seen[label.toLowerCase()]) return;
+      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(label)) return;
       seen[label.toLowerCase()] = true;
       var klass = (katalog && katalog[namn]) || (katalog && katalog[label]) || '';
       var cat = (kategorier && (kategorier[namn] || kategorier[label])) || (Kat && Kat.categoryFor && Kat.categoryFor(label)) || '';
@@ -772,6 +773,7 @@
     (counts || []).forEach(function (row) {
       var label = row && row.namn;
       if (!label || seen[String(label).toLowerCase()]) return;
+      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(label)) return;
       seen[String(label).toLowerCase()] = true;
       out.push({ namn: label, antal: Number(row.antal) || 0, klass: '', category: '' });
     });
@@ -815,10 +817,13 @@
     });
     ((stat && stat.varningsflaggor) || []).forEach(function (f) {
       if (!f || !f.namn) return;
+      var Kat = window.OvrigaRiskKategorier;
+      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(f.namn)) return;
       var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
+      var catId = Kat && Kat.categoryFor ? Kat.categoryFor(f.namn) : '';
       if (match
-        || (dimId === 'distribution' && /distans|fysiskt möte|ombud/i.test(f.namn))
-        || (dimId === 'verksamhet' && /verksamhetsspecifik|betalkort|kontant/i.test(f.namn))) {
+        || (dimId === 'distribution' && catId === 'samarbete')
+        || (dimId === 'verksamhet' && (catId === 'verksamheten' || /verksamhetsspecifik|betalkort|kontant/i.test(f.namn)))) {
         add(f.namn, f.antal);
       }
     });
