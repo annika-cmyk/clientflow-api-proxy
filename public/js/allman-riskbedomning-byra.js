@@ -671,9 +671,7 @@
     var wrap = getEl('ar-tjanster-chart');
     if (!wrap) return;
     wrap.innerHTML = renderBarChartHtml(tjanster, {
-      title: 'Kunder per tjänst',
-      hint: 'Antal kunder på inloggad byrå som har respektive tjänst kopplad.',
-      aria: 'Stapeldiagram över kunder per tjänst',
+      aria: 'Antal kunder per tjänst',
       empty: 'Inga kunder har en kopplad tjänst ännu.'
     });
   }
