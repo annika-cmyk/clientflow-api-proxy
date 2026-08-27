@@ -5881,7 +5881,9 @@ class CustomerCardManager {
     _htmlToPlainText(html) {
         const raw = this._kundFieldText(html).trim();
         if (!raw) return '';
-        if (!/[<>]/.test(raw)) return raw;
+        if (window.HtmlPlainText && typeof window.HtmlPlainText.htmlToPlainText === 'function') {
+            return window.HtmlPlainText.htmlToPlainText(raw);
+        }
         const div = document.createElement('div');
         div.innerHTML = raw;
         return (div.innerText || div.textContent || '').replace(/\u00a0/g, ' ').trim();

@@ -123,6 +123,7 @@ const dokumentationExport = require('./lib/dokumentation-export');
 const dokumentationSignering = require('./lib/dokumentation-signering');
 const statistikDokumentation = require('./lib/statistik-dokumentation');
 const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
+const { htmlToPlainText: htmlPlainText } = require('./lib/html-plain-text');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
@@ -7388,41 +7389,7 @@ function pdfEscape(s) {
 
 /** Konvertera HTML (t.ex. från rich text / KYC) till läsbar plaintext för PDF. */
 function pdfHtmlToPlainText(s) {
-  if (s == null || s === '') return '';
-  let t = String(s);
-  const looksLikeHtml = /<\s*\/?\s*[a-z][^>]*>/i.test(t) || /&(?:nbsp|amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/i.test(t);
-  if (!looksLikeHtml) return t;
-
-  // Block-/listbrytningar innan taggarna tas bort
-  t = t.replace(/<\s*br\s*\/?\s*>/gi, '\n');
-  t = t.replace(/<\s*\/\s*(p|div|tr|h[1-6]|section|article|ul|ol)\s*>/gi, '\n');
-  t = t.replace(/<\s*(p|div|tr|h[1-6]|section|article)(\s[^>]*)?>/gi, '\n');
-  t = t.replace(/<\s*li(\s[^>]*)?>/gi, '\n• ');
-  t = t.replace(/<\s*\/\s*li\s*>/gi, '');
-  t = t.replace(/<[^>]+>/g, '');
-
-  t = t
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&#39;/gi, "'")
-    .replace(/&#(\d+);/g, (_, n) => {
-      const code = Number(n);
-      return Number.isFinite(code) ? String.fromCharCode(code) : '';
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
-      const code = parseInt(h, 16);
-      return Number.isFinite(code) ? String.fromCharCode(code) : '';
-    });
-
-  t = t.replace(/\u00a0/g, ' ');
-  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
-  t = t.replace(/[ \t]{2,}/g, ' ');
-  t = t.replace(/\n{3,}/g, '\n\n');
-  return t.trim();
+  return htmlPlainText(s);
 }
 
 function pdfNl2br(s) {
@@ -16362,13 +16329,13 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
 
     const syncFields = {};
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'verksamhet')) {
-      syncFields['Verksamhet'] = String(req.body.verksamhet || '');
+      syncFields['Verksamhet'] = htmlPlainText(String(req.body.verksamhet || ''));
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'kostnader')) {
-      syncFields['Kostnader'] = String(req.body.kostnader || '');
+      syncFields['Kostnader'] = htmlPlainText(String(req.body.kostnader || ''));
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'intakterna')) {
-      syncFields['Intäkterna'] = String(req.body.intakterna || '');
+      syncFields['Intäkterna'] = htmlPlainText(String(req.body.intakterna || ''));
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'internationellHandel')) {
       syncFields['Har företaget transaktioner med andra länder?'] = String(req.body.internationellHandel || '');
