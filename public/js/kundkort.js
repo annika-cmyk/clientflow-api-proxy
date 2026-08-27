@@ -3705,7 +3705,14 @@ class CustomerCardManager {
         document.body.appendChild(modal);
 
         document.getElementById('uppdrag-complete-confirm').addEventListener('click', async () => {
+            const confirmBtn = document.getElementById('uppdrag-complete-confirm');
+            if (confirmBtn?.dataset.busy === '1') return;
             try {
+                if (confirmBtn) {
+                    confirmBtn.dataset.busy = '1';
+                    confirmBtn.disabled = true;
+                    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...';
+                }
                 const note = (document.getElementById('uppdrag-complete-note')?.value || '').trim();
 
                 if (riskOn) {
@@ -3747,6 +3754,11 @@ class CustomerCardManager {
                 });
             } catch (e) {
                 this.showNotification('Kunde inte klarmarkera: ' + (e.message || 'fel'), 'error');
+                if (confirmBtn) {
+                    confirmBtn.dataset.busy = '0';
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerHTML = '<i class="fas fa-check"></i> Klarmarkera';
+                }
             }
         });
     }
