@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.91', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.92', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -125,27 +125,41 @@ class CustomerCardManager {
     }
 
     async init() {
-        await this.loadDatasourceConfig();
-        await this.loadUserData();
+        // Parse URL + wire UI immediately so we can fetch as soon as auth/config are ready.
         this.setupEventListeners();
         this.setupTabNavigation();
         this.setupRollerEventDelegation();
         this._ensureTabStatusElements();
         this._updateKlarTabIndicators({});
-        
-        // Ensure first tab is visible on load
         this.ensureFirstTabVisible();
-        
-        // Debug: Check URL immediately
+
         console.log('🔍 INIT - Current URL:', window.location.href);
         console.log('🔍 INIT - URL search:', window.location.search);
-        
-        // Wait a bit for URL to be fully available
-        setTimeout(() => {
-            console.log('🔍 TIMEOUT - Current URL:', window.location.href);
-            console.log('🔍 TIMEOUT - URL search:', window.location.search);
-            this.loadCustomerData();
-        }, 100);
+
+        // Kick off kunddata network I/O immediately (auth cookie only); process after user/config.
+        const customerResponsePromise = this._startCustomerFetch();
+        await Promise.all([
+            this.loadDatasourceConfig(),
+            this.loadUserData()
+        ]);
+        await this.loadCustomerData(customerResponsePromise);
+    }
+
+    _startCustomerFetch() {
+        if (!this.customerId ||
+            this.customerId === 'null' ||
+            this.customerId === 'undefined' ||
+            String(this.customerId).trim() === '') {
+            return null;
+        }
+        if (!isLoggedInKundkort()) {
+            return null;
+        }
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        return fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+            method: 'GET',
+            ...getAuthOptsKundkort()
+        });
     }
 
     ensureFirstTabVisible() {
@@ -375,7 +389,7 @@ class CustomerCardManager {
         }, true);
     }
 
-    async loadCustomerData() {
+    async loadCustomerData(prefetchedResponse = null) {
         // Try to get customer ID again if it's not set
         if (!this.customerId) {
             console.log('🔍 Customer ID not set, trying to get it from URL again...');
@@ -419,10 +433,12 @@ class CustomerCardManager {
                 return;
             }
 
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                ...getAuthOptsKundkort()
-            });
+            const response = prefetchedResponse
+                ? await prefetchedResponse
+                : await fetch(apiUrl, {
+                    method: 'GET',
+                    ...getAuthOptsKundkort()
+                });
 
             if (response.ok) {
                 const data = await response.json();
@@ -451,7 +467,6 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
-                this.refreshTabIndicators();
                 const urlParams = new URLSearchParams(window.location.search);
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
@@ -461,6 +476,11 @@ class CustomerCardManager {
                 const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : (shouldOpenSamarbete ? 'samarbete' : 'foretagsinformation'));
                 this.switchToTab(initialTab);
                 this.loadTabContent(initialTab);
+                // Tab badge API fan-out after first paint so it does not compete with LCP.
+                const deferIndicators = typeof requestIdleCallback === 'function'
+                    ? (fn) => requestIdleCallback(fn, { timeout: 1500 })
+                    : (fn) => setTimeout(fn, 0);
+                deferIndicators(() => this.refreshTabIndicators());
                 
                 // Force visibility after data is loaded
                 setTimeout(() => {
@@ -5289,11 +5309,19 @@ class CustomerCardManager {
                                     : fmt('')}</span>
                             </div>
                             <div class="lead-field">
-                                <label>Verksam organisation</label>
+                                <label class="lead-field-label-with-help">
+                                    Verksam organisation
+                                    <button
+                                        type="button"
+                                        class="help-qmark"
+                                        id="bv-verksam-help"
+                                        aria-label="Hjälp för Verksam organisation"
+                                        data-help-text="${this._esc(VERKSAM_ORG_HELP)}"
+                                        title="Vad betyder Verksam organisation?"
+                                        onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);"
+                                    >?</button>
+                                </label>
                                 <span id="bv-verksam-view">${fmt(bvStatus.verksam)}</span>
-                            </div>
-                            <div class="lead-field lead-field--full">
-                                <p class="bv-verksam-hint">${this._esc(VERKSAM_ORG_HELP)}</p>
                             </div>
                             ${bvStatus.avregDatum || bvStatus.avregOrsak ? `
                             <div class="lead-field"><label>Avregistreringsdatum</label><span>${fmt(bvStatus.avregDatum)}</span></div>
@@ -5338,7 +5366,18 @@ class CustomerCardManager {
                                 </select>
                             </div>
                             <div class="kunduppgifter-form-row">
-                                <label for="bv-aktivt-input">Verksam organisation</label>
+                                <label for="bv-aktivt-input" class="lead-field-label-with-help">
+                                    Verksam organisation
+                                    <button
+                                        type="button"
+                                        class="help-qmark"
+                                        id="bv-verksam-help-edit"
+                                        aria-label="Hjälp för Verksam organisation"
+                                        data-help-text="${this._esc(VERKSAM_ORG_HELP)}"
+                                        title="Vad betyder Verksam organisation?"
+                                        onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);"
+                                    >?</button>
+                                </label>
                                 <select id="bv-aktivt-input" class="kunduppgifter-input">
                                     <option value="">Välj...</option>
                                     <option value="Ja" ${bvStatus.verksam === 'Ja' ? 'selected' : ''}>Ja (F-skatt, moms och/eller arbetsgivare)</option>
