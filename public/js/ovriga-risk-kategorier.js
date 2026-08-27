@@ -134,6 +134,22 @@
       aliases: ['ovanlig tidsnöd', 'extremt bråttom', 'tidsnöd']
     },
     {
+      id: 'mutforsok-formaner',
+      category: 'samarbete',
+      label: 'Kunden erbjuder pengar, ersättning eller ovanliga förmåner',
+      hint: 'Mutförsök mot konsulten. Hög risk enligt polisen och Revisorsinspektionen.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      aliases: [
+        'kunden erbjuder pengar, ersättning eller ovanliga förmåner',
+        'mutförsök mot konsulten',
+        'mutförsök',
+        'muta',
+        'ovanliga förmåner',
+        'ersättning eller förmåner'
+      ]
+    },
+    {
       id: 'agarstruktur',
       category: 'kunden',
       label: 'Komplicerad eller ovanlig ägarstruktur',
