@@ -903,7 +903,7 @@
     el.innerHTML = '<p>Vår byrå har <strong>' + n + '</strong> antal kunder. Av dessa har vi kategoriserat <strong>'
       + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
       + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
-      + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
+      + pep + '</strong> antal kunder som enligt KYC-formuläret är PEP eller anhörig/nära medarbetare till PEP.</p>'
       + (omsText ? '<p>' + escapeHtml(omsText) + '</p>' : '')
       + renderNamedStatList('Bolagsformer', stat && stat.bolagsform)
       + (branschText ? '<p><strong>Branscher:</strong> ' + escapeHtml(branschText) + '</p>' : '')
