@@ -1049,7 +1049,8 @@
     el.innerHTML = '<p>Företagen och deras verkliga huvudmän/företrädare som anlitar oss har sin skatterättsliga hemvist i följande länder:</p>'
       + list
       + renderNamedStatList('Länder kunderna handlar med (KYC avsnitt 6)', stat && stat.handelslander)
-      + '<p>Den skatterättsliga hemvisten kontrolleras mot EU:s lista gällande risknivåer i olika länder och påverkar kundens risknivå.</p>';
+      + renderNamedStatList('Adresskontroll mot Polisens utsatta områden (uso_2025)', stat && stat.utsattOmrade && stat.utsattOmrade.rader, 'Inga adresser har kontrollerats mot Polisens utsatta områden ännu.')
+      + '<p>Den skatterättsliga hemvisten kontrolleras mot EU:s lista gällande risknivåer i olika länder och påverkar kundens risknivå. Adresser i särskilt utsatta områden kopplas automatiskt till geografisk residualrisk.</p>';
     renderPieChart('ar-geografi-chart', rows, {
       title: 'Andel kunder per hemvist',
       hint: 'Fördelning av byråns kunder utifrån skatterättslig hemvist i KYC.',

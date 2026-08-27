@@ -128,6 +128,7 @@ const { htmlToPlainText: htmlPlainText } = require('./lib/html-plain-text');
 const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
+const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
@@ -5397,6 +5398,20 @@ async function fetchAirtableByByraId(table, byraId, token, baseId) {
   return records;
 }
 
+async function maybePatchUtsattGeoRisk(customerRecord, stored, token, baseId) {
+  const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
+  if (!byraId || !token) return null;
+  const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  const geoRecs = utsattOmradeStyrning.geoRecordsFromList(byraRisker);
+  if (!geoRecs.some((rec) => utsattOmradeStyrning.matchFactor(utsattOmradeStyrning.recordNamn(rec)))) {
+    return null;
+  }
+  const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
+  const after = utsattOmradeStyrning.mergeLinkedIds(before, geoRecs, stored);
+  if (!utsattOmradeStyrning.linkedIdsChanged(before, after)) return null;
+  return { 'risker kopplat till tjänster': after };
+}
+
 async function identifieradeRiskerForByra(byraId, token, baseId) {
   const [tjanstRecs, ovrigaRecs] = await Promise.all([
     fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId),
@@ -6537,9 +6552,12 @@ app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) 
     const json = await utsattOmradeKund.checkAndSerialize(addr);
     const stored = utsattOmradeKund.parseStored(json);
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
+    const patchFields = { [utsattOmradeKund.FIELD]: json };
+    const geoRiskPatch = await maybePatchUtsattGeoRisk(customerRecord, stored, airtableAccessToken, airtableBaseId);
+    if (geoRiskPatch) Object.assign(patchFields, geoRiskPatch);
     let patchRes;
     try {
-      patchRes = await axios.patch(url, { fields: { [utsattOmradeKund.FIELD]: json }, typecast: true }, {
+      patchRes = await axios.patch(url, { fields: patchFields, typecast: true }, {
         headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
         timeout: 15000
       });
@@ -6549,7 +6567,7 @@ app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) 
       if (unknown === utsattOmradeKund.FIELD) {
         const ensured = await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
         if (!ensured.ok) throw e;
-        patchRes = await axios.patch(url, { fields: { [utsattOmradeKund.FIELD]: json }, typecast: true }, {
+        patchRes = await axios.patch(url, { fields: patchFields, typecast: true }, {
           headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
           timeout: 15000
         });
@@ -6566,7 +6584,8 @@ app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) 
       label: utsattOmradeKund.summaryLabel(stored),
       stored,
       record: patchRes.data,
-      field: utsattOmradeKund.FIELD
+      field: utsattOmradeKund.FIELD,
+      geoRiskLinked: !!geoRiskPatch
     });
   } catch (error) {
     console.error('❌ POST utsatt-omrade:', error.response?.data || error.message);
@@ -6717,6 +6736,16 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         if (utsattJson !== undefined) cleanedFields[utsattOmradeKund.FIELD] = utsattJson;
       } catch (e) {
         console.warn('⚠️ Utsatt område-koll vid adressändring:', e.message);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, utsattOmradeKund.FIELD)) {
+      try {
+        const stored = utsattOmradeKund.parseStored(cleanedFields[utsattOmradeKund.FIELD]);
+        const geoRiskPatch = await maybePatchUtsattGeoRisk(customerRecord, stored, airtableAccessToken, airtableBaseId);
+        if (geoRiskPatch) Object.assign(cleanedFields, geoRiskPatch);
+      } catch (e) {
+        console.warn('⚠️ Utsatt geo-risk koppling:', e.message);
       }
     }
 
@@ -14619,6 +14648,12 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
     } else if (typ === 'anstallda' && paramNamn !== undefined) {
       for (const rec of allRecords) {
         if (statistikRiskbedomning.recordMatchesAnstalldaStat(rec.fields, paramNamn)) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+        }
+      }
+    } else if (typ === 'utsatt-omrade' && paramNamn !== undefined) {
+      for (const rec of allRecords) {
+        if (statistikRiskbedomning.recordMatchesUtsattStat(rec.fields, paramNamn)) {
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }

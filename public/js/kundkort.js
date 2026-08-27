@@ -4855,6 +4855,33 @@ class CustomerCardManager {
         }
     }
 
+    _utsattOmradeGeoFailed(data) {
+        return !!(data && data.geocoding && data.geocoding.ok === false);
+    }
+
+    _utsattOmradeOutcome(data) {
+        if (!data) return null;
+        if (this._utsattOmradeGeoFailed(data)) {
+            return {
+                kind: 'geo_fail',
+                toast: 'Kunde inte geokoda adressen – utsatt-områdeskontrollen kunde inte slutföras.',
+                toastType: 'warning'
+            };
+        }
+        if (data.trff) {
+            const isSeu = String(data.niva || '').toLowerCase().includes('särskilt');
+            const label = isSeu
+                ? `Särskilt utsatt område: ${data.omrade || 'träff'}`
+                : `Utsatt område: ${data.omrade || 'träff'}`;
+            return { kind: 'hit', toast: label, toastType: 'warning' };
+        }
+        return {
+            kind: 'clear',
+            toast: 'Adressen ligger inte i Polisens utsatta områden.',
+            toastType: 'success'
+        };
+    }
+
     _utsattOmradeSectionHtml(fields) {
         const data = this._parseUtsattOmrade(fields);
         const adress = (fields && (fields.Address || fields.Adress)) || '';
@@ -4866,8 +4893,7 @@ class CustomerCardManager {
                 + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-map-marker-alt"></i> Kontrollera adress</button>';
         }
         const date = this._formatUtsattKontrolleradAt(data.kontrolleradAt);
-        const geoFail = data.geocoding && data.geocoding.ok === false;
-        if (geoFail) {
+        if (this._utsattOmradeGeoFailed(data)) {
             return '<span class="utsatt-omrade-badge utsatt-omrade-badge--warn"><i class="fas fa-triangle-exclamation"></i> Kunde inte geokoda adressen</span>'
                 + (date ? `<p class="utsatt-omrade-meta">Senast försök: ${this._esc(date)}</p>` : '')
                 + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Försök igen</button>';
@@ -4931,10 +4957,25 @@ class CustomerCardManager {
                 this.customerData.fields['Utsatt område (JSON)'] = JSON.stringify(data.stored);
             }
             this._refreshUtsattOmradeSection();
-            const msg = data.trff
-                ? (data.label || 'Adressen matchar utsatt område.')
-                : 'Adressen ligger inte i Polisens utsatta områden.';
-            this.showNotification(msg, data.trff ? 'warning' : 'success');
+            if (data.record?.fields?.['risker kopplat till tjänster']) {
+                this._linkedRiskIds = new Set(data.record.fields['risker kopplat till tjänster']);
+            }
+            if (this._allaRisker) {
+                const recs = this._riskerForTypId('geografiska', this._allaRisker);
+                const container = document.getElementById('ovrigkyc-risker-geografiska');
+                if (container) {
+                    this._renderRiskerForTyp(container, recs, this._linkedRiskIds || new Set(), 'geografiska', { embedded: true });
+                }
+                this._applyGeoChecksFromLander();
+                this._refreshRiskprofilForeslagenUi();
+            } else {
+                this._scheduleGeoFromLanderSave();
+            }
+            const stored = data.stored || this._parseUtsattOmrade(this.customerData?.fields);
+            const outcome = this._utsattOmradeOutcome(stored);
+            if (outcome) {
+                this.showNotification(outcome.toast, outcome.toastType);
+            }
         } catch (err) {
             this.showNotification('Kunde inte kontrollera adress: ' + (err.message || 'fel'), 'error');
         } finally {
@@ -11272,19 +11313,24 @@ class CustomerCardManager {
 
     _mergeSteeredGeoIds(allChecked) {
         const Eu = window.EuHogriskLander;
-        if (!Eu || !Eu.suggestedRecordIds) return allChecked;
         const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
-        const labels = this._kycLanderLabels();
-        const opts = this._geoLanderOpts();
-        if (!opts.onlySweden && !labels.length) {
+        if (Eu && Eu.suggestedRecordIds) {
+            const labels = this._kycLanderLabels();
+            const opts = this._geoLanderOpts();
             const steered = new Set(Eu.steeredRecordIds(recs));
-            steered.forEach((id) => allChecked.delete(id));
-            return allChecked;
+            if (!opts.onlySweden && !labels.length) {
+                steered.forEach((id) => allChecked.delete(id));
+            } else {
+                const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+                steered.forEach((id) => allChecked.delete(id));
+                suggested.forEach((id) => allChecked.add(id));
+            }
         }
-        const steered = new Set(Eu.steeredRecordIds(recs));
-        const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
-        steered.forEach((id) => allChecked.delete(id));
-        suggested.forEach((id) => allChecked.add(id));
+        const Uts = window.UtsattOmradeStyrning;
+        if (Uts && Uts.mergeIntoLinkedSet) {
+            const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
+            Uts.mergeIntoLinkedSet(allChecked, recs, stored);
+        }
         return allChecked;
     }
 
@@ -11313,6 +11359,19 @@ class CustomerCardManager {
             const item = cb.closest('.risker-check-item');
             if (item) item.classList.toggle('is-geo-steered', suggested.has(cb.value));
         });
+        const Uts = window.UtsattOmradeStyrning;
+        if (Uts && Uts.steeredRecordIds) {
+            const utsSteered = new Set(Uts.steeredRecordIds(recs));
+            const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
+            const utsSuggested = new Set(Uts.suggestedRecordIds(recs, stored));
+            document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
+                if (!utsSteered.has(cb.value)) return;
+                cb.checked = utsSuggested.has(cb.value);
+                cb.disabled = utsSuggested.has(cb.value);
+                const item = cb.closest('.risker-check-item');
+                if (item) item.classList.toggle('is-geo-steered', utsSuggested.has(cb.value));
+            });
+        }
     }
 
     _maybeSteerGeoFromSavedLander() {
@@ -11325,6 +11384,12 @@ class CustomerCardManager {
         const suggested = Eu.suggestedRecordIds(recs, labels, opts);
         const linked = this._linkedRiskIds || new Set();
         if (suggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
+        const Uts = window.UtsattOmradeStyrning;
+        if (Uts && Uts.suggestedRecordIds) {
+            const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
+            const utsSuggested = Uts.suggestedRecordIds(recs, stored);
+            if (utsSuggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
+        }
     }
 
     _scheduleGeoFromLanderSave() {

@@ -25,6 +25,7 @@
     const hr = data.högriskbransch || [];
     const oms = data.omsattning || [];
     const anst = data.anstallda || [];
+    const utsatt = (data.utsattOmrade && data.utsattOmrade.rader) || [];
 
     document.getElementById('stat-antal-kunder').textContent = n;
     document.getElementById('stat-lag').textContent = r['Låg'] || 0;
@@ -90,6 +91,24 @@
           <div class="stat-list-row stat-list-row-clickable" data-typ="hogriskbransch" data-namn="${escapeAttr(h.namn)}" data-titel="${escapeAttr(h.namn)}" title="Klicka för att se kunder">
             <span class="stat-list-namn">${escapeHtml(h.namn)}</span>
             <span class="stat-list-antal">${h.antal} kunder</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    const utsattList = document.getElementById('statistik-utsatt-omrade-lista');
+    if (utsattList) {
+      if (utsatt.length === 0) {
+        utsattList.innerHTML = '<p class="stat-list-empty">Inga adresser har kontrollerats mot Polisens utsatta områden ännu.</p>';
+      } else {
+        const summary = data.utsattOmrade || {};
+        const meta = typeof summary.antalTrff === 'number'
+          ? `<p class="statistik-section-desc">${summary.antalKontrollerade || 0} kontrollerade adresser, ${summary.antalTrff} träffar.</p>`
+          : '';
+        utsattList.innerHTML = meta + utsatt.map(u => `
+          <div class="stat-list-row stat-list-row-clickable" data-typ="utsatt-omrade" data-namn="${escapeAttr(u.namn)}" data-titel="${escapeAttr('Utsatt område: ' + u.namn)}" title="Klicka för att se kunder">
+            <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
+            <span class="stat-list-antal">${u.antal} kunder</span>
           </div>
         `).join('');
       }
