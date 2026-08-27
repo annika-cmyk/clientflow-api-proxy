@@ -129,6 +129,7 @@ const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
+const bolagsverketKund = require('./lib/bolagsverket-kund');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
@@ -2484,6 +2485,12 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     name: utsattOmradeKund.FIELD,
     type: 'multilineText',
     description: 'JSON: adresskontroll mot Polisens utsatta och särskilt utsatta områden (uso_2025).'
+  },
+  {
+    name: bolagsverketKund.FIELD,
+    type: 'date',
+    description: 'Datum då Bolagsverket-uppgifterna senast hämtades eller sparades på kundkortet.',
+    options: { dateFormat: { name: 'iso' } }
   }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
@@ -3828,6 +3835,7 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
               `${orgData.postadressOrganisation.postadress.utdelningsadress || ''}, ${orgData.postadressOrganisation.postadress.postnummer || ''} ${orgData.postadressOrganisation.postadress.postort || ''}` : '',
             'Bolagsform': organisationsformText,
             'regdatum': orgData.organisationsdatum?.registreringsdatum || '',
+            [bolagsverketKund.FIELD]: bolagsverketKund.todayIso(),
             'registreringsland': orgData.registreringsland?.klartext || '',
             'Aktivt företag': isActiveCompany ? 'Ja' : 'Nej',
             // Sätt Användare till inloggad användares Airtable-recordID (text),

@@ -4846,6 +4846,35 @@ class CustomerCardManager {
         }
     }
 
+    _formatBolagsverketUppdaterad(raw) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!s) return '';
+        try {
+            const d = new Date(s.includes('T') ? s : `${s}T12:00:00`);
+            if (Number.isNaN(d.getTime())) return s;
+            return d.toLocaleDateString('sv-SE');
+        } catch (_) {
+            return s;
+        }
+    }
+
+    _refreshBolagsverketUppdateradMeta() {
+        const el = document.getElementById('bolagsverket-uppdaterad-meta');
+        if (!el) return;
+        const html = this._bolagsverketUppdateradHtml(this.customerData?.fields || {});
+        el.innerHTML = html;
+        el.style.display = html ? '' : 'none';
+    }
+
+    _bolagsverketUppdateradHtml(fields) {
+        const label = this._formatBolagsverketUppdaterad(fields?.['Bolagsverket uppdaterad']);
+        return label ? `Senast uppdaterad: <strong>${this._esc(label)}</strong>` : '';
+    }
+
+    _bolagsverketUppdateradToday() {
+        return new Date().toISOString().slice(0, 10);
+    }
+
     _formatUtsattKontrolleradAt(iso) {
         if (!iso) return '';
         try {
@@ -5198,6 +5227,7 @@ class CustomerCardManager {
                 <div class="collapsible-header" onclick="customerCardManager.toggleCard('bolagsverket-card')">
                     <div class="collapsible-title"><i class="fas fa-building"></i><span>Uppgifter från Bolagsverket</span></div>
                     <div class="collapsible-actions" onclick="event.stopPropagation()">
+                        <span class="bolagsverket-uppdaterad-meta" id="bolagsverket-uppdaterad-meta">${this._bolagsverketUppdateradHtml(fields)}</span>
                         <button type="button" class="btn btn-ghost btn-sm" id="bolagsverket-refresh-btn" title="Sök om hos Bolagsverket">
                             <i class="fas fa-rotate-right"></i> Uppdatera
                         </button>
@@ -5629,7 +5659,7 @@ class CustomerCardManager {
                     <div class="uppdrag-muted">Ny: ${this._esc(d.next || '—')}</div>
                 </div>
             </label>
-        `).join('') : `<div class="uppdrag-muted">Inga förändringar hittades.</div>`;
+        `).join('') : `<div class="uppdrag-muted">Inga förändringar hittades. Du kan spara dagens datum som senast kontrollerad.</div>`;
 
         modal.innerHTML = `
             <div class="modal-box" style="max-width:820px; width:96vw; max-height:90vh;">
@@ -5642,8 +5672,8 @@ class CustomerCardManager {
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('bolagsverket-diff-modal')?.remove()">Stäng</button>
-                    <button class="btn btn-primary btn-sm" type="button" id="bolagsverket-diff-apply" ${diffs.length ? '' : 'disabled'}>
-                        <i class="fas fa-save"></i> Uppdatera kund
+                    <button class="btn btn-primary btn-sm" type="button" id="bolagsverket-diff-apply">
+                        <i class="fas fa-save"></i> ${diffs.length ? 'Uppdatera kund' : 'Spara kontrolldatum'}
                     </button>
                 </div>
             </div>
@@ -5658,7 +5688,8 @@ class CustomerCardManager {
                     const selectedKeys = Array.from(modal.querySelectorAll('.bv-diff-cb:checked')).map(cb => cb.value);
                     const fieldsToSave = {};
                     selectedKeys.forEach(k => { fieldsToSave[k] = newFields[k]; });
-                    if (!Object.keys(fieldsToSave).length) return;
+                    fieldsToSave['Bolagsverket uppdaterad'] = this._bolagsverketUppdateradToday();
+                    if (diffs.length && !selectedKeys.length) return;
 
                     const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
                     const orig = applyBtn.innerHTML;
@@ -5676,8 +5707,12 @@ class CustomerCardManager {
                     this.customerData.fields = { ...(this.customerData.fields || {}), ...fieldsToSave };
                     this._mergeKundPatchResponse(data, fieldsToSave);
                     this._applyHogriskSni();
+                    this._refreshBolagsverketUppdateradMeta();
                     document.getElementById('bolagsverket-diff-modal')?.remove();
-                    this.showNotification('Uppgifter uppdaterade från Bolagsverket', 'success');
+                    this.showNotification(
+                        diffs.length ? 'Uppgifter uppdaterade från Bolagsverket' : 'Inga förändringar — kontrolldatum sparat',
+                        'success'
+                    );
                     this.loadCompanyInfo();
                 } catch (e) {
                     this.showNotification('Kunde inte uppdatera kund: ' + (e.message || 'fel'), 'error');

@@ -2398,6 +2398,13 @@ body.sidebar-collapsed .logout-btn {
     margin-top: 0.15rem;
 }
 
+.bolagsverket-uppdaterad-meta {
+    margin-right: 0.5rem;
+    font-size: 0.82rem;
+    color: #64748b;
+    white-space: nowrap;
+}
+
 .riskf-chip--sni em,
 .risker-sni-hint {
     font-style: normal;
