@@ -7,17 +7,32 @@
     return String(status || '').trim();
   }
 
-  function shouldShowKycUtanforOption({ utanfor, status, hasInleed } = {}) {
+  function effectiveKycStatus(kyc) {
+    const status = normalizeStatus(kyc?.status);
+    if (status === 'Signerat') return 'Signerat';
+    if (status === 'Skickat till kund') return 'Skickat till kund';
+    if (String(kyc?.signeringsdatum || '').trim()) return 'Signerat';
+    if (String(kyc?.inleedDokumentId || '').trim() || String(kyc?.utskickningsdatum || '').trim()) {
+      return 'Skickat till kund';
+    }
+    return status || 'Sparat';
+  }
+
+  function hasSentIndicators(kyc) {
+    return effectiveKycStatus(kyc) === 'Skickat till kund' || effectiveKycStatus(kyc) === 'Signerat';
+  }
+
+  function shouldShowKycUtanforOption({ utanfor, status, hasInleed, kyc } = {}) {
     if (utanfor) return true;
-    const st = normalizeStatus(status);
+    const st = normalizeStatus(kyc ? effectiveKycStatus(kyc) : status);
     if (st === 'Signerat' || st === 'Skickat till kund') return false;
     if (hasInleed) return false;
     return true;
   }
 
-  function shouldShowKycInleedBox({ utanfor, status, hasInleed } = {}) {
+  function shouldShowKycInleedBox({ utanfor, status, hasInleed, kyc } = {}) {
     if (utanfor) return false;
-    const st = normalizeStatus(status);
+    const st = normalizeStatus(kyc ? effectiveKycStatus(kyc) : status);
     return !!(hasInleed || st === 'Skickat till kund' || st === 'Signerat');
   }
 
@@ -26,8 +41,8 @@
     return !showInleed;
   }
 
-  function kycInleedBoxStatus({ status, signedDate } = {}) {
-    const st = normalizeStatus(status);
+  function kycInleedBoxStatus({ status, signedDate, kyc } = {}) {
+    const st = normalizeStatus(kyc ? effectiveKycStatus(kyc) : status);
     const date = String(signedDate || '').trim();
     if (st === 'Signerat') return date ? `Signerat ${date}.` : 'Signerat.';
     if (st === 'Skickat till kund') return 'Utskickat och väntar signering.';
@@ -62,6 +77,9 @@
   }
 
   const api = {
+    normalizeStatus,
+    effectiveKycStatus,
+    hasSentIndicators,
     shouldShowKycUtanforOption,
     shouldShowKycInleedBox,
     shouldShowSeparateKycStatusBanner,

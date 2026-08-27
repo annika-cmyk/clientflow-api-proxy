@@ -103,6 +103,7 @@ const dokumentRedigera = require('./lib/dokument-redigera');
 const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const kycDokumentSync = require('./lib/kyc-dokument-sync');
+const kycFormularMerge = require('./lib/kyc-formular-merge');
 const uppdragsavtalDokumentSync = require('./lib/uppdragsavtal-dokument-sync');
 const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
 const documentPreview = require('./lib/document-preview');
@@ -16631,11 +16632,14 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
       try {
         let doc = inleedId ? await fetchInleedDocumentById(process.env.DOCSIGN_API_KEY, inleedId) : null;
         if (!doc) {
-          const kundnamn = f['Namn'] || kyc.foretagsnamn || '';
-          doc = await fetchInleedDocumentByTitle(
-            process.env.DOCSIGN_API_KEY,
-            inleedLinks.inleedDocumentTitle('kyc', kundnamn)
-          );
+          const nameCandidates = kycFormularMerge.kycTitleCandidates(f['Namn'] || '', kyc);
+          for (const namn of nameCandidates) {
+            doc = await fetchInleedDocumentByTitle(
+              process.env.DOCSIGN_API_KEY,
+              inleedLinks.inleedDocumentTitle('kyc', namn)
+            );
+            if (doc) break;
+          }
         }
         if (doc) {
           inleedId = String(doc.id || doc.document_id || inleedId || '');
@@ -16702,6 +16706,8 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
       console.warn('Kunde inte synka KYC utanför ClientFlow vid KYC-hämtning:', kycSyncErr.message);
     }
 
+    kyc.status = kycFormularMerge.effectiveKycStatus(kyc);
+
     res.json({
       kyc,
       inleed,
@@ -16736,18 +16742,11 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
       existingKyc = JSON.parse(existingFields['KYC-formular (JSON)'] || '{}') || {};
     } catch (_) { existingKyc = {}; }
 
-    const keepStatus = ['Skickat till kund', 'Signerat'].includes(existingKyc.status);
-    const kycData = {
-      ...existingKyc,
+    const kycData = kycFormularMerge.mergeKycFormular(existingKyc, {
       ...req.body,
-      status: keepStatus ? existingKyc.status : (req.body.status || 'Sparat'),
-      inleedDokumentId: existingKyc.inleedDokumentId || req.body.inleedDokumentId || '',
-      utskickningsdatum: existingKyc.utskickningsdatum || req.body.utskickningsdatum || '',
-      signeringsdatum: existingKyc.signeringsdatum || req.body.signeringsdatum || '',
-      receipt: existingKyc.receipt || req.body.receipt || undefined,
       updatedAt: new Date().toISOString(),
       updatedBy: req.user?.email || ''
-    };
+    });
 
     const syncFields = {};
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'verksamhet')) {

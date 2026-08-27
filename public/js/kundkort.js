@@ -1224,6 +1224,7 @@ class CustomerCardManager {
             if (kycRes?.ok) {
                 const kycData = await kycRes.json().catch(() => ({}));
                 this._savedKycFormular = kycData.kyc || {};
+                this._kycInleed = kycData.inleed || null;
                 this._kycFormularFetched = true;
             }
 
@@ -9679,6 +9680,7 @@ class CustomerCardManager {
 
     /** Synka KYC-fältet "Byråns tjänster" mot aktuella aktiva tjänster (UI + sparad JSON). */
     async _syncKycTjansterFromAktiva() {
+        await this._ensureSavedKycFormular();
         const liveTjanster = this._getAktivaTjansterNamn();
         const textarea = document.getElementById('kyc-tjanster');
         if (textarea) textarea.value = liveTjanster;
@@ -10608,24 +10610,26 @@ class CustomerCardManager {
         const savedSyfteAffarsrelation = saved.syfte_affarsrelation || 'sedvanliga redovisningstjänster';
 
         // Status
-        const kycStatus = saved.status || '';
+        const kycUi = window.KycStatusUi || {};
+        const kycStatus = kycUi.effectiveKycStatus
+            ? kycUi.effectiveKycStatus(saved)
+            : (saved.status || '');
         const kycInleedId = saved.inleedDokumentId || '';
         const kycSigneringsdatum = saved.signeringsdatum || '';
         const kycUtanfor = this._fieldIsChecked(f, 'KYC-formulär utanför ClientFlow');
 
         const hasInleed = !!(kycInleedId || this._kycInleed?.documentId || (this._kycInleed?.links || []).length);
-        const kycUi = window.KycStatusUi || {};
         const showUtanfor = kycUi.shouldShowKycUtanforOption
-            ? kycUi.shouldShowKycUtanforOption({ utanfor: kycUtanfor, status: kycStatus, hasInleed })
+            ? kycUi.shouldShowKycUtanforOption({ utanfor: kycUtanfor, status: kycStatus, hasInleed, kyc: saved })
             : !(!kycUtanfor && (kycStatus === 'Signerat' || kycStatus === 'Skickat till kund' || hasInleed));
         const showInleed = kycUi.shouldShowKycInleedBox
-            ? kycUi.shouldShowKycInleedBox({ utanfor: kycUtanfor, status: kycStatus, hasInleed })
+            ? kycUi.shouldShowKycInleedBox({ utanfor: kycUtanfor, status: kycStatus, hasInleed, kyc: saved })
             : (!kycUtanfor && (hasInleed || kycStatus === 'Skickat till kund' || kycStatus === 'Signerat'));
         const showSeparateBanner = kycUi.shouldShowSeparateKycStatusBanner
             ? kycUi.shouldShowSeparateKycStatusBanner({ utanfor: kycUtanfor, showInleed })
             : !showInleed || kycUtanfor;
         const inleedStatusText = kycUi.kycInleedBoxStatus
-            ? kycUi.kycInleedBoxStatus({ status: kycStatus, signedDate: kycSigneringsdatum })
+            ? kycUi.kycInleedBoxStatus({ status: kycStatus, signedDate: kycSigneringsdatum, kyc: saved })
             : (kycStatus === 'Signerat'
                 ? (kycSigneringsdatum ? `Signerat ${kycSigneringsdatum}.` : 'Signerat.')
                 : (kycStatus === 'Skickat till kund' ? 'Utskickat och väntar signering.' : ''));
@@ -11336,6 +11340,7 @@ class CustomerCardManager {
             if (res.ok) {
                 const data = await res.json();
                 this._savedKycFormular = data.kyc || {};
+                this._kycInleed = data.inleed || null;
             }
         } catch (e) {
             console.warn('Kunde inte hämta KYC-länder:', e.message);
@@ -11898,7 +11903,9 @@ class CustomerCardManager {
             // Sektion 5 — nytt fält
             syfte_affarsrelation: g('kyc-syfte-affarsrelation'),
             // Behåll Inleed-status så Spara inte raderar utskicket
-            status: this._savedKycFormular?.status || '',
+            status: (window.KycStatusUi && KycStatusUi.effectiveKycStatus)
+                ? KycStatusUi.effectiveKycStatus(this._savedKycFormular || {})
+                : (this._savedKycFormular?.status || ''),
             inleedDokumentId: this._savedKycFormular?.inleedDokumentId || '',
             utskickningsdatum: this._savedKycFormular?.utskickningsdatum || '',
             signeringsdatum: this._savedKycFormular?.signeringsdatum || ''
