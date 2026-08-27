@@ -1688,15 +1688,10 @@ class RiskFactorsManager {
         const names = Object.keys(entries).sort((a, b) => a.localeCompare(b, 'sv'));
         const RS = window.RisksankandeKatalog;
         list.innerHTML = names.map((namn) => {
-            const row = RS && RS.renderKatalogRad
-                ? RS.renderKatalogRad(namn, entries[namn])
-                : '';
-            if (!row) return '';
             const badge = this.renderKundCountBadge(this.kundAntalFor('risksankande', namn));
-            return row.replace(
-                'risksank-katalog-rad">',
-                `risksank-katalog-rad"><span class="risk-kund-count-wrap">${badge}</span>`
-            );
+            return RS && RS.renderKatalogRad
+                ? RS.renderKatalogRad(namn, entries[namn], badge)
+                : '';
         }).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
         list.querySelectorAll('.risksank-katalog-namn').forEach((input) => {
             input.addEventListener('change', () => this._renameRisksankande(input.getAttribute('data-namn'), input.value));
@@ -1750,6 +1745,8 @@ class RiskFactorsManager {
 
     addRisksankandeKatalogRad() {
         const input = document.getElementById('risksank-katalog-ny');
+        const forkInput = document.getElementById('risksank-katalog-ny-forklaring');
+        const kallaInput = document.getElementById('risksank-katalog-ny-kalla');
         const namn = String((input && input.value) || '').trim();
         if (!namn) return;
         const RS = window.RisksankandeKatalog;
@@ -1762,9 +1759,14 @@ class RiskFactorsManager {
             return;
         }
         this._risksankEntries = Object.assign({}, this._risksankEntries, {
-            [namn]: { forklaring: '', kalla: '' }
+            [namn]: {
+                forklaring: String((forkInput && forkInput.value) || '').trim(),
+                kalla: String((kallaInput && kallaInput.value) || '').trim()
+            }
         });
         if (input) input.value = '';
+        if (forkInput) forkInput.value = '';
+        if (kallaInput) kallaInput.value = '';
         this.renderRisksankandeKatalog();
     }
 
