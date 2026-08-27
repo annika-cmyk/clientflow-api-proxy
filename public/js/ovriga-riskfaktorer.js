@@ -1427,11 +1427,12 @@ class RiskFactorsManager {
                 const message = newStatus ? 'Riskfaktor klarmarkerad' : 'Klarmarkering avtagen';
                 this.showNotification(message, 'success');
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || err.message || `HTTP ${response.status}: ${response.statusText}`);
             }
         } catch (error) {
             console.error('Error toggling risk status:', error);
-            this.showNotification('Fel vid ändring av klarmarkering', 'error');
+            this.showNotification(error.message || 'Fel vid ändring av klarmarkering', 'error');
         }
     }
 

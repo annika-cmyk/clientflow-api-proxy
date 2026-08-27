@@ -1,0 +1,492 @@
+{
+  "version": 1,
+  "source": "riskanalys_underlag_tjanster (4).xlsx",
+  "generatedAt": "2026-08-27",
+  "aliases": {
+    "löpande bokföring": "Bokföring",
+    "lopande bokforing": "Bokföring",
+    "löpande redovisning": "Löpande redovisning",
+    "momsredovisning": "Momsdeklaration",
+    "moms": "Momsdeklaration",
+    "momsdeklaration": "Momsdeklaration",
+    "avstämning": "Avstämningar",
+    "avstamning": "Avstämningar",
+    "avstämningar": "Avstämningar",
+    "lön": "Lönehantering / arbetsgivardeklaration",
+    "lönehantering": "Lönehantering / arbetsgivardeklaration",
+    "lonehantering": "Lönehantering / arbetsgivardeklaration",
+    "arbetsgivardeklaration": "Lönehantering / arbetsgivardeklaration",
+    "årsredovisning": "Årsredovisning",
+    "arsredovisning": "Årsredovisning",
+    "bokslut": "Bokslut",
+    "inkomstdeklaration": "Inkomstdeklaration",
+    "deklaration": "Inkomstdeklaration",
+    "kundreskontra": "Kundreskontra",
+    "leverantörsreskontra": "Leverantörsreskontra",
+    "leverantorsreskontra": "Leverantörsreskontra",
+    "betalningsuppdrag": "Betalningsuppdrag",
+    "skatterådgivning": "Skatterådgivning",
+    "skatteradgivning": "Skatterådgivning",
+    "rådgivning": "Rådgivning",
+    "radgivning": "Rådgivning",
+    "bokföring": "Bokföring",
+    "bokforing": "Bokföring"
+  },
+  "tjanster": {
+    "Bokföring": [
+      {
+        "hotkategori": "PT",
+        "hot": "Klienten använder den löpande bokföringen för att integrera intäkter från brottslig verksamhet i den synliga ekonomin.",
+        "sarbarhet": "Bokföringen bygger på uppgifter och underlag som klienten själv lämnar; byrån har begränsad möjlighet att verifiera transaktionernas verkliga ursprung.",
+        "riskindikatorer": "Stora kontanttransaktioner utan rimlig affärsmässig förklaring, avsaknad av underlag/kvitton, upprepade efterhandskorrigeringar av redan bokförda poster, omsättning som inte matchar bransch eller kundunderlag.\n\nYtterligare riskindikatorer (ClientFlow-mall): Inbetalningar som inte motsvaras av en kundfaktura eller kommer från oklara avsändare; utbetalningar utan motsvarande leverantörsfaktura, kvitto eller löneutbetalning; kontantbetalningar eller ovanliga/anonyma betalningsmedel (postväxel, kryptovaluta) när det inte är motiverat; betalningar via utländska banker, särskilt i högriskländer eller med namn som liknar kända storbanker; aktieägartillskott/lån från fysiska personer utan tydlig förklaring. För anläggningsregister och avskrivningar specifikt: inventarier i registret som inte längre finns i verksamheten (sålda/skrotade utan uppdatering); inköp felaktigt bokförda på fel konto; avskrivningar som inte går att förklara utifrån underlagen.",
+        "atgarder": "Vaksamhet när inbetalningar utan tydligt syfte eller underlag upptäcks. För anläggningsregister: genomgång med kunden om vilka maskiner/inventarier som faktiskt finns kvar, underlag på samtliga inköp inkl. kontoutdrag/transaktionsinfo, kontroll av huvudboken för felaktigt bokförda inköp, användning av anläggningsregister och bilagor i bokslutsprogrammet.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Medel kanaliseras till personer eller organisationer kopplade till terrorismfinansiering under sken av ordinära driftskostnader.",
+        "sarbarhet": "Kostnader redovisas utifrån klientens egna beskrivningar, vilket gör det svårt att upptäcka dolda finansieringssyften bakom till synes vanliga utgiftsposter.",
+        "riskindikatorer": "Utbetalningar till föreningar/organisationer med otydlig verksamhet, kostnader kopplade till länder eller regioner med känd TF-risk, återkommande \"konsultarvoden\" utan specificerat innehåll.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Leverantörsreskontra": [
+      {
+        "hotkategori": "PT",
+        "hot": "Betalningar till fiktiva eller kopplade leverantörer används för att föra ut medel ur bolaget via falska fakturor.",
+        "sarbarhet": "Reskontran hanterar löpande utbetalningar, och byrån har begränsad möjlighet att bedöma om en leverantör faktiskt levererat en vara eller tjänst.",
+        "riskindikatorer": "Nya leverantörer med generiska namn, leverantörer i högriskjurisdiktioner, snabbt växlande bankkontouppgifter, fakturor utan specifikation, brådskande betalningar strax före periodavslut.\n\nYtterligare riskindikatorer (ClientFlow-mall): Angivet bankgiro/plusgiro som inte överensstämmer med den som ställt ut fakturan; risk för nätfiske där uppgifter från riktiga fakturor används för att skapa förfalskade; ospecificerade fakturor, särskilt konsultarvoden eller fakturor från närstående/utländska bolag i högriskländer; inköp via mellanhänder utan tydligt affärsmässigt skäl.",
+        "atgarder": "Kontroll av kontantbetalningar och betalningar till andra länder mot verksamhetens art och omfattning; inköp utan koppling till verksamheten ifrågasätts alltid; kunder uppmuntras att använda företagskontot för alla betalningar i företaget.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "Båda",
+        "hot": "Strukturerade delbetalningar till samma mottagare används för att undvika beloppströsklar och intern kontroll (smurfing).",
+        "sarbarhet": "Reskontran hanterar många enskilda transaktioner löpande, vilket gör mönster över tid svåra att upptäcka utan systematisk analys.",
+        "riskindikatorer": "Flera betalningar strax under interna kontrollgränser till samma mottagare, betalningsmönster som ändras strax efter att en kontrollåtgärd införts.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Kundreskontra": [
+      {
+        "hotkategori": "PT",
+        "hot": "Inbetalningar från tredje part eller okända avsändare används för att slussa in medel med oklart ursprung.",
+        "sarbarhet": "Byrån stämmer av inbetalningar mot fordringar men har begränsad insyn i vem som faktiskt är den bakomliggande betalaren.",
+        "riskindikatorer": "Betalning från annan person/bolag än den fakturerade kunden, betalningar i flera mindre poster som tillsammans matchar en faktura (strukturering), inbetalningar från utlandet utan koppling till kundens verksamhet.\n\nYtterligare riskindikatorer (ClientFlow-mall): Storlek eller frekvens av fakturor som inte är konsekvent med kundens normala transaktionsmönster; orimligt höga eller låga priser jämfört med marknadspriser; överdrivna eller ovanliga provisioner/ersättningar till agenter eller återförsäljare. Vid EU-handel/periodisk sammanställning: uppgiven köpare stämmer inte med vem som faktiskt betalat fakturan. Vid ROT/RUT: fakturamottagaren stämmer inte med betalaren enligt Bankgirot, fakturaunderlag som inte verkar trovärdigt eller saknar verklig motprestation, ansökan avser fel bidragsform utan rimlig förklaring.",
+        "atgarder": "Vaksamhet vid förändringar i faktureringsmönster (utred orsaken), ifrågasätt ovanliga betalningssätt, stärkt vaksamhet vid fakturering till högriskländer. Vid periodisk sammanställning: kontroll att kunden som anges är samma som den som faktiskt betalat fakturan. Vid ROT/RUT: kontroll att fakturamottagaren matchar betalaren enligt Bankgirot, kontroll att trovärdiga fakturor finns som underlag, samt kontroll att rätt bidragsform sökts (RUT ger högre skattereduktion än ROT).",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "PT",
+        "hot": "Fiktiva försäljningar bokförs för att ge sken av legitim inkomst åt medel med brottsligt ursprung (placeringsfasen i penningtvätt).",
+        "sarbarhet": "Reskontran registrerar fordringar utifrån utställda fakturor, och byrån har normalt ingen oberoende bekräftelse på att en verklig leverans skett.",
+        "riskindikatorer": "Fakturor till kunder utan tidigare affärsrelation, snabb betalning av stora belopp utan förhandling, kreditering/makulering av fakturor kort efter att betalning inkommit.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Avstämningar": [
+      {
+        "hotkategori": "PT",
+        "hot": "Avvikelser mellan bank och bokföring lämnas medvetet oförklarade för att dölja transaktioner.",
+        "sarbarhet": "Avstämningen är en kontrollpunkt, men bygger på att byrån får tillgång till fullständiga och korrekta kontoutdrag från klienten.",
+        "riskindikatorer": "Återkommande differenser som inte utreds, kontanttransaktioner som inte går att spåra till bank, klienten begränsar byråns tillgång till fullständiga kontounderlag.\n\nYtterligare riskindikatorer (ClientFlow-mall): Vid avstämning av arbetsgivardeklarationer: fiktiva eller felaktiga ersättningar, ersättning till anställda som slutat sedan länge eller aldrig arbetat i verksamheten, försäkringar med förmånstagare som inte arbetar i företaget. Vid avstämning av balanskonton: felaktiga underlag som gör att uttag eller resultat blir fel; årsbesked som inte stämmer mot underlag för enskilda transaktioner; upplupna kostnader/intäkter som aldrig faktureras.",
+        "atgarder": "Rutinmässig kontroll att årsbesked stämmer mot underlag, kontroll av engagemangsbesked, dialog med kunden för att säkerställa att anställda verkligen arbetar där (extra vaksamhet vid nyanställda), kontroll av kontonummer mot banken vid stora eller misstänkta utbetalningar.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "Båda",
+        "hot": "Manuella justeringar i avstämningsarbetet används för att dölja obehöriga uttag eller felaktiga transaktioner.",
+        "sarbarhet": "Avstämningen innehåller ofta manuella differensposter som förs mot resultat- eller balanskonton utan djupare granskning.",
+        "riskindikatorer": "Återkommande \"diffkonton\" som växer över tid, differenser som bokas mot samma konto varje period utan förklaring.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Bokslut": [
+      {
+        "hotkategori": "PT",
+        "hot": "Bokslutet manipuleras för att dölja verkligt resultat, skuldsättning eller ägarförhållanden, t.ex. inför lånefinansiering eller för att undandra skatt.",
+        "sarbarhet": "Bokslutsarbetet sammanställer räkenskapsårets alla transaktioner till en helhet, vilket ger möjlighet att dölja enskilda oegentligheter i aggregerade poster.",
+        "riskindikatorer": "Ovanliga eller sent tillkomna bokslutsposter utan underlag, stora fordringar eller skulder till närstående, väsentliga avvikelser mot tidigare år utan rimlig förklaring.\n\nYtterligare riskindikatorer (ClientFlow-mall): Extern byrå som upprättat den löpande redovisningen kan ha haft otillräckligt effektiva rutiner för att fånga misstänkta transaktioner, eller vår egen rimlighetsbedömning fångar inte det som redan fanns i den externa bokföringen; risken ökar ytterligare om kunden själv gör den löpande redovisningen. För kontrollbalansräkning specifikt: tillgångar och skulder får värderas annorlunda i KBR än i den ordinarie balansräkningen, vilket öppnar för att värderingen medvetet görs felaktig för att dölja en verklig kapitalbrist; värderingar som avviker kraftigt utan förklaring, upparbetade intäkter som inte går att stämma av mot kunder.",
+        "atgarder": "God kännedom om bolaget används för att bedöma vad som är orimligt, misstänkta transaktioner ifrågasätts aktivt, god redovisningssed följs vid bokslutsdispositioner. För kontrollbalansräkning: kontroll av underlag med ytterligare kontroll vid tveksamhet (t.ex. fysisk eller webbkamerabaserad kontroll av lager), samt avstämning av upparbetade intäkter mot kunder.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Dolda skulder eller avsättningar i bokslutet används för att kanalisera medel till mottagare kopplade till terrorismfinansiering.",
+        "sarbarhet": "Avsättningar och skulder till närstående är svåra att verifiera oberoende av vad klienten uppger.",
+        "riskindikatorer": "Skulder till närstående bolag/personer i högriskländer, avsättningar utan tydlig affärsmässig grund.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Årsredovisning": [
+      {
+        "hotkategori": "PT",
+        "hot": "Årsredovisningen används som legitimerande offentlig handling för ett bolag vars verkliga syfte är att tvätta pengar eller dölja verklig huvudman.",
+        "sarbarhet": "Årsredovisningen är en offentlig handling som ger bolaget skenbar trovärdighet gentemot banker, myndigheter och affärspartners.",
+        "riskindikatorer": "Komplexa eller otydliga ägarstrukturer, verklig huvudman svår att fastställa, bolag utan egentlig affärsverksamhet (\"skalbolag\") som ändå uppvisar omsättning.\n\nYtterligare riskindikatorer (ClientFlow-mall): Kunden lämnar material sent eller har extremt bråttom att få det klart; kunden vill göra bokslutet själv, vilket gör att byråns rimlighets-bedömningar och kontroller riskerar att inte fånga in vilseledande information; detsamma gäller om en annan byrå upprättat bokslutet utan att vår byrå fått samma insyn; vid upprättande av årsstämmoprotokoll finns risk att personer väljs in i styrelsen utan verklig anknytning till företaget.",
+        "atgarder": "Byrån upprättar inte årsredovisning om den inte själv gjort bokslutet (ger insyn för att bedöma om årsredovisningen ger en sann bild); uppsägning av kund vid upprepat för sent inlämnat material; dialog med kunden vid förändringar i styrelsen om anledningen.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "Båda",
+        "hot": "Bolaget byter redovisningskonsult eller revisor ofta för att undvika att mönster upptäcks över tid (\"byråjumping\").",
+        "sarbarhet": "Varje ny byrå startar utan historik och kan sakna kännedom om tidigare avvikelser eller anmärkningar.",
+        "riskindikatorer": "Kort anlitandehistorik hos flera byråer i följd, ovilja att dela tidigare räkenskapshandlingar eller föregående byrås dokumentation.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Inkomstdeklaration": [
+      {
+        "hotkategori": "PT",
+        "hot": "Deklarationen används för att ge skenbart beskattade och därmed legitima skäl åt medel med brottsligt ursprung, eller för att dölja svarta inkomster.",
+        "sarbarhet": "Byrån upprättar deklarationen utifrån de uppgifter klienten lämnar och har begränsade möjligheter att kontrollera underliggande inkomstkällor.",
+        "riskindikatorer": "Inkomster som inte går att koppla till känd verksamhet, stora avdrag utan underlag, klienten vill deklarera inkomster som inte syns i bokföringen.\n\nYtterligare riskindikatorer (ClientFlow-mall): Fiktiva eller felaktiga underskottsavdrag; felaktiga ingångsvärden eller skattemässiga justeringar som gynnar kunden eller tredje part på felaktiga grunder; K10 eller inkomstdeklaration upprättas för fler bolag eller personer än vad uppdraget egentligen omfattar; deklarationsbiträde ges med bilagor som inte baseras på den redovisning byrån själv gjort.",
+        "atgarder": "Underskott kontrolleras innan de används, ingångsvärden kontrolleras vid ny kund, byrån ska känna sina bolag väl, och deklaration görs inte om byrån inte själv gjort bokslutet.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Inkomster deklareras som legitima för att möjliggöra fortsatta överföringar till organisationer eller individer kopplade till terrorismfinansiering.",
+        "sarbarhet": "Byrån saknar normalt insyn i mottagarens slutliga användning av medel som redovisas som privata överföringar eller gåvor.",
+        "riskindikatorer": "Stora odeklarerade gåvor eller överföringar till utlandet, inkomstuppgifter som ändras väsentligt mellan preliminär och slutlig deklaration utan förklaring.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Momsdeklaration": [
+      {
+        "hotkategori": "PT",
+        "hot": "Momsbedrägeri, t.ex. karusellhandel eller fiktiva momsavdrag, används för att generera olagliga återbetalningar.",
+        "sarbarhet": "Momsdeklarationen bygger på underlag för in- och utgående moms som klienten lämnar, och internationell handel gör kontroll svårare.",
+        "riskindikatorer": "Stora momsåterbetalningar i förhållande till verksamhetens storlek, upprepad handel med samma utländska motparter utan tydlig varuleverans, snabbt ökande momspliktig omsättning utan motsvarande tillväxt i övrig verksamhet.\n\nYtterligare riskindikatorer (ClientFlow-mall): Momsupplägg som karusellhandel eller felaktig vinstmarginalbeskattning; felaktiga momsdeklarationer som medvetet upprättas för att påverka moms till egen eller annans fördel; risk att momsdeklarationen grundar sig på en bokföring byrån inte själv kvalitetssäkrat, om kunden sköter den löpande redovisningen medan byrån bara upprättar deklarationen.",
+        "atgarder": "Tillgång till underlag och bokföring med kontroll innan momsdeklarationen skickas in; vid komplicerade eller krångliga upplägg sker rapportering till Finanspolisen. Vid periodisk sammanställning (EU-handel): kontroll att kunden som anges är samma som den som faktiskt betalat fakturan.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "PT",
+        "hot": "Nollmoms vid EU-handel missbrukas för att simulera handel som aldrig ägt rum.",
+        "sarbarhet": "Gränsöverskridande momsredovisning bygger på klientens egna fakturor, och byrån saknar möjlighet att bekräfta faktisk varutransport.",
+        "riskindikatorer": "EU-försäljning till motparter utan verifierbart momsregistreringsnummer, avsaknad av frakt-/transportdokument, omsättning som huvudsakligen består av gränsöverskridande transaktioner utan lokal verksamhet.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      },
+      {
+        "hotkategori": "PT",
+        "hot": "Identifierade risker: felaktiga eller manipulerade uppgifter, ovanliga avdrag, internationella inslag, bristande underlag. Hot: byrån utsätts för hot i de fall uppgifter deklareras som inte kan verifieras, vilket kan bidra till att illegala medel deklareras som legitima inkomster; felaktiga kostnader som dras möjliggör överföring av likvida medel; byrån kan utsättas för skattebedrägeri som ett sätt att dölja flödet av pengar till illegala syften.",
+        "sarbarhet": "Byrån blir sårbar och kan utnyttjas för hot och risker om den inte har tillräcklig kontroll av underlagen som deklareras, och behöver tillräcklig insyn och kunskap om verksamheten för att kunna rimlighetsbedöma skattedeklarationer.",
+        "riskindikatorer": "Lågrisk-indikatorer: byrån sköter redovisningsuppdraget i sin helhet, deklarationer som följer kundens historiska mönster, fullständig dokumentation av samtliga uppgifter, intäkter och kostnader rimliga i förhållande till bolagets verksamhet, inga internationella inslag eller kopplingar till högriskländer.\n\nHögrisk-indikatorer: deklarationer med stora avdrag utan rimlig förklaring, saknar underliggande bokföringsunderlag, kund med koppling till högriskländer, plötslig förändring i deklarationsmönster, t.ex. kraftigt ökade intäkter utan förklaring.",
+        "atgarder": "",
+        "kalla": "Byråns underlag (Komplettering_av_handling_Sekretess.xlsx)",
+        "lank": ""
+      }
+    ],
+    "Lönekörningar och arbetsgivardeklarationer": [
+      {
+        "hotkategori": "PT",
+        "hot": "Fiktiva anställda eller uppblåsta löner används för att föra ut medel ur bolaget eller för att dölja svart arbetskraft/social dumping.",
+        "sarbarhet": "Lönekörningen baseras på uppgifter från klienten om anställda och arbetad tid, vilket byrån sällan kan verifiera oberoende.",
+        "riskindikatorer": "Anställda utan spårbar identitet eller med utländska personnummer som saknar underlag, löner som inte matchar bransch/befattning, hög personalomsättning, kontantlöner.\n\nYtterligare riskindikatorer (ClientFlow-mall): Utbetalningar som kan ha gått till annan person än den som uppges; orimligt hög andel tillfälligt anställda när det inte är motiverat av affärsverksamheten; anställda bosatta utomlands eller utan svenskt personnummer när det inte är motiverat av verksamhetens art.",
+        "atgarder": "Dialog med kunden för att säkerställa att anställda verkligen arbetar där (extra vaksamhet vid nyanställda), god kommunikation med ägare/ansvarig, kontroll av kontonummer mot banken vid stora eller misstänkta utbetalningar, och att ansvarig på företaget attesterar löner innan utbetalning.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Lönebetalningar används för att finansiera individer eller nätverk under sken av ett anställningsförhållande.",
+        "sarbarhet": "Löneunderlaget bygger på klientens egna tidrapporter och anställningsavtal, vilka sällan verifieras mot faktiskt utfört arbete.",
+        "riskindikatorer": "Anställda med koppling till högriskländer utan verifierbar arbetsinsats, lön som betalas till tredje parts konto, anställda som aldrig tar ut semester eller sjukskriver sig.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Rådgivning": [
+      {
+        "hotkategori": "PT",
+        "hot": "Rådgivningen missbrukas för att strukturera bolag, transaktioner eller ägande i syfte att dölja tillgångars ursprung eller verklig huvudman.",
+        "sarbarhet": "Rådgivning är öppen till sin natur och kan omfatta råd om bolagsstrukturer, ägarupplägg och transaktioner som senare kan missbrukas i annat syfte än det uppgivna.",
+        "riskindikatorer": "Klienten efterfrågar komplexa bolagsstrukturer utan tydligt affärsmässigt syfte, upprepade frågor om hur man kan undvika insyn/rapporteringsskyldig-heter, ombildningar eller ägarbyten som sker ovanligt ofta.\n\nYtterligare riskindikatorer (ClientFlow-mall): Bolaget ändrar verksamhet på ett sätt som ökar risken för penningtvätt eller finansiering av terrorism; omotiverat komplicerade bolagsstrukturer föreslås eller efterfrågas utan affärsmässig grund; finansieringsupplägg med utländska banker eller andra aktörer än kreditinstitut; in- och utlåning till/från närstående utan naturlig koppling till verksamheten; nya personer i företagsledning/kompanjonskap där negativ information framkommer vid t.ex. företrädarkontroll.",
+        "atgarder": "Vaksamhet vid affärsrådgivning, särskilt om kunden ställer frågor om penningtvätt, föreslår omotiverade pengaöverföringar, om inblandade personer inte går att kontrollera, eller när utländska företag/personer är inblandade.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Rådgivning kring insamling eller hantering av medel (t.ex. för föreningar eller stiftelser) missbrukas för att kanalisera pengar till terrorismfinansiering under en välgörenhetsfasad.",
+        "sarbarhet": "Ideella och religiösa organisationer omfattas ofta av samma rådgivnings-tjänster men har svagare krav på ekonomisk transparens, vilket kan utnyttjas.",
+        "riskindikatorer": "Rådgivningen rör en insamlingsstiftelse/förening med otydlig destination för medlen, stora kontantinsamlingar, styrelse eller förmånstagare kopplade till högriskländer.",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      }
+    ],
+    "Betalningsuppdrag": [
+      {
+        "hotkategori": "PT",
+        "hot": "Byrån utnyttjas som betalningsförmedlare för att flytta medel med brottsligt ursprung, där byråns betalningsflöde ger transaktionerna skenbar legitimitet.",
+        "sarbarhet": "Byrån utför betalningar på klientens uppdrag, vilket innebär direkt hantering av medelsflöden och högre exponering än vid enbart bokföring.",
+        "riskindikatorer": "Betalningar till mottagare utan koppling till klientens verksamhet, betalningar till högriskländer, ovanligt stora eller brådskande betalningar, mottagare som ofta byts ut.\n\nYtterligare riskindikatorer (ClientFlow-mall): Flytt av likvida medel mellan konton — särskilt till utländska banker eller mellan koncernföretag/närstående bolag — utan affärsmässig motivering; betalningar via utländska banker där mottagaren inte kan identifieras eller inte stämmer med betalningsunderlaget; kundens e-post som hackas och lämnar falska betalningsuppgifter som ser ut att komma från kunden själv.",
+        "atgarder": "Överföringar mellan konton som inte är affärsmässigt motiverade genomförs inte, särskilt inte till andra länder; vid ovanliga betalningar kontaktas kunden via telefon för att bekräfta överföringen (inte via e-post); kunden attesterar alltid antingen i bokföringssystemet eller på banken.",
+        "kalla": "Brainstorm/AI-förslag — kompletterad med ClientFlow-mall (\"Risker kopplad till tjänster\", byrå-ID: MALL) (byråns egen produktionsmall).",
+        "lank": ""
+      },
+      {
+        "hotkategori": "Båda",
+        "hot": "Byråns klientmedelskonto används som genomgångskonto för att bryta transaktionskedjan och försvåra spårbarhet (layering).",
+        "sarbarhet": "Betalningar som går via byråns konto kan uppfattas som mer legitima än direkta överföringar mellan klientens och mottagarens egna konton.",
+        "riskindikatorer": "Klienten begär att betalningen ska gå via byråns konto utan tydligt affärsmässigt skäl, mottagarens kontouppgifter ändras strax innan utbetalning, betalningsinstruktioner kommer via ovanlig kanal (t.ex. enbart mejl utan verifiering).",
+        "atgarder": "",
+        "kalla": "Brainstorm/AI-förslag",
+        "lank": ""
+      },
+      {
+        "hotkategori": "PT",
+        "hot": "Identifierade risker: tredjepartsbetalning, betalningar utan underlag, betalning via klientmedelskonto, ovanliga betalmönster, betalningar till högriskländer eller skatteparadis, användning av alternativa betalmetoder (t.ex. kryptovaluta). Hot: byrån utsätts för hot genom att utföra betaluppdrag som utnyttjas för att flytta illegala medel, genom att bli ombedd att utföra betalningar som saknar underlag eller där det finns bristande information om mottagaren.",
+        "sarbarhet": "Om byrån saknar rutiner för att kontrollera betalningsinstruktioner och mottagare; bristande screening mot högriskländer samt begränsad insyn i kundens betalflöden; om personal inte vågar begära in mer information om betalningar som ska göras, eller om byrån saknar slutgodkännande/attest från kunden som begärt betalningen.",
+        "riskindikatorer": "Lågrisk-indikatorer: betalningar till etablerade leverantörer, transaktioner som stämmer med kundens normala verksamhet, betalningar inom Sverige och till EU-länder med stark penningtvättslagstiftning, betalningar via säkra och spårbara kanaler, inga kopplingar till högriskbranscher eller högriskländer.\n\nHögrisk-indikatorer: betalningar till eller från högriskländer, ovanligt stora engångsbetalningar som inte stämmer med normal verksamhet, frekventa små betalningar som är svåra att få underlag till, betalning till tredje part eller mellanhänder, användning av t.ex. kryptovaluta, betalningar till leverantörer utan koppling till kundens verksamhet, kunder med koppling till skatteparadis, betalningar som sker snabbt efter att kundrelationen inletts utan förklaring.",
+        "atgarder": "",
+        "kalla": "Byråns underlag (Komplettering_av_handling_Sekretess.xlsx)",
+        "lank": ""
+      }
+    ],
+    "Löpande redovisning": [
+      {
+        "hotkategori": "PT",
+        "hot": "Identifierade risker: falska kundfakturor, falska leverantörsfakturor, svårigheter att få tillgång till bankkontoutdrag, svårigheter att bli deklarationsombud, kontanthantering, privata kostnader i verksamheten, falska och manipulerade verifikationer, avvikande transaktioner, bristande dokumentation. Hot: bokföring av falska och manipulerade verifikationer gör att byrån utnyttjas för att legitimera illegala transaktioner; kontanthantering är svår att spåra och kan användas för att introducera illegala medel i systemet; avvikande transaktioner kan dölja penningtvätt genom över- eller underfakturering eller övervärdering av tillgångar.",
+        "sarbarhet": "Byrån blir sårbar för ovanstående hot om personalen har begränsad kompetens samt om det saknas tid och resurser; om byrån saknar kunskap om kundens verksamhet och därmed brister i dokumentation och kontroll; samt om byrån saknar en god relation med kunden.",
+        "riskindikatorer": "Lågrisk-indikatorer: behörighet till bank, konsulten registrerar leverantörsfakturor, kunden attesterar leverantörsfakturor, attest av betalningar, konsulten hanterar kundfakturor, behörighet till skattekonto samt deklarationsombud, integrerade kassasystem, utbildad personal, bra kontakt med kund.\n\nHögrisk-indikatorer: bankkontoutdrag i PDF- eller Excel-format direkt från kund, saknar behörighet att deklarera åt kund, kunden hanterar själv leverantörsfakturorna, kunden upprättar själv kundfakturor, avsaknad av löpande avstämning, kassarapporter i PDF-format eller Excel, oerfaren personal, dålig kontakt med kund, stora kontantkassor.",
+        "atgarder": "",
+        "kalla": "Byråns underlag (Komplettering_av_handling_Sekretess.xlsx)",
+        "lank": ""
+      }
+    ],
+    "Lönehantering / arbetsgivardeklaration": [
+      {
+        "hotkategori": "PT",
+        "hot": "Identifierade risker: fiktiva anställningar, överdrivna lönebelopp, betalningar till utländska konton, bidragsbrott, användning av mellanhänder, bristande dokumentation, ovanliga mönster i löneutbetalning. Hot: byrån utsätts för hot genom att felaktigt betala ut lön till personer som inte arbetar i företaget, och genom att illegala medel blir rena via skenbara löner. Små återkommande löneutbetalningar kan användas för att finansiera illegal aktivitet. Byrån kan medverka i bedrägerier med falska anställda som skapar legitimitet för illegala flöden, och felaktiga arbetsgivardeklarationer kan användas för bidragsbrott eller för att bygga upp bolag med god historik att använda som brottsredskap.",
+        "sarbarhet": "Byrån blir sårbar och utsätts lättare för dessa hot om anställningsunderlagen inte kontrolleras, om det missas att verifiera att anställda faktiskt existerar, om rutinerna för att upptäcka ovanliga lönebelopp är bristande, eller om insynen i vilka som är kundens anställda är begränsad.",
+        "riskindikatorer": "Lågrisk-indikatorer: lönerna betalas ut till svenska bankkonton i anställdas namn, fullständig dokumentation av anställningsavtal och löneunderlag, löner som är rimliga och följer branschstandard, stabilt antal anställda över tid, ingen koppling till högriskländer eller högriskbranscher.\n\nHögrisk-indikatorer: löner betalas ut till högriskländer eller skatteparadis, fiktiva anställda eller ovilja från kund att lämna anställningsavtal, löner som är oproportionerligt höga jämfört med bransch och standard, plötslig ökning av antalet anställda utan affärsmässig förklaring, betalningar via mellanhänder eller tredjepartskonto.",
+        "atgarder": "",
+        "kalla": "Byråns underlag (Komplettering_av_handling_Sekretess.xlsx)",
+        "lank": ""
+      }
+    ],
+    "Bokslut, årsredovisning och inkomstdeklaration": [
+      {
+        "hotkategori": "Båda",
+        "hot": "Identifierade risker: komplex ägarstruktur eller bristande transparens kring ägarstruktur, övervärdering eller undervärdering av tillgångar/skulder, avvikande justeringar i slutet av året utan affärsmässig förklaring, bristande dokumentation för bokslutsdispositioner, avvikande siffror jämfört med tidigare år, ovanliga avdrag eller plötsliga förändringar i deklarationsmönster, felaktiga uppgifter om intäkter eller kostnader. Hot: byrån kan bidra till att upprätta felaktiga uppgifter i en årsredovisning som sedan används som legitimitetsdokument för att tvätta pengar eller för att vilseleda investerare eller banker; byrån kan bidra till terrorfinansiering via skenbara avdrag, eller bli utsatt för falska reverser som gör det möjligt för kunden att flytta pengar. Det finns en allmän risk att byrån används för att legitimera eller vidimera en osann eller medvetet fördelaktig bild av ett företags ekonomiska ställning, samt en hotbild i att medverka till skatteundandragande eller aggressiv skatteplanering.",
+        "sarbarhet": "Byrån blir sårbar för dessa hot om underlag inte granskas och verifieras noggrant, särskilt för kunder byrån inte utför den löpande bokföringen åt; om rutinerna för att upptäcka avvikande poster är bristande och posterna inte rimlighetsbedöms; genom en beroendeställning gentemot kunden eftersom verifierade uppgifter måste hämtas därifrån; samt om byrån saknar eller har brist på resurser för intern kvalitetsgranskning.",
+        "riskindikatorer": "Lågrisk-indikatorer: bokslut följer historiska mönster, byrån upprättar löpande bokföring i sin helhet för kunden, erhåller fullständig dokumentation, årsredovisningen stämmer med bokslutet samt med historiken, enkel ägarstruktur och tydlig verksamhet, deklaration som följer historiska mönster, byrån upprättar skatteberäkning som ligger till grund för inkomstdeklarationen.\n\nHögrisk-indikatorer: stora justeringar i bokslut utan rimlig förklaring, bristande dokumentation för bokslutsdispositioner, kopplingar till högriskländer, avvikande siffror utan förklaring, bristande dokumentation av ägarstruktur, stora avdrag utan rimlig förklaring.",
+        "atgarder": "",
+        "kalla": "Byråns underlag (Komplettering_av_handling_Sekretess.xlsx)",
+        "lank": ""
+      }
+    ],
+    "Skatterådgivning": [
+      {
+        "hotkategori": "PT",
+        "hot": "Identifierade risker: kunden efterfrågar skatterådgivning som går längre än sedvanlig skatteplanering och närmar sig skatteundandragande eller skattebrott, eller hänvisar till byrån för att få legitimitet åt sitt upplägg gentemot andra aktörer på marknaden. Hot: byrån kan omedvetet bidra till att skapa upplägg som ingår som ett led i penningtvätt.",
+        "sarbarhet": "Kortare affärsrelationer där skatterådgivning efterfrågas kring en mycket begränsad situation ger sämre möjlighet att bedöma helheten; risken ökar om kunden visar stort intresse för vad som ligger \"på gränsen\" för vad som är tillåtet.",
+        "riskindikatorer": "Lågrisk-indikatorer: längre uppdrag som ger möjlighet att lära känna kunden och dennes affärer, löpande deklarationer eller andra elementära tjänster under lång tid som ger insyn i kundens affärer och bokföring.\n\nHögrisk-indikatorer: frågor om upplägg som är direkt skatteundandragande eller brottsliga, kunden verkar mest intresserad av var gränsen går för vad som är tillåtet och hur Skatteverket arbetar för att upptäcka brottsligt förfarande, kunden vill ha hjälp att få falska intyg eller garantier, kunden använder tomma bolag eller brevlådeföretag som en del i komplexa upplägg utan affärsmässig förklaring.",
+        "atgarder": "",
+        "kalla": "Referensmaterial (extern allmän riskbedömning, omskriven text — ej byråns egen)",
+        "lank": ""
+      }
+    ],
+    "Tjänster till kunder vars bolag används i sektorsöverskridande upplägg": [
+      {
+        "hotkategori": "PT",
+        "hot": "Enligt Nationella riskbedömningen är det vanligt att brottsupplägg spänner över flera sektorer eller flera olika verksamhetsutövare samtidigt. En juridisk person kan användas som brottsverktyg hos flera olika aktörer parallellt (t.ex. bank, redovisningsbyrå och bolagsbildare), vilket gör att en enskild byrå bara ser en del av det samlade mönstret.",
+        "sarbarhet": "Byrån har normalt ingen insyn i kundens övriga rådgivare eller verksamhetsutövare, och kan därför missa varningssignaler som bara blir synliga om informationen sätts samman över flera aktörer.",
+        "riskindikatorer": "Kunden är påfallande otydlig om vilka andra rådgivare, banker eller verksamhetsutövare som anlitas; verksamheten är uppdelad på ett sätt som är svårt att motivera affärsmässigt; kunden verkar undvika att en och samma aktör får full insyn i helheten.",
+        "atgarder": "",
+        "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2020/2021\", dnr A052.211/2021, reviderad augusti 2021. Sektorsresonemanget bekräftas övergripande av den senare bedömningen 2024/2025 (se ovan), men sifferuppgifterna i denna rad är från 2020/2021-rapporten. Text omskriven, inte citerad.",
+        "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism_210817.pdf"
+      }
+    ]
+  },
+  "sektorKomplettering": [
+    {
+      "nyckel": "Rådgivningstjänster (allmän affärs-/bolagsrådgivning)",
+      "hotkategori": "PT",
+      "hot": "Identifierade risker: kunden efterfrågar rådgivning kring hur upplägg kan struktureras för att undvika myndigheters insyn, eller hänvisar till byrån för att ge legitimitet åt sitt upplägg gentemot andra aktörer på marknaden. Hot: särskilt vid kortare, enstaka rådgivningsuppdrag utan tidigare historik saknar byrån underlag för att bedöma vad som är normalt beteende hos kunden.",
+      "sarbarhet": "Kortare affärsrelationer i form av enstaka uppdrag utan tidigare historik om eller relation till kunden gör det svårare att bedöma rimligheten i det som efterfrågas.",
+      "riskindikatorer": "Lågrisk-indikatorer: längre uppdrag som ger möjlighet att lära känna kunden och dennes affärer, erfaren rådgivare med god känsla för vad som är normalt beteende.\n\nHögrisk-indikatorer: frågor om konstruktion av komplicerade upplägg eller bolagskonstruktioner, rådgivning efterfrågas kring hur pengar eller tillgångar kan flyttas till länder eller utländska bolagskonstruktioner med begränsad insyn, kunden har skapat bolag utan tydligt affärsmässigt syfte eller efterfrågar råd som inte stämmer överens med det uppgivna syftet.",
+      "atgarder": "",
+      "kalla": "Referensmaterial (extern allmän riskbedömning, omskriven text — ej byråns egen)",
+      "lank": ""
+    },
+    {
+      "nyckel": "Bolagstjänster (bildande/administration av bolag)",
+      "hotkategori": "PT",
+      "hot": "Identifierade risker: byråns kompetens inom bolagsbildning och bolagsadministration kan utnyttjas av kriminella för att tvätta pengar via bolag, eftersom bolagskonstruktioner möjliggör anonymisering av upplägg och transaktioner. Hot: en formellt korrekt bolagstjänst kan skapa en legitim fasad som i praktiken används i illegitima syften, särskilt vid en enstaka transaktion med en ny kund där syftet med transaktionen är svårt att förstå.",
+      "sarbarhet": "Byrån blir sårbar om den saknar tillräcklig kundkännedom vid enstaka bolagstjänster till nya kunder, och om det inte finns rutiner för att reagera på upprepade eller svårmotiverade förändringar i bolagsstrukturen.",
+      "riskindikatorer": "Lågrisk-indikatorer: bolagstjänster till befintliga kunder som är under omstrukturering och har tydligt legitima syften med sina transaktioner.\n\nHögrisk-indikatorer: kunden efterfrågar många ändringar under kort tid, kunden har tidigare efterfrågat flera bolagstjänster av olika slag utan tydligt syfte, kundens företrädare har tidigare varit inblandad i kortlivade bolag, tecken på bulvanförhållande eller målvakter, kunden ger svävande svar på syftet med den bolagstjänst som efterfrågas.",
+      "atgarder": "",
+      "kalla": "Referensmaterial (extern allmän riskbedömning, omskriven text — ej byråns egen)",
+      "lank": ""
+    },
+    {
+      "nyckel": "Löpande redovisning (inreferade/nätverksuppdrag)",
+      "hotkategori": "PT",
+      "hot": "Identifierade risker: kunden kan använda byråns redovisningstjänst för att utåt ge sken av att bedriva seriös verksamhet, medan byrån i praktiken kan ha svårt att få egentlig insyn i de faktiska bakomliggande transaktionerna. Hot: i uppdrag som kommer in via ett nätverksbolags ramavtal har byrån ofta relativt lite direktkontakt med slutkunden, eftersom kommunikationen sker via en koordinator.",
+      "sarbarhet": "Begränsad direktkontakt med slutkunden i inreferade nätverksuppdrag gör det svårare att bygga en egen bild av kundens normala beteende, utöver vad som förmedlas via koordinatorn.",
+      "riskindikatorer": "Lågrisk-indikatorer: löpande tjänster ger kontinuerlig närhet till kunden och god insyn i affärer och bokföring över tid, uppdraget är en del av en väletablerad affärsrelation.\n\nHögrisk-indikatorer: ovanliga eller stora transaktioner som kunden har svårt att förklara, kundens faktiska verksamhet stämmer inte med bolagsordningen, kunden är obenägen att göra rättelser när byrån påpekar felaktigheter.",
+      "atgarder": "",
+      "kalla": "Referensmaterial (extern allmän riskbedömning, omskriven text — ej byråns egen)",
+      "lank": ""
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (kända tillvägagångssätt)",
+      "hotkategori": "PT",
+      "hot": "Myndigheternas vägledning lyfter fram flera kända tillvägagångssätt: att pengar sätts in på företagskontot utan anledning och företagaren sedan ombeds betala tillbaka till ett annat konto än det medlen kom ifrån; att bolag helt eller delvis saknar verklig verksamhet och istället ställer ut falska eller osanna fakturor, ibland i samverkan med andra bolag; att målvakter används som skenbara företrädare i bolag utan att vara de verkliga besluts-fattarna; att brottsvinster delas upp och förs över flera konton och jurisdiktioner för att dölja pengarnas ursprung; samt att pengar från misstänkt brottslig verksamhet bokförs som försäljning och sedan plockas ut som vit lön eller utdelning.",
+      "sarbarhet": "Otillräcklig kundkännedom eller bristande förståelse för kundens verksamhet gör att transaktioner som borde väcka misstanke inte upptäcks, vilket i sin tur kan leda till att rapporteringsskyldigheten till Finanspolisen inte fullgörs.",
+      "riskindikatorer": "Se raderna nedan (varningssignaler vid kundkännedom, under affärsrelationen och kopplade till kundens beteende) för konkreta indikatorer kopplade till dessa tillvägagångssätt.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism (Ekobrottsmyndigheten, Finanspolisen, Länsstyrelserna i Skåne, Stockholm och Västra Götaland samt Skatteverket) — \"Information till redovisningskonsulter och skatterådgivare om penningtvätt och finansiering av terrorism\", version mars 2025, dnr A687.781/2024. Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/vagledning-till-redovisningskonsulter-och-skatteradgivare.pdf"
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (varningssignaler vid kundkännedom)",
+      "hotkategori": "PT",
+      "hot": "Situationer som enligt myndigheternas vägledning bör föranleda fördjupad granskning redan vid etablering av kundrelationen, eftersom de kan tyda på att kunden eller dess verkliga huvudman avsiktligt håller sig undan granskning.",
+      "sarbarhet": "Byrån blir sårbar om grundläggande identitetskontroller inte görs konsekvent eller inte följs upp när omständigheter kring kunden är otydliga.",
+      "riskindikatorer": "Svårt att kontrollera kundens/företrädarens identitet eller kontaktuppgifter (t.ex. postbox eller vaga adressuppgifter); kunden kan bara visa en kopia av pass/ID-handling; utländska identitetshandlingar som är kända för att ofta förfalskas; kunden är etablerad i ett land utanför EES som EU-kommissionen klassat som högriskland; kunden eller dess verkliga huvudman är en PEP, familjemedlem eller känd medarbetare till en sådan; affärsförbindelse som etableras på distans utan att ställföreträdaren är personligen närvarande; företrädaren har tidigare varit aktiv i flera kortlivade företag; misstänkta bulvanförhållanden (kunden verkar handla för någon annans räkning, har sällskap eller verkar övervakas); kunden/företrädaren förekommer i domstolsbeslut eller på varningslistor; företrädaren är en utomstående person utan koppling till företaget eller anges vara utvandrad/bosatt utomlands.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism (Ekobrottsmyndigheten, Finanspolisen, Länsstyrelserna i Skåne, Stockholm och Västra Götaland samt Skatteverket) — \"Information till redovisningskonsulter och skatterådgivare om penningtvätt och finansiering av terrorism\", version mars 2025, dnr A687.781/2024. Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/vagledning-till-redovisningskonsulter-och-skatteradgivare.pdf"
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (varningssignaler under affärsrelationen)",
+      "hotkategori": "PT",
+      "hot": "Fortlöpande uppföljning enligt myndigheternas vägledning: avvikande transaktioner, omständigheter kring hur företaget drivs, samt brister i underlag och dokumentation som var för sig eller tillsammans bör leda till fördjupad granskning.",
+      "sarbarhet": "Sårbarheten ökar om övervakningen av pågående affärsförbindelser inte är riskbaserad, dvs. om högriskkunder inte följs upp mer noggrant än lågriskkunder, eller om avvikelser mot kundens normala mönster inte systematiskt fångas upp.",
+      "riskindikatorer": "Transaktioners storlek/frekvens stämmer inte med kundens normala mönster eller saknar affärsmässighet; plötslig ökning av transaktioner med en viss motpart utan rimlig förklaring; kunden anlitar flera olika redovisningskonsulter/skatterådgivare eller byter dem regelbundet; kunden har omotiverat komplexa företagsstrukturer eller saknar anställda trots sin verksamhet; företagets medel stannar aldrig länge på kontot; koncerninterna transaktioner som är svåra att förklara; hög omsättning i små verksamheter där det inte rimligen kan förväntas; kunden erbjuder redovisningskonsulten pengar, ersättning eller ovanliga förmåner på ett sätt som verkar misstänkt; kunden är osäker på var bokföringen finns, den faktiska verksamheten stämmer inte med bolagsordningen, eller fakturor saknar nödvändiga transportdokument/inte är relevanta för verksamheten (misstanke om osanna fakturor eller karusellbedrägeri); kunden ber att få bokföra transaktioner utan underlag.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism (Ekobrottsmyndigheten, Finanspolisen, Länsstyrelserna i Skåne, Stockholm och Västra Götaland samt Skatteverket) — \"Information till redovisningskonsulter och skatterådgivare om penningtvätt och finansiering av terrorism\", version mars 2025, dnr A687.781/2024. Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/vagledning-till-redovisningskonsulter-och-skatteradgivare.pdf"
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (varningssignaler kopplade till kundens beteende)",
+      "hotkategori": "PT",
+      "hot": "Beteendemässiga signaler enligt myndigheternas vägledning som kan tyda på att kunden döljer något om sin ekonomi eller sina transaktioner, snarare än signaler i själva transaktionerna.",
+      "sarbarhet": "Personalens förmåga att lägga märke till och reagera på beteendemässiga varningssignaler avgör om dessa fångas upp, särskilt eftersom de sällan syns i bokföringsunderlaget i sig.",
+      "riskindikatorer": "Kunden är ovillig att ge detaljer om eller svara på frågor om sin ekonomi; kunden har stor kunskapsbrist om sina egna affärer men ger orealistiska förklaringar till kontanter eller transaktioner; kunden har omotiverat hög kunskapsnivå om penningtvättslagstiftningen eller är ovanligt intresserad av byråns interna kontrollsystem och rapporteringsrutiner; kunden agerar defensivt vid kundkännedomsfrågor eller är överdrivet mån om att rättfärdiga vissa transaktioner; kunden gör flera till synes obefogade utlandsresor och verkar leva över sina tillgångar; kunden använder privata konton vid affärstransaktioner.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism (Ekobrottsmyndigheten, Finanspolisen, Länsstyrelserna i Skåne, Stockholm och Västra Götaland samt Skatteverket) — \"Information till redovisningskonsulter och skatterådgivare om penningtvätt och finansiering av terrorism\", version mars 2025, dnr A687.781/2024. Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/vagledning-till-redovisningskonsulter-och-skatteradgivare.pdf"
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (roll som legitimerande instans)",
+      "hotkategori": "PT",
+      "hot": "Enligt Nationella riskbedömningen kan bokförings- och revisionstjänster, skatterådgivning och oberoende juridisk rådgivning utnyttjas för att ge ett upplägg skenbar legitimitet utan att tjänsten i sig är direkt inblandad i de misstänkta transaktionerna. En kund som representeras av en redovisningskonsult eller skatterådgivare uppfattas ofta som mer seriös av andra aktörer (t.ex. banker), vilket kan sänka vaksamheten längre fram i kedjan och minska chansen att penningtvätten upptäcks någon annanstans.",
+      "sarbarhet": "Enligt den nationella riskbedömningen vidtar verksamheter som erbjuder bokförings- och revisionstjänster generellt sett inte lika omfattande kundkännedomsåtgärder som till exempel banker. Det, tillsammans med att byrån sällan har kännedom om kundens kunder eller om vem som ytterst ligger bakom mer komplicerade och gränsöverskridande upplägg, utgör en central sårbarhet.",
+      "riskindikatorer": "Se de tjänstespecifika raderna ovan (löpande redovisning, bokslut/årsredovisning/inkomstdeklaration, momsdeklaration, lönehantering m.fl.) för konkreta riskindikatorer kopplade till respektive tjänst.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2020/2021\", dnr A052.211/2021, reviderad augusti 2021. Sektorsresonemanget bekräftas övergripande av den senare bedömningen 2024/2025 (se ovan), men sifferuppgifterna i denna rad är från 2020/2021-rapporten. Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism_210817.pdf"
+    },
+    {
+      "nyckel": "Rådgivningstjänster i samband med företags- eller fastighetsaffärer (regelverkets räckvidd)",
+      "hotkategori": "PT",
+      "hot": "Enligt Nationella riskbedömningen 2024/2025 omfattas inte all rådgivning i samband med överlåtelser av kommersiella fastigheter eller fusioner, förvärv och försäljningar av företag av penningtvättslagen. Lagen pekar uttryckligen bara ut sådana rådgivningstjänster när de tillhandahålls av advokater och oberoende jurister; revisorer och redovisnings-konsulter omfattas indirekt i egenskap av verksamhetsutövare, men motsvarande rådgivning kan också ges av aktörer som helt saknar krav på kundkännedom och rapportering.",
+      "sarbarhet": "Otydligt tillsynsansvar när i huvudsak samma typ av rådgivning ges av olika yrkeskategorier gör att kontroller riskerar att falla mellan stolarna, trots att risken för penningtvätt bör vara densamma oavsett rådgivarens yrkestitel.",
+      "riskindikatorer": "Kunden har eller har haft parallell kontakt med rådgivare (t.ex. inom fastighets- eller företagsförmedling) som inte omfattas av penningtvättsregelverket; komplexa eller svårgenomskådliga ägarstrukturer i samband med en företags- eller fastighetsaffär; utländska investerare utan tydlig, verifierbar koppling till affären.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Betalningsuppdrag och avstämningar (avsaknad av motpartsuppgifter)",
+      "hotkategori": "PT",
+      "hot": "Enligt Nationella riskbedömningen 2024/2025 saknas det fortfarande stöd i viktiga delar av den svenska betalningsinfrastrukturen för att automatiskt föra med sig uppgift om motpartens kontonummer vid överföringar mellan olika verksamhetsutövare/banker, trots att detta krävts enligt EU-regelverk sedan 2017.",
+      "sarbarhet": "Utan tillgång till motpartens kontonummer kan det vara svårare för byrån att bedöma om en betalning eller inbetalning är rimlig, vilket kan underlätta för brottsvinster från flera olika avsändare att aggregeras på ett och samma konto utan att det upptäcks.",
+      "riskindikatorer": "Inbetalningar eller betalningar där motpartens fullständiga kontouppgifter saknas eller är svåra att få fram; svårighet att i efterhand spåra en transaktion till en identifierbar motpart trots upprepade förfrågningar.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Bokförings- och revisionstjänster (sektorns omfattning och kända tillvägagångssätt)",
+      "hotkategori": "PT",
+      "hot": "Sektorn är den största av dem som står under länsstyrelsernas tillsyn: 13 155 verksamhetsutövare fanns anmälda i Bolagsverkets register mot penningtvätt per 2024-12-31, varav 26 % även bedriver annan tillsynspliktig verksamhet (t.ex. skatterådgivning). Titlarna \"bokförings-\" och \"redovisningskonsult\" är inte skyddade — vem som helst får använda dem oavsett utbildning eller erfarenhet. Kända tillvägagångssätt: pengar från brottslig verksamhet bokförs som försäljning och plockas sedan ut som lön/utdelning; pengar sätts in på företagskontot utan anledning och företagaren ombeds betala tillbaka till ett annat konto än det de kom ifrån; en större transaktion kommer in utan underlag om varifrån pengarna kommer; verksamhetsfrämmande utlandsbetalningar eller betalningar till högriskländer; osanna fakturor; samt \"omvänd penningtvätt\", där legala pengar görs svarta genom osanna fakturor vars mottagare sedan tar ut pengarna kontant för t.ex. svart lön.",
+      "sarbarhet": "Sektorn kräver varken tillstånd eller auktorisation, vilket ger ett stort spann av aktörer och risk för oseriösa utövare. Kunderna finns ofta i branscher som är kända för högre risk för ekonomisk brottslighet, t.ex. bygg- och restaurangbranschen. Den nya förverkandelagstiftningen (i kraft 8 november 2024) väntas driva modusförändringar där förmågan att styrka en legal inkomst blir avgörande, vilket kan öka efterfrågan på förfalskade eller osanna intyg, efterdaterade dokument och förfalskade signaturer.",
+      "riskindikatorer": "Pengar som bokförs som försäljning utan verifierbar motprestation; inbetalning utan tydlig anledning följd av en begäran om återbetalning till annat konto; stor transaktion helt utan underlag; utlandsbetalningar utan koppling till verksamheten eller till högriskländer; osanna fakturor; mottagare av fakturor som tar ut motsvarande belopp kontant kort efter betalning.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad Avsnitt 7.19 \"Bokförings- och revisionstjänster\", s. 122–125.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Bokförings- och revisionstjänster (möjliggörare, PML-aktörer och klientmedelskonton)",
+      "hotkategori": "PT",
+      "hot": "Konsulter med insyn i många bolag och koncerner kan fungera som möjliggörare eller professionella penningtvättare (PML-aktörer) genom att anpassa bokföringen för flera bolag i samma brottsupplägg, ta fram övertygande men felaktiga bokslut eller årsredovisningar, eller skapa osanna fakturor och förfalskade handlingar. Det finns exempel på att bokförare eller deklarationsombud samverkar med revisorer i brottsupplägg — genom information från bokföraren kan revisionen och stickproven styras. Redovisningsbyråer (och neobanker med bokföringstjänster) kan även erbjuda klientmedelskonton, så att varken företaget eller dess företrädare behöver stå som kontoinnehavare. Vissa aktörer kombinerar dessutom tjänster på ett sätt som kan locka till sig riskfyllda kunder, t.ex. bokföring kombinerat med factoring- och betaltjänster.",
+      "sarbarhet": "Ju fler bolag en konsult har insyn i, desto större kapacitet att dölja penningtvätt över flera bolag samtidigt inom samma upplägg — en sårbarhet som ökar med byråns storlek och kundportfölj snarare än minskar.",
+      "riskindikatorer": "Konsulten (eller en kollega) har ett ovanligt stort antal småbolag med liknande eller oklar verksamhet; bokföraren verkar aktivt styra vilka underlag eller stickprov som visas för en extern revisor; byrån eller en anställd erbjuder eller föreslår ett klientmedelskonto utan att kunden efterfrågat det; byrån kombinerar bokföring med factoring- eller betaltjänster för samma kund.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad Avsnitt 7.19 \"Bokförings- och revisionstjänster\", s. 122–125.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Bokförings- och revisionstjänster (sårbarhet: låg riskmedvetenhet i sektorn)",
+      "hotkategori": "PT",
+      "hot": "Nationella riskbedömningen konstaterar att riskmedvetenheten och kunskapen om penningtvättsregelverket är låg i sektorn. Länsstyrelserna identifierar brister i regelefterlevnad i majoriteten av sina tillsynsärenden, och i en enkät uppgav knappt hälften av verksamhetsutövarna att de överhuvudtaget gjort en riskbedömning av sin egen verksamhet. Många känner inte till att de omfattas av penningtvättslagen. 2024 kom 140 misstankerapporter från sektorn till Finanspolisen — en tydlig ökning från 6 stycken år 2020, men fortfarande få i förhållande till sektorns storlek.",
+      "sarbarhet": "Byråns egen sårbarhet ökar om den saknar en dokumenterad, uppdaterad allmän riskbedömning, om den inte är anmäld till Bolagsverkets register mot penningtvätt, eller om personalen saknar grundläggande kunskap om vilka situationer som ska rapporteras till Finanspolisen. Myndigheterna bedömer den samlade sårbarheten i sektorn som betydande.",
+      "riskindikatorer": "Internt: ingen dokumenterad allmän riskbedömning finns, eller den är inte uppdaterad; personalen är osäker på när en transaktion ska rapporteras; byrån är inte anmäld i Bolagsverkets register mot penningtvätt trots att den borde vara det.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad Avsnitt 7.19 \"Bokförings- och revisionstjänster\", s. 122–125.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Skatterådgivning (komplexa bolagsstrukturer, slussbolag och rapporteringsplikt)",
+      "hotkategori": "PT",
+      "hot": "Skatterådgivare kan vara med och skapa komplexa företagsstrukturer med flera bolag med oklar verksamhet, inklusive brevlådeföretag i skatteförmånliga länder — kluster av bolag som är svåra för myndigheter att utreda eftersom de kan omfatta många bolag, aktörer, målvakter och konton i olika länder. \"Slussbolag\" (även kallade fakturaskrivande bolag) förekommer också, med funktioner som att slussa pengar via företagskonton, ställa ut fakturor och intyg, eller bedriva personaluthyrning. Skatterådgivare och andra som ger gränsöverskridande skatterelaterade råd är skyldiga att rapportera dessa till Skatteverket enligt lagen (2020:434) om rapporteringspliktiga arrangemang.",
+      "sarbarhet": "Titeln skatterådgivare är inte skyddad, och skatterådgivning ges även av oberoende jurister, revisorer, redovisningskonsulter och advokater, vilket skapar en avgränsningsproblematik som gör det svårare att rikta tillsyn, information och kunskapshöjande insatser mot hela sektorn.",
+      "riskindikatorer": "Flera nästan identiska bolag med samma typ av verksamhet inom samma kundstruktur; brevlådeföretag i lågskatteländer utan egen personal eller lokal; fakturor eller intyg som utställs av bolag som saknar synlig operativ verksamhet; gränsöverskridande skatteupplägg som inte rapporterats trots att de sannolikt borde vara rapporteringspliktiga.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad Avsnitt 7.20 \"Skatterådgivare\", s. 126–128.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Skatterådgivning (sårbarhet: bristande kundkännedom och underrapportering)",
+      "hotkategori": "PT",
+      "hot": "Enligt en branschenkät hävdade drygt hälften av verksamhetsutövarna att de vidtar kundkännedomsåtgärder — vilket innebär att nästan hälften inte gör det, vilket minskar möjligheten att upptäcka penningtvätt. Rapporteringen till Finanspolisen är mycket låg och har inte ökat: 4 misstankerapporter kom in från sektorn 2024, exakt samma antal som 2020, trots att sektorn i övrigt vuxit. Myndigheterna bedömer att en del skatterådgivare sannolikt känner till rapporteringsplikten men medvetet väljer att inte rapportera.",
+      "sarbarhet": "Att kundkännedom och kontroll av kundens ekonomiska situation inte görs konsekvent, i kombination med att titeln inte är skyddad och att avgränsningen mot andra rådgivaryrken är otydlig, gör sektorn svår att nå med riktad tillsyn och information — myndigheterna bedömer den samlade sårbarheten som betydande.",
+      "riskindikatorer": "Rådgivning ges utan att grundläggande kundkännedomsåtgärder har dokumenterats; ingen intern rutin finns för när ett ärende ska rapporteras till Finanspolisen; personal uttrycker osäkerhet kring om/när rapporteringsskyldigheten gäller vid skatterådgivning.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Nationell riskbedömning av penningtvätt och finansiering av terrorism i Sverige 2024/2025\", dnr A360.891/2024 (rapport av 17 myndigheter/organisationer, bl.a. Ekobrottsmyndigheten, Polismyndigheten, Skatteverket, Bolagsverket och Länsstyrelserna). Text omskriven, inte citerad Avsnitt 7.20 \"Skatterådgivare\", s. 126–128.",
+      "lank": "https://polisen.se/0c34c8d8c94e1a371d8cca457b84fb0a/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+    },
+    {
+      "nyckel": "Bokförings-, redovisnings- och skatterådgivningstjänster (kompletterande riskindikatorer)",
+      "hotkategori": "PT",
+      "hot": "Enligt Revisorsinspektionens vägledning till revisorer är det extra viktigt att vara uppmärksam i situationer där det finns risk för att bolaget gör, eller kommer att göra, sig skyldigt till bokföringsbrott — inte för att bokföringsbrott i sig alltid är ett förbrott till penningtvätt, utan för att oegentligheter på ett plan ofta tyder på oegentligheter även på andra.",
+      "sarbarhet": "Samma princip gäller vid redovisnings- och skatterådgivningstjänster: signaler som i sig kan verka som ett rent bokförings- eller deklarationsfel bör föranleda en bredare kontroll av kundens övriga underlag och transaktioner.",
+      "riskindikatorer": "En fastighet är bokförd till ett värde som överstiger den faktiska köpeskillingen; fortlöpande eller återkommande \"fel\" på skattekontot som konsekvent går till den skattskyldiges fördel; motparter i affären är nystartade bolag utan synlig historik av redovisade skatter och avgifter.",
+      "atgarder": "",
+      "kalla": "Myndighetskälla: Revisorsinspektionen i samarbete med Samordningsfunktionen mot penningtvätt och finansiering av terrorism — \"Information till revisorer om penningtvätt och finansiering av terrorism\", dnr A477.068/2020, version augusti 2020. Riktar sig till revisorer, men riskindikatorerna på denna rad är generella och tillämpliga även vid redovisnings- och skatterådgivningstjänster. Text omskriven, inte citerad.",
+      "lank": "https://www.revisorsinspektionen.se/globalassets/webbplatsen/om-oss/verksamhet/penningtvatt-och-terrorism/vagledning-till-revisorer-om-peningtvatt.pdf"
+    }
+  ]
+}
