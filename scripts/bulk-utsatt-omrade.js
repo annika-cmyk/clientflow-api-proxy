@@ -96,9 +96,16 @@ async function main() {
   const failedCandidates = failedOnly
     ? withAddress.filter((rec) => isFailedGeocode(utsattKund.parseStored(rec.fields?.[utsattKund.FIELD])))
     : withAddress;
+  // Statistik och åtgärdslistor gäller pågående kunder — hoppa över leads/avslutade/dolda.
+  const kundDold = require('../lib/kund-dold');
+  const candidates = failedCandidates.filter((rec) => kundDold.isAktivKund(rec.fields));
+  const skippedStatus = failedCandidates.length - candidates.length;
   console.log(
     `Hittade ${records.length} kunder, ${withAddress.length} med adress`
-    + (failedOnly ? `, ${failedCandidates.length} med tidigare geokodningsfel.` : '.')
+    + (failedOnly ? `, ${failedCandidates.length} med tidigare geokodningsfel` : '')
+    + `, ${candidates.length} pågående att kontrollera`
+    + (skippedStatus ? ` (${skippedStatus} lead/avslutad/dold hoppades över)` : '')
+    + '.'
   );
 
   const geoCache = {};
@@ -110,7 +117,7 @@ async function main() {
   let skipped = 0;
   let errors = 0;
 
-  for (const rec of failedCandidates) {
+  for (const rec of candidates) {
     const addr = utsattKund.customerAddressFromFields(rec.fields);
     const prev = utsattKund.parseStored(rec.fields?.[utsattKund.FIELD]);
     if (failedOnly) {
