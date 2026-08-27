@@ -4484,6 +4484,23 @@ body.sidebar-collapsed .logout-btn {
     padding: 1.5rem;
 }
 
+.risk-group:not(:first-child) {
+    margin-top: 2rem;
+}
+
+.risk-group--geografiska:not(:first-child) {
+    margin-top: 3.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e8edf2;
+}
+
+.risk-group-header h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #334155;
+}
+
 .risk-items {
     padding-block-start: 10px;
     padding-block-end: 0;

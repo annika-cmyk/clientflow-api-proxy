@@ -530,12 +530,14 @@ class RiskFactorsManager {
 
         const buildRiskItems = (risksInGroup) => risksInGroup.map(risk => this.createRiskItem(risk)).join('');
 
+        const geoLabel = this.geoRiskGroupLabel();
         const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
+            const isGeo = riskType === geoLabel;
 
             return `
-                <div class="risk-group">
+                <div class="risk-group${isGeo ? ' risk-group--geografiska' : ''}">
                     <div class="risk-group-header">
                         <h3>${this.esc(this.displayGroupLabel(riskType))}</h3>
                     </div>
