@@ -102,6 +102,7 @@ const dokumentRedigera = require('./lib/dokument-redigera');
 const dokumentRiskSubkategori = require('./lib/dokument-risk-subkategori');
 const kycUppfoljning = require('./lib/kyc-uppfoljning');
 const kycDokumentSync = require('./lib/kyc-dokument-sync');
+const uppdragsavtalDokumentSync = require('./lib/uppdragsavtal-dokument-sync');
 const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
@@ -4915,6 +4916,39 @@ async function applyKycDokumentUtanforSync(airtableToken, baseId, customerId, fi
   return { changed: true, patch };
 }
 
+async function applyUppdragsavtalDokumentUtanforSync(airtableToken, baseId, customerId, fields, kategorier, opts = {}) {
+  const patch = uppdragsavtalDokumentSync.buildUppdragsavtalUtanforSyncPatch(fields || {}, kategorier, opts);
+  if (!patch) return { changed: false, patch: null };
+  await ensureKunddataOptionalFields(airtableToken, baseId);
+  const tableId = kunddataTableId();
+  const url = `https://api.airtable.com/v0/${baseId}/${tableId}/${customerId}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  try {
+    await axios.patch(url, { fields: patch, typecast: true }, { headers });
+  } catch (e) {
+    const unknown = String(e.response?.data?.error?.message || '').match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+    if (unknown && unknown in patch) {
+      delete patch[unknown];
+      if (!Object.keys(patch).length) return { changed: false, patch: null };
+      await axios.patch(url, { fields: patch, typecast: true }, { headers });
+    } else {
+      throw e;
+    }
+  }
+  return { changed: true, patch };
+}
+
+function buildUppdragsavtalUtanforSyncResponse(changed, fields, patch, fallbackDatum = '') {
+  if (!changed) return undefined;
+  return {
+    utanfor: !!fields[uppdragsavtalDokumentSync.UTANFOR_FIELD],
+    utfordDatum: dokumentKategori.toDateOnly(
+      patch?.[uppdragsavtalDokumentSync.UTFOERD_DATUM_FIELD]
+        || fields[uppdragsavtalDokumentSync.UTFOERD_DATUM_FIELD]
+    ) || fallbackDatum || ''
+  };
+}
+
 async function applyKycTriggerUpdates(airtableToken, baseId, customerId, prevFields, nextFields, opts = {}) {
   const existingRaw = nextFields[kycUppfoljning.UPPFOLJNING_FIELD] ?? prevFields[kycUppfoljning.UPPFOLJNING_FIELD];
   const { changed, uppfoljning, detected } = kycUppfoljning.applyDetectedTriggers(
@@ -8216,6 +8250,23 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
       console.warn('Kunde inte synka KYC utanför ClientFlow från dokument:', kycSyncErr.message);
     }
 
+    let uppdragsavtalUtanforSync = null;
+    try {
+      uppdragsavtalUtanforSync = await applyUppdragsavtalDokumentUtanforSync(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        f,
+        dokumentationKategorier,
+        { today: todayIso }
+      );
+      if (uppdragsavtalUtanforSync?.changed && uppdragsavtalUtanforSync.patch) {
+        Object.assign(f, uppdragsavtalUtanforSync.patch);
+      }
+    } catch (uaSyncErr) {
+      console.warn('Kunde inte synka uppdragsavtal utanför ClientFlow från dokument:', uaSyncErr.message);
+    }
+
     const categoryLabels = dokumentKategori.CATEGORY_LABELS;
     const subcategoryLabels = dokumentRiskSubkategori.SUBCATEGORY_LABELS;
 
@@ -8281,7 +8332,12 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
           utanfor: !!f[kycDokumentSync.UTANFOR_FIELD],
           utfordDatum: dokumentKategori.toDateOnly(f[kycDokumentSync.UTFOERD_DATUM_FIELD]) || ''
         }
-        : undefined
+        : undefined,
+      uppdragsavtalUtanforSync: buildUppdragsavtalUtanforSyncResponse(
+        uppdragsavtalUtanforSync?.changed,
+        f,
+        uppdragsavtalUtanforSync?.patch
+      )
     });
   } catch (error) {
     console.error('\u274c GET documents:', error.message);
@@ -8596,6 +8652,20 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
       console.warn('Kunde inte synka KYC utanför ClientFlow efter dokumentredigering:', kycSyncErr.message);
     }
 
+    let uppdragsavtalUtanforSync = null;
+    try {
+      const mergedFields = { ...f, ...plan.patchFields, ...(kycUtanforSync?.patch || {}) };
+      uppdragsavtalUtanforSync = await applyUppdragsavtalDokumentUtanforSync(
+        airtableAccessToken,
+        airtableBaseId,
+        customerId,
+        mergedFields,
+        plan.nextKategorier
+      );
+    } catch (uaSyncErr) {
+      console.warn('Kunde inte synka uppdragsavtal utanför ClientFlow efter dokumentredigering:', uaSyncErr.message);
+    }
+
     res.json({
       success: true,
       message: 'Dokument uppdaterat',
@@ -8609,6 +8679,15 @@ app.patch('/api/documents', authenticateToken, async (req, res) => {
           utanfor: true,
           utfordDatum: kycUtanforSync.patch?.[kycDokumentSync.UTFOERD_DATUM_FIELD]
             || dokumentKategori.toDateOnly(f[kycDokumentSync.UTFOERD_DATUM_FIELD])
+            || plan.createdDate
+            || ''
+        }
+        : undefined,
+      uppdragsavtalUtanforSync: uppdragsavtalUtanforSync?.changed
+        ? {
+          utanfor: true,
+          utfordDatum: uppdragsavtalUtanforSync.patch?.[uppdragsavtalDokumentSync.UTFOERD_DATUM_FIELD]
+            || dokumentKategori.toDateOnly(f[uppdragsavtalDokumentSync.UTFOERD_DATUM_FIELD])
             || plan.createdDate
             || ''
         }
@@ -8778,6 +8857,20 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       } catch (kycSyncErr) {
         console.warn('Kunde inte synka KYC utanför ClientFlow efter uppladdning:', kycSyncErr.message);
       }
+
+      let uppdragsavtalUtanforSync = null;
+      try {
+        const mergedFields = { ...latestFields, ...(kycUtanforSync?.patch || {}) };
+        uppdragsavtalUtanforSync = await applyUppdragsavtalDokumentUtanforSync(
+          airtableAccessToken,
+          airtableBaseId,
+          customerId,
+          mergedFields,
+          kategorier
+        );
+      } catch (uaSyncErr) {
+        console.warn('Kunde inte synka uppdragsavtal utanför ClientFlow efter uppladdning:', uaSyncErr.message);
+      }
       if (uploadedToHistorikField) {
         return res.json({
           success: true,
@@ -8785,7 +8878,8 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
           category: cat,
           subcategory: subcategory || undefined,
           createdDate: uploadCreatedDate,
-          kycUtanforSync: kycUtanforSync?.changed || undefined
+          kycUtanforSync: kycUtanforSync?.changed || undefined,
+          uppdragsavtalUtanforSync: uppdragsavtalUtanforSync?.changed || undefined
         });
       }
       return res.json({
@@ -8798,6 +8892,12 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
           ? {
             utanfor: true,
             utfordDatum: kycUtanforSync.patch?.[kycDokumentSync.UTFOERD_DATUM_FIELD] || uploadCreatedDate
+          }
+          : undefined,
+        uppdragsavtalUtanforSync: uppdragsavtalUtanforSync?.changed
+          ? {
+            utanfor: true,
+            utfordDatum: uppdragsavtalUtanforSync.patch?.[uppdragsavtalDokumentSync.UTFOERD_DATUM_FIELD] || uploadCreatedDate
           }
           : undefined
       });
@@ -16982,7 +17082,42 @@ app.get('/api/uppdragsavtal', authenticateToken, async (req, res) => {
       }
     }
 
-    res.json({ avtal, inleed });
+    let uppdragsavtalUtanforSync = null;
+    let customerFieldsForSync = null;
+    if (customerId) {
+      try {
+        const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+        const custRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        customerFieldsForSync = custRes.data.fields || {};
+        const kategorier = dokumentKategori.parseDokumentKategorier(customerFieldsForSync['Dokumentation Kategorier']);
+        uppdragsavtalUtanforSync = await applyUppdragsavtalDokumentUtanforSync(
+          airtableAccessToken,
+          airtableBaseId,
+          customerId,
+          customerFieldsForSync,
+          kategorier,
+          { avtalFields: avtal?.fields || null }
+        );
+        if (uppdragsavtalUtanforSync?.changed && uppdragsavtalUtanforSync.patch) {
+          Object.assign(customerFieldsForSync, uppdragsavtalUtanforSync.patch);
+        }
+      } catch (uaSyncErr) {
+        console.warn('Kunde inte synka uppdragsavtal utanför ClientFlow vid hämtning:', uaSyncErr.message);
+      }
+    }
+
+    res.json({
+      avtal,
+      inleed,
+      uppdragsavtalUtanforSync: buildUppdragsavtalUtanforSyncResponse(
+        uppdragsavtalUtanforSync?.changed,
+        customerFieldsForSync || {},
+        uppdragsavtalUtanforSync?.patch
+      )
+    });
   } catch (error) {
     console.error('❌ Error fetching uppdragsavtal:', error.message);
     res.status(500).json({ error: error.message });
