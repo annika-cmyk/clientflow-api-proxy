@@ -6303,19 +6303,24 @@ app.get('/api/kunddata/without-uppdragsavtal', authenticateToken, async (req, re
 
     const kundRecords = access.filterRecordsForUser(userData, kundRes.data.records || []);
     const avtalRecords = avtalRes.data.records || [];
-    const customerIdsWithAvtal = new Set();
+    const avtalStatusByCustomer = {};
     for (const a of avtalRecords) {
       const kid = a.fields?.KundID;
-      if (kid) (Array.isArray(kid) ? kid : [kid]).forEach(id => customerIdsWithAvtal.add(id));
+      const ids = kid ? (Array.isArray(kid) ? kid : [kid]) : [];
+      const status = (a.fields?.['Avtalsstatus'] || a.fields?.Status || '').toString().trim();
+      for (const id of ids) {
+        if (!avtalStatusByCustomer[id] || status === 'Signerat') {
+          avtalStatusByCustomer[id] = status;
+        }
+      }
     }
 
+    const today = new Date().toISOString().slice(0, 10);
     const utanUppdragsavtal = kundDold.filterVisibleKunder(kundRecords)
-      .filter(r => !customerIdsWithAvtal.has(r.id))
-      .map(r => ({
-        id: r.id,
-        namn: r.fields?.Namn || r.fields?.['Företagsnamn'] || 'Namn saknas',
-        organisationsnummer: r.fields?.Orgnr || r.fields?.Organisationsnummer || '',
-        bolagsform: r.fields?.Bolagsform || ''
+      .filter((r) => aktuellRiskbedomning.saknarUppdragsavtal(r.fields, avtalStatusByCustomer[r.id] || ''))
+      .map((r) => aktuellRiskbedomning.dashboardRowFromRecord(r, today, {
+        mode: 'uppdragsavtal',
+        avtalStatus: avtalStatusByCustomer[r.id] || ''
       }))
       .sort((a, b) => (a.namn || '').localeCompare(b.namn || '', 'sv'));
 
@@ -7158,7 +7163,7 @@ app.get('/api/dashboard/utan-aktuell-riskbedomning', authenticateToken, async (r
     const today = new Date().toISOString().slice(0, 10);
     const kunder = records
       .filter((rec) => aktuellRiskbedomning.saknarAktuellRiskbedomning(rec.fields, today))
-      .map((rec) => aktuellRiskbedomning.dashboardRowFromRecord(rec, today))
+      .map((rec) => aktuellRiskbedomning.dashboardRowFromRecord(rec, today, { mode: 'risk' }))
       .sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
     res.json({
       success: true,
@@ -7168,6 +7173,33 @@ app.get('/api/dashboard/utan-aktuell-riskbedomning', authenticateToken, async (r
     });
   } catch (error) {
     console.error('GET dashboard/utan-aktuell-riskbedomning:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa listan' });
+  }
+});
+
+app.get('/api/dashboard/utan-aktuellt-kyc', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const records = kundDold.filterVisibleKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const today = new Date().toISOString().slice(0, 10);
+    const kunder = records
+      .filter((rec) => aktuellRiskbedomning.saknarAktuelltKyc(rec.fields))
+      .map((rec) => aktuellRiskbedomning.dashboardRowFromRecord(rec, today, { mode: 'kyc' }))
+      .sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      count: kunder.length,
+      kunder
+    });
+  } catch (error) {
+    console.error('GET dashboard/utan-aktuellt-kyc:', error.message);
     res.status(500).json({ error: error.message || 'Kunde inte skapa listan' });
   }
 });

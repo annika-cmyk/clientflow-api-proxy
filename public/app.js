@@ -23,6 +23,10 @@ class ClientFlowApp {
             this.loadRiskbedomningList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskbedomningList());
         }
+        if (document.getElementById('kyc-list')) {
+            this.loadKycList();
+            window.addEventListener('clientflow:authReady', () => this.loadKycList());
+        }
         if (document.getElementById('riskaptit-list')) {
             this.loadRiskaptitList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskaptitList());
@@ -115,6 +119,10 @@ class ClientFlowApp {
         const refreshRiskbedomning = document.getElementById('refresh-riskbedomning');
         if (refreshRiskbedomning) {
             refreshRiskbedomning.addEventListener('click', () => this.loadRiskbedomningList());
+        }
+        const refreshKyc = document.getElementById('refresh-kyc');
+        if (refreshKyc) {
+            refreshKyc.addEventListener('click', () => this.loadKycList());
         }
         const refreshRiskaptit = document.getElementById('refresh-riskaptit');
         if (refreshRiskaptit) {
@@ -577,7 +585,7 @@ class ClientFlowApp {
                 container.innerHTML = `
                     <div class="kundlista-empty">
                         <i class="fas fa-check-circle"></i>
-                        <p>Alla kunder har aktuell riskbedömning enligt kraven.</p>
+                        <p>Alla kunder har aktuell riskbedömning.</p>
                     </div>`;
                 return;
             }
@@ -585,7 +593,7 @@ class ClientFlowApp {
             container.innerHTML = `
                 <div class="kundlista-table">
                     ${utanRiskbedomning.map(c => `
-                        <a href="kundkort.html?id=${c.id}" class="kundlista-row dashboard-row-link dashboard-row-link--risk">
+                        <a href="kundkort.html?id=${c.id}#ovrigkyc" class="kundlista-row dashboard-row-link dashboard-row-link--risk">
                             <div class="kundlista-row-name">
                                 <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
                                 <span class="kundlista-row-namn">${this.escapeHtml(c.namn)}</span>
@@ -595,9 +603,6 @@ class ClientFlowApp {
                                     ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
                                     ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
                                 </div>
-                                ${Array.isArray(c.missingLabels) && c.missingLabels.length
-                                    ? `<div class="dashboard-missing-hint">${this.escapeHtml(c.missingLabels.join(' · '))}</div>`
-                                    : ''}
                             </div>
                             <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
                         </a>
@@ -607,6 +612,64 @@ class ClientFlowApp {
         } catch (error) {
             console.error('Fel vid laddning av kunder utan aktuell riskbedömning:', error);
             this.updateDashboardCount('riskbedomning', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async loadKycList() {
+        const container = document.getElementById('kyc-list');
+        if (!container) return;
+
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('kyc', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+
+        try {
+            const response = await fetch(`${this.baseUrl}/api/dashboard/utan-aktuellt-kyc`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const kunder = Array.isArray(data.kunder) ? data.kunder : [];
+            this.updateDashboardCount('kyc', kunder.length);
+            if (kunder.length === 0) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Alla kunder har KYC enligt kraven.</p>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${kunder.map(c => `
+                        <a href="kundkort.html?id=${c.id}#kycformular" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-building"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(c.namn)}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${c.organisationsnummer ? `<span class="kundlista-orgnr">${this.escapeHtml(c.organisationsnummer)}</span>` : ''}
+                                ${c.bolagsform ? `<span class="kundlista-bolagsform">${this.escapeHtml(c.bolagsform)}</span>` : ''}
+                            </div>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>
+                    `).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av kunder utan KYC:', error);
+            this.updateDashboardCount('kyc', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>
