@@ -252,6 +252,8 @@
           fetchKunderForRow('omsattning', null, row.getAttribute('data-namn'), titel);
         } else if (typ === 'anstallda') {
           fetchKunderForRow('anstallda', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'utsatt-omrade') {
+          fetchKunderForRow('utsatt-omrade', null, row.getAttribute('data-namn'), titel);
         }
       };
       row.addEventListener('click', row._statistikClick);
