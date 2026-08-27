@@ -4906,22 +4906,26 @@ class CustomerCardManager {
         this._bindUtsattOmradeActions();
     }
 
-    async recheckUtsattOmrade() {
+    async recheckUtsattOmrade(opts = {}) {
         const customerId = this.customerId;
-        if (!customerId) return;
+        if (!customerId) return { ok: false };
+        const silent = !!opts.silent;
+        const address = opts.address != null ? String(opts.address).trim() : '';
         const btn = document.getElementById('bv-utsatt-omrade-recheck');
         const orig = btn?.innerHTML;
-        if (btn) {
+        if (btn && !opts.skipButtonSpinner) {
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kontrollerar...';
         }
         try {
             if (!isLoggedInKundkort()) throw new Error('Inte inloggad');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const body = { force: true };
+            if (address) body.address = address;
             const resp = await fetch(`${baseUrl}/api/kunddata/${customerId}/utsatt-omrade`, {
                 method: 'POST',
                 ...getAuthOptsKundkort(),
-                body: JSON.stringify({ force: true })
+                body: JSON.stringify(body)
             });
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -4931,18 +4935,35 @@ class CustomerCardManager {
                 this.customerData.fields['Utsatt område (JSON)'] = JSON.stringify(data.stored);
             }
             this._refreshUtsattOmradeSection();
-            const msg = data.trff
-                ? (data.label || 'Adressen matchar utsatt område.')
-                : 'Adressen ligger inte i Polisens utsatta områden.';
-            this.showNotification(msg, data.trff ? 'warning' : 'success');
+            if (!silent) {
+                const msg = data.trff
+                    ? (data.label || 'Adressen matchar utsatt område.')
+                    : 'Adressen ligger inte i Polisens utsatta områden.';
+                this.showNotification(msg, data.trff ? 'warning' : 'success');
+            }
+            return { ok: true, trff: !!data.trff, label: data.label };
         } catch (err) {
-            this.showNotification('Kunde inte kontrollera adress: ' + (err.message || 'fel'), 'error');
+            if (!silent) {
+                this.showNotification('Kunde inte kontrollera adress: ' + (err.message || 'fel'), 'error');
+            }
+            return { ok: false, error: err.message };
         } finally {
-            if (btn) {
+            if (btn && !opts.skipButtonSpinner) {
                 btn.disabled = false;
                 btn.innerHTML = orig || '<i class="fas fa-rotate-right"></i> Kontrollera igen';
             }
         }
+    }
+
+    async _autoUtsattAfterBolagsverket(address, opts = {}) {
+        const addr = String(address || '').trim()
+            || String(this.customerData?.fields?.Address || this.customerData?.fields?.Adress || '').trim();
+        if (!addr || !this.customerId) return { ok: false };
+        return this.recheckUtsattOmrade({
+            address: addr,
+            silent: opts.silent !== false,
+            skipButtonSpinner: true
+        });
     }
 
     _mergeKundPatchResponse(data, fallbackFields) {
@@ -5559,7 +5580,16 @@ class CustomerCardManager {
                 .map((k) => ({ key: k, prev: norm(fields[k]), next: norm(newFields[k]) }))
                 .filter(d => d.prev !== d.next);
 
-            this._showBolagsverketDiffModal({ customerId, diffs, newFields });
+            const bolagsverketAddress = newFields.Address || transformed.adress?.fullAddress || fields.Address || fields.Adress || '';
+
+            if (!diffs.length) {
+                await this._autoUtsattAfterBolagsverket(bolagsverketAddress);
+                this.showNotification('Inga förändringar hittades hos Bolagsverket.', 'info');
+                this.loadCompanyInfo();
+                return;
+            }
+
+            this._showBolagsverketDiffModal({ customerId, diffs, newFields, bolagsverketAddress });
         } catch (e) {
             console.error('❌ refreshBolagsverketData:', e);
             this.showNotification('Kunde inte uppdatera från Bolagsverket: ' + (e.message || 'fel'), 'error');
@@ -5571,7 +5601,7 @@ class CustomerCardManager {
         }
     }
 
-    _showBolagsverketDiffModal({ customerId, diffs, newFields }) {
+    _showBolagsverketDiffModal({ customerId, diffs, newFields, bolagsverketAddress }) {
         const existing = document.getElementById('bolagsverket-diff-modal');
         if (existing) existing.remove();
 
@@ -5627,7 +5657,10 @@ class CustomerCardManager {
                     const resp = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
                         method: 'PATCH',
                         ...getAuthOptsKundkort(),
-                        body: JSON.stringify({ fields: fieldsToSave })
+                        body: JSON.stringify({
+                            fields: fieldsToSave,
+                            recheckUtsattOmrade: !!(bolagsverketAddress || fieldsToSave.Address || fieldsToSave.Adress)
+                        })
                     });
                     const data = await resp.json().catch(() => ({}));
                     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
