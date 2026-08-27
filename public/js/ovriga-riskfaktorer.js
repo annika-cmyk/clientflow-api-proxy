@@ -1021,7 +1021,7 @@ class RiskFactorsManager {
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         box.innerHTML = `
             <span class="field-ai-label">${esc(label || 'AI-förslag')}</span>
-            ${comment ? `<p class="field-ai-comment">${esc(comment)}</p>` : ''}
+            ${comment ? `<p class="field-ai-comment"><strong>Varför:</strong> ${esc(comment)}</p>` : ''}
             ${html}
             <div class="field-ai-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
@@ -1044,7 +1044,8 @@ class RiskFactorsManager {
         let changed = false;
         items.forEach((item) => {
             if (!item.andra) return;
-            const comment = Ai.usefulComment(item.kommentar);
+            const comment = Ai.usefulComment(item.kommentar)
+                || Ai.explainTextFieldChange(item.falt, item.nuvarande, item.forslag);
             if (item.falt === 'beskrivning') {
                 this.attachOvrigFieldAi(document.getElementById(`${prefix}description`), {
                     comment,

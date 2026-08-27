@@ -36,7 +36,12 @@
 - Kopiera inte rakt av. En lätt omskrivning räcker inte.
 - Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
 - Ifyllda fält: lägg en post i granskning.poster med andra=true. forslag ska vara SAMMA kompletta innehåll som i huvudfälten (hela listan, inte en kommentar eller en enstaka punkt).
-- kommentar: 2–3 meningar om vad din analys tillför (luckor, nya hot, S×K, TF, källor) — inte bara "bra som den är".
+- kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor). Skriv så att en kollega förstår utan att läsa hela listan.
+- För listfält (hot, sarbarheter, atgarder): lägg OCKSÅ andringar[] med EN post per tillägg, redigering eller borttagning:
+  { "titel": "samma titel som raden gäller", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1–2 meningar: VARFÖR just denna ändring — koppla till tjänsten, TF, källor eller varför något ska bort." }
+- Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten).
+- Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar.
+- Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
 - andra=false bara om ditt förslag är identiskt med nuvarande innehåll.
 - TF-LUCKA: Om tjänsten saknar TF-hot (typ TF eller Båda) och saknar TF-motivering är det ett måste. Ditt hot-förslag ska innehålla minst ett TF- eller Båda-hot, annars tfMotivering.`;
 
@@ -283,11 +288,16 @@
       const canApply = hasForslag(key, parsed);
       let andra = (wantsChange || (item.andra == null && canApply)) && canApply;
       if (andra && sameForslag(key, currentValueFor(key, befintligt), parsed)) andra = false;
+      const nuvarande = currentValueFor(key, befintligt);
+      const andringar = (key === 'hot' || key === 'sarbarheter' || key === 'atgarder')
+        ? normalizeAndringar(item.andringar || item.andring || item.listAndringar, key, nuvarande, parsed)
+        : asList(item.andringar);
       if (!kommentar && !andra) return;
       poster.push({
         falt: key,
         etikett: catalog[key].etikett,
         kommentar,
+        andringar,
         andra,
         forslag: andra ? parsed : (key === 'hot' || key === 'sarbarheter' || key === 'atgarder' ? [] : '')
       });
@@ -418,6 +428,160 @@
     return t;
   }
 
+  const ANDRING_TYP = {
+    'lagg-till': 'lagg-till',
+    'lagg till': 'lagg-till',
+    add: 'lagg-till',
+    ny: 'lagg-till',
+    redigera: 'redigera',
+    andra: 'redigera',
+    andring: 'redigera',
+    update: 'redigera',
+    'ta-bort': 'ta-bort',
+    'ta bort': 'ta-bort',
+    remove: 'ta-bort',
+    stryk: 'ta-bort',
+    bort: 'ta-bort'
+  };
+
+  function normalizeAndringTyp(raw) {
+    const t = fold(raw);
+    return ANDRING_TYP[t] || '';
+  }
+
+  function normalizeAndringar(raw, falt, nuvarande, forslag) {
+    const out = [];
+    asList(raw).forEach((row) => {
+      if (!row || typeof row !== 'object') return;
+      const typ = normalizeAndringTyp(row.typ || row.andring || row.action);
+      const titel = trimStr(row.titel || row.namn || row.title);
+      const kommentar = usefulComment(row.kommentar || row.comment || row.varfor);
+      if (!typ || !titel || !kommentar) return;
+      out.push({ typ, titel, kommentar });
+    });
+    if (falt !== 'hot' && falt !== 'sarbarheter' && falt !== 'atgarder') return out;
+    const diff = listDiff(nuvarande, forslag);
+    const have = new Set(out.map((row) => `${row.typ}:${fold(row.titel)}`));
+    diff.added.forEach((item) => {
+      const key = fold(itemTitle(item));
+      if (!key || have.has(`lagg-till:${key}`)) return;
+      out.push({ typ: 'lagg-till', titel: itemTitle(item), kommentar: buildFallbackItemComment(falt, 'lagg-till', null, item) });
+    });
+    diff.updated.forEach((row) => {
+      const key = fold(itemTitle(row.forslag));
+      if (!key || have.has(`redigera:${key}`)) return;
+      out.push({
+        typ: 'redigera',
+        titel: itemTitle(row.forslag),
+        kommentar: buildFallbackItemComment(falt, 'redigera', row.current, row.forslag)
+      });
+    });
+    diff.removed.forEach((row) => {
+      const key = fold(itemTitle(row.item));
+      if (!key || have.has(`ta-bort:${key}`)) return;
+      out.push({
+        typ: 'ta-bort',
+        titel: itemTitle(row.item),
+        kommentar: buildFallbackItemComment(falt, 'ta-bort', row.item, null)
+      });
+    });
+    return out;
+  }
+
+  function andringCommentMap(andringar) {
+    const map = new Map();
+    asList(andringar).forEach((row) => {
+      const typ = normalizeAndringTyp(row.typ);
+      const key = fold(row.titel);
+      const comment = usefulComment(row.kommentar);
+      if (typ && key && comment) map.set(`${typ}:${key}`, comment);
+    });
+    return map;
+  }
+
+  function listItemFieldChanges(falt, current, forslag) {
+    const parts = [];
+    if (!current || !forslag) return parts;
+    if (falt === 'hot' && fold(current.typ) !== fold(forslag.typ)) {
+      parts.push(`typ (${trimStr(current.typ) || 'PT'} → ${trimStr(forslag.typ) || 'PT'})`);
+    }
+    if (falt === 'sarbarheter' && fold(current.kategori) !== fold(forslag.kategori)) {
+      parts.push(`kategori (${trimStr(current.kategori) || '–'} → ${trimStr(forslag.kategori) || '–'})`);
+    }
+    if (fold(current.titel || current.namn) !== fold(forslag.titel || forslag.namn)) {
+      parts.push('titeln');
+    }
+    if (fold(current.beskrivning) !== fold(forslag.beskrivning)) {
+      parts.push('beskrivningen');
+    }
+    if (falt === 'hot') {
+      const curK = trimStr(current.kalla || current.källa);
+      const nextK = trimStr(forslag.kalla || forslag.källa);
+      if (fold(curK) !== fold(nextK)) {
+        parts.push(curK ? 'källan' : 'källa läggs till');
+      }
+    }
+    return parts;
+  }
+
+  function buildFallbackItemComment(falt, changeKind, current, forslag) {
+    const title = itemTitle(forslag || current);
+    if (changeKind === 'lagg-till') {
+      if (falt === 'hot') {
+        const typ = (forslag && forslag.typ) || 'PT';
+        return `AI vill lägga till «${title}» (${typ}) eftersom hotet saknas i er lista men är relevant för tjänsten enligt analysen.`;
+      }
+      if (falt === 'sarbarheter') {
+        return `AI vill lägga till sårbarheten «${title}» eftersom den saknas men påverkar hur hot kan realiseras.`;
+      }
+      return `AI vill lägga till «${title}» eftersom den saknas i er lista men behövs i den samlade analysen.`;
+    }
+    if (changeKind === 'ta-bort') {
+      return `AI föreslår att ta bort «${title}» eftersom den inte ingår i den samlade analysen — den bedöms vara överflödig, svagt kopplad till tjänsten eller redan täckt av andra faktorer.`;
+    }
+    const fields = listItemFieldChanges(falt, current, forslag);
+    if (fields.length) {
+      return `AI föreslår att justera ${fields.join(', ')} för «${title}» så att kopplingen till tjänsten och AML/TF blir tydligare.`;
+    }
+    return `AI föreslår en justering av «${title}».`;
+  }
+
+  function getListItemComment(item, changeKind, current, forslag) {
+    const map = item._andringMap || andringCommentMap(item.andringar);
+    const key = fold(itemTitle(forslag || current));
+    const fromMap = key ? map.get(`${changeKind}:${key}`) : '';
+    if (fromMap) return fromMap;
+    return buildFallbackItemComment(item.falt, changeKind, current, forslag);
+  }
+
+  function explainTextFieldChange(falt, current, forslag) {
+    if (falt === 'sxk' || falt === 'residual') {
+      const curObj = current && typeof current === 'object' ? current : {};
+      const nextObj = forslag && typeof forslag === 'object' ? forslag : {};
+      if (sameForslag(falt, curObj, nextObj)) return '';
+      if (isEmptyCurrent(falt, curObj)) {
+        return 'Fältet var tomt — AI föreslår S×K enligt analysen.';
+      }
+      const parts = [];
+      if (scoreKey(curObj.sannolikhet) !== scoreKey(nextObj.sannolikhet)) {
+        parts.push(`sannolikhet ${curObj.sannolikhet || '–'} → ${nextObj.sannolikhet || '–'}`);
+      }
+      if (scoreKey(curObj.konsekvens) !== scoreKey(nextObj.konsekvens)) {
+        parts.push(`konsekvens ${curObj.konsekvens || '–'} → ${nextObj.konsekvens || '–'}`);
+      }
+      return parts.length
+        ? `AI föreslår att ändra ${parts.join(' och ')} eftersom den bedömer risknivån annorlunda utifrån hot, sårbarheter och åtgärder.`
+        : '';
+    }
+    const cur = trimStr(current);
+    const next = trimStr(forslag);
+    if (!cur || !next || fold(cur) === fold(next)) return '';
+    if (isEmptyCurrent(falt, cur)) {
+      return 'Fältet var tomt — AI föreslår att fylla i text enligt analysen.';
+    }
+    return 'AI föreslår att skriva om texten för att tydligare beskriva inneboende risk och koppling till AML/TF.';
+  }
+
   function similarKeys(a, b) {
     if (!a || !b) return false;
     if (a === b) return true;
@@ -492,9 +656,19 @@
     const nuvarande = currentValueFor(item.falt, befintligt);
     let andra = !!item.andra;
     if (andra && sameForslag(item.falt, nuvarande, item.forslag)) andra = false;
+    const andringar = (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder')
+      ? normalizeAndringar(item.andringar, item.falt, nuvarande, andra ? item.forslag : '')
+      : asList(item.andringar);
+    const fieldExplain = andra && item.falt !== 'hot' && item.falt !== 'sarbarheter' && item.falt !== 'atgarder'
+      ? explainTextFieldChange(item.falt, nuvarande, item.forslag)
+      : '';
+    const kommentar = usefulComment(item.kommentar) || fieldExplain;
     return Object.assign({}, item, {
       nuvarande,
       andra,
+      kommentar,
+      andringar,
+      _andringMap: andringCommentMap(andringar),
       forslag: andra ? item.forslag : (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder' ? [] : ''),
       klass: classifyAndring(item.falt, nuvarande, andra ? item.forslag : '', andra)
     });
@@ -835,18 +1009,35 @@
   function changePoints(item) {
     if (!item || !item.andra) return [];
     if (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder') {
+      const map = item._andringMap || andringCommentMap(item.andringar);
       const changes = listItemChanges(item.nuvarande, item.forslag);
-      return [
-        ...changes.added.map((row) => `Lägger till: ${itemTitle(row)}`),
-        ...changes.changed.map((row) => `Justerar: ${itemTitle(row.next)}`),
-        ...changes.removed.map((row) => `Tar bort: ${itemTitle(row)}`)
-      ];
+      const points = [];
+      changes.added.forEach((row) => {
+        const key = fold(itemTitle(row));
+        const why = map.get(`lagg-till:${key}`) || buildFallbackItemComment(item.falt, 'lagg-till', null, row);
+        points.push(`Lägger till «${itemTitle(row)}»: ${why}`);
+      });
+      changes.changed.forEach((row) => {
+        const key = fold(itemTitle(row.next));
+        const why = map.get(`redigera:${key}`) || buildFallbackItemComment(item.falt, 'redigera', row.prev, row.next);
+        points.push(`Ändrar «${itemTitle(row.next)}»: ${why}`);
+      });
+      changes.removed.forEach((row) => {
+        const key = fold(itemTitle(row));
+        const why = map.get(`ta-bort:${key}`) || buildFallbackItemComment(item.falt, 'ta-bort', row, null);
+        points.push(`Tar bort «${itemTitle(row)}»: ${why}`);
+      });
+      return points;
     }
     if (item.falt === 'sxk' || item.falt === 'residual') {
-      return [`Föreslår ${formatForslagPreview(item.falt, item.forslag)}.`];
+      const explain = explainTextFieldChange(item.falt, item.nuvarande, item.forslag);
+      return explain
+        ? [`Föreslår ${formatForslagPreview(item.falt, item.forslag)}. ${explain}`]
+        : [`Föreslår ${formatForslagPreview(item.falt, item.forslag)}.`];
     }
     if (isEmptyCurrent(item.falt, item.nuvarande)) return ['Fältet är tomt — det här är ett tillägg.'];
-    return [];
+    const explain = explainTextFieldChange(item.falt, item.nuvarande, item.forslag);
+    return explain ? [explain] : [];
   }
 
   function reviewCardHtml(item) {
@@ -858,7 +1049,7 @@
           <h5>${esc(item.etikett)}</h5>
           <span class="ai-review-kind is-${esc(klass.key)}">${esc(klass.label)}</span>
         </div>
-        ${item.kommentar ? `<p class="ai-review-comment">${esc(item.kommentar)}</p>` : ''}
+        ${item.kommentar ? `<p class="ai-review-comment"><strong>Varför:</strong> ${esc(item.kommentar)}</p>` : ''}
         ${points.length ? `<ul class="ai-review-points">${points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
         <div class="ai-review-actions">
           ${item.andra ? '<button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>' : ''}
@@ -1004,6 +1195,13 @@
     listDiffHasChanges,
     usefulComment,
     isGenericReviewComment,
+    normalizeAndringTyp,
+    normalizeAndringar,
+    andringCommentMap,
+    getListItemComment,
+    buildFallbackItemComment,
+    listItemFieldChanges,
+    explainTextFieldChange,
     decoratePoster,
     isVisibleReviewItem,
     readEditedForslag,

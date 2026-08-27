@@ -22804,7 +22804,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
+      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet", "andringar": [ { "titel": "Hotets titel", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1-2 meningar: varför just denna rad ändras" } ] }
     ]
   }` : ''}
 }
@@ -23024,7 +23024,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör."${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual", "kommentar": "2-3 meningar om vad analysen tillför", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
+      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }

@@ -1295,7 +1295,7 @@ class RiskAssessmentManager {
             <div class="ai-review-head">
                 <div>
                     <strong>AI har lagt förslag i formuläret</strong>
-                    <p>Grönt kort = ny faktor. Överstruket = föreslås tas bort. Text under ett kort = nytt förslag. Du ansvarar för vad som sparas.</p>
+                    <p>Grönt kort = ny faktor (med motivering). Överstruket = föreslås tas bort (med varför). Ändringsförslag visar vad som ändras och varför. Du ansvarar för vad som sparas.</p>
                 </div>
                 <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
             </div>
@@ -1314,7 +1314,7 @@ class RiskAssessmentManager {
         box.className = 'field-ai-forslag';
         box.innerHTML = `
             <span class="field-ai-label">${this.esc(label || 'AI-förslag')}</span>
-            ${comment ? `<p class="field-ai-comment">${this.esc(comment)}</p>` : ''}
+            ${comment ? `<p class="field-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
             ${html}
             <div class="field-ai-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
@@ -1339,7 +1339,7 @@ class RiskAssessmentManager {
         bar.className = 'dyn-ai-bar';
         bar.innerHTML = `
             <span class="dyn-ai-label">Föreslås tas bort</span>
-            <p class="dyn-ai-comment">${this.esc(comment || 'AI tar inte med den här faktorn i sin analys. Du avgör om den ska vara kvar.')}</p>
+            <p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment || 'AI tar inte med den här faktorn i sin samlade analys. Du avgör om den ska vara kvar.')}</p>
             <div class="dyn-ai-actions">
                 <button type="button" class="btn btn-secondary btn-sm" data-ai-keep>Behåll</button>
                 <button type="button" class="btn btn-primary btn-sm" data-ai-drop>Ta bort</button>
@@ -1359,14 +1359,16 @@ class RiskAssessmentManager {
         });
     }
 
-    markRowAiUpdate(row, kind, forslag, comment) {
+    markRowAiUpdate(row, kind, forslag, comment, current) {
         if (!row || !forslag) return;
+        const Ai = window.AiFaltGranskning;
         row.classList.remove('is-collapsed');
         row.querySelector('.dyn-ai-forslag')?.remove();
         const box = document.createElement('div');
         box.className = 'dyn-ai-forslag';
         const typ = forslag.typ || 'PT';
         const kat = forslag.kategori || 'Verksamhet';
+        const fieldChanges = Ai ? Ai.listItemFieldChanges(kind, current, forslag) : [];
         const extra = kind === 'hot'
             ? `<select class="dyn-ai-typ" aria-label="PT eller TF">
                 <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
@@ -1382,8 +1384,9 @@ class RiskAssessmentManager {
                   </select>`
                 : '';
         box.innerHTML = `
-            <span class="dyn-ai-label">AI-förslag</span>
-            ${comment ? `<p class="dyn-ai-comment">${this.esc(comment)}</p>` : ''}
+            <span class="dyn-ai-label">AI föreslår ändring</span>
+            ${comment ? `<p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
+            ${fieldChanges.length ? `<p class="dyn-ai-change-hint"><strong>Ändras:</strong> ${this.esc(fieldChanges.join(', '))}</p>` : ''}
             ${extra}
             <input type="text" class="dyn-ai-titel" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
             <textarea class="dyn-ai-besk" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
@@ -1419,31 +1422,65 @@ class RiskAssessmentManager {
         });
     }
 
-    paintInlineListAi(kind, current, forslag, comment) {
+    markRowAiAdd(row, comment) {
+        if (!row || !comment) return;
+        row.querySelector('.dyn-ai-bar')?.remove();
+        const bar = document.createElement('div');
+        bar.className = 'dyn-ai-bar dyn-ai-bar-add';
+        bar.innerHTML = `
+            <span class="dyn-ai-label">Ny faktor</span>
+            <p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>
+            <div class="dyn-ai-actions">
+                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-add>Avfärda</button>
+            </div>
+        `;
+        row.appendChild(bar);
+        bar.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-dismiss-add]')) {
+                row.remove();
+                this.updateTjanstLists();
+            }
+        });
+    }
+
+    paintInlineListAi(item) {
         const Ai = window.AiFaltGranskning;
-        if (!Ai) return false;
+        if (!Ai || !item) return false;
+        const kind = item.falt;
+        const current = item.nuvarande;
+        const forslag = item.forslag;
         const diff = Ai.listDiff(current, forslag);
         if (!Ai.listDiffHasChanges(diff)) return false;
         const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
         const rows = [...document.querySelectorAll(`#${listId} .dyn-row:not(.is-ai-add)`)];
-        const note = Ai.usefulComment(comment);
+        const note = Ai.usefulComment(item.kommentar);
         const list = document.getElementById(listId);
         if (list) list.querySelectorAll('.dyn-ai-list-note').forEach((el) => el.remove());
-        if (list && note && (diff.updated.length > 1 || (diff.updated.length && (diff.added.length || diff.removed.length)))) {
+        if (list && note && (diff.updated.length > 1 || (diff.updated.length && (diff.added.length || diff.removed.length)) || diff.added.length > 1 || diff.removed.length > 1)) {
             const banner = document.createElement('p');
             banner.className = 'dyn-ai-list-note dyn-ai-comment';
-            banner.textContent = note;
+            banner.innerHTML = `<strong>AI:s helhetsmotivering:</strong> ${this.esc(note)}`;
             list.insertAdjacentElement('beforebegin', banner);
         }
-        const itemComment = (diff.updated.length === 1 && !diff.added.length && !diff.removed.length) ? note : '';
-        diff.updated.forEach((row) => this.markRowAiUpdate(rows[row.currentIndex], kind, row.forslag, itemComment));
-        diff.removed.forEach((row) => this.markRowAiRemove(rows[row.currentIndex], note && diff.removed.length === 1 ? note : ''));
+        diff.updated.forEach((row) => {
+            const comment = Ai.getListItemComment(item, 'redigera', row.current, row.forslag);
+            this.markRowAiUpdate(rows[row.currentIndex], kind, row.forslag, comment, row.current);
+        });
+        diff.removed.forEach((row) => {
+            const comment = Ai.getListItemComment(item, 'ta-bort', row.item, null);
+            this.markRowAiRemove(rows[row.currentIndex], comment);
+        });
         const add = kind === 'hot'
-            ? (item) => this.addHotRow(item, { expand: true, aiAdd: true })
+            ? (rowItem) => this.addHotRow(rowItem, { expand: true, aiAdd: true })
             : kind === 'sarbarheter'
-                ? (item) => this.addSarbarhetRow(item, { expand: true, aiAdd: true })
-                : (item) => this.addAtgardRow(item, { expand: true, aiAdd: true });
-        diff.added.forEach(add);
+                ? (rowItem) => this.addSarbarhetRow(rowItem, { expand: true, aiAdd: true })
+                : (rowItem) => this.addAtgardRow(rowItem, { expand: true, aiAdd: true });
+        diff.added.forEach((rowItem) => {
+            add(rowItem);
+            const addedRows = list ? [...list.querySelectorAll('.dyn-row.is-ai-add')] : [];
+            const row = addedRows[addedRows.length - 1];
+            this.markRowAiAdd(row, Ai.getListItemComment(item, 'lagg-till', null, rowItem));
+        });
         return true;
     }
 
@@ -1455,14 +1492,15 @@ class RiskAssessmentManager {
         let firstTab = '';
         items.forEach((item) => {
             if (!item.andra) return;
-            const comment = Ai.usefulComment(item.kommentar);
             if (item.falt === 'hot' || item.falt === 'sarbarheter' || item.falt === 'atgarder') {
-                if (this.paintInlineListAi(item.falt, item.nuvarande, item.forslag, comment)) {
+                if (this.paintInlineListAi(item)) {
                     changed = true;
                     if (!firstTab) firstTab = item.falt === 'sarbarheter' ? 'sarbarhet' : (item.falt === 'atgarder' ? 'atgard' : 'hot');
                 }
                 return;
             }
+            const comment = Ai.usefulComment(item.kommentar)
+                || Ai.explainTextFieldChange(item.falt, item.nuvarande, item.forslag);
             if (item.falt === 'tjanstebeskrivning') {
                 this.attachFieldAiForslag(document.getElementById('tjanst-beskrivning'), {
                     comment,

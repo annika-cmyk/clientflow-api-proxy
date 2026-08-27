@@ -14706,6 +14706,24 @@ h5.ar-subsection-title {
     color: #166534;
 }
 .dyn-ai-bar .dyn-ai-label { color: #991b1b; }
+.dyn-ai-bar-add {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+.dyn-ai-bar-add .dyn-ai-label { color: #166534; }
+.dyn-ai-change-hint {
+    margin: 0 0 0.45rem;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: #475569;
+}
+.dyn-ai-list-note {
+    margin: 0 0 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.45rem;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+}
 .dyn-ai-comment,
 .field-ai-comment {
     margin: 0 0 0.45rem;
