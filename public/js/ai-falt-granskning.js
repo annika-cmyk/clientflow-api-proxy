@@ -4,7 +4,7 @@
  */
 (function (global) {
   const TJANST_FALT = {
-    tjanstebeskrivning: { etikett: 'Tjänstebeskrivning och inneboende risk' },
+    tjanstebeskrivning: { etikett: 'Tjänstebeskrivning' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },
     motiveringInneboende: { etikett: 'Motivering av S och K (inneboende risk)' },
     residual: { etikett: 'Risk efter åtgärder' },
@@ -16,7 +16,7 @@
   };
 
   const OVRIG_FALT = {
-    beskrivning: { etikett: 'Beskrivning och inneboende risk' },
+    beskrivning: { etikett: 'Beskrivning' },
     atgard: { etikett: 'Åtgärd' },
     ptTfRelevans: { etikett: 'PT/TF-relevans' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },

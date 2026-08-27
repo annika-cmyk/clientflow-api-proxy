@@ -725,7 +725,7 @@ class RiskFactorsManager {
                     </div>
                     
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-info-circle"></i> Beskrivning och inneboende risk</h5>
+                        <h5><i class="fas fa-info-circle"></i> Beskrivning</h5>
                         <p class="risk-content-text">
                             ${this.formatDescription(risk.fields['Beskrivning'] || '')}
                         </p>

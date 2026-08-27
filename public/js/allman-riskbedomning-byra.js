@@ -292,7 +292,7 @@
   }
 
   function isIdentifieradeDump(text) {
-    return /\*\*Tjänst:|\*\*Produkter och tjänster\*\*|Tjänstebeskrivning och inneboende risk/.test(String(text || ''));
+    return /\*\*Tjänst:|\*\*Produkter och tjänster\*\*|Tjänstebeskrivning(?: och inneboende risk)?/.test(String(text || ''));
   }
 
   function sanitizeIdentifieradeRiskerText(text) {

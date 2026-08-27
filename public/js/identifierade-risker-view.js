@@ -211,7 +211,7 @@
     const beskrivning = text(item.tjanstebeskrivning || item.beskrivning);
     const parts = [];
     if (beskrivning) {
-      parts.push(section('fa-file-lines', 'Tjänstebeskrivning och inneboende risk',
+      parts.push(section('fa-file-lines', 'Tjänstebeskrivning',
         '<p class="risk-content-text">' + nl(beskrivning) + '</p>'));
     }
     parts.push(renderMotiveringSections(item, ['inneboende']));
@@ -251,7 +251,7 @@
     const title = (!hideTyp && typ && namn) ? (typ + ': ' + namn) : (namn || typ || 'Namnlös riskfaktor');
     const parts = [];
     if (item.beskrivning) {
-      parts.push(section('fa-info-circle', 'Beskrivning och inneboende risk',
+      parts.push(section('fa-info-circle', 'Beskrivning',
         '<p class="risk-content-text">' + nl(item.beskrivning) + '</p>'));
     }
     parts.push(renderMotiveringSections(item, ['inneboende']));
