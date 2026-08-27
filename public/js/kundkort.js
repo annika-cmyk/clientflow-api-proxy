@@ -10475,7 +10475,7 @@ class CustomerCardManager {
                             <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
                         </div>
                         <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Finns det någon eller några fysiska personer som (direkt eller indirekt) äger eller kontrollerar mer än 25 % av företaget? Ange namn, personnummer och skatterättslig hemvist. Utländsk hemvist kryssar utländska huvudmän på riskbedömningen.</p>
+                            <p class="uppdrag-hint">Finns det någon eller några fysiska personer som (direkt eller indirekt) äger eller kontrollerar 25 % eller mer av företaget? Ange namn, personnummer och skatterättslig hemvist. Utländsk hemvist kryssar utländska huvudmän på riskbedömningen.</p>
                             <div id="kyc-huvudman-list">
                                 ${huvudmanList.map(p => this._kycHuvudmanRowHtml(p)).join('')}
                             </div>
