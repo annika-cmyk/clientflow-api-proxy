@@ -815,10 +815,12 @@
     });
     ((stat && stat.varningsflaggor) || []).forEach(function (f) {
       if (!f || !f.namn) return;
+      var Kat = window.OvrigaRiskKategorier;
       var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
+      var catId = Kat && Kat.categoryFor ? Kat.categoryFor(f.namn) : '';
       if (match
-        || (dimId === 'distribution' && /distans|fysiskt möte|ombud/i.test(f.namn))
-        || (dimId === 'verksamhet' && /verksamhetsspecifik|betalkort|kontant/i.test(f.namn))) {
+        || (dimId === 'distribution' && catId === 'samarbete')
+        || (dimId === 'verksamhet' && (catId === 'verksamheten' || /verksamhetsspecifik|betalkort|kontant/i.test(f.namn)))) {
         add(f.namn, f.antal);
       }
     });
@@ -903,7 +905,7 @@
     el.innerHTML = '<p>Vår byrå har <strong>' + n + '</strong> antal kunder. Av dessa har vi kategoriserat <strong>'
       + lagNormal + '</strong> som låg–normal risk, <strong>' + forhojd + '</strong> som förhöjd risk, <strong>'
       + hog + '</strong> som Hög risk och <strong>' + oacc + '</strong> som oacceptabel risk. Vi har <strong>'
-      + pep + '</strong> antal kunder som är PEP/RCA eller med på internationella sanktionslistor.</p>'
+      + pep + '</strong> antal kunder som enligt KYC-formuläret är PEP eller anhörig/nära medarbetare till PEP.</p>'
       + (omsText ? '<p>' + escapeHtml(omsText) + '</p>' : '')
       + renderNamedStatList('Bolagsformer', stat && stat.bolagsform)
       + (branschText ? '<p><strong>Branscher:</strong> ' + escapeHtml(branschText) + '</p>' : '')
@@ -919,7 +921,7 @@
     if (!wrap) return;
     wrap.innerHTML = renderBarChartHtml(flags, {
       title: 'Kunder per varningsflagga',
-      hint: 'Antal kunder på inloggad byrå som har respektive varningsflagga ibockad.',
+      hint: 'Antal kunder på byrån som har respektive varningsflagga ibockad.',
       aria: 'Stapeldiagram över kunder per varningsflagga',
       empty: 'Inga varningsflaggor är inlagda ännu. Gå till <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.',
       chartClass: 'ar-bar-chart--flaggor',
@@ -953,7 +955,7 @@
     } catch (err) {
       console.warn('Kunde inte ladda AR-statistik:', err);
       var el = getEl('ar-kundtyper-body');
-      if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för inloggad byrå.</p>';
+      if (el) el.innerHTML = '<p class="identifierade-empty">Kunde inte hämta kundstatistik för byrån.</p>';
       renderTjansterBarChart([]);
       renderFlaggorBarChart([]);
     }
