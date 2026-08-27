@@ -20177,11 +20177,11 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const allmanKeys = [
       ['1. Syfte och Omfattning', '1. Syfte och Omfattning'],
       ['2. Beskrivning av Byråns verksamhet', '2. Beskrivning av Byråns verksamhet'],
-      ['4. Identifierade Risker och Sårbarheter', '4. Analys av våra produkter och tjänster'],
-      ['5. Riskreducerande Åtgärder och Rutiner', '6. Riskreducerande Åtgärder och Rutiner'],
-      ['6. Utvärdering och Uppdatering', '7. Utvärdering och Uppdatering'],
-      ['7. Kommunikation.', '8. Kommunikation'],
-      ['8. Värdering av sammantagen risk', '9. Värdering av sammantagen risk']
+      ['4. Identifierade Risker och Sårbarheter', '3. Analys av våra produkter och tjänster'],
+      ['5. Riskreducerande Åtgärder och Rutiner', '5. Riskreducerande Åtgärder och Rutiner'],
+      ['6. Utvärdering och Uppdatering', '6. Utvärdering och Uppdatering'],
+      ['7. Kommunikation.', '7. Kommunikation'],
+      ['8. Värdering av sammantagen risk', '8. Värdering av sammantagen risk']
     ];
     htmlParts.push(`<div class="doc-page"><h2>2. Allmän riskbedömning byrå</h2>`);
     for (const [airtableKey, title] of allmanKeys) {
@@ -20199,12 +20199,12 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
         });
       }
       if (airtableKey === '4. Identifierade Risker och Sårbarheter') {
-        htmlParts.push('<h3>5. Identifierade risker och sårbarheter</h3>');
+        htmlParts.push('<h3>4. Identifierade risker och sårbarheter</h3>');
         htmlParts.push('<p class="doc-text">Kundkartläggning med statistik finns i avsnitt 2.1. Här visas analys av tjänster och övriga riskfaktorer.</p>');
       }
     }
     htmlParts.push(statistikDokumentation.renderStatistikPdfHtml(stat, escape));
-    htmlParts.push(`<h3>10. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText(getByraField('9. Riskaptit')))}</div>`);
+    htmlParts.push(`<h3>9. Riskaptit</h3><div class="doc-text">${richToHtml(Riskaptit.policyText(getByraField('9. Riskaptit')))}</div>`);
     const uppdateradDatum = getByraField('Uppdaterad datum') || '';
     htmlParts.push(`<p><strong>Reviderad och godkänd:</strong> ${uppdateradDatum ? fmtDate(uppdateradDatum) : '—'}</p></div>`);
 

@@ -169,7 +169,7 @@
     { key: 'Omsättning', label: 'Omsättning' },
     { key: 'Antal kundföretag', label: 'Antal kundföretag' },
     { key: '3. Metod för Riskbedömning ', label: '1.1 Metod för Riskbedömning' },
-    { key: '4. Identifierade Risker och Sårbarheter', label: '4. Identifierade Risker och Sårbarheter' },
+    { key: '4. Identifierade Risker och Sårbarheter', label: '3. Analys av våra produkter och tjänster' },
     { key: '5. Riskreducerande Åtgärder och Rutiner', label: '5. Riskreducerande Åtgärder och Rutiner' },
     { key: '6. Utvärdering och Uppdatering', label: '6. Utvärdering och Uppdatering' },
     { key: '7. Kommunikation.', label: '7. Kommunikation' },
