@@ -15362,14 +15362,17 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
-    const ptTf = RiskSkala.normalizePtTf(riskData['PT/TF-relevans'] || riskData.ptTfRelevans);
-    if (!ptTf) {
-      return res.status(400).json({
-        error: 'PT/TF-relevans är obligatorisk. Välj PT, TF eller Båda.',
-        code: 'pt_tf_kravs'
-      });
+    const aktuellOnlyToggle = Object.keys(riskData).length === 1 && Object.prototype.hasOwnProperty.call(riskData, 'Aktuell');
+    if (!aktuellOnlyToggle) {
+      const ptTf = RiskSkala.normalizePtTf(riskData['PT/TF-relevans'] || riskData.ptTfRelevans);
+      if (!ptTf) {
+        return res.status(400).json({
+          error: 'PT/TF-relevans är obligatorisk. Välj PT, TF eller Båda.',
+          code: 'pt_tf_kravs'
+        });
+      }
+      riskData['PT/TF-relevans'] = ptTf;
     }
-    riskData['PT/TF-relevans'] = ptTf;
     console.log('Uppdateringsdata:', riskData);
 
     const factorMapping = { ...RISK_FACTOR_FIELD_MAPPING, 'Aktuell': 'fldAktuell' };
