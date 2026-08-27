@@ -14525,6 +14525,18 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
+    } else if (typ === 'omsattning' && paramNamn !== undefined) {
+      for (const rec of allRecords) {
+        if (statistikRiskbedomning.recordMatchesOmsattningStat(rec.fields, paramNamn)) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+        }
+      }
+    } else if (typ === 'anstallda' && paramNamn !== undefined) {
+      for (const rec of allRecords) {
+        if (statistikRiskbedomning.recordMatchesAnstalldaStat(rec.fields, paramNamn)) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+        }
+      }
     }
 
     res.json({ kunder });
