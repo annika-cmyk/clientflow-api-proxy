@@ -4835,6 +4835,124 @@ class CustomerCardManager {
         return Array.isArray(this.hogriskSni?.branscher) ? this.hogriskSni.branscher.filter(Boolean) : [];
     }
 
+    _parseUtsattOmrade(fields) {
+        const raw = fields && fields['Utsatt område (JSON)'];
+        if (!raw) return null;
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _formatUtsattKontrolleradAt(iso) {
+        if (!iso) return '';
+        try {
+            return new Date(iso).toLocaleDateString('sv-SE');
+        } catch (_) {
+            return '';
+        }
+    }
+
+    _utsattOmradeSectionHtml(fields) {
+        const data = this._parseUtsattOmrade(fields);
+        const adress = (fields && (fields.Address || fields.Adress)) || '';
+        if (!adress.trim()) {
+            return '<p class="utsatt-omrade-hint">Ange adress för att kontrollera mot Polisens utsatta områden.</p>';
+        }
+        if (!data) {
+            return '<p class="utsatt-omrade-hint">Adressen har inte kontrollerats mot Polisens lista ännu.</p>'
+                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-map-marker-alt"></i> Kontrollera adress</button>';
+        }
+        const date = this._formatUtsattKontrolleradAt(data.kontrolleradAt);
+        const geoFail = data.geocoding && data.geocoding.ok === false;
+        if (geoFail) {
+            return '<span class="utsatt-omrade-badge utsatt-omrade-badge--warn"><i class="fas fa-triangle-exclamation"></i> Kunde inte geokoda adressen</span>'
+                + (date ? `<p class="utsatt-omrade-meta">Senast försök: ${this._esc(date)}</p>` : '')
+                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Försök igen</button>';
+        }
+        if (data.trff) {
+            const isSeu = String(data.niva || '').toLowerCase().includes('särskilt');
+            const cls = isSeu ? 'utsatt-omrade-badge--seu' : 'utsatt-omrade-badge--utsatt';
+            const icon = isSeu ? 'fa-shield-halved' : 'fa-location-dot';
+            const label = isSeu
+                ? `Särskilt utsatt område: ${data.omrade || 'träff'}`
+                : `Utsatt område: ${data.omrade || 'träff'}`;
+            return `<span class="utsatt-omrade-badge ${cls}"><i class="fas ${icon}"></i> ${this._esc(label)}</span>`
+                + (date ? `<p class="utsatt-omrade-meta">Kontrollerad ${this._esc(date)} mot Polisen uso_2025.</p>` : '')
+                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Kontrollera igen</button>';
+        }
+        return '<span class="utsatt-omrade-badge utsatt-omrade-badge--ok"><i class="fas fa-check-circle"></i> Adressen ligger inte i Polisens utsatta områden</span>'
+            + (date ? `<p class="utsatt-omrade-meta">Kontrollerad ${this._esc(date)}.</p>` : '')
+            + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Kontrollera igen</button>';
+    }
+
+    _bindUtsattOmradeActions() {
+        const btn = document.getElementById('bv-utsatt-omrade-recheck');
+        if (!btn || btn.getAttribute('data-bound') === '1') return;
+        btn.setAttribute('data-bound', '1');
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.recheckUtsattOmrade();
+        });
+    }
+
+    _refreshUtsattOmradeSection() {
+        const wrap = document.getElementById('bv-utsatt-omrade-wrap');
+        if (!wrap) return;
+        wrap.innerHTML = this._utsattOmradeSectionHtml(this.customerData?.fields || {});
+        this._bindUtsattOmradeActions();
+    }
+
+    async recheckUtsattOmrade() {
+        const customerId = this.customerId;
+        if (!customerId) return;
+        const btn = document.getElementById('bv-utsatt-omrade-recheck');
+        const orig = btn?.innerHTML;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kontrollerar...';
+        }
+        try {
+            if (!isLoggedInKundkort()) throw new Error('Inte inloggad');
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const resp = await fetch(`${baseUrl}/api/kunddata/${customerId}/utsatt-omrade`, {
+                method: 'POST',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({ force: true })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            if (data.record?.fields) {
+                Object.assign(this.customerData.fields, data.record.fields);
+            } else if (data.stored) {
+                this.customerData.fields['Utsatt område (JSON)'] = JSON.stringify(data.stored);
+            }
+            this._refreshUtsattOmradeSection();
+            const msg = data.trff
+                ? (data.label || 'Adressen matchar utsatt område.')
+                : 'Adressen ligger inte i Polisens utsatta områden.';
+            this.showNotification(msg, data.trff ? 'warning' : 'success');
+        } catch (err) {
+            this.showNotification('Kunde inte kontrollera adress: ' + (err.message || 'fel'), 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = orig || '<i class="fas fa-rotate-right"></i> Kontrollera igen';
+            }
+        }
+    }
+
+    _mergeKundPatchResponse(data, fallbackFields) {
+        if (data?.record?.fields && this.customerData?.fields) {
+            Object.assign(this.customerData.fields, data.record.fields);
+        } else if (fallbackFields && this.customerData?.fields) {
+            Object.assign(this.customerData.fields, fallbackFields);
+        }
+    }
+
     async _syncHogriskFromSni() {
         if (this._hogriskSniSyncing) return;
         const labels = this._hogriskSniBranscher();
@@ -5074,6 +5192,7 @@ class CustomerCardManager {
                             <div class="lead-field lead-field--full"><label>Pågående avveckling/omstrukturering</label><span class="lead-avveckling">${this._esc(bvStatus.avveckling)}</span></div>
                             ` : ''}
                             <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${fmt(adress)}</span></div>
+                            <div class="lead-field lead-field--full" id="bv-utsatt-omrade-wrap"><label>Utsatta områden (Polisen)</label>${this._utsattOmradeSectionHtml(fields)}</div>
                             <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
                         </div>
                         <div class="lead-section" style="margin-top:1rem;">
@@ -5355,6 +5474,7 @@ class CustomerCardManager {
                 await this.refreshBolagsverketData();
             });
         }
+        this._bindUtsattOmradeActions();
 
         console.log('✅ Company info loaded with lead-card layout');
         this._maybeMigrateBeskrivningTillVerksamhet();
@@ -5513,6 +5633,7 @@ class CustomerCardManager {
                     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
 
                     this.customerData.fields = { ...(this.customerData.fields || {}), ...fieldsToSave };
+                    this._mergeKundPatchResponse(data, fieldsToSave);
                     this._applyHogriskSni();
                     document.getElementById('bolagsverket-diff-modal')?.remove();
                     this.showNotification('Uppgifter uppdaterade från Bolagsverket', 'success');
@@ -5620,7 +5741,7 @@ class CustomerCardManager {
             }
 
             if (this.customerData?.fields) {
-                Object.assign(this.customerData.fields, fields);
+                this._mergeKundPatchResponse(data, fields);
             }
             this._applyHogriskSni();
 

@@ -127,6 +127,7 @@ const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
 const { htmlToPlainText: htmlPlainText } = require('./lib/html-plain-text');
 const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
+const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
 const { createAirtableStore } = require('./lib/aml-news/store-airtable');
@@ -2477,7 +2478,12 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   { name: 'Kostnader', type: 'multilineText', description: 'Kundens kostnader, leverantörer och hur betalning sker.' },
   { name: 'Intäkterna', type: 'multilineText', description: 'Kundens kunder, hur de möts, hur de tar betalt och systemstöd.' },
   { name: 'Bokföring beskrivning', type: 'multilineText', description: 'Hur underlag kommer in, bankinlogg, ordning och kännedom om kunden/branschen.' },
-  { name: kycUppfoljning.UPPFOLJNING_FIELD, type: 'multilineText', description: 'JSON: KYC-uppföljning – intervalltriggers (adress, ägare, stor transaktion) och snapshots.' }
+  { name: kycUppfoljning.UPPFOLJNING_FIELD, type: 'multilineText', description: 'JSON: KYC-uppföljning – intervalltriggers (adress, ägare, stor transaktion) och snapshots.' },
+  {
+    name: utsattOmradeKund.FIELD,
+    type: 'multilineText',
+    description: 'JSON: adresskontroll mot Polisens utsatta och särskilt utsatta områden (uso_2025).'
+  }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
 let kunddataBehorighetFieldsEnsured = false;
@@ -3866,6 +3872,15 @@ app.post('/api/bolagsverket/save-to-airtable', optionalAuthenticateToken, async 
           }
         } else {
           console.log('ℹ️ Ingen SNI kod att uppdatera (SCB otillgängligt eller tom lista)');
+        }
+
+        if (airtableData.fields.Address) {
+          try {
+            const utsattJson = await utsattOmradeKund.checkAndSerialize(airtableData.fields.Address);
+            if (utsattJson) airtableData.fields[utsattOmradeKund.FIELD] = utsattJson;
+          } catch (e) {
+            console.warn('⚠️ Utsatt område-koll vid ny kund:', e.message);
+          }
         }
         
         // Debug: Logga isActiveCompany-värdet
@@ -6501,6 +6516,64 @@ app.get('/api/kunddata/:id/tjanster', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/kunddata/:id/utsatt-omrade – Kontrollera kundadress mot Polisens utsatta områden
+app.post('/api/kunddata/:id/utsatt-omrade', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+    const { id } = req.params;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const { customerRecord } = await assertCustomerAccess(req, id, {
+      airtableAccessToken,
+      baseId: airtableBaseId
+    });
+
+    const addressOverride = req.body && req.body.address != null ? String(req.body.address).trim() : '';
+    const addr = addressOverride || utsattOmradeKund.customerAddressFromFields(customerRecord.fields);
+    if (!addr) return res.status(400).json({ error: 'Ingen adress att kontrollera.' });
+
+    const json = await utsattOmradeKund.checkAndSerialize(addr);
+    const stored = utsattOmradeKund.parseStored(json);
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
+    let patchRes;
+    try {
+      patchRes = await axios.patch(url, { fields: { [utsattOmradeKund.FIELD]: json }, typecast: true }, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || '';
+      const unknown = String(msg).match(/Unknown field name:\s*"([^"]+)"/i)?.[1];
+      if (unknown === utsattOmradeKund.FIELD) {
+        const ensured = await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
+        if (!ensured.ok) throw e;
+        patchRes = await axios.patch(url, { fields: { [utsattOmradeKund.FIELD]: json }, typecast: true }, {
+          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+          timeout: 15000
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    res.json({
+      success: true,
+      trff: stored.trff,
+      niva: stored.niva,
+      omrade: stored.omrade,
+      label: utsattOmradeKund.summaryLabel(stored),
+      stored,
+      record: patchRes.data,
+      field: utsattOmradeKund.FIELD
+    });
+  } catch (error) {
+    console.error('❌ POST utsatt-omrade:', error.response?.data || error.message);
+    res.status(error.status || 500).json({ error: error.message || 'Kunde inte kontrollera adress.' });
+  }
+});
+
 // GET /api/kunddata/:id/risker - Hämta kundens länkade riskposter (expanderade)
 app.get('/api/kunddata/:id/risker', authenticateToken, async (req, res) => {
   try {
@@ -6632,6 +6705,18 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
         }
       } catch (e) {
         console.warn('⚠️ Högrisk SNI kunde inte matchas vid uppdatering:', e.message);
+      }
+    }
+
+    const addressTouched = ['Address', 'Adress'].some((k) => Object.prototype.hasOwnProperty.call(cleanedFields, k));
+    if (addressTouched) {
+      try {
+        const mergedFields = { ...(customerRecord.fields || {}), ...cleanedFields };
+        const addr = utsattOmradeKund.customerAddressFromFields(mergedFields);
+        const utsattJson = await utsattOmradeKund.maybeUpdateField(customerRecord.fields || {}, addr);
+        if (utsattJson !== undefined) cleanedFields[utsattOmradeKund.FIELD] = utsattJson;
+      } catch (e) {
+        console.warn('⚠️ Utsatt område-koll vid adressändring:', e.message);
       }
     }
 

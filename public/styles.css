@@ -2358,6 +2358,46 @@ body.sidebar-collapsed .logout-btn {
     border-color: #fecaca;
     color: #991b1b;
 }
+
+.utsatt-omrade-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.utsatt-omrade-badge--seu {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+.utsatt-omrade-badge--utsatt {
+    background: #ffedd5;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+.utsatt-omrade-badge--ok {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+}
+.utsatt-omrade-badge--warn {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+.utsatt-omrade-meta,
+.utsatt-omrade-hint {
+    margin: 0.35rem 0 0.5rem;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+#bv-utsatt-omrade-wrap .btn {
+    margin-top: 0.15rem;
+}
+
 .riskf-chip--sni em,
 .risker-sni-hint {
     font-style: normal;
