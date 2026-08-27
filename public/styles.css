@@ -14033,16 +14033,16 @@ h5.ar-subsection-title {
    Tjänst-modal (lägg till / redigera) med AI-förslag
    ===================================================================== */
 #tjanst-modal.modal {
-    padding: 0.75rem 1rem;
+    padding: 0.35rem 0.5rem;
     align-items: center !important;
     overflow: hidden !important;
     box-sizing: border-box;
 }
 .modal-content.tjanst-modal-content {
     max-width: none;
-    width: min(1280px, 96vw);
-    height: min(920px, calc(100dvh - 1.5rem));
-    max-height: calc(100dvh - 1.5rem);
+    width: min(1480px, 98.5vw);
+    height: calc(100dvh - 0.75rem);
+    max-height: calc(100dvh - 0.75rem);
     display: flex;
     flex-direction: column;
     overflow: hidden;
