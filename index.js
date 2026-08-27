@@ -5500,7 +5500,9 @@ async function loadStatistikRiskbedomning(userData, airtableAccessToken, baseId)
   const token = airtableAccessToken || process.env.AIRTABLE_ACCESS_TOKEN;
   const bid = baseId || process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!token) throw new Error('Airtable API-nyckel saknas');
-  const records = await fetchKunddataRecordsForUser(userData, token, bid);
+  const records = kundDold.filterAktivaKunder(
+    await fetchKunddataRecordsForUser(userData, token, bid)
+  );
   const ids = statistikRiskbedomning.collectLookupIds(records);
   const [tjanstRecords, riskfaktorRecords] = await Promise.all([
     fetchAirtableRecordsByIds(token, bid, RISK_ASSESSMENT_TABLE, ids.tjanstIds, { concurrency: 8 }),
@@ -14373,7 +14375,9 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
     }
 
     if (!statistikRiskbedomning.canBuildForUser(userData)) return res.json({ kunder: [] });
-    const allRecords = await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId);
+    const allRecords = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
 
     let kunder = [];
     if (typ === 'tjanst') {
