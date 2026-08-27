@@ -7307,7 +7307,9 @@ class CustomerCardManager {
     }
 
     _isOvrigRiskAktuell(r) {
-        return !!(r && r.fields && r.fields['Aktuell'] === true);
+        // Saknad Aktuell (äldre poster) räknas som aktiv. Bara explicit false döljs.
+        if (!r || !r.fields) return false;
+        return r.fields['Aktuell'] !== false;
     }
 
     _hasSavedNoneOption(kind, categoryId) {
