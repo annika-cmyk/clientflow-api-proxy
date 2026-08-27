@@ -7106,6 +7106,17 @@ class CustomerCardManager {
     }
 
     _renderRiskerForTyp(container, risker, linkedIds, typId, opts = {}) {
+        try {
+            this._renderRiskerForTypInner(container, risker, linkedIds, typId, opts);
+        } catch (err) {
+            console.error('❌ Kunde inte rendera riskfaktorer:', err);
+            if (container) {
+                container.innerHTML = '<p class="lead-empty">Kunde inte visa riskfaktorer.</p>';
+            }
+        }
+    }
+
+    _renderRiskerForTypInner(container, risker, linkedIds, typId, opts = {}) {
         const riskBadge = (r) => this._riskSkalaPillsHtml(this._scoredFromOvrigRisk(r));
         const fmtList = (v) => Array.isArray(v) ? v : (v ? [v] : []);
         const HOGRISK_ALTERNATIV = ['Växlingskontor','Bilhandel','Skrot- och metallhandel','Smycken/antikviteter','Bemanning','Bygg','Städning','Restaurang','Bolagsbildning','Redovisning etc.','Spelbolag','Fastighetsmäklare','Trustförvaltning','Oberoende jurister'];
@@ -11946,10 +11957,15 @@ class CustomerCardManager {
             this._savedKycFormular = Object.assign({}, this._savedKycFormular || {}, data);
             this._kycFormularFetched = true;
             this.showNotification('KYC-formuläret sparat!', 'success');
-            await this._persistGeoFromLander({ skipKycPost: true });
-            await this._persistUtlandskaUboFromKyc();
-            await this._persistVerksamhetFromKyc({ skipKycPost: true });
-            this.loadKYCFormular();
+            try {
+                await this._persistGeoFromLander({ skipKycPost: true });
+                await this._persistUtlandskaUboFromKyc();
+                await this._persistVerksamhetFromKyc({ skipKycPost: true });
+                await this.loadKYCFormular();
+            } catch (refreshErr) {
+                console.warn('KYC sparat men vyn kunde inte uppdateras helt:', refreshErr);
+                this.showNotification('KYC sparat. Ladda om sidan om något ser fel ut.', 'warning');
+            }
         } catch (e) {
             this.showNotification(`Kunde inte spara KYC-formulär: ${e.message}`, 'error');
         } finally {
