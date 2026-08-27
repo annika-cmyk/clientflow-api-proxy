@@ -1024,7 +1024,7 @@
         return;
       }
       if (match
-        || (dimId === 'verksamhet' && (catId === 'verksamheten' || /verksamhetsspecifik|betalkort|kontant/i.test(f.namn)))) {
+        || (dimId === 'verksamhet' && (catId === 'verksamheten' || /verksamhetsspecifik/i.test(f.namn)))) {
         add(f.namn, f.antal);
       }
     });

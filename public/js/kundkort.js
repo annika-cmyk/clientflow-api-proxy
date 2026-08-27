@@ -7380,7 +7380,7 @@ class CustomerCardManager {
         if ((Array.isArray(typIds) ? typIds : []).includes('geografiska')) {
             this._mergeSteeredGeoIds(allChecked);
         }
-        if ((Array.isArray(typIds) ? typIds : []).includes('verksamhet')) {
+        if ((Array.isArray(typIds) ? typIds : []).includes('kund')) {
             this._mergeSteeredVerksamhetIds(allChecked);
         }
         return { allChecked, nyaChecked, nyaHogrisk };
@@ -7423,7 +7423,7 @@ class CustomerCardManager {
         if (typId === 'geografiska') {
             this._mergeSteeredGeoIds(allChecked);
         }
-        if (typId === 'verksamhet') {
+        if (typId === 'kund') {
             this._mergeSteeredVerksamhetIds(allChecked);
         }
         const totalChecked = [...allChecked];
@@ -11461,7 +11461,7 @@ class CustomerCardManager {
     _maybeSteerVerksamhetFromSavedKyc() {
         const KVS = window.KycVerksamhetStyrning;
         if (!KVS || !KVS.suggestedRecordIds || !this._allaRisker) return;
-        const recs = this._riskerForTypId('verksamhet', this._allaRisker);
+        const recs = this._riskerForTypId('kund', this._allaRisker);
         const kyc = this._kycVerksamhetState();
         const suggested = KVS.suggestedRecordIds(recs, kyc);
         const linked = this._linkedRiskIds || new Set();
@@ -11526,7 +11526,7 @@ class CustomerCardManager {
 
     _mergeSteeredVerksamhetIds(allChecked) {
         const KVS = window.KycVerksamhetStyrning;
-        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
         if (KVS && KVS.mergeIntoLinkedSet) {
             KVS.mergeIntoLinkedSet(allChecked, recs, this._kycVerksamhetState());
         }
@@ -11536,16 +11536,16 @@ class CustomerCardManager {
     _applyVerksamhetChecksFromKyc() {
         const KVS = window.KycVerksamhetStyrning;
         if (!KVS || !KVS.steeredRecordIds) return;
-        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
         const kyc = this._kycVerksamhetState();
         const steered = new Set(KVS.steeredRecordIds(recs));
         const suggested = new Set(KVS.suggestedRecordIds(recs, kyc));
-        document.querySelectorAll('input[name="risk-verksamhet"]').forEach((cb) => {
+        document.querySelectorAll('input[name="risk-kund"]').forEach((cb) => {
             if (!steered.has(cb.value)) return;
             cb.checked = suggested.has(cb.value);
             cb.disabled = suggested.has(cb.value);
             const item = cb.closest('.risker-check-item');
-            if (item) item.classList.toggle('is-verksamhet-steered', suggested.has(cb.value));
+            if (item) item.classList.toggle('is-kyc-kund-steered', suggested.has(cb.value));
         });
     }
 
@@ -11555,7 +11555,7 @@ class CustomerCardManager {
         if (!el || !KVS || !KVS.suggestedFactorLabels) return;
         const labels = KVS.suggestedFactorLabels(this._kycVerksamhetState());
         el.textContent = labels.length
-            ? `Styr verksamhetsresidual: ${labels.join(', ')}.`
+            ? `Styr kundresidual: ${labels.join(', ')}.`
             : '';
     }
 
@@ -11581,7 +11581,7 @@ class CustomerCardManager {
         if (!this._allaRisker) {
             try { await this.loadKundRisker(); } catch (_) { /* fortsätt med sparade id */ }
         }
-        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        const recs = this._riskerForTypId('kund', this._allaRisker || []);
         const kyc = this._kycVerksamhetState();
         const next = this._mergeSteeredVerksamhetIds(new Set(this._linkedRiskIds || []));
         const fields = { 'risker kopplat till tjänster': [...next] };
@@ -11591,14 +11591,14 @@ class CustomerCardManager {
         if (this.customerData?.fields) {
             this.customerData.fields['risker kopplat till tjänster'] = [...next];
         }
-        const container = document.getElementById('ovrigkyc-risker-verksamhet');
+        const container = document.getElementById('ovrigkyc-risker-kund');
         if (container && this._allaRisker) {
-            this._renderRiskerForTyp(container, recs, next, 'verksamhet', { embedded: true });
+            this._renderRiskerForTyp(container, recs, next, 'kund', { embedded: true });
         }
         this._applyVerksamhetChecksFromKyc();
         this._renderKycVerksamhetStyrHint();
         this._refreshRiskprofilForeslagenUi();
-        const kycField = this._kycFieldForRiskerTyp('verksamhet');
+        const kycField = this._kycFieldForRiskerTyp('kund');
         if (kycField && KVS.suggestedRecordIds(recs, kyc).length) {
             this._saveKycStatus(kycField, true);
         }

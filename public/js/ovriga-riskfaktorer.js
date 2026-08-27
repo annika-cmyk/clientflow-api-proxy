@@ -240,6 +240,43 @@ class RiskFactorsManager {
         });
     }
 
+    groupRiskTyp(risk) {
+        const fields = risk && risk.fields ? risk.fields : {};
+        const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+        const Kat = window.OvrigaRiskKategorier;
+        const normalized = Kat && Kat.airtableTypForLinkedKundResidual
+            ? Kat.airtableTypForLinkedKundResidual(namn)
+            : '';
+        return normalized || fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+    }
+
+    async migrateMisplacedKundTransactionFactors() {
+        const Kat = window.OvrigaRiskKategorier;
+        if (!Kat || !Kat.airtableTypForLinkedKundResidual) return;
+        const kundTyp = 'Riskfaktorer kopplat till kund';
+        const pending = (this.risks || []).filter((risk) => {
+            const fields = risk.fields || {};
+            const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+            const want = Kat.airtableTypForLinkedKundResidual(namn);
+            return want && fields['Typ av riskfaktor'] !== want;
+        });
+        if (!pending.length) return;
+        await Promise.all(pending.map(async (risk) => {
+            const fields = { ...(risk.fields || {}) };
+            const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+            try {
+                const response = await this.saveRiskFactor(
+                    `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
+                    'PUT',
+                    { ...fields, 'Typ av riskfaktor': kundTyp, Riskfaktor: namn }
+                );
+                if (response.ok) risk.fields['Typ av riskfaktor'] = kundTyp;
+            } catch (err) {
+                console.warn('Kunde inte flytta riskfaktor till kund:', namn, err);
+            }
+        }));
+    }
+
     async loadRiskFactors() {
         const riskList = document.getElementById('risk-list');
         
@@ -259,6 +296,7 @@ class RiskFactorsManager {
             if (response.ok) {
                 const data = await response.json();
                 this.risks = data.records || [];
+                await this.migrateMisplacedKundTransactionFactors();
                 
                 // Populate byrå dropdown with unique byrå IDs from the data
                 this.populateByraDropdown();
@@ -334,7 +372,7 @@ class RiskFactorsManager {
         // Group risks by "Typ av riskfaktor"
         const groupedRisks = {};
         this.filteredRisks.forEach(risk => {
-            const riskType = risk.fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+            const riskType = this.groupRiskTyp(risk);
             if (!groupedRisks[riskType]) {
                 groupedRisks[riskType] = [];
             }

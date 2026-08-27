@@ -5425,12 +5425,12 @@ async function maybePatchKycVerksamhetRisk(customerRecord, kyc, token, baseId) {
   const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
   if (!byraId || !token) return null;
   const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
-  const verksamhetRecs = kycVerksamhetStyrning.verksamhetRecordsFromList(byraRisker);
-  if (!verksamhetRecs.some((rec) => kycVerksamhetStyrning.matchFactor(kycVerksamhetStyrning.recordNamn(rec)))) {
+  const kundRecs = kycVerksamhetStyrning.kundRecordsFromList(byraRisker);
+  if (!kundRecs.some((rec) => kycVerksamhetStyrning.matchFactor(kycVerksamhetStyrning.recordNamn(rec)))) {
     return null;
   }
   const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
-  const after = kycVerksamhetStyrning.mergeLinkedIds(before, verksamhetRecs, kyc);
+  const after = kycVerksamhetStyrning.mergeLinkedIds(before, kundRecs, kyc);
   if (!kycVerksamhetStyrning.linkedIdsChanged(before, after)) return null;
   return { 'risker kopplat till tjänster': after };
 }
@@ -7188,7 +7188,7 @@ app.post('/api/dashboard/skapa-kyc-riskfaktor-utkast', authenticateToken, async 
 
     const templates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId);
     if (kycVerksamhetStyrning.templateExistsForFactor(templates, factor.id)) {
-      const befintlig = kycVerksamhetStyrning.verksamhetRecordsFromList(templates).find((rec) => {
+      const befintlig = kycVerksamhetStyrning.kundRecordsFromList(templates).find((rec) => {
         const matched = kycVerksamhetStyrning.matchFactor(kycVerksamhetStyrning.recordNamn(rec));
         return matched && matched.id === factor.id;
       });

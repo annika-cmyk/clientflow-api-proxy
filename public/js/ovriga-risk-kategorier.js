@@ -213,6 +213,17 @@
       aliases: ['mkt ändringar i styrelse, adress eller firmateckning']
     },
     {
+      id: 'betalkort',
+      category: 'kunden',
+      label: 'Kunder med transaktioner via Betalkort',
+      hint: 'Kunden tar emot eller betalar i hög grad via betalkort.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      coveredByDimension: true,
+      linkedKundResidual: true,
+      aliases: ['kunder med transaktioner via betalkort', 'betalkort', 'transaktioner via betalkort']
+    },
+    {
       id: 'hogriskbransch',
       category: 'verksamheten',
       label: 'Högriskbransch',
@@ -224,24 +235,26 @@
     },
     {
       id: 'kontanter',
-      category: 'verksamheten',
+      category: 'kunden',
       label: 'Kontantintensiv verksamhet',
       hint: 'Kunden tar emot mycket kontanter eller har stora dagskassor.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
       coveredByDimension: true,
       steeredFromKyc: true,
+      linkedKundResidual: true,
       aliases: ['kontantintensiv verksamhet', 'kontanthantering', 'kunder med mycket kontanta transaktioner']
     },
     {
       id: 'kryptovaluta',
-      category: 'verksamheten',
+      category: 'kunden',
       label: 'Kunder som handlar med kryptovaluta',
       hint: 'Kunden tar emot, betalar eller växlar kryptovaluta i verksamheten.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
       coveredByDimension: true,
       steeredFromKyc: true,
+      linkedKundResidual: true,
       aliases: ['kryptovaluta', 'kunder som handlar med kryptovaluta', 'virtuell valuta', 'crypto']
     },
     {
@@ -526,6 +539,15 @@
     return !!(hit && hit.group === 'kanal');
   }
 
+  function isLinkedKundResidualFactor(namn) {
+    var hit = findFactor(namn);
+    return !!(hit && hit.linkedKundResidual);
+  }
+
+  function airtableTypForLinkedKundResidual(namn) {
+    return isLinkedKundResidualFactor(namn) ? 'Riskfaktorer kopplat till kund' : '';
+  }
+
   function klassBadge(klass, badge) {
     if (badge) return badge;
     if (klass === KLASS.GOLV_HOG) return 'Hög-aktiv';
@@ -564,6 +586,8 @@
     mergeVisibleVal: mergeVisibleVal,
     channelLabels: channelLabels,
     isDistributionKanal: isDistributionKanal,
+    isLinkedKundResidualFactor: isLinkedKundResidualFactor,
+    airtableTypForLinkedKundResidual: airtableTypForLinkedKundResidual,
     klassBadge: klassBadge
   };
 
