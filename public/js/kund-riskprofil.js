@@ -173,7 +173,7 @@
       'Komplicerad eller ovanlig ägarstruktur': 'BIDRAR_VID_KOMBINATION',
       'Kontantintensiv verksamhet': 'GOLV_HOG',
       'Kunder som handlar med kryptovaluta': 'GOLV_HOG',
-      'Kopplingar till utlandet / Högriskländer': 'GOLV_HOG',
+      'Kunden har handel med högriskländer': 'GOLV_HOG',
       'Bristfälliga interna bokföringsrutiner hos kunden': 'BIDRAR_VID_KOMBINATION',
       'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring': 'BIDRAR_VID_KOMBINATION',
       'Högriskbransch': 'BIDRAR_VID_KOMBINATION',

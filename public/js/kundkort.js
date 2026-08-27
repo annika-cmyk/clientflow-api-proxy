@@ -8533,7 +8533,7 @@ class CustomerCardManager {
             'Högriskbransch',
             'Kontantintensiv verksamhet',
             'Kundens egna kunder är på distans (e-handel/anonyma köpare)',
-            'Kopplingar till utlandet / Högriskländer',
+            'Kunden har handel med högriskländer',
             'Transaktioner utan tydligt syfte',
             'Bristfälliga interna bokföringsrutiner hos kunden'
         ];
@@ -11200,7 +11200,10 @@ class CustomerCardManager {
         if (wrapId === 'kyc-internationella-lander-wrap') {
             this._refreshKycLanderPicker();
             this._applyGeoChecksFromLander();
+            this._applyVerksamhetChecksFromKyc();
+            this._renderKycVerksamhetStyrHint();
             if (sel && String(sel.value).toLowerCase() === 'nej') this._scheduleGeoFromLanderSave();
+            else if (sel && String(sel.value).toLowerCase() === 'ja') this._scheduleGeoFromLanderSave();
         }
     }
 
@@ -11246,6 +11249,8 @@ class CustomerCardManager {
         }
         this._refreshKycLanderPicker();
         this._applyGeoChecksFromLander();
+        this._applyVerksamhetChecksFromKyc();
+        this._renderKycVerksamhetStyrHint();
         if (opts.persist !== false) this._scheduleGeoFromLanderSave();
     }
 
@@ -11355,10 +11360,15 @@ class CustomerCardManager {
             : '';
         document.querySelectorAll('.kyc-lander-assess').forEach((el) => { el.innerHTML = assessHtml; });
         const steered = this._suggestedGeoFactorLabels();
+        const KVS = window.KycVerksamhetStyrning;
+        const kundSteered = (KVS && KVS.suggestedFactorLabels)
+            ? KVS.suggestedFactorLabels(this._kycVerksamhetState()).filter((label) => /högriskländer/i.test(label))
+            : [];
+        const styrParts = [];
+        if (steered.length) styrParts.push(`Styr geografisk residual: ${steered.join(', ')}`);
+        if (kundSteered.length) styrParts.push(`Styr kundresidual: ${kundSteered.join(', ')}`);
         document.querySelectorAll('.kyc-lander-geo-styr').forEach((el) => {
-            el.textContent = steered.length
-                ? `Styr geografisk residual: ${steered.join(', ')}.`
-                : '';
+            el.textContent = styrParts.length ? `${styrParts.join('. ')}.` : '';
         });
     }
 
@@ -11483,6 +11493,7 @@ class CustomerCardManager {
         if (!this._allaRisker) await this.loadKundRisker();
         const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
         const next = this._mergeSteeredGeoIds(new Set(this._linkedRiskIds || []));
+        this._mergeSteeredVerksamhetIds(next);
         const fields = { 'risker kopplat till tjänster': [...next] };
         if (landerOpts.onlySweden) fields['Har företaget transaktioner med andra länder?'] = 'Nej';
         else if (labels.length) fields['Har företaget transaktioner med andra länder?'] = 'Ja';
@@ -11506,6 +11517,12 @@ class CustomerCardManager {
         if (container && this._allaRisker) {
             this._renderRiskerForTyp(container, recs, next, 'geografiska', { embedded: true });
         }
+        const kundRecs = this._riskerForTypId('kund', this._allaRisker || []);
+        const kundContainer = document.getElementById('ovrigkyc-risker-kund');
+        if (kundContainer && kundRecs.length) {
+            this._renderRiskerForTyp(kundContainer, kundRecs, next, 'kund', { embedded: true });
+        }
+        this._applyVerksamhetChecksFromKyc();
         this._renderKycLanderOnGeo();
         this._refreshRiskprofilForeslagenUi();
         const kycField = this._kycFieldForRiskerTyp('geografiska');
@@ -11514,13 +11531,14 @@ class CustomerCardManager {
 
     _kycVerksamhetState() {
         const KVS = window.KycVerksamhetStyrning;
-        if (KVS && KVS.collectKycFromDom) {
-            const dom = KVS.collectKycFromDom();
-            if (dom.kontanter || dom.kryptovaluta) return dom;
-        }
+        const dom = (KVS && KVS.collectKycFromDom) ? KVS.collectKycFromDom() : {};
         return {
-            kontanter: this._savedKycFormular?.kontanter || '',
-            kryptovaluta: this._savedKycFormular?.kryptovaluta || ''
+            kontanter: dom.kontanter || this._savedKycFormular?.kontanter || '',
+            kryptovaluta: dom.kryptovaluta || this._savedKycFormular?.kryptovaluta || '',
+            internationellHandel: dom.internationellHandel
+                || this._savedKycFormular?.internationellHandel || '',
+            internationellaLander: dom.internationellaLander
+                || this._savedKycFormular?.internationellaLander || ''
         };
     }
 

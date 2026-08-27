@@ -250,6 +250,33 @@ class RiskFactorsManager {
         return normalized || fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
     }
 
+    async migrateRenamedRiskFactorLabels() {
+        const Kat = window.OvrigaRiskKategorier;
+        if (!Kat || !Kat.canonicalLabel) return;
+        const pending = (this.risks || []).filter((risk) => {
+            const fields = risk.fields || {};
+            const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+            const canonical = Kat.canonicalLabel(namn);
+            return canonical && canonical !== namn;
+        });
+        if (!pending.length) return;
+        await Promise.all(pending.map(async (risk) => {
+            const fields = { ...(risk.fields || {}) };
+            const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+            const canonical = Kat.canonicalLabel(namn);
+            try {
+                const response = await this.saveRiskFactor(
+                    `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
+                    'PUT',
+                    { ...fields, Riskfaktor: canonical }
+                );
+                if (response.ok) risk.fields.Riskfaktor = canonical;
+            } catch (err) {
+                console.warn('Kunde inte byta namn på riskfaktor:', namn, err);
+            }
+        }));
+    }
+
     async migrateMisplacedKundTransactionFactors() {
         const Kat = window.OvrigaRiskKategorier;
         if (!Kat || !Kat.airtableTypForLinkedKundResidual) return;
@@ -296,6 +323,7 @@ class RiskFactorsManager {
             if (response.ok) {
                 const data = await response.json();
                 this.risks = data.records || [];
+                await this.migrateRenamedRiskFactorLabels();
                 await this.migrateMisplacedKundTransactionFactors();
                 
                 // Populate byrå dropdown with unique byrå IDs from the data

@@ -1,5 +1,5 @@
 /**
- * Styrning av verksamhetsriskfaktorer utifrån KYC (kontanter, kryptovaluta).
+ * Styrning av kundresidual utifrån KYC (kontanter, kryptovaluta, högriskländer).
  */
 (function (global) {
   var FACTORS = [
@@ -14,6 +14,18 @@
       kycField: 'kryptovaluta',
       label: 'Kunder som handlar med kryptovaluta',
       aliases: ['kryptovaluta', 'kunder som handlar med kryptovaluta', 'crypto', 'virtuell valuta']
+    },
+    {
+      id: 'hogrisklander',
+      kycField: 'hogrisklander',
+      label: 'Kunden har handel med högriskländer',
+      aliases: [
+        'kunden har handel med högriskländer',
+        'kopplingar till utlandet / högriskländer',
+        'kopplingar till andra länder, särskilt länder utanför eu',
+        'högriskländer',
+        'kunder med import/export'
+      ]
     }
   ];
 
@@ -59,12 +71,36 @@
     return String((kyc && kyc[field]) || '').trim().toLowerCase() === 'ja';
   }
 
+  function kycHasHogriskHandel(kyc) {
+    var parsed = parseKyc(kyc);
+    if (String(parsed.internationellHandel || '').trim().toLowerCase() === 'nej') return false;
+    var raw = parsed.internationellaLander || '';
+    if (!String(raw).trim()) return false;
+    var Eu = global.EuHogriskLander;
+    var labels = Eu && Eu.parseLabels
+      ? Eu.parseLabels(raw)
+      : String(raw).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!labels.length) return false;
+    var result = Eu && Eu.assess ? Eu.assess(labels) : {};
+    return !!(result.hasHogrisk || result.hasCallForAction);
+  }
+
+  function factorActive(kyc, factor) {
+    if (!factor) return false;
+    if (factor.id === 'hogrisklander') return kycHasHogriskHandel(kyc);
+    return kycJa(kyc, factor.kycField);
+  }
+
   function collectKycFromDom() {
     var kontEl = document.getElementById('kyc-kontanter');
     var kryptoEl = document.getElementById('kyc-kryptovaluta');
+    var internEl = document.getElementById('kyc-internationell');
+    var landerEl = document.getElementById('kyc-internationella-lander');
     return {
       kontanter: kontEl ? kontEl.value : '',
-      kryptovaluta: kryptoEl ? kryptoEl.value : ''
+      kryptovaluta: kryptoEl ? kryptoEl.value : '',
+      internationellHandel: internEl ? internEl.value : '',
+      internationellaLander: landerEl ? landerEl.value : ''
     };
   }
 
@@ -80,7 +116,7 @@
     (Array.isArray(records) ? records : []).forEach(function (rec) {
       var matched = matchFactor(recordNamn(rec));
       if (!matched || !rec.id) return;
-      if (kycJa(parsed, matched.kycField)) out.push(rec.id);
+      if (factorActive(parsed, matched)) out.push(rec.id);
     });
     return out;
   }
@@ -96,7 +132,7 @@
 
   function suggestedFactorLabels(kyc) {
     var parsed = parseKyc(kyc);
-    return FACTORS.filter(function (f) { return kycJa(parsed, f.kycField); }).map(function (f) { return f.label; });
+    return FACTORS.filter(function (f) { return factorActive(parsed, f); }).map(function (f) { return f.label; });
   }
 
   var api = {
@@ -105,6 +141,8 @@
     matchFactor: matchFactor,
     parseKyc: parseKyc,
     kycJa: kycJa,
+    kycHasHogriskHandel: kycHasHogriskHandel,
+    factorActive: factorActive,
     collectKycFromDom: collectKycFromDom,
     steeredRecordIds: steeredRecordIds,
     suggestedRecordIds: suggestedRecordIds,
