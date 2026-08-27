@@ -82,7 +82,7 @@ const AmlKalla = require('./public/js/aml-kalla');
 const AtgardKonkret = require('./public/js/atgard-konkret');
 const HotAmlTf = require('./public/js/hot-aml-tf');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord, sortOvriga } = require('./lib/identifierade-risker');
-const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
+const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./lib/inneboende-beskrivning');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
@@ -22120,7 +22120,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 const atgarder = parseJsonArr(tf['Tjänstespecifika åtgärder']);
 
                 let line = `${kort}\n    (HÖGRISKTJÄNST — full analys nedan)`;
-                if (tjBeskr) line += `\n    Tjänstebeskrivning och inneboende risk: ${tjBeskr}`;
+                if (tjBeskr) line += `\n    ${TJANST_BESKRIVNING_LABEL}: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
                 if (hot.length) {
                   line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
