@@ -37,22 +37,53 @@
 
                     <section class="info-section byrarutiner-section">
                         <div class="form-grid">
-                            <div class="byra-card" data-field-id="fld-syfte-omfattning">
-                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
-                                <div class="byra-card-edit">
-                            <div class="form-group full-width">
-                                <label for="fld-syfte-omfattning">1. Syfte och Omfattning</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                            <div class="byra-card byra-card--collapsible open" data-card-id="fld-sektion1">
+                                <div class="byra-card-view">
+                                    <button type="button" class="byra-card-collapse-toggle" aria-expanded="true" title="Fäll in eller ut">
+                                        <i class="fas fa-chevron-down"></i>
+                                    </button>
+                                    <div class="byra-card-label">1. Syfte och Omfattning</div>
+                                    <div class="byra-card-collapse-body">
+                                        <div class="ar-underkort">
+                                            <section class="ar-underkort-card byra-card" data-field-id="fld-syfte-omfattning">
+                                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                                <div class="byra-card-edit">
+                                                    <div class="form-group full-width">
+                                                        <label for="fld-syfte-omfattning">1. Syfte och Omfattning</label>
+                                                        <div class="byrarutiner-rich-field">
+                                                            <div class="byrarutiner-format-toolbar">
+                                                                <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea id="fld-syfte-omfattning" class="form-input form-textarea" rows="10" placeholder="Beskriv syfte och omfattning..."></textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </section>
+                                            <section class="ar-underkort-card byra-card" data-field-id="fld-metod-riskbedomning">
+                                                <h4>1.1 Metod för Riskbedömning</h4>
+                                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
+                                                <div class="byra-card-edit">
+                                                    <div class="form-group full-width">
+                                                        <label for="fld-metod-riskbedomning">1.1 Metod för Riskbedömning</label>
+                                                        <div class="byrarutiner-rich-field">
+                                                            <div class="byrarutiner-format-toolbar">
+                                                                <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea id="fld-metod-riskbedomning" class="form-input form-textarea" rows="8" placeholder="Beskriv metod för riskbedömning..."></textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </section>
+                                        </div>
                                     </div>
-                                    <textarea id="fld-syfte-omfattning" class="form-input form-textarea" rows="10" placeholder="Beskriv syfte och omfattning..."></textarea>
                                 </div>
-                            </div>
-                                </div>
+                                <div class="byra-card-edit" style="display:none;"></div>
                             </div>
                             <div class="byra-card byra-card--collapsible open" data-card-id="fld-sektion2">
                                 <div class="byra-card-view">
@@ -174,23 +205,6 @@
                                     </div>
                                 </div>
                                 <div class="byra-card-edit" style="display:none;"></div>
-                            </div>
-                            <div class="byra-card" data-field-id="fld-metod-riskbedomning">
-                                <div class="byra-card-view"><div class="byra-card-value"></div><button type="button" class="byra-card-edit-btn" title="Redigera"><i class="fas fa-pencil-alt"></i></button></div>
-                                <div class="byra-card-edit">
-                            <div class="form-group full-width">
-                                <label for="fld-metod-riskbedomning">3. Metod för Riskbedömning</label>
-                                <div class="byrarutiner-rich-field">
-                                    <div class="byrarutiner-format-toolbar">
-                                        <button type="button" class="format-btn" data-format="bold" title="Fet"><i class="fas fa-bold"></i></button>
-                                        <button type="button" class="format-btn" data-format="italic" title="Kursiv"><i class="fas fa-italic"></i></button>
-                                        <button type="button" class="format-btn" data-format="bullet" title="Punktlista"><i class="fas fa-list-ul"></i></button>
-                                        <button type="button" class="format-btn" data-format="numbered" title="Numrerad lista"><i class="fas fa-list-ol"></i></button>
-                                    </div>
-                                    <textarea id="fld-metod-riskbedomning" class="form-input form-textarea" rows="8" placeholder="Beskriv metod för riskbedömning..."></textarea>
-                                </div>
-                            </div>
-                                </div>
                             </div>
                             <div class="byra-card byra-card--live-source byra-card--collapsible open" data-field-id="fld-identifierade-risker">
                                 <div class="byra-card-view">
@@ -373,7 +387,7 @@
     <script src="js/kund-riskprofil.js?v=15"></script>
     <script src="js/identifierade-risker-view.js?v=8"></script>
     <script src="js/riskaptit.js?v=2"></script>
-    <script src="js/allman-riskbedomning-byra.js?v=3.1"></script>
+    <script src="js/allman-riskbedomning-byra.js?v=3.2"></script>
     <script src="app.js"></script>
 </body>
 </html>
