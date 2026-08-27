@@ -159,7 +159,8 @@
   var RISKHOJANDE_KLASS = {
     GOLV_HOG: 'GOLV_HOG',
     BIDRAR: 'BIDRAR_VID_KOMBINATION',
-    INFORMATIV: 'INFORMATIV'
+    INFORMATIV: 'INFORMATIV',
+    OACCEPTABEL: 'OACCEPTABEL'
   };
 
   var DEFAULT_RISKHOJANDE_KATALOG = (OvrigaRiskKategorier && OvrigaRiskKategorier.defaultKatalog)
@@ -185,6 +186,7 @@
     }
     var v = trimStr(raw).toUpperCase().replace(/\s+/g, '_');
     if (v === 'GOLV_HOG' || v === 'GOLV' || v === 'HOG' || v === 'HÖG') return RISKHOJANDE_KLASS.GOLV_HOG;
+    if (v === 'OACCEPTABEL' || v === 'OAC') return RISKHOJANDE_KLASS.OACCEPTABEL;
     if (v === 'BIDRAR_VID_KOMBINATION' || v === 'BIDRAR' || v === 'KOMBINATION') return RISKHOJANDE_KLASS.BIDRAR;
     if (v === 'INFORMATIV' || v === 'INFO') return RISKHOJANDE_KLASS.INFORMATIV;
     return '';
@@ -347,11 +349,23 @@
     var map = mergeRiskhojandeKatalog(katalog);
     var golv = [];
     var bidrar = [];
+    var oacceptabel = [];
     labels.forEach(function (namn) {
       var klass = klassForRiskhojande(namn, map);
-      if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golv.push(namn);
+      if (klass === RISKHOJANDE_KLASS.OACCEPTABEL) oacceptabel.push(namn);
+      else if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golv.push(namn);
       else if (klass === RISKHOJANDE_KLASS.BIDRAR) bidrar.push(namn);
     });
+    if (oacceptabel.length) {
+      return {
+        niva: 'Oacceptabel',
+        product: OACCEPTABEL_GOLV_PRODUCT,
+        namn: oacceptabel.join(', '),
+        drivandeFaktor: 'Golv Oacceptabel: ' + oacceptabel.join(', '),
+        kalla: oacceptabel,
+        skikt: 'OACCEPTABEL'
+      };
+    }
     if (golv.length) {
       return {
         niva: 'Hög',
@@ -446,7 +460,7 @@
     if (base.ofullstandig) return base;
     var golv = beraknaRiskhojandeGolv(fields, katalog);
     if (!golv) return base;
-    golv.skikt = 'HOG';
+    if (!golv.skikt) golv.skikt = 'HOG';
     if (rankOf(base.niva) > rankOf(golv.niva)) {
       return Object.assign({}, base, { golv: golv });
     }
@@ -565,14 +579,17 @@
     var map = mergeRiskhojandeKatalog(katalog);
     var golvHog = [];
     var bidrar = [];
+    var oacceptabel = [];
     (Array.isArray(labels) ? labels : []).forEach(function (namn) {
       var canon = canonicalRiskhojandeLabel(namn);
       if (!canon || isIngaLabel(canon) || isNoneRiskOption(canon)) return;
       var klass = klassForRiskhojande(canon, map);
-      if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golvHog.push(canon);
+      if (klass === RISKHOJANDE_KLASS.OACCEPTABEL) oacceptabel.push(canon);
+      else if (klass === RISKHOJANDE_KLASS.GOLV_HOG) golvHog.push(canon);
       else if (klass === RISKHOJANDE_KLASS.BIDRAR) bidrar.push(canon);
     });
     return {
+      oacceptabel: oacceptabel,
       golvHog: golvHog,
       bidrarTillGolv: bidrar.length >= 2 ? bidrar : []
     };
@@ -582,7 +599,9 @@
     var canon = canonicalRiskhojandeLabel(namn);
     if (!canon || isIngaLabel(canon) || isNoneRiskOption(canon)) return '';
     var map = mergeRiskhojandeKatalog(katalog);
-    if (klassForRiskhojande(canon, map) === RISKHOJANDE_KLASS.GOLV_HOG) return RISKHOJANDE_KLASS.GOLV_HOG;
+    var klass = klassForRiskhojande(canon, map);
+    if (klass === RISKHOJANDE_KLASS.OACCEPTABEL) return RISKHOJANDE_KLASS.OACCEPTABEL;
+    if (klass === RISKHOJANDE_KLASS.GOLV_HOG) return RISKHOJANDE_KLASS.GOLV_HOG;
     var marks = marksForRiskhojandeVal(checkedLabels, map);
     if (marks.bidrarTillGolv.indexOf(canon) !== -1) return RISKHOJANDE_KLASS.BIDRAR;
     return '';
@@ -619,13 +638,14 @@
           return fromRec;
         }
       }
+      var isOacc = klass === RISKHOJANDE_KLASS.OACCEPTABEL;
       var isGolv = klass === RISKHOJANDE_KLASS.GOLV_HOG;
       return {
         kind: 'riskfaktor',
         source: 'riskhojande',
         namn: namn,
-        residualProduct: isGolv ? RISKHOJANDE_GOLV_PRODUCT : RISKHOJANDE_DEFAULT_PRODUCT,
-        residualLevel: isGolv ? 'Hög' : 'Förhöjd'
+        residualProduct: isOacc ? OACCEPTABEL_GOLV_PRODUCT : (isGolv ? RISKHOJANDE_GOLV_PRODUCT : RISKHOJANDE_DEFAULT_PRODUCT),
+        residualLevel: isOacc ? 'Oacceptabel' : (isGolv ? 'Hög' : 'Förhöjd')
       };
     }).filter(Boolean);
   }
@@ -659,7 +679,9 @@
         : '';
       parts.push('Residual ' + d.residualLevel + sxk);
     }
-    if (extraMark === RISKHOJANDE_KLASS.GOLV_HOG || (item && item.markKind === RISKHOJANDE_KLASS.GOLV_HOG)) {
+    if (extraMark === RISKHOJANDE_KLASS.OACCEPTABEL || (item && item.markKind === RISKHOJANDE_KLASS.OACCEPTABEL)) {
+      parts.push('Oacceptabel-golv');
+    } else if (extraMark === RISKHOJANDE_KLASS.GOLV_HOG || (item && item.markKind === RISKHOJANDE_KLASS.GOLV_HOG)) {
       parts.push('Hög-golv');
     } else if (extraMark === RISKHOJANDE_KLASS.BIDRAR || (item && item.markKind === RISKHOJANDE_KLASS.BIDRAR)) {
       parts.push('Bidrar till Hög-golv');
@@ -683,7 +705,9 @@
         html += ' <span class="sxk">S×K ' + escape(String(d.residualProduct)) + '</span>';
       }
     }
-    if (mark === RISKHOJANDE_KLASS.GOLV_HOG) {
+    if (mark === RISKHOJANDE_KLASS.OACCEPTABEL) {
+      html += ' <span class="chip chip-oacceptabel">Oacceptabel-golv</span>';
+    } else if (mark === RISKHOJANDE_KLASS.GOLV_HOG) {
       html += ' <span class="chip chip-neg">Hög-golv</span>';
     } else if (mark === RISKHOJANDE_KLASS.BIDRAR) {
       html += ' <span class="chip chip-bidrar">Bidrar till Hög-golv</span>';

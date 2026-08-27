@@ -5559,9 +5559,12 @@ body.riskbedomning-byra-page h5 {
 .riskf-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
 .riskf-check-item--golv-hog { border-color: #ef4444; background: #fef2f2; }
 .riskf-check-item--golv-hog:hover { background: #fee2e2; border-color: #dc2626; }
+.riskf-check-item--oacceptabel { border-color: #7e22ce; background: #faf5ff; }
+.riskf-check-item--oacceptabel:hover { background: #f3e8ff; border-color: #6b21a8; }
 .riskf-residual-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #334155; letter-spacing: 0.02em; }
 .riskf-golv-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #991b1b; letter-spacing: 0.02em; text-transform: uppercase; }
 .riskf-chip--golv-hog { box-shadow: inset 3px 0 0 #ef4444; }
+.riskf-chip--oacceptabel { box-shadow: inset 3px 0 0 #7e22ce; }
 .riskf-check-item--bidrar-golv { border-color: #f59e0b; background: #fffbeb; }
 .riskf-check-item--bidrar-golv:hover { background: #fef3c7; border-color: #d97706; }
 .riskf-bidrar-mark { display: inline-block; margin-left: 0.4rem; font-size: 0.68rem; font-style: normal; font-weight: 600; color: #92400e; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -5725,6 +5728,7 @@ body.riskbedomning-byra-page h5 {
 }
 .riskhoj-katalog-rad { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; padding: 0.45rem 0.65rem; border: 1px solid var(--line); border-radius: 8px; }
 .riskhoj-katalog-rad--golv { border-color: #ef4444; background: #fef2f2; }
+.riskhoj-katalog-rad--oacceptabel { border-color: #7e22ce; background: #faf5ff; }
 .riskhoj-katalog-namn { flex: 1 1 12rem; font-size: 0.88rem; }
 .riskhoj-katalog-kategori { width: 16.5rem; flex-shrink: 0; }
 .riskhoj-katalog-klass { width: 14rem; flex-shrink: 0; }
@@ -5801,6 +5805,15 @@ body.riskbedomning-byra-page h5 {
     border-color: #f87171;
     background: #fee2e2;
     color: #991b1b;
+}
+.riskhoj-forslag-chip--oacceptabel {
+    border-color: #d8b4fe;
+    background: #faf5ff;
+}
+.riskhoj-forslag-chip--oacceptabel:hover {
+    border-color: #a855f7;
+    background: #f3e8ff;
+    color: #581c87;
 }
 .riskhoj-forslag-label { flex: 1 1 auto; min-width: 0; }
 .riskhoj-forslag-klass {
@@ -13410,7 +13423,9 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .ar-bar-fill--golv { background: #ef4444; }
 .ar-bar-fill--bidrar { background: #f59e0b; }
+.ar-bar-fill--oacceptabel { background: #7e22ce; }
 .ar-bar-chart--flaggor .ar-bar-row:has(.ar-bar-fill--golv) .ar-flaggor-klass { color: #991b1b; }
+.ar-bar-chart--flaggor .ar-bar-row:has(.ar-bar-fill--oacceptabel) .ar-flaggor-klass { color: #581c87; }
 .ar-pie-chart-wrap { margin: 0.85rem 0 0.25rem; }
 #ar-distribution-chart { margin-top: 1.15rem; padding-top: 0.35rem; border-top: 1px solid #e2e8f0; }
 .ar-title-editable { position: relative; padding-right: 1.75rem; }

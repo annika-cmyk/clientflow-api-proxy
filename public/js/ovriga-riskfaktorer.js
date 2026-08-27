@@ -1492,6 +1492,7 @@ class RiskFactorsManager {
     }
 
     riskhojandeKlassLabel(klass) {
+        if (klass === 'OACCEPTABEL') return 'Oacceptabel';
         if (klass === 'GOLV_HOG') return 'Hög-aktiv';
         if (klass === 'INFORMATIV') return 'Informativ';
         return 'Bidrar vid kombination';
@@ -1569,12 +1570,13 @@ class RiskFactorsManager {
                 const klass = entries[namn].klass;
                 const category = entries[namn].category || this._riskhojDefaultCategory(namn);
                 const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
+                return `<div class="riskhoj-katalog-rad${klass === 'OACCEPTABEL' ? ' riskhoj-katalog-rad--oacceptabel' : (klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : '')}">
                     <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')} ${this.renderKundCountBadge(this.kundAntalFor('varningsflaggor', namn))}</span>
                     <select class="form-select riskhoj-katalog-kategori" data-namn="${safeNamn}" aria-label="Kategori för ${safeNamn}">
                         ${this._riskhojKategoriOptions(category)}
                     </select>
                     <select class="form-select riskhoj-katalog-klass" data-namn="${safeNamn}">
+                        <option value="OACCEPTABEL"${klass === 'OACCEPTABEL' ? ' selected' : ''}>Oacceptabel</option>
                         <option value="GOLV_HOG"${klass === 'GOLV_HOG' ? ' selected' : ''}>Hög-aktiv</option>
                         <option value="BIDRAR_VID_KOMBINATION"${klass === 'BIDRAR_VID_KOMBINATION' ? ' selected' : ''}>Bidrar vid kombination</option>
                         <option value="INFORMATIV"${klass === 'INFORMATIV' ? ' selected' : ''}>Informativ</option>
@@ -1596,7 +1598,7 @@ class RiskFactorsManager {
                             const safe = String(f.label || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
                             const badge = Kat.klassBadge ? Kat.klassBadge(f.klass, f.badge) : '';
                             const hint = String(f.hint || '').replace(/"/g, '&quot;');
-                            return `<button type="button" class="riskhoj-forslag-chip${f.klass === 'GOLV_HOG' ? ' riskhoj-forslag-chip--golv' : ''}" data-namn="${safe}" data-klass="${f.klass}" data-category="${cat.id}" title="${hint}">
+                            return `<button type="button" class="riskhoj-forslag-chip${f.klass === 'OACCEPTABEL' ? ' riskhoj-forslag-chip--oacceptabel' : (f.klass === 'GOLV_HOG' ? ' riskhoj-forslag-chip--golv' : '')}" data-namn="${safe}" data-klass="${f.klass}" data-category="${cat.id}" title="${hint}">
                                 <i class="fas fa-plus" aria-hidden="true"></i>
                                 <span class="riskhoj-forslag-label">${safe}</span>
                                 ${badge ? `<span class="riskhoj-forslag-klass">${badge.replace(/</g, '&lt;')}</span>` : ''}

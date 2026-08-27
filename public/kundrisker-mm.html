@@ -110,7 +110,7 @@
                             <i class="fas fa-chevron-down collapsible-chevron"></i>
                         </div>
                         <div class="collapsible-body">
-                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual och i vilket kort de syns. <strong>Hög-aktiv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen. Kategorin styr om flaggan ligger under A. Hur samarbetar vi?, B. Vem är kunden? eller C. Vad gör kunden? Under varje kategori finns <strong>Övriga förslag</strong> som ni kan lägga till med plus-knappen.</p>
+                            <p class="kyc-hint">Styr hur kryssen på kundkortet påverkar beräknad residual och i vilket kort de syns. <strong>Oacceptabel</strong> sätter hela riskbedömningen till Oacceptabel ensam. <strong>Hög-aktiv</strong> sätter minst Hög ensam. <strong>Bidrar vid kombination</strong> sätter Hög när minst två sådana är valda. <strong>Informativ</strong> syns bara i motiveringen. Kategorin styr om flaggan ligger under A. Hur samarbetar vi?, B. Vem är kunden? eller C. Vad gör kunden? Under varje kategori finns <strong>Övriga förslag</strong> som ni kan lägga till med plus-knappen.</p>
                             <div id="riskhoj-katalog-list" class="riskhoj-katalog-list"></div>
                             <div class="riskhoj-katalog-add">
                                 <input id="riskhoj-katalog-ny" class="form-input" placeholder="Ny flagga, t.ex. många byten av redovisningsbyråer">
@@ -122,6 +122,7 @@
                                 <select id="riskhoj-katalog-ny-klass" class="form-select riskhoj-katalog-klass">
                                     <option value="BIDRAR_VID_KOMBINATION">Bidrar vid kombination</option>
                                     <option value="GOLV_HOG">Hög-aktiv</option>
+                                    <option value="OACCEPTABEL">Oacceptabel</option>
                                     <option value="INFORMATIV">Informativ</option>
                                 </select>
                                 <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="riskhoj-katalog-add" title="Lägg till flagga" aria-label="Lägg till flagga">
@@ -443,10 +444,10 @@
     <script src="js/risk-motivering.js?v=2"></script>
     <script src="js/risk-dimensioner.js?v=4"></script>
     <script src="js/tjanst-forutsattning.js?v=1"></script>
-    <script src="js/ovriga-risk-kategorier.js?v=11"></script>
+    <script src="js/ovriga-risk-kategorier.js?v=13"></script>
     <script src="js/kund-riskprofil.js?v=15"></script>
     <script src="js/risksankande-katalog.js?v=2"></script>
     <script src="js/ai-falt-granskning.js?v=11"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=34"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=35"></script>
 </body>
 </html>
