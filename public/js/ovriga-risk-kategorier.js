@@ -149,13 +149,14 @@
     {
       id: 'utlandska-ubo',
       category: 'kunden',
-      label: 'Utländska verkliga huvudmän (UBO)',
-      hint: 'Särskilt om de är etablerade utanför EU/EES.',
+      label: 'Kunder med utländska huvudmän',
+      hint: 'Styrs från KYC när verklig huvudman eller företrädare har skatterättslig hemvist utanför Sverige.',
       klass: KLASS.BIDRAR,
       badge: 'Bidrar vid kombination',
       coveredByDimension: true,
-      aliases: ['utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet', 'kunder med utländska huvudmän'],
-      steeredFromKyc: true
+      aliases: ['kunder med utländska huvudmän', 'utländska verkliga huvudmän', 'utlandska verkliga huvudman', 'ubo utlandet', 'utländska verkliga huvudmän (ubo)'],
+      steeredFromKyc: true,
+      linkedKundResidual: true
     },
     {
       id: 'pep-rca',

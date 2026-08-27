@@ -7065,6 +7065,7 @@ class CustomerCardManager {
             this._renderKycLanderOnGeo();
             this._maybeSteerGeoFromSavedLander();
             this._maybeSteerVerksamhetFromSavedKyc();
+            this._maybeSteerUboFromSavedKyc();
             this._applyVerksamhetChecksFromKyc();
             this._refreshRiskprofilForeslagenUi();
 
@@ -10683,7 +10684,7 @@ class CustomerCardManager {
                             <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
                         </div>
                         <div class="uppdrag-section-body">
-                            <p class="uppdrag-hint">Finns det någon eller några fysiska personer som (direkt eller indirekt) äger eller kontrollerar 25 % eller mer av företaget? Ange namn, personnummer och skatterättslig hemvist. Utländsk hemvist kryssar utländska huvudmän på riskbedömningen.</p>
+                            <p class="uppdrag-hint">Finns det någon eller några fysiska personer som (direkt eller indirekt) äger eller kontrollerar 25 % eller mer av företaget? Ange namn, personnummer och skatterättslig hemvist. Utländsk hemvist hos huvudman eller företrädare kopplar riskfaktorn «Kunder med utländska huvudmän» på kundresidual.</p>
                             <div id="kyc-huvudman-list">
                                 ${huvudmanList.map(p => this._kycHuvudmanRowHtml(p)).join('')}
                             </div>
@@ -11078,12 +11079,20 @@ class CustomerCardManager {
         const sel = document.getElementById('kyc-vh-utlandska-agare');
         if (!sel || !HM) return;
         const huvudman = this._collectKycHuvudman();
-        const foretradare = Array.from(document.querySelectorAll('#kyc-foretradare-list .kyc-foretradare-row')).map((row) => ({
-            skatterattslig_hemvist: (row.querySelector('.kyc-ftr-hemvist')?.value || '').trim()
-        }));
+        const foretradare = this._collectKycForetradare();
         const foreign = HM.hasForeignHemvist(huvudman) || HM.hasForeignHemvist(foretradare);
         sel.value = foreign ? 'Ja' : 'Nej';
         this._applyUtlandskaUboFromKyc();
+        this._scheduleUboFromKycSave();
+    }
+
+    _scheduleUboFromKycSave() {
+        clearTimeout(this._uboFromKycTimer);
+        this._uboFromKycTimer = setTimeout(() => {
+            this._persistUtlandskaUboFromKyc().catch((err) => {
+                console.warn('Kunde inte styra utländska huvudmän från hemvist:', err);
+            });
+        }, 350);
     }
 
     _utlandskaUboRecords() {
@@ -11097,14 +11106,42 @@ class CustomerCardManager {
         });
     }
 
+    _collectKycForetradare() {
+        return Array.from(document.querySelectorAll('#kyc-foretradare-list .kyc-foretradare-row')).map((row) => ({
+            namn: (row.querySelector('.kyc-ftr-namn')?.value || '').trim(),
+            personnr: (row.querySelector('.kyc-ftr-pnr')?.value || '').trim(),
+            skatterattslig_hemvist: (row.querySelector('.kyc-ftr-hemvist')?.value || '').trim(),
+            tin: (row.querySelector('.kyc-ftr-tin')?.value || '').trim()
+        })).filter((p) => p.namn || p.personnr || p.tin || (p.skatterattslig_hemvist && p.skatterattslig_hemvist.toLowerCase() !== 'sverige'));
+    }
+
     _hasForeignKycUbo() {
         const HM = window.KycHuvudman;
         if (!HM) return false;
-        const live = this._collectKycHuvudman();
-        if (live.length) return HM.hasForeignHemvist(live);
+        const huvudman = this._collectKycHuvudman();
+        const foretradare = this._collectKycForetradare();
+        if (huvudman.length || foretradare.length) {
+            return HM.hasForeignHemvist(huvudman) || HM.hasForeignHemvist(foretradare);
+        }
+        if (HM.hasForeignFromKyc) {
+            return HM.hasForeignFromKyc(this._savedKycFormular || {});
+        }
         const saved = this._savedKycFormular || {};
         const list = HM.listFromSaved ? HM.listFromSaved(saved, []) : [];
-        return HM.hasForeignHemvist(list);
+        const ftr = HM.listForetradareFromSaved ? HM.listForetradareFromSaved(saved) : [];
+        return HM.hasForeignHemvist(list) || HM.hasForeignHemvist(ftr);
+    }
+
+    _maybeSteerUboFromSavedKyc() {
+        if (!this._hasForeignKycUbo() || !this._allaRisker) return;
+        const recs = this._utlandskaUboRecords();
+        const suggested = new Set(recs.map((r) => r.id));
+        const linked = this._linkedRiskIds || new Set();
+        if ([...suggested].some((id) => !linked.has(id))) {
+            this._persistUtlandskaUboFromKyc().catch((err) => {
+                console.warn('Kunde inte styra utländska huvudmän från KYC:', err);
+            });
+        }
     }
 
     _applyUtlandskaUboFromKyc() {

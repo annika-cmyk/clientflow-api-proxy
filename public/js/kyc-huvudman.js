@@ -82,6 +82,30 @@
             || /kunder med utl[äa]ndska huvudm/.test(v);
     }
 
+    function listForetradareFromSaved(saved) {
+        const src = saved && typeof saved === 'object' ? saved : {};
+        if (Array.isArray(src.foretradare) && src.foretradare.length) {
+            return src.foretradare.map(normalizePerson);
+        }
+        const legacy = trimStr(src.skatterattslig_hemvist_foretradare);
+        if (legacy) return [normalizePerson({ skatterattslig_hemvist: legacy })];
+        if (trimStr(src.foretradareNamn) || trimStr(src.foretradarePnr)) {
+            return [normalizePerson({
+                namn: src.foretradareNamn,
+                personnr: src.foretradarePnr,
+                skatterattslig_hemvist: src.skatterattslig_hemvist_foretradare
+            })];
+        }
+        return [];
+    }
+
+    function hasForeignFromKyc(kyc) {
+        const src = kyc && typeof kyc === 'object' ? kyc : {};
+        const huvudman = listFromSaved(src, []);
+        const foretradare = listForetradareFromSaved(src);
+        return hasForeignHemvist(huvudman) || hasForeignHemvist(foretradare);
+    }
+
     function mergeUtlandskaUboFlag(existing, hasForeign) {
         const list = Array.isArray(existing) ? existing.slice() : (existing ? [existing] : []);
         const kept = list.filter((raw) => {
@@ -100,6 +124,8 @@
         parseHuvudmanInfo,
         formatHuvudmanInfo,
         listFromSaved,
+        listForetradareFromSaved,
+        hasForeignFromKyc,
         isUboFlagLabel,
         mergeUtlandskaUboFlag
     };

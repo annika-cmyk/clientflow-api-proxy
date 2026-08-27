@@ -5435,6 +5435,27 @@ async function maybePatchKycVerksamhetRisk(customerRecord, kyc, token, baseId) {
   return { 'risker kopplat till tjänster': after };
 }
 
+async function maybePatchUboRisk(customerRecord, kyc, token, baseId) {
+  const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
+  if (!byraId || !token) return null;
+  const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  const uboRecs = byraRisker.filter((rec) => KycHuvudman.isUboFlagLabel(String(rec?.fields?.Riskfaktor || '')));
+  if (!uboRecs.length) return null;
+  const on = KycHuvudman.hasForeignFromKyc(kyc);
+  const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
+  const afterSet = new Set(Array.isArray(before) ? before : []);
+  uboRecs.forEach((rec) => {
+    if (!rec?.id) return;
+    if (on) afterSet.add(rec.id);
+    else afterSet.delete(rec.id);
+  });
+  const after = [...afterSet];
+  const a = [...new Set(Array.isArray(before) ? before : [])].sort();
+  const b = [...afterSet].sort();
+  if (a.length === b.length && a.every((id, i) => id === b[i])) return null;
+  return { 'risker kopplat till tjänster': after };
+}
+
 async function identifieradeRiskerForByra(byraId, token, baseId) {
   const [tjanstRecs, ovrigaRecs] = await Promise.all([
     fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId),
@@ -16708,16 +16729,21 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     const huvudmanList = Array.isArray(req.body?.huvudman) && req.body.huvudman.length
       ? req.body.huvudman
       : KycHuvudman.parseHuvudmanInfo(req.body?.huvudmanInfo || kycData.huvudmanInfo || '');
+    const foretradareList = Array.isArray(req.body?.foretradare) && req.body.foretradare.length
+      ? req.body.foretradare
+      : KycHuvudman.listForetradareFromSaved(kycData);
     if (huvudmanList.length) {
       syncFields['Verklig huvudman'] = KycHuvudman.formatHuvudmanInfo(huvudmanList);
     }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'huvudman')
+    const hemvistTouched = Object.prototype.hasOwnProperty.call(req.body || {}, 'huvudman')
       || Object.prototype.hasOwnProperty.call(req.body || {}, 'huvudmanInfo')
-      || Object.prototype.hasOwnProperty.call(req.body || {}, 'vh_utlandska_agare')) {
+      || Object.prototype.hasOwnProperty.call(req.body || {}, 'foretradare')
+      || Object.prototype.hasOwnProperty.call(req.body || {}, 'vh_utlandska_agare');
+    if (hemvistTouched) {
       const existingFlags = existingFields['Riskhöjande faktorer övrigt'] || [];
       syncFields['Riskhöjande faktorer övrigt'] = KycHuvudman.mergeUtlandskaUboFlag(
         existingFlags,
-        KycHuvudman.hasForeignHemvist(huvudmanList)
+        KycHuvudman.hasForeignHemvist(huvudmanList) || KycHuvudman.hasForeignHemvist(foretradareList)
       );
     }
     await ensureKunddataOptionalFields(airtableAccessToken, baseId);
@@ -16744,16 +16770,32 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
         `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
         { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
       );
+      let customerForPatch = custRes.data;
+      let combinedRiskPatch = null;
       const verksamhetPatch = await maybePatchKycVerksamhetRisk(
-        custRes.data,
+        customerForPatch,
         kycData,
         airtableAccessToken,
         baseId
       );
       if (verksamhetPatch) {
+        combinedRiskPatch = { ...verksamhetPatch };
+        customerForPatch = {
+          ...custRes.data,
+          fields: { ...custRes.data.fields, ...verksamhetPatch }
+        };
+      }
+      const uboPatch = await maybePatchUboRisk(
+        customerForPatch,
+        kycData,
+        airtableAccessToken,
+        baseId
+      );
+      if (uboPatch) combinedRiskPatch = { ...(combinedRiskPatch || {}), ...uboPatch };
+      if (combinedRiskPatch) {
         await axios.patch(
           `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-          { fields: verksamhetPatch },
+          { fields: combinedRiskPatch },
           { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
         );
       }
