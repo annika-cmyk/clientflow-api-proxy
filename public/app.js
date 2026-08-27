@@ -766,15 +766,15 @@ class ClientFlowApp {
                             </div>
                             <div class="dashboard-row-details">
                                 <div class="dashboard-missing-hint">
-                                    ${row.antalKunder} kund${row.antalKunder === 1 ? '' : 'er'} har svarat Ja i KYC, men riskfaktorn saknas på sidan Övriga riskfaktorer.
+                                    ${row.antalKunder} kund${row.antalKunder === 1 ? '' : 'er'} har svarat Ja i KYC, men riskfaktorn saknas på sidan Kundrisker mm.
                                 </div>
                             </div>
                             <div class="dashboard-row-actions">
                                 <button type="button" class="btn btn-primary btn-sm" data-factor-id="${this.escapeHtml(row.id)}" onclick="clientFlowApp.skapaKycRiskfaktorUtkast('${this.escapeHtml(row.id)}', this)">
                                     <i class="fas fa-plus"></i> Skapa utkast
                                 </button>
-                                <a href="ovriga-riskfaktorer.html" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-external-link-alt"></i> Övriga riskfaktorer
+                                <a href="kundrisker-mm.html" class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-external-link-alt"></i> Kundrisker mm
                                 </a>
                             </div>
                         </div>
@@ -807,9 +807,9 @@ class ClientFlowApp {
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
             if (data.alreadyExists) {
-                alert('Riskfaktorn finns redan. Öppna sidan Övriga riskfaktorer för att fylla i den.');
+                alert('Riskfaktorn finns redan. Öppna sidan Kundrisker mm för att fylla i den.');
             } else {
-                alert(data.message || 'Utkast skapat. Fyll i resterande fält under Övriga riskfaktorer.');
+                alert(data.message || 'Utkast skapat. Fyll i resterande fält under Kundrisker mm.');
             }
             await this.loadSaknadeKycRiskfaktorerList();
         } catch (error) {
