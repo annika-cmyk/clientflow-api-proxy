@@ -23288,11 +23288,14 @@ app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
 
     const rutinerFields = (rutinerRes.data && rutinerRes.data.records && rutinerRes.data.records[0] && rutinerRes.data.records[0].fields) || {};
     const kart = arKartlaggning.parseKartlaggningJson(rutinerFields[arKartlaggning.KARTLAGGNING_FIELD]);
+    const statistikText = section === 'verksamhet'
+      ? arKartlaggning.formatByraVerksamhetBlock(statistik, rutinerFields)
+      : arKartlaggning.formatStatBlock(statistik);
     const byraProfil = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
 
     const systemPrompt = arKartlaggning.buildAiSystemPrompt(section);
     const userPrompt = arKartlaggning.buildAiUserPrompt(section, {
-      statistikText: arKartlaggning.formatStatBlock(statistik),
+      statistikText,
       byraProfil,
       befintligText: kart[section] || ''
     });
