@@ -9904,25 +9904,81 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 
 /* Edit-form for grundmall */
-.uppdrag-card--embed .uppdrag-lead-fields {
+.uppdrag-edit--mall {
+    padding: 0.15rem 0 0.1rem;
+}
+.uppdrag-edit-hint {
+    margin: 0 0 0.9rem;
+    font-size: 0.82rem;
+}
+.uppdrag-edit-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.65rem 0.85rem;
-    margin: 0 0 0.85rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 0.75rem 0.85rem;
-    background: #f8fafc;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem 1.15rem;
+    margin: 0 0 1rem;
 }
-.uppdrag-card--embed .uppdrag-lead-fields .lead-field {
-    padding: 0;
-    border: none;
+.uppdrag-edit-grid--underlag {
+    margin: 0.75rem 0 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.uppdrag-card--embed .uppdrag-lead-fields .lead-field label {
+.uppdrag-edit-field label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
     margin-bottom: 0.3rem;
 }
-.uppdrag-card--embed .uppdrag-block {
-    margin-top: 0.75rem;
+.uppdrag-edit-field--full {
+    grid-column: 1 / -1;
+    margin-bottom: 0.85rem;
+}
+.uppdrag-edit-field .date-input-wrap {
+    max-width: none;
+}
+.uppdrag-edit-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #0f172a;
+    grid-column: 1 / -1;
+}
+.uppdrag-edit-more {
+    margin: 0.15rem 0 0;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 0.35rem;
+}
+.uppdrag-edit-more > summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #334155;
+    padding: 0.4rem 0;
+    user-select: none;
+}
+.uppdrag-edit-more > summary::-webkit-details-marker {
+    display: none;
+}
+.uppdrag-edit-more > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 1rem;
+    color: #94a3b8;
+    transition: transform 0.12s ease;
+}
+.uppdrag-edit-more[open] > summary::before {
+    transform: rotate(90deg);
+}
+.uppdrag-edit-more-opt {
+    font-weight: 500;
+    color: #94a3b8;
+}
+.uppdrag-edit-more-body {
+    padding: 0.15rem 0 0.35rem;
 }
 .uppdrag-card--embed .uppdrag-actions {
     margin-top: 1rem;
@@ -9931,6 +9987,17 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+}
+@media (max-width: 900px) {
+    .uppdrag-edit-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 600px) {
+    .uppdrag-edit-grid,
+    .uppdrag-edit-grid--underlag {
+        grid-template-columns: 1fr;
+    }
 }
 .uppdrag-tab > .kundkort-uppdrag-panel + .kundkort-uppdrag-panel {
     margin-top: 1rem;
