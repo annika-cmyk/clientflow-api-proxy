@@ -5503,6 +5503,9 @@ body.riskbedomning-byra-page h5 {
 }
 .ovriga-risk-katalog { margin: 0.15rem 0 0.35rem; }
 .ovriga-risk-katalog--geo { margin-bottom: 0.75rem; }
+.ovriga-risk-katalog--kund-residual { margin-top: 0.35rem; }
+.risk-subgroup { margin-top: 1.25rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1; }
+.risk-group-header--sub h4 { margin: 0; font-size: 1rem; font-weight: 700; color: #334155; }
 .kyc-lander-picker { position: relative; }
 .kyc-lander-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.35rem 0 0.5rem; }
 .kyc-lander-chip { display: inline-flex; align-items: center; gap: 0.35rem; }

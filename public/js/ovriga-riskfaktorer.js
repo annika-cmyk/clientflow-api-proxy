@@ -247,7 +247,40 @@ class RiskFactorsManager {
         const normalized = Kat && Kat.airtableTypForLinkedKundResidual
             ? Kat.airtableTypForLinkedKundResidual(namn)
             : '';
-        return normalized || fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+        const raw = normalized || fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+        const RD = window.RiskDimensioner;
+        return RD && RD.normalizeTyp ? RD.normalizeTyp(raw) : raw;
+    }
+
+    geoRiskGroupLabel() {
+        const RD = window.RiskDimensioner;
+        return RD && RD.normalizeTyp
+            ? RD.normalizeTyp('Geografiska riskfaktorer')
+            : 'Geografisk riskfaktorer - här finns byråns kunder';
+    }
+
+    async migrateRenamedGeoTyp() {
+        const newTyp = this.geoRiskGroupLabel();
+        const oldTyp = 'Geografiska riskfaktorer';
+        if (newTyp === oldTyp) return;
+        const pending = (this.risks || []).filter((risk) => {
+            const fields = risk.fields || {};
+            return fields['Typ av riskfaktor'] === oldTyp;
+        });
+        if (!pending.length) return;
+        await Promise.all(pending.map(async (risk) => {
+            const fields = { ...(risk.fields || {}) };
+            try {
+                const response = await this.saveRiskFactor(
+                    `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
+                    'PUT',
+                    { ...fields, 'Typ av riskfaktor': newTyp }
+                );
+                if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
+            } catch (err) {
+                console.warn('Kunde inte byta typ på geografisk riskfaktor:', fields.Riskfaktor, err);
+            }
+        }));
     }
 
     async migrateRenamedRiskFactorLabels() {
@@ -325,6 +358,7 @@ class RiskFactorsManager {
                 this.risks = data.records || [];
                 await this.migrateRenamedRiskFactorLabels();
                 await this.migrateMisplacedKundTransactionFactors();
+                await this.migrateRenamedGeoTyp();
                 
                 // Populate byrå dropdown with unique byrå IDs from the data
                 this.populateByraDropdown();
@@ -397,7 +431,7 @@ class RiskFactorsManager {
             return;
         }
 
-        // Group risks by "Typ av riskfaktor"
+        // Group risks by normalized "Typ av riskfaktor"
         const groupedRisks = {};
         this.filteredRisks.forEach(risk => {
             const riskType = this.groupRiskTyp(risk);
@@ -407,19 +441,50 @@ class RiskFactorsManager {
             groupedRisks[riskType].push(risk);
         });
 
-        // Create HTML for each group
-        const groupHTML = Object.keys(groupedRisks).map(riskType => {
+        const kundTyp = 'Riskfaktorer kopplat till kund';
+        const geoTyp = this.geoRiskGroupLabel();
+        const geoRisks = groupedRisks[geoTyp] || [];
+        delete groupedRisks[geoTyp];
+        if (geoRisks.length && !groupedRisks[kundTyp]) {
+            groupedRisks[kundTyp] = [];
+        }
+
+        const RD = window.RiskDimensioner;
+        const order = RD && RD.DIMENSIONS
+            ? RD.DIMENSIONS.map((dim) => dim.label)
+            : [kundTyp, 'Distributionskanaler', 'Verksamhetsspecifika riskfaktorer'];
+        const groupKeys = Object.keys(groupedRisks).sort((a, b) => {
+            const ia = order.indexOf(a);
+            const ib = order.indexOf(b);
+            const ai = ia === -1 ? 50 : ia;
+            const bi = ib === -1 ? 50 : ib;
+            return ai - bi || a.localeCompare(b, 'sv');
+        });
+
+        const buildRiskItems = (risksInGroup) => risksInGroup.map(risk => this.createRiskItem(risk)).join('');
+
+        const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
-            const riskItems = risksInGroup.map(risk => this.createRiskItem(risk)).join('');
-            
+            const riskItems = buildRiskItems(risksInGroup);
+            const geoSub = (riskType === kundTyp && geoRisks.length) ? `
+                    <div class="risk-subgroup">
+                        <div class="risk-group-header risk-group-header--sub">
+                            <h4>${this.esc(geoTyp)}</h4>
+                        </div>
+                        <div class="risk-items">
+                            ${buildRiskItems(geoRisks)}
+                        </div>
+                    </div>` : '';
+
             return `
                 <div class="risk-group">
                     <div class="risk-group-header">
-                        <h3>${riskType}</h3>
+                        <h3>${this.esc(riskType)}</h3>
                     </div>
                     <div class="risk-items">
                         ${riskItems}
                     </div>
+                    ${geoSub}
                 </div>
             `;
         }).join('');

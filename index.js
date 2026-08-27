@@ -7825,7 +7825,7 @@ function buildKundRiskbedomningPdfHtml(data) {
   const rf = data.riskfaktorer || {};
   const riskfaktorerHtml = `
       <h3>Kundens tjänster</h3>${bulletList(rf.tjanster)}
-      <h3>Geografiska riskfaktorer</h3>${bulletList(rf.geografiska)}
+      <h3>Geografisk riskfaktorer - här finns byråns kunder</h3>${bulletList(rf.geografiska)}
       <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund)}
       <h3>Distributionskanaler</h3>${bulletList(rf.distribution)}
       <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet, 'Inga verksamhetsspecifika riskfaktorer')}
@@ -8049,6 +8049,7 @@ function pdfRiskFactorNames(list) {
 
 const PDF_RISK_TYP_MAP = {
   'Geografiska riskfaktorer': 'geografiska',
+  'Geografisk riskfaktorer - här finns byråns kunder': 'geografiska',
   'Riskfaktorer kopplat till kund': 'kund',
   'Distrubutionskanaler': 'distribution',
   'Distributionskanaler': 'distribution',

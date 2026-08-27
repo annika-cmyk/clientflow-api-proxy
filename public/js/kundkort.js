@@ -7013,7 +7013,7 @@ class CustomerCardManager {
     // Mappning: typnamn (Airtable) -> container-id-suffix och rubrik
     _riskTypMap() {
         return [
-            { typ: 'Geografiska riskfaktorer',           id: 'geografiska',  icon: 'fa-globe-europe' },
+            { typ: 'Geografisk riskfaktorer - här finns byråns kunder', id: 'geografiska', icon: 'fa-globe-europe' },
             { typ: 'Riskfaktorer kopplat till kund',     id: 'kund',         icon: 'fa-user-shield' },
             { typ: 'Distrubutionskanaler',               id: 'distribution', icon: 'fa-network-wired' },
             { typ: 'Verksamhetsspecifika riskfaktorer',  id: 'verksamhet',   icon: 'fa-building' },
@@ -7032,6 +7032,7 @@ class CustomerCardManager {
 
     _kycFieldForRiskerTyp(typId) {
         const map = { geografiska: 'KYC genomgången - Geografiska riskfaktorer', kund: 'KYC genomgången - Riskfaktorer kund', distribution: 'KYC genomgången - Distributionskanaler', verksamhet: 'KYC genomgången - Verksamhetsspecifika riskfaktorer' };
+        /* KYC-fältnamn i Airtable behåller «Geografiska riskfaktorer» trots ny visningsrubrik */
         return map[typId] || null;
     }
 
@@ -7063,6 +7064,7 @@ class CustomerCardManager {
                 });
             });
             this._renderKycLanderOnGeo();
+            this._renderKycHemvistOnKund();
             this._maybeSteerGeoFromSavedLander();
             this._maybeSteerVerksamhetFromSavedKyc();
             this._maybeSteerUboFromSavedKyc();
@@ -7221,7 +7223,7 @@ class CustomerCardManager {
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="${embedded && parentEditing ? '' : 'display:none;'}">
-                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? 'Geografisk residual' : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
+                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? ((window.RiskDimensioner && RiskDimensioner.normalizeTyp) ? RiskDimensioner.normalizeTyp('Geografiska riskfaktorer') : 'Geografisk riskfaktorer - här finns byråns kunder') : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
                     ${ingaRfEditHtml}
                     ${hogriskEditHtml}
                     ${riskerForList.map(r => `
@@ -7309,7 +7311,7 @@ class CustomerCardManager {
     _embeddedTypIdsForOvrigaCard(id) {
         const typId = this._typIdForOvrigaCardId(id);
         const ids = typId ? [typId] : [];
-        if (String(id || '').replace(/^ovriga-/, '') === 'verksamheten') ids.unshift('geografiska');
+        if (String(id || '').replace(/^ovriga-/, '') === 'kunden') ids.unshift('geografiska');
         return ids;
     }
 
@@ -7470,6 +7472,7 @@ class CustomerCardManager {
                 });
             }
             if (typId === 'geografiska') this._renderKycLanderOnGeo();
+            if (typId === 'kund' || typId === 'geografiska') this._renderKycHemvistOnKund();
             const kycField = this._kycFieldForRiskerTyp(typId);
             const dimHasValue = nyaChecked.length > 0
                 || (typId === 'kund' && Array.isArray(nyaHogrisk) && nyaHogrisk.length > 0);
@@ -7747,10 +7750,10 @@ class CustomerCardManager {
                 </div>
                 <div class="collapsible-body" style="position:relative;">
                     <p class="kyc-hint">${this._esc(cat.hint || '')}</p>
-                    ${cat.id === 'verksamheten' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
+                    ${cat.id === 'kunden' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
                         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
                     </div>` : ''}
-                    ${typId ? `<div class="ovriga-risk-katalog" id="ovrigkyc-risker-${typId}">
+                    ${typId ? `<div class="ovriga-risk-katalog${cat.id === 'kunden' ? ' ovriga-risk-katalog--kund-residual' : ''}" id="ovrigkyc-risker-${typId}">
                         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
                     </div>` : ''}
                     <div class="risker-ovriga-flaggor">
@@ -10389,6 +10392,7 @@ class CustomerCardManager {
         this.renderKYCFormular(savedKyc);
         if (document.getElementById('ovrigkyc-risker-geografiska')) {
             this._renderKycLanderOnGeo();
+            this._renderKycHemvistOnKund();
             this._maybeSteerGeoFromSavedLander();
         }
     }
@@ -10896,6 +10900,7 @@ class CustomerCardManager {
         this._syncKycUtlandskaFromHemvist();
         this._initKycLanderPicker();
         this._renderKycLanderOnGeo();
+        this._renderKycHemvistOnKund();
         this._maybeSteerGeoFromSavedLander();
         this._applyUtlandskaUboFromKyc();
         this._applyVerksamhetChecksFromKyc();
@@ -11083,6 +11088,7 @@ class CustomerCardManager {
         const foreign = HM.hasForeignHemvist(huvudman) || HM.hasForeignHemvist(foretradare);
         sel.value = foreign ? 'Ja' : 'Nej';
         this._applyUtlandskaUboFromKyc();
+        this._renderKycHemvistOnKund();
         this._scheduleUboFromKycSave();
     }
 
@@ -11216,6 +11222,7 @@ class CustomerCardManager {
             const recs = this._riskerForTypId('kund', this._allaRisker);
             this._renderRiskerForTyp(container, recs, nextIds, 'kund', { embedded: true });
         }
+        this._renderKycHemvistOnKund();
         const ovriga = document.getElementById('ovrigkyc-kyc-content');
         if (ovriga && this.customerData?.fields) {
             /* kort B läser om från fields vid nästa load; uppdatera residualen nu */
@@ -11558,6 +11565,7 @@ class CustomerCardManager {
         }
         this._applyVerksamhetChecksFromKyc();
         this._renderKycLanderOnGeo();
+        this._renderKycHemvistOnKund();
         this._refreshRiskprofilForeslagenUi();
         const kycField = this._kycFieldForRiskerTyp('geografiska');
         if (kycField && next.size) this._saveKycStatus(kycField, true);
@@ -11682,6 +11690,61 @@ class CustomerCardManager {
             <p class="kyc-lander-geo-styr"></p>`;
         this._refreshKycLanderPicker();
         this._applyGeoChecksFromLander();
+    }
+
+    _kycHemvistLabels() {
+        const HM = window.KycHuvudman;
+        let huvudman = this._collectKycHuvudman();
+        let foretradare = this._collectKycForetradare();
+        if (!huvudman.length && !foretradare.length && this._savedKycFormular && HM) {
+            huvudman = HM.listFromSaved ? HM.listFromSaved(this._savedKycFormular, []) : [];
+            foretradare = HM.listForetradareFromSaved ? HM.listForetradareFromSaved(this._savedKycFormular) : [];
+        }
+        const seen = new Set();
+        const out = [];
+        [...huvudman, ...foretradare].forEach((p) => {
+            const raw = String(p.skatterattslig_hemvist || p.hemvist || '').trim() || 'Sverige';
+            const key = raw.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(raw);
+        });
+        return out;
+    }
+
+    _renderKycHemvistOnKund() {
+        const container = document.getElementById('ovrigkyc-risker-kund');
+        if (!container) return;
+        let box = container.querySelector('.kyc-hemvist-kund');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'kyc-hemvist-kund kyc-lander-geo';
+            const selector = container.querySelector('.risker-selector');
+            if (selector) container.insertBefore(box, selector);
+            else container.prepend(box);
+        }
+        const hemvistHelp = 'Hämtas från KYC-formuläret: skatterättslig hemvist hos verklig huvudman och företrädare. Utländsk hemvist styr riskfaktorn «Kunder med utländska huvudmän».';
+        box.innerHTML = `
+            <div class="risker-checkgrupp-titel kyc-lander-geo-titel">
+                <span>Skatterättslig hemvist (huvudman och företrädare)</span>
+                <button type="button" class="help-qmark" id="kyc-hemvist-kund-help"
+                    aria-label="Information om skatterättslig hemvist"
+                    data-help-text="${this._esc(hemvistHelp)}"
+                    onmouseenter="customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this)"
+                    onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);">?</button>
+            </div>
+            <div class="kyc-lander-chips kyc-lander-chips--readonly kyc-hemvist-chips"></div>
+            <p class="kyc-lander-geo-empty kyc-hemvist-empty">Ingen hemvist ifylld i KYC-formuläret ännu.</p>`;
+        const labels = this._kycHemvistLabels();
+        const chips = box.querySelector('.kyc-hemvist-chips');
+        const empty = box.querySelector('.kyc-hemvist-empty');
+        if (chips) {
+            chips.innerHTML = labels.map((label) => {
+                const foreign = label.trim().toLowerCase() !== 'sverige';
+                return `<span class="kyc-chip${foreign ? ' kyc-chip--warn' : ''}">${this._esc(label)}</span>`;
+            }).join('');
+        }
+        if (empty) empty.hidden = labels.length > 0;
     }
 
     // Visa TIN-fältet endast om angiven skatterättslig hemvist inte är Sverige

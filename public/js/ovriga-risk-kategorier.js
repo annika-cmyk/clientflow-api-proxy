@@ -23,7 +23,7 @@
       letter: 'B',
       title: 'Vem är kunden?',
       subtitle: 'Ägarstruktur, PEP och historik',
-      hint: 'Sårbarheter i ägande, kontrollstruktur och bakgrund.',
+      hint: 'Sårbarheter i ägande, kontrollstruktur, hemvist och geografisk närvaro.',
       icon: 'fa-user-shield'
     },
     {
@@ -31,7 +31,7 @@
       letter: 'C',
       title: 'Vad gör kunden?',
       subtitle: 'Affärsmodell, transaktioner och länder',
-      hint: 'Risker i kundens dagliga drift, bransch och länder kunden handlar med.',
+      hint: 'Risker i kundens dagliga drift och bransch.',
       icon: 'fa-industry'
     }
   ];

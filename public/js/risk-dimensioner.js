@@ -33,10 +33,16 @@
     },
     {
       id: 'geografiska',
-      label: 'Geografiska riskfaktorer',
-      cardTitle: 'Vad gör kunden?',
-      categoryId: 'verksamheten',
-      aliases: ['geografiska riskfaktorer', 'geografi', 'geografiska']
+      label: 'Geografisk riskfaktorer - här finns byråns kunder',
+      cardTitle: 'Vem är kunden?',
+      categoryId: 'kunden',
+      aliases: [
+        'geografiska riskfaktorer',
+        'geografisk riskfaktorer - här finns byråns kunder',
+        'geografisk riskfaktorer - har finns byrans kunder',
+        'geografi',
+        'geografiska'
+      ]
     },
     {
       id: 'verksamhet',
