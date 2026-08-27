@@ -4875,7 +4875,7 @@ class CustomerCardManager {
         return new Date().toISOString().slice(0, 10);
     }
 
-    _parseUtsattOmrade(fields) {
+    _utsattOmradeGeoFailed(data) {
         return !!(data && data.geocoding && data.geocoding.ok === false);
     }
 
