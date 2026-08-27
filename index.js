@@ -7969,7 +7969,7 @@ async function fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseI
   let offset = null;
   do {
     let url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(RISK_ASSESSMENT_TABLE)}?filterByFormula=${formula}`
-      + `&fields[]=Task%20Name&fields[]=${encodeURIComponent('Riskpoäng')}&fields[]=${encodeURIComponent('Riskbedömning')}&fields[]=${encodeURIComponent('Samspelsexempel')}&pageSize=100`;
+      + `&fields[]=Task%20Name&fields[]=${encodeURIComponent('Riskpoäng')}&fields[]=${encodeURIComponent('Riskbedömning')}&fields[]=${encodeURIComponent('Samspelsexempel')}&fields[]=${encodeURIComponent('Aktuell')}&pageSize=100`;
     if (offset) url += `&offset=${offset}`;
     const r = await axios.get(url, {
       headers: { Authorization: `Bearer ${airtableAccessToken}` }
