@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClientFlow • Kundrisker mm</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather+Sans:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260827b">
+    <link rel="stylesheet" href="styles.css?v=20260827c">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body data-risk-page-scope="kundrisker">
@@ -146,6 +146,8 @@
                             <div id="risksank-katalog-list" class="risksank-katalog-list"></div>
                             <div class="riskhoj-katalog-add">
                                 <input id="risksank-katalog-ny" class="form-input" placeholder="Ny faktor, t.ex. långvarig kundrelation">
+                                <input id="risksank-katalog-ny-forklaring" class="form-input risksank-katalog-forklaring" placeholder="Förklaring">
+                                <input id="risksank-katalog-ny-kalla" class="form-input risksank-katalog-kalla" placeholder="Källa, t.ex. 3 kap. 6 § PTL">
                                 <button type="button" class="btn btn-ghost btn-sm riskhoj-katalog-add-btn" id="risksank-katalog-add" title="Lägg till faktor" aria-label="Lägg till faktor">
                                     <i class="fas fa-plus"></i>
                                 </button>
@@ -445,8 +447,8 @@
     <script src="js/tjanst-forutsattning.js?v=1"></script>
     <script src="js/ovriga-risk-kategorier.js?v=9"></script>
     <script src="js/kund-riskprofil.js?v=15"></script>
-    <script src="js/risksankande-katalog.js?v=2"></script>
+    <script src="js/risksankande-katalog.js?v=3"></script>
     <script src="js/ai-falt-granskning.js?v=10"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=29"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=30"></script>
 </body>
 </html>
