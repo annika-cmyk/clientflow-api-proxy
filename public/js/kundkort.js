@@ -11497,7 +11497,8 @@ class CustomerCardManager {
             || this._savedKycFormular?.internationellHandel
             || '';
         const labels = this._kycLanderLabels();
-        return { onlySweden: String(handel).toLowerCase() === 'nej' };
+        const onlySweden = String(handel).toLowerCase() === 'nej' && labels.length === 0;
+        return { onlySweden };
     }
 
     _suggestedGeoFactorLabels() {
@@ -11579,7 +11580,9 @@ class CustomerCardManager {
         const recs = this._riskerForTypId('geografiska', this._allaRisker);
         const suggested = Eu.suggestedRecordIds(recs, labels, opts);
         const linked = this._linkedRiskIds || new Set();
-        if (suggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
+        const steered = new Set(Eu.steeredRecordIds(recs));
+        const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
+        if (suggested.some((id) => !linked.has(id)) || staleSteered) this._scheduleGeoFromLanderSave();
         const Uts = window.UtsattOmradeStyrning;
         if (Uts && Uts.suggestedRecordIds) {
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);

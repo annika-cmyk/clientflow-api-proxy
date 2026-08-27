@@ -22341,6 +22341,13 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     try { kyc = JSON.parse(f['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
     const kycInternationell = (kyc.internationellHandel || '').toString().trim() || '–';
     const kycInternationellaLander = clip(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander, 500) || '–';
+    const kycLanderAssessed = EuHogriskLander.assess(kyc.internationellaLander || '');
+    const kycGeoSteeringLabels = EuHogriskLander.geoSteeringLabels
+      ? EuHogriskLander.geoSteeringLabels(kyc.internationellaLander || '', { onlySweden: false })
+      : [];
+    const kycGeoSteering = kycLanderAssessed.countries.length
+      ? `Länder: ${kycLanderAssessed.joined}. Styr geografisk residual: ${kycGeoSteeringLabels.join(', ') || '–'}.`
+      : '–';
     const kycKontanter = (kyc.kontanter || '').toString().trim() || '–';
     const kycKontanterAndel = clip(kyc.kontanterAndel, 200) || '–';
     const kycKryptovaluta = (kyc.kryptovaluta || '').toString().trim() || '–';
@@ -22355,6 +22362,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const intakternaText = intakternaByra !== '–' ? intakternaByra : (clip(pickText(kyc.intakterna), 700) || '–');
     if (String(kycInternationell).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
     if (String(transaktionerAndraLander).toLowerCase() === 'ja') harForhojdInternationellExponering = true;
+    if (kycLanderAssessed.countries.length > 0) harForhojdInternationellExponering = true;
 
     const sparadRiskniva = f['Riskniva'] || '';
     const sparadBedomning = (f['Byrans riskbedomning'] || '').trim();
@@ -22467,6 +22475,7 @@ KUNDUPPGIFTER (anonymiserade: kundnamn och organisationsnummer skickas inte till
 KYC-FORMULÄR (kompletterande svar sparade i ClientFlow — väg in även dessa):
 - Internationell handel enligt KYC: ${kycInternationell}
 - Länder vid internationell handel: ${kycInternationellaLander}
+- Geografisk residual från KYC-länder: ${kycGeoSteering}
 - Kontanthantering enligt KYC: ${kycKontanter}
 - Andel/omfattning kontanter: ${kycKontanterAndel}
 - Kryptovaluta enligt KYC: ${kycKryptovaluta}
@@ -22519,6 +22528,7 @@ ABSOLUTA REGLER — FÖLJ DESSA EXAKT:
 1. PEP: Om i "IDENTIFIERADE RISKFAKTORER" ovan någon riskfaktor innehåller "PEP" (t.ex. "PEP, familjemedlem till PEP eller känd medarbetare till PEP") och har nivå "Förhöjd" eller högre, ska PEP nämnas som huvudorsak i motiveringen. Detta gäller oavsett fältet "PEP-status" ovan — prioritera alltid de identifierade riskfaktorerna från fliken Riskbedömning.
 
 1b. INTERNATIONELL EXPONERING / GEOGRAFI / IMPORT-EXPORT (KRITISKT):
+   - Om KYC listar länder (t.ex. Tyskland/EU/EES): nämn internationell exponering i motiveringen även när residualnivån är låg. Följ raden "Geografisk residual från KYC-länder" — t.ex. ska Tyskland kopplas till Europa, inte enbart närområde.
    - Om någon vald riskfaktor är "Utanför EU", "Kunder med import/export", annan import/export-faktor, eller har nivå "Förhöjd"/"Hög" under Geografiska riskfaktorer eller riskfaktorer kopplat till kund med internationell koppling: du FÅR INTE skriva att det saknas indikationer på internationella transaktioner.
    - Sådana faktorer MÅSTE nämnas uttryckligen bland riskhöjande faktorer i riskbedömningstexten.
    - Om minst en sådan faktor har nivå "Förhöjd" eller "Hög": nämn det uttryckligen i motiveringen. Den beräknade startpunkten speglar residual-S×K; du ska inte välja en annan nivå.

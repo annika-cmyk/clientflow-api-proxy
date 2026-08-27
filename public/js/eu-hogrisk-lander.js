@@ -294,19 +294,26 @@
   }
 
   function suggestedGeoFactorIds(raw, opts) {
-    if (opts && opts.onlySweden) return ['naromrade'];
     var result = assess(raw);
-    if (!result.countries.length) return [];
-    var ids = [];
-    var hasNordic = result.countries.some(function (c) { return NORDIC[c.iso2]; });
-    var hasEuOther = result.countries.some(function (c) {
-      return c.group === GROUP.EU_EES && !NORDIC[c.iso2];
-    });
-    if (hasNordic) ids.push('naromrade');
-    if (hasEuOther) ids.push('europa');
-    if (result.hasOutsideEu) ids.push('utanfor_eu');
-    if (result.hasHogrisk) ids.push('hog_korruption');
-    return ids;
+    if (result.countries.length) {
+      var ids = [];
+      var hasNordic = result.countries.some(function (c) { return NORDIC[c.iso2]; });
+      var hasEuOther = result.countries.some(function (c) {
+        return c.group === GROUP.EU_EES && !NORDIC[c.iso2];
+      });
+      if (hasNordic) ids.push('naromrade');
+      if (hasEuOther) ids.push('europa');
+      if (result.hasOutsideEu) ids.push('utanfor_eu');
+      if (result.hasHogrisk) ids.push('hog_korruption');
+      return ids;
+    }
+    if (opts && opts.onlySweden) return ['naromrade'];
+    return [];
+  }
+
+  function geoSteeringLabels(raw, opts) {
+    var ids = suggestedGeoFactorIds(raw, opts);
+    return GEO_FACTORS.filter(function (f) { return ids.indexOf(f.id) !== -1; }).map(function (f) { return f.label; });
   }
 
   function recordNamn(rec) {
@@ -358,6 +365,7 @@
     GEO_FACTORS: GEO_FACTORS,
     matchGeoFactor: matchGeoFactor,
     suggestedGeoFactorIds: suggestedGeoFactorIds,
+    geoSteeringLabels: geoSteeringLabels,
     suggestedRecordIds: suggestedRecordIds,
     steeredRecordIds: steeredRecordIds
   };
