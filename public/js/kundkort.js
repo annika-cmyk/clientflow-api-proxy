@@ -12892,7 +12892,7 @@ class CustomerCardManager {
     displayDocuments(documents) {
         const content = document.getElementById('documents-content');
         if (!content) return;
-        const categoryOrder = ['riskbedomning', 'historik_riskbedomning', 'historik', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt'];
+        const categoryOrder = ['riskbedomning', 'historik_riskbedomning', 'arsredovisning', 'uppdragsavtal', 'bolagsverket_skatteverket', 'ovrigt', 'historik'];
         const alwaysShow = ['historik'];
         const categoryIcons = {
             riskbedomning: 'fa-clipboard-check',
