@@ -35,7 +35,7 @@ class RiskFactorsManager {
         if (this.isKundriskerPage()) {
             return typ === kundTyp || typ === geoTyp;
         }
-        return typ !== kundTyp && typ !== geoTyp;
+        return typ !== kundTyp;
     }
 
     async init() {
@@ -464,21 +464,10 @@ class RiskFactorsManager {
             groupedRisks[riskType].push(risk);
         });
 
-        const kundTyp = this.kundRiskTypLabel();
-        const geoTyp = this.geoRiskGroupLabel();
-        let geoRisks = [];
-        if (this.isKundriskerPage()) {
-            geoRisks = groupedRisks[geoTyp] || [];
-            delete groupedRisks[geoTyp];
-            if (geoRisks.length && !groupedRisks[kundTyp]) {
-                groupedRisks[kundTyp] = [];
-            }
-        }
-
         const RD = window.RiskDimensioner;
         const order = RD && RD.DIMENSIONS
             ? RD.DIMENSIONS.map((dim) => dim.label)
-            : [kundTyp, 'Distributionskanaler', 'Verksamhetsspecifika riskfaktorer'];
+            : [this.kundRiskTypLabel(), 'Distrubutionskanaler - såhär möter vi våra kunder', 'Verksamhetsspecifika riskfaktorer'];
         const groupKeys = Object.keys(groupedRisks).sort((a, b) => {
             const ia = order.indexOf(a);
             const ib = order.indexOf(b);
@@ -492,15 +481,6 @@ class RiskFactorsManager {
         const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
-            const geoSub = (this.isKundriskerPage() && riskType === kundTyp && geoRisks.length) ? `
-                    <div class="risk-subgroup">
-                        <div class="risk-group-header risk-group-header--sub">
-                            <h4>${this.esc(geoTyp)}</h4>
-                        </div>
-                        <div class="risk-items">
-                            ${buildRiskItems(geoRisks)}
-                        </div>
-                    </div>` : '';
 
             return `
                 <div class="risk-group">
@@ -510,7 +490,6 @@ class RiskFactorsManager {
                     <div class="risk-items">
                         ${riskItems}
                     </div>
-                    ${geoSub}
                 </div>
             `;
         }).join('');

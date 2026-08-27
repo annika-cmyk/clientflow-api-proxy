@@ -22,18 +22,19 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Övriga riskfaktorer</h1>
-                        <p class="risk-header-sub">Distribution, verksamhetsspecifika risker och hur ni möter kunden</p>
+                        <p class="risk-header-sub">Distribution, geografi, verksamhetsspecifika risker och hur ni möter kunden</p>
                         <div class="risk-header-body">
                             <p>
-                                En noggrann riskbedömning av övriga riskfaktorer är viktig för att identifiera och hantera risker som inte är kopplade till en specifik tjänst, utan till <strong>hur ni möter kunden</strong> och <strong>vad kunden gör</strong>. Detta omfattar distributionskanaler och verksamhetsspecifika riskfaktorer.
+                                En noggrann riskbedömning av övriga riskfaktorer är viktig för att identifiera och hantera risker som inte är kopplade till en specifik tjänst, utan till <strong>hur ni möter kunden</strong>, <strong>var byråns kunder finns</strong> och <strong>vad kunden gör</strong>. Detta omfattar distributionskanaler, geografiska riskfaktorer och verksamhetsspecifika riskfaktorer.
                             </p>
                             <p>
-                                Kundtyp, geografi, varningsflaggor och risksänkande omständigheter ligger på sidan
-                                <a href="kundrisker-mm.html">Kundrisker mm</a>.
+                                Kundtyp, varningsflaggor och risksänkande omständigheter ligger på sidan
+                                <a href="kundrisker-mm.html">Kundrisker mm</a>. Geografiska riskfaktorer visas även där — samma byråspecifika poster, som ni kan redigera på båda sidorna.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
                                 <li>Hur ni möter kunden — distanskund eller fysiskt möte påverkar hur väl ni kan verifiera identitet och avsikt.</li>
+                                <li>Geografiska faktorer — närområde, Europa, högriskländer och särskilt utsatta områden i Sverige.</li>
                                 <li>Verksamhetsspecifika omständigheter — bransch, transaktionsmönster och affärsmodell.</li>
                                 <li>Vilka åtgärder ni faktiskt vidtar, i praktiken, för att hantera och minska riskerna.</li>
                             </ul>
@@ -71,7 +72,7 @@
             <section class="risk-assessment-section">
                 <div class="container">
                     <div class="risk-list-header">
-                        <h3>Distribution och verksamhet</h3>
+                        <h3>Distribution, geografi och verksamhet</h3>
                         <div class="risk-header-actions">
                             <div class="filter-controls">
                                 <div class="filter-group">
@@ -152,6 +153,7 @@
                             <label for="risk-type">Typ av riskfaktor *</label>
                             <select id="risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
+                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer - här finns byråns kunder</option>
                                 <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
                                 <option value="Distrubutionskanaler">Distrubutionskanaler - såhär möter vi våra kunder</option>
                             </select>
@@ -290,6 +292,7 @@
                             <label for="edit-risk-type">Typ av riskfaktor *</label>
                             <select id="edit-risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
+                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer - här finns byråns kunder</option>
                                 <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
                                 <option value="Distrubutionskanaler">Distrubutionskanaler - såhär möter vi våra kunder</option>
                             </select>
@@ -434,6 +437,6 @@
     <script src="js/kund-riskprofil.js?v=15"></script>
     <script src="js/risksankande-katalog.js?v=2"></script>
     <script src="js/ai-falt-granskning.js?v=10"></script>
-    <script src="js/ovriga-riskfaktorer.js?v=26"></script>
+    <script src="js/ovriga-riskfaktorer.js?v=27"></script>
 </body>
 </html>
