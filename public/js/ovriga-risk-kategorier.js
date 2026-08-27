@@ -140,6 +140,7 @@
       hint: 'Mutförsök mot konsulten. Hög risk enligt polisen och Revisorsinspektionen.',
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
+      suggestedOnly: true,
       aliases: [
         'kunden erbjuder pengar, ersättning eller ovanliga förmåner',
         'mutförsök mot konsulten',
@@ -147,6 +148,46 @@
         'muta',
         'ovanliga förmåner',
         'ersättning eller förmåner'
+      ]
+    },
+    {
+      id: 'ptl-kunskap',
+      category: 'samarbete',
+      label: 'Omotiverat hög kunskap om penningtvättsregelverket',
+      hint: 'Kunden är ovanligt intresserad av byråns interna kontroller och rapporteringsrutiner.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: [
+        'omotiverat hög kunskap om penningtvättsregelverket',
+        'ovanligt intresserad av byråns interna kontroller',
+        'rapporteringsrutiner'
+      ]
+    },
+    {
+      id: 'rattfardiga-transaktioner',
+      category: 'samarbete',
+      label: 'Kunden är defensiv eller överdrivet mån om att rättfärdiga specifika transaktioner',
+      hint: 'Mer specifikt tecken än generellt undvikande beteende. Syns i motiveringen.',
+      klass: KLASS.INFORMATIV,
+      badge: 'Informativ',
+      suggestedOnly: true,
+      aliases: [
+        'defensiv eller överdrivet mån om att rättfärdiga transaktioner',
+        'rättfärdiga specifika transaktioner'
+      ]
+    },
+    {
+      id: 'utlandsk-bank',
+      category: 'samarbete',
+      label: 'Ber om förmedlad kontakt med utländskt kreditinstitut utan affär där',
+      hint: 'Kunden ber konsulten förmedla kontakt med utländskt kreditinstitut trots att kunden inte har affärer där.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: [
+        'förmedla kontakt med utländskt kreditinstitut',
+        'utländskt kreditinstitut utan affärer'
       ]
     },
     {
@@ -183,6 +224,20 @@
       badge: 'Hög-aktiv',
       coveredByDimension: true,
       aliases: ['pep eller rca', 'pep', 'rca', 'politiskt exponerad person', 'pep, familjemedlem till pep']
+    },
+    {
+      id: 'pep-familj-medarbetare',
+      category: 'kunden',
+      label: 'PEP, familjemedlem eller känd medarbetare till PEP',
+      hint: 'Politiskt utsatt person, familjemedlem eller känd medarbetare. Triggar Hög risk som varningsflagga.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      suggestedOnly: true,
+      aliases: [
+        'pep, familjemedlem eller känd medarbetare till pep',
+        'pep familjemedlem',
+        'känd medarbetare till pep'
+      ]
     },
     {
       id: 'brott',
@@ -228,6 +283,43 @@
       klass: KLASS.BIDRAR,
       badge: 'Bidrar vid kombination',
       aliases: ['mkt ändringar i styrelse, adress eller firmateckning']
+    },
+    {
+      id: 'redogor-verksamhet',
+      category: 'kunden',
+      label: 'Företrädaren kan inte självständigt redogöra för bolagets verksamhet',
+      hint: 'Skarpare variant av misstänkt bulvan/målvakt.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: [
+        'kan inte självständigt redogöra för bolagets verksamhet',
+        'företrädaren kan inte redogöra för verksamheten'
+      ]
+    },
+    {
+      id: 'historikbolag',
+      category: 'kunden',
+      label: 'Nyligen övertaget/vilande bolag med plötslig hög aktivitet',
+      hint: 'Historikbolag som plötsligt får hög aktivitet utan naturlig förklaring.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: ['historikbolag', 'vilande bolag', 'plötslig hög aktivitet']
+    },
+    {
+      id: 'vhm-svar',
+      category: 'kunden',
+      label: 'Svårt att fastställa eller verifiera verklig huvudman',
+      hint: 'VH kan inte fastställas eller verifieras tillräckligt.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      suggestedOnly: true,
+      aliases: [
+        'svårt att fastställa verklig huvudman',
+        'svårt att verifiera verklig huvudman',
+        'verklig huvudman kan inte verifieras'
+      ]
     },
     {
       id: 'betalkort',
@@ -324,6 +416,59 @@
         'bristfälliga interna bokföringsrutiner hos kunden',
         'bristfälliga bokföringsrutiner'
       ]
+    },
+    {
+      id: 'osanna-fakturor',
+      category: 'verksamheten',
+      label: 'Fakturor utan koppling till kundens verksamhet / misstanke om osanna fakturor',
+      hint: 'Fakturor som inte stämmer med kundens faktiska verksamhet.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      suggestedOnly: true,
+      aliases: ['osanna fakturor', 'fakturor utan koppling till verksamheten', 'misstanke om osanna fakturor']
+    },
+    {
+      id: 'hogrisk-betalning',
+      category: 'verksamheten',
+      label: 'Betalningar till/från högriskländer eller skatteparadis utan förklaring',
+      hint: 'Utöver geografi-mekanismen i sektion C — när betalflöden saknar affärsmässig förklaring.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: [
+        'betalningar till eller från högriskländer utan affärsmässig förklaring',
+        'skatteparadis utan affärsmässig förklaring'
+      ]
+    },
+    {
+      id: 'omsattning-okning',
+      category: 'verksamheten',
+      label: 'Plötslig, kraftig ökning av omsättning utan rimlig förklaring',
+      hint: 'Oväntad omsättningsökning som inte går att motivera.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: ['plötslig ökning av omsättning', 'kraftig ökning av omsättning']
+    },
+    {
+      id: 'kontant-rundgang',
+      category: 'verksamheten',
+      label: 'Kontantuttag i nära anslutning till insättningar / rundgång av medel',
+      hint: 'Misstänkt rundgång av medel via kontantflöden.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      suggestedOnly: true,
+      aliases: ['rundgång av medel', 'kontantuttag nära insättningar']
+    },
+    {
+      id: 'mellanhand-betalning',
+      category: 'verksamheten',
+      label: 'Betalningar via mellanhänder eller tredje part utan tydligt syfte',
+      hint: 'Oklara betalningar via mellanhänder.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      suggestedOnly: true,
+      aliases: ['betalningar via mellanhänder', 'tredje part utan tydligt syfte']
     },
     {
       id: 'otydlig-affarsmodell',
@@ -436,10 +581,25 @@
   function defaultKatalog() {
     var out = {};
     FACTORS.forEach(function (f) {
-      if (f.coveredByDimension) return;
+      if (f.coveredByDimension || f.suggestedOnly) return;
       out[f.label] = f.klass;
     });
     return out;
+  }
+
+  function suggestedFactorsForCategory(categoryId, activeLabels) {
+    var active = {};
+    (Array.isArray(activeLabels) ? activeLabels : []).forEach(function (label) {
+      var canon = canonicalLabel(label);
+      if (canon) active[fold(canon)] = true;
+    });
+    return FACTORS.filter(function (f) {
+      if (f.category !== categoryId) return false;
+      if (f.coveredByDimension) return false;
+      if (!f.suggestedOnly) return false;
+      if (active[fold(f.label)]) return false;
+      return true;
+    });
   }
 
   function categoryById(id) {
@@ -597,6 +757,7 @@
     findFactor: findFactor,
     canonicalLabel: canonicalLabel,
     defaultKatalog: defaultKatalog,
+    suggestedFactorsForCategory: suggestedFactorsForCategory,
     categoryById: categoryById,
     isCoveredByDimension: isCoveredByDimension,
     categoryIdForDimension: categoryIdForDimension,

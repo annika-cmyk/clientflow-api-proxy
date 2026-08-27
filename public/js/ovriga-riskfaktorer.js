@@ -1580,9 +1580,31 @@ class RiskFactorsManager {
                     </button>
                 </div>`;
             }).join('');
+            const Kat = window.OvrigaRiskKategorier;
+            const suggestions = Kat && Kat.suggestedFactorsForCategory
+                ? Kat.suggestedFactorsForCategory(cat.id, Object.keys(entries))
+                : [];
+            const forslagHtml = suggestions.length
+                ? `<div class="riskhoj-katalog-forslag">
+                    <p class="riskhoj-katalog-forslag-titel">Övriga förslag</p>
+                    <div class="riskhoj-forslag-list">
+                        ${suggestions.map((f) => {
+                            const safe = String(f.label || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                            const badge = Kat.klassBadge ? Kat.klassBadge(f.klass, f.badge) : '';
+                            const hint = String(f.hint || '').replace(/"/g, '&quot;');
+                            return `<button type="button" class="riskhoj-forslag-chip${f.klass === 'GOLV_HOG' ? ' riskhoj-forslag-chip--golv' : ''}" data-namn="${safe}" data-klass="${f.klass}" data-category="${cat.id}" title="${hint}">
+                                <i class="fas fa-plus" aria-hidden="true"></i>
+                                <span class="riskhoj-forslag-label">${safe}</span>
+                                ${badge ? `<span class="riskhoj-forslag-klass">${badge.replace(/</g, '&lt;')}</span>` : ''}
+                            </button>`;
+                        }).join('')}
+                    </div>
+                </div>`
+                : '';
             return `<div class="riskhoj-katalog-grupp">
                 <h4 class="riskhoj-katalog-grupp-titel"><span class="ovriga-risk-kategori-letter">${cat.letter}</span> ${cat.title}</h4>
                 ${rows || '<p class="kyc-hint">Inga flaggor i den här kategorin.</p>'}
+                ${forslagHtml}
             </div>`;
         }).join('');
         list.innerHTML = groups;
@@ -1610,6 +1632,19 @@ class RiskFactorsManager {
                 const next = Object.assign({}, this._riskhojEntries);
                 delete next[namn];
                 this._riskhojEntries = next;
+                this.renderRiskhojandeKatalog();
+            });
+        });
+        list.querySelectorAll('.riskhoj-forslag-chip').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const namn = btn.getAttribute('data-namn');
+                const klass = btn.getAttribute('data-klass') || 'BIDRAR_VID_KOMBINATION';
+                const category = btn.getAttribute('data-category') || 'verksamheten';
+                if (!namn) return;
+                if (this._riskhojEntries && this._riskhojEntries[namn]) return;
+                this._riskhojEntries = Object.assign({}, this._riskhojEntries, {
+                    [namn]: { klass, category }
+                });
                 this.renderRiskhojandeKatalog();
             });
         });
