@@ -8327,6 +8327,7 @@ class CustomerCardManager {
             'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring',
             'Högriskbransch',
             'Kontantintensiv verksamhet',
+            'Kundens egna kunder är på distans (e-handel/anonyma köpare)',
             'Kopplingar till utlandet / Högriskländer',
             'Transaktioner utan tydligt syfte',
             'Bristfälliga interna bokföringsrutiner hos kunden'

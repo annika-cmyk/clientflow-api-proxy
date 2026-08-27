@@ -233,6 +233,18 @@
       aliases: ['kontantintensiv verksamhet', 'kontanthantering', 'kunder med mycket kontanta transaktioner']
     },
     {
+      id: 'kunder-distans',
+      category: 'verksamheten',
+      label: 'Kundens egna kunder är på distans (e-handel/anonyma köpare)',
+      hint: 'Ökar risken för fiktiv försäljning och osanna fakturor.',
+      klass: KLASS.BIDRAR,
+      badge: 'Bidrar vid kombination',
+      aliases: [
+        'kundens egna kunder är på distans (e-handel/anonyma köpare)',
+        'företaget har många kunder på distans'
+      ]
+    },
+    {
       id: 'utland',
       category: 'verksamheten',
       label: 'Kopplingar till utlandet / Högriskländer',
@@ -285,15 +297,6 @@
     VARNINGSFLAGGOR: 'varningsflaggor',
     RISKFAKTORER: 'riskfaktorer'
   };
-
-  var REMOVED_FACTOR_FOLDS = {
-    'kundens egna kunder är på distans (e-handel/anonyma köpare)': true,
-    'företaget har många kunder på distans': true
-  };
-
-  function isRemovedFactor(namn) {
-    return !!REMOVED_FACTOR_FOLDS[fold(namn)];
-  }
 
   function fold(value) {
     return String(value == null ? '' : value)
@@ -377,7 +380,7 @@
 
   function canonicalLabel(namn) {
     var raw = String(namn == null ? '' : namn).trim();
-    if (!raw || isRemovedFactor(raw)) return '';
+    if (!raw) return '';
     if (/kortvarig|kortsiktig|tillf[äa]llig aff[äa]rsrelation/i.test(raw)) {
       return 'Ofta bytt redovisningskonsult/revisor utan naturlig förklaring';
     }
@@ -453,7 +456,7 @@
     return (Array.isArray(allLabels) ? allLabels : [])
       .map(canonicalLabel)
       .filter(function (label) {
-        if (!label || fold(label) === 'inga' || isNoneOption(label) || isRemovedFactor(label)) return false;
+        if (!label || fold(label) === 'inga' || isNoneOption(label)) return false;
         if (isCoveredByDimension(label)) return false;
         if (known[fold(label)]) return false;
         return categoryFor(label, categoryMap) === categoryId;
@@ -520,7 +523,6 @@
     INGA_VARNINGSFLAGGOR: INGA_VARNINGSFLAGGOR,
     INGA_RISKFAKTORER: INGA_RISKFAKTORER,
     NONE_KIND: NONE_KIND,
-    isRemovedFactor: isRemovedFactor,
     storedNoneLabel: storedNoneLabel,
     noneOptionOf: noneOptionOf,
     isNoneOption: isNoneOption,
