@@ -5536,8 +5536,7 @@ body.riskbedomning-byra-page h5 {
 .kyc-layout { display: flex; flex-direction: column; gap: 1rem; }
 .kyc-section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.25rem; }
 .kyc-section-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text); margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
-.kyc-row { display: flex; align-items: baseline; gap: 0.75rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
-.kyc-row:last-child { border-bottom: none; }
+.kyc-row { display: flex; align-items: baseline; gap: 0.75rem; padding: 0.45rem 0; }
 .kyc-row--chips { align-items: flex-start; }
 .kyc-row-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-3); min-width: 200px; display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
 .kyc-row-value { font-size: 0.88rem; color: var(--title-text); }
@@ -5591,10 +5590,8 @@ body.riskbedomning-byra-page h5 {
 }
 .ovriga-risk-kategori-section {
     margin: 0 0 1.1rem;
-    padding-bottom: 0.85rem;
-    border-bottom: 1px solid #e2e8f0;
 }
-.ovriga-risk-kategori-section:last-of-type { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+.ovriga-risk-kategori-section:last-of-type { margin-bottom: 0; }
 .ovriga-risk-kategori-section-title {
     margin: 0 0 0.25rem;
     font-size: 0.95rem;
@@ -5612,7 +5609,7 @@ body.riskbedomning-byra-page h5 {
 .ovriga-risk-katalog { margin: 0.15rem 0 0.35rem; }
 .ovriga-risk-katalog--geo { margin-bottom: 0.75rem; }
 .ovriga-risk-katalog--kund-residual { margin-top: 0.35rem; }
-.risk-subgroup { margin-top: 1.25rem; padding-top: 0.5rem; border-top: 1px dashed #cbd5e1; }
+.risk-subgroup { margin-top: 1.25rem; }
 .risk-group-header--sub h4 { margin: 0; font-size: 1rem; font-weight: 700; color: #334155; }
 .kyc-lander-picker { position: relative; }
 .kyc-lander-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.35rem 0 0.5rem; }
@@ -5672,7 +5669,7 @@ body.riskbedomning-byra-page h5 {
 .kyc-lander-badge--golv { color: #b91c1c; }
 .kyc-lander-warn { margin: 0.55rem 0 0.15rem; font-size: 0.85rem; color: #334155; }
 .kyc-lander-warn--hog { color: #9a3412; background: #fff7ed; border-radius: 8px; padding: 0.55rem 0.7rem; }
-.kyc-lander-geo { margin: 0 0 1rem; padding-bottom: 0.85rem; border-bottom: 1px solid #e2e8f0; }
+.kyc-lander-geo { margin: 0 0 1rem; }
 .kyc-lander-geo-styr { margin: 0.45rem 0 0; font-size: 0.82rem; font-weight: 600; color: #334155; }
 .kyc-lander-geo-empty { margin: 0.45rem 0 0; font-size: 0.85rem; color: #64748b; }
 .kyc-lander-geo .kyc-lander-picker { margin-top: 0.35rem; }
@@ -5684,8 +5681,6 @@ body.riskbedomning-byra-page h5 {
 .riskf-check-item.is-ubo-steered input { accent-color: #dc2626; }
 .risker-ovriga-flaggor {
     margin-top: 1.1rem;
-    padding-top: 0.9rem;
-    border-top: 1px solid #e2e8f0;
 }
 .risker-ovriga-flaggor .kyc-hint { margin: 0.35rem 0 0.65rem; }
 .ovriga-risk-faktor-hint {
@@ -5899,14 +5894,14 @@ body.riskbedomning-byra-page h5 {
 .tjanst-collapsible-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .risk-skala-pills { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; justify-content: flex-end; }
 .tjanst-chevron { font-size: 0.75rem; color: var(--ink-3); transition: transform 0.2s; flex-shrink: 0; }
-.tjanst-collapsible-body { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
-.risker-vald-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); margin-top: 0.9rem; margin-bottom: 0.45rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--line); }
+.tjanst-collapsible-body { margin-top: 0.75rem; padding-top: 0.75rem; }
+.risker-vald-section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); margin-top: 0.9rem; margin-bottom: 0.45rem; }
 .risker-vald-item .risker-vald-section-label:first-child { margin-top: 0; }
 .risker-vald-desc { font-size: 0.82rem; color: #475569; line-height: 1.6; margin-top: 0; white-space: pre-wrap; }
 .risker-vald-atgard { font-size: 0.8rem; color: var(--text); display: flex; gap: 0.35rem; align-items: flex-start; margin-top: 0.2rem; }
 .risker-vald-atgard i { margin-top: 0.15rem; color: #10b981; flex-shrink: 0; }
 .risker-checkgrupp { margin-bottom: 1rem; }
-.risker-checkgrupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text); margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--line); }
+.risker-checkgrupp-titel { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text); margin-bottom: 0.5rem; }
 .risker-check-item { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; margin-bottom: 0.4rem; transition: background 0.12s; user-select: none; }
 .risker-check-item:hover { background: #f8fafc; border-color: #c7d2fe; }
 .risker-check-item input[type="checkbox"] { display: none; }
@@ -6903,7 +6898,10 @@ body.riskbedomning-byra-page h5 {
 
 .collapsible-body {
     padding: 0.85rem 1.25rem 1.25rem;
-    border-top: 1px solid #edf0f5;
+}
+
+.collapsible-card--kyc > .collapsible-body {
+    border-top: none;
 }
 
 .collapsible-card.is-collapsed .collapsible-body {

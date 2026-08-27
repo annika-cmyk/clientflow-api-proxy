@@ -7637,7 +7637,7 @@ class CustomerCardManager {
                 </div>
 
                 <!-- Dokumentera riskbedömning – knapp längst ner -->
-                <div class="kyc-section" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #e2e8f0;">
+                <div class="kyc-section" style="margin-top:1.5rem;">
                     <button type="button" class="btn btn-primary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
                         <i class="fas fa-file-pdf"></i> Dokumentera riskbedömning
                     </button>
@@ -10995,7 +10995,7 @@ class CustomerCardManager {
         const tin = p.tin || '';
         const visaTin = hemvist.trim() !== '' && hemvist.trim().toLowerCase() !== 'sverige';
         return `
-            <div class="kyc-foretradare-row" style="border-top:1px dashed #e2e8f0;padding-top:0.85rem;margin-top:0.85rem;">
+            <div class="kyc-foretradare-row" style="padding-top:0.85rem;margin-top:0.85rem;">
                 <div class="uppdrag-grid">
                     <div class="uppdrag-field">
                         <label>Namn</label>
@@ -11075,7 +11075,7 @@ class CustomerCardManager {
         const tin = p.tin || '';
         const visaTin = hemvist.trim() !== '' && hemvist.trim().toLowerCase() !== 'sverige';
         return `
-            <div class="kyc-huvudman-row" style="border-top:1px dashed #e2e8f0;padding-top:0.85rem;margin-top:0.85rem;">
+            <div class="kyc-huvudman-row" style="padding-top:0.85rem;margin-top:0.85rem;">
                 <div class="uppdrag-grid">
                     <div class="uppdrag-field">
                         <label>Namn</label>
