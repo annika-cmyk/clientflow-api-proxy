@@ -9725,19 +9725,184 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-alla-details td {
     white-space: normal;
     background: #f8fafc;
-    padding: 0.35rem 1rem 1.1rem;
+    padding: 0.75rem 1rem 1.15rem;
     border-bottom: 1px solid var(--border);
 }
+.uppdrag-alla-editbtn {
+    margin-right: 0.35rem;
+}
 .uppdrag-card--embed {
-    background: transparent;
-    border: none;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
     box-shadow: none;
     margin: 0;
-    overflow: visible;
+    overflow: hidden;
+    padding: 0.85rem 1rem 1rem;
 }
 .uppdrag-card--embed .uppdrag-view-top {
     align-items: flex-start;
 }
+
+/* Grundmall (Alla uppdrag) */
+.uppdrag-mall-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+}
+.uppdrag-mall-toolbar-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.uppdrag-mall-toolbar-hint {
+    margin-top: 0.2rem;
+    font-size: 0.8rem;
+}
+.uppdrag-mall-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.55rem 0.75rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    margin-bottom: 0.85rem;
+}
+.uppdrag-mall-fact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+.uppdrag-mall-fact-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.uppdrag-mall-fact-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #0f172a;
+    word-break: break-word;
+}
+.uppdrag-mall-block {
+    margin-top: 0.75rem;
+}
+.uppdrag-mall-block-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.35rem;
+}
+.uppdrag-mall-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Aktuell körning (expanderad rad) */
+.uppdrag-korning {
+    padding: 0.15rem 0.15rem 0.25rem;
+}
+.uppdrag-korning-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.uppdrag-korning-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.uppdrag-korning-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.85rem;
+    margin-top: 0.25rem;
+    font-size: 0.84rem;
+    color: #64748b;
+}
+.uppdrag-korning-assign {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 200px;
+}
+.uppdrag-korning-assign .form-select {
+    min-width: 200px;
+}
+.uppdrag-korning-blocks {
+    display: grid;
+    gap: 0.75rem;
+}
+.uppdrag-korning-block {
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+}
+.uppdrag-korning-block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.45rem;
+}
+.uppdrag-korning-block-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.uppdrag-korning-block-head .uppdrag-korning-block-title {
+    margin: 0;
+}
+.uppdrag-korning-block--split {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.85rem 1.25rem;
+}
+.uppdrag-korning-hint {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+}
+.uppdrag-korning-inline-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 0.45rem;
+}
+.uppdrag-korning-note-wrap {
+    margin-top: 0.5rem;
+}
+.uppdrag-korning-docs {
+    margin-top: 0.45rem;
+}
+
 .uppdrag-alla-status {
     display: inline-flex;
     align-items: center;

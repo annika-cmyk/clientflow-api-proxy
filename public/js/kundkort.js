@@ -1872,7 +1872,7 @@ class CustomerCardManager {
                     <td>${this._esc(ansvarig)}</td>
                     <td>${nextDl ? this._esc(nextDl) : '—'}</td>
                     <td class="uppdragboard-arrow" style="text-align:right;">
-                        <button type="button" class="btn btn-ghost btn-sm" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(rowKey)}">
+                        <button type="button" class="btn btn-secondary btn-sm uppdrag-alla-editbtn" data-kund-action="edit-uppdrag" data-kund-edit-typ="${this._esc(rowKey)}">
                             <i class="fas fa-pen"></i> Redigera
                         </button>
                         <button type="button" class="uppdragboard-expandbtn" title="Visa grunduppdrag" aria-label="Visa grunduppdrag" data-kund-action="toggle-alla-uppdrag" data-kund-alla-typ="${this._esc(rowKey)}">
@@ -1895,7 +1895,7 @@ class CustomerCardManager {
                     </button>
                 </div>
                 <div class="collapsible-body">
-                    <p class="uppdrag-muted" style="margin-top:0;">Grunduppdrag som är upplagda på kunden, inklusive avslutade. Fäll ut en rad för att se och redigera mallen.</p>
+                    <p class="uppdrag-muted" style="margin-top:0;">Här redigerar du grundmallen för varje uppdrag (frekvens, handläggare, rutin, deadline m.m.). Fäll ut en rad eller klicka Redigera.</p>
                     <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
                         <table class="uppdragboard-table uppdrag-alla-table">
                             <thead>
@@ -1986,8 +1986,8 @@ class CustomerCardManager {
             <div class="uppdrag-tab">
                 ${runsSetupHtml}
                 ${runsEnsureHtml}
-                ${boardHtml}
                 ${allaUppdragCardHtml}
+                ${boardHtml}
             </div>
         `;
 
@@ -2478,37 +2478,32 @@ class CustomerCardManager {
                                 : 'background:#fef9c3; color:#854d0e; border-color:#fde68a;'
                     }">${underlagDone}/${underlagTotal}</span>`;
 
-                const samHtml = `
-                    <div class="uppdrag-view-field uppdrag-view-field--plain" style="margin-top:1.35rem;">
-                        <div class="uppdrag-view-label">Underlagsförfrågningar</div>
-                        ${samForRun.length ? `
-                            <div class="samarbete-list samarbete-list--plain" style="margin-top:0.35rem;">
-                                ${samForRun.slice(0, 6).map(s => {
-                                    const respTxt = (s.responseText || '').toString().trim();
-                                    const answersArray = parseAnswersArray(respTxt);
-                                    const attachments = Array.isArray(s.responseAttachment) ? s.responseAttachment : [];
+                const samHtml = samForRun.length ? `
+                    <div class="samarbete-list samarbete-list--plain">
+                        ${samForRun.slice(0, 6).map(s => {
+                            const respTxt = (s.responseText || '').toString().trim();
+                            const answersArray = parseAnswersArray(respTxt);
+                            const attachments = Array.isArray(s.responseAttachment) ? s.responseAttachment : [];
 
-                                    const titleFull = stripFileObligatorisk((s.title || 'Förfrågan').toString().trim());
-                                    const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+                            const titleFull = stripFileObligatorisk((s.title || 'Förfrågan').toString().trim());
+                            const titleLines = titleFull.split('\n').map(x => x.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
 
-                                    let qaHtml = '';
-                                    if (titleLines.length > 0) {
-                                        qaHtml = this.buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, {
-                                            escape: (s) => this._esc(s),
-                                            attachmentLink,
-                                            qMaxLen: 120
-                                        });
-                                    }
+                            let qaHtml = '';
+                            if (titleLines.length > 0) {
+                                qaHtml = this.buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, {
+                                    escape: (s) => this._esc(s),
+                                    attachmentLink,
+                                    qMaxLen: 120
+                                });
+                            }
 
-                                    return `
-                                        <div class="samarbete-list-item samarbete-list-item--plain">
-                                            ${qaHtml ? `<div class="samarbete-block samarbete-block--questions">${qaHtml}</div>` : `<div class="uppdrag-muted">—</div>`}
-                                        </div>`;
-                                }).join('')}
-                            </div>
-                        ` : `<div class="uppdrag-muted">Inga skickade förfrågningar kopplade till denna körning ännu.</div>`}
+                            return `
+                                <div class="samarbete-list-item samarbete-list-item--plain">
+                                    ${qaHtml ? `<div class="samarbete-block samarbete-block--questions">${qaHtml}</div>` : `<div class="uppdrag-muted">—</div>`}
+                                </div>`;
+                        }).join('')}
                     </div>
-                `;
+                ` : `<div class="uppdrag-muted">Inga skickade förfrågningar ännu.</div>`;
 
                 const runningNote = (runRec?.fields?.['Anteckning'] || f['Anteckning för denna körning'] || f['Anteckning'] || '').toString();
                 const grundRutin = String(f['Rutin'] || '').trim();
@@ -2547,87 +2542,117 @@ class CustomerCardManager {
                     }).join('')}</div>`
                     : ``;
 
-                const detailsHtml = `
-                    <div class="uppdragboard-details-inner">
-                        <div class="uppdragboard-section uppdragboard-section--korning">
-                            <div class="uppdragboard-section-head">
-                                <i class="fas fa-play-circle"></i>
-                                <span>Denna körning</span>
-                                ${korningRutin.frozen ? '<span class="uppdragboard-badge uppdragboard-badge--frozen">Avslutad</span>' : ''}
+                const riskRequiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
+                const riskDoneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
+                const riskDoneSet = new Set(riskDoneAtgarder.map((x) => String(x.text || '').toLowerCase()));
+                const riskLocked = runStatus === 'Klar';
+                let riskBlockHtml = '';
+                if (!riskRequiredAtgarder.length) {
+                    riskBlockHtml = `<div class="uppdrag-muted">Inga åtgärder i kundens riskbedömning för detta uppdrag.</div>`;
+                } else {
+                    riskBlockHtml = `
+                        <div class="uppdrag-muted" style="margin-bottom:0.45rem;">Bocka i innan klarmarkering. Dokumenteras per körning.</div>
+                        <div class="uppdrag-riskbox-items" data-kund-risk-box="${this._esc(boardKey)}">
+                            ${riskRequiredAtgarder.map((a) => {
+                                const checked = riskDoneSet.has(String(a).toLowerCase());
+                                return `<label class="uppdrag-risk-check">
+                                    <input type="checkbox"
+                                        data-kund-action="toggle-risk-atgard"
+                                        data-kund-run-id="${this._esc(runId)}"
+                                        data-kund-typ="${this._esc(t)}"
+                                        data-kund-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                        data-kund-board-key="${this._esc(boardKey)}"
+                                        value="${this._esc(a)}"
+                                        ${checked ? 'checked' : ''}
+                                        ${riskLocked ? 'disabled' : ''}>
+                                    <span>${this._esc(a)}</span>
+                                </label>`;
+                            }).join('')}
+                        </div>
+                        <div class="uppdrag-muted" data-kund-risk-status="${this._esc(boardKey)}" style="margin-top:0.35rem;"></div>`;
+                }
+
+                const noteBlockHtml = (runningNote || '').toString().trim()
+                    ? `
+                        <textarea class="kunduppgifter-input uppdrag-run-note" rows="3"
+                            data-kund-note-typ="${this._esc(t)}"
+                            data-kund-run-id="${this._esc(runId)}"
+                            data-kund-note-period="${this._esc(String(prefillPeriodKey || ''))}"
+                            placeholder="Anteckning..." readonly>${this._esc(runningNote)}</textarea>
+                        <div class="uppdrag-korning-inline-actions">
+                            <button type="button" class="btn btn-ghost btn-sm" data-kund-action="toggle-note-edit" data-kund-mode="edit" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
+                                <i class="fas fa-pen"></i> Redigera
+                            </button>
+                            <span class="uppdrag-muted" data-kund-note-status="${this._esc(runId || t)}"></span>
+                        </div>`
+                    : `
+                        <button type="button" class="btn btn-ghost btn-sm" data-kund-action="create-note" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
+                            <i class="fas fa-plus"></i> Skapa anteckning
+                        </button>
+                        <div class="uppdrag-korning-note-wrap" style="display:none;" data-kund-note-wrap="${this._esc(runId || t)}">
+                            <textarea class="kunduppgifter-input uppdrag-run-note" rows="3"
+                                data-kund-note-typ="${this._esc(t)}"
+                                data-kund-run-id="${this._esc(runId)}"
+                                data-kund-note-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                placeholder="Anteckning..."></textarea>
+                            <div class="uppdrag-korning-inline-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
+                                    <i class="fas fa-save"></i> Spara
+                                </button>
+                                <span class="uppdrag-muted" data-kund-note-status="${this._esc(runId || t)}"></span>
                             </div>
-                            <div class="uppdragboard-section-body">
-                                ${(runRec || instDeadline) ? `
-                                    <div class="uppdragboard-meta-grid" style="margin-bottom:0.75rem;">
-                                        <div><span class="uppdrag-muted">Period</span><div><strong>${this._esc(korningLabel)}</strong></div></div>
-                                        <div><span class="uppdrag-muted">Klart senast</span><div>${korningDeadline ? this._esc(fmtLong(korningDeadline)) : '—'}</div></div>
-                                        ${korningStart ? `<div><span class="uppdrag-muted">Start</span><div>${this._esc(fmtLong(korningStart))}</div></div>` : ''}
+                        </div>`;
+
+                const detailsHtml = `
+                    <div class="uppdrag-korning">
+                        ${(runRec || instDeadline) ? `
+                            <div class="uppdrag-korning-header">
+                                <div class="uppdrag-korning-header-main">
+                                    <div class="uppdrag-korning-title">
+                                        ${this._esc(korningLabel)}
+                                        ${korningRutin.frozen ? '<span class="uppdragboard-badge uppdragboard-badge--frozen">Avslutad</span>' : ''}
                                     </div>
-                                    <div class="uppdrag-view-field uppdrag-view-field--plain">
-                                        <div class="uppdrag-view-label">Rutin för denna körning</div>
-                                        <div class="uppdrag-view-text">${korningRutin.text ? this._esc(korningRutin.text) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
-                                        ${korningRutin.source === 'grunduppdrag' && korningRutin.text
-                                            ? '<div class="uppdrag-muted" style="margin-top:0.3rem; font-size:0.8rem;">Hämtad från grunduppdrag (gäller tills körningen avslutas).</div>'
-                                            : (korningRutin.frozen && korningRutin.text
-                                                ? '<div class="uppdrag-muted" style="margin-top:0.3rem; font-size:0.8rem;">Låst rutin för avslutad körning.</div>'
-                                                : '')}
+                                    <div class="uppdrag-korning-sub">
+                                        ${korningDeadline ? `<span>Klart senast ${this._esc(fmtLong(korningDeadline))}</span>` : ''}
+                                        ${korningStart ? `<span>Start ${this._esc(fmtLong(korningStart))}</span>` : ''}
                                     </div>
-                                    ${(() => {
-                                        const requiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
-                                        const doneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
-                                        const doneSet = new Set(doneAtgarder.map((x) => String(x.text || '').toLowerCase()));
-                                        if (!requiredAtgarder.length) {
-                                            return `<div class="uppdrag-riskbox" style="margin-top:0.85rem;">
-                                                <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
-                                                <div class="uppdrag-muted" style="margin-top:0.45rem;">Inga åtgärder finns i kundens riskbedömning för detta uppdrag.</div>
-                                            </div>`;
-                                        }
-                                        const locked = runStatus === 'Klar';
-                                        return `<div class="uppdrag-riskbox" style="margin-top:0.85rem;" data-kund-risk-box="${this._esc(boardKey)}">
-                                            <div class="uppdrag-riskbox-title">Åtgärd enligt kundens riskbedömning</div>
-                                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Bocka i åtgärderna för denna körning innan du klarmarkerar. Varje körning dokumenteras för sig.</div>
-                                            <div class="uppdrag-riskbox-items">
-                                                ${requiredAtgarder.map((a) => {
-                                                    const checked = doneSet.has(String(a).toLowerCase());
-                                                    return `<label class="uppdrag-risk-check">
-                                                        <input type="checkbox"
-                                                            data-kund-action="toggle-risk-atgard"
-                                                            data-kund-run-id="${this._esc(runId)}"
-                                                            data-kund-typ="${this._esc(t)}"
-                                                            data-kund-period="${this._esc(String(prefillPeriodKey || ''))}"
-                                                            data-kund-board-key="${this._esc(boardKey)}"
-                                                            value="${this._esc(a)}"
-                                                            ${checked ? 'checked' : ''}
-                                                            ${locked ? 'disabled' : ''}>
-                                                        <span>${this._esc(a)}</span>
-                                                    </label>`;
-                                                }).join('')}
-                                            </div>
-                                            <div class="uppdrag-muted" data-kund-risk-status="${this._esc(boardKey)}" style="margin-top:0.4rem;"></div>
-                                        </div>`;
-                                    })()}
-                                    ${runRec ? `
-                                      <div class="uppdragboard-run-controls">
-                                        <div class="uppdrag-view-field uppdrag-view-field--plain">
-                                          <div class="uppdrag-view-label">Tilldelad</div>
-                                          <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.35rem;">
-                                            <select class="form-select uppdrag-run-ansvarig-select"
-                                              data-kund-action="set-run-ansvarig"
-                                              data-run-id="${this._esc(runId)}"
-                                              data-run-typ="${this._esc(String(t || ''))}"
-                                              data-run-period="${this._esc(String(prefillPeriodKey || ''))}"
-                                              aria-label="Tilldela körning">
-                                              ${this._koringAssigneeOptionsHtml(runAnsvarig, ansvarig)}
-                                            </select>
-                                            <span class="uppdrag-muted" data-kund-run-ansvarig-msg="${this._esc(runId)}" style="margin:0;"></span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ` : `
-                                      <div class="uppdrag-muted" style="margin-top:0.75rem;">Ingen körningsrad i Airtable ännu – spara om uppdraget eller klicka ”Generera körningar”.</div>
-                                    `}
-                                    ${samHtml}
-                                    <div style="display:flex; justify-content:flex-end; margin-top:0.5rem;">
-                                        <button type="button" class="btn btn-primary btn-sm"
+                                </div>
+                                ${runRec ? `
+                                  <label class="uppdrag-korning-assign">
+                                    <span class="uppdrag-mall-fact-label">Tilldelad</span>
+                                    <select class="form-select uppdrag-run-ansvarig-select"
+                                      data-kund-action="set-run-ansvarig"
+                                      data-run-id="${this._esc(runId)}"
+                                      data-run-typ="${this._esc(String(t || ''))}"
+                                      data-run-period="${this._esc(String(prefillPeriodKey || ''))}"
+                                      aria-label="Tilldela körning">
+                                      ${this._koringAssigneeOptionsHtml(runAnsvarig, ansvarig)}
+                                    </select>
+                                    <span class="uppdrag-muted" data-kund-run-ansvarig-msg="${this._esc(runId)}"></span>
+                                  </label>
+                                ` : `<div class="uppdrag-muted">Ingen körningsrad ännu – spara uppdraget eller generera körningar.</div>`}
+                            </div>
+
+                            <div class="uppdrag-korning-blocks">
+                                <section class="uppdrag-korning-block">
+                                    <h4 class="uppdrag-korning-block-title">Rutin</h4>
+                                    <div class="uppdrag-view-text">${korningRutin.text ? this._esc(korningRutin.text) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
+                                    ${korningRutin.source === 'grunduppdrag' && korningRutin.text
+                                        ? '<div class="uppdrag-muted uppdrag-korning-hint">Hämtad från grundmall (gäller tills körningen avslutas).</div>'
+                                        : (korningRutin.frozen && korningRutin.text
+                                            ? '<div class="uppdrag-muted uppdrag-korning-hint">Låst rutin för avslutad körning.</div>'
+                                            : '')}
+                                </section>
+
+                                <section class="uppdrag-korning-block">
+                                    <h4 class="uppdrag-korning-block-title">Åtgärder enligt riskbedömning</h4>
+                                    ${riskBlockHtml}
+                                </section>
+
+                                <section class="uppdrag-korning-block">
+                                    <div class="uppdrag-korning-block-head">
+                                        <h4 class="uppdrag-korning-block-title">Underlag</h4>
+                                        <button type="button" class="btn btn-secondary btn-sm"
                                             data-kund-action="begar-underlag"
                                             data-kund-uppdrag-id="${this._esc(String(rec.id || ''))}"
                                             data-kund-uppdrag-typ="${this._esc(String(t || ''))}"
@@ -2637,57 +2662,30 @@ class CustomerCardManager {
                                             <i class="fas fa-paper-plane"></i> Begär underlag
                                         </button>
                                     </div>
-                                    <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
-                                        <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Anteckning (för denna körning)</div>
-                                        ${(runningNote || '').toString().trim()
-                                            ? `
-                                                <textarea class="kunduppgifter-input uppdrag-run-note" rows="3"
-                                                    data-kund-note-typ="${this._esc(t)}"
-                                                    data-kund-run-id="${this._esc(runId)}"
-                                                    data-kund-note-period="${this._esc(String(prefillPeriodKey || ''))}"
-                                                    placeholder="Anteckning..." readonly>${this._esc(runningNote)}</textarea>
-                                                <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
-                                                    <button type="button" class="btn btn-secondary btn-sm" data-kund-action="toggle-note-edit" data-kund-mode="edit" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
-                                                        <i class="fas fa-pen"></i> Redigera
-                                                    </button>
-                                                    <span class="uppdrag-muted" data-kund-note-status="${this._esc(runId || t)}" style="margin:0;"></span>
-                                                </div>
-                                            `
-                                            : `
-                                                <button type="button" class="btn btn-secondary btn-sm" data-kund-action="create-note" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
-                                                    <i class="fas fa-plus"></i> Skapa anteckning för körningen
-                                                </button>
-                                                <div style="margin-top:0.6rem; display:none;" data-kund-note-wrap="${this._esc(runId || t)}">
-                                                    <textarea class="kunduppgifter-input uppdrag-run-note" rows="3"
-                                                        data-kund-note-typ="${this._esc(t)}"
-                                                        data-kund-run-id="${this._esc(runId)}"
-                                                        data-kund-note-period="${this._esc(String(prefillPeriodKey || ''))}"
-                                                        placeholder="Anteckning..."></textarea>
-                                                    <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap;">
-                                                        <button type="button" class="btn btn-secondary btn-sm" data-kund-action="save-note" data-kund-typ="${this._esc(t)}" data-kund-run-id="${this._esc(runId)}">
-                                                            <i class="fas fa-save"></i> Spara anteckning
-                                                        </button>
-                                                        <span class="uppdrag-muted" data-kund-note-status="${this._esc(runId || t)}" style="margin:0;"></span>
-                                                    </div>
-                                                </div>
-                                            `}
+                                    ${samHtml}
+                                </section>
+
+                                <section class="uppdrag-korning-block uppdrag-korning-block--split">
+                                    <div>
+                                        <h4 class="uppdrag-korning-block-title">Anteckning</h4>
+                                        ${noteBlockHtml}
                                     </div>
-                                    <div class="form-group" style="margin-top:0.9rem; margin-bottom:0;">
-                                        <div class="uppdrag-view-label" style="margin-bottom:0.35rem;">Dokumentation för denna körning</div>
-                                        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                                    <div>
+                                        <h4 class="uppdrag-korning-block-title">Dokumentation</h4>
+                                        <div class="uppdrag-korning-inline-actions">
                                             <input type="file" class="kunduppgifter-input" style="padding:0.45rem; display:none;" data-kund-docs-input="${this._esc(docsKey)}" multiple />
-                                            <button type="button" class="btn btn-secondary btn-sm" data-kund-action="upload-docs" data-kund-typ="${this._esc(t)}" data-kund-deadline="${this._esc(docsDeadlineKey)}" data-kund-docs-key="${this._esc(docsKey)}" data-kund-run-id="${this._esc(runId)}">
+                                            <button type="button" class="btn btn-ghost btn-sm" data-kund-action="upload-docs" data-kund-typ="${this._esc(t)}" data-kund-deadline="${this._esc(docsDeadlineKey)}" data-kund-docs-key="${this._esc(docsKey)}" data-kund-run-id="${this._esc(runId)}">
                                                 <i class="fas fa-upload"></i> Ladda upp
                                             </button>
-                                            <span class="uppdrag-muted" data-kund-docs-status="${this._esc(docsKey)}" style="margin:0;"></span>
+                                            <span class="uppdrag-muted" data-kund-docs-status="${this._esc(docsKey)}"></span>
                                         </div>
-                                        <div data-kund-docs-list="${this._esc(docsKey)}" style="margin-top:0.5rem;">${runAttHtml}</div>
+                                        <div data-kund-docs-list="${this._esc(docsKey)}" class="uppdrag-korning-docs">${runAttHtml}</div>
                                     </div>
-                                ` : `
-                                    <div class="uppdrag-muted">Ingen körning planerad för den här månaden. Bläddra till rätt månad eller generera körningar.</div>
-                                `}
+                                </section>
                             </div>
-                        </div>
+                        ` : `
+                            <div class="uppdrag-muted">Ingen körning planerad för den här månaden. Bläddra till rätt månad eller generera körningar.</div>
+                        `}
                     </div>
                 `;
 
@@ -3204,8 +3202,7 @@ class CustomerCardManager {
                     });
                     return;
                 }
-                // Redigera-knapp borttagen från översiktsraderna.
-                // (Redigera sker i kortet "Redigera uppdrag" längre ner om man fäller ut det.)
+                // Redigera grundmall: knappen på Alla uppdrag-raden (eller i den utfällda mallen).
             }, { signal: _boardSignal });
 
             container.addEventListener('change', (e) => {
@@ -4498,8 +4495,7 @@ class CustomerCardManager {
         const riskValdaJson = this._esc(JSON.stringify(riskValda || []));
         const embed = !!extra.embed;
         const cardOpen = embed
-            ? `<div class="uppdrag-card uppdrag-card--embed" data-uppdrag-typ="${this._esc(typ)}" data-uppdrag-key="${this._esc(assignKey)}" data-uppdrag-id="${this._esc(recId)}">
-                    <button type="button" class="uppdrag-edit-btn" hidden data-action="toggle-edit" aria-hidden="true"></button>`
+            ? `<div class="uppdrag-card uppdrag-card--embed" data-uppdrag-typ="${this._esc(typ)}" data-uppdrag-key="${this._esc(assignKey)}" data-uppdrag-id="${this._esc(recId)}">`
             : `<div class="collapsible-card uppdrag-card is-collapsed" data-uppdrag-typ="${this._esc(typ)}" data-uppdrag-key="${this._esc(assignKey)}" data-uppdrag-id="${this._esc(recId)}">
                 <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('is-collapsed')">
                     <div class="uppdrag-header">
@@ -4525,36 +4521,59 @@ class CustomerCardManager {
                     <input type="hidden" data-uppdrag-risk-valda value="${riskValdaJson}">
                     <input type="hidden" data-uppdrag-ptl-underlag value="${ptlUnderlagJson}">
 
-                    <div class="uppdrag-view" data-uppdrag-mode="view">
-                        <div class="uppdrag-view-top">
-                            ${isEgetKort ? `
-                            <div class="uppdrag-view-field">
-                                <div class="uppdrag-view-label">Namn</div>
-                                <div class="uppdrag-view-text">${this._esc(displayNamn)}</div>
-                            </div>` : ''}
-                            <div class="uppdrag-startdatum">
-                                <div class="uppdrag-startdatum-label">Startdatum</div>
-                                <div class="uppdrag-startdatum-value">${startdatum ? this._esc(String(startdatum)) : '–'}</div>
+                    <div class="uppdrag-view uppdrag-mall" data-uppdrag-mode="view">
+                        <div class="uppdrag-mall-toolbar">
+                            <div>
+                                <div class="uppdrag-mall-toolbar-title">Grundmall${isEgetKort ? ` · ${this._esc(displayNamn)}` : ''}</div>
+                                <div class="uppdrag-muted uppdrag-mall-toolbar-hint">Ändringar gäller framtida körningar. Klarmarkering görs under Aktuella körningar.</div>
                             </div>
-                            <div class="uppdrag-view-field">
-                                <div class="uppdrag-view-label">Rutin / instruktion (mall)</div>
-                                ${viewRutinHtml}
-                                <div class="uppdrag-muted" style="margin-top:0.35rem; font-size:0.8rem;">Ändringar gäller framtida körningar – avslutade behåller sin sparade rutin.</div>
+                            <button type="button" class="btn btn-primary btn-sm" data-action="toggle-edit" title="Redigera grunduppdrag">
+                                <i class="fas fa-pen"></i> Redigera
+                            </button>
+                        </div>
+
+                        <div class="uppdrag-mall-facts">
+                            <div class="uppdrag-mall-fact">
+                                <span class="uppdrag-mall-fact-label">Frekvens</span>
+                                <span class="uppdrag-mall-fact-value">${headerFreq}</span>
                             </div>
+                            <div class="uppdrag-mall-fact">
+                                <span class="uppdrag-mall-fact-label">Startdatum</span>
+                                <span class="uppdrag-mall-fact-value">${startdatum ? this._esc(String(startdatum)) : '–'}</span>
+                            </div>
+                            <div class="uppdrag-mall-fact">
+                                <span class="uppdrag-mall-fact-label">Nästa deadline</span>
+                                <span class="uppdrag-mall-fact-value">${headerDeadline}</span>
+                            </div>
+                            <div class="uppdrag-mall-fact">
+                                <span class="uppdrag-mall-fact-label">Handläggare</span>
+                                <span class="uppdrag-mall-fact-value">${headerAnsvarig}</span>
+                            </div>
+                            <div class="uppdrag-mall-fact">
+                                <span class="uppdrag-mall-fact-label">Klientansvarig</span>
+                                <span class="uppdrag-mall-fact-value">${headerKlientansvarig}</span>
+                            </div>
+                        </div>
+
+                        <div class="uppdrag-mall-block">
+                            <div class="uppdrag-mall-block-title">Rutin / instruktion</div>
+                            ${viewRutinHtml}
+                        </div>
+
+                        <div class="uppdrag-mall-block">
                             ${viewRiskSectionHtml}
                         </div>
 
                         ${viewDeklarationHtml}
 
-                        <div class="uppdrag-muted" style="margin-top:0.75rem;">Klarmarkering och åtgärder per körning hanteras i kortet Aktuella körningar.</div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; margin-top:0.9rem; flex-wrap:wrap;">
+                        <div class="uppdrag-mall-footer">
                             ${(() => {
                                 const avslutasIso = String(f['Avslutas'] || '').slice(0, 10);
                                 return avslutasIso
                                     ? `<div class="uppdrag-muted"><i class="fas fa-calendar-times"></i> Avslutas ${this._esc(avslutasIso)}</div>`
-                                    : `<div></div>`;
+                                    : `<div class="uppdrag-muted">Aktiv mall</div>`;
                             })()}
-                            <button type="button" class="btn btn-secondary btn-sm"
+                            <button type="button" class="btn btn-ghost btn-sm"
                                 title="Avsluta uppdrag"
                                 aria-label="Avsluta uppdrag"
                                 data-kund-action="end-uppdrag"
@@ -4567,6 +4586,9 @@ class CustomerCardManager {
                     </div>
 
                     <div class="uppdrag-edit" data-uppdrag-mode="edit" style="display:none;">
+                        <div class="uppdrag-mall-toolbar" style="margin-bottom:0.75rem;">
+                            <div class="uppdrag-mall-toolbar-title">Redigera grundmall</div>
+                        </div>
                         <div class="lead-fields uppdrag-lead-fields">
                             ${isEgetKort ? `
                             <div class="lead-field uppdrag-span-full">
