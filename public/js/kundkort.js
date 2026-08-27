@@ -4875,16 +4875,7 @@ class CustomerCardManager {
         return new Date().toISOString().slice(0, 10);
     }
 
-    _formatUtsattKontrolleradAt(iso) {
-        if (!iso) return '';
-        try {
-            return new Date(iso).toLocaleDateString('sv-SE');
-        } catch (_) {
-            return '';
-        }
-    }
-
-    _utsattOmradeGeoFailed(data) {
+    _parseUtsattOmrade(fields) {
         return !!(data && data.geocoding && data.geocoding.ok === false);
     }
 
@@ -4911,65 +4902,71 @@ class CustomerCardManager {
         };
     }
 
-    _utsattOmradeSectionHtml(fields) {
+    _adressUtsattMeta(fields, adress) {
+        const addr = String(adress || '').trim();
+        if (!addr) return { empty: true };
         const data = this._parseUtsattOmrade(fields);
-        const adress = (fields && (fields.Address || fields.Adress)) || '';
-        if (!adress.trim()) {
-            return '<p class="utsatt-omrade-hint">Ange adress för att kontrollera mot Polisens utsatta områden.</p>';
-        }
+        const baseTooltip = 'Jämförs automatiskt mot Polisens lista över utsatta och särskilt utsatta områden (uso_2025).';
         if (!data) {
-            return '<p class="utsatt-omrade-hint">Adressen har inte kontrollerats mot Polisens lista ännu.</p>'
-                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-map-marker-alt"></i> Kontrollera adress</button>';
+            return {
+                tone: 'pending',
+                statusText: 'Adressen har inte kontrollerats mot Polisens lista ännu.',
+                tooltip: baseTooltip,
+                icon: 'fa-circle-info'
+            };
         }
-        const date = this._formatUtsattKontrolleradAt(data.kontrolleradAt);
         if (this._utsattOmradeGeoFailed(data)) {
-            return '<span class="utsatt-omrade-badge utsatt-omrade-badge--warn"><i class="fas fa-triangle-exclamation"></i> Kunde inte geokoda adressen</span>'
-                + (date ? `<p class="utsatt-omrade-meta">Senast försök: ${this._esc(date)}</p>` : '')
-                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Försök igen</button>';
+            return {
+                tone: 'geo',
+                statusText: 'Kunde inte geokoda adressen.',
+                tooltip: 'Adressen kunde inte placeras på karta och kunde därför inte jämföras mot Polisens utsatta områden. Kontrollera att adressen är komplett.',
+                icon: 'fa-triangle-exclamation'
+            };
         }
         if (data.trff) {
             const isSeu = String(data.niva || '').toLowerCase().includes('särskilt');
-            const cls = isSeu ? 'utsatt-omrade-badge--seu' : 'utsatt-omrade-badge--utsatt';
-            const icon = isSeu ? 'fa-shield-halved' : 'fa-location-dot';
-            const label = isSeu
-                ? `Särskilt utsatt område: ${data.omrade || 'träff'}`
-                : `Utsatt område: ${data.omrade || 'träff'}`;
-            return `<span class="utsatt-omrade-badge ${cls}"><i class="fas ${icon}"></i> ${this._esc(label)}</span>`
-                + (date ? `<p class="utsatt-omrade-meta">Kontrollerad ${this._esc(date)} mot Polisen uso_2025.</p>` : '')
-                + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Kontrollera igen</button>';
+            return {
+                tone: 'hit',
+                statusText: isSeu
+                    ? `Särskilt utsatt område: ${data.omrade || 'träff'}`
+                    : `Utsatt område: ${data.omrade || 'träff'}`,
+                tooltip: isSeu
+                    ? 'Adressen ligger i ett särskilt utsatt område enligt Polisen. Geografisk riskfaktor kan styras automatiskt på kundkortet.'
+                    : 'Adressen ligger i ett utsatt område enligt Polisens lista uso_2025.',
+                icon: isSeu ? 'fa-shield-halved' : 'fa-location-dot'
+            };
         }
-        return '<span class="utsatt-omrade-badge utsatt-omrade-badge--ok"><i class="fas fa-check-circle"></i> Adressen ligger inte i Polisens utsatta områden</span>'
-            + (date ? `<p class="utsatt-omrade-meta">Kontrollerad ${this._esc(date)}.</p>` : '')
-            + '<button type="button" class="btn btn-ghost btn-sm" id="bv-utsatt-omrade-recheck"><i class="fas fa-rotate-right"></i> Kontrollera igen</button>';
+        return {
+            tone: 'ok',
+            statusText: 'Ligger inte i Polisens utsatta områden.',
+            tooltip: 'Adressen har jämförts mot Polisens lista och ligger utanför utsatta och särskilt utsatta områden.',
+            icon: 'fa-circle-check'
+        };
     }
 
-    _bindUtsattOmradeActions() {
-        const btn = document.getElementById('bv-utsatt-omrade-recheck');
-        if (!btn || btn.getAttribute('data-bound') === '1') return;
-        btn.setAttribute('data-bound', '1');
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.recheckUtsattOmrade();
-        });
+    _adressMedUtsattHtml(fields, adress) {
+        const addr = String(adress || '').trim();
+        if (!addr) return '<span class="text-muted">—</span>';
+        const meta = this._adressUtsattMeta(fields, adress);
+        return `<span class="adress-utsatt-line adress-utsatt-line--${meta.tone}">`
+            + `<span class="adress-utsatt-text">${this._esc(addr)}</span>`
+            + `<span class="adress-utsatt-icon" title="${this._esc(meta.tooltip)}" tabindex="0" role="img" aria-label="${this._esc(meta.tooltip)}">`
+            + `<i class="fas ${meta.icon}" aria-hidden="true"></i></span>`
+            + `<span class="adress-utsatt-status">${this._esc(meta.statusText)}</span>`
+            + '</span>';
     }
 
-    _refreshUtsattOmradeSection() {
-        const wrap = document.getElementById('bv-utsatt-omrade-wrap');
-        if (!wrap) return;
-        wrap.innerHTML = this._utsattOmradeSectionHtml(this.customerData?.fields || {});
-        this._bindUtsattOmradeActions();
+    _refreshAdressUtsattView() {
+        const el = document.getElementById('bv-adress-view');
+        if (!el) return;
+        const fields = this.customerData?.fields || {};
+        const adress = fields.Address || fields.Adress || '';
+        el.innerHTML = this._adressMedUtsattHtml(fields, adress);
     }
 
     async recheckUtsattOmrade() {
         const customerId = this.customerId;
         if (!customerId) return;
-        const btn = document.getElementById('bv-utsatt-omrade-recheck');
-        const orig = btn?.innerHTML;
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kontrollerar...';
-        }
         try {
             if (!isLoggedInKundkort()) throw new Error('Inte inloggad');
             const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
@@ -4985,7 +4982,7 @@ class CustomerCardManager {
             } else if (data.stored) {
                 this.customerData.fields['Utsatt område (JSON)'] = JSON.stringify(data.stored);
             }
-            this._refreshUtsattOmradeSection();
+            this._refreshAdressUtsattView();
             if (data.record?.fields?.['risker kopplat till tjänster']) {
                 this._linkedRiskIds = new Set(data.record.fields['risker kopplat till tjänster']);
             }
@@ -5007,11 +5004,6 @@ class CustomerCardManager {
             }
         } catch (err) {
             this.showNotification('Kunde inte kontrollera adress: ' + (err.message || 'fel'), 'error');
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = orig || '<i class="fas fa-rotate-right"></i> Kontrollera igen';
-            }
         }
     }
 
@@ -5262,8 +5254,7 @@ class CustomerCardManager {
                             ${bvStatus.avveckling ? `
                             <div class="lead-field lead-field--full"><label>Pågående avveckling/omstrukturering</label><span class="lead-avveckling">${this._esc(bvStatus.avveckling)}</span></div>
                             ` : ''}
-                            <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${fmt(adress)}</span></div>
-                            <div class="lead-field lead-field--full" id="bv-utsatt-omrade-wrap"><label>Utsatta områden (Polisen)</label>${this._utsattOmradeSectionHtml(fields)}</div>
+                            <div class="lead-field lead-field--full"><label>Adress</label><span id="bv-adress-view">${this._adressMedUtsattHtml(fields, adress)}</span></div>
                             <div class="lead-field lead-field--full"><label>Verksamhetsbeskrivning</label><span id="bv-verksamhet-view">${fmt(verksamhet)}</span></div>
                         </div>
                         <div class="lead-section" style="margin-top:1rem;">
@@ -5545,9 +5536,6 @@ class CustomerCardManager {
                 await this.refreshBolagsverketData();
             });
         }
-        this._bindUtsattOmradeActions();
-
-        console.log('✅ Company info loaded with lead-card layout');
         this._maybeMigrateBeskrivningTillVerksamhet();
     }
 

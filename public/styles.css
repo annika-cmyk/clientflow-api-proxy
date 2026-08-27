@@ -2398,6 +2398,51 @@ body.sidebar-collapsed .logout-btn {
     margin-top: 0.15rem;
 }
 
+.adress-utsatt-line {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.5rem;
+}
+
+.adress-utsatt-text {
+    font-weight: 600;
+}
+
+.adress-utsatt-line--ok .adress-utsatt-text {
+    color: #047857;
+}
+
+.adress-utsatt-line--hit .adress-utsatt-text {
+    color: #b91c1c;
+}
+
+.adress-utsatt-line--geo .adress-utsatt-text,
+.adress-utsatt-line--pending .adress-utsatt-text {
+    color: #64748b;
+}
+
+.adress-utsatt-icon {
+    color: #94a3b8;
+    cursor: help;
+    font-size: 0.88rem;
+    line-height: 1;
+}
+
+.adress-utsatt-line--ok .adress-utsatt-icon {
+    color: #059669;
+}
+
+.adress-utsatt-line--hit .adress-utsatt-icon {
+    color: #dc2626;
+}
+
+.adress-utsatt-status {
+    font-size: 0.82rem;
+    color: #64748b;
+    font-weight: 400;
+}
+
 .bolagsverket-uppdaterad-meta {
     margin-right: 0.5rem;
     font-size: 0.82rem;
