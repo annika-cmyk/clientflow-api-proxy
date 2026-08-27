@@ -124,6 +124,7 @@ const dokumentationSignering = require('./lib/dokumentation-signering');
 const statistikDokumentation = require('./lib/statistik-dokumentation');
 const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
 const { htmlToPlainText: htmlPlainText } = require('./lib/html-plain-text');
+const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
@@ -6706,6 +6707,11 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       const ids = access.parseAnvandareIds(payload['Användare']);
       payload['Användare'] = Array.isArray(existingAnvandare) ? ids : ids.join(',');
     }
+    const riskAssessmentTouched = ['Byrans riskbedomning', 'Atgarder riskbedomning', 'Riskniva', 'sammanlagd risk', 'Motivering']
+      .some((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    if (riskAssessmentTouched) {
+      payload['Riskbedömning utförd datum'] = new Date().toISOString().split('T')[0];
+    }
     const skipped = [];
     let createdMissingBehorighet = false;
     let createdMissingOptional = false;
@@ -8021,7 +8027,8 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
             {
               fields: {
                 [fieldName]: arr,
-                'Kundens riskbedömning godkänd': datumIso
+                'Kundens riskbedömning godkänd': datumIso,
+                'Riskbedömning utförd datum': datumIso
               }
             },
             { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
@@ -8062,7 +8069,12 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       filnamn: filename,
       reloadedDocuments,
       fileUrl,
-      message
+      message,
+      senasteRiskbedomningDatum: senasteRiskbedomningDatum.resolveSenasteRiskbedomningDatum({
+        ...f,
+        'Kundens riskbedömning godkänd': reloadedDocuments ? datumIso : f['Kundens riskbedömning godkänd'],
+        'Riskbedömning utförd datum': reloadedDocuments ? datumIso : f['Riskbedömning utförd datum']
+      })
     });
   } catch (error) {
     console.error('\u274c Riskbedömning PDF:', error.message);
