@@ -840,6 +840,7 @@ class ByraAnvandareManager {
       this.updateManageUi();
       this.renderUsers();
       this.populateUserFilters();
+      this.populateUtbildningAnstalldList();
       if (this.currentTab === 'behorigheter') this.ensureBehorighetData();
     } catch (err) {
       console.error('loadUsers:', err);
@@ -941,33 +942,68 @@ class ByraAnvandareManager {
     }
     list.innerHTML = this.utbildningar.map(u => {
       const datum = u.datum ? new Date(u.datum).toLocaleDateString('sv-SE') : '—';
-      return `<div class="utbildning-item"><strong>${escapeHtml(u.namn)}</strong> — ${datum} ${u.typ ? ' • ' + escapeHtml(u.typ) : ''} ${u.beskrivning ? '<br><small>' + escapeHtml(u.beskrivning) + '</small>' : ''}</div>`;
+      const anstalld = u.anstalld ? `<strong>${escapeHtml(u.anstalld)}</strong> — ` : '';
+      const intyg = u.kursintygUrl
+        ? ` • <a href="${escapeHtml(u.kursintygUrl)}" target="_blank" rel="noopener">Kursintyg</a>`
+        : '';
+      return `<div class="utbildning-item">${anstalld}<strong>${escapeHtml(u.namn)}</strong> — ${datum}${u.typ ? ' • ' + escapeHtml(u.typ) : ''}${intyg}${u.beskrivning ? '<br><small>' + escapeHtml(u.beskrivning) + '</small>' : ''}</div>`;
     }).join('');
+  }
+
+  populateUtbildningAnstalldList() {
+    const datalist = document.getElementById('utbildning-anstalld-list');
+    if (!datalist) return;
+    const names = (this.users || [])
+      .map((u) => (u.name || u.email || '').trim())
+      .filter(Boolean);
+    datalist.innerHTML = [...new Set(names)].map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
+  }
+
+  readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error('Kunde inte läsa filen'));
+      reader.readAsDataURL(file);
+    });
   }
 
   async saveUtbildning() {
     const statusEl = document.getElementById('utbildning-form-status');
     const namn = document.getElementById('utbildning-namn')?.value?.trim();
-    if (!namn) return;
+    const anstalld = document.getElementById('utbildning-anstalld')?.value?.trim();
+    if (!namn || !anstalld) return;
     if (statusEl) statusEl.textContent = 'Sparar...';
     try {
       const body = {
         namn,
+        anstalld,
         datum: document.getElementById('utbildning-datum')?.value || undefined,
         typ: document.getElementById('utbildning-typ')?.value || undefined,
-        plats: document.getElementById('utbildning-plats')?.value || undefined,
         beskrivning: document.getElementById('utbildning-beskrivning')?.value || undefined
       };
+      const fileInput = document.getElementById('utbildning-intyg');
+      const file = fileInput?.files?.[0];
+      if (file) {
+        body.base64 = await this.readFileAsBase64(file);
+        body.originalFilename = file.name;
+        body.contentType = file.type || 'application/octet-stream';
+      }
       const res = await fetch(getBaseUrl() + '/api/byra/utbildningar', getAuthOpts('POST', body));
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || res.statusText);
       }
       document.getElementById('utbildning-namn').value = '';
+      document.getElementById('utbildning-anstalld').value = '';
       document.getElementById('utbildning-datum').value = '';
       document.getElementById('utbildning-typ').value = '';
-      document.getElementById('utbildning-plats').value = '';
       document.getElementById('utbildning-beskrivning').value = '';
+      if (fileInput) fileInput.value = '';
       if (statusEl) statusEl.textContent = 'Sparat.';
       this.loadUtbildningar();
       setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);

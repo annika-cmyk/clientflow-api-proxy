@@ -13529,7 +13529,9 @@ app.post('/api/byra/kundbehorigheter/bulk', authenticateToken, async (req, res) 
 });
 
 // Utbildningar – Airtable-tabell "Utbildningar" (samma som Registrera utbildning)
-const UTBILDNINGAR_TABLE = 'Utbildningar';
+const UtbildningarAirtable = require('./lib/utbildningar-airtable');
+const UTBILDNINGAR_TABLE = UtbildningarAirtable.UTBILDNINGAR_TABLE;
+const UTBILDNINGAR_TABLE_ID = UtbildningarAirtable.UTBILDNINGAR_TABLE_ID;
 
 // GET /api/byra/utbildningar – Lista utbildningar för inloggad byrå
 app.get('/api/byra/utbildningar', authenticateToken, async (req, res) => {
@@ -13553,19 +13555,7 @@ app.get('/api/byra/utbildningar', authenticateToken, async (req, res) => {
         ? `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNINGAR_TABLE)}?offset=${airtableRes.data.offset}&filterByFormula=${encodeURIComponent(filterFormula)}`
         : null;
     } while (url);
-    const list = all.map(r => {
-      const f = r.fields || {};
-      return {
-        id: r.id,
-        namn: f['Namn'] || f['Utbildningsnamn'] || '',
-        datum: f['Datum'] || '',
-        beskrivning: f['Beskrivning'] || '',
-        typ: f['Typ'] || f['Utbildningstyp'] || '',
-        kategori: f['Kategori'] || '',
-        plats: f['Plats'] || '',
-        deltagare: f['Deltagare'] || []
-      };
-    });
+    const list = all.map(r => UtbildningarAirtable.mapUtbildningRecord(r));
     res.json({ success: true, utbildningar: list });
   } catch (error) {
     if (error.response && error.response.status === 404) {
@@ -13583,37 +13573,52 @@ app.post('/api/byra/utbildningar', authenticateToken, async (req, res) => {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
     const body = req.body || {};
-    const byraRecordId = result.record.id;
+    const namn = (body.namn || body.name || '').toString().trim();
+    const anstalld = (body.anstalld || body.deltagare || body.deltagareNamn || '').toString().trim();
+    if (!namn) return res.status(400).json({ error: 'Namn på kurs saknas.' });
+    if (!anstalld) return res.status(400).json({ error: 'Anställd saknas.' });
+
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const fields = {
-      'Namn': (body.namn || body.name || '').toString().trim() || 'Namnlös utbildning',
-      'Byrå': [byraRecordId],
-      'Byrå ID': result.byraId
-    };
-    if (body.datum !== undefined) fields['Datum'] = body.datum;
-    if (body.beskrivning !== undefined) fields['Beskrivning'] = String(body.beskrivning || '');
-    if (body.typ !== undefined) fields['Typ'] = String(body.typ || '');
-    if (body.kategori !== undefined) fields['Kategori'] = String(body.kategori || '');
-    if (body.plats !== undefined) fields['Plats'] = String(body.plats || '');
-    if (body.deltagare && Array.isArray(body.deltagare) && body.deltagare.length > 0) {
-      fields['Deltagare'] = body.deltagare;
-    }
+    const fields = UtbildningarAirtable.buildUtbildningCreateFields(body, result.byraId);
     const createUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(UTBILDNINGAR_TABLE)}`;
     const createRes = await axios.post(createUrl, { fields }, {
       headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
     });
     const record = createRes.data;
+    const recordId = record.id;
+
+    const base64 = (body.base64 || '').toString();
+    const originalFilename = (body.originalFilename || body.filename || 'kursintyg.pdf').toString();
+    const contentType = (body.contentType || body.mime || 'application/pdf').toString();
+    let kursintyg = null;
+    if (base64 && base64.length > 16) {
+      const buf = Buffer.from(base64, 'base64');
+      kursintyg = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken,
+        airtableBaseId,
+        recordId,
+        buf,
+        originalFilename,
+        contentType,
+        UTBILDNINGAR_TABLE_ID,
+        UtbildningarAirtable.F.KURSINTYG
+      );
+      if (!kursintyg) {
+        return res.status(502).json({
+          error: 'Utbildningen sparades men kursintyget kunde inte laddas upp. Försök igen eller kontakta support.',
+          id: recordId,
+          partial: true
+        });
+      }
+    }
+
+    const mapped = UtbildningarAirtable.mapUtbildningRecord(record);
+    if (kursintyg) mapped.kursintyg = [kursintyg];
     res.status(201).json({
       success: true,
-      id: record.id,
-      utbildning: {
-        id: record.id,
-        namn: fields['Namn'],
-        datum: fields['Datum'],
-        beskrivning: fields['Beskrivning'],
-        typ: fields['Typ']
-      }
+      id: recordId,
+      utbildning: mapped
     });
   } catch (error) {
     console.error('❌ POST /api/byra/utbildningar:', error.response?.data || error.message);

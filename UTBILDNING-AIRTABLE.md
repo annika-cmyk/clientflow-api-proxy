@@ -1,4 +1,24 @@
-# Airtable-tabell för AML Grundkurs (Utbildningsslutförande)
+# Airtable-tabeller för utbildning
+
+## Utbildningar (Registrera utbildning)
+
+Tabellen **Utbildningar** används under Byrå → Uppgifter byrå & användare → Utbildningar.
+
+| Fält | Typ | UI |
+|------|-----|-----|
+| Namn på kurs | text | Namn på kurs * |
+| Anställd | text | Anställd * |
+| Datum slutförd | datum | Datum slutförd |
+| Select | Intern / Extern | Typ |
+| Beskrivning av utbildningen | lång text | Beskrivning |
+| Kursintyg | bilaga | Kursintyg (PDF/bild) |
+| Byrå ID | text | (sätts automatiskt) |
+
+API: `GET/POST /api/byra/utbildningar`
+
+---
+
+## Utbildningsslutförande (AML Grundkurs)
 
 För att "Testa dig själv"-kortet och listan över genomförda ska fungera behöver tabellen **Utbildningsslutförande** finnas i Airtable.
 
