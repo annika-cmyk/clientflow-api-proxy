@@ -125,27 +125,41 @@ class CustomerCardManager {
     }
 
     async init() {
-        await this.loadDatasourceConfig();
-        await this.loadUserData();
+        // Parse URL + wire UI immediately so we can fetch as soon as auth/config are ready.
         this.setupEventListeners();
         this.setupTabNavigation();
         this.setupRollerEventDelegation();
         this._ensureTabStatusElements();
         this._updateKlarTabIndicators({});
-        
-        // Ensure first tab is visible on load
         this.ensureFirstTabVisible();
-        
-        // Debug: Check URL immediately
+
         console.log('🔍 INIT - Current URL:', window.location.href);
         console.log('🔍 INIT - URL search:', window.location.search);
-        
-        // Wait a bit for URL to be fully available
-        setTimeout(() => {
-            console.log('🔍 TIMEOUT - Current URL:', window.location.href);
-            console.log('🔍 TIMEOUT - URL search:', window.location.search);
-            this.loadCustomerData();
-        }, 100);
+
+        // Kick off kunddata network I/O immediately (auth cookie only); process after user/config.
+        const customerResponsePromise = this._startCustomerFetch();
+        await Promise.all([
+            this.loadDatasourceConfig(),
+            this.loadUserData()
+        ]);
+        await this.loadCustomerData(customerResponsePromise);
+    }
+
+    _startCustomerFetch() {
+        if (!this.customerId ||
+            this.customerId === 'null' ||
+            this.customerId === 'undefined' ||
+            String(this.customerId).trim() === '') {
+            return null;
+        }
+        if (!isLoggedInKundkort()) {
+            return null;
+        }
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        return fetch(`${baseUrl}/api/kunddata/${this.customerId}`, {
+            method: 'GET',
+            ...getAuthOptsKundkort()
+        });
     }
 
     ensureFirstTabVisible() {
@@ -375,7 +389,7 @@ class CustomerCardManager {
         }, true);
     }
 
-    async loadCustomerData() {
+    async loadCustomerData(prefetchedResponse = null) {
         // Try to get customer ID again if it's not set
         if (!this.customerId) {
             console.log('🔍 Customer ID not set, trying to get it from URL again...');
@@ -419,7 +433,7 @@ class CustomerCardManager {
                 return;
             }
 
-            const response = await fetch(apiUrl, {
+            const response = prefetchedResponse || await fetch(apiUrl, {
                 method: 'GET',
                 ...getAuthOptsKundkort()
             });
@@ -451,7 +465,6 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
-                this.refreshTabIndicators();
                 const urlParams = new URLSearchParams(window.location.search);
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
@@ -461,6 +474,11 @@ class CustomerCardManager {
                 const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : (shouldOpenSamarbete ? 'samarbete' : 'foretagsinformation'));
                 this.switchToTab(initialTab);
                 this.loadTabContent(initialTab);
+                // Tab badge API fan-out after first paint so it does not compete with LCP.
+                const deferIndicators = typeof requestIdleCallback === 'function'
+                    ? (fn) => requestIdleCallback(fn, { timeout: 1500 })
+                    : (fn) => setTimeout(fn, 0);
+                deferIndicators(() => this.refreshTabIndicators());
                 
                 // Force visibility after data is loaded
                 setTimeout(() => {

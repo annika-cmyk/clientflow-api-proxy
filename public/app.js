@@ -14,7 +14,11 @@ class ClientFlowApp {
         
         // Then initialize other components
         this.bindEvents();
-        this.checkSystemStatus();
+        // System status UI exists only on the dashboard — skip the health
+        // round-trips on kundkort and other pages that still load app.js.
+        if (document.querySelector('.status-section') || document.getElementById('server-status')) {
+            this.checkSystemStatus();
+        }
         
         // Apply role-based UI restrictions
         this.applyRoleBasedUI();
