@@ -67,7 +67,12 @@
       (rec._mergedRecordIds || rec.mergedIds || []).forEach(function (id) {
         if (id && ids.indexOf(id) === -1) ids.push(id);
       });
-      var item = { id: rec.id || ids[0] || '', namn: namn, ids: ids };
+      var item = {
+        id: rec.id || ids[0] || '',
+        namn: namn,
+        ids: ids,
+        aktuell: rec.aktuell === true || !!(rec.fields && rec.fields.Aktuell === true)
+      };
       items.push(item);
       ids.forEach(function (id) { byId[id] = item; });
       var key = foldName(namn);
@@ -202,26 +207,40 @@
     return out;
   }
 
-  function catalogIdsForCustomerValues(values, catalog, opts) {
-    var classified = classifyCustomerServices(values, catalog, opts);
+  function isActiveCatalogItem(item) {
+    return !!(item && item.aktuell === true);
+  }
+
+  function sanitizeToActiveCatalogIds(values, catalog, opts) {
+    var index = catalog && catalog.byId ? catalog : catalogFromRecords(catalog);
+    var classified = classifyCustomerServices(values, index, opts);
     var seen = {};
     var out = [];
     (classified.matched || []).concat(classified.normalize || []).forEach(function (hit) {
       var id = hit && hit.catalogId;
       if (!id || seen[id]) return;
+      var item = index.byId[id];
+      if (!item || !isActiveCatalogItem(item)) return;
       seen[id] = true;
       out.push(id);
     });
     return out;
   }
 
-  function catalogIdsFromSelection(selectedIds, catalog) {
+  function catalogIdsForCustomerValues(values, catalog, opts) {
+    return sanitizeToActiveCatalogIds(values, catalog, opts);
+  }
+
+  function catalogIdsFromSelection(selectedIds, catalog, opts) {
     var index = catalog && catalog.byId ? catalog : catalogFromRecords(catalog);
+    var activeOnly = !opts || opts.activeOnly !== false;
     var seen = {};
     var out = [];
     asValues(selectedIds).forEach(function (id) {
       var hit = matchValue(id, index);
       if (hit.status !== 'catalog') return;
+      var item = index.byId[hit.catalogId];
+      if (activeOnly && !isActiveCatalogItem(item)) return;
       var key = hit.catalogId || hit.raw;
       if (!key || seen[key]) return;
       seen[key] = true;
@@ -230,31 +249,16 @@
     return out;
   }
 
-  /**
-   * Vid sparning: bara katalog-ID från UI, plus oförändrade icke-katalogvärden
-   * så att Avstämning/BOKSLUT inte raderas innan manuell granskning.
-   */
+  /** Vid sparning: endast aktiva katalog-ID från UI — inga dolda äldre/inaktiva värden. */
   function mergeSaveValues(existingValues, selectedCatalogIds, catalog, opts) {
-    var keep = unmatchedRaws(existingValues, catalog, opts);
-    var ids = catalogIdsFromSelection(selectedCatalogIds, catalog);
-    var seen = {};
-    var out = [];
-    ids.concat(keep).forEach(function (v) {
-      if (!v || seen[v]) return;
-      seen[v] = true;
-      out.push(v);
-    });
-    return out;
+    return catalogIdsFromSelection(selectedCatalogIds, catalog, opts);
   }
 
   function filterIncomingToCatalog(incoming, existing, catalog) {
     var index = catalog && catalog.byId ? catalog : catalogFromRecords(catalog);
     var incomingList = asValues(incoming);
-    var onlyCatalog = incomingList.every(function (v) {
-      return matchValue(v, index).status === 'catalog';
-    });
-    if (onlyCatalog) return incomingList;
-    return mergeSaveValues(existing, incomingList, index);
+    if (!incomingList.length) return sanitizeToActiveCatalogIds(asValues(existing), index);
+    return sanitizeToActiveCatalogIds(incomingList, index);
   }
 
   var api = {
@@ -271,6 +275,8 @@
     unmatchedRaws: unmatchedRaws,
     unmatchedLabel: unmatchedLabel,
     reviewLabels: reviewLabels,
+    isActiveCatalogItem: isActiveCatalogItem,
+    sanitizeToActiveCatalogIds: sanitizeToActiveCatalogIds,
     catalogIdsForCustomerValues: catalogIdsForCustomerValues,
     catalogIdsFromSelection: catalogIdsFromSelection,
     mergeSaveValues: mergeSaveValues,

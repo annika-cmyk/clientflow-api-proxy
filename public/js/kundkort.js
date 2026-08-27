@@ -9599,16 +9599,51 @@ class CustomerCardManager {
         this._kundTjanstLookup = lookup;
         const ids = new Set(list.map((t) => t.id).filter(Boolean));
         const TK = window.TjanstKatalog;
+        const catalog = this._byransTjansterAll || this._byransTjanster || [];
         if (TK && TK.catalogIdsForCustomerValues) {
             TK.catalogIdsForCustomerValues(
                 this.customerData?.fields?.['Kundens utvalda tjänster'] || list.map((t) => t.id),
-                this._byransTjanster || [],
+                catalog,
                 this._tjanstKatalogOpts()
             ).forEach((id) => ids.add(id));
         }
         this._aktivaTjansterIds = ids;
         if (this.customerData?.fields) {
             this.customerData.fields['Kundens utvalda tjänster'] = (data && data.linkedIds) || list.map((t) => t.id);
+        }
+    }
+
+    _sameTjanstIdList(a, b) {
+        const left = Array.isArray(a) ? a : [];
+        const right = Array.isArray(b) ? b : [];
+        if (left.length !== right.length) return false;
+        const seen = new Set(left);
+        return right.every((id) => seen.has(id));
+    }
+
+    async _maybeSanitizeKundTjanster() {
+        const existing = this.customerData?.fields?.['Kundens utvalda tjänster'] || [];
+        const TK = window.TjanstKatalog;
+        const catalog = this._byransTjansterAll || this._byransTjanster || [];
+        if (!TK || !TK.sanitizeToActiveCatalogIds || !this.customerId || !catalog.length) return;
+        const cleaned = TK.sanitizeToActiveCatalogIds(existing, catalog, this._tjanstKatalogOpts());
+        if (this._sameTjanstIdList(existing, cleaned)) return;
+        try {
+            const result = await this._patchKunddataFields({ 'Kundens utvalda tjänster': cleaned });
+            if (!result.ok) return;
+            this._aktivaTjansterIds = new Set(cleaned);
+            if (this.customerData?.fields) {
+                this.customerData.fields['Kundens utvalda tjänster'] = cleaned;
+            }
+            const removed = existing.length - cleaned.length;
+            if (removed > 0) {
+                this.showNotification(
+                    `${removed} inaktiv${removed > 1 ? 'a' : ''} eller borttagen${removed > 1 ? 'a' : ''} tjänst${removed > 1 ? 'er' : ''} togs bort från kunden.`,
+                    'info'
+                );
+            }
+        } catch (e) {
+            console.warn('⚠️ Kunde inte rensa inaktiva tjänster:', e.message);
         }
     }
 
@@ -9705,10 +9740,12 @@ class CustomerCardManager {
                 });
                 const data = res.ok ? await res.json() : {};
                 const raw = data.tjanster?.length ? data.tjanster : [];
-                this._byransTjanster = this._dedupeByraTjanster(raw);
+                this._byransTjansterAll = this._dedupeByraTjanster(raw);
+                this._byransTjanster = this._byransTjansterAll.filter((t) => t.aktuell === true);
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta tjänster:', e.message);
                 if (!this._byransTjanster) this._byransTjanster = [];
+                if (!this._byransTjansterAll) this._byransTjansterAll = [];
             }
         }
 
@@ -9723,6 +9760,8 @@ class CustomerCardManager {
             console.warn('⚠️ Kunde inte hämta kundens tjänster:', e.message);
             this._aktivaTjansterIds = new Set();
         }
+
+        await this._maybeSanitizeKundTjanster();
 
         if (document.getElementById('services-content')) {
             this.renderTjanster(this._aktivaTjansterIds, byraHighRisk, 'services-content');
@@ -10283,7 +10322,7 @@ class CustomerCardManager {
             const unmatchedAfter = this._unmatchedTjanster();
             let msg = `Tjänster sparade — ${checkedIds.length} från katalogen`;
             if (unmatchedAfter.length) {
-                msg += `. ${unmatchedAfter.length} äldre tjänst${unmatchedAfter.length > 1 ? 'er' : ''} (${unmatchedAfter.join(', ')}) behöver fortfarande granskas.`;
+                msg += `. ${unmatchedAfter.length} tjänst${unmatchedAfter.length > 1 ? 'er' : ''} kunde inte kopplas till aktiv katalog.`;
             }
             this.showNotification(msg, unmatchedAfter.length ? 'warning' : 'success');
 
@@ -10383,10 +10422,12 @@ class CustomerCardManager {
                 const res = await fetch(`${baseUrl}/api/byra-tjanster?byraId=${encodeURIComponent(byraId)}`, { ...getAuthOptsKundkort() });
                 const data = res.ok ? await res.json() : {};
                 const raw = data.tjanster?.length ? data.tjanster : [];
-                this._byransTjanster = this._dedupeByraTjanster ? this._dedupeByraTjanster(raw) : raw;
+                this._byransTjansterAll = this._dedupeByraTjanster ? this._dedupeByraTjanster(raw) : raw;
+                this._byransTjanster = (this._byransTjansterAll || []).filter((t) => t.aktuell === true);
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta byråns tjänster för KYC:', e.message);
                 if (!this._byransTjanster) this._byransTjanster = [];
+                if (!this._byransTjansterAll) this._byransTjansterAll = [];
             }
         }
 
@@ -10399,6 +10440,8 @@ class CustomerCardManager {
             console.warn('⚠️ Kunde inte hämta kundens tjänster för KYC:', e.message);
             if (!this._aktivaTjansterIds) this._aktivaTjansterIds = new Set();
         }
+
+        await this._maybeSanitizeKundTjanster();
 
         // Hämta eventuellt sparat KYC-formulär
         let savedKyc = {};
