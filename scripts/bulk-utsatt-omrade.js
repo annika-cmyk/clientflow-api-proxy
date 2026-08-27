@@ -1,11 +1,15 @@
 /**
- * Engångskörning: kontrollera alla kundadresser mot Polisens utsatta områden.
+ * Engångskörning: kontrollera kundadresser mot Polisens utsatta områden.
  * Sparar resultat i fältet "Utsatt område (JSON)" och kan koppla geografisk riskfaktor.
  *
  * Kör: node scripts/bulk-utsatt-omrade.js
  *      node scripts/bulk-utsatt-omrade.js --dry-run
+ *      node scripts/bulk-utsatt-omrade.js --failed-only
  *      node scripts/bulk-utsatt-omrade.js --byra-id=BYRA123
  *      node scripts/bulk-utsatt-omrade.js --skip-risk-link
+ *
+ * --failed-only: kör om bara kunder där geokodning tidigare misslyckades
+ *                (geocoding.ok === false), t.ex. efter förbättrad fallback.
  */
 require('dotenv').config();
 const axios = require('axios');
@@ -17,8 +21,13 @@ const OVRIGA_RISKER_TABLE_ID = 'tblWw6tM2YOTYFn2H';
 const DELAY_MS = 1100;
 
 const dryRun = process.argv.includes('--dry-run');
+const failedOnly = process.argv.includes('--failed-only');
 const skipRiskLink = process.argv.includes('--skip-risk-link');
 const byraFilter = (process.argv.find((a) => a.startsWith('--byra-id=')) || '').split('=')[1] || '';
+
+function isFailedGeocode(prevStored) {
+  return !!(prevStored && prevStored.geocoding && prevStored.geocoding.ok === false);
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,19 +93,32 @@ async function main() {
   }
 
   const withAddress = records.filter((rec) => utsattKund.customerAddressFromFields(rec.fields));
-  console.log(`Hittade ${records.length} kunder, ${withAddress.length} med adress.`);
+  const failedCandidates = failedOnly
+    ? withAddress.filter((rec) => isFailedGeocode(utsattKund.parseStored(rec.fields?.[utsattKund.FIELD])))
+    : withAddress;
+  console.log(
+    `Hittade ${records.length} kunder, ${withAddress.length} med adress`
+    + (failedOnly ? `, ${failedCandidates.length} med tidigare geokodningsfel.` : '.')
+  );
 
   const geoCache = {};
   let checked = 0;
   let updated = 0;
   let trff = 0;
+  let geoOk = 0;
+  let geoFail = 0;
   let skipped = 0;
   let errors = 0;
 
-  for (const rec of withAddress) {
+  for (const rec of failedCandidates) {
     const addr = utsattKund.customerAddressFromFields(rec.fields);
     const prev = utsattKund.parseStored(rec.fields?.[utsattKund.FIELD]);
-    if (!utsattKund.shouldRecheck(prev, addr, true)) {
+    if (failedOnly) {
+      if (!isFailedGeocode(prev)) {
+        skipped += 1;
+        continue;
+      }
+    } else if (!utsattKund.shouldRecheck(prev, addr, true)) {
       skipped += 1;
       continue;
     }
@@ -109,6 +131,8 @@ async function main() {
       const stored = utsattKund.parseStored(json);
       checked += 1;
       if (stored.trff) trff += 1;
+      if (stored.geocoding && stored.geocoding.ok) geoOk += 1;
+      else geoFail += 1;
 
       const patchFields = { [utsattKund.FIELD]: json };
       if (!skipRiskLink) {
@@ -130,7 +154,11 @@ async function main() {
       await patchKund(baseId, token, rec.id, patchFields);
       updated += 1;
       const namn = String(rec.fields?.Namn || rec.fields?.Kundnamn || rec.id).trim();
-      console.log(`${dryRun ? '[dry-run] ' : ''}${namn}: ${stored.trff ? utsattKund.summaryLabel(stored) : 'ingen träff'}`);
+      const geoStatus = stored.geocoding && stored.geocoding.ok
+        ? (stored.geocoding.precision === 'approximate' ? 'geokodad (ungefärlig)' : 'geokodad')
+        : `geokodning misslyckades (${stored.geocoding?.reason || 'okänt'})`;
+      const hitStatus = stored.trff ? utsattKund.summaryLabel(stored) : 'ingen träff';
+      console.log(`${dryRun ? '[dry-run] ' : ''}${namn}: ${geoStatus} — ${hitStatus}`);
     } catch (err) {
       errors += 1;
       console.error(`Fel för ${rec.id}:`, err.response?.data || err.message);
@@ -138,7 +166,11 @@ async function main() {
   }
 
   console.log('\nKlart.');
-  console.log(`Kontrollerade: ${checked}, uppdaterade: ${updated}, träffar: ${trff}, hoppade över: ${skipped}, fel: ${errors}${dryRun ? ' (dry-run)' : ''}`);
+  console.log(
+    `Kontrollerade: ${checked}, uppdaterade: ${updated}, geokodade: ${geoOk},`
+    + ` geokodningsfel kvar: ${geoFail}, träffar: ${trff}, hoppade över: ${skipped},`
+    + ` fel: ${errors}${dryRun ? ' (dry-run)' : ''}${failedOnly ? ' (failed-only)' : ''}`
+  );
 }
 
 main().catch((err) => {
