@@ -6645,13 +6645,10 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
     if (cleanedFields['Orgnr'] != null) {
       let byraId = (cleanedFields['Byrå ID'] || '').toString().trim();
       if (!byraId) {
-        const existingRes = await axios.get(
-          `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}?fields[]=Byrå ID`,
-          { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } }
-        );
-        byraId = (existingRes.data.fields?.['Byrå ID'] || '').toString().trim();
+        byraId = (customerRecord.fields?.['Byrå ID'] || '').toString().trim();
       }
       const orgnrRaw = (cleanedFields['Orgnr'] || '').toString().replace(/[^\d]/g, '');
+      cleanedFields['Orgnr'] = orgnrRaw;
       if (orgnrRaw && byraId) {
         const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         const orgnrVariants = [orgnrRaw];
