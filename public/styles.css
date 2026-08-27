@@ -13203,8 +13203,39 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .ar-bar-fill--bidrar { background: #f59e0b; }
 .ar-bar-chart--flaggor .ar-bar-row:has(.ar-bar-fill--golv) .ar-flaggor-klass { color: #991b1b; }
 .ar-pie-chart-wrap { margin: 0.85rem 0 0.25rem; }
-#ar-distribution-chart,
-#ar-verksamhet-chart { margin-top: 1.15rem; padding-top: 0.35rem; border-top: 1px solid #e2e8f0; }
+#ar-distribution-chart { margin-top: 1.15rem; padding-top: 0.35rem; border-top: 1px solid #e2e8f0; }
+.ar-title-editable { position: relative; padding-right: 1.75rem; }
+.ar-title-edit-btn {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0.15rem 0.35rem;
+    font-size: 0.85rem;
+    opacity: 0.55;
+}
+.ar-title-editable:hover .ar-title-edit-btn,
+.ar-title-edit-btn:focus { opacity: 1; color: #4f46e5; }
+.ar-block-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0.35rem 0 0.15rem;
+}
+.ar-block-hide-btn {
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    padding: 0.2rem 0.55rem;
+    cursor: pointer;
+}
+.ar-block-hide-btn:hover { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+#btn-ar-save-layout.btn--dirty { box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.35); }
 .ar-pie-wrap {
     display: flex;
     flex-wrap: wrap;

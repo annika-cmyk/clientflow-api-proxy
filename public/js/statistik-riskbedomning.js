@@ -23,6 +23,8 @@
     const r = data.riskniva || {};
     const tj = data.tjänster || [];
     const hr = data.högriskbransch || [];
+    const oms = data.omsattning || [];
+    const anst = data.anstallda || [];
 
     document.getElementById('stat-antal-kunder').textContent = n;
     document.getElementById('stat-lag').textContent = r['Låg'] || 0;
@@ -46,6 +48,34 @@
           <div class="stat-list-row stat-list-row-clickable" data-typ="tjanst" data-namn="${escapeAttr(t.namn)}" data-titel="${escapeAttr(t.namn)}" title="Klicka för att se kunder">
             <span class="stat-list-namn">${escapeHtml(t.namn)}</span>
             <span class="stat-list-antal">${t.antal} kunder</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    const omsList = document.getElementById('statistik-omsattning-lista');
+    if (omsList) {
+      if (oms.length === 0) {
+        omsList.innerHTML = '<p class="stat-list-empty">Ingen omsättning registrerad hos kunderna.</p>';
+      } else {
+        omsList.innerHTML = oms.map(o => `
+          <div class="stat-list-row stat-list-row-clickable" data-typ="omsattning" data-namn="${escapeAttr(o.namn)}" data-titel="${escapeAttr('Omsättning: ' + o.namn)}" title="Klicka för att se kunder">
+            <span class="stat-list-namn">${escapeHtml(o.namn)}</span>
+            <span class="stat-list-antal">${o.antal} kunder</span>
+          </div>
+        `).join('');
+      }
+    }
+
+    const anstList = document.getElementById('statistik-anstallda-lista');
+    if (anstList) {
+      if (anst.length === 0) {
+        anstList.innerHTML = '<p class="stat-list-empty">Inget antal anställda registrerat hos kunderna.</p>';
+      } else {
+        anstList.innerHTML = anst.map(a => `
+          <div class="stat-list-row stat-list-row-clickable" data-typ="anstallda" data-namn="${escapeAttr(a.namn)}" data-titel="${escapeAttr('Anställda: ' + a.namn)}" title="Klicka för att se kunder">
+            <span class="stat-list-namn">${escapeHtml(a.namn)}</span>
+            <span class="stat-list-antal">${a.antal} kunder</span>
           </div>
         `).join('');
       }
@@ -199,6 +229,10 @@
           const id = row.getAttribute('data-id');
           const namn = row.getAttribute('data-namn');
           fetchKunderForRow('riskfaktor', id || null, namn || undefined, titel);
+        } else if (typ === 'omsattning') {
+          fetchKunderForRow('omsattning', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'anstallda') {
+          fetchKunderForRow('anstallda', null, row.getAttribute('data-namn'), titel);
         }
       };
       row.addEventListener('click', row._statistikClick);

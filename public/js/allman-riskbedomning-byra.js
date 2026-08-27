@@ -45,6 +45,23 @@
     }
   }
 
+  const AR_LAYOUT_BLOCKS = [
+    'ar-tjanster-chart',
+    'ar-kundtyper-body',
+    'ar-flaggor-chart',
+    'ar-distribution-live',
+    'ar-distribution-chart',
+    'ar-geografi-body',
+    'ar-geografi-chart',
+    'ar-bankid-text',
+    'ar-kartlaggning-hint',
+    'identifierade-risker-live',
+    'ar-identifierade-nya-hint'
+  ];
+
+  var _arLayout = { titles: {}, hidden: [] };
+  var _arLayoutDirty = false;
+
   function readKartlaggningFromForm() {
     var out = {};
     KARTLAGGNING_FIELDS.forEach(function (m) {
@@ -54,12 +71,181 @@
     return out;
   }
 
+  function readFullKartlaggningJson() {
+    var out = readKartlaggningFromForm();
+    if (_arLayout.titles && Object.keys(_arLayout.titles).length) {
+      out.layout = out.layout || {};
+      out.layout.titles = Object.assign({}, _arLayout.titles);
+    }
+    if (_arLayout.hidden && _arLayout.hidden.length) {
+      out.layout = out.layout || {};
+      out.layout.hidden = _arLayout.hidden.slice();
+    }
+    return out;
+  }
+
+  function loadArLayoutFromData(data) {
+    var layout = data && data.layout && typeof data.layout === 'object' ? data.layout : {};
+    _arLayout = {
+      titles: layout.titles && typeof layout.titles === 'object' ? Object.assign({}, layout.titles) : {},
+      hidden: Array.isArray(layout.hidden) ? layout.hidden.filter(Boolean) : []
+    };
+  }
+
+  function tagArTitleIds() {
+    document.querySelectorAll('.byra-card[data-card-id] > .byra-card-view > .byra-card-label').forEach(function (el) {
+      if (!el.getAttribute('data-ar-title-id')) {
+        el.setAttribute('data-ar-title-id', el.closest('.byra-card').getAttribute('data-card-id'));
+      }
+    });
+    document.querySelectorAll('.byra-card[data-field-id] > .byra-card-view > .byra-card-label').forEach(function (el) {
+      if (!el.getAttribute('data-ar-title-id')) {
+        el.setAttribute('data-ar-title-id', el.closest('.byra-card').getAttribute('data-field-id'));
+      }
+    });
+  }
+
+  function applyArLayout() {
+    document.querySelectorAll('[data-ar-title-id]').forEach(function (el) {
+      var id = el.getAttribute('data-ar-title-id');
+      var custom = _arLayout.titles[id];
+      if (!custom) return;
+      var target = el.querySelector('[data-ar-title-text]') || el;
+      target.textContent = custom;
+    });
+    AR_LAYOUT_BLOCKS.forEach(function (blockId) {
+      var el = getEl(blockId);
+      if (!el) return;
+      var hidden = _arLayout.hidden.indexOf(blockId) !== -1;
+      el.style.display = hidden ? 'none' : '';
+      el.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+      var toolbar = el.previousElementSibling;
+      if (toolbar && toolbar.classList && toolbar.classList.contains('ar-block-toolbar')) {
+        var icon = toolbar.querySelector('.ar-block-hide-btn i');
+        if (icon) icon.className = hidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+      }
+    });
+  }
+
+  function markArLayoutDirty() {
+    _arLayoutDirty = true;
+    var btn = getEl('btn-ar-save-layout');
+    if (btn) btn.classList.add('btn--dirty');
+  }
+
+  function initArTitleEditors(canEdit) {
+    if (!canEdit) return;
+    document.querySelectorAll('[data-ar-title-id]').forEach(function (el) {
+      if (el.querySelector('.ar-title-edit-btn')) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ar-title-edit-btn';
+      btn.title = 'Redigera rubrik';
+      btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var target = el.querySelector('[data-ar-title-text]') || el;
+        var current = target.textContent.trim();
+        var next = window.prompt('Rubrik:', current);
+        if (next == null) return;
+        var trimmed = next.trim();
+        if (!trimmed) return;
+        var id = el.getAttribute('data-ar-title-id');
+        _arLayout.titles[id] = trimmed;
+        target.textContent = trimmed;
+        markArLayoutDirty();
+      });
+      el.classList.add('ar-title-editable');
+      el.appendChild(btn);
+    });
+  }
+
+  function toggleArBlockHidden(blockId) {
+    var idx = _arLayout.hidden.indexOf(blockId);
+    if (idx === -1) _arLayout.hidden.push(blockId);
+    else _arLayout.hidden.splice(idx, 1);
+    applyArLayout();
+    markArLayoutDirty();
+  }
+
+  function initArBlockToggles(canEdit) {
+    if (!canEdit) return;
+    AR_LAYOUT_BLOCKS.forEach(function (blockId) {
+      var el = getEl(blockId);
+      if (!el) return;
+      if (el.previousElementSibling && el.previousElementSibling.classList.contains('ar-block-toolbar')) return;
+      var bar = document.createElement('div');
+      bar.className = 'ar-block-toolbar';
+      var hidden = _arLayout.hidden.indexOf(blockId) !== -1;
+      bar.innerHTML = '<button type="button" class="ar-block-hide-btn" data-ar-block="' + blockId + '" title="Dölj eller visa detta block">'
+        + '<i class="fas fa-' + (hidden ? 'eye-slash' : 'eye') + '"></i> Dölj/visa</button>';
+      el.parentNode.insertBefore(bar, el);
+      bar.querySelector('.ar-block-hide-btn').addEventListener('click', function (ev) {
+        ev.preventDefault();
+        toggleArBlockHidden(blockId);
+      });
+    });
+  }
+
+  async function saveArLayout() {
+    var status = getEl('ar-layout-save-status');
+    var btn = getEl('btn-ar-save-layout');
+    var idEl = getEl('byra-rutiner-record-id');
+    var recordId = idEl ? idEl.value.trim() : '';
+    if (!recordId) {
+      if (status) status.textContent = 'Ingen post att spara till.';
+      return;
+    }
+    if (status) status.textContent = 'Sparar...';
+    if (btn) btn.disabled = true;
+    try {
+      var fields = {};
+      fields[KARTLAGGNING_AIRTABLE] = JSON.stringify(readFullKartlaggningJson());
+      var res = await fetch(getBaseUrl() + '/api/byra-rutiner/' + encodeURIComponent(recordId), {
+        method: 'PATCH',
+        ...getAuthOpts(),
+        body: JSON.stringify({ fields: fields })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        _arLayoutDirty = false;
+        if (btn) btn.classList.remove('btn--dirty');
+        if (status) {
+          status.textContent = 'Anpassningar sparade';
+          setTimeout(function () { status.textContent = ''; }, 2500);
+        }
+      } else {
+        var errMsg = (data && data.error) || (data && data.message) || 'Kunde inte spara';
+        if (status) status.textContent = errMsg;
+      }
+    } catch (err) {
+      if (status) status.textContent = 'Fel vid sparande';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function initArLayoutEditor(canEdit) {
+    if (!canEdit) return;
+    tagArTitleIds();
+    initArTitleEditors(canEdit);
+    initArBlockToggles(canEdit);
+    applyArLayout();
+    var btn = getEl('btn-ar-save-layout');
+    if (btn) {
+      btn.style.display = '';
+      btn.addEventListener('click', function () { saveArLayout(); });
+    }
+  }
+
   function populateKartlaggning(fields) {
     var data = parseKartlaggningJson(getFieldValue(fields, KARTLAGGNING_AIRTABLE));
     KARTLAGGNING_FIELDS.forEach(function (m) {
       var el = getEl(m.id);
       if (el) el.value = data[m.key] == null ? '' : String(data[m.key]);
     });
+    loadArLayoutFromData(data);
   }
 
   function initKartlaggningInfotext() {
@@ -424,7 +610,7 @@
         formGroup.appendChild(wrapK);
         btnK.addEventListener('click', function () {
           var fieldsK = {};
-          fieldsK[KARTLAGGNING_AIRTABLE] = JSON.stringify(readKartlaggningFromForm());
+          fieldsK[KARTLAGGNING_AIRTABLE] = JSON.stringify(readFullKartlaggningJson());
           saveFields(fieldsK, card);
         });
         return;
@@ -543,12 +729,9 @@
       if (distLive && window.IdentifieradeRiskerView) {
         IdentifieradeRiskerView.mount(distLive, source, { only: 'distribution' });
       }
-      var verkLive = getEl('ar-verksamhet-live');
-      if (verkLive && window.IdentifieradeRiskerView) {
-        IdentifieradeRiskerView.mount(verkLive, source, { only: 'verksamhet' });
-      }
       window._arIdentifieradeSource = source;
       initCollapsibleCards();
+      initArLayoutEditor(canEdit);
       loadArStatistikBlock();
       if (content) content.style.display = 'block';
       var headerActions = getEl('allman-risk-header-actions');
@@ -764,7 +947,6 @@
     labels.forEach(function (namn) {
       var label = KP && KP.canonicalRiskhojandeLabel ? KP.canonicalRiskhojandeLabel(namn) : namn;
       if (!label || seen[label.toLowerCase()]) return;
-      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(label)) return;
       seen[label.toLowerCase()] = true;
       var klass = (katalog && katalog[namn]) || (katalog && katalog[label]) || '';
       var cat = (kategorier && (kategorier[namn] || kategorier[label])) || (Kat && Kat.categoryFor && Kat.categoryFor(label)) || '';
@@ -773,7 +955,6 @@
     (counts || []).forEach(function (row) {
       var label = row && row.namn;
       if (!label || seen[String(label).toLowerCase()]) return;
-      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(label)) return;
       seen[String(label).toLowerCase()] = true;
       out.push({ namn: label, antal: Number(row.antal) || 0, klass: '', category: '' });
     });
@@ -818,7 +999,6 @@
     ((stat && stat.varningsflaggor) || []).forEach(function (f) {
       if (!f || !f.namn) return;
       var Kat = window.OvrigaRiskKategorier;
-      if (Kat && Kat.isRemovedFactor && Kat.isRemovedFactor(f.namn)) return;
       var match = liveNames.some(function (n) { return foldNamn(n) === foldNamn(f.namn); });
       var catId = Kat && Kat.categoryFor ? Kat.categoryFor(f.namn) : '';
       if (match
@@ -948,13 +1128,8 @@
         aria: 'Cirkeldiagram över distributionskanaler',
         empty: 'Inga kunder är kopplade till en distributionskanal ännu.'
       });
-      renderPieChart('ar-verksamhet-chart', countsForDimension(stat, 'verksamhet', window._arIdentifieradeSource), {
-        title: 'Andel kunder per verksamhetsfaktor',
-        hint: 'Andel av kunderna som har respektive verksamhetsspecifik riskfaktor.',
-        aria: 'Cirkeldiagram över verksamhetsspecifika riskfaktorer',
-        empty: 'Inga verksamhetsspecifika riskfaktorer är kopplade till kunder ännu.'
-      });
       renderGeografi(stat);
+      applyArLayout();
     } catch (err) {
       console.warn('Kunde inte ladda AR-statistik:', err);
       var el = getEl('ar-kundtyper-body');
