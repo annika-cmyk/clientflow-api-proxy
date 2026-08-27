@@ -20,12 +20,14 @@
     },
     {
       id: 'distribution',
-      label: 'Distributionskanaler',
+      label: 'Distrubutionskanaler - såhär möter vi våra kunder',
       cardTitle: 'Hur samarbetar vi?',
       categoryId: 'samarbete',
       aliases: [
         'distributionskanaler',
         'distrubutionskanaler',
+        'distrubutionskanaler - såhär möter vi våra kunder',
+        'distrubutionskanaler - sa har moter vi vara kunder',
         'distribution',
         'distributionskanal',
         'hur samarbetar vi?'
@@ -74,8 +76,10 @@
     var key = fold(typ);
     if (!key) return null;
     for (var i = 0; i < DIMENSIONS.length; i += 1) {
+      if (key === fold(DIMENSIONS[i].label)) return DIMENSIONS[i];
+    }
+    for (var i = 0; i < DIMENSIONS.length; i += 1) {
       var dim = DIMENSIONS[i];
-      if (key === fold(dim.label)) return dim;
       for (var j = 0; j < dim.aliases.length; j += 1) {
         var alias = dim.aliases[j];
         if (key === alias || key.indexOf(alias) !== -1) {
