@@ -231,8 +231,12 @@ app.use(express.json({ limit: '50mb' }));
    etag: true,
    lastModified: true,
    setHeaders: (res, filePath) => {
-     if (/\.(html|js|css)$/i.test(filePath)) {
+     // HTML must always revalidate so markup/script tags stay fresh.
+     // Versioned JS/CSS (?v=) can be cached briefly; bump ?v= on change.
+     if (/\.html$/i.test(filePath)) {
        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+     } else if (/\.(js|css)$/i.test(filePath)) {
+       res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
      }
    }
  }));
