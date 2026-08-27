@@ -642,12 +642,23 @@
     return hit ? hit.category : 'verksamheten';
   }
 
+  function isInActiveKatalog(label, katalog) {
+    if (!katalog || typeof katalog !== 'object') return false;
+    var canon = canonicalLabel(label);
+    if (!canon) return false;
+    if (Object.prototype.hasOwnProperty.call(katalog, canon)) return true;
+    var key = fold(canon);
+    return Object.keys(katalog).some(function (k) { return fold(k) === key; });
+  }
+
   function factorsForCategory(categoryId, opts) {
     var map = (opts && opts.categoryMap) || {};
+    var katalog = (opts && opts.activeKatalog) || null;
     return FACTORS.filter(function (f) {
       var cat = categoryFor(f.label, map);
       if (cat !== categoryId) return false;
       if (opts && opts.kundkort && f.coveredByDimension) return false;
+      if (opts && opts.kundkort && f.suggestedOnly && !isInActiveKatalog(f.label, katalog)) return false;
       return true;
     });
   }
@@ -763,6 +774,7 @@
     categoryIdForDimension: categoryIdForDimension,
     dimensionIdForCategory: dimensionIdForCategory,
     categoryFor: categoryFor,
+    isInActiveKatalog: isInActiveKatalog,
     factorsForCategory: factorsForCategory,
     labelsForCategory: labelsForCategory,
     extrasForCategory: extrasForCategory,
