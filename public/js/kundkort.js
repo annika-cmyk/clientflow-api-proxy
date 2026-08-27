@@ -7122,6 +7122,9 @@ class CustomerCardManager {
         const riskerForList = typId === 'kund' ? risker.filter(r => !isHogriskBranschRisk(r)) : risker;
 
         const valda = riskerForList.filter(r => linkedIds.has(r.id));
+        const riskerForCheckboxList = embedded
+            ? valda
+            : riskerForList.filter((r) => this._isOvrigRiskAktuell(r) || linkedIds.has(r.id));
         const viewId = `risker-view-${typId}`;
         const editId = `risker-edit-${typId}`;
         const btnId  = `risker-edit-btn-${typId}`;
@@ -7250,7 +7253,7 @@ class CustomerCardManager {
                     ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? ((window.RiskDimensioner && RiskDimensioner.normalizeTyp) ? RiskDimensioner.normalizeTyp('Geografiska riskfaktorer') : 'Geografisk riskfaktorer - här finns byråns kunder') : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
                     ${ingaRfEditHtml}
                     ${hogriskEditHtml}
-                    ${riskerForList.map(r => `
+                    ${riskerForCheckboxList.map(r => `
                         <label class="risker-check-item">
                             <input type="checkbox" name="risk-${typId}" value="${r.id}" ${!hasIngaRf && linkedIds.has(r.id) ? 'checked' : ''}
                                 onchange="customerCardManager.updateRiskerCount('${typId}', this)">
@@ -7289,6 +7292,10 @@ class CustomerCardManager {
         }
         if (typId === 'geografiska') this._applyGeoChecksFromLander();
         if (typId === 'kund') this._applyUtlandskaUboFromKyc();
+    }
+
+    _isOvrigRiskAktuell(r) {
+        return !!(r && r.fields && r.fields['Aktuell'] === true);
     }
 
     _hasSavedNoneOption(kind, categoryId) {
