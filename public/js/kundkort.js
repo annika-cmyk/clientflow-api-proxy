@@ -7299,7 +7299,7 @@ class CustomerCardManager {
                     ${chipsRow('Ursprung kapital', f['Vilket ursprung har företagets kapital?'], 'fa-coins')}
                 `)}
 
-                <!-- Kunden & verksamheten + Tjänster – fylls i av loadServices() -->
+                <!-- Tjänster – fylls i av loadServices() -->
                 <div class="kyc-section collapsible-card collapsible-card--kyc" id="tjanster-kort">
                     <div class="collapsible-header" onclick="this.closest('.collapsible-card').classList.toggle('open')">
                         <div class="collapsible-title">${this._kycStatusIcon('KYC genomgången - Tjänster', f['KYC genomgången - Tjänster'], 'fa-cogs')} Tjänster</div>
@@ -7311,21 +7311,6 @@ class CustomerCardManager {
                         </div>
                     </div>
                 </div>
-
-                ${section('Kunden & verksamheten', 'fa-building', `
-                    ${row('Frekvens', fmtList(f['Frekvens']).join(', ') || null, 'fa-sync')}
-                    ${row('Omfattning (h)', fmt(f['omfattning i h']), 'fa-hourglass-half')}
-                    ${row('Verklig huvudman', fmt(f['Verklig huvudman']), 'fa-user-shield')}
-                    ${row('Ombud', fmt(f['Ombud']), 'fa-user-tie')}
-                    ${chipsRow('Skatterättslig hemvist', f['Skatterättslig hemvist'], 'fa-flag')}
-                    ${rich(f['Affärsmodell']) ? `<div class="kyc-richtext-row"><span class="kyc-row-label"><i class="fas fa-project-diagram"></i> Affärsmodell</span><div class="kyc-richtext">${rich(f['Affärsmodell'])}</div></div>` : ''}
-                    ${rich(f['Ytterligare beskrivning av kunden och verksamheten']) ? `
-                    <div class="kyc-richtext-row">
-                        <span class="kyc-row-label"><i class="fas fa-align-left"></i> Ytterligare beskrivning</span>
-                        <div class="kyc-richtext">${rich(f['Ytterligare beskrivning av kunden och verksamheten'])}</div>
-                    </div>` : ''}
-                `)}
-
 
                 ${this.renderOvrigaRiskKategoriBlock(f)}
 
