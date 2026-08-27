@@ -4,6 +4,19 @@
 (function () {
   if (!document.getElementById('fld-syfte-policy')) return;
 
+  const RUTIN_AI_FIELD_KEYS = {
+    'fld-syfte-policy': 'syfte-policy',
+    'fld-centralt-funktionsansvarig': 'centralt-funktionsansvarig',
+    'fld-kundkannedom': 'kundkannedom',
+    'fld-overvakning': 'overvakning',
+    'fld-intern-kontroll': 'intern-kontroll',
+    'fld-anstallda-utbildning': 'anstallda-utbildning',
+    'fld-arkiv': 'arkiv',
+    'fld-uppdatering-utvardering': 'uppdatering-utvardering',
+    'fld-kommunikation': 'kommunikation',
+    'fld-registrering': 'registrering'
+  };
+
   const FIELD_MAP = [
     { id: 'fld-syfte-policy', airtable: '1. Syfte och omfattning policy' },
     { id: 'fld-centralt-funktionsansvarig', airtable: '2. Centralt Funktionsansvarig ' },
@@ -275,6 +288,7 @@
       wrapInCards(canEdit);
       populateForm(data.fields, canEdit);
       initPreviews(canEdit);
+      initAiRutiner(canEdit);
       if (content) content.style.display = 'block';
       var headerActions = getEl('byrarutiner-header-actions');
       if (headerActions) headerActions.style.display = 'flex';
@@ -284,6 +298,72 @@
       if (loading) loading.style.display = 'none';
       if (noData) { noData.style.display = 'block'; noData.querySelector('p').textContent = 'Ett fel uppstod vid hämtning.'; }
     }
+  }
+
+  function initAiRutiner(canEdit) {
+    if (!canEdit) return;
+    Object.keys(RUTIN_AI_FIELD_KEYS).forEach(function (fid) {
+      var fieldKey = RUTIN_AI_FIELD_KEYS[fid];
+      var card = document.querySelector('.byra-card[data-field-id="' + fid + '"]');
+      var ta = getEl(fid);
+      if (!card || !ta || card.querySelector('.btn-ai-rutin')) return;
+      var editWrap = card.querySelector('.byra-card-edit');
+      if (!editWrap) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-ai-suggest btn-sm ai-klargorande-launch btn-ai-rutin';
+      btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
+      var saveWrap = editWrap.querySelector('.card-save-wrap');
+      if (saveWrap) editWrap.insertBefore(btn, saveWrap);
+      else editWrap.appendChild(btn);
+
+      btn.addEventListener('click', function () {
+        var view = card.querySelector('.byra-card-view');
+        var edit = card.querySelector('.byra-card-edit');
+        if (view) view.style.display = 'none';
+        if (edit) edit.style.display = 'block';
+        ta.focus();
+
+        function runGenerate(clarifications) {
+          var origHtml = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+          if (typeof window.showAiThinking === 'function') window.showAiThinking();
+          return fetch(getBaseUrl() + '/api/ai-rutin-byra', {
+            method: 'POST',
+            ...getAuthOpts(),
+            body: JSON.stringify({ fieldKey: fieldKey, clarifications: clarifications || [] })
+          })
+            .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { res: res, data: data }; }); })
+            .then(function (_ref) {
+              if (_ref.res.ok && _ref.data.text) {
+                ta.value = _ref.data.text;
+                updateCardView(card);
+                return { ok: true };
+              }
+              return { ok: false, error: _ref.data.error || _ref.data.message || 'Kunde inte generera AI-förslag' };
+            })
+            .catch(function (err) { return { ok: false, error: err.message || 'Okänt fel' }; })
+            .finally(function () {
+              if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            });
+        }
+
+        if (window.AiKlargorandeWizard && typeof window.AiKlargorandeWizard.open === 'function') {
+          window.AiKlargorandeWizard.open({
+            context: 'rutin',
+            fieldKey: fieldKey,
+            onGenerate: runGenerate
+          });
+        } else {
+          runGenerate([]).then(function (result) {
+            if (!result.ok) alert(result.error || 'Kunde inte generera AI-förslag');
+          });
+        }
+      });
+    });
   }
 
   function init() {

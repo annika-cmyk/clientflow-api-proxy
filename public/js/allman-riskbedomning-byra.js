@@ -744,39 +744,71 @@
     }
   }
 
+  function bindAiSuggestButton(btn, opts) {
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var card = opts.card;
+      var ta = opts.textarea;
+      if (!card || !ta) return;
+      showEdit(card);
+      ta.focus();
+
+      function applyResult(data) {
+        if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
+        if (typeof opts.applyText === 'function') opts.applyText(data.text, ta, card);
+        else { ta.value = data.text; updateCardView(card); }
+        return { ok: true };
+      }
+
+      function directGenerate(clarifications) {
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
+        if (typeof window.showAiThinking === 'function') window.showAiThinking();
+        return fetch(getBaseUrl() + opts.url, {
+          method: 'POST',
+          ...getAuthOpts(),
+          body: JSON.stringify(Object.assign({}, opts.body || {}, { clarifications: clarifications || [] }))
+        })
+          .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { res: res, data: data }; }); })
+          .then(function (_ref) {
+            if (_ref.res.ok && _ref.data.text) return applyResult(_ref.data);
+            return { ok: false, error: _ref.data.error || _ref.data.message || 'Kunde inte generera AI-förslag' };
+          })
+          .catch(function (err) {
+            return { ok: false, error: err.message || 'Okänt fel' };
+          })
+          .finally(function () {
+            if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+          });
+      }
+
+      if (window.AiKlargorandeWizard && typeof window.AiKlargorandeWizard.open === 'function') {
+        window.AiKlargorandeWizard.open({
+          context: opts.context,
+          section: opts.section,
+          onGenerate: directGenerate
+        });
+      } else {
+        directGenerate([]).then(function (result) {
+          if (!result.ok) alert(result.error || 'Kunde inte generera AI-förslag');
+        });
+      }
+    });
+  }
+
   function initAiVarderingRisk() {
     var btn = getEl('btn-ai-vardering-risk');
     var card = document.querySelector('.byra-card[data-field-id="fld-vardering-risk"]');
     var ta = getEl('fld-vardering-risk');
-    if (!btn || !card || !ta) return;
-    btn.addEventListener('click', async function () {
-      var origHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
-      if (typeof window.showAiThinking === 'function') window.showAiThinking();
-      showEdit(card);
-      ta.focus();
-      try {
-        var res = await fetch(getBaseUrl() + '/api/ai-vardering-risk-byra', {
-          method: 'POST',
-          ...getAuthOpts()
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (res.ok && data.text) {
-          if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
-          applySammantagenFromText(data.text);
-          updateCardView(card);
-        } else {
-          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
-        }
-      } catch (err) {
-        console.error('AI värdering risk:', err);
-        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
-      } finally {
-        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
-      }
+    bindAiSuggestButton(btn, {
+      card: card,
+      textarea: ta,
+      context: 'ar_vardering',
+      url: '/api/ai-vardering-risk-byra',
+      applyText: function (text) { applySammantagenFromText(text); updateCardView(card); }
     });
   }
 
@@ -784,34 +816,11 @@
     var btn = getEl('btn-ai-beskrivning');
     var card = document.querySelector('.byra-card[data-field-id="fld-beskrivning"]');
     var ta = getEl('fld-beskrivning');
-    if (!btn || !card || !ta) return;
-    btn.addEventListener('click', async function () {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
-      if (typeof window.showAiThinking === 'function') window.showAiThinking();
-      showEdit(card);
-      ta.focus();
-      try {
-        var res = await fetch(getBaseUrl() + '/api/ai-beskrivning-byra', {
-          method: 'POST',
-          ...getAuthOpts()
-        });
-        var data = await res.json().catch(function () { return {}; });
-        if (res.ok && data.text) {
-          if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
-          ta.value = data.text;
-          updateCardView(card);
-        } else {
-          alert(data.error || data.message || 'Kunde inte generera AI-förslag');
-        }
-      } catch (err) {
-        console.error('AI beskrivning:', err);
-        alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
-      } finally {
-        if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-robot"></i> Generera AI-förslag';
-      }
+    bindAiSuggestButton(btn, {
+      card: card,
+      textarea: ta,
+      context: 'ar_beskrivning',
+      url: '/api/ai-beskrivning-byra'
     });
   }
 
@@ -1170,41 +1179,18 @@
 
   function initAiKartlaggning() {
     document.querySelectorAll('[data-ai-kartlaggning]').forEach(function (btn) {
-      btn.addEventListener('click', async function () {
-        var section = btn.getAttribute('data-ai-kartlaggning');
-        var field = KARTLAGGNING_FIELDS.find(function (x) { return x.key === section; });
-        if (!field) return;
-        var card = document.querySelector('.byra-card[data-field-id="' + field.id + '"]');
-        var ta = getEl(field.id);
-        if (!card || !ta) return;
-        var origHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI tänker...';
-        if (typeof window.showAiThinking === 'function') window.showAiThinking();
-        showEdit(card);
-        ta.focus();
-        try {
-          var res = await fetch(getBaseUrl() + '/api/ai-ar-kartlaggning', {
-            method: 'POST',
-            ...getAuthOpts(),
-            body: JSON.stringify({ section: section })
-          });
-          var data = await res.json().catch(function () { return {}; });
-          if (res.ok && data.text) {
-            if (data.auditLogId) window._lastArAiAudit = { logId: data.auditLogId };
-            ta.value = data.text;
-            updateCardView(card);
-          } else {
-            alert(data.error || data.message || 'Kunde inte generera AI-förslag');
-          }
-        } catch (err) {
-          console.error('AI kartläggning:', err);
-          alert('Kunde inte generera AI-förslag: ' + (err.message || 'Okänt fel'));
-        } finally {
-          if (typeof window.hideAiThinking === 'function') window.hideAiThinking();
-          btn.disabled = false;
-          btn.innerHTML = origHtml;
-        }
+      var section = btn.getAttribute('data-ai-kartlaggning');
+      var field = KARTLAGGNING_FIELDS.find(function (x) { return x.key === section; });
+      if (!field) return;
+      var card = document.querySelector('.byra-card[data-field-id="' + field.id + '"]');
+      var ta = getEl(field.id);
+      bindAiSuggestButton(btn, {
+        card: card,
+        textarea: ta,
+        context: 'ar_kartlaggning',
+        section: section,
+        url: '/api/ai-ar-kartlaggning',
+        body: { section: section }
       });
     });
   }

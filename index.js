@@ -127,6 +127,7 @@ const statistikRiskbedomning = require('./lib/statistik-riskbedomning');
 const { htmlToPlainText: htmlPlainText } = require('./lib/html-plain-text');
 const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
+const aiKlargorande = require('./lib/ai-klargorande');
 const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
 const kycVerksamhetStyrning = require('./lib/kyc-verksamhet-styrning');
@@ -23204,6 +23205,7 @@ BEFINTLIG KONTEXT:
 - Syfte och omfattning: ${(syfteOmfattning || '').slice(0, 400)}
 - Beskrivning av verksamheten: ${(beskrivning || '').slice(0, 400)}
 ${befintligVardering ? `\nBefintlig värdering (förfina/uppdatera): ${befintligVardering.slice(0, 600)}` : ''}
+${aiKlargorande.formatClarificationsBlock(req.body && req.body.clarifications)}
 
 Ge endast den färdiga texten för stycket, utan rubrik eller inledning.`;
 
@@ -23568,6 +23570,7 @@ Byråns nyckeltal: Antal anställda ${antalAnstallda || '–'}, Omsättning ${om
 
 Syfte och omfattning (kontext): ${(syfteOmfattning || '').slice(0, 600)}
 ${befintligBeskrivning ? `\nBefintlig beskrivning (förfina/uppdatera om relevant): ${befintligBeskrivning.slice(0, 1000)}` : ''}
+${aiKlargorande.formatClarificationsBlock(req.body && req.body.clarifications)}
 
 Ge endast den färdiga texten, utan rubrik eller inledning.`;
 
@@ -23636,7 +23639,7 @@ app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
       statistikText,
       byraProfil,
       befintligText: kart[section] || ''
-    });
+    }) + aiKlargorande.formatClarificationsBlock(req.body && req.body.clarifications);
 
     const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
       maxWaitMs: 120000,
@@ -23656,6 +23659,84 @@ app.post('/api/ai-ar-kartlaggning', authenticateToken, async (req, res) => {
     res.json({ text, auditLogId: auditLogEntry && auditLogEntry.id });
   } catch (error) {
     console.error('❌ AI AR kartläggning:', error.message);
+    const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
+    res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
+  }
+});
+
+// GET/POST /api/ai-dokument-klargorande – frågor innan AI-generering av AR/rutin-texter
+app.post('/api/ai-dokument-klargorande', authenticateToken, async (req, res) => {
+  try {
+    const context = String((req.body && req.body.context) || '').trim();
+    const section = String((req.body && req.body.section) || '').trim();
+    const fieldKey = String((req.body && req.body.fieldKey) || '').trim();
+    if (!context) return res.status(400).json({ error: 'context saknas' });
+    if (context === 'ar_kartlaggning' && !AR_KARTLAGGNING_SECTIONS.has(section)) {
+      return res.status(400).json({ error: 'Ogiltigt avsnitt för kartläggning.' });
+    }
+    if (context === 'rutin' && !aiKlargorande.RUTIN_FIELD_KEYS[fieldKey]) {
+      return res.status(400).json({ error: 'Ogiltigt rutinfält.' });
+    }
+    const questions = aiKlargorande.getQuestions({ context, section, fieldKey });
+    res.json({
+      title: aiKlargorande.getTitle({ context, section, fieldKey }),
+      questions,
+      intro: 'Besvara frågorna så att AI kan skriva en text som stämmer med er verksamhet. Du kan lämna fält tomma om de inte är relevanta.'
+    });
+  } catch (error) {
+    console.error('❌ AI dokument klargörande:', error.message);
+    res.status(500).json({ error: 'Kunde inte hämta frågor.' });
+  }
+});
+
+// POST /api/ai-rutin-byra – AI-förslag för byrårutiner (policyfält)
+app.post('/api/ai-rutin-byra', authenticateToken, async (req, res) => {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY saknas.' });
+
+  const fieldKey = String((req.body && req.body.fieldKey) || '').trim();
+  const meta = aiKlargorande.RUTIN_FIELD_KEYS[fieldKey];
+  if (!meta) return res.status(400).json({ error: 'Ogiltigt rutinfält.' });
+
+  try {
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användaren hittades inte.' });
+    const byraId = (userData.byraId || '').toString().trim();
+    if (!byraId) return res.status(400).json({ error: 'Ingen byrå kopplad till användaren.' });
+
+    const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
+    const authHeader = getAuthHeaderForInternalRequests(req);
+    const rutinerRes = await axios.get(`${baseUrl}/api/byra-rutiner`, { headers: authHeader, timeout: 10000 });
+    const rutinerFields = (rutinerRes.data && rutinerRes.data.fields) || {};
+
+    const systemPrompt = aiKlargorande.buildRutinSystemPrompt(fieldKey);
+    const userPrompt = aiKlargorande.buildRutinUserPrompt(fieldKey, {
+      arSyfte: rutinerFields['1. Syfte och Omfattning'] || rutinerFields['1. Syfte och omfattning policy'] || '',
+      arBeskrivning: rutinerFields['2. Beskrivning av Byråns verksamhet'] || '',
+      cfPerson: rutinerFields['Centralt funktionsansvarig'] || '',
+      befintligText: rutinerFields[meta.airtable] || '',
+      byraProfil: formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields)),
+      clarifications: req.body && req.body.clarifications
+    });
+
+    const text = await runOpenAIAssistantRun(openaiKey, `${systemPrompt}\n\n---\n\n${userPrompt}`, {
+      maxWaitMs: 120000,
+      debugMeta: { route: '/api/ai-rutin-byra', fieldKey, user: req.user?.email || '' }
+    });
+    if (!text) return res.status(500).json({ error: 'AI genererade ingen text.' });
+
+    const auditLogEntry = await auditHooks.logAiGenerated({
+      write: writeAuditEvent,
+      actor: auditLog.SYSTEM_ACTORS.openai,
+      byraId,
+      entityType: 'rutin_dokument',
+      entityId: byraId,
+      fieldChanged: meta.label,
+      aiOutputRaw: text
+    });
+    res.json({ text, auditLogId: auditLogEntry && auditLogEntry.id });
+  } catch (error) {
+    console.error('❌ AI rutin byrå:', error.message);
     const msg = error.response?.data?.error || error.message || 'Kunde inte generera AI-förslag';
     res.status(500).json({ error: typeof msg === 'string' ? msg : 'Kunde inte generera AI-förslag.' });
   }
