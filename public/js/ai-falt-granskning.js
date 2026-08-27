@@ -1171,10 +1171,18 @@
     Object.keys(hostMap || {}).forEach((key) => hideReview(hostMap[key]));
   }
 
+  let reviewPromptRules = REVIEW_PROMPT_RULES;
+  if (typeof require === 'function') {
+    try {
+      const { REDOVISNINGSBYRA_AI_RULES } = require('../../lib/redovisningsbyra-ai-kontext');
+      reviewPromptRules = `${REDOVISNINGSBYRA_AI_RULES}\n\n${REVIEW_PROMPT_RULES}`;
+    } catch (_) { /* browser */ }
+  }
+
   const api = {
     TJANST_FALT,
     OVRIG_FALT,
-    REVIEW_PROMPT_RULES,
+    REVIEW_PROMPT_RULES: reviewPromptRules,
     MOTIVERING_AI_RULES,
     isFilledText,
     isFilledScore,

@@ -83,6 +83,7 @@ const AtgardKonkret = require('./public/js/atgard-konkret');
 const HotAmlTf = require('./public/js/hot-aml-tf');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord, sortOvriga } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES } = require('./lib/inneboende-beskrivning');
+const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -1853,6 +1854,8 @@ app.post('/api/ai-chat', authenticateToken, async (req, res) => {
     const kundContext = await buildAiChatKundContext(customerIdBody, req.user);
 
     const systemContent = `Du är en hjälpassistent i ClientFlow för svenska redovisningsbyråer. Du svarar på svenska, professionellt och sakligt.
+
+${REDOVISNINGSBYRA_AI_RULES}
 
 Viktigt:
 - Hitta aldrig på personer, kunder, företag eller detaljer. Om du saknar information, säg det och fråga efter det som behövs.
@@ -22403,6 +22406,9 @@ KUNSKAPSBAS (vector store / file_search):
 ` : '';
 
     const prompt = `Du är en erfaren AML/KYC-specialist på en svensk redovisningsbyrå.
+
+${REDOVISNINGSBYRA_AI_RULES}
+
 Analysera SAMTLIGA nedanstående kunduppgifter och gör en professionell riskbedömning enligt PVML (Penningtvättslagen).
 Väg in all tillgänglig information — varje ifyllt fält och varje vald riskfaktor bidrar till helhetsbilden av kunden.
 ${harSparadBedomning ? `
@@ -22627,7 +22633,7 @@ Svara EXAKT i detta JSON-format (inget annat):
 
     // Via Responses API (samma som övriga ClientFlow). Instruktioner säkerställer JSON-svar.
     const assistantInstructions =
-      'Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.';
+      `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Följ användarmeddelandet exakt. Svara endast med giltig JSON enligt formatet i slutet av meddelandet, ingen text utanför JSON.`;
 
     const aiText = await runOpenAIAssistantRunWithRetry(
       openaiKey,
@@ -22754,6 +22760,8 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
 
   const systemPrompt = `Du är en expert på redovisning och AML-compliance för svenska redovisningsbyråer.
+
+${REDOVISNINGSBYRA_AI_RULES}
 
 Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, sannolikhet/konsekvens och byråns faktiska verksamhetsprofil.
 
@@ -23005,6 +23013,8 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
   const prompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå.
 
+${REDOVISNINGSBYRA_AI_RULES}
+
 Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
 
 ${byraProfilBlock}TYP AV RISKFAKTOR: ${typ || '–'}
@@ -23077,8 +23087,8 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       prompt,
       {
         instructions: byraAnalysVector
-          ? 'Du är en AML/KYC-specialist. Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.'
-          : 'Du är en AML/KYC-specialist. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.',
+          ? `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`
+          : `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`,
         vectorStoreId: byraAnalysVector,
         maxWaitMs: 180000,
         pollMs: 1500,
@@ -23194,6 +23204,9 @@ app.post('/api/ai-vardering-risk-byra', authenticateToken, async (req, res) => {
     const byraProfilBlock = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "8. Värdering av sammantagen risk" i en allmän riskbedömning (PVML, Penningtvättslagen).
+
+${REDOVISNINGSBYRA_AI_RULES}
+
 Baserat på statistik, identifierade risker och sårbarheter samt tjänsteanalyser ska du sammanfatta byråns sammantagna risknivå och motivera den. Följ Länsstyrelsens vägledning och råd (t.ex. "Ett riskbaserat förhållningssätt").
 Skriv på svenska. Var professionell och konkret. Börja med raden "Sammantagen risknivå: [nivå]" där nivån är exakt en av: Låg, Normal, Förhöjd, Hög, Oacceptabel. Skriv inte Medel — det heter Normal. Motivera därefter varför just den nivån.`;
 
@@ -23402,6 +23415,8 @@ Risknivå och åtgärder: Vi bedömer den sammantagna risken för tjänsten "Lö
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "4. Identifierade Risker och Sårbarheter" i en allmän riskbedömning (PVML, Penningtvättslagen).
 
+${REDOVISNINGSBYRA_AI_RULES}
+
 KUNSKAPSBAS: Om file_search finns, gör EN sökning efter Länsstyrelsens vägledning för allmän riskbedömning. Återge inte bara byråns korta tjänstanalyser — utveckla hot, sårbarheter och åtgärder när vägledningen ger mer. Sök inte per tjänst eller per delavsnitt.
 
 OTROLIGT VIKTIGT – Du MÅSTE inkludera VARJE tjänst och VARJE riskfaktor som listas i underlagen. Utelämna INGEN. Länsstyrelsen delar ut sanktionsavgifter till byråer som glömmer tjänster eller riskfaktorer. Skriv en egen sektion för varje tjänst.
@@ -23560,6 +23575,8 @@ app.post('/api/ai-beskrivning-byra', authenticateToken, async (req, res) => {
     const byraProfilBlock = formatByraProfilPromptBlock(mapByraProfilFromAirtable(rutinerFields));
 
     const systemPrompt = `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. Din uppgift är att skriva stycket "2. Beskrivning av Byråns verksamhet" i en allmän riskbedömning (PVML, Penningtvättslagen).
+
+${REDOVISNINGSBYRA_AI_RULES}
 
 Beskriv byråns verksamhet utifrån underlagen: vilka tjänster ni erbjuder, vilken typ av kunder ni har, byråns storlek (antal anställda, omsättning, antal kundföretag) och hur verksamheten bedrivs. Följ Länsstyrelsens vägledning. Skriv på svenska. Var professionell, konkret och kortfattad. Text ska kunna användas direkt i riskbedömningen.`;
 

@@ -11,6 +11,7 @@
 - Varje hot ska vara ett tillvägagångssätt: hur tjänsten kan utnyttjas för att dölja, legitimera, skikta eller flytta brottsvinster, eller för att finansiera terrorism.
 - Typ PT, TF eller Båda. Beskrivningen ska stämma med typen.
 - FÖRBJUDET: drift-, HR-, kvalitets- eller affärsrisk utan PT/TF-koppling. Exempel som INTE får användas: "Felaktiga löneutbetalningar kan leda till ekonomiska förluster och påverka anställdas förtroende."
+- FÖRBJUDET: bank- eller finansinstitutsperspektiv (transaktionsmonitorering, kontouttag, betalningsflöden, SWIFT, kreditgivning) — byrån är redovisningsbyrå, inte bank.
 - Dåligt: rykte, förtroende, arbetsmiljö, effektivitet, kundnöjdhet, "ekonomiska förluster" som enda konsekvens.
 - Bra: "Oriktiga eller överdrivna löneutbetalningar kan användas för att dölja eller legitimera brottsvinster, eller för att föra ut medel till personer som finansierar terrorism."
 - Bra: "Anläggningstillgångar kan användas för att dölja eller legitimera medel för finansiering av terrorism."`;
