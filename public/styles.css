@@ -13239,29 +13239,44 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     position: relative;
     top: 0.08rem;
 }
-.ar-underkort {
+.ar-section-body {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
+    margin-top: 0.35rem;
+}
+.ar-section-body--nested {
+    gap: 1.5rem;
     margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e2e8f0;
 }
-.ar-underkort-card {
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 0.9rem 1rem 1rem;
-    background: #f8fafc;
-}
-.ar-underkort-card h4 {
-    margin: 0 0 0.65rem;
+.ar-subsection-title {
+    margin: 0 0 0.5rem;
     font-size: 0.95rem;
-}
-.ar-underkort-card h5 {
-    margin: 0 0 0.55rem;
-    font-size: 0.88rem;
     font-weight: 700;
+    color: #334155;
 }
-.ar-underkort--nested {
-    margin-top: 0.65rem;
+h5.ar-subsection-title {
+    font-size: 0.88rem;
+}
+.byra-card--flat {
+    margin-bottom: 0;
+}
+.byra-card--flat > .byra-card-view {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0 0 2.25rem 0;
+    min-height: auto;
+}
+.byra-card--flat > .byra-card-view .byra-card-value:empty::before {
+    content: none;
+}
+.byra-card--collapsible .byra-card--flat > .byra-card-view .byra-card-actions,
+.byra-card--collapsible .byra-card--flat > .byra-card-view > .byra-card-edit-btn {
+    bottom: 0;
+    right: 0;
 }
 .ar-lansstyrelsen-infotext {
     margin: 0.65rem 0;

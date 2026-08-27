@@ -350,7 +350,7 @@
       var view = card.querySelector('.byra-card-view');
       var edit = card.querySelector('.byra-card-edit');
       if (!view || !edit) return;
-      if (!view.querySelector('.byra-card-label')) {
+      if (!view.querySelector('.byra-card-label') && !card.classList.contains('byra-card--flat')) {
         var labelText = '';
         var formGroup = edit.querySelector('.form-group.full-width');
         var lbl = formGroup ? formGroup.querySelector('label') : null;
