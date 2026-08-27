@@ -7,9 +7,6 @@
   const FIELD_MAP = [
     { id: 'fld-syfte-omfattning', airtable: '1. Syfte och Omfattning' },
     { id: 'fld-beskrivning', airtable: '2. Beskrivning av Byråns verksamhet' },
-    { id: 'fld-antal-anstallda', airtable: 'Antal anställda', type: 'number' },
-    { id: 'fld-omsattning', airtable: 'Omsättning', type: 'number' },
-    { id: 'fld-antal-kundforetag', airtable: 'Antal kundföretag', type: 'number' },
     { id: 'fld-metod-riskbedomning', airtable: '3. Metod för Riskbedömning ' },
     { id: 'fld-identifierade-risker', airtable: '4. Identifierade Risker och Sårbarheter' },
     { id: 'fld-riskreducerande', airtable: '5. Riskreducerande Åtgärder och Rutiner' },
@@ -74,7 +71,6 @@
     if (bankId) bankId.textContent = BANKID_KYC_TEXT;
   }
 
-  const NUMERIC_IDS = ['fld-antal-anstallda', 'fld-omsattning', 'fld-antal-kundforetag'];
   const RISK_FALT_AIRTABLE = '4. Identifierade Risker och Sårbarheter';
   var tjanstIdToNamn = {};
 
@@ -237,14 +233,6 @@
         }
       }
     }
-    if (card.classList.contains('byra-card--numeric-group')) {
-      var a = getEl('fld-antal-anstallda'), b = getEl('fld-omsattning'), c = getEl('fld-antal-kundforetag');
-      var view = card.querySelector('.byra-card-value');
-      if (view) {
-        var s = 'Antal anställda: ' + (a ? a.value : '0') + ' · Omsättning: ' + (b ? b.value : '0') + ' SEK · Antal kundföretag: ' + (c ? c.value : '0');
-        view.textContent = s || '—';
-      }
-    }
   }
 
   function showView(card) {
@@ -364,13 +352,9 @@
       if (!view || !edit) return;
       if (!view.querySelector('.byra-card-label')) {
         var labelText = '';
-        if (card.classList.contains('byra-card--numeric-group')) {
-          labelText = 'Byråns nyckeltal';
-        } else {
-          var formGroup = edit.querySelector('.form-group.full-width');
-          var lbl = formGroup ? formGroup.querySelector('label') : null;
-          if (lbl) labelText = lbl.textContent;
-        }
+        var formGroup = edit.querySelector('.form-group.full-width');
+        var lbl = formGroup ? formGroup.querySelector('label') : null;
+        if (lbl) labelText = lbl.textContent;
         if (labelText) {
           var labelEl = document.createElement('div');
           labelEl.className = 'byra-card-label';
@@ -449,20 +433,6 @@
         saveFields(fields, card);
       });
     });
-    var numCard = document.querySelector('.byra-card--numeric-group');
-    if (numCard) {
-      var saveBtn = numCard.querySelector('#save-numeric-group');
-      if (saveBtn) {
-        saveBtn.addEventListener('click', function () {
-          var a = getEl('fld-antal-anstallda'), b = getEl('fld-omsattning'), c = getEl('fld-antal-kundforetag');
-          var fields = {};
-          if (a) { var na = parseFloat(String(a.value).trim()); fields['Antal anställda'] = isNaN(na) ? '' : String(na); }
-          if (b) { var nb = parseFloat(String(b.value).trim()); fields['Omsättning'] = isNaN(nb) ? '' : String(nb); }
-          if (c) { var nc = parseFloat(String(c.value).trim()); fields['Antal kundföretag'] = isNaN(nc) ? '' : String(nc); }
-          saveFields(fields, numCard);
-        });
-      }
-    }
   }
 
   function applyFormat(ta, format) {
