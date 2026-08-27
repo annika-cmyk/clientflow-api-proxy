@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.91', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v15.92', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -433,10 +433,12 @@ class CustomerCardManager {
                 return;
             }
 
-            const response = prefetchedResponse || await fetch(apiUrl, {
-                method: 'GET',
-                ...getAuthOptsKundkort()
-            });
+            const response = prefetchedResponse
+                ? await prefetchedResponse
+                : await fetch(apiUrl, {
+                    method: 'GET',
+                    ...getAuthOptsKundkort()
+                });
 
             if (response.ok) {
                 const data = await response.json();
@@ -5295,11 +5297,19 @@ class CustomerCardManager {
                                     : fmt('')}</span>
                             </div>
                             <div class="lead-field">
-                                <label>Verksam organisation</label>
+                                <label class="lead-field-label-with-help">
+                                    Verksam organisation
+                                    <button
+                                        type="button"
+                                        class="help-qmark"
+                                        id="bv-verksam-help"
+                                        aria-label="Hjälp för Verksam organisation"
+                                        data-help-text="${this._esc(VERKSAM_ORG_HELP)}"
+                                        title="Vad betyder Verksam organisation?"
+                                        onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);"
+                                    >?</button>
+                                </label>
                                 <span id="bv-verksam-view">${fmt(bvStatus.verksam)}</span>
-                            </div>
-                            <div class="lead-field lead-field--full">
-                                <p class="bv-verksam-hint">${this._esc(VERKSAM_ORG_HELP)}</p>
                             </div>
                             ${bvStatus.avregDatum || bvStatus.avregOrsak ? `
                             <div class="lead-field"><label>Avregistreringsdatum</label><span>${fmt(bvStatus.avregDatum)}</span></div>
@@ -5344,7 +5354,18 @@ class CustomerCardManager {
                                 </select>
                             </div>
                             <div class="kunduppgifter-form-row">
-                                <label for="bv-aktivt-input">Verksam organisation</label>
+                                <label for="bv-aktivt-input" class="lead-field-label-with-help">
+                                    Verksam organisation
+                                    <button
+                                        type="button"
+                                        class="help-qmark"
+                                        id="bv-verksam-help-edit"
+                                        aria-label="Hjälp för Verksam organisation"
+                                        data-help-text="${this._esc(VERKSAM_ORG_HELP)}"
+                                        title="Vad betyder Verksam organisation?"
+                                        onclick="event.stopPropagation(); customerCardManager && customerCardManager.showHelpPopover && customerCardManager.showHelpPopover(this, true);"
+                                    >?</button>
+                                </label>
                                 <select id="bv-aktivt-input" class="kunduppgifter-input">
                                     <option value="">Välj...</option>
                                     <option value="Ja" ${bvStatus.verksam === 'Ja' ? 'selected' : ''}>Ja (F-skatt, moms och/eller arbetsgivare)</option>
