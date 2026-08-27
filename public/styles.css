@@ -4477,8 +4477,43 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .risk-item.inactive {
-    opacity: 0.6;
-    background: #f8f9fa;
+    opacity: 0.55;
+    background: #f4f6f8;
+    filter: grayscale(0.85);
+}
+
+.risk-item.inactive .risk-level-badge,
+.risk-item.inactive .risk-status-indicator.checked {
+    background: #e2e6ea !important;
+    color: #6c757d !important;
+    border-color: #dee2e6 !important;
+}
+
+.risk-item.inactive .risk-task-name {
+    color: #6c757d;
+}
+
+.risk-kund-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.risk-kund-count-wrap {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.riskhoj-katalog-namn .risk-kund-count {
+    margin-left: 0.35rem;
+    vertical-align: middle;
 }
 
 .risk-header {

@@ -16,6 +16,7 @@ class RiskFactorsManager {
         this.userData = null;
         this.userByraIds = [];
         this.pageScope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
 
         this.init();
     }
@@ -44,6 +45,7 @@ class RiskFactorsManager {
         this.setupEventListeners();
         this.setupRoleBasedUI();
         await this.loadRiskFactors();
+        await this.loadKundantal();
         
         // Apply initial filtering based on user role
         this.applyFilters();
@@ -53,6 +55,42 @@ class RiskFactorsManager {
         if (document.getElementById('risksank-katalog-list')) {
             this.setupRisksankandeKatalog();
         }
+    }
+
+    async loadKundantal() {
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-kundantal`);
+            if (!res.ok) return;
+            const data = await res.json();
+            this.kundAntalMaps = {
+                riskfaktorer: data.riskfaktorer || {},
+                tjanster: data.tjanster || {},
+                varningsflaggor: data.varningsflaggor || {},
+                risksankande: data.risksankande || {}
+            };
+        } catch (err) {
+            console.warn('Kunde inte ladda kundantal:', err);
+        }
+    }
+
+    kundAntalFor(type, key) {
+        const map = (this.kundAntalMaps && this.kundAntalMaps[type]) || {};
+        if (type === 'riskfaktorer' || type === 'tjanster') {
+            return map[key] || 0;
+        }
+        if (map[key] != null) return map[key];
+        const KP = window.KundRiskprofil;
+        const canon = KP && KP.canonicalRiskhojandeLabel
+            ? KP.canonicalRiskhojandeLabel(key)
+            : key;
+        return map[canon] || 0;
+    }
+
+    renderKundCountBadge(n) {
+        const num = Number(n) || 0;
+        const label = num === 1 ? '1 kund' : `${num} kunder`;
+        return `<span class="risk-kund-count" title="Antal aktiva kunder med detta val">${label}</span>`;
     }
 
     async loadDatasourceConfig() {
@@ -653,7 +691,7 @@ class RiskFactorsManager {
             : '';
         
         return `
-            <div class="risk-item ${riskLevelClass}" data-record-id="${risk.id}">
+            <div class="risk-item ${riskLevelClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
                     <div class="risk-item-title">
                         <div class="risk-status-indicator ${isChecked ? 'checked' : 'unchecked'}">
@@ -664,6 +702,7 @@ class RiskFactorsManager {
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
+                                ${this.renderKundCountBadge(this.kundAntalFor('riskfaktorer', risk.id))}
                                 ${approvalDate ? `<span>Godkänd: ${approvalDate}</span>` : ''}
                             </div>
                         </div>
@@ -706,9 +745,9 @@ class RiskFactorsManager {
                             <i class="fas fa-edit"></i>
                             Redigera
                         </button>
-                        <button class="btn btn-success btn-sm mark-complete" data-record-id="${risk.id}">
-                            <i class="fas fa-check"></i>
-                            ${isChecked ? 'Avmarkera' : 'Klarmarkera'}
+                        <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
+                            <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
+                            ${isChecked ? 'Inaktivera' : 'Aktivera'}
                         </button>
                         <button class="btn btn-danger btn-sm delete-risk" data-record-id="${risk.id}">
                             <i class="fas fa-trash"></i>
@@ -1527,7 +1566,7 @@ class RiskFactorsManager {
                 const category = entries[namn].category || this._riskhojDefaultCategory(namn);
                 const safeNamn = namn.replace(/</g, '&lt;').replace(/"/g, '&quot;');
                 return `<div class="riskhoj-katalog-rad${klass === 'GOLV_HOG' ? ' riskhoj-katalog-rad--golv' : ''}">
-                    <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')}</span>
+                    <span class="riskhoj-katalog-namn">${namn.replace(/</g, '&lt;')} ${this.renderKundCountBadge(this.kundAntalFor('varningsflaggor', namn))}</span>
                     <select class="form-select riskhoj-katalog-kategori" data-namn="${safeNamn}" aria-label="Kategori för ${safeNamn}">
                         ${this._riskhojKategoriOptions(category)}
                     </select>
@@ -1648,11 +1687,17 @@ class RiskFactorsManager {
         const entries = this._risksankEntries || {};
         const names = Object.keys(entries).sort((a, b) => a.localeCompare(b, 'sv'));
         const RS = window.RisksankandeKatalog;
-        list.innerHTML = names.map((namn) => (
-            RS && RS.renderKatalogRad
+        list.innerHTML = names.map((namn) => {
+            const row = RS && RS.renderKatalogRad
                 ? RS.renderKatalogRad(namn, entries[namn])
-                : ''
-        )).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
+                : '';
+            if (!row) return '';
+            const badge = this.renderKundCountBadge(this.kundAntalFor('risksankande', namn));
+            return row.replace(
+                'risksank-katalog-rad">',
+                `risksank-katalog-rad"><span class="risk-kund-count-wrap">${badge}</span>`
+            );
+        }).join('') || '<p class="kyc-hint">Inga risksänkande faktorer. Lägg till en ny ovan.</p>';
         list.querySelectorAll('.risksank-katalog-namn').forEach((input) => {
             input.addEventListener('change', () => this._renameRisksankande(input.getAttribute('data-namn'), input.value));
         });

@@ -14694,6 +14694,31 @@ app.get('/api/statistik-riskbedomning', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/risk-kundantal – antal aktiva kunder per riskfaktor, tjänst och flagga
+app.get('/api/risk-kundantal', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+    if (!statistikRiskbedomning.canBuildForUser(userData)) {
+      return res.json({ riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} });
+    }
+    const records = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    res.json(statistikRiskbedomning.buildKundantalMaps(records));
+  } catch (err) {
+    console.error('❌ risk-kundantal:', err.message);
+    res.status(500).json({ error: err.message || 'Kunde inte hämta kundantal' });
+  }
+});
+
 // GET /api/statistik-riskbedomning/kunder – lista kunder för en tjänst, högriskbransch eller riskfaktor
 app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, res) => {
   try {

@@ -18,6 +18,7 @@ class RiskAssessmentManager {
         this.userData = null;
         this.userByraIds = [];
         this.byraProfil = null;
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
 
         this.init();
     }
@@ -28,7 +29,31 @@ class RiskAssessmentManager {
         this.setupEventListeners();
         this.setupRoleBasedUI();
         await this.loadRiskAssessments();
+        await this.loadKundantal();
         this.applyFilters();
+    }
+
+    async loadKundantal() {
+        this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-kundantal`);
+            if (!res.ok) return;
+            const data = await res.json();
+            this.kundAntalMaps = {
+                riskfaktorer: data.riskfaktorer || {},
+                tjanster: data.tjanster || {},
+                varningsflaggor: data.varningsflaggor || {},
+                risksankande: data.risksankande || {}
+            };
+        } catch (err) {
+            console.warn('Kunde inte ladda kundantal:', err);
+        }
+    }
+
+    renderKundCountBadge(n) {
+        const num = Number(n) || 0;
+        const label = num === 1 ? '1 kund' : `${num} kunder`;
+        return `<span class="risk-kund-count" title="Antal aktiva kunder med denna tjänst">${label}</span>`;
     }
 
     async loadDatasourceConfig() {
@@ -453,6 +478,7 @@ class RiskAssessmentManager {
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
+                                ${this.renderKundCountBadge((this.kundAntalMaps.tjanster && this.kundAntalMaps.tjanster[risk.id]) || 0)}
                                 ${(window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(f)) ? '<span class="tf-missing-pill"><span class="tf-missing-dot" aria-hidden="true"></span>TF saknas</span>' : ''}
                             </div>
                         </div>
@@ -472,9 +498,9 @@ class RiskAssessmentManager {
                             <i class="fas fa-edit"></i>
                             Redigera
                         </button>
-                        <button class="btn btn-success btn-sm mark-complete" data-record-id="${risk.id}">
-                            <i class="fas fa-check"></i>
-                            ${isChecked ? 'Avmarkera' : 'Klarmarkera'}
+                        <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
+                            <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
+                            ${isChecked ? 'Inaktivera' : 'Aktivera'}
                         </button>
                         <button class="btn btn-danger btn-sm delete-risk" data-record-id="${risk.id}">
                             <i class="fas fa-trash"></i>
