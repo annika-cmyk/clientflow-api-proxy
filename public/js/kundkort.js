@@ -7064,6 +7064,8 @@ class CustomerCardManager {
             });
             this._renderKycLanderOnGeo();
             this._maybeSteerGeoFromSavedLander();
+            this._maybeSteerVerksamhetFromSavedKyc();
+            this._applyVerksamhetChecksFromKyc();
             this._refreshRiskprofilForeslagenUi();
 
         } catch (error) {
@@ -7378,6 +7380,9 @@ class CustomerCardManager {
         if ((Array.isArray(typIds) ? typIds : []).includes('geografiska')) {
             this._mergeSteeredGeoIds(allChecked);
         }
+        if ((Array.isArray(typIds) ? typIds : []).includes('verksamhet')) {
+            this._mergeSteeredVerksamhetIds(allChecked);
+        }
         return { allChecked, nyaChecked, nyaHogrisk };
     }
 
@@ -7417,6 +7422,9 @@ class CustomerCardManager {
         const { allChecked, nyaChecked, nyaHogrisk } = this._collectRiskerSavePayload(typId);
         if (typId === 'geografiska') {
             this._mergeSteeredGeoIds(allChecked);
+        }
+        if (typId === 'verksamhet') {
+            this._mergeSteeredVerksamhetIds(allChecked);
         }
         const totalChecked = [...allChecked];
 
@@ -10485,6 +10493,7 @@ class CustomerCardManager {
         const defaultKontanter = harKontanthantering ? 'Ja' : (riskhojande.length > 0 ? 'Nej' : '');
         const savedKontanter = saved.kontanter || defaultKontanter;
         const savedKontanterAndel = saved.kontanterAndel || '';
+        const savedKryptovaluta = saved.kryptovaluta || '';
 
         // Bolagsform hämtas från företagsinformationen (visas inte i KYC-formuläret)
         const bolagsformOptions = ['Aktiebolag', 'Enskild firma', 'Handelsbolag', 'Kommanditbolag', 'Ekonomisk förening', 'Annat'];
@@ -10827,12 +10836,27 @@ class CustomerCardManager {
                         <div class="uppdrag-section-body">
                             <div class="uppdrag-field uppdrag-field--full">
                                 <label>Hanterar företaget kontanter i sin verksamhet?</label>
-                                ${janejSelect('kyc-kontanter', savedKontanter, "customerCardManager._toggleKycConditional('kyc-kontanter','Ja','kyc-kontanter-andel-wrap')")}
+                                ${janejSelect('kyc-kontanter', savedKontanter, "customerCardManager._onKycVerksamhetChanged('kyc-kontanter','Ja','kyc-kontanter-andel-wrap')")}
                             </div>
                             <div class="uppdrag-field uppdrag-field--full" id="kyc-kontanter-andel-wrap" style="display:${savedKontanter === 'Ja' ? 'block' : 'none'};margin-top:0.75rem;">
                                 <label>Ungefär hur stor del av försäljningen utgörs av kontanter?</label>
                                 <input type="text" id="kyc-kontanter-andel" class="uppdrag-input" value="${esc(savedKontanterAndel)}" placeholder="t.ex. ca 30%">
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 8. KRYPTVALUTA -->
+                    <div class="uppdrag-section uppdrag-section--card">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-coins"></i> 8. Kryptovaluta</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
+                        </div>
+                        <div class="uppdrag-section-body">
+                            <div class="uppdrag-field uppdrag-field--full">
+                                <label>Har företaget transaktioner i kryptovaluta?</label>
+                                ${janejSelect('kyc-kryptovaluta', savedKryptovaluta, "customerCardManager._onKycVerksamhetChanged('kyc-kryptovaluta')")}
+                            </div>
+                            <p class="kyc-verksamhet-styr kyc-hint" id="kyc-verksamhet-styr-hint"></p>
                         </div>
                     </div>
 
@@ -10876,6 +10900,8 @@ class CustomerCardManager {
         this._renderKycLanderOnGeo();
         this._maybeSteerGeoFromSavedLander();
         this._applyUtlandskaUboFromKyc();
+        this._applyVerksamhetChecksFromKyc();
+        this._renderKycVerksamhetStyrHint();
     }
 
     // HTML för en företrädar-rad (används vid render och när man lägger till fler)
@@ -11432,6 +11458,16 @@ class CustomerCardManager {
         }
     }
 
+    _maybeSteerVerksamhetFromSavedKyc() {
+        const KVS = window.KycVerksamhetStyrning;
+        if (!KVS || !KVS.suggestedRecordIds || !this._allaRisker) return;
+        const recs = this._riskerForTypId('verksamhet', this._allaRisker);
+        const kyc = this._kycVerksamhetState();
+        const suggested = KVS.suggestedRecordIds(recs, kyc);
+        const linked = this._linkedRiskIds || new Set();
+        if (suggested.some((id) => !linked.has(id))) this._scheduleVerksamhetFromKycSave();
+    }
+
     _scheduleGeoFromLanderSave() {
         clearTimeout(this._geoFromLanderTimer);
         this._geoFromLanderTimer = setTimeout(() => {
@@ -11474,6 +11510,98 @@ class CustomerCardManager {
         this._refreshRiskprofilForeslagenUi();
         const kycField = this._kycFieldForRiskerTyp('geografiska');
         if (kycField && next.size) this._saveKycStatus(kycField, true);
+    }
+
+    _kycVerksamhetState() {
+        const KVS = window.KycVerksamhetStyrning;
+        if (KVS && KVS.collectKycFromDom) {
+            const dom = KVS.collectKycFromDom();
+            if (dom.kontanter || dom.kryptovaluta) return dom;
+        }
+        return {
+            kontanter: this._savedKycFormular?.kontanter || '',
+            kryptovaluta: this._savedKycFormular?.kryptovaluta || ''
+        };
+    }
+
+    _mergeSteeredVerksamhetIds(allChecked) {
+        const KVS = window.KycVerksamhetStyrning;
+        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        if (KVS && KVS.mergeIntoLinkedSet) {
+            KVS.mergeIntoLinkedSet(allChecked, recs, this._kycVerksamhetState());
+        }
+        return allChecked;
+    }
+
+    _applyVerksamhetChecksFromKyc() {
+        const KVS = window.KycVerksamhetStyrning;
+        if (!KVS || !KVS.steeredRecordIds) return;
+        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        const kyc = this._kycVerksamhetState();
+        const steered = new Set(KVS.steeredRecordIds(recs));
+        const suggested = new Set(KVS.suggestedRecordIds(recs, kyc));
+        document.querySelectorAll('input[name="risk-verksamhet"]').forEach((cb) => {
+            if (!steered.has(cb.value)) return;
+            cb.checked = suggested.has(cb.value);
+            cb.disabled = suggested.has(cb.value);
+            const item = cb.closest('.risker-check-item');
+            if (item) item.classList.toggle('is-verksamhet-steered', suggested.has(cb.value));
+        });
+    }
+
+    _renderKycVerksamhetStyrHint() {
+        const KVS = window.KycVerksamhetStyrning;
+        const el = document.getElementById('kyc-verksamhet-styr-hint');
+        if (!el || !KVS || !KVS.suggestedFactorLabels) return;
+        const labels = KVS.suggestedFactorLabels(this._kycVerksamhetState());
+        el.textContent = labels.length
+            ? `Styr verksamhetsresidual: ${labels.join(', ')}.`
+            : '';
+    }
+
+    _onKycVerksamhetChanged(selectId, showValue, wrapId) {
+        this._toggleKycConditional(selectId, showValue, wrapId);
+        this._applyVerksamhetChecksFromKyc();
+        this._renderKycVerksamhetStyrHint();
+        this._scheduleVerksamhetFromKycSave();
+    }
+
+    _scheduleVerksamhetFromKycSave() {
+        clearTimeout(this._verksamhetFromKycTimer);
+        this._verksamhetFromKycTimer = setTimeout(() => {
+            this._persistVerksamhetFromKyc().catch((err) => {
+                console.warn('Kunde inte styra verksamhetsrisk från KYC:', err);
+            });
+        }, 350);
+    }
+
+    async _persistVerksamhetFromKyc(opts = {}) {
+        const KVS = window.KycVerksamhetStyrning;
+        if (!KVS) return;
+        if (!this._allaRisker) {
+            try { await this.loadKundRisker(); } catch (_) { /* fortsätt med sparade id */ }
+        }
+        const recs = this._riskerForTypId('verksamhet', this._allaRisker || []);
+        const kyc = this._kycVerksamhetState();
+        const next = this._mergeSteeredVerksamhetIds(new Set(this._linkedRiskIds || []));
+        const fields = { 'risker kopplat till tjänster': [...next] };
+        const result = await this._patchKunddataFields(fields);
+        if (!result.ok) return;
+        this._linkedRiskIds = next;
+        if (this.customerData?.fields) {
+            this.customerData.fields['risker kopplat till tjänster'] = [...next];
+        }
+        const container = document.getElementById('ovrigkyc-risker-verksamhet');
+        if (container && this._allaRisker) {
+            this._renderRiskerForTyp(container, recs, next, 'verksamhet', { embedded: true });
+        }
+        this._applyVerksamhetChecksFromKyc();
+        this._renderKycVerksamhetStyrHint();
+        this._refreshRiskprofilForeslagenUi();
+        const kycField = this._kycFieldForRiskerTyp('verksamhet');
+        if (kycField && KVS.suggestedRecordIds(recs, kyc).length) {
+            this._saveKycStatus(kycField, true);
+        }
     }
 
     _renderKycLanderOnGeo() {
@@ -11558,6 +11686,7 @@ class CustomerCardManager {
                 : g('kyc-internationella-lander')),
             kontanter: g('kyc-kontanter'),
             kontanterAndel: g('kyc-kontanter-andel'),
+            kryptovaluta: g('kyc-kryptovaluta'),
             // Sektion 1 — bolagsform från företagsinfo (dolt); bransch/SNI visas inte i formuläret
             bolagsform: g('kyc-bolagsform'),
             skatterattslig_hemvist_foretag: g('kyc-hemvist-foretag'),
@@ -11615,6 +11744,7 @@ class CustomerCardManager {
             this.showNotification('KYC-formuläret sparat!', 'success');
             await this._persistGeoFromLander({ skipKycPost: true });
             await this._persistUtlandskaUboFromKyc();
+            await this._persistVerksamhetFromKyc({ skipKycPost: true });
             this.loadKYCFormular();
         } catch (e) {
             this.showNotification(`Kunde inte spara KYC-formulär: ${e.message}`, 'error');

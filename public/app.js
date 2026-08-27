@@ -31,6 +31,10 @@ class ClientFlowApp {
             this.loadRiskprofilAvvikelserList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskprofilAvvikelserList());
         }
+        if (document.getElementById('saknade-kyc-riskfaktorer-list')) {
+            this.loadSaknadeKycRiskfaktorerList();
+            window.addEventListener('clientflow:authReady', () => this.loadSaknadeKycRiskfaktorerList());
+        }
         if (document.getElementById('my-tasks-list')) {
             this.loadMyTasks();
             window.addEventListener('clientflow:authReady', () => this.loadMyTasks());
@@ -119,6 +123,10 @@ class ClientFlowApp {
         const refreshRiskprofilAvvikelser = document.getElementById('refresh-riskprofil-avvikelser');
         if (refreshRiskprofilAvvikelser) {
             refreshRiskprofilAvvikelser.addEventListener('click', () => this.loadRiskprofilAvvikelserList());
+        }
+        const refreshSaknadeKycRiskfaktorer = document.getElementById('refresh-saknade-kyc-riskfaktorer');
+        if (refreshSaknadeKycRiskfaktorer) {
+            refreshSaknadeKycRiskfaktorer.addEventListener('click', () => this.loadSaknadeKycRiskfaktorerList());
         }
         const refreshMyTasks = document.getElementById('refresh-my-tasks');
         if (refreshMyTasks) {
@@ -717,6 +725,99 @@ class ClientFlowApp {
                     <i class="fas fa-exclamation-circle"></i>
                     <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
                 </div>`;
+        }
+    }
+
+    async loadSaknadeKycRiskfaktorerList() {
+        const container = document.getElementById('saknade-kyc-riskfaktorer-list');
+        if (!container) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('saknade-kyc-riskfaktorer', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+        try {
+            const response = await fetch(`${this.baseUrl}/api/dashboard/saknade-kyc-riskfaktorer`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const saknade = Array.isArray(data.saknade) ? data.saknade : [];
+            this.updateDashboardCount('saknade-kyc-riskfaktorer', saknade.length);
+            if (!saknade.length) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Byrån har riskfaktorer för de KYC-svar kunderna gett (kontanter och kryptovaluta).</p>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${saknade.map((row) => `
+                        <div class="kundlista-row dashboard-row-link dashboard-row-link--static">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-exclamation-triangle"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(row.label)}</span>
+                            </div>
+                            <div class="dashboard-row-details">
+                                <div class="dashboard-missing-hint">
+                                    ${row.antalKunder} kund${row.antalKunder === 1 ? '' : 'er'} har svarat Ja i KYC, men riskfaktorn saknas på sidan Övriga riskfaktorer.
+                                </div>
+                            </div>
+                            <div class="dashboard-row-actions">
+                                <button type="button" class="btn btn-primary btn-sm" data-factor-id="${this.escapeHtml(row.id)}" onclick="clientFlowApp.skapaKycRiskfaktorUtkast('${this.escapeHtml(row.id)}', this)">
+                                    <i class="fas fa-plus"></i> Skapa utkast
+                                </button>
+                                <a href="ovriga-riskfaktorer.html" class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-external-link-alt"></i> Övriga riskfaktorer
+                                </a>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av saknade KYC-riskfaktorer:', error);
+            this.updateDashboardCount('saknade-kyc-riskfaktorer', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    async skapaKycRiskfaktorUtkast(factorId, btn) {
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        const orig = btn?.innerHTML;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Skapar...';
+        }
+        try {
+            const response = await fetch(`${this.baseUrl}/api/dashboard/skapa-kyc-riskfaktor-utkast`, {
+                method: 'POST',
+                ...opts,
+                body: JSON.stringify({ factorId })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+            if (data.alreadyExists) {
+                alert('Riskfaktorn finns redan. Öppna sidan Övriga riskfaktorer för att fylla i den.');
+            } else {
+                alert(data.message || 'Utkast skapat. Fyll i resterande fält under Övriga riskfaktorer.');
+            }
+            await this.loadSaknadeKycRiskfaktorerList();
+        } catch (error) {
+            alert(error.message || 'Kunde inte skapa utkast.');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            }
         }
     }
 

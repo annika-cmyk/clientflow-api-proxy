@@ -129,6 +129,7 @@ const senasteRiskbedomningDatum = require('./lib/senaste-riskbedomning-datum');
 const arKartlaggning = require('./lib/ar-kartlaggning');
 const utsattOmradeKund = require('./lib/utsatta-omraden-kund');
 const utsattOmradeStyrning = require('./lib/utsatt-omrade-styrning');
+const kycVerksamhetStyrning = require('./lib/kyc-verksamhet-styrning');
 const bolagsverketKund = require('./lib/bolagsverket-kund');
 const amlaNews = require('./lib/amla-news');
 const amlNewsSchema = require('./lib/aml-news/schema');
@@ -5420,6 +5421,20 @@ async function maybePatchUtsattGeoRisk(customerRecord, stored, token, baseId) {
   return { 'risker kopplat till tjänster': after };
 }
 
+async function maybePatchKycVerksamhetRisk(customerRecord, kyc, token, baseId) {
+  const byraId = String(customerRecord?.fields?.['Byrå ID'] || '').trim();
+  if (!byraId || !token) return null;
+  const byraRisker = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, token, baseId);
+  const verksamhetRecs = kycVerksamhetStyrning.verksamhetRecordsFromList(byraRisker);
+  if (!verksamhetRecs.some((rec) => kycVerksamhetStyrning.matchFactor(kycVerksamhetStyrning.recordNamn(rec)))) {
+    return null;
+  }
+  const before = customerRecord?.fields?.['risker kopplat till tjänster'] || [];
+  const after = kycVerksamhetStyrning.mergeLinkedIds(before, verksamhetRecs, kyc);
+  if (!kycVerksamhetStyrning.linkedIdsChanged(before, after)) return null;
+  return { 'risker kopplat till tjänster': after };
+}
+
 async function identifieradeRiskerForByra(byraId, token, baseId) {
   const [tjanstRecs, ovrigaRecs] = await Promise.all([
     fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId),
@@ -7128,6 +7143,100 @@ app.get('/api/dashboard/utan-aktuell-riskbedomning', authenticateToken, async (r
   }
 });
 
+app.get('/api/dashboard/saknade-kyc-riskfaktorer', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = String(userData.byraId || '').trim();
+    if (!byraId) return res.status(400).json({ error: 'Byrå ID saknas' });
+    const [kunder, templates] = await Promise.all([
+      kundDold.filterVisibleKunder(
+        await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+      ),
+      fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId)
+    ]);
+    const saknade = kycVerksamhetStyrning.buildSaknadeRiskfaktorer(kunder, templates);
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      count: saknade.length,
+      saknade
+    });
+  } catch (error) {
+    console.error('GET dashboard/saknade-kyc-riskfaktorer:', error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa listan' });
+  }
+});
+
+app.post('/api/dashboard/skapa-kyc-riskfaktor-utkast', authenticateToken, async (req, res) => {
+  try {
+    const factorId = String(req.body?.factorId || '').trim();
+    const factor = kycVerksamhetStyrning.FACTORS.find((f) => f.id === factorId);
+    if (!factor) {
+      return res.status(400).json({ error: 'Okänd riskfaktor. Ange factorId kontanter eller kryptovaluta.' });
+    }
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
+    const byraId = String(userData.byraId || '').trim();
+    if (!byraId) return res.status(400).json({ error: 'Byrå ID saknas' });
+
+    const templates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId);
+    if (kycVerksamhetStyrning.templateExistsForFactor(templates, factor.id)) {
+      const befintlig = kycVerksamhetStyrning.verksamhetRecordsFromList(templates).find((rec) => {
+        const matched = kycVerksamhetStyrning.matchFactor(kycVerksamhetStyrning.recordNamn(rec));
+        return matched && matched.id === factor.id;
+      });
+      return res.json({
+        success: true,
+        alreadyExists: true,
+        recordId: befintlig?.id || null,
+        message: 'Riskfaktorn finns redan.'
+      });
+    }
+
+    const riskData = {
+      Riskfaktor: factor.label,
+      'Typ av riskfaktor': factor.typ,
+      'PT/TF-relevans': 'Båda',
+      'Byrå ID': byraId,
+      Aktuell: false
+    };
+    const riskDataWithFlag = applyMotiveringMigrationFlag(riskData);
+    const airtableFields = applyOvrigExtraAirtableFields(
+      riskDataWithFlag,
+      mapNamedFieldsToAirtable(riskDataWithFlag, RISK_FACTOR_FIELD_MAPPING, { dropUnknown: true })
+    );
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${RISK_FACTORS_TABLE}`;
+    const headers = {
+      Authorization: `Bearer ${airtableAccessToken}`,
+      'Content-Type': 'application/json'
+    };
+    await ensureAirtableTableFields(airtableAccessToken, airtableBaseId, RISK_FACTORS_TABLE, OVRIGA_RISK_SCHEMA_FIELDS);
+    const response = await writeAirtableFieldsRetryUnknown({
+      token: airtableAccessToken,
+      baseId: airtableBaseId,
+      tableName: RISK_FACTORS_TABLE,
+      fields: airtableFields,
+      request: (fields) => axios.post(url, { fields, typecast: true }, { headers, timeout: 15000 })
+    });
+
+    res.json({
+      success: true,
+      recordId: response.data?.id || null,
+      message: `Utkast skapat: ${factor.label}`
+    });
+  } catch (error) {
+    console.error('POST dashboard/skapa-kyc-riskfaktor-utkast:', error.response?.data || error.message);
+    res.status(500).json({ error: error.message || 'Kunde inte skapa utkast' });
+  }
+});
+
 app.get('/api/kund-riskprofil/avvikelser', authenticateToken, async (req, res) => {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -7675,6 +7784,10 @@ function buildKycFormularPdfHtml(kyc, byraNamn, logoHtml, datum) {
   </div>
   <div class="section"><h2>7. Kontanthantering</h2>
     <div class="field"><span class="field-label">Kontanthantering:</span> ${pdfJanej(kyc.kontanter)}</div>
+    ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> ${esc(kyc.kontanterAndel)}</div>` : ''}
+  </div>
+  <div class="section"><h2>8. Kryptovaluta</h2>
+    <div class="field"><span class="field-label">Transaktioner i kryptovaluta:</span> ${pdfJanej(kyc.kryptovaluta)}</div>
   </div>
   <div class="attestation"><strong>Kundens intygande</strong><p>Jag intygar att lämnade uppgifter är korrekta och fullständiga.</p></div>
 </body></html>`;
@@ -16626,6 +16739,28 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
       );
     }
 
+    try {
+      const custRes = await axios.get(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const verksamhetPatch = await maybePatchKycVerksamhetRisk(
+        custRes.data,
+        kycData,
+        airtableAccessToken,
+        baseId
+      );
+      if (verksamhetPatch) {
+        await axios.patch(
+          `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+          { fields: verksamhetPatch },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch (verksErr) {
+      console.warn('KYC verksamhetsrisk kunde inte uppdateras:', verksErr.message);
+    }
+
     res.json({ success: true, message: 'KYC-formulär sparat.' });
   } catch (error) {
     console.error('❌ Error saving KYC-formular:', error.message);
@@ -16801,6 +16936,11 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
     <h2>7. Kontanthantering</h2>
     <div class="field"><span class="field-label">Kontanthantering:</span> ${janej(kyc.kontanter)}</div>
     ${kyc.kontanter === 'Ja' && kyc.kontanterAndel ? `<div class="field"><span class="field-label">Andel kontanter:</span> <span class="field-value">${esc(kyc.kontanterAndel)}</span></div>` : ''}
+  </div>
+
+  <div class="section">
+    <h2>8. Kryptovaluta</h2>
+    <div class="field"><span class="field-label">Transaktioner i kryptovaluta:</span> ${janej(kyc.kryptovaluta)}</div>
   </div>
 
   <div class="attestation">
@@ -22125,6 +22265,7 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
     const kycInternationellaLander = clip(EuHogriskLander.formatWithBadges(kyc.internationellaLander) || kyc.internationellaLander, 500) || '–';
     const kycKontanter = (kyc.kontanter || '').toString().trim() || '–';
     const kycKontanterAndel = clip(kyc.kontanterAndel, 200) || '–';
+    const kycKryptovaluta = (kyc.kryptovaluta || '').toString().trim() || '–';
     const kycPep = (kyc.pep || '').toString().trim() || '–';
     const kycPepFamilj = (kyc.pepFamilj || '').toString().trim() || '–';
     const kycKapital = clip(kyc.kapitalUrsprung, 500) || '–';
@@ -22247,6 +22388,7 @@ KYC-FORMULÄR (kompletterande svar sparade i ClientFlow — väg in även dessa)
 - Länder vid internationell handel: ${kycInternationellaLander}
 - Kontanthantering enligt KYC: ${kycKontanter}
 - Andel/omfattning kontanter: ${kycKontanterAndel}
+- Kryptovaluta enligt KYC: ${kycKryptovaluta}
 - PEP enligt KYC: ${kycPep}
 - Familjemedlem/medarbetare till PEP enligt KYC: ${kycPepFamilj}
 - Kapitalets ursprung enligt KYC: ${kycKapital}

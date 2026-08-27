@@ -230,7 +230,19 @@
       klass: KLASS.GOLV_HOG,
       badge: 'Hög-aktiv',
       coveredByDimension: true,
+      steeredFromKyc: true,
       aliases: ['kontantintensiv verksamhet', 'kontanthantering', 'kunder med mycket kontanta transaktioner']
+    },
+    {
+      id: 'kryptovaluta',
+      category: 'verksamheten',
+      label: 'Kunder som handlar med kryptovaluta',
+      hint: 'Kunden tar emot, betalar eller växlar kryptovaluta i verksamheten.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      coveredByDimension: true,
+      steeredFromKyc: true,
+      aliases: ['kryptovaluta', 'kunder som handlar med kryptovaluta', 'virtuell valuta', 'crypto']
     },
     {
       id: 'kunder-distans',
