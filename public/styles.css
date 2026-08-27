@@ -15601,3 +15601,17 @@ h5.ar-subsection-title {
     flex-wrap: wrap;
   }
 }
+
+/* AI klargörande-wizard (AR & rutiner) */
+.ai-klargorande-modal.is-open { display: flex; align-items: center; justify-content: center; }
+.ai-klargorande-content { max-width: 640px; width: calc(100% - 2rem); max-height: 90vh; overflow: auto; }
+.ai-klargorande-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+.ai-klargorande-header h3 { margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; }
+.ai-klargorande-intro { color: #64748b; font-size: 0.9rem; margin: 0 0 1rem; line-height: 1.45; }
+.ai-klargorande-q { margin-bottom: 1rem; }
+.ai-klargorande-q label { display: block; font-weight: 600; margin-bottom: 0.35rem; font-size: 0.92rem; }
+.ai-klargorande-hint { font-size: 0.82rem; color: #94a3b8; margin: 0 0 0.35rem; }
+.ai-klargorande-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+.ai-klargorande-status { color: #dc2626; font-size: 0.88rem; margin: 0.75rem 0 0; min-height: 1.2em; }
+.ai-klargorande-empty { color: #64748b; font-size: 0.9rem; }
+.byra-card-edit .ai-klargorande-launch { margin-top: 0.5rem; }
