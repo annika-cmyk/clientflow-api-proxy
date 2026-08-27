@@ -5889,6 +5889,43 @@ class CustomerCardManager {
         return (div.innerText || div.textContent || '').replace(/\u00a0/g, ' ').trim();
     }
 
+    _senasteRiskbedomningDatum(fields) {
+        const f = fields || this.customerData?.fields || {};
+        if (window.SenasteRiskbedomningDatum && typeof window.SenasteRiskbedomningDatum.resolveSenasteRiskbedomningDatum === 'function') {
+            return window.SenasteRiskbedomningDatum.resolveSenasteRiskbedomningDatum(f);
+        }
+        const candidates = [
+            f['Riskbedömning utförd datum'],
+            f['Kundens riskbedömning godkänd']
+        ].filter(Boolean);
+        if (!candidates.length) return '';
+        return candidates.map((d) => String(d).slice(0, 10)).sort().reverse()[0];
+    }
+
+    _senasteRiskbedomningDatumLabel(fields) {
+        const iso = this._senasteRiskbedomningDatum(fields);
+        if (!iso) return '';
+        const formatted = window.SenasteRiskbedomningDatum && window.SenasteRiskbedomningDatum.formatSenasteRiskbedomningSv
+            ? window.SenasteRiskbedomningDatum.formatSenasteRiskbedomningSv(iso)
+            : new Date(iso + 'T12:00:00').toLocaleDateString('sv-SE');
+        return `<p class="kyc-hint riskbedomning-senaste-datum" id="riskbedomning-senaste-datum"><i class="fas fa-calendar-check"></i> Senaste riskbedömning: ${this._esc(formatted)}</p>`;
+    }
+
+    _refreshSenasteRiskbedomningDatum() {
+        const html = this._senasteRiskbedomningDatumLabel(this.customerData?.fields || {});
+        const btn = document.getElementById('btn-dokumentera-riskbedomning');
+        let el = document.getElementById('riskbedomning-senaste-datum');
+        if (!html) {
+            if (el) el.remove();
+            return;
+        }
+        if (el) {
+            el.outerHTML = html;
+            return;
+        }
+        if (btn) btn.insertAdjacentHTML('afterend', html);
+    }
+
     _isGenericKundbeskrivning(value) {
         const t = this._htmlToPlainText(value).replace(/\s+/g, ' ').trim();
         return /^beskrivning av kunden\.?$/i.test(t);
@@ -7364,6 +7401,7 @@ class CustomerCardManager {
                     <button type="button" class="btn btn-primary" id="btn-dokumentera-riskbedomning" onclick="customerCardManager.dokumenteraRiskbedomning()">
                         <i class="fas fa-file-pdf"></i> Dokumentera riskbedömning
                     </button>
+                    ${this._senasteRiskbedomningDatumLabel(f)}
                     <p class="kyc-hint" style="margin-top:0.5rem;font-size:0.85rem;color:#64748b;">Skapar PDF med riskbedömning och bedömningspunkter, en lista över kundens valda tjänster (utan byråns tjänstanalyser), samt KYC som bilaga sist. Sparas på fliken Dokumentation.</p>
                 </div>
 
@@ -8754,6 +8792,7 @@ class CustomerCardManager {
 
             this._updateRiskbedomningView(residual, riskbedomning, atgarder);
             this._renderRiskaptitBanner(this.customerData?.fields || {});
+            this._refreshSenasteRiskbedomningDatum();
             this.toggleRiskbedomningEdit();
             this.showNotification('Riskbedömning sparad!', 'success');
         } catch (err) {
@@ -15689,6 +15728,11 @@ class CustomerCardManager {
                 throw new Error(err.error || err.message || `HTTP ${res.status}`);
             }
             const data = await res.json();
+            if (data.senasteRiskbedomningDatum && this.customerData?.fields) {
+                this.customerData.fields['Riskbedömning utförd datum'] = data.senasteRiskbedomningDatum;
+                this.customerData.fields['Kundens riskbedömning godkänd'] = data.senasteRiskbedomningDatum;
+            }
+            this._refreshSenasteRiskbedomningDatum();
             this.showNotification(data.message || 'Riskbedömning dokumenterad.', 'success');
             if (data.reloadedDocuments) this.loadDocuments();
             // Erbjud nedladdning om PDF genererades men inte sparades till Dokumentation (t.ex. vid localhost)
