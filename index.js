@@ -20673,7 +20673,7 @@ app.post('/api/byra/lansstyrelsen-pdf', authenticateToken, async (req, res) => {
     const ACCENT = '#2c4a8f';
     const htmlParts = [];
 
-    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Byråns allmänna riskbedömning och rutiner</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Exporterad: ${escape(exportStamp)}</p><p class="doc-meta">Dokumentation enligt penningtvättslagen (4 kap. 3 §) – för tillsyn och arkivering.</p>${motiveringWarningBanner ? `<div class="doc-text doc-warning">${richToHtml(motiveringWarningBanner)}</div>` : ''}</div>`);
+    htmlParts.push(`<div class="doc-page"><h1 class="doc-main-title">Byråns allmänna riskbedömning och rutiner</h1><p class="doc-meta">Byrå: ${escape(byraNamn)} | Exporterad: ${escape(exportStamp)}</p><p class="doc-meta">Dokumentation enligt 2 kap. 1–2 §§ och 8 § lagen (2017:630) om åtgärder mot penningtvätt och finansiering av terrorism – för tillsyn och arkivering.</p>${motiveringWarningBanner ? `<div class="doc-text doc-warning">${richToHtml(motiveringWarningBanner)}</div>` : ''}</div>`);
 
     const rutinerFields = [
       ['1. Syfte och omfattning policy', '1. Syfte och omfattning policy'],
