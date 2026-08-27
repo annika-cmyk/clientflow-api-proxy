@@ -7667,7 +7667,7 @@ class CustomerCardManager {
         const Kat = window.OvrigaRiskKategorier;
         const categoryMap = this._riskhojKategorier || {};
         const prescribed = Kat && Kat.factorsForCategory
-            ? Kat.factorsForCategory(cat.id, { kundkort: true, categoryMap })
+            ? Kat.factorsForCategory(cat.id, { kundkort: true, categoryMap, activeKatalog: this._riskhojKatalog || {} })
             : [];
         const extraLabels = Array.from(new Set([].concat(
             this._riskhojAlternativ || [],
