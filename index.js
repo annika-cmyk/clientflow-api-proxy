@@ -115,6 +115,7 @@ const KundRiskprofil = require('./public/js/kund-riskprofil');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
 const TjanstKatalog = require('./public/js/tjanst-katalog');
+const RiskanalysTjanstKatalog = require('./lib/riskanalys-tjanst-katalog');
 const RiskDimensioner = require('./public/js/risk-dimensioner');
 const avvikelseStatus = require('./lib/avvikelse-status');
 const avvikelseStatusMigrate = require('./lib/avvikelse-status-migrate');
@@ -22745,6 +22746,7 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
+  const katalogBlock = RiskanalysTjanstKatalog.formatPromptBlock(namn);
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
 
@@ -22769,7 +22771,7 @@ ${AmlKalla.KALLA_AI_RULES}
 ${INHERENT_DESCRIPTION_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
-${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
+${katalogBlock ? `\n${RiskanalysTjanstKatalog.PROMPT_RULES}\n` : ''}${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
 Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
 Skriv INTE in byråns storlek, personal, kapacitet eller andra profiluppgifter i fältet beskrivning.
@@ -22827,7 +22829,7 @@ ${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.
 ${residualIn.level ? `Befintlig residualbedömning: sannolikhet ${residualIn.sannolikhet}, konsekvens ${residualIn.konsekvens} → ${residualIn.badge}` : ''}
 ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` : ''}
 
-${byraProfilUserBlock}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
+${byraProfilUserBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
