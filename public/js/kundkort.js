@@ -10205,7 +10205,12 @@ class CustomerCardManager {
             await this._syncKycTjansterFromAktiva();
             this._saveKycStatus('KYC genomgången - Tjänster', true);
             this._refreshRiskprofilForeslagenUi();
-            this.showNotification(`Tjänster sparade — ${checkedIds.length} från katalogen`, 'success');
+            const unmatchedAfter = this._unmatchedTjanster();
+            let msg = `Tjänster sparade — ${checkedIds.length} från katalogen`;
+            if (unmatchedAfter.length) {
+                msg += `. ${unmatchedAfter.length} äldre tjänst${unmatchedAfter.length > 1 ? 'er' : ''} (${unmatchedAfter.join(', ')}) behöver fortfarande granskas.`;
+            }
+            this.showNotification(msg, unmatchedAfter.length ? 'warning' : 'success');
 
         } catch (error) {
             console.error('❌ Fel vid sparande av tjänster:', error);
