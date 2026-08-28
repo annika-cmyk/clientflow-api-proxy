@@ -1729,13 +1729,13 @@ body.sidebar-collapsed .logout-btn {
     display: inline-flex;
     align-items: stretch;
     gap: 0.35rem;
-    max-width: 12.75rem;
+    max-width: 11.25rem;
     width: auto;
 }
 
 .date-input-wrap .date-input-text {
     min-width: 0;
-    width: 9.75rem;
+    width: 8.5rem;
     flex: 0 1 auto;
 }
 
@@ -10035,7 +10035,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     width: 100%;
 }
 .uppdrag-edit-field .date-input-wrap {
-    max-width: 12.75rem;
+    max-width: 11.25rem;
     width: auto;
 }
 .uppdrag-edit-check {
