@@ -3465,69 +3465,6 @@ class CustomerCardManager {
             // default: view mode
             setEditing(false);
 
-            // PTL underlag upload (edit mode)
-            const uploadBtn = root.querySelector('[data-action="upload-ptl"]');
-            if (uploadBtn) {
-                uploadBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    try {
-                        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-                        const customerId = this.customerId || this.currentCustomerId;
-                        const input = root.querySelector('[data-ptl-file]');
-                        const files = input ? Array.from(input.files || []) : [];
-                        if (!files.length) {
-                            this.showNotification('Välj minst en fil att ladda upp', 'info');
-                            return;
-                        }
-                        uploadBtn.disabled = true;
-                        const orig = uploadBtn.innerHTML;
-                        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Laddar upp...';
-
-                        const uploaded = [];
-                        for (const file of files) {
-                            const base64 = await this.fileToBase64(file);
-                            const filename = `PTL-${typ}-${(new Date().toISOString().slice(0, 10))}-${file.name}`;
-                            const res = await fetch(`${baseUrl}/api/documents/upload`, {
-                                method: 'POST',
-                                ...getAuthOptsKundkort(),
-                                body: JSON.stringify({
-                                    customerId,
-                                    file: base64,
-                                    filename,
-                                    category: 'riskbedomning',
-                                    customCategory: 'ptl-underlag'
-                                })
-                            });
-                            const data = await res.json().catch(() => ({}));
-                            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-                            uploaded.push({ filename, uploadedAt: new Date().toISOString() });
-                        }
-
-                        // store in hidden PTL Underlag field
-                        const ptlField = root.querySelector('[data-field="PTL Underlag"]');
-                        let existing = [];
-                        try { existing = ptlField?.value ? JSON.parse(ptlField.value) : []; } catch (_) { existing = []; }
-                        if (!Array.isArray(existing)) existing = [];
-                        ptlField.value = JSON.stringify(uploaded.concat(existing)).slice(0, 200000);
-                        const hidden = root.querySelector('[data-uppdrag-ptl-underlag]');
-                        if (hidden) hidden.value = ptlField.value;
-
-                        this._renderPtlFiles(root);
-                        this.showNotification('Underlag uppladdat', 'success');
-                        uploadBtn.innerHTML = orig;
-                        uploadBtn.disabled = false;
-                        if (input) input.value = '';
-                    } catch (err) {
-                        console.error('❌ PTL upload:', err);
-                        this.showNotification('Kunde inte ladda upp: ' + (err.message || 'fel'), 'error');
-                        uploadBtn.disabled = false;
-                        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Ladda upp underlag';
-                    }
-                });
-            }
-
-            this._renderPtlFiles(root);
-
             // Deklaration: dynamiska rader (typ + fritext) i edit-läge
             if (typ === 'Deklaration') {
                 // NE = näringsbilaga. NEA fanns tidigare som legacy-värde, behåll för kompatibilitet.
@@ -3901,7 +3838,7 @@ class CustomerCardManager {
             arr = raw ? JSON.parse(raw) : [];
         } catch (_) { arr = []; }
         if (!Array.isArray(arr) || arr.length === 0) {
-            wrap.innerHTML = `<div class="uppdrag-muted">Inga underlag uppladdade.</div>`;
+            wrap.innerHTML = '';
             return;
         }
         wrap.innerHTML = `<div class="uppdrag-view-list">${arr.slice(0, 10).map(x => {
@@ -4459,18 +4396,8 @@ class CustomerCardManager {
         const ptlUnderlagRaw = (f['PTL Underlag'] || '').toString().trim();
         const ptlUnderlagJson = this._esc(ptlUnderlagRaw || '[]');
 
-        const ptlSectionHtml = hasRiskAtgarder ? `
-                        <div class="uppdrag-block">
-                            <label class="uppdrag-label"><i class="fas fa-paperclip"></i> Underlag till PTL-åtgärd (valfritt)</label>
-                            <input type="file" class="kunduppgifter-input" data-ptl-file multiple>
-                            <div class="uppdrag-actions" style="margin-top:0.5rem;">
-                                <button type="button" class="btn btn-secondary btn-sm" data-action="upload-ptl"><i class="fas fa-upload"></i> Ladda upp underlag</button>
-                            </div>
-                            <textarea class="kunduppgifter-input" rows="2" data-field="PTL Underlag" style="display:none;">${ptlUnderlagJson}</textarea>
-                            <div class="uppdrag-ptl-files" data-ptl-files></div>
-                            <div class="uppdrag-muted" style="margin-top:0.35rem;">Filerna sparas på fliken Dokumentation (kategori: riskbedömning).</div>
-                        </div>
-        ` : '';
+        // PTL-underlag laddas upp via Dokumentation; ingen separat uppladdningsruta i mall-edit.
+        const ptlSectionHtml = '';
 
         const viewDeklarationHtml = extra.showDeklaration ? `
             <div class="uppdrag-view-field uppdrag-span-full" style="margin-top:0.85rem;">
@@ -4714,7 +4641,9 @@ class CustomerCardManager {
             const riskSelected = Array.from(root.querySelectorAll('input[data-risk-item]:checked')).map(i => i.value);
             fields['Riskåtgärder valda'] = JSON.stringify(riskSelected);
             fields['Riskåtgärder aktiverade'] = riskSelected.length > 0;
-            fields['PTL Underlag'] = getVal('PTL Underlag')?.value || '[]';
+            fields['PTL Underlag'] = getVal('PTL Underlag')?.value
+                || root.querySelector('[data-uppdrag-ptl-underlag]')?.value
+                || '[]';
             // Schemalagd förfrågan (underlag)
             const autoCb = getVal('Auto underlagsförfrågan');
             fields['Auto underlagsförfrågan'] = !!(autoCb && autoCb.checked);
