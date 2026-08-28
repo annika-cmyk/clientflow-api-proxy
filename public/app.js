@@ -35,6 +35,10 @@ class ClientFlowApp {
             this.loadRiskaptitList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskaptitList());
         }
+        if (document.getElementById('uppdragsavgorande-list')) {
+            this.loadUppdragsavgorandeList();
+            window.addEventListener('clientflow:authReady', () => this.loadUppdragsavgorandeList());
+        }
         if (document.getElementById('riskprofil-avvikelser-list')) {
             this.loadRiskprofilAvvikelserList();
             window.addEventListener('clientflow:authReady', () => this.loadRiskprofilAvvikelserList());
@@ -131,6 +135,10 @@ class ClientFlowApp {
         const refreshRiskaptit = document.getElementById('refresh-riskaptit');
         if (refreshRiskaptit) {
             refreshRiskaptit.addEventListener('click', () => this.loadRiskaptitList());
+        }
+        const refreshUppdragsavgorande = document.getElementById('refresh-uppdragsavgorande');
+        if (refreshUppdragsavgorande) {
+            refreshUppdragsavgorande.addEventListener('click', () => this.loadUppdragsavgorandeList());
         }
         const refreshRiskprofilAvvikelser = document.getElementById('refresh-riskprofil-avvikelser');
         if (refreshRiskprofilAvvikelser) {
@@ -730,6 +738,81 @@ class ClientFlowApp {
         } catch (error) {
             console.error('Fel vid laddning av riskaptitrapport:', error);
             this.updateDashboardCount('riskaptit', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Kunde inte ladda listan. Kontrollera anslutningen.</p>
+                </div>`;
+        }
+    }
+
+    isUppdragsavgorandeUppdrag(fields) {
+        const f = fields || {};
+        const namn = String(f.Namn || f.namn || '').trim();
+        const typ = String(f.Typ || '').trim();
+        return namn === 'Uppdragsavgörande åtgärder'
+            || typ === 'Uppdragsavgörande åtgärder';
+    }
+
+    async loadUppdragsavgorandeList() {
+        const container = document.getElementById('uppdragsavgorande-list');
+        if (!container) return;
+        const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
+        if (!(window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser())) {
+            this.updateDashboardCount('uppdragsavgorande', null);
+            container.innerHTML = `
+                <div class="kundlista-empty">
+                    <i class="fas fa-lock"></i>
+                    <p>Du måste logga in för att se listan.</p>
+                </div>`;
+            return;
+        }
+        container.innerHTML = '<div class="kundlista-loading"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>';
+        try {
+            const response = await fetch(`${this.baseUrl}/api/uppdrag/byra?mine=0`, opts);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const all = Array.isArray(data.records) ? data.records : (Array.isArray(data.uppdrag) ? data.uppdrag : []);
+            const items = all.filter((rec) => {
+                const f = rec.fields || rec;
+                if (!this.isUppdragsavgorandeUppdrag(f)) return false;
+                const status = String(f.Status || '').trim().toLowerCase();
+                return !status || status === 'aktiv';
+            });
+            this.updateDashboardCount('uppdragsavgorande', items.length);
+            if (!items.length) {
+                container.innerHTML = `
+                    <div class="kundlista-empty">
+                        <i class="fas fa-check-circle"></i>
+                        <p>Inga öppna uppdragsavgörande åtgärder just nu.</p>
+                    </div>`;
+                return;
+            }
+            container.innerHTML = `
+                <div class="kundlista-table">
+                    ${items.map((rec) => {
+                        const f = rec.fields || rec;
+                        const kundId = Array.isArray(f['Kund ID']) ? f['Kund ID'][0] : f['Kund ID'];
+                        const kundNamn = f['Kundnamn'] || f.Kund || f.Namn || 'Kund';
+                        const deadline = f['Nästa deadline'] || '';
+                        const rutin = f.Rutin || '';
+                        return `
+                        <a href="kundkort.html?id=${this.escapeHtml(kundId || '')}" class="kundlista-row dashboard-row-link">
+                            <div class="kundlista-row-name">
+                                <span class="kundlista-row-icon"><i class="fas fa-clipboard-check"></i></span>
+                                <span class="kundlista-row-namn">${this.escapeHtml(kundNamn)}</span>
+                            </div>
+                            <div class="kundlista-row-meta">
+                                ${deadline ? `<span class="kundlista-orgnr">Senast ${this.escapeHtml(String(deadline).slice(0, 10))}</span>` : ''}
+                                ${rutin ? `<span class="kundlista-bolagsform">${this.escapeHtml(String(rutin).slice(0, 80))}</span>` : ''}
+                            </div>
+                            <div class="kundlista-row-arrow"><i class="fas fa-chevron-right"></i></div>
+                        </a>`;
+                    }).join('')}
+                </div>`;
+        } catch (error) {
+            console.error('Fel vid laddning av uppdragsavgörande åtgärder:', error);
+            this.updateDashboardCount('uppdragsavgorande', null);
             container.innerHTML = `
                 <div class="kundlista-empty">
                     <i class="fas fa-exclamation-circle"></i>

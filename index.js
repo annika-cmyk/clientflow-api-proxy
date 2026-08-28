@@ -114,6 +114,8 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
+const OvrigaRiskKategorier = require('./public/js/ovriga-risk-kategorier');
+const riskbedomningDokumentera = require('./lib/riskbedomning-dokumentera');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
 const TjanstKatalog = require('./public/js/tjanst-katalog');
@@ -2455,6 +2457,11 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   { name: Riskaptit.FIELDS.BESLUT_UTFALL, type: 'singleLineText', description: 'Fortsätter_med_skärpta_åtgärder | Avslutas | Avstår_nytt_uppdrag' },
   { name: Riskaptit.FIELDS.BESLUT_RISKBILD, type: 'singleLineText', description: 'Riskbild som det senaste beslutet gäller' },
   { name: Riskaptit.FIELDS.HISTORIK, type: 'multilineText', description: 'JSON-historik över tidigare riskaptitbeslut' },
+  {
+    name: 'Uppdragsavgörande åtgärder',
+    type: 'multilineText',
+    description: 'JSON: schemalagda uppdragsavgörande åtgärder från riskaptitbeslut (text, deadline, uppdragId).'
+  },
   {
     name: 'Kund inneboende riskprofil',
     type: 'singleSelect',
@@ -7054,16 +7061,103 @@ app.post('/api/kunddata/:id/riskaptit-beslut', authenticateToken, async (req, re
     const customerRecord = loaded.customerRecord || loaded;
     const fields = customerRecord.fields || {};
     const actor = await actorForRequest(req, userData);
+    const body = req.body || {};
     const registered = Riskaptit.registerBeslut({
       fields,
-      utfall: req.body && req.body.utfall,
-      motivering: req.body && req.body.motivering,
+      utfall: body.utfall,
+      motivering: body.motivering,
       actor: (actor && actor.actorName) || req.user.email,
       nowIso: new Date().toISOString()
     });
     if (!registered.ok) {
       return res.status(400).json({ error: registered.error });
     }
+
+    const SKARPTA = 'Fortsätter_med_skärpta_åtgärder';
+    const scheduleMode = String(body.atgardLage || body.åtgärdLage || '').trim();
+    const wantsSchedule = registered.writeFields[Riskaptit.FIELDS.BESLUT_UTFALL] === SKARPTA
+      && (scheduleMode === 'schemalagg' || scheduleMode === 'schemalägg');
+    const tasks = Array.isArray(body.uppgifter)
+      ? body.uppgifter.map((t) => String(t || '').trim()).filter(Boolean)
+      : [];
+    const deadline = String(body.deadline || '').trim().slice(0, 10);
+    if (wantsSchedule) {
+      if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+        return res.status(400).json({ error: 'Ange datum när åtgärden ska vara klar.' });
+      }
+      if (!tasks.length) {
+        return res.status(400).json({ error: 'Lägg till minst en uppgift att schemalägga.' });
+      }
+    }
+
+    const createdUppdrag = [];
+    if (wantsSchedule) {
+      const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+      const byraIdForUppdrag = fields['Byrå ID'] || userData.byraId || '';
+      const ansvarig = String(body.ansvarig || actor?.actorName || userData.namn || req.user.email || '').trim();
+      try {
+        await ensureUppdragTypChoices(airtableAccessToken, airtableBaseId);
+        await ensureUppdragFrekvensChoices(airtableAccessToken, airtableBaseId);
+      } catch (_) {}
+      for (const task of tasks) {
+        const uppdragFields = {
+          'Kund ID': id,
+          'Byrå ID': byraIdForUppdrag,
+          Typ: UppdragTyp.EGET_UPPDRAG_TYP,
+          Namn: 'Uppdragsavgörande åtgärder',
+          Frekvens: 'Engång',
+          Startdatum: new Date().toISOString().slice(0, 10),
+          'Nästa deadline': deadline,
+          Rutin: task,
+          Status: 'Aktiv'
+        };
+        if (ansvarig) {
+          uppdragFields.Ansvarig = ansvarig;
+          uppdragFields.Klientansvarig = ansvarig;
+        }
+        const created = await axios.post(
+          `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`,
+          { fields: uppdragFields, typecast: true },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+        const rec = created.data;
+        try {
+          await ensureRunsForUppdragRecord(rec, airtableAccessToken, airtableBaseId);
+        } catch (runErr) {
+          console.warn('riskaptit engång run:', runErr.message);
+        }
+        createdUppdrag.push({
+          id: rec.id,
+          text: task,
+          deadline,
+          namn: 'Uppdragsavgörande åtgärder'
+        });
+      }
+      const prevRaw = fields['Uppdragsavgörande åtgärder'];
+      let prev = [];
+      try {
+        if (typeof prevRaw === 'string' && prevRaw.trim()) prev = JSON.parse(prevRaw);
+        else if (Array.isArray(prevRaw)) prev = prevRaw;
+      } catch (_) { prev = []; }
+      if (!Array.isArray(prev)) prev = [];
+      registered.writeFields['Uppdragsavgörande åtgärder'] = JSON.stringify(prev.concat(createdUppdrag));
+    }
+
+    // Spegla riskaptitmotivering in i åtgärder-fältet på riskbedömningen när skärpta åtgärder
+    if (registered.writeFields[Riskaptit.FIELDS.BESLUT_UTFALL] === SKARPTA) {
+      const existingAtg = String(fields['Atgarder riskbedomning'] || '').trim();
+      const block = [
+        'Riskaptitbeslut — Fortsätter med skärpta åtgärder',
+        registered.writeFields[Riskaptit.FIELDS.BESLUT_MOTIVERING],
+        createdUppdrag.length
+          ? ('Schemalagda åtgärder (klart senast ' + deadline + '):\n' + createdUppdrag.map((u) => '• ' + u.text).join('\n'))
+          : ''
+      ].filter(Boolean).join('\n\n');
+      registered.writeFields['Atgarder riskbedomning'] = existingAtg
+        ? (existingAtg + '\n\n' + block)
+        : block;
+    }
+
     await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
     const url = `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${id}`;
     const airtableRes = await axios.patch(
@@ -7100,7 +7194,8 @@ app.post('/api/kunddata/:id/riskaptit-beslut', authenticateToken, async (req, re
     res.json({
       success: true,
       record: airtableRes.data,
-      riskaptit: registered.evaluation
+      riskaptit: registered.evaluation,
+      skapadeUppdrag: createdUppdrag
     });
   } catch (error) {
     const status = error.status || error.response?.status || 500;
@@ -7867,17 +7962,39 @@ function buildKundRiskbedomningPdfHtml(data) {
   const bulletList = (items, emptyLabel) => KundRiskprofil.pdfBulletList(items, emptyLabel, esc);
 
   const rf = data.riskfaktorer || {};
+  const varningsHtml = (Array.isArray(rf.varningsflaggor) && rf.varningsflaggor.length)
+    ? `<h3>Varningsflaggor</h3>${bulletList(rf.varningsflaggor)}`
+    : (rf.varningsflaggorExplicitNone
+      ? `<h3>Varningsflaggor</h3>${bulletList([], 'Inga varningsflaggor')}`
+      : '');
   const riskfaktorerHtml = `
-      <h3>Kundens tjänster</h3>${bulletList(rf.tjanster)}
-      <h3>Geografisk riskfaktorer - här finns byråns kunder</h3>${bulletList(rf.geografiska)}
-      <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund)}
-      <h3>Distributionskanaler</h3>${bulletList(rf.distribution)}
+      <h3>Kundens tjänster</h3>${bulletList(rf.tjanster, 'Inga tjänster valda')}
+      <h3>Geografisk riskfaktorer - här finns byråns kunder</h3>${bulletList(rf.geografiska, 'Inga geografiska riskfaktorer')}
+      <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund, 'Inga riskfaktorer kopplat till kunden')}
+      <h3>Distributionskanaler</h3>${bulletList(rf.distribution, 'Inga distributionskanaler')}
       <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet, 'Inga verksamhetsspecifika riskfaktorer')}
       <h3>Riskhöjande faktorer övrigt</h3>${bulletList(rf.riskhojOvrigt, 'Inga övriga riskhöjande faktorer')}
+      ${varningsHtml}
       <h3>Risksänkande faktorer</h3>${bulletList(rf.risksankande, 'Inga risksänkande faktorer')}`;
 
   const atgarderText = (data.atgarder || '').trim()
     || 'Inga specifika risksänkande åtgärder planerade på kunden';
+
+  const motiveringText = (data.byransRiskbedomning || data.motivering || '').trim();
+  const riskaptitHtml = data.riskaptitUtfall
+    ? `<h2>Riskaptitbeslut</h2>
+      <div class="section">
+        <p><strong>Utfall:</strong> ${esc(data.riskaptitUtfall)}</p>
+        ${data.riskaptitDatum ? `<p><strong>Datum:</strong> ${esc(data.riskaptitDatum)}</p>` : ''}
+        ${data.riskaptitAv ? `<p><strong>Beslutat av:</strong> ${esc(data.riskaptitAv)}</p>` : ''}
+        ${data.riskaptitMotivering ? `<p><strong>Motivering:</strong> ${nl2br(data.riskaptitMotivering)}</p>` : ''}
+        ${data.uppdragsAvgorande && data.uppdragsAvgorande.length
+          ? `<p><strong>Uppdragsavgörande åtgärder:</strong></p><ul style="margin:0;padding-left:1.2rem;">${
+              data.uppdragsAvgorande.map((t) => `<li>${esc(t)}</li>`).join('')
+            }</ul>`
+          : ''}
+      </div>`
+    : '';
 
   const pepStatus = (data.pepStatus || '').trim();
   const pepDetaljer = (data.pepDetaljer || '').trim();
@@ -7923,7 +8040,7 @@ function buildKundRiskbedomningPdfHtml(data) {
       </p>
       ${data.foreslagenLabel ? `<p>Beräknad residual risk: ${esc(data.foreslagenLabel)}${data.foreslagenDrivande ? `, drivs av: ${esc(data.foreslagenDrivande)}` : ''}</p>` : ''}
 
-      ${data.motivering ? section('Motivering', nl2br(data.motivering)) : ''}
+      ${motiveringText ? section('Byråns bedömning av kunden', nl2br(motiveringText)) : section('Byråns bedömning av kunden', '—')}
 
       <h2>Riskfaktorer</h2>
       <div class="section">${riskfaktorerHtml}</div>
@@ -7931,10 +8048,10 @@ function buildKundRiskbedomningPdfHtml(data) {
       ${data.kommentarRisk ? section('Kommentar till riskfaktorerna ovan', nl2br(data.kommentarRisk)) : ''}
       ${data.risksankandeAtgarder ? section('Risksänkande åtgärder', nl2br(data.risksankandeAtgarder)) : ''}
 
-      <h2>Byråns bedömning av kunden</h2>
-      <div class="section">${data.byransRiskbedomning ? nl2br(data.byransRiskbedomning) : '—'}</div>
       <h2>Åtgärder</h2>
       <div class="section">${nl2br(atgarderText)}</div>
+
+      ${riskaptitHtml}
 
       <h2>PEP &amp; sanktioner</h2>
       <div class="section">
@@ -8091,6 +8208,22 @@ function pdfRiskFactorNames(list) {
   });
 }
 
+/** Explicit "Inga …"-val (riskfaktorer/varningsflaggor) som ska synas i PDF */
+function pdfNoneOptionLabels(list) {
+  return pdfFmtList(list)
+    .map((item) => String(item || '').trim())
+    .filter((item) => KundRiskprofil.isNoneRiskOption(item) || /^inga\s+(varningsflaggor|riskfaktorer)\b/i.test(item))
+    .map((item) => OvrigaRiskKategorier.displayNoneLabel(item));
+}
+
+function pdfHasIngaRiskfaktorerForCategory(list, categoryId) {
+  return OvrigaRiskKategorier.hasNoneOption(pdfFmtList(list), 'riskfaktorer', categoryId);
+}
+
+function pdfHasBareInga(list) {
+  return pdfFmtList(list).some((item) => KundRiskprofil.isIngaLabel(item));
+}
+
 const PDF_RISK_TYP_MAP = {
   'Geografiska riskfaktorer': 'geografiska',
   'Geografisk riskfaktorer - här finns byråns kunder': 'geografiska',
@@ -8124,6 +8257,35 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
     const custByraId = f['Byrå ID'] || f.Byrå || '';
     if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
       return res.status(403).json({ error: 'Ingen behörighet för denna kund' });
+    }
+
+    // Gate: dokumentera kräver ifylld residual, dimensioner, motivering m.m.
+    let linkedForGate = [];
+    try {
+      const linkedIds = (f['risker kopplat till tjänster'] || []).filter(isAirtableRecordIdStr);
+      if (linkedIds.length) {
+        const formula = encodeURIComponent('OR(' + linkedIds.map((id) => `RECORD_ID()="${id}"`).join(',') + ')');
+        const riskRes = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${RISKER_KUND_TABLE}?filterByFormula=${formula}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+        );
+        linkedForGate = riskRes.data.records || [];
+      }
+    } catch (gateErr) {
+      console.warn('riskbedomning-pdf gate linked risks:', gateErr.message);
+    }
+    let byraTemplates = [];
+    try {
+      byraTemplates = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId || custByraId, airtableAccessToken, airtableBaseId);
+    } catch (_) {}
+    const dimensionStatus = RiskDimensioner.assessCustomerDimensions({
+      fields: f,
+      linkedRiskRecords: linkedForGate,
+      byraTemplates
+    });
+    const gate = riskbedomningDokumentera.canDokumentera(f, { dimensionStatus });
+    if (!gate.ok) {
+      return res.status(400).json({ error: gate.error, missing: gate.missing });
     }
 
     const kundnamn = f['Namn'] || f['Företagsnamn'] || 'Okänd';
@@ -8177,6 +8339,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         .map((item) => [normTjanstKey(item.namn), item])
     );
 
+    const riskhojRaw = filterRiskChipList(f['Riskhöjande faktorer övrigt']);
     const riskfaktorer = {
       tjanster: (tjansterItems && tjansterItems.length)
         ? tjansterItems.map((item) => Object.assign({ namn: item.namn }, KundRiskprofil.residualDisplayOf(item)))
@@ -8193,8 +8356,12 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
           markKind: KundRiskprofil.markKindForRiskhojande(namn, riskhojChecked, katalog)
         });
       }),
+      varningsflaggor: [],
       risksankande: pdfRiskFactorNames(pdfFmtList(f['Risksänkande faktorer']))
     };
+    if (!riskfaktorer.risksankande.length && pdfHasBareInga(f['Risksänkande faktorer'])) {
+      riskfaktorer.risksankande = [];
+    }
 
     const linkedRiskIds = (f['risker kopplat till tjänster'] || []).filter((id) => {
       if (!isAirtableRecordIdStr(id)) return false;
@@ -8223,6 +8390,28 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       for (const key of ['geografiska', 'kund', 'distribution', 'verksamhet']) {
         riskfaktorer[key].sort((a, b) => String(a.namn || a).localeCompare(String(b.namn || b), 'sv'));
       }
+    }
+
+    // Explicit "Inga riskfaktorer"/"Inga varningsflaggor" från A/B/C-korten → syns i PDF
+    const catDim = [
+      { cat: 'samarbete', dim: 'distribution' },
+      { cat: 'kunden', dim: 'kund' },
+      { cat: 'verksamheten', dim: 'verksamhet' }
+    ];
+    for (const { cat, dim } of catDim) {
+      if (!riskfaktorer[dim].length && pdfHasIngaRiskfaktorerForCategory(riskhojRaw, cat)) {
+        // Lämna tom lista så emptyLabel-chip visas i PDF
+        riskfaktorer[dim] = [];
+      }
+    }
+    const varningNone = pdfFmtList(riskhojRaw)
+      .filter((label) => OvrigaRiskKategorier.isIngaVarningsflaggor(label))
+      .map((label) => OvrigaRiskKategorier.displayNoneLabel(label));
+    const varningUnique = [...new Set(varningNone)];
+    riskfaktorer.varningsflaggor = [];
+    riskfaktorer.varningsflaggorExplicitNone = varningUnique.length > 0;
+    if (!riskfaktorer.riskhojOvrigt.length && (pdfHasBareInga(riskhojRaw) || varningUnique.length)) {
+      riskfaktorer.riskhojOvrigt = [];
     }
 
     const pdfParts = [];
@@ -8263,6 +8452,25 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         : 'Dilisense-screening utförd (inga registrerade träffar)';
     }
 
+    const riskaptitUtfallRaw = String(f[Riskaptit.FIELDS.BESLUT_UTFALL] || '').trim();
+    const riskaptitUtfall = riskaptitUtfallRaw
+      ? (Riskaptit.utfallLabel(riskaptitUtfallRaw) || riskaptitUtfallRaw)
+      : '';
+    let uppdragsAvgorande = [];
+    try {
+      const rawUa = f['Uppdragsavgörande åtgärder'] || f['Riskaptit schemalagda åtgärder'];
+      if (Array.isArray(rawUa)) uppdragsAvgorande = rawUa.map((x) => String(x || '').trim()).filter(Boolean);
+      else if (typeof rawUa === 'string' && rawUa.trim()) {
+        try {
+          const parsed = JSON.parse(rawUa);
+          if (Array.isArray(parsed)) uppdragsAvgorande = parsed.map((x) => String(x?.text || x || '').trim()).filter(Boolean);
+          else uppdragsAvgorande = rawUa.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+        } catch (_) {
+          uppdragsAvgorande = rawUa.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+        }
+      }
+    } catch (_) {}
+
     const riskData = {
       kundnamn, orgnr, datumStr, exportStamp,
       nivaLabel, nivaClass,
@@ -8274,6 +8482,13 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
       risksankandeAtgarder: pdfToText(f['Risksänkande åtgjärder']),
       byransRiskbedomning: pdfToText(f['Byrans riskbedomning']),
       atgarder: pdfToText(f['Atgarder riskbedomning']),
+      riskaptitUtfall,
+      riskaptitMotivering: pdfToText(f[Riskaptit.FIELDS.BESLUT_MOTIVERING]),
+      riskaptitDatum: f[Riskaptit.FIELDS.BESLUT_DATUM]
+        ? new Date(f[Riskaptit.FIELDS.BESLUT_DATUM]).toLocaleDateString('sv-SE')
+        : '',
+      riskaptitAv: pdfToText(f[Riskaptit.FIELDS.BESLUT_AV]),
+      uppdragsAvgorande,
       pepList,
       pepStatus: pepStatusFromKyc,
       pepDetaljer: pepDetaljerFromKyc,

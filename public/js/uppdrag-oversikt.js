@@ -32,9 +32,11 @@
     statusEjKlara: document.getElementById('uppdrag-status-ej-klara')
   };
 
-  const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration', 'Övriga'];
+  const TYPES = ['Löneuppdrag', 'Momsredovisning', 'Bokslut', 'Deklaration', 'Uppdragsavgörande åtgärder', 'Övriga'];
   const LONE_TAB = 'Löneuppdrag';
   const OVRIGA_TAB = 'Övriga';
+  const UPPDRAGS_AVGORANDE_TAB = 'Uppdragsavgörande åtgärder';
+  const UPPDRAGS_AVGORANDE_NAMN = 'Uppdragsavgörande åtgärder';
 
   function isLoneTyp(typ) {
     return !!(window.LonePeriod && LonePeriod.isLoneTyp(typ));
@@ -46,9 +48,21 @@
       : String(typ || '');
   }
 
-  function isOvrigaTyp(typ) {
+  function isUppdragsavgorande(recOrTyp) {
+    if (recOrTyp && typeof recOrTyp === 'object') {
+      const f = recOrTyp.fields || recOrTyp;
+      const namn = String(f.Namn || f.namn || '').trim();
+      const typ = String(f.Typ || recOrTyp.typ || '').trim();
+      return namn === UPPDRAGS_AVGORANDE_NAMN || typ === UPPDRAGS_AVGORANDE_TAB;
+    }
+    return String(recOrTyp || '').trim() === UPPDRAGS_AVGORANDE_TAB;
+  }
+
+  function isOvrigaTyp(typ, rec) {
     const t = String(typ || '').trim();
     if (!t) return false;
+    if (rec && isUppdragsavgorande(rec)) return false;
+    if (t === UPPDRAGS_AVGORANDE_TAB) return false;
     if (window.UppdragTyp && UppdragTyp.isStandardUppdragTyp) {
       return !UppdragTyp.isStandardUppdragTyp(t);
     }
@@ -62,10 +76,13 @@
     return typDisplayLabel(typ);
   }
 
-  function matchesActiveType(typ) {
+  function matchesActiveType(typ, rec) {
     const t = String(typ || '').trim();
     if (activeType === LONE_TAB) return isLoneTyp(t);
-    if (activeType === OVRIGA_TAB) return isOvrigaTyp(t);
+    if (activeType === UPPDRAGS_AVGORANDE_TAB) {
+      return rec ? isUppdragsavgorande(rec) : isUppdragsavgorande(t);
+    }
+    if (activeType === OVRIGA_TAB) return isOvrigaTyp(t, rec);
     return t === activeType;
   }
 
@@ -878,13 +895,13 @@
     const instances = (viewMode === 'open') ? buildOpenInstances(allRecords) : buildInstances(allRecords);
     const filtered = (viewMode === 'open')
       ? instances
-          .filter(x => matchesActiveType(x?.typ))
+          .filter(x => matchesActiveType(x?.typ, x?.record))
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
           .filter(x => matchesStatusFilter(x))
           .sort((a, b) => String(a.deadline || '').localeCompare(String(b.deadline || '')))
       : instances
-          .filter(x => matchesActiveType(x?.typ))
+          .filter(x => matchesActiveType(x?.typ, x?.record))
           .filter(x => recordMatchesSearch(x.record))
           .filter(x => x.month === monthKey(monthCursor))
           .filter(x => matchesStatusFilter(x))
