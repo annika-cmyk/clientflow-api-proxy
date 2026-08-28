@@ -633,6 +633,26 @@ class CustomerCardManager {
                             ${utfallOpts}
                         </select>
                     </div>
+                    <div id="riskaptit-skarpta-panel" class="form-group" hidden>
+                        <div class="risker-vald-section-label">Skärpta åtgärder</div>
+                        <label class="riskf-check-item" style="margin-bottom:0.4rem;">
+                            <input type="radio" name="riskaptit-atgard-lage" value="motivering" checked>
+                            <span class="tjanst-check-box"></span>
+                            <span class="tjanst-check-copy"><span class="tjanst-check-label">Bara motivering</span></span>
+                        </label>
+                        <label class="riskf-check-item" style="margin-bottom:0.75rem;">
+                            <input type="radio" name="riskaptit-atgard-lage" value="schemalagg">
+                            <span class="tjanst-check-box"></span>
+                            <span class="tjanst-check-copy"><span class="tjanst-check-label">Schemalägg åtgärd (skapar engångsuppdrag)</span></span>
+                        </label>
+                        <div id="riskaptit-schemalagg-fields" hidden>
+                            <label for="riskaptit-deadline">Klart senast</label>
+                            <input type="date" id="riskaptit-deadline" class="form-input" style="margin-bottom:0.65rem;">
+                            <div class="risker-vald-section-label">Uppgifter</div>
+                            <div id="riskaptit-uppgifter-list"></div>
+                            <button type="button" class="btn btn-ghost btn-sm" id="riskaptit-add-uppgift"><i class="fas fa-plus"></i> Lägg till uppgift</button>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="riskaptit-motivering">Motivering (minst ${minLen} tecken)</label>
                         <textarea id="riskaptit-motivering" class="kunduppgifter-input" rows="5" required minlength="${minLen}" placeholder="Dokumentera ställningstagandet om fortsatt affärsförbindelse..."></textarea>
@@ -650,6 +670,39 @@ class CustomerCardManager {
         modal.querySelector('.modal-close')?.addEventListener('click', close);
         modal.querySelector('#riskaptit-beslut-cancel')?.addEventListener('click', close);
         modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+        const syncSkarpta = () => {
+            const utfall = document.getElementById('riskaptit-utfall')?.value || '';
+            const panel = document.getElementById('riskaptit-skarpta-panel');
+            const show = utfall === 'Fortsätter_med_skärpta_åtgärder';
+            if (panel) panel.hidden = !show;
+            syncSchemalagg();
+        };
+        const syncSchemalagg = () => {
+            const lage = modal.querySelector('input[name="riskaptit-atgard-lage"]:checked')?.value || 'motivering';
+            const fieldsEl = document.getElementById('riskaptit-schemalagg-fields');
+            const showPanel = !(document.getElementById('riskaptit-skarpta-panel')?.hidden);
+            if (fieldsEl) fieldsEl.hidden = !(showPanel && lage === 'schemalagg');
+        };
+        const addUppgift = (value = '') => {
+            const list = document.getElementById('riskaptit-uppgifter-list');
+            if (!list) return;
+            const row = document.createElement('div');
+            row.className = 'form-group';
+            row.style.display = 'flex';
+            row.style.gap = '0.4rem';
+            row.style.marginBottom = '0.4rem';
+            row.innerHTML = `<input type="text" class="form-input riskaptit-uppgift-input" placeholder="Vad ska göras?" value="${this._esc(value)}" style="flex:1;">
+                <button type="button" class="btn btn-ghost btn-sm" title="Ta bort"><i class="fas fa-times"></i></button>`;
+            row.querySelector('button')?.addEventListener('click', () => row.remove());
+            list.appendChild(row);
+        };
+        document.getElementById('riskaptit-utfall')?.addEventListener('change', syncSkarpta);
+        modal.querySelectorAll('input[name="riskaptit-atgard-lage"]').forEach((el) => {
+            el.addEventListener('change', syncSchemalagg);
+        });
+        document.getElementById('riskaptit-add-uppgift')?.addEventListener('click', () => addUppgift());
+        addUppgift();
+        syncSkarpta();
         modal.querySelector('#riskaptit-beslut-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.saveRiskaptitBeslut();
@@ -670,6 +723,21 @@ class CustomerCardManager {
             }
             return;
         }
+        const atgardLage = document.querySelector('input[name="riskaptit-atgard-lage"]:checked')?.value || 'motivering';
+        const deadline = document.getElementById('riskaptit-deadline')?.value || '';
+        const uppgifter = [...document.querySelectorAll('.riskaptit-uppgift-input')]
+            .map((el) => (el.value || '').trim())
+            .filter(Boolean);
+        if (utfall === 'Fortsätter_med_skärpta_åtgärder' && atgardLage === 'schemalagg') {
+            if (!deadline) {
+                if (errEl) { errEl.textContent = 'Ange datum när åtgärden ska vara klar.'; errEl.classList.add('is-visible'); }
+                return;
+            }
+            if (!uppgifter.length) {
+                if (errEl) { errEl.textContent = 'Lägg till minst en uppgift.'; errEl.classList.add('is-visible'); }
+                return;
+            }
+        }
         const saveBtn = document.getElementById('riskaptit-beslut-save');
         if (saveBtn) {
             saveBtn.disabled = true;
@@ -677,12 +745,20 @@ class CustomerCardManager {
         }
         try {
             const baseUrl = window.apiConfig?.baseUrl || '';
+            const payload = { utfall, motivering };
+            if (utfall === 'Fortsätter_med_skärpta_åtgärder') {
+                payload.atgardLage = atgardLage;
+                if (atgardLage === 'schemalagg') {
+                    payload.deadline = deadline;
+                    payload.uppgifter = uppgifter;
+                }
+            }
             const res = await fetch(`${baseUrl}/api/kunddata/${this.customerId}/riskaptit-beslut`, {
                 method: 'POST',
                 ...(typeof getAuthOptsKundkort === 'function'
                     ? getAuthOptsKundkort()
                     : { credentials: 'include', headers: { 'Content-Type': 'application/json' } }),
-                body: JSON.stringify({ utfall, motivering })
+                body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -691,7 +767,14 @@ class CustomerCardManager {
             }
             this.closeRiskaptitBeslutModal();
             this._renderRiskaptitBanner(this.customerData?.fields || {});
-            this.showNotification('Riskaptitbeslut registrerat', 'success');
+            if (typeof this.renderOvrigKYCBase === 'function' && document.getElementById('ovrigkyc-content')) {
+                this.renderOvrigKYCBase();
+            }
+            const n = Array.isArray(data.skapadeUppdrag) ? data.skapadeUppdrag.length : 0;
+            this.showNotification(
+                n ? `Riskaptitbeslut registrerat (${n} engångsuppdrag skapade)` : 'Riskaptitbeslut registrerat',
+                'success'
+            );
         } catch (err) {
             if (errEl) {
                 errEl.textContent = err.message || 'Kunde inte spara beslutet.';
@@ -8763,12 +8846,33 @@ class CustomerCardManager {
             ? `<div class="risker-vald-section-label">Åtgärder</div>
                         <div class="risker-vald-desc" id="ai-rb-atg-display" style="white-space:pre-wrap;">${this._esc(atgarder)}</div>`
             : '';
-        const empty = !motivering && !atgarder && !residual
+        const f = this.customerData?.fields || {};
+        const raUtfall = f['Riskaptit beslut utfall'];
+        const raMot = f['Riskaptit beslut motivering'];
+        let uaList = [];
+        try {
+            const raw = f['Uppdragsavgörande åtgärder'];
+            if (typeof raw === 'string' && raw.trim()) uaList = JSON.parse(raw);
+            else if (Array.isArray(raw)) uaList = raw;
+        } catch (_) { uaList = []; }
+        const riskaptitBlock = raUtfall
+            ? `<div class="risker-vald-section-label">Riskaptitbeslut</div>
+                <div class="risker-vald-desc">
+                    <div><strong>${this._esc((window.Riskaptit && Riskaptit.utfallLabel(raUtfall)) || raUtfall)}</strong>
+                    ${f['Riskaptit beslut datum'] ? ` · ${this._esc(String(f['Riskaptit beslut datum']).slice(0, 10))}` : ''}</div>
+                    ${raMot ? `<div style="margin-top:0.35rem;white-space:pre-wrap;">${this._esc(raMot)}</div>` : ''}
+                    ${Array.isArray(uaList) && uaList.length
+                        ? `<ul style="margin:0.4rem 0 0 1.1rem;">${uaList.map((u) => `<li>${this._esc(u.text || u)}${u.deadline ? ` <span class="uppdrag-muted">(senast ${this._esc(u.deadline)})</span>` : ''}</li>`).join('')}</ul>`
+                        : ''}
+                </div>`
+            : '';
+        const empty = !motivering && !atgarder && !residual && !raUtfall
             ? '<p class="lead-empty">Ingen bedömning gjord ännu. Välj bedömd residual, eller låt AI analysera.</p>'
             : '';
         return `${kalla}
                         ${motiveringBlock}
                         ${atgarderBlock}
+                        ${riskaptitBlock}
                         ${empty}`;
     }
 
@@ -16301,6 +16405,40 @@ class CustomerCardManager {
     async dokumenteraRiskbedomning() {
         const btn = document.getElementById('btn-dokumentera-riskbedomning');
         if (!btn || !this.customerId) return;
+        const fields = this.customerData?.fields || {};
+        const dim = this._dimensionStatus(fields);
+        let gate = { ok: true, missing: [], error: '' };
+        if (window.KundRiskprofil) {
+            // Client-side mirror of server gate
+            const missing = [];
+            const residual = (window.KundRiskprofil.readResidual && KundRiskprofil.readResidual(fields))
+                || String(fields.Riskniva || fields['sammanlagd risk'] || '').trim();
+            if (!residual) missing.push('Bedömd residualrisk');
+            if (dim && dim.komplett === false) {
+                missing.push('Alla obligatoriska riskdimensioner (A/B/C)');
+            }
+            const motivering = (KundRiskprofil.readMotivering && KundRiskprofil.readMotivering(fields))
+                || String(fields['Byrans riskbedomning'] || '').trim();
+            if (!motivering || motivering.length < 10) missing.push('Motivering (byråns bedömning av kunden)');
+            const foreslagen = (KundRiskprofil.readForeslagen && KundRiskprofil.readForeslagen(fields)) || '';
+            if (residual && foreslagen && residual !== foreslagen) {
+                const avvikelse = (KundRiskprofil.readAvvikelseMotivering && KundRiskprofil.readAvvikelseMotivering(fields)) || '';
+                if (!avvikelse) missing.push('Motivering till avvikelse från beräknad nivå');
+            }
+            if ((residual === 'Hög' || residual === 'Oacceptabel') && window.Riskaptit) {
+                const ev = Riskaptit.evaluateCustomer(fields);
+                if (!ev?.hasValidDecision) missing.push('Dokumenterat riskaptitbeslut');
+            }
+            gate = {
+                ok: missing.length === 0,
+                missing,
+                error: missing.length ? ('Fyll i följande innan du dokumenterar: ' + missing.join('; ')) : ''
+            };
+        }
+        if (!gate.ok) {
+            this.showNotification(gate.error, 'error');
+            return;
+        }
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar PDF...';
         try {
