@@ -84,6 +84,7 @@ const HotAmlTf = require('./public/js/hot-aml-tf');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord, sortOvriga } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./lib/inneboende-beskrivning');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
+const { formatOvrigRiskfaktorSubjectBlock } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
 const {
   resolveAssistantVectorStoreId,
@@ -23107,10 +23108,9 @@ app.post('/api/ai-ovriga-riskfaktor', authenticateToken, async (req, res) => {
 
 ${REDOVISNINGSBYRA_AI_RULES}
 
-Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst).
+Din uppgift är att föreslå innehåll för en övrig riskfaktor i byråns riskbedömning (inte kopplad till en specifik tjänst). Utgå alltid från riskfaktorns benämning — typen är bara kategori.
 
-${byraProfilBlock}TYP AV RISKFAKTOR: ${typ || '–'}
-RISKFAKTOR: ${riskfaktor}
+${byraProfilBlock}${formatOvrigRiskfaktorSubjectBlock(riskfaktor, typ)}
 ${inherentIn.level ? `Befintlig inneboende S×K: ${inherentIn.badge}` : ''}
 ${residualIn.level ? `Befintlig residual-S×K: ${residualIn.badge}` : ''}
 ${existingBlock ? `\n${existingBlock}\n` : ''}
@@ -23123,13 +23123,13 @@ ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` :
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "2-4 meningar om riskfaktorn och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "2-4 meningar om just den namngivna riskfaktorn och dess inneboende risk. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
   "ptTfRelevans": "PT, TF eller Båda",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y.",
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning.",
   "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
   "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör."${reviewMode ? `,
   "granskning": {
@@ -23179,8 +23179,8 @@ SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen e
       prompt,
       {
         instructions: byraAnalysVector
-          ? `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`
-          : `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`,
+          ? `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Utgå från riskfaktorns benämning i användarprompten — typen är bara kategori. Använd file_search enligt KUNSKAPSBAS i prompten. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`
+          : `Du är en AML/KYC-specialist på en svensk redovisningsbyrå. ${REDOVISNINGSBYRA_AI_RULES} Utgå från riskfaktorns benämning i användarprompten — typen är bara kategori. Svara endast med giltig JSON enligt formatet, ingen text utanför JSON.`,
         vectorStoreId: byraAnalysVector,
         maxWaitMs: 180000,
         pollMs: 1500,
