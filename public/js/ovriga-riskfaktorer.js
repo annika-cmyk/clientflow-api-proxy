@@ -322,7 +322,7 @@ class RiskFactorsManager {
 
     geoDisplayLabel() {
         if (this.isKundriskerPage()) {
-            return 'Geografisk riskfaktorer - här finns kundens kunder';
+            return 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
         }
         return this.geoRiskGroupLabel();
     }
