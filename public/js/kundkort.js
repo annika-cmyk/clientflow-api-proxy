@@ -2514,17 +2514,7 @@ class CustomerCardManager {
                 const resolvedAnsvarig = (window.KoringAnsvarig && KoringAnsvarig.resolveRunAnsvarig)
                     ? KoringAnsvarig.resolveRunAnsvarig(runAnsvarig, ansvarig)
                     : { name: runAnsvarig || ansvarig, inherited: !runAnsvarig && !!ansvarig };
-                const klientansvarig = String(f['Klientansvarig'] || '').trim();
-                const startdatum = toDateStr(f['Startdatum'] || '');
-                const nextDeadline = toDateStr(f['Nästa deadline'] || '');
-                const korningLabel = runRec
-                    ? (String(runRec?.fields?.['Period Label'] || '').trim() || displayTitle)
-                    : displayTitle;
-                const korningDeadline = toDateStr(runRec?.fields?.['Deadline'] || instDeadline || '');
                 const korningStart = toDateStr(runRec?.fields?.['Startdatum'] || '');
-                const autoSummary = autoOn
-                    ? `Utskick dag ${Number.isFinite(sendDayNum) ? sendDayNum : '—'}, deadline dag ${Number.isFinite(deadlineDayNum) ? deadlineDayNum : '—'}, ${this._esc(String(f['Underlagsperiod'] || 'Föregående månad'))}`
-                    : '';
                 const docsKey = `${t}:${mk}`;
                 const docsDeadlineKey = String(instDeadline || '').slice(0, 10);
                 const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);
