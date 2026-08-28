@@ -36,9 +36,10 @@ class RiskFactorsManager {
         const byraGeo = (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder';
         const motpartGeo = (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
         if (this.isKundriskerPage()) {
+            // Kundrisker: kundresidual + motparts-geo (inte byråns hemvist)
             return typ === kundTyp || typ === motpartGeo;
         }
-        // Övriga riskfaktorer: distribution, verksamhet + byråns geografiska hemvist
+        // Övriga: distribution, verksamhet + byråns geografiska hemvist (inte motparts-geo)
         return typ !== kundTyp && typ !== motpartGeo;
     }
 
@@ -413,6 +414,11 @@ class RiskFactorsManager {
             ? Kat.airtableTypForLinkedKundResidual(namn)
             : '';
         const raw = normalized || fields['Typ av riskfaktor'] || 'Övriga riskfaktorer';
+        const Geo = window.GeoRiskTyper;
+        // Geo: gruppera efter namnklassning så byrå/motpart skiljs innan Airtable-migrering hunnit klart
+        if (Geo && Geo.isGeoTyp && Geo.isGeoTyp(raw) && Geo.effectiveTyp) {
+            return Geo.effectiveTyp(fields);
+        }
         const RD = window.RiskDimensioner;
         return RD && RD.normalizeTyp ? RD.normalizeTyp(raw) : raw;
     }

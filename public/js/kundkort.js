@@ -7037,12 +7037,22 @@ class CustomerCardManager {
 
     _riskerForTypId(typId, risker) {
         const list = Array.isArray(risker) ? risker : [];
+        const Geo = window.GeoRiskTyper;
         const RD = window.RiskDimensioner;
-        if (RD && RD.typMatchesDimension) {
-            return list.filter((r) => RD.typMatchesDimension(r.fields && r.fields['Typ av riskfaktor'], typId));
-        }
-        const match = this._riskTypMap().find((t) => t.id === typId);
-        return list.filter((r) => match && r.fields && r.fields['Typ av riskfaktor'] === match.typ);
+        return list.filter((r) => {
+            const fields = (r && r.fields) || {};
+            const stored = fields['Typ av riskfaktor'];
+            // Geo: matcha på namnklassning så hemvist/motpart skiljs innan DB-migrering
+            if (Geo && Geo.isGeoTyp && Geo.isGeoTyp(stored) && (typId === 'geografiska' || typId === 'geografiska_motparter')) {
+                const want = typId === 'geografiska_motparter' ? Geo.TYP_MOTPART : Geo.TYP_BYRA;
+                return Geo.effectiveTyp(fields) === want;
+            }
+            if (RD && RD.typMatchesDimension) {
+                return RD.typMatchesDimension(stored, typId);
+            }
+            const match = this._riskTypMap().find((t) => t.id === typId);
+            return !!(match && stored === match.typ);
+        });
     }
 
     _kycFieldForRiskerTyp(typId) {

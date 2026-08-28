@@ -11,6 +11,7 @@
   var DIM_BYRA = 'geografiska';
   var DIM_MOTPART = 'geografiska_motparter';
 
+  /* Motpart först — annars fångar «utsatt område» felaktigt leverantörsfaktorer. */
   var MOTPART_NAME_RE = [
     /^närområde$/i,
     /^naromrade$/i,
@@ -20,17 +21,23 @@
     /hög\s*korruption/i,
     /hog\s*korruption/i,
     /svag\s*kontroll/i,
+    /kunder\s*\/\s*leverant/i,
     /kunder\s*&\s*leverant/i,
     /kunder\s+och\s+leverant/i,
     /kundens\s+kunder/i,
+    /kundens\s+har\s+kunder/i,
     /leverantörer\s+finns/i,
-    /leverantorer\s+finns/i
+    /leverantorer\s+finns/i,
+    /kunder\/leverantörer\s+i\s+utsatt/i,
+    /kunder\/leverantorer\s+i\s+utsatt/i
   ];
 
   var BYRA_NAME_RE = [
     /hemvist/i,
-    /utsatt\s+område/i,
-    /utsatt\s+omrade/i,
+    /kunden\s+finns\s+i\s+särskilt\s+utsatt/i,
+    /kunden\s+har\s+verksamhet\s+i\s+särskilt\s+utsatt/i,
+    /särskilt\s+utsatt\s+område\s+i\s+sverige/i,
+    /sarskilt\s+utsatt\s+omrade\s+i\s+sverige/i,
     /byråns\s+kund/i,
     /byrans\s+kund/i
   ];
@@ -58,11 +65,11 @@
   function classifyNamn(namn) {
     var raw = trimStr(namn);
     if (!raw) return DIM_BYRA;
-    for (var i = 0; i < BYRA_NAME_RE.length; i += 1) {
-      if (BYRA_NAME_RE[i].test(raw)) return DIM_BYRA;
-    }
     for (var j = 0; j < MOTPART_NAME_RE.length; j += 1) {
       if (MOTPART_NAME_RE[j].test(raw)) return DIM_MOTPART;
+    }
+    for (var i = 0; i < BYRA_NAME_RE.length; i += 1) {
+      if (BYRA_NAME_RE[i].test(raw)) return DIM_BYRA;
     }
     return DIM_BYRA;
   }
@@ -87,6 +94,14 @@
     return typForDimension(classifyNamn(namn));
   }
 
+  /** Effektiv typ för UI: namnklassning för geo, annars sparad typ. */
+  function effectiveTyp(fields) {
+    var f = fields || {};
+    var current = trimStr(f['Typ av riskfaktor']);
+    if (isGeoTyp(current)) return targetTypForRecord(f);
+    return current;
+  }
+
   function needsTypMigration(fields) {
     var f = fields || {};
     var current = trimStr(f['Typ av riskfaktor']);
@@ -105,6 +120,7 @@
     typForDimension: typForDimension,
     dimensionForTyp: dimensionForTyp,
     targetTypForRecord: targetTypForRecord,
+    effectiveTyp: effectiveTyp,
     needsTypMigration: needsTypMigration
   };
 
