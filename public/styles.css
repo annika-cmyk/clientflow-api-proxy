@@ -9814,23 +9814,31 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 /* Aktuell körning (expanderad rad) */
 .uppdrag-korning {
-    padding: 0.15rem 0.15rem 0.25rem;
+    padding: 0.2rem 0.1rem 0.35rem;
 }
 .uppdrag-korning-header {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.85rem;
     flex-wrap: wrap;
-    margin-bottom: 0.85rem;
-    padding-bottom: 0.75rem;
+    margin-bottom: 0.35rem;
+    padding-bottom: 0.55rem;
     border-bottom: 1px solid #e2e8f0;
+}
+.uppdrag-korning-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.84rem;
+    min-height: 1.5rem;
 }
 .uppdrag-korning-title {
     display: flex;
     align-items: center;
     gap: 0.45rem;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: #0f172a;
 }
@@ -9845,7 +9853,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-korning-assign {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.2rem;
     min-width: 200px;
 }
 .uppdrag-korning-assign .form-select {
@@ -9853,13 +9861,18 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdrag-korning-blocks {
     display: grid;
-    gap: 0.75rem;
+    gap: 0;
 }
 .uppdrag-korning-block {
-    padding: 0.75rem 0.85rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #ffffff;
+    padding: 0.7rem 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    border-top: 1px solid #eef2f7;
+}
+.uppdrag-korning-block:first-child {
+    border-top: none;
+    padding-top: 0.45rem;
 }
 .uppdrag-korning-block-head {
     display: flex;
@@ -9867,11 +9880,11 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     justify-content: space-between;
     gap: 0.75rem;
     flex-wrap: wrap;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.35rem;
 }
 .uppdrag-korning-block-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.72rem;
+    margin: 0 0 0.35rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -9882,25 +9895,37 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 }
 .uppdrag-korning-block--split {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.85rem 1.25rem;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 0.85rem 1.5rem;
+}
+@media (max-width: 800px) {
+    .uppdrag-korning-block--split {
+        grid-template-columns: 1fr;
+    }
 }
 .uppdrag-korning-hint {
-    margin-top: 0.35rem;
-    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
 }
 .uppdrag-korning-inline-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
-    margin-top: 0.45rem;
+    margin-top: 0.35rem;
 }
 .uppdrag-korning-note-wrap {
-    margin-top: 0.5rem;
+    margin-top: 0.45rem;
 }
 .uppdrag-korning-docs {
-    margin-top: 0.45rem;
+    margin-top: 0.35rem;
+}
+.uppdrag-korning .uppdrag-view-text {
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+.uppdrag-korning .uppdrag-risk-check {
+    margin: 0.28rem 0;
 }
 
 /* Edit-form for grundmall */

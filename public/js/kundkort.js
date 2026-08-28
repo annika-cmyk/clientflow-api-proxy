@@ -1926,7 +1926,7 @@ class CustomerCardManager {
                     </div>
                 </div>
                 <div class="collapsible-body">
-                    <p class="uppdrag-muted" style="margin-top:0;">Öppna körningar i vald period. Ej klarmarkerade från tidigare perioder är rödmarkerade. Deadline inom 5 dagar markeras. Åtgärder enligt kundens riskbedömning måste bockas i innan klarmarkering.</p>
+                    <p class="uppdrag-muted" style="margin-top:0;">Öppna körningar i vald period. Försenade och snart förfallna markeras. Bocka i riskåtgärder innan klarmarkering.</p>
                     <div class="uppdragboard-table-wrap" style="margin-top:0.75rem;">
                         <table class="uppdragboard-table">
                             <thead>
@@ -2514,17 +2514,7 @@ class CustomerCardManager {
                 const resolvedAnsvarig = (window.KoringAnsvarig && KoringAnsvarig.resolveRunAnsvarig)
                     ? KoringAnsvarig.resolveRunAnsvarig(runAnsvarig, ansvarig)
                     : { name: runAnsvarig || ansvarig, inherited: !runAnsvarig && !!ansvarig };
-                const klientansvarig = String(f['Klientansvarig'] || '').trim();
-                const startdatum = toDateStr(f['Startdatum'] || '');
-                const nextDeadline = toDateStr(f['Nästa deadline'] || '');
-                const korningLabel = runRec
-                    ? (String(runRec?.fields?.['Period Label'] || '').trim() || displayTitle)
-                    : displayTitle;
-                const korningDeadline = toDateStr(runRec?.fields?.['Deadline'] || instDeadline || '');
                 const korningStart = toDateStr(runRec?.fields?.['Startdatum'] || '');
-                const autoSummary = autoOn
-                    ? `Utskick dag ${Number.isFinite(sendDayNum) ? sendDayNum : '—'}, deadline dag ${Number.isFinite(deadlineDayNum) ? deadlineDayNum : '—'}, ${this._esc(String(f['Underlagsperiod'] || 'Föregående månad'))}`
-                    : '';
                 const docsKey = `${t}:${mk}`;
                 const docsDeadlineKey = String(instDeadline || '').slice(0, 10);
                 const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);
@@ -2548,10 +2538,9 @@ class CustomerCardManager {
                 const riskLocked = runStatus === 'Klar';
                 let riskBlockHtml = '';
                 if (!riskRequiredAtgarder.length) {
-                    riskBlockHtml = `<div class="uppdrag-muted">Inga åtgärder i kundens riskbedömning för detta uppdrag.</div>`;
+                    riskBlockHtml = '';
                 } else {
                     riskBlockHtml = `
-                        <div class="uppdrag-muted" style="margin-bottom:0.45rem;">Bocka i innan klarmarkering. Dokumenteras per körning.</div>
                         <div class="uppdrag-riskbox-items" data-kund-risk-box="${this._esc(boardKey)}">
                             ${riskRequiredAtgarder.map((a) => {
                                 const checked = riskDoneSet.has(String(a).toLowerCase());
@@ -2569,7 +2558,7 @@ class CustomerCardManager {
                                 </label>`;
                             }).join('')}
                         </div>
-                        <div class="uppdrag-muted" data-kund-risk-status="${this._esc(boardKey)}" style="margin-top:0.35rem;"></div>`;
+                        <div class="uppdrag-muted" data-kund-risk-status="${this._esc(boardKey)}" style="margin-top:0.25rem;"></div>`;
                 }
 
                 const noteBlockHtml = (runningNote || '').toString().trim()
@@ -2603,19 +2592,33 @@ class CustomerCardManager {
                             </div>
                         </div>`;
 
+                const rutinSectionHtml = korningRutin.text
+                    ? `<section class="uppdrag-korning-block">
+                                    <h4 class="uppdrag-korning-block-title">Rutin</h4>
+                                    <div class="uppdrag-view-text">${this._esc(korningRutin.text)}</div>
+                                    ${korningRutin.source === 'grunduppdrag'
+                                        ? '<div class="uppdrag-muted uppdrag-korning-hint">Från grundmall tills körningen avslutas.</div>'
+                                        : (korningRutin.frozen
+                                            ? '<div class="uppdrag-muted uppdrag-korning-hint">Låst för avslutad körning.</div>'
+                                            : '')}
+                                </section>`
+                    : '';
+
+                const riskSectionHtml = riskBlockHtml
+                    ? `<section class="uppdrag-korning-block">
+                                    <h4 class="uppdrag-korning-block-title">Åtgärder enligt riskbedömning</h4>
+                                    ${riskBlockHtml}
+                                </section>`
+                    : '';
+
                 const detailsHtml = `
                     <div class="uppdrag-korning">
                         ${(runRec || instDeadline) ? `
                             <div class="uppdrag-korning-header">
-                                <div class="uppdrag-korning-header-main">
-                                    <div class="uppdrag-korning-title">
-                                        ${this._esc(korningLabel)}
-                                        ${korningRutin.frozen ? '<span class="uppdragboard-badge uppdragboard-badge--frozen">Avslutad</span>' : ''}
-                                    </div>
-                                    <div class="uppdrag-korning-sub">
-                                        ${korningDeadline ? `<span>Klart senast ${this._esc(fmtLong(korningDeadline))}</span>` : ''}
-                                        ${korningStart ? `<span>Start ${this._esc(fmtLong(korningStart))}</span>` : ''}
-                                    </div>
+                                <div class="uppdrag-korning-meta">
+                                    ${korningRutin.frozen ? '<span class="uppdragboard-badge uppdragboard-badge--frozen">Avslutad</span>' : ''}
+                                    ${korningStart ? `<span class="uppdrag-muted">Start ${this._esc(fmtLong(korningStart))}</span>` : ''}
+                                    ${!runRec ? '<span class="uppdrag-muted">Ingen körningsrad ännu – spara uppdraget eller generera körningar.</span>' : ''}
                                 </div>
                                 ${runRec ? `
                                   <label class="uppdrag-korning-assign">
@@ -2630,24 +2633,12 @@ class CustomerCardManager {
                                     </select>
                                     <span class="uppdrag-muted" data-kund-run-ansvarig-msg="${this._esc(runId)}"></span>
                                   </label>
-                                ` : `<div class="uppdrag-muted">Ingen körningsrad ännu – spara uppdraget eller generera körningar.</div>`}
+                                ` : ''}
                             </div>
 
                             <div class="uppdrag-korning-blocks">
-                                <section class="uppdrag-korning-block">
-                                    <h4 class="uppdrag-korning-block-title">Rutin</h4>
-                                    <div class="uppdrag-view-text">${korningRutin.text ? this._esc(korningRutin.text) : '<span class="uppdrag-muted">Ingen rutin sparad.</span>'}</div>
-                                    ${korningRutin.source === 'grunduppdrag' && korningRutin.text
-                                        ? '<div class="uppdrag-muted uppdrag-korning-hint">Hämtad från grundmall (gäller tills körningen avslutas).</div>'
-                                        : (korningRutin.frozen && korningRutin.text
-                                            ? '<div class="uppdrag-muted uppdrag-korning-hint">Låst rutin för avslutad körning.</div>'
-                                            : '')}
-                                </section>
-
-                                <section class="uppdrag-korning-block">
-                                    <h4 class="uppdrag-korning-block-title">Åtgärder enligt riskbedömning</h4>
-                                    ${riskBlockHtml}
-                                </section>
+                                ${rutinSectionHtml}
+                                ${riskSectionHtml}
 
                                 <section class="uppdrag-korning-block">
                                     <div class="uppdrag-korning-block-head">
