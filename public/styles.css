@@ -14256,6 +14256,31 @@ h5.ar-subsection-title {
 .forutsattning-titel { font-weight: 600; font-size: 0.84rem; }
 .forutsattning-uppfylld { font-size: 0.78rem; display: flex; align-items: center; gap: 0.4rem; }
 .forutsattning-motivering { margin-top: 0.35rem; }
+.forutsattning-uppdragsatgard-btn {
+    margin-top: 0.45rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    border: 1.5px solid #3b82f6;
+    background: #fff;
+    color: #1d4ed8 !important;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.12);
+}
+.forutsattning-uppdragsatgard-btn:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+    color: #1e40af !important;
+}
+.forutsattning-row--tri[data-state="ej_uppfylld"] .forutsattning-uppdragsatgard-btn {
+    color: #1d4ed8 !important;
+}
 .forutsattning-override { margin: 0.65rem 0; }
 .forutsattning-override-label { margin: 0 0 0.35rem; font-size: 0.78rem; color: #475569; }
 .forutsattning-override-scores { display: flex; gap: 0.85rem; flex-wrap: wrap; }

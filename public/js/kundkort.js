@@ -3848,7 +3848,7 @@ class CustomerCardManager {
         }).join('')}</div>`;
     }
 
-    _showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder }) {
+    _showUppdragSetupModal({ missingTypes, byraUsers, riskAtgarder, preselectTyp, preselectRiskTexts, onCreated, title } = {}) {
         const existing = document.getElementById('uppdrag-setup-modal');
         if (existing) existing.remove();
 
@@ -3861,23 +3861,36 @@ class CustomerCardManager {
         const handlaggareOptHtml = this._userSelectOptions(byraUsers, currentUserName, 'Välj handläggare');
         const klientansvarigOptHtml = this._userSelectOptions(byraUsers, defaultKlient, 'Välj klientansvarig');
 
-        const riskChoicesHtml = (riskAtgarder || []).map(a => {
+        const prechecked = new Set((preselectRiskTexts || []).map((t) => String(t || '').trim()).filter(Boolean));
+        const riskList = [...(riskAtgarder || [])];
+        prechecked.forEach((t) => {
+            if (!riskList.some((a) => String(a).trim() === t)) riskList.unshift(t);
+        });
+        const riskChoicesHtml = riskList.map(a => {
+            const checked = prechecked.has(String(a).trim()) ? ' checked' : '';
             return `<label style="display:flex; gap:0.5rem; align-items:flex-start; margin:0.25rem 0;">
-                <input type="checkbox" class="uppdrag-risk-cb" value="${this._esc(a)}">
+                <input type="checkbox" class="uppdrag-risk-cb" value="${this._esc(a)}"${checked}>
                 <span>${this._esc(a)}</span>
             </label>`;
         }).join('') || `<div style="color:#94a3b8;">Inga åtgärder hittades i kundens riskbedömning.</div>`;
 
         const egetTyp = (window.UppdragTyp && UppdragTyp.EGET_UPPDRAG_TYP) || 'Eget uppdrag';
-        const typeOptionsHtml = (missingTypes || []).map(t => {
+        const typeSet = [];
+        (missingTypes || []).forEach((t) => {
+            const v = String(t || '').trim();
+            if (v && !typeSet.includes(v)) typeSet.push(v);
+        });
+        const wantTyp = String(preselectTyp || '').trim();
+        if (wantTyp && !typeSet.includes(wantTyp)) typeSet.unshift(wantTyp);
+        const typeOptionsHtml = typeSet.map(t => {
             const label = this._uppdragTypLabel(t);
-            return `<option value="${this._esc(t)}">${this._esc(label)}</option>`;
+            return `<option value="${this._esc(t)}"${wantTyp === t ? ' selected' : ''}>${this._esc(label)}</option>`;
         }).join('') + `<option value="${this._esc(egetTyp)}">Eget uppdrag (fritext)</option>`;
 
         modal.innerHTML = `
             <div class="modal-box" style="max-width:760px; width:96vw; max-height:90vh;">
                 <div class="modal-header">
-                    <h3><i class="fas fa-briefcase"></i> Skapa uppdrag</h3>
+                    <h3><i class="fas fa-briefcase"></i> ${this._esc(title || 'Skapa uppdrag')}</h3>
                     <button class="modal-close" type="button" onclick="document.getElementById('uppdrag-setup-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body" style="overflow:auto;">
@@ -4202,6 +4215,17 @@ class CustomerCardManager {
                 document.getElementById('uppdrag-setup-modal')?.remove();
                 if (data.warning) this.showNotification(data.warning, 'warning');
                 this._notifyUppdragRunsEnsure(data.runsEnsure, 'Uppdrag skapat');
+                if (data.record) {
+                    this._uppdragRecords = Array.isArray(this._uppdragRecords) ? this._uppdragRecords : [];
+                    const idx = this._uppdragRecords.findIndex((r) => r.id === data.record.id);
+                    if (idx >= 0) this._uppdragRecords[idx] = data.record;
+                    else this._uppdragRecords.push(data.record);
+                }
+                if (typeof onCreated === 'function') {
+                    try { await onCreated(data.record || null, data); } catch (cbErr) {
+                        console.warn('uppdrag onCreated:', cbErr);
+                    }
+                }
                 this.loadUppdrag();
             } catch (e) {
                 this.showNotification(e.message || 'Kunde inte skapa uppdrag', 'error');
@@ -8161,8 +8185,14 @@ class CustomerCardManager {
             const state = row.triState || (TF ? TF.triState(row.uppfylld) : 'ej_bedomd');
             const needMot = state === 'ej_uppfylld';
             const desc = row.beskrivning ? `<p class="forutsattning-desc">${this._esc(row.beskrivning)}</p>` : '';
+            const atgardText = TF && TF.buildUppdragsatgardText
+                ? TF.buildUppdragsatgardText(row)
+                : ('Kontrollera manuellt: ' + (row.titel || ''));
+            const atgardTyp = TF && TF.foreslaUppdragsTyp
+                ? TF.foreslaUppdragsTyp(g.namn)
+                : 'Bokslut';
             return `
-                    <div class="forutsattning-row forutsattning-row--tri" data-tjanst-id="${sid}" data-atgard-key="${this._esc(row.key)}" data-state="${state}">
+                    <div class="forutsattning-row forutsattning-row--tri" data-tjanst-id="${sid}" data-atgard-key="${this._esc(row.key)}" data-state="${state}" data-tjanst-namn="${this._esc(g.namn || '')}" data-titel="${this._esc(row.titel || '')}" data-atgard-text="${this._esc(atgardText)}" data-atgard-typ="${this._esc(atgardTyp)}">
                         <div class="forutsattning-row-top">
                             <button type="button" class="forutsattning-check" aria-pressed="${state === 'uppfylld' ? 'true' : 'false'}" title="Görs hos kunden" onclick="event.stopPropagation(); customerCardManager._setForutsattningTri(this,'uppfylld')">
                                 <span class="forutsattning-check-box" aria-hidden="true"></span>
@@ -8176,6 +8206,10 @@ class CustomerCardManager {
                         </div>
                         ${desc}
                         <textarea class="kunduppgifter-input forutsattning-motivering" rows="2" placeholder="Varför görs inte åtgärden?" ${needMot ? '' : 'hidden'}>${this._esc(row.motivering)}</textarea>
+                        <button type="button" class="btn btn-ghost btn-sm forutsattning-uppdragsatgard-btn" ${needMot ? '' : 'hidden'}
+                            onclick="event.stopPropagation(); customerCardManager.createUppdragsatgardFromRow(this)">
+                            <i class="fas fa-link"></i> Skapa uppdragsåtgärd
+                        </button>
                     </div>`;
         }).join('');
         const ov = assess.override || {};
@@ -8246,6 +8280,8 @@ class CustomerCardManager {
         if (nej) nej.setAttribute('aria-pressed', next === 'ej_uppfylld' ? 'true' : 'false');
         const area = row.querySelector('.forutsattning-motivering');
         if (area) area.hidden = next !== 'ej_uppfylld';
+        const atgardBtn = row.querySelector('.forutsattning-uppdragsatgard-btn');
+        if (atgardBtn) atgardBtn.hidden = next !== 'ej_uppfylld';
         this._refreshTjanstForutsattningPreview(row.closest('.forutsattning-group'));
     }
 
@@ -10103,6 +10139,66 @@ class CustomerCardManager {
         return this._uppdragRecords;
     }
 
+    async createUppdragsatgardFromRow(btn) {
+        const row = btn && btn.closest('.forutsattning-row');
+        const TF = window.TjanstForutsattning;
+        if (!row || !TF) return;
+        const text = String(row.getAttribute('data-atgard-text') || '').trim()
+            || (TF.buildUppdragsatgardText
+                ? TF.buildUppdragsatgardText({ titel: row.getAttribute('data-titel') })
+                : '');
+        const typ = String(row.getAttribute('data-atgard-typ') || '').trim()
+            || (TF.foreslaUppdragsTyp
+                ? TF.foreslaUppdragsTyp(row.getAttribute('data-tjanst-namn'))
+                : 'Bokslut');
+        if (!text) {
+            this.showNotification('Kunde inte skapa åtgärdstext.', 'error');
+            return;
+        }
+        const pending = [{
+            text,
+            typ,
+            titel: row.getAttribute('data-titel') || '',
+            tjanstNamn: row.getAttribute('data-tjanst-namn') || '',
+            key: row.getAttribute('data-atgard-key') || ''
+        }];
+        const prevHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kopplar...';
+        try {
+            await this._ensureUppdragRecords();
+            const existing = this._findUppdragForTyp(typ);
+            if (existing) {
+                await this._applyUppdragsatgarder(pending);
+                return;
+            }
+            const byraUsers = await this._ensureByraUsers();
+            const riskAtgarder = typeof this._getRiskAtgarderList === 'function'
+                ? this._getRiskAtgarderList()
+                : [];
+            this._showUppdragSetupModal({
+                missingTypes: [typ],
+                byraUsers,
+                riskAtgarder,
+                preselectTyp: typ,
+                preselectRiskTexts: [text],
+                title: 'Skapa uppdrag för uppdragsåtgärd',
+                onCreated: async () => {
+                    await this._ensureUppdragRecords();
+                    // Invalidate cache so we pick up the new uppdrag
+                    this._uppdragRecords = null;
+                    await this._ensureUppdragRecords();
+                    await this._applyUppdragsatgarder(pending);
+                }
+            });
+        } catch (err) {
+            this.showNotification(err.message || 'Kunde inte skapa uppdragsåtgärd', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = prevHtml;
+        }
+    }
+
     async _maybeCreateUppdragsatgarder(state) {
         const TF = window.TjanstForutsattning;
         if (!TF || !TF.pendingUppdragsatgarder) return;
@@ -10195,11 +10291,38 @@ class CustomerCardManager {
             }
         }
         if (missing.length) {
-            this.showNotification(
-                'Ingen ' + missing.map((m) => m.typ).join('/') +
-                '-uppdrag finns ännu. Åtgärden ligger i riskbedömningens åtgärdslista och kan kopplas när uppdraget skapas.',
-                'warning'
+            const first = missing[0];
+            const ok = window.confirm(
+                `Ingen ${missing.map((m) => m.typ).join('/')} finns ännu.\n\n` +
+                'Vill du skapa uppdraget nu så att åtgärden kan kopplas till uppdragskörningen?'
             );
+            if (ok) {
+                const byraUsers = await this._ensureByraUsers();
+                const riskAtgarder = typeof this._getRiskAtgarderList === 'function'
+                    ? this._getRiskAtgarderList()
+                    : [];
+                const texts = missing.flatMap((m) => m.texts);
+                this._showUppdragSetupModal({
+                    missingTypes: missing.map((m) => m.typ),
+                    byraUsers,
+                    riskAtgarder,
+                    preselectTyp: first.typ,
+                    preselectRiskTexts: texts,
+                    title: 'Skapa uppdrag för uppdragsåtgärd',
+                    onCreated: async () => {
+                        this._uppdragRecords = null;
+                        await this._ensureUppdragRecords();
+                        await this._applyUppdragsatgarder(
+                            missing.flatMap((m) => m.texts.map((text) => ({ text, typ: m.typ })))
+                        );
+                    }
+                });
+            } else {
+                this.showNotification(
+                    'Åtgärden ligger i riskbedömningens åtgärdslista och kan kopplas när uppdraget skapas.',
+                    'warning'
+                );
+            }
         }
     }
 
