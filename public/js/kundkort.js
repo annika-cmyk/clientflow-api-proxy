@@ -5397,12 +5397,19 @@ class CustomerCardManager {
                     </div>
                     <i class="fas fa-chevron-down collapsible-chevron"></i>
                 </div>
-                <div class="collapsible-body">
+                <div class="collapsible-body" style="position:relative;">
                     <div class="beskrivning-inner">
                         ${KUND_BESKRIVNING_DELKORT.map((def) => this._renderBeskrivningDelkort(def, fields, mis)).join('\n')}
                     </div>
+                    <div class="kunduppgifter-actions" id="beskrivning-card-actions" style="display:none; margin-top:0.85rem;">
+                        <button class="btn btn-primary btn-sm" type="button" onclick="customerCardManager.saveBeskrivningCard()"><i class="fas fa-save"></i> Spara</button>
+                        <button class="btn btn-ghost btn-sm" type="button" onclick="customerCardManager.toggleBeskrivningCardEdit()">Avbryt</button>
+                    </div>
                     <div id="ku-beskrivning-view" hidden>${kundBeskrivning}</div>
                     <div id="ku-beskrivning-input" hidden>${kundBeskrivning}</div>
+                    <button class="card-edit-fab" id="beskrivning-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningCardEdit()">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                 </div>
             </div>
 
@@ -6202,120 +6209,97 @@ class CustomerCardManager {
                     </div>
                     <div id="ku-${def.id}-input" class="kunduppgifter-richtext" contenteditable="true"
                          data-placeholder="${hintAttr}">${raw}</div>
-                    <div class="kunduppgifter-actions">
-                        <button class="btn btn-primary btn-sm" onclick="customerCardManager.saveBeskrivningDelkort('${def.id}')"><i class="fas fa-save"></i> Spara</button>
-                        <button class="btn btn-ghost btn-sm" onclick="customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">Avbryt</button>
-                    </div>
                 </div>
-                <button class="card-edit-fab" id="${def.id}-edit-btn" title="Redigera" onclick="event.stopPropagation(); customerCardManager.toggleBeskrivningDelkortEdit('${def.id}')">
-                    <i class="fas fa-pencil-alt"></i>
-                </button>
                 </div>
             </section>`;
     }
 
-    toggleBeskrivningDelkortEdit(id) {
-        const def = this._beskrivningDelkortById(id);
-        if (!def) return;
+    toggleBeskrivningCardEdit() {
         this._ensureCardOpen('beskrivning-card');
-        const view = document.getElementById(`${def.id}-view`);
-        const edit = document.getElementById(`${def.id}-edit`);
-        const btn = document.getElementById(`${def.id}-edit-btn`);
-        if (!view || !edit) return;
-        const isEditing = edit.style.display !== 'none';
-        if (isEditing) {
-            edit.style.display = 'none';
-            view.style.display = '';
-            if (btn) btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
-        } else {
-            view.style.display = 'none';
-            edit.style.display = '';
-            if (btn) btn.innerHTML = '<i class="fas fa-times"></i>';
+        const btn = document.getElementById('beskrivning-edit-btn');
+        const actions = document.getElementById('beskrivning-card-actions');
+        const firstEdit = document.getElementById(`${KUND_BESKRIVNING_DELKORT[0].id}-edit`);
+        const isEditing = !!(firstEdit && firstEdit.style.display !== 'none');
+        KUND_BESKRIVNING_DELKORT.forEach((def) => {
+            const view = document.getElementById(`${def.id}-view`);
+            const edit = document.getElementById(`${def.id}-edit`);
+            if (!view || !edit) return;
+            if (isEditing) {
+                const viewHtml = document.getElementById(`ku-${def.id}-view`)?.innerHTML || '';
+                const inputEl = document.getElementById(`ku-${def.id}-input`);
+                if (inputEl) {
+                    const plain = this._htmlToPlainText(viewHtml);
+                    inputEl.innerHTML = plain && !/Ej angiven/i.test(plain) ? viewHtml : '';
+                }
+                edit.style.display = 'none';
+                view.style.display = '';
+            } else {
+                view.style.display = 'none';
+                edit.style.display = '';
+            }
+        });
+        if (actions) actions.style.display = isEditing ? 'none' : '';
+        if (btn) {
+            btn.innerHTML = isEditing ? '<i class="fas fa-pencil-alt"></i>' : '<i class="fas fa-times"></i>';
+            btn.classList.toggle('is-active', !isEditing);
+            btn.title = isEditing ? 'Redigera' : 'Avbryt';
         }
     }
 
-    async saveBeskrivningDelkort(id) {
-        const def = this._beskrivningDelkortById(id);
-        if (!def) return;
-        const inputEl = document.getElementById(`ku-${def.id}-input`);
-        const html = inputEl?.innerHTML.trim() || '';
-        const saveBtn = document.querySelector(`#${def.id}-edit .btn-primary`);
+    async saveBeskrivningCard() {
+        const fields = {};
+        const values = {};
+        KUND_BESKRIVNING_DELKORT.forEach((def) => {
+            const inputEl = document.getElementById(`ku-${def.id}-input`);
+            const html = inputEl?.innerHTML.trim() || '';
+            fields[def.field] = html;
+            values[def.id] = html;
+        });
+        const saveBtn = document.querySelector('#beskrivning-card-actions .btn-primary');
         const orig = saveBtn?.innerHTML;
         if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
         try {
-            const result = await this._patchKunddataFields({ [def.field]: html });
+            const result = await this._patchKunddataFields(fields);
             if (!result.ok) return;
-            const viewEl = document.getElementById(`ku-${def.id}-view`);
-            if (viewEl) viewEl.innerHTML = this._htmlToPlainText(html) ? html : '<span class="missing-data">Ej angiven</span>';
-            if (this.customerData?.fields) this.customerData.fields[def.field] = html;
-            if (def.id === 'verksamhet') {
+            KUND_BESKRIVNING_DELKORT.forEach((def) => {
+                const html = values[def.id] || '';
+                const viewEl = document.getElementById(`ku-${def.id}-view`);
+                if (viewEl) viewEl.innerHTML = this._htmlToPlainText(html) ? html : '<span class="missing-data">Ej angiven</span>';
+                if (this.customerData?.fields) this.customerData.fields[def.field] = html;
+                if (def.kycKey && this._savedKycFormular) this._savedKycFormular[def.kycKey] = this._htmlToPlainText(html);
+            });
+            const verksamhetHtml = values.verksamhet || '';
+            if (verksamhetHtml) {
                 if (this.customerData?.fields && !this._htmlToPlainText(this.customerData.fields['Beskrivning av kunden'])) {
-                    this.customerData.fields['Beskrivning av kunden'] = html;
+                    this.customerData.fields['Beskrivning av kunden'] = verksamhetHtml;
                 }
                 const hiddenView = document.getElementById('ku-beskrivning-view');
                 const hiddenInput = document.getElementById('ku-beskrivning-input');
-                if (hiddenView) hiddenView.innerHTML = html;
-                if (hiddenInput) hiddenInput.innerHTML = html;
+                if (hiddenView) hiddenView.innerHTML = verksamhetHtml;
+                if (hiddenInput) hiddenInput.innerHTML = verksamhetHtml;
             }
-            if (def.kycKey && this._savedKycFormular) this._savedKycFormular[def.kycKey] = this._htmlToPlainText(html);
-            this.toggleBeskrivningDelkortEdit(def.id);
-            this.showNotification(`${def.title} sparad.`, 'success');
+            this._updateKlarTabIndicators(this.customerData?.fields || {});
+            this.toggleBeskrivningCardEdit();
+            this.showNotification('Beskrivning sparad.', 'success');
         } finally {
             if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
         }
+    }
+
+    toggleBeskrivningDelkortEdit(id) {
+        this.toggleBeskrivningCardEdit();
+    }
+
+    async saveBeskrivningDelkort(id) {
+        await this.saveBeskrivningCard();
     }
 
     toggleBeskrivningEdit() {
-        this._ensureCardOpen('beskrivning-card');
-        const view = document.getElementById('beskrivning-view');
-        const edit = document.getElementById('beskrivning-edit');
-        const btn = document.getElementById('beskrivning-edit-btn');
-        if (!view || !edit) return;
-        const isEditing = edit.style.display !== 'none';
-        if (isEditing) {
-            edit.style.display = 'none';
-            view.style.display = '';
-            if (btn) btn.innerHTML = '<i class="fas fa-pencil-alt"></i>';
-        } else {
-            view.style.display = 'none';
-            edit.style.display = '';
-            if (btn) btn.innerHTML = '<i class="fas fa-times"></i>';
-        }
+        this.toggleBeskrivningCardEdit();
     }
 
     async saveBeskrivning() {
-        const customerId = this.customerId;
-        if (!customerId) { this.showNotification('Kund-ID saknas', 'error'); return; }
-
-        const beskrivningEl = document.getElementById('ku-beskrivning-input');
-        const beskrivning = beskrivningEl?.innerHTML.trim() || '';
-
-        const saveBtn = document.querySelector('#beskrivning-edit .btn-primary');
-        const orig = saveBtn?.innerHTML;
-        if (saveBtn) { saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; saveBtn.disabled = true; }
-
-        try {
-            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const response = await fetch(`${baseUrl}/api/kunddata/${customerId}`, {
-                method: 'PATCH',
-                ...getAuthOptsKundkort(),
-                body: JSON.stringify({ fields: { 'Beskrivning av kunden': beskrivning } })
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || `HTTP ${response.status}`);
-            }
-            const viewEl = document.getElementById('ku-beskrivning-view');
-            if (viewEl) viewEl.innerHTML = beskrivning || '<span class="missing-data">Ej angiven</span>';
-            if (this.customerData?.fields) this.customerData.fields['Beskrivning av kunden'] = beskrivning;
-            this.toggleBeskrivningEdit();
-            this._updateKlarTabIndicators(this.customerData?.fields || {});
-            this.showNotification('Beskrivning sparad!', 'success');
-        } catch (error) {
-            this.showNotification(`Kunde inte spara: ${error.message}`, 'error');
-        } finally {
-            if (saveBtn) { saveBtn.innerHTML = orig; saveBtn.disabled = false; }
-        }
+        await this.saveBeskrivningCard();
     }
 
     showHelpPopover(btn, fromClick) {
