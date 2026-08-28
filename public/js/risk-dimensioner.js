@@ -36,12 +36,15 @@
     {
       id: 'geografiska',
       label: 'Geografisk riskfaktorer - här finns byråns kunder',
-      cardTitle: 'Vem är kunden?',
-      categoryId: 'kunden',
+      cardTitle: 'Vad gör kunden?',
+      categoryId: 'verksamheten',
+      kundkortLabel: 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer',
       aliases: [
         'geografiska riskfaktorer',
         'geografisk riskfaktorer - här finns byråns kunder',
         'geografisk riskfaktorer - har finns byrans kunder',
+        'geografisk riskfaktorer - här finns kundens kunder & leverantörer',
+        'geografisk riskfaktorer - här finns kundens kunder',
         'geografi',
         'geografiska'
       ]
@@ -93,6 +96,13 @@
   function normalizeTyp(typ) {
     var dim = dimensionOfTyp(typ);
     return dim ? dim.label : (trimStr(typ) || 'Övriga riskfaktorer');
+  }
+
+  /** Visningsrubrik på kundkortet (motparters geografi ≠ byråns kundhemvist). */
+  function kundkortTypLabel(typ) {
+    var dim = dimensionOfTyp(typ);
+    if (!dim) return trimStr(typ) || 'Övriga riskfaktorer';
+    return dim.kundkortLabel || dim.label;
   }
 
   function airtableTypValue(typ) {
@@ -260,6 +270,7 @@
     fold: fold,
     dimensionOfTyp: dimensionOfTyp,
     normalizeTyp: normalizeTyp,
+    kundkortTypLabel: kundkortTypLabel,
     airtableTypValue: airtableTypValue,
     typMatchesDimension: typMatchesDimension,
     hogriskBranschVal: hogriskBranschVal,

@@ -7236,16 +7236,24 @@ class CustomerCardManager {
                         </span>
                     </label>` : '';
 
+        const geoKundkortTitel = (window.RiskDimensioner && RiskDimensioner.kundkortTypLabel)
+            ? RiskDimensioner.kundkortTypLabel('Geografiska riskfaktorer')
+            : 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
+        const geoViewTitel = (embedded && typId === 'geografiska')
+            ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${geoKundkortTitel}</div>`
+            : '';
+
         container.innerHTML = `
             <div class="risker-selector">
                 <div id="${viewId}"${embedded && parentEditing ? ' style="display:none;"' : ''}>
+                    ${geoViewTitel}
                     ${ingaRfViewHtml}
                     ${hogriskViewHtml}
                     ${riskListViewHtml}
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="${embedded && parentEditing ? '' : 'display:none;'}">
-                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? ((window.RiskDimensioner && RiskDimensioner.normalizeTyp) ? RiskDimensioner.normalizeTyp('Geografiska riskfaktorer') : 'Geografisk riskfaktorer - här finns byråns kunder') : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
+                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? geoKundkortTitel : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
                     ${ingaRfEditHtml}
                     ${hogriskEditHtml}
                     ${riskerForCheckboxList.map(r => `
@@ -7339,7 +7347,7 @@ class CustomerCardManager {
     _embeddedTypIdsForOvrigaCard(id) {
         const typId = this._typIdForOvrigaCardId(id);
         const ids = typId ? [typId] : [];
-        if (String(id || '').replace(/^ovriga-/, '') === 'kunden') ids.unshift('geografiska');
+        if (String(id || '').replace(/^ovriga-/, '') === 'verksamheten') ids.unshift('geografiska');
         return ids;
     }
 
@@ -7779,7 +7787,7 @@ class CustomerCardManager {
                 </div>
                 <div class="collapsible-body" style="position:relative;">
                     <p class="kyc-hint">${this._esc(cat.hint || '')}</p>
-                    ${cat.id === 'kunden' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
+                    ${cat.id === 'verksamheten' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
                         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
                     </div>` : ''}
                     ${typId ? `<div class="ovriga-risk-katalog${cat.id === 'kunden' ? ' ovriga-risk-katalog--kund-residual' : ''}" id="ovrigkyc-risker-${typId}">
