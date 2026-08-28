@@ -3947,7 +3947,7 @@ class CustomerCardManager {
                     <div class="lead-fields uppdrag-lead-fields" style="margin-top:0;">
                         <div class="lead-field">
                             <label>Typ av uppdrag *</label>
-                            <select class="form-control" id="uppdrag-new-typ">${typeOptionsHtml}</select>
+                            <select class="form-select" id="uppdrag-new-typ">${typeOptionsHtml}</select>
                         </div>
                         <div class="lead-field uppdrag-span-full" id="uppdrag-new-namn-wrap" style="display:none;">
                             <label>Namn *</label>
@@ -3955,20 +3955,20 @@ class CustomerCardManager {
                         </div>
                         <div class="lead-field">
                             <label>Klientansvarig *</label>
-                            <select class="form-control" id="uppdrag-new-klientansvarig">${klientansvarigOptHtml}</select>
+                            <select class="form-select" id="uppdrag-new-klientansvarig">${klientansvarigOptHtml}</select>
                         </div>
                         <div class="lead-field">
                             <label>Handläggare *</label>
-                            <select class="form-control" id="uppdrag-new-ansvarig">${handlaggareOptHtml}</select>
+                            <select class="form-select" id="uppdrag-new-ansvarig">${handlaggareOptHtml}</select>
                             <p class="uppdrag-muted" style="margin:0.35rem 0 0;">Handläggaren är den som utför arbetet.</p>
                         </div>
                         <div class="lead-field">
                             <label>Frekvens *</label>
-                            <select class="form-control" id="uppdrag-new-frekvens"></select>
+                            <select class="form-select" id="uppdrag-new-frekvens"></select>
                         </div>
                         <div class="lead-field uppdrag-span-full" id="uppdrag-moms-period-wrap" style="display:none;">
                             <label id="uppdrag-moms-period-label">Första momsperiod *</label>
-                            <select class="form-control" id="uppdrag-new-forsta-period"></select>
+                            <select class="form-select" id="uppdrag-new-forsta-period"></select>
                             <p class="uppdrag-muted" style="margin:0.35rem 0 0;" id="uppdrag-moms-period-hint">Start och deadline enligt Skatteverket (12:e, 17:e i jan/aug) fylls i automatiskt.</p>
                         </div>
                         <div class="lead-field" id="uppdrag-new-start-wrap">
@@ -4582,7 +4582,7 @@ class CustomerCardManager {
                             </div>` : ''}
                             <div class="uppdrag-edit-field">
                                 <label>Frekvens</label>
-                                <select class="form-control" data-field="Frekvens">${freqHtml}</select>
+                                <select class="form-select" data-field="Frekvens">${freqHtml}</select>
                             </div>
                             <div class="uppdrag-edit-field">
                                 <label>Startdatum</label>
@@ -4594,11 +4594,11 @@ class CustomerCardManager {
                             </div>
                             <div class="uppdrag-edit-field">
                                 <label>Klientansvarig</label>
-                                <select class="form-control" data-field="Klientansvarig">${klientansvarigOptHtml}</select>
+                                <select class="form-select" data-field="Klientansvarig">${klientansvarigOptHtml}</select>
                             </div>
                             <div class="uppdrag-edit-field">
                                 <label>Handläggare</label>
-                                <select class="form-control" data-field="Ansvarig">${userOptHtml}</select>
+                                <select class="form-select" data-field="Ansvarig">${userOptHtml}</select>
                             </div>
                         </div>
 
@@ -4618,7 +4618,7 @@ class CustomerCardManager {
                                     </label>
                                     <div class="uppdrag-edit-field">
                                         <label>Underlaget avser</label>
-                                        <select class="form-control" data-field="Underlagsperiod">
+                                        <select class="form-select" data-field="Underlagsperiod">
                                             ${(typ === 'Momsredovisning'
                                                 ? ['Föregående månad','Föregående kvartal','Föregående år']
                                                 : ['Föregående månad','Denna månad','Nästa månad']

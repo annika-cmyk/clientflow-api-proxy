@@ -1727,24 +1727,79 @@ body.sidebar-collapsed .logout-btn {
 
 .date-input-wrap {
     display: inline-flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0.35rem;
-    max-width: 16rem;
-    width: 100%;
+    max-width: 12.75rem;
+    width: auto;
 }
 
 .date-input-wrap .date-input-text {
-    min-width: 8.5rem;
-    flex: 1 1 auto;
+    min-width: 0;
+    width: 9.75rem;
+    flex: 0 1 auto;
 }
 
+/* Kalenderknapp: dölj datumtexten, visa bara ikon */
 .date-input-wrap input[type="date"].date-input-picker {
-    width: 2.6rem;
-    min-width: 2.6rem;
-    max-width: 2.6rem;
-    padding-left: 0.15rem;
-    padding-right: 0.15rem;
-    flex: 0 0 2.6rem;
+    position: relative;
+    width: 2.4rem;
+    min-width: 2.4rem;
+    max-width: 2.4rem;
+    flex: 0 0 2.4rem;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background-color: #f8fafc;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'/%3E%3Cline x1='16' y1='2' x2='16' y2='6'/%3E%3Cline x1='8' y1='2' x2='8' y2='6'/%3E%3Cline x1='3' y1='10' x2='21' y2='10'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 1.05rem;
+    color: transparent;
+    caret-color: transparent;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.date-input-wrap input[type="date"].date-input-picker:hover {
+    background-color: #fff;
+    border-color: #94a3b8;
+}
+
+.date-input-wrap input[type="date"].date-input-picker:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    background-color: #fff;
+}
+
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit-fields-wrapper,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit-text,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit-month-field,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit-day-field,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-datetime-edit-year-field,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-inner-spin-button,
+.date-input-wrap input[type="date"].date-input-picker::-webkit-clear-button {
+    display: none;
+    -webkit-appearance: none;
+    appearance: none;
+    color: transparent;
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.date-input-wrap input[type="date"].date-input-picker::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
     cursor: pointer;
 }
 
@@ -4414,18 +4469,31 @@ body.sidebar-collapsed .logout-btn {
 }
 
 .form-select {
-    padding: 0.75rem;
-    border: 1px solid #d1d8e0;
+    width: 100%;
+    padding: 0.55rem 2.25rem 0.55rem 0.75rem;
+    border: 1px solid #cbd5e1;
     border-radius: 8px;
-    background: #ffffff;
+    background-color: #f8fafc;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%23475569' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 0.9rem;
+    appearance: none;
+    -webkit-appearance: none;
     font-size: 0.9rem;
-    transition: border-color 0.3s ease;
+    font-family: inherit;
+    color: var(--title-text, #0f172a);
+    line-height: 1.3;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    box-sizing: border-box;
+    cursor: pointer;
 }
 
 .form-select:focus {
     outline: none;
-    border-color: #3498db;
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    background-color: #fff;
 }
 
 .form-input {
@@ -9962,8 +10030,13 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-edit--mall textarea.kunduppgifter-input {
     min-height: 52px;
 }
+.uppdrag-edit-field .form-select,
+.uppdrag-edit-field .kunduppgifter-input {
+    width: 100%;
+}
 .uppdrag-edit-field .date-input-wrap {
-    max-width: none;
+    max-width: 12.75rem;
+    width: auto;
 }
 .uppdrag-edit-check {
     display: flex;
