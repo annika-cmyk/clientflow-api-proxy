@@ -6859,7 +6859,9 @@ class CustomerCardManager {
     }
 
     _updateRollePersonModalLabels() {
-        const isForetag = [...document.querySelectorAll('.rp-roll-cb:checked')]
+        const modal = document.getElementById('rolle-person-modal');
+        const checkedRoller = [...(modal?.querySelectorAll('.rp-roll-cb:checked') || [])];
+        const isForetag = checkedRoller
             .some(cb => String(cb.value || '').trim().toLowerCase() === 'företag med ägarandelar');
         const title = document.getElementById('rp-modal-title');
         const namnInput = document.getElementById('rp-namn');
@@ -6881,9 +6883,10 @@ class CustomerCardManager {
         }
         if (idInput) idInput.placeholder = isForetag ? 't.ex. 556722-3705' : 'YYYYMMDD-XXXX';
         if (idWrap) idWrap.style.display = isForetag ? 'none' : '';
-        const hasVh = [...document.querySelectorAll('.rp-roll-cb:checked')]
+        const hasVh = checkedRoller
             .some((cb) => /verklig\s+huvudman/i.test(String(cb.value || '').trim()));
-        if (hvWrap) hvWrap.style.display = (!isForetag && hasVh) ? '' : 'none';
+        // Använd explicit block — tom sträng kan falla tillbaka till CSS display:none.
+        if (hvWrap) hvWrap.style.display = (!isForetag && hasVh) ? 'block' : 'none';
     }
 
     _showRollePersonModal(person, idx) {
@@ -6959,8 +6962,12 @@ class CustomerCardManager {
                 </div>
             </div>`;
         document.body.appendChild(modal);
-        document.getElementById('rp-roller-wrap')?.addEventListener('change', () => this._updateRollePersonModalLabels());
-        this._updateRollePersonModalLabels();
+        const rollerWrap = document.getElementById('rp-roller-wrap');
+        const syncLabels = () => this._updateRollePersonModalLabels();
+        // change + click: vissa UI-automationer sätter checked utan change-event
+        rollerWrap?.addEventListener('change', syncLabels);
+        rollerWrap?.addEventListener('click', syncLabels);
+        syncLabels();
         document.getElementById('rp-namn').focus();
     }
 
