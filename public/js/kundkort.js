@@ -4987,10 +4987,15 @@ class CustomerCardManager {
                 this._linkedRiskIds = new Set(data.record.fields['risker kopplat till tjänster']);
             }
             if (this._allaRisker) {
-                const recs = this._riskerForTypId('geografiska', this._allaRisker);
-                const container = document.getElementById('ovrigkyc-risker-geografiska');
-                if (container) {
-                    this._renderRiskerForTyp(container, recs, this._linkedRiskIds || new Set(), 'geografiska', { embedded: true });
+                const byraRecs = this._riskerForTypId('geografiska', this._allaRisker);
+                const byraContainer = document.getElementById('ovrigkyc-risker-geografiska');
+                if (byraContainer) {
+                    this._renderRiskerForTyp(byraContainer, byraRecs, this._linkedRiskIds || new Set(), 'geografiska', { embedded: true });
+                }
+                const motpartRecs = this._riskerForTypId('geografiska_motparter', this._allaRisker);
+                const motpartContainer = document.getElementById('ovrigkyc-risker-geografiska_motparter');
+                if (motpartContainer) {
+                    this._renderRiskerForTyp(motpartContainer, motpartRecs, this._linkedRiskIds || new Set(), 'geografiska_motparter', { embedded: true });
                 }
                 this._applyGeoChecksFromLander();
                 this._refreshRiskprofilForeslagenUi();
@@ -7020,8 +7025,10 @@ class CustomerCardManager {
 
     // Mappning: typnamn (Airtable) -> container-id-suffix och rubrik
     _riskTypMap() {
+        const Geo = window.GeoRiskTyper;
         return [
-            { typ: 'Geografisk riskfaktorer - här finns byråns kunder', id: 'geografiska', icon: 'fa-globe-europe' },
+            { typ: (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder', id: 'geografiska', icon: 'fa-globe-europe' },
+            { typ: (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer', id: 'geografiska_motparter', icon: 'fa-globe' },
             { typ: 'Riskfaktorer kopplat till kund',     id: 'kund',         icon: 'fa-user-shield' },
             { typ: 'Distrubutionskanaler',               id: 'distribution', icon: 'fa-network-wired' },
             { typ: 'Verksamhetsspecifika riskfaktorer',  id: 'verksamhet',   icon: 'fa-building' },
@@ -7030,16 +7037,32 @@ class CustomerCardManager {
 
     _riskerForTypId(typId, risker) {
         const list = Array.isArray(risker) ? risker : [];
+        const Geo = window.GeoRiskTyper;
         const RD = window.RiskDimensioner;
-        if (RD && RD.typMatchesDimension) {
-            return list.filter((r) => RD.typMatchesDimension(r.fields && r.fields['Typ av riskfaktor'], typId));
-        }
-        const match = this._riskTypMap().find((t) => t.id === typId);
-        return list.filter((r) => match && r.fields && r.fields['Typ av riskfaktor'] === match.typ);
+        return list.filter((r) => {
+            const fields = (r && r.fields) || {};
+            const stored = fields['Typ av riskfaktor'];
+            // Geo: matcha på namnklassning så hemvist/motpart skiljs innan DB-migrering
+            if (Geo && Geo.isGeoTyp && Geo.isGeoTyp(stored) && (typId === 'geografiska' || typId === 'geografiska_motparter')) {
+                const want = typId === 'geografiska_motparter' ? Geo.TYP_MOTPART : Geo.TYP_BYRA;
+                return Geo.effectiveTyp(fields) === want;
+            }
+            if (RD && RD.typMatchesDimension) {
+                return RD.typMatchesDimension(stored, typId);
+            }
+            const match = this._riskTypMap().find((t) => t.id === typId);
+            return !!(match && stored === match.typ);
+        });
     }
 
     _kycFieldForRiskerTyp(typId) {
-        const map = { geografiska: 'KYC genomgången - Geografiska riskfaktorer', kund: 'KYC genomgången - Riskfaktorer kund', distribution: 'KYC genomgången - Distributionskanaler', verksamhet: 'KYC genomgången - Verksamhetsspecifika riskfaktorer' };
+        const map = {
+            geografiska: 'KYC genomgången - Geografiska riskfaktorer',
+            geografiska_motparter: 'KYC genomgången - Geografiska riskfaktorer',
+            kund: 'KYC genomgången - Riskfaktorer kund',
+            distribution: 'KYC genomgången - Distributionskanaler',
+            verksamhet: 'KYC genomgången - Verksamhetsspecifika riskfaktorer'
+        };
         /* KYC-fältnamn i Airtable behåller «Geografiska riskfaktorer» trots ny visningsrubrik */
         return map[typId] || null;
     }
@@ -7063,10 +7086,12 @@ class CustomerCardManager {
             this._allaRisker = allaRisker;
             this._linkedRiskIds = linkedIds;
 
+            await this._migrateGeoRiskTyper();
+
             this._riskTypMap().forEach(({ id }) => {
                 const container = document.getElementById(`ovrigkyc-risker-${id}`);
                 if (!container) return;
-                const riskerForTyp = this._riskerForTypId(id, allaRisker);
+                const riskerForTyp = this._riskerForTypId(id, this._allaRisker);
                 this._renderRiskerForTyp(container, riskerForTyp, linkedIds, id, {
                     embedded: true
                 });
@@ -7086,6 +7111,33 @@ class CustomerCardManager {
                 if (c) c.innerHTML = '<p class="lead-empty">Kunde inte ladda risker.</p>';
             });
         }
+    }
+
+    async _migrateGeoRiskTyper() {
+        const Geo = window.GeoRiskTyper;
+        if (!Geo || !Geo.needsTypMigration || !Array.isArray(this._allaRisker)) return;
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const pending = this._allaRisker.filter((risk) => Geo.needsTypMigration(risk.fields || {}));
+        if (!pending.length) return;
+        const auth = getAuthOptsKundkort();
+        await Promise.all(pending.map(async (risk) => {
+            const fields = { ...(risk.fields || {}) };
+            const newTyp = Geo.targetTypForRecord(fields);
+            try {
+                const response = await fetch(`${baseUrl}/api/risk-factors/${risk.id}`, {
+                    ...auth,
+                    method: 'PUT',
+                    headers: {
+                        ...(auth.headers || {}),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ...fields, 'Typ av riskfaktor': newTyp })
+                });
+                if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
+            } catch (err) {
+                console.warn('Kunde inte migrera geografisk risktyp:', fields.Riskfaktor, err);
+            }
+        }));
     }
 
     _renderRiskerForTyp(container, risker, linkedIds, typId, opts = {}) {
@@ -7236,16 +7288,30 @@ class CustomerCardManager {
                         </span>
                     </label>` : '';
 
+        const geoKundkortTitel = (window.RiskDimensioner && RiskDimensioner.kundkortTypLabel)
+            ? RiskDimensioner.kundkortTypLabel(
+                typId === 'geografiska_motparter'
+                    ? 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer'
+                    : 'Geografisk riskfaktorer - här finns byråns kunder'
+            )
+            : (typId === 'geografiska_motparter'
+                ? 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer'
+                : 'Geografisk riskfaktorer - här finns byråns kunder');
+        const geoViewTitel = (embedded && (typId === 'geografiska' || typId === 'geografiska_motparter'))
+            ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${geoKundkortTitel}</div>`
+            : '';
+
         container.innerHTML = `
             <div class="risker-selector">
                 <div id="${viewId}"${embedded && parentEditing ? ' style="display:none;"' : ''}>
+                    ${geoViewTitel}
                     ${ingaRfViewHtml}
                     ${hogriskViewHtml}
                     ${riskListViewHtml}
                     ${emptyMsg}
                 </div>
                 <div id="${editId}" style="${embedded && parentEditing ? '' : 'display:none;'}">
-                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${typId === 'geografiska' ? ((window.RiskDimensioner && RiskDimensioner.normalizeTyp) ? RiskDimensioner.normalizeTyp('Geografiska riskfaktorer') : 'Geografisk riskfaktorer - här finns byråns kunder') : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
+                    ${embedded ? `<div class="risker-checkgrupp-titel" style="margin-bottom:0.5rem;">${(typId === 'geografiska' || typId === 'geografiska_motparter') ? geoKundkortTitel : 'Riskfaktorer'}</div>` : '<p class="tjanster-edit-hint">Markera minst en risk som gäller för kunden. Tomt fält räknas inte.</p>'}
                     ${ingaRfEditHtml}
                     ${hogriskEditHtml}
                     ${riskerForCheckboxList.map(r => `
@@ -7285,7 +7351,7 @@ class CustomerCardManager {
                 }
             }
         }
-        if (typId === 'geografiska') this._applyGeoChecksFromLander();
+        if (typId === 'geografiska_motparter') this._applyGeoChecksFromLander();
         if (typId === 'kund') this._applyUtlandskaUboFromKyc();
     }
 
@@ -7339,7 +7405,9 @@ class CustomerCardManager {
     _embeddedTypIdsForOvrigaCard(id) {
         const typId = this._typIdForOvrigaCardId(id);
         const ids = typId ? [typId] : [];
-        if (String(id || '').replace(/^ovriga-/, '') === 'kunden') ids.unshift('geografiska');
+        const cat = String(id || '').replace(/^ovriga-/, '');
+        if (cat === 'kunden') ids.unshift('geografiska');
+        if (cat === 'verksamheten') ids.unshift('geografiska_motparter');
         return ids;
     }
 
@@ -7408,7 +7476,8 @@ class CustomerCardManager {
             (part.nyaChecked || []).forEach((id) => nyaChecked.push(id));
             if (part.nyaHogrisk !== null) nyaHogrisk = part.nyaHogrisk;
         });
-        if ((Array.isArray(typIds) ? typIds : []).includes('geografiska')) {
+        if ((Array.isArray(typIds) ? typIds : []).includes('geografiska_motparter')
+            || (Array.isArray(typIds) ? typIds : []).includes('geografiska')) {
             this._mergeSteeredGeoIds(allChecked);
         }
         if ((Array.isArray(typIds) ? typIds : []).includes('kund')) {
@@ -7451,7 +7520,7 @@ class CustomerCardManager {
 
     async saveRisker(typId) {
         const { allChecked, nyaChecked, nyaHogrisk } = this._collectRiskerSavePayload(typId);
-        if (typId === 'geografiska') {
+        if (typId === 'geografiska' || typId === 'geografiska_motparter') {
             this._mergeSteeredGeoIds(allChecked);
         }
         if (typId === 'kund') {
@@ -7499,7 +7568,7 @@ class CustomerCardManager {
                     embedded: true
                 });
             }
-            if (typId === 'geografiska') this._renderKycLanderOnGeo();
+            if (typId === 'geografiska_motparter') this._renderKycLanderOnGeo();
             if (typId === 'kund' || typId === 'geografiska') this._renderKycHemvistOnKund();
             const kycField = this._kycFieldForRiskerTyp(typId);
             const dimHasValue = nyaChecked.length > 0
@@ -7780,6 +7849,9 @@ class CustomerCardManager {
                 <div class="collapsible-body" style="position:relative;">
                     <p class="kyc-hint">${this._esc(cat.hint || '')}</p>
                     ${cat.id === 'kunden' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska">
+                        <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
+                    </div>` : ''}
+                    ${cat.id === 'verksamheten' ? `<div class="ovriga-risk-katalog ovriga-risk-katalog--geo" id="ovrigkyc-risker-geografiska_motparter">
                         <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><p>Laddar...</p></div>
                     </div>` : ''}
                     ${typId ? `<div class="ovriga-risk-katalog${cat.id === 'kunden' ? ' ovriga-risk-katalog--kund-residual' : ''}" id="ovrigkyc-risker-${typId}">
@@ -10467,7 +10539,8 @@ class CustomerCardManager {
         this._kycFormularFetched = true;
         this._updateKlarTabIndicators(this.customerData?.fields || {});
         this.renderKYCFormular(savedKyc);
-        if (document.getElementById('ovrigkyc-risker-geografiska')) {
+        if (document.getElementById('ovrigkyc-risker-geografiska')
+            || document.getElementById('ovrigkyc-risker-geografiska_motparter')) {
             this._renderKycLanderOnGeo();
             this._renderKycHemvistOnKund();
             this._maybeSteerGeoFromSavedLander();
@@ -11511,54 +11584,57 @@ class CustomerCardManager {
 
     _mergeSteeredGeoIds(allChecked) {
         const Eu = window.EuHogriskLander;
-        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const motpartRecs = this._riskerForTypId('geografiska_motparter', this._allaRisker || []);
         if (Eu && Eu.suggestedRecordIds) {
             const labels = this._kycLanderLabels();
             const opts = this._geoLanderOpts();
-            const steered = new Set(Eu.steeredRecordIds(recs));
+            const steered = new Set(Eu.steeredRecordIds(motpartRecs));
             if (!opts.onlySweden && !labels.length) {
                 steered.forEach((id) => allChecked.delete(id));
             } else {
-                const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+                const suggested = new Set(Eu.suggestedRecordIds(motpartRecs, labels, opts));
                 steered.forEach((id) => allChecked.delete(id));
                 suggested.forEach((id) => allChecked.add(id));
             }
         }
         const Uts = window.UtsattOmradeStyrning;
+        const byraRecs = this._riskerForTypId('geografiska', this._allaRisker || []);
         if (Uts && Uts.mergeIntoLinkedSet) {
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
-            Uts.mergeIntoLinkedSet(allChecked, recs, stored);
+            Uts.mergeIntoLinkedSet(allChecked, byraRecs, stored);
         }
         return allChecked;
     }
 
     _applyGeoChecksFromLander() {
         const Eu = window.EuHogriskLander;
-        if (!Eu || !Eu.suggestedRecordIds) return;
-        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
-        const labels = this._kycLanderLabels();
-        const opts = this._geoLanderOpts();
-        const steered = new Set(Eu.steeredRecordIds(recs));
-        const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
-        if (!opts.onlySweden && !labels.length) {
-            document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
-                if (!steered.has(cb.value)) return;
-                cb.checked = false;
-                cb.disabled = false;
-                const item = cb.closest('.risker-check-item');
-                if (item) item.classList.remove('is-geo-steered');
-            });
-            return;
+        if (Eu && Eu.suggestedRecordIds) {
+            const recs = this._riskerForTypId('geografiska_motparter', this._allaRisker || []);
+            const labels = this._kycLanderLabels();
+            const opts = this._geoLanderOpts();
+            const steered = new Set(Eu.steeredRecordIds(recs));
+            const suggested = new Set(Eu.suggestedRecordIds(recs, labels, opts));
+            if (!opts.onlySweden && !labels.length) {
+                document.querySelectorAll('input[name="risk-geografiska_motparter"]').forEach((cb) => {
+                    if (!steered.has(cb.value)) return;
+                    cb.checked = false;
+                    cb.disabled = false;
+                    const item = cb.closest('.risker-check-item');
+                    if (item) item.classList.remove('is-geo-steered');
+                });
+            } else {
+                document.querySelectorAll('input[name="risk-geografiska_motparter"]').forEach((cb) => {
+                    if (!steered.has(cb.value)) return;
+                    cb.checked = suggested.has(cb.value);
+                    cb.disabled = suggested.has(cb.value);
+                    const item = cb.closest('.risker-check-item');
+                    if (item) item.classList.toggle('is-geo-steered', suggested.has(cb.value));
+                });
+            }
         }
-        document.querySelectorAll('input[name="risk-geografiska"]').forEach((cb) => {
-            if (!steered.has(cb.value)) return;
-            cb.checked = suggested.has(cb.value);
-            cb.disabled = suggested.has(cb.value);
-            const item = cb.closest('.risker-check-item');
-            if (item) item.classList.toggle('is-geo-steered', suggested.has(cb.value));
-        });
         const Uts = window.UtsattOmradeStyrning;
         if (Uts && Uts.steeredRecordIds) {
+            const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
             const utsSteered = new Set(Uts.steeredRecordIds(recs));
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
             const utsSuggested = new Set(Uts.suggestedRecordIds(recs, stored));
@@ -11577,17 +11653,19 @@ class CustomerCardManager {
         if (!Eu || !Eu.suggestedRecordIds || !this._allaRisker) return;
         const labels = this._kycLanderLabels();
         const opts = this._geoLanderOpts();
-        if (!opts.onlySweden && !labels.length) return;
-        const recs = this._riskerForTypId('geografiska', this._allaRisker);
-        const suggested = Eu.suggestedRecordIds(recs, labels, opts);
         const linked = this._linkedRiskIds || new Set();
-        const steered = new Set(Eu.steeredRecordIds(recs));
-        const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
-        if (suggested.some((id) => !linked.has(id)) || staleSteered) this._scheduleGeoFromLanderSave();
+        if (opts.onlySweden || labels.length) {
+            const recs = this._riskerForTypId('geografiska_motparter', this._allaRisker);
+            const suggested = Eu.suggestedRecordIds(recs, labels, opts);
+            const steered = new Set(Eu.steeredRecordIds(recs));
+            const staleSteered = [...steered].some((id) => linked.has(id) && !suggested.includes(id));
+            if (suggested.some((id) => !linked.has(id)) || staleSteered) this._scheduleGeoFromLanderSave();
+        }
         const Uts = window.UtsattOmradeStyrning;
         if (Uts && Uts.suggestedRecordIds) {
+            const byraRecs = this._riskerForTypId('geografiska', this._allaRisker);
             const stored = Uts.parseStored(this.customerData?.fields?.['Utsatt område (JSON)']);
-            const utsSuggested = Uts.suggestedRecordIds(recs, stored);
+            const utsSuggested = Uts.suggestedRecordIds(byraRecs, stored);
             if (utsSuggested.some((id) => !linked.has(id))) this._scheduleGeoFromLanderSave();
         }
     }
@@ -11615,7 +11693,8 @@ class CustomerCardManager {
         const labels = this._kycLanderLabels();
         const landerOpts = this._geoLanderOpts();
         if (!this._allaRisker) await this.loadKundRisker();
-        const recs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const byraRecs = this._riskerForTypId('geografiska', this._allaRisker || []);
+        const motpartRecs = this._riskerForTypId('geografiska_motparter', this._allaRisker || []);
         const next = this._mergeSteeredGeoIds(new Set(this._linkedRiskIds || []));
         this._mergeSteeredVerksamhetIds(next);
         const fields = { 'risker kopplat till tjänster': [...next] };
@@ -11637,9 +11716,13 @@ class CustomerCardManager {
                 });
             } catch (_) { /* residualen är redan uppdaterad */ }
         }
-        const container = document.getElementById('ovrigkyc-risker-geografiska');
-        if (container && this._allaRisker) {
-            this._renderRiskerForTyp(container, recs, next, 'geografiska', { embedded: true });
+        const byraContainer = document.getElementById('ovrigkyc-risker-geografiska');
+        if (byraContainer && this._allaRisker) {
+            this._renderRiskerForTyp(byraContainer, byraRecs, next, 'geografiska', { embedded: true });
+        }
+        const motpartContainer = document.getElementById('ovrigkyc-risker-geografiska_motparter');
+        if (motpartContainer && this._allaRisker) {
+            this._renderRiskerForTyp(motpartContainer, motpartRecs, next, 'geografiska_motparter', { embedded: true });
         }
         const kundRecs = this._riskerForTypId('kund', this._allaRisker || []);
         const kundContainer = document.getElementById('ovrigkyc-risker-kund');
@@ -11650,7 +11733,7 @@ class CustomerCardManager {
         this._renderKycLanderOnGeo();
         this._renderKycHemvistOnKund();
         this._refreshRiskprofilForeslagenUi();
-        const kycField = this._kycFieldForRiskerTyp('geografiska');
+        const kycField = this._kycFieldForRiskerTyp('geografiska_motparter');
         if (kycField && next.size) this._saveKycStatus(kycField, true);
     }
 
@@ -11748,7 +11831,7 @@ class CustomerCardManager {
     }
 
     _renderKycLanderOnGeo() {
-        const container = document.getElementById('ovrigkyc-risker-geografiska');
+        const container = document.getElementById('ovrigkyc-risker-geografiska_motparter');
         if (!container) return;
         let box = container.querySelector('.kyc-lander-geo');
         if (!box) {

@@ -24,7 +24,7 @@
       letter: 'B',
       title: 'Vem är kunden?',
       subtitle: 'Ägarstruktur, PEP och historik',
-      hint: 'Sårbarheter i ägande, kontrollstruktur, hemvist och geografisk närvaro.',
+      hint: 'Sårbarheter i ägande, kontrollstruktur och skatterättslig hemvist.',
       icon: 'fa-user-shield'
     },
     {
@@ -32,7 +32,7 @@
       letter: 'C',
       title: 'Vad gör kunden?',
       subtitle: 'Affärsmodell, transaktioner och länder',
-      hint: 'Risker i kundens dagliga drift och bransch.',
+      hint: 'Risker i kundens drift, bransch och var kundens kunder och leverantörer finns.',
       icon: 'fa-industry'
     }
   ];
@@ -617,8 +617,8 @@
 
   function categoryIdForDimension(dimId) {
     if (dimId === 'distribution') return 'samarbete';
-    if (dimId === 'kund') return 'kunden';
-    if (dimId === 'verksamhet') return 'verksamheten';
+    if (dimId === 'kund' || dimId === 'geografiska') return 'kunden';
+    if (dimId === 'verksamhet' || dimId === 'geografiska_motparter') return 'verksamheten';
     return '';
   }
 
