@@ -32,11 +32,115 @@ class RiskFactorsManager {
     riskBelongsToPageScope(risk) {
         const typ = this.groupRiskTyp(risk);
         const kundTyp = this.kundRiskTypLabel();
-        const geoTyp = this.geoRiskGroupLabel();
+        const Geo = window.GeoRiskTyper;
+        const byraGeo = (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder';
+        const motpartGeo = (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
         if (this.isKundriskerPage()) {
-            return typ === kundTyp || typ === geoTyp;
+            return typ === kundTyp || typ === motpartGeo;
         }
-        return typ !== kundTyp;
+        // Övriga riskfaktorer: distribution, verksamhet + byråns geografiska hemvist
+        return typ !== kundTyp && typ !== motpartGeo;
+    }
+
+    geoRiskGroupLabel() {
+        if (this.isKundriskerPage()) {
+            return (window.GeoRiskTyper && GeoRiskTyper.TYP_MOTPART)
+                || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
+        }
+        return (window.GeoRiskTyper && GeoRiskTyper.TYP_BYRA)
+            || 'Geografisk riskfaktorer - här finns byråns kunder';
+    }
+
+    geoDisplayLabel() {
+        return this.geoRiskGroupLabel();
+    }
+
+    displayGroupLabel(riskType) {
+        return riskType;
+    }
+
+    async migrateRenamedGeoTyp() {
+        const Geo = window.GeoRiskTyper;
+        const RD = window.RiskDimensioner;
+        const pending = (this.risks || []).filter((risk) => {
+            const fields = risk.fields || {};
+            if (Geo && Geo.needsTypMigration) return Geo.needsTypMigration(fields);
+            const typ = String(fields['Typ av riskfaktor'] || '').trim();
+            return typ === 'Geografiska riskfaktorer';
+        });
+        if (!pending.length) return;
+        await Promise.all(pending.map(async (risk) => {
+            const fields = { ...(risk.fields || {}) };
+            const newTyp = (Geo && Geo.targetTypForRecord)
+                ? Geo.targetTypForRecord(fields)
+                : ((RD && RD.normalizeTyp) ? RD.normalizeTyp(fields['Typ av riskfaktor']) : fields['Typ av riskfaktor']);
+            try {
+                const response = await this.saveRiskFactor(
+                    `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
+                    'PUT',
+                    { ...fields, 'Typ av riskfaktor': newTyp }
+                );
+                if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
+            } catch (err) {
+                console.warn('Kunde inte byta typ på geografisk riskfaktor:', fields.Riskfaktor, err);
+            }
+        }));
+    }
+
+    async ensureMotpartGeoTemplates() {
+        const Geo = window.GeoRiskTyper;
+        const Eu = window.EuHogriskLander;
+        if (!Geo || !Eu || !Array.isArray(Eu.GEO_FACTORS)) return;
+        const byraId = String(this.userData?.byraId || this.userByraIds?.[0] || '').trim();
+        if (!byraId) return;
+        const motpartTyp = Geo.TYP_MOTPART;
+        const byraRisks = (this.risks || []).filter((risk) => {
+            const bid = String((risk.fields || {})['Byrå ID'] || '').trim();
+            return bid === byraId;
+        });
+        const fold = (v) => String(v || '').trim().toLowerCase().normalize('NFC').replace(/\s+/g, ' ');
+        for (const factor of Eu.GEO_FACTORS) {
+            const exists = byraRisks.some((risk) => {
+                const f = risk.fields || {};
+                if (fold(f['Typ av riskfaktor']) !== fold(motpartTyp)) return false;
+                const hit = Eu.matchGeoFactor(f.Riskfaktor || f['Riskfaktor'] || '');
+                return !!(hit && hit.id === factor.id);
+            });
+            if (exists) continue;
+            const source = byraRisks.find((risk) => {
+                const hit = Eu.matchGeoFactor((risk.fields || {}).Riskfaktor || '');
+                return !!(hit && hit.id === factor.id);
+            });
+            const src = (source && source.fields) || {};
+            const payload = {
+                'Typ av riskfaktor': motpartTyp,
+                Riskfaktor: factor.label,
+                Beskrivning: src.Beskrivning
+                    || `Geografisk residual för var kundens kunder och leverantörer finns (${factor.label}).`,
+                'Byrå ID': byraId,
+                'PT/TF-relevans': src['PT/TF-relevans'] || 'TF',
+                Aktuell: source ? (src.Aktuell !== false) : false
+            };
+            if (src.Riskpoäng) payload.Riskpoäng = src.Riskpoäng;
+            if (src.Riskbedömning) payload.Riskbedömning = src.Riskbedömning;
+            if (src['Åtgjärd'] || src['Åtgärd']) payload['Åtgjärd'] = src['Åtgjärd'] || src['Åtgärd'];
+            if (src.motivering_inneboende_risk) payload.motivering_inneboende_risk = src.motivering_inneboende_risk;
+            if (src.motivering_residual_risk) payload.motivering_residual_risk = src.motivering_residual_risk;
+            if (src.Motivering) payload.Motivering = src.Motivering;
+            try {
+                const response = await this.saveRiskFactor(
+                    `${window.apiConfig.baseUrl}/api/risk-factors`,
+                    'POST',
+                    payload
+                );
+                if (response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    if (data.record) this.risks.push(data.record);
+                }
+            } catch (err) {
+                console.warn('Kunde inte skapa motparts-geofaktor:', factor.label, err);
+            }
+        }
     }
 
     async init() {
@@ -313,51 +417,6 @@ class RiskFactorsManager {
         return RD && RD.normalizeTyp ? RD.normalizeTyp(raw) : raw;
     }
 
-    geoRiskGroupLabel() {
-        const RD = window.RiskDimensioner;
-        return RD && RD.normalizeTyp
-            ? RD.normalizeTyp('Geografiska riskfaktorer')
-            : 'Geografisk riskfaktorer - här finns byråns kunder';
-    }
-
-    geoDisplayLabel() {
-        if (this.isKundriskerPage()) {
-            return 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
-        }
-        return this.geoRiskGroupLabel();
-    }
-
-    displayGroupLabel(riskType) {
-        if (riskType === this.geoRiskGroupLabel()) {
-            return this.geoDisplayLabel();
-        }
-        return riskType;
-    }
-
-    async migrateRenamedGeoTyp() {
-        const newTyp = this.geoRiskGroupLabel();
-        const oldTyp = 'Geografiska riskfaktorer';
-        if (newTyp === oldTyp) return;
-        const pending = (this.risks || []).filter((risk) => {
-            const fields = risk.fields || {};
-            return fields['Typ av riskfaktor'] === oldTyp;
-        });
-        if (!pending.length) return;
-        await Promise.all(pending.map(async (risk) => {
-            const fields = { ...(risk.fields || {}) };
-            try {
-                const response = await this.saveRiskFactor(
-                    `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
-                    'PUT',
-                    { ...fields, 'Typ av riskfaktor': newTyp }
-                );
-                if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
-            } catch (err) {
-                console.warn('Kunde inte byta typ på geografisk riskfaktor:', fields.Riskfaktor, err);
-            }
-        }));
-    }
-
     async migrateRenamedRiskFactorLabels() {
         const Kat = window.OvrigaRiskKategorier;
         if (!Kat || !Kat.canonicalLabel) return;
@@ -434,6 +493,7 @@ class RiskFactorsManager {
                 await this.migrateRenamedRiskFactorLabels();
                 await this.migrateMisplacedKundTransactionFactors();
                 await this.migrateRenamedGeoTyp();
+                await this.ensureMotpartGeoTemplates();
                 
                 // Populate byrå dropdown with unique byrå IDs from the data
                 this.populateByraDropdown();
@@ -531,10 +591,12 @@ class RiskFactorsManager {
         const buildRiskItems = (risksInGroup) => risksInGroup.map(risk => this.createRiskItem(risk)).join('');
 
         const geoLabel = this.geoRiskGroupLabel();
+        const Geo = window.GeoRiskTyper;
         const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
-            const isGeo = riskType === geoLabel;
+            const isGeo = riskType === geoLabel
+                || (Geo && Geo.isGeoTyp && Geo.isGeoTyp(riskType));
 
             return `
                 <div class="risk-group${isGeo ? ' risk-group--geografiska' : ''}">

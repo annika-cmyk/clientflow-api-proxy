@@ -617,8 +617,8 @@
 
   function categoryIdForDimension(dimId) {
     if (dimId === 'distribution') return 'samarbete';
-    if (dimId === 'kund') return 'kunden';
-    if (dimId === 'verksamhet' || dimId === 'geografiska') return 'verksamheten';
+    if (dimId === 'kund' || dimId === 'geografiska') return 'kunden';
+    if (dimId === 'verksamhet' || dimId === 'geografiska_motparter') return 'verksamheten';
     return '';
   }
 

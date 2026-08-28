@@ -7871,7 +7871,8 @@ function buildKundRiskbedomningPdfHtml(data) {
       <h3>Kundens tjänster</h3>${bulletList(rf.tjanster)}
       <h3>Riskfaktorer kopplat till kunden</h3>${bulletList(rf.kund)}
       <h3>Distributionskanaler</h3>${bulletList(rf.distribution)}
-      <h3>Geografisk riskfaktorer - här finns kundens kunder & leverantörer</h3>${bulletList(rf.geografiska)}
+      <h3>Geografisk riskfaktorer - här finns byråns kunder</h3>${bulletList(rf.geografiska)}
+      <h3>Geografisk riskfaktorer - här finns kundens kunder & leverantörer</h3>${bulletList(rf.geografiska_motparter)}
       <h3>Verksamhetsspecifika riskfaktorer</h3>${bulletList(rf.verksamhet, 'Inga verksamhetsspecifika riskfaktorer')}
       <h3>Riskhöjande faktorer övrigt</h3>${bulletList(rf.riskhojOvrigt, 'Inga övriga riskhöjande faktorer')}
       <h3>Risksänkande faktorer</h3>${bulletList(rf.risksankande, 'Inga risksänkande faktorer')}`;
@@ -8094,6 +8095,7 @@ function pdfRiskFactorNames(list) {
 const PDF_RISK_TYP_MAP = {
   'Geografiska riskfaktorer': 'geografiska',
   'Geografisk riskfaktorer - här finns byråns kunder': 'geografiska',
+  'Geografisk riskfaktorer - här finns kundens kunder & leverantörer': 'geografiska_motparter',
   'Riskfaktorer kopplat till kund': 'kund',
   'Distrubutionskanaler': 'distribution',
   'Distributionskanaler': 'distribution',
@@ -8177,11 +8179,12 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         .map((item) => [normTjanstKey(item.namn), item])
     );
 
-    const riskfaktorer = {
+  const riskfaktorer = {
       tjanster: (tjansterItems && tjansterItems.length)
         ? tjansterItems.map((item) => Object.assign({ namn: item.namn }, KundRiskprofil.residualDisplayOf(item)))
         : tjansterNamn,
       geografiska: [],
+      geografiska_motparter: [],
       kund: KundRiskprofil.withSharedResidual(hogriskNamn, hogriskScored),
       distribution: [],
       verksamhet: [],
@@ -8220,7 +8223,7 @@ app.post('/api/kunddata/:id/riskbedomning-pdf', authenticateToken, async (req, r
         const scored = KundRiskprofil.residualDisplayOf(KundRiskprofil.itemsFromRiskRecords([rec])[0] || { namn: riskfaktor });
         riskfaktorer[key].push(Object.assign(scored, { namn: riskfaktor }));
       }
-      for (const key of ['geografiska', 'kund', 'distribution', 'verksamhet']) {
+      for (const key of ['geografiska', 'geografiska_motparter', 'kund', 'distribution', 'verksamhet']) {
         riskfaktorer[key].sort((a, b) => String(a.namn || a).localeCompare(String(b.namn || b), 'sv'));
       }
     }

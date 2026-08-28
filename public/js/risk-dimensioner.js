@@ -36,17 +36,25 @@
     {
       id: 'geografiska',
       label: 'Geografisk riskfaktorer - här finns byråns kunder',
-      cardTitle: 'Vad gör kunden?',
-      categoryId: 'verksamheten',
-      kundkortLabel: 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer',
+      cardTitle: 'Vem är kunden?',
+      categoryId: 'kunden',
       aliases: [
         'geografiska riskfaktorer',
         'geografisk riskfaktorer - här finns byråns kunder',
-        'geografisk riskfaktorer - har finns byrans kunder',
+        'geografisk riskfaktorer - har finns byrans kunder'
+      ]
+    },
+    {
+      id: 'geografiska_motparter',
+      label: 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer',
+      cardTitle: 'Vad gör kunden?',
+      categoryId: 'verksamheten',
+      aliases: [
         'geografisk riskfaktorer - här finns kundens kunder & leverantörer',
         'geografisk riskfaktorer - här finns kundens kunder',
-        'geografi',
-        'geografiska'
+        'kundens kunder & leverantörer',
+        'kundens kunder och leverantörer',
+        'geografiska motparter'
       ]
     },
     {
