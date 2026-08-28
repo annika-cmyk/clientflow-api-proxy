@@ -1,6 +1,7 @@
 /**
- * Identitetskontroll per person under Roller.
- * Format: «Identitet kontrollerad [datum] via [metod]»
+ * Identitetskontroll och VH-registerkontroll per person under Roller.
+ * - «Identitet kontrollerad [datum] via [metod]»
+ * - «Huvudman kontrollerad mot Bolagsverket [datum]»
  */
 (function (global) {
   var METHODS = [
@@ -38,12 +39,27 @@
     }
   }
 
+  function hasHuvudmanRoll(personOrRoller) {
+    var list = [];
+    if (Array.isArray(personOrRoller)) list = personOrRoller;
+    else if (personOrRoller && Array.isArray(personOrRoller.roller)) list = personOrRoller.roller;
+    else if (personOrRoller && personOrRoller.roll) list = [personOrRoller.roll];
+    return list.some(function (r) {
+      return /verklig\s+huvudman/i.test(String(r || '').trim());
+    });
+  }
+
   function fromPerson(person) {
     var p = person || {};
     return {
       datum: formatDatum(p.identitetKontrolleradDatum || p.identitet_kontrollerad_datum || ''),
       metod: trimStr(p.identitetKontrolleradMetod || p.identitet_kontrollerad_metod || ''),
-      metodLabel: methodLabel(p.identitetKontrolleradMetod || p.identitet_kontrollerad_metod || '')
+      metodLabel: methodLabel(p.identitetKontrolleradMetod || p.identitet_kontrollerad_metod || ''),
+      huvudmanBolagsverketDatum: formatDatum(
+        p.huvudmanKontrolleradBolagsverketDatum
+        || p.huvudman_kontrollerad_bolagsverket_datum
+        || ''
+      )
     };
   }
 
@@ -57,14 +73,23 @@
     return 'Identitet kontrollerad via ' + hit.metodLabel;
   }
 
-  function applyToPerson(person, datum, metod) {
+  function formatHuvudmanBolagsverketLabel(person) {
+    var hit = fromPerson(person);
+    if (!hit.huvudmanBolagsverketDatum) return '';
+    return 'Huvudman kontrollerad mot Bolagsverket ' + hit.huvudmanBolagsverketDatum;
+  }
+
+  function applyToPerson(person, datum, metod, huvudmanBolagsverketDatum) {
     var next = Object.assign({}, person || {});
     var d = formatDatum(datum);
     var m = trimStr(metod);
+    var hv = formatDatum(huvudmanBolagsverketDatum);
     if (d) next.identitetKontrolleradDatum = d;
     else delete next.identitetKontrolleradDatum;
     if (m) next.identitetKontrolleradMetod = m;
     else delete next.identitetKontrolleradMetod;
+    if (hv) next.huvudmanKontrolleradBolagsverketDatum = hv;
+    else delete next.huvudmanKontrolleradBolagsverketDatum;
     return next;
   }
 
@@ -72,8 +97,10 @@
     METHODS: METHODS,
     methodLabel: methodLabel,
     formatDatum: formatDatum,
+    hasHuvudmanRoll: hasHuvudmanRoll,
     fromPerson: fromPerson,
     formatLabel: formatLabel,
+    formatHuvudmanBolagsverketLabel: formatHuvudmanBolagsverketLabel,
     applyToPerson: applyToPerson
   };
 
