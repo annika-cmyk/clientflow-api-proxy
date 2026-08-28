@@ -2,7 +2,9 @@
 
 ## Deploy
 
-Deploya alltid. Användarvända ändringar ska mergas till `main` så fort de är klara, utan att vänta på en extra begäran. Lämna dem inte bara på en feature-gren.
+Deploya alltid. Användarvända ändringar ska mergas till `main` så fort de är klara, utan att vänta på en extra begäran. Lämna dem inte bara på en feature-gren eller som öppen PR.
+
+När CI är grön: merga PR:n till `main` direkt (merge-commit, ingen force-push av `main`). Stäng eller ersätt överflödiga utkast-PR:er.
 
 Minibok läser uppdrag och AML via den här proxyn. Ändringar som Minibok behöver live ska alltså också in på `main`.
 
