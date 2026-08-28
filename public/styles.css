@@ -12958,6 +12958,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     font-weight: 500;
 }
 .roller-detail-chip i { font-size: 0.72rem; }
+.roller-detail-identitet {
+    background: #ecfdf5;
+    color: #065f46;
+}
+.roller-detail-huvudman-bv {
+    background: #eff6ff;
+    color: #1e40af;
+}
 .roller-detail-missing {
     background: #fef3c7;
     color: #92400e;

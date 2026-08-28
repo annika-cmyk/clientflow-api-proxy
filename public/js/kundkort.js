@@ -6597,6 +6597,27 @@ class CustomerCardManager {
                     <div class="roller-person-details">
                         ${p.epost ? `<span class="roller-detail-chip"><i class="fas fa-envelope"></i> ${this._esc(p.epost)}</span>` : '<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-envelope"></i> E-post saknas</span>'}
                         ${p.personnr ? `<span class="roller-detail-chip"><i class="fas fa-id-card"></i> ${this._esc(p.personnr)}</span>` : `<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-id-card"></i> ${idMissing}</span>`}
+                        ${(() => {
+                            if (isForetag) return '';
+                            const Id = window.IdentitetKontroll;
+                            const parts = [];
+                            const idLabel = Id && Id.formatLabel ? Id.formatLabel(p) : '';
+                            if (idLabel) {
+                                parts.push(`<span class="roller-detail-chip roller-detail-identitet" title="${this._esc(idLabel)}"><i class="fas fa-user-check"></i> ${this._esc(idLabel)}</span>`);
+                            } else {
+                                parts.push('<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-user-check"></i> Identitet ej kontrollerad</span>');
+                            }
+                            const isVh = Id && Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(p) : false;
+                            const hvLabel = Id && Id.formatHuvudmanBolagsverketLabel
+                                ? Id.formatHuvudmanBolagsverketLabel(p)
+                                : '';
+                            if (hvLabel) {
+                                parts.push(`<span class="roller-detail-chip roller-detail-huvudman-bv" title="${this._esc(hvLabel)}"><i class="fas fa-building"></i> ${this._esc(hvLabel)}</span>`);
+                            } else if (isVh) {
+                                parts.push('<span class="roller-detail-chip roller-detail-missing"><i class="fas fa-building"></i> Huvudman ej kontrollerad mot Bolagsverket</span>');
+                            }
+                            return parts.join('');
+                        })()}
                     </div>
                     <div class="roller-person-actions">
                         <a href="javascript:void(0)" role="button" class="btn-icon-note btn-pep-screen" title="${screenTitle}" data-idx="${idx}" id="pep-btn-${idx}" onclick="event.preventDefault();event.stopPropagation();customerCardManager.pepScreening(${idx});return false;">
@@ -6844,6 +6865,8 @@ class CustomerCardManager {
         const namnInput = document.getElementById('rp-namn');
         const idLabel = document.getElementById('rp-personnr-label');
         const idInput = document.getElementById('rp-personnr');
+        const idWrap = document.getElementById('rp-identitet-wrap');
+        const hvWrap = document.getElementById('rp-huvudman-bv-wrap');
         const isNew = (title?.dataset?.isNew === '1');
         if (title) {
             title.textContent = isForetag
@@ -6857,6 +6880,10 @@ class CustomerCardManager {
                 : 'Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span>';
         }
         if (idInput) idInput.placeholder = isForetag ? 't.ex. 556722-3705' : 'YYYYMMDD-XXXX';
+        if (idWrap) idWrap.style.display = isForetag ? 'none' : '';
+        const hasVh = [...document.querySelectorAll('.rp-roll-cb:checked')]
+            .some((cb) => /verklig\s+huvudman/i.test(String(cb.value || '').trim()));
+        if (hvWrap) hvWrap.style.display = (!isForetag && hasVh) ? '' : 'none';
     }
 
     _showRollePersonModal(person, idx) {
@@ -6865,6 +6892,12 @@ class CustomerCardManager {
         if (existing) existing.remove();
 
         const isForetag = this._isRollerFöretag(person);
+        const Id = window.IdentitetKontroll;
+        const idHit = Id && Id.fromPerson ? Id.fromPerson(person) : { datum: '', metod: '' };
+        const methodOpts = (Id && Id.METHODS ? Id.METHODS : []).map((m) => {
+            const sel = (idHit.metod === m.id || idHit.metod === m.label) ? 'selected' : '';
+            return `<option value="${this._esc(m.id)}" ${sel}>${this._esc(m.label)}</option>`;
+        }).join('');
         const defaultTitle = isNew
             ? (isForetag ? 'Lägg till företag' : 'Lägg till kontaktperson')
             : (isForetag ? 'Redigera företag' : 'Redigera kontaktperson');
@@ -6901,6 +6934,24 @@ class CustomerCardManager {
                         <label id="rp-personnr-label">Personnummer <span style="color:#94a3b8;font-size:0.82em">(för BankID-signering)</span></label>
                         <input type="text" id="rp-personnr" class="form-control" value="${this._esc(person?.personnr || '')}" placeholder="YYYYMMDD-XXXX">
                     </div>
+                    <div id="rp-identitet-wrap" style="${isForetag ? 'display:none;' : ''}">
+                        <div class="form-group">
+                            <label>Identitet kontrollerad</label>
+                            <p class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).</p>
+                            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:0.5rem;">
+                                <input type="date" id="rp-identitet-datum" class="form-control" value="${this._esc(idHit.datum || '')}">
+                                <select id="rp-identitet-metod" class="form-control">
+                                    <option value="">Välj metod</option>
+                                    ${methodOpts}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="rp-huvudman-bv-wrap" style="${(Id && Id.hasHuvudmanRoll && Id.hasHuvudmanRoll(person)) ? '' : 'display:none;'}">
+                            <label>Huvudman kontrollerad mot Bolagsverket</label>
+                            <p class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Datum när verklig huvudman kontrollerats mot registret hos Bolagsverket.</p>
+                            <input type="date" id="rp-huvudman-bv-datum" class="form-control" value="${this._esc(idHit.huvudmanBolagsverketDatum || '')}">
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('rolle-person-modal').remove()">Avbryt</button>
@@ -6921,8 +6972,22 @@ class CustomerCardManager {
         if (!namn) { alert('Namn är obligatoriskt.'); return; }
 
         const existing = (idx != null && idx !== undefined) ? (this._kontaktPersoner || [])[idx] : null;
-        const person = { namn, roller, epost, personnr };
+        let person = { namn, roller, epost, personnr };
         if (existing?.pepSoktDatum) person.pepSoktDatum = existing.pepSoktDatum;
+        if (existing?.pepMarkerad) person.pepMarkerad = existing.pepMarkerad;
+
+        const isForetag = roller.some((r) => String(r || '').trim().toLowerCase() === 'företag med ägarandelar');
+        const Id = window.IdentitetKontroll;
+        if (!isForetag && Id && Id.applyToPerson) {
+            const hasVh = Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(roller) : false;
+            person = Id.applyToPerson(
+                person,
+                document.getElementById('rp-identitet-datum')?.value || '',
+                document.getElementById('rp-identitet-metod')?.value || '',
+                hasVh ? (document.getElementById('rp-huvudman-bv-datum')?.value || '') : ''
+            );
+        }
+
         if (!this._kontaktPersoner) this._kontaktPersoner = [];
 
         if (idx === null || idx === undefined) {
