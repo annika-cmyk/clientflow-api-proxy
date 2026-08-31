@@ -142,9 +142,7 @@ const { parseAssistantJson } = require('./lib/aml-news/json');
 const { runIngestLayer, runClassifyLayer } = require('./lib/aml-news/pipeline');
 const { ingestSources } = require('./lib/aml-news/ingest');
 const { createMemoryStore } = require('./lib/aml-news/store-memory');
-const { buildFirmFeed, attachRelevance } = require('./lib/aml-news/feed');
-const { shouldSendWeeklyDigest, selectDigestItems } = require('./lib/aml-news/digest');
-const { buildDigestEmail } = require('./lib/aml-news/email');
+const { buildFirmFeed } = require('./lib/aml-news/feed');
 const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-news/enrich');
 const { isRelevantForConsultants } = require('./lib/aml-news/sources');
 const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
@@ -1014,26 +1012,6 @@ function profilForAmlNews(fields, byraId, tjanster) {
   };
 }
 
-async function ensureAmlNewsDigestField(token, baseId) {
-  const byraTable = await getByraerTableMeta(token, baseId);
-  if (!byraTable?.id) return;
-  const existing = (byraTable.fields || []).map((f) => (f.name || '').trim());
-  if (existing.includes(amlNewsSchema.DIGEST_FIELD)) return;
-  try {
-    await axios.post(
-      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
-      {
-        name: amlNewsSchema.DIGEST_FIELD,
-        type: 'singleLineText',
-        description: 'ISO-tid för senast skickade AML-nyhetsdigest'
-      },
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 10000 }
-    );
-  } catch (err) {
-    console.warn('ensureAmlNewsDigestField:', err.response?.data?.error?.message || err.message);
-  }
-}
-
 async function runAmlNewsIngestAndClassify(opts = {}) {
   const store = getAmlNewsStore();
   try {
@@ -1053,95 +1031,6 @@ async function runAmlNewsIngestAndClassify(opts = {}) {
   return { ingest, classify };
 }
 
-async function sendAmlNewsDigestEmail({ toEmail, toName, byraNamn, items, feedUrl }) {
-  const host = (process.env.SMTP_HOST || '').trim();
-  const user = (process.env.SMTP_USER || '').trim();
-  const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
-  const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
-  if (!host || !user || !pass) return { sent: false, error: 'SMTP ej konfigurerad' };
-  const from = process.env.MAIL_FROM || 'ClientFlow <noreply@clientflow.se>';
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const mail = buildDigestEmail({ byraNamn, toName, items, feedUrl });
-  try {
-    const transporterOpts = { host, port, secure, auth: { user, pass } };
-    if (port === 587 && !secure) transporterOpts.requireTLS = true;
-    const transporter = nodemailer.createTransport(transporterOpts);
-    await transporter.sendMail({ from, to: toEmail, subject: mail.subject, html: mail.html, text: mail.text });
-    return { sent: true };
-  } catch (err) {
-    return { sent: false, error: err.message };
-  }
-}
-
-async function processAmlNewsWeeklyDigests() {
-  const now = new Date();
-  const force = String(process.env.AML_NEWS_DIGEST_FORCE || '').trim() === '1';
-  if (!force && !shouldSendWeeklyDigest(now, null)) return { skipped: 'not-monday' };
-  const token = process.env.AIRTABLE_ACCESS_TOKEN;
-  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-  if (!token) return { skipped: 'no-airtable' };
-  await ensureAmlNewsDigestField(token, baseId);
-  const store = getAmlNewsStore();
-  let items = [];
-  try {
-    items = await store.list();
-  } catch (err) {
-    console.warn('AML-nyheter digest list:', err.message);
-    return { skipped: 'no-items' };
-  }
-  if (!items.length) return { skipped: 'empty' };
-
-  const byraer = await airtableListAllRecords(
-    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}`,
-    { Authorization: `Bearer ${token}` }
-  );
-  const feedUrl = `${String(process.env.PUBLIC_BASE_URL || 'https://www.app.clientflow.se').replace(/\/$/, '')}/amla-nyheter.html`;
-  const sent = [];
-  for (const rec of byraer) {
-    const fields = rec.fields || {};
-    const byraId = String(fields['Byrå ID'] || '').trim();
-    if (!byraId) continue;
-    const lastSent = fields[amlNewsSchema.DIGEST_FIELD] || '';
-    if (!force && !shouldSendWeeklyDigest(now, lastSent)) continue;
-    const tjanster = await loadByraTjanstNamesForNews(byraId, token, baseId);
-    const profil = profilForAmlNews(fields, byraId, tjanster);
-    const matched = items.map((item) => attachRelevance(item, profil));
-    const picked = selectDigestItems(matched, { since: lastSent, minTier: 'medium' });
-    if (!picked.length) continue;
-    const users = await listByraUsersByByraId(byraId, token, baseId, { byraRecord: rec });
-    const recipients = users.filter((u) => access.isLedareOrAdmin(u.role) && u.email);
-    if (!recipients.length) continue;
-    const byraNamn = access.byraDisplayName(fields);
-    let firmSent = false;
-    for (const user of recipients) {
-      const result = await sendAmlNewsDigestEmail({
-        toEmail: user.email,
-        toName: user.name,
-        byraNamn,
-        items: picked,
-        feedUrl
-      });
-      if (result.sent) {
-        sent.push({ byraId, email: user.email });
-        firmSent = true;
-      } else {
-        console.warn('AML-nyheter digest mail:', user.email, result.error);
-      }
-    }
-    if (firmSent) {
-      try {
-        await patchByraerRecordFields(token, baseId, rec.id, {
-          [amlNewsSchema.DIGEST_FIELD]: now.toISOString()
-        });
-      } catch (err) {
-        console.warn('AML-nyheter digest stamp:', err.message);
-      }
-    }
-  }
-  return { sent: sent.length };
-}
-
 async function processAmlNewsJobs() {
   if (amlNewsJobState.running) return;
   amlNewsJobState.running = true;
@@ -1157,8 +1046,6 @@ async function processAmlNewsJobs() {
         classified: out.classify.classified
       }));
     }
-    const digest = await processAmlNewsWeeklyDigests();
-    if (digest && digest.sent) console.log('📰 AML-nyheter digest skickad', digest.sent);
   } catch (err) {
     console.warn('AML-nyheter jobb:', err.message);
   } finally {
