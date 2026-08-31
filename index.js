@@ -994,24 +994,6 @@ async function completeAmlNewsClassificationJson({ prompt, instructions }) {
   return parseAssistantJson(text);
 }
 
-async function loadByraTjanstNamesForNews(byraId, token, baseId) {
-  try {
-    const recs = await fetchAirtableByByraId(RISK_ASSESSMENT_TABLE, byraId, token, baseId);
-    return recs.map(mapByraTjanstRecord).map((t) => t.namn).filter(Boolean);
-  } catch (_) {
-    return [];
-  }
-}
-
-function profilForAmlNews(fields, byraId, tjanster) {
-  return {
-    ...mapByraProfilFromAirtable(fields),
-    firmId: byraId,
-    byraId,
-    tjanster
-  };
-}
-
 async function runAmlNewsIngestAndClassify(opts = {}) {
   const store = getAmlNewsStore();
   try {
@@ -1055,20 +1037,10 @@ async function processAmlNewsJobs() {
 
 app.get('/api/aml-news', authenticateToken, async (req, res) => {
   try {
-    let profil = { byraId: '', geografiskMarknad: 'Sverige', tjanster: [] };
-    try {
-      const loaded = await loadUserByraerRecord(req);
-      const tjanster = await loadByraTjanstNamesForNews(loaded.byraId, loaded.airtableAccessToken, loaded.airtableBaseId);
-      profil = profilForAmlNews(loaded.record?.fields || {}, loaded.byraId, tjanster);
-    } catch (err) {
-      const user = req.user?.email ? await getAirtableUser(req.user.email) : null;
-      if (!access.isClientFlowAdmin(user?.role || req.user?.role)) throw err;
-    }
     const rows = await loadAmlNewsRows();
-    const items = buildFirmFeed(rows, profil, {
+    const items = buildFirmFeed(rows, null, {
       category: req.query.category,
       severity: req.query.severity,
-      minTier: req.query.minTier || 'low',
       q: req.query.q
     });
     res.json({

@@ -1,5 +1,5 @@
 /**
- * AML-nyheter – byråanpassat flöde (källa + sammanfattning + varför).
+ * AML-nyheter – gemensamt flöde för redovisningsbyråer (källa + sammanfattning).
  */
 (function () {
   var LANG_KEY = 'amla-news-lang';
@@ -8,43 +8,39 @@
   var COPY = {
     sv: {
       summaries: 'Visa sammanfattningar',
-      loading: 'Laddar nyheter som matchar byråns profil…',
-      empty: 'Inga nyheter når er relevanströskel just nu.',
+      loading: 'Laddar AML-nyheter…',
+      empty: 'Inga aktuella nyheter just nu.',
       error: 'Kunde inte hämta nyheterna. Försök igen senare.',
       open: 'Öppna källa',
-      source: 'Filtrerat mot byråprofilen',
+      source: 'Nyheter för redovisningsbyråer',
       all: 'Visa alla nyheter',
       heading: 'AML-nyheter',
-      why: 'Varför detta visas',
       category: 'Kategori',
       severity: 'Allvar',
       search: 'Sök',
       searchPh: 'Sök titel, sammanfattning eller källa',
       allCats: 'Alla kategorier',
       allSev: 'Alla nivåer',
-      showLow: 'Visa låg relevans',
       fallback: 'Visar AMLA-flödet tills bevakningen är ifylld.',
-      aiPending: 'AI skriver sammanfattningar för byrån…'
+      aiPending: 'AI skriver sammanfattningar…'
     },
     en: {
       summaries: 'Show summaries',
-      loading: 'Loading news matched to your firm profile…',
-      empty: 'No news currently meets your relevance threshold.',
+      loading: 'Loading AML news…',
+      empty: 'No current news right now.',
       error: 'Could not load the news. Try again later.',
       open: 'Open source',
-      source: 'Filtered to your firm profile',
+      source: 'News for accounting firms',
       all: 'View all news',
       heading: 'AML news',
-      why: 'Why this was flagged',
       category: 'Category',
       severity: 'Severity',
       search: 'Search',
       searchPh: 'Search title, summary or source',
       allCats: 'All categories',
       allSev: 'All severities',
-      showLow: 'Show low relevance',
       fallback: 'Showing the AMLA feed until monitoring has items.',
-      aiPending: 'AI is writing firm-specific summaries…'
+      aiPending: 'AI is writing summaries…'
     }
   };
 
@@ -119,12 +115,10 @@
     var cat = root.querySelector('[data-aml-filter="category"]');
     var sev = root.querySelector('[data-aml-filter="severity"]');
     var q = root.querySelector('[data-aml-filter="q"]');
-    var low = root.querySelector('[data-aml-filter="low"]');
     return {
       category: cat ? cat.value : '',
       severity: sev ? sev.value : '',
-      q: q ? q.value.trim() : '',
-      minTier: low && low.checked ? 'low' : 'medium'
+      q: q ? q.value.trim() : ''
     };
   }
 
@@ -176,13 +170,9 @@
       var sourceLabel = (filters.sourceLabels || {})[item.source] || item.source || '';
       var catLabel = (filters.categoryLabels || {})[item.category] || item.category || '';
       var sevLabel = (filters.severityLabels || {})[item.severity] || item.severity || '';
-      var tierLabel = (filters.tierLabels || {})[item.relevanceTier] || item.relevanceTier || '';
       var link = item.sourceUrl || item.link || '';
-      var reasons = (item.reasons || []).map(function (r) {
-        return '<li>' + escapeHtml(r) + '</li>';
-      }).join('');
       return (
-        '<article class="amla-news-item amla-news-item--' + escapeHtml(item.relevanceTier || 'low') + '">' +
+        '<article class="amla-news-item">' +
           '<div class="amla-news-meta">' +
             '<time class="amla-news-date" datetime="' + escapeHtml(item.publishedAt || '') + '">' +
               escapeHtml(formatDate(item.publishedAt, lang)) +
@@ -190,7 +180,6 @@
             (sourceLabel ? '<span class="amla-news-source">' + escapeHtml(sourceLabel) + '</span>' : '') +
           '</div>' +
           '<div class="amla-news-badges">' +
-            (tierLabel ? '<span class="amla-badge amla-badge-tier-' + escapeHtml(item.relevanceTier || '') + '">' + escapeHtml(tierLabel) + '</span>' : '') +
             (catLabel ? '<span class="amla-badge">' + escapeHtml(catLabel) + '</span>' : '') +
             (sevLabel ? '<span class="amla-badge amla-badge-sev-' + escapeHtml(item.severity || '') + '">' + escapeHtml(sevLabel) + '</span>' : '') +
           '</div>' +
@@ -201,9 +190,6 @@
           '</h3>' +
           '<p class="amla-news-summary">' + escapeHtml(item.summary || item.summaryEn || '') + '</p>' +
           (item.summaryKind === 'ai' ? '<p class="amla-news-summary-kind">Sammanfattning för redovisningsbyråer</p>' : '') +
-          (reasons
-            ? '<details class="amla-news-why"><summary>' + escapeHtml(copy.why) + '</summary><ul>' + reasons + '</ul></details>'
-            : '') +
           '<a class="amla-news-open" href="' + escapeHtml(link) + '" target="_blank" rel="noopener noreferrer">' +
             escapeHtml(copy.open) + ' <i class="fas fa-external-link-alt"></i>' +
           '</a>' +
@@ -222,9 +208,7 @@
         summary: item.summary || item.summaryEn || '',
         source: 'amla',
         category: '',
-        severity: '',
-        relevanceTier: 'medium',
-        reasons: []
+        severity: ''
       };
     });
   }
@@ -233,7 +217,6 @@
     var qs = new URLSearchParams();
     if (filters.category) qs.set('category', filters.category);
     if (filters.severity) qs.set('severity', filters.severity);
-    if (filters.minTier) qs.set('minTier', filters.minTier);
     if (filters.q) qs.set('q', filters.q);
     var res = await fetch(getBaseUrl() + '/api/aml-news?' + qs.toString(), getAuthOpts());
     var data = await res.json().catch(function () { return {}; });
@@ -262,7 +245,7 @@
     applyChrome(root, lang);
     if (status) status.textContent = copy.loading;
     try {
-      var query = opts.limit ? { category: '', severity: '', q: '', minTier: 'low' } : readFilters(root);
+      var query = opts.limit ? { category: '', severity: '', q: '' } : readFilters(root);
       var result = await fetchNews(lang, query);
       var filters = Object.assign({}, DEFAULT_FILTERS, result.data.filters || {});
       if (!opts.limit) fillFilterOptions(root, filters, lang);
