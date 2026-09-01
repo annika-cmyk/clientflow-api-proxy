@@ -187,14 +187,54 @@ class ClientFlowApp {
         5: ['kom-igang-5-0']
     };
 
+    static KOM_IGANG_HIDE_CONFIRM = 'Är du klar med allt i Kom igång och vill dölja flödet från startsidan? Du kan visa det igen via Visa Kom igång.';
+
+    komIgangChecksFromDom() {
+        const checks = {};
+        Object.keys(ClientFlowApp.KOM_IGANG_STEP_IDS).forEach(stepNum => {
+            (ClientFlowApp.KOM_IGANG_STEP_IDS[stepNum] || []).forEach(id => {
+                const el = document.getElementById(id);
+                checks[id] = !!(el && el.checked);
+            });
+        });
+        return checks;
+    }
+
+    isKomIgangComplete() {
+        const ids = Object.values(ClientFlowApp.KOM_IGANG_STEP_IDS).flat();
+        return ids.every(id => {
+            const el = document.getElementById(id);
+            return el && el.checked;
+        });
+    }
+
+    applyKomIgangVisibility() {
+        const section = document.getElementById('kom-igang-section') || document.querySelector('.kom-igang-section');
+        const restore = document.getElementById('kom-igang-visa-igen');
+        const hideBtn = document.getElementById('kom-igang-hide-btn');
+        const hide = !!(this.komIgangHidden && this.isKomIgangComplete());
+        if (section) section.classList.toggle('kom-igang-section--hidden', hide);
+        if (restore) restore.hidden = !hide;
+        if (hideBtn) hideBtn.hidden = !(!hide && this.isKomIgangComplete());
+    }
+
+    askToHideKomIgang() {
+        if (!this.isKomIgangComplete() || this.komIgangHidden) return;
+        if (window.confirm(ClientFlowApp.KOM_IGANG_HIDE_CONFIRM)) {
+            this.komIgangHidden = true;
+        }
+    }
+
     async initKomIgang() {
         const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
         let state = {};
+        this.komIgangHidden = false;
         try {
             const res = await fetch(`${this.baseUrl}/api/settings/kom-igang`, { method: 'GET', ...opts });
             if (res.ok) {
                 const data = await res.json();
                 state = data.state || {};
+                this.komIgangHidden = state.hidden === true;
             }
         } catch (e) { /* använd tom state */ }
         Object.keys(ClientFlowApp.KOM_IGANG_STEP_IDS).forEach(stepNum => {
@@ -207,6 +247,7 @@ class ClientFlowApp {
             this.updateKomIgangMinimerad(stepEl);
         });
         this.reorderKomIgangFlow();
+        this.applyKomIgangVisibility();
         document.querySelectorAll('.kom-igang-step').forEach(stepEl => {
             const step = stepEl.getAttribute('data-step');
             const ids = ClientFlowApp.KOM_IGANG_STEP_IDS[step];
@@ -216,9 +257,12 @@ class ClientFlowApp {
                     if (cb) {
                         cb.addEventListener('change', (e) => {
                             e.stopPropagation();
-                            this.saveKomIgangState();
                             this.updateKomIgangMinimerad(stepEl);
                             this.reorderKomIgangFlow();
+                            if (cb.checked) this.askToHideKomIgang();
+                            if (!this.isKomIgangComplete()) this.komIgangHidden = false;
+                            this.applyKomIgangVisibility();
+                            this.saveKomIgangState();
                         });
                     }
                 });
@@ -230,6 +274,25 @@ class ClientFlowApp {
                 stepEl.classList.remove('kom-igang-step--minimerad');
             });
         });
+        const hideBtn = document.getElementById('kom-igang-hide-btn');
+        if (hideBtn && !hideBtn.getAttribute('data-bound')) {
+            hideBtn.setAttribute('data-bound', '1');
+            hideBtn.addEventListener('click', () => {
+                this.askToHideKomIgang();
+                this.applyKomIgangVisibility();
+                this.saveKomIgangState();
+            });
+        }
+        const restore = document.getElementById('kom-igang-visa-igen');
+        const restoreBtn = restore && restore.querySelector('button');
+        if (restoreBtn && !restoreBtn.getAttribute('data-bound')) {
+            restoreBtn.setAttribute('data-bound', '1');
+            restoreBtn.addEventListener('click', () => {
+                this.komIgangHidden = false;
+                this.applyKomIgangVisibility();
+                this.saveKomIgangState();
+            });
+        }
         this.setupKomIgangScroll();
     }
 
@@ -356,13 +419,8 @@ class ClientFlowApp {
     }
 
     async saveKomIgangState() {
-        const state = {};
-        Object.keys(ClientFlowApp.KOM_IGANG_STEP_IDS).forEach(stepNum => {
-            (ClientFlowApp.KOM_IGANG_STEP_IDS[stepNum] || []).forEach(id => {
-                const el = document.getElementById(id);
-                if (el) state[id] = el.checked;
-            });
-        });
+        const state = this.komIgangChecksFromDom();
+        if (this.komIgangHidden) state.hidden = true;
         const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
         try {
             await fetch(`${this.baseUrl}/api/settings/kom-igang`, {

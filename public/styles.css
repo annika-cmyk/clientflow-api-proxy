@@ -2838,11 +2838,19 @@ body.sidebar-collapsed .logout-btn {
 .kom-igang-section {
     margin-bottom: 1.5rem;
 }
+.kom-igang-section--hidden { display: none; }
 .kom-igang-header {
     margin-bottom: 1.25rem;
 }
+.kom-igang-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
 .kom-igang-header h2 {
-    margin: 0 0 0.35rem 0;
+    margin: 0;
     font-size: 1.25rem;
     font-weight: 700;
     color: var(--title-text);
@@ -2860,6 +2868,38 @@ body.sidebar-collapsed .logout-btn {
     opacity: 0.85;
     line-height: 1.5;
 }
+.kom-igang-hide-btn {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+.kom-igang-hide-btn:hover { color: var(--accent-dark, #0d3a43); }
+.kom-igang-visa-igen {
+    margin: 0 0 1.1rem;
+    font-size: 0.85rem;
+}
+.kom-igang-visa-igen[hidden] { display: none; }
+.kom-igang-visa-igen button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+.kom-igang-visa-igen button:hover { color: var(--accent-dark, #0d3a43); }
 /* Wrapper med pilar – horisontell scroll */
 .kom-igang-scroll-wrap {
     position: relative;
