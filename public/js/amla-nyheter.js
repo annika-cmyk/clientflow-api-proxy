@@ -9,7 +9,7 @@
     sv: {
       summaries: 'Visa sammanfattningar',
       loading: 'Laddar AML-nyheter…',
-      empty: 'Inga aktuella nyheter just nu.',
+      empty: 'Inga nya nyheter just nu.',
       error: 'Kunde inte hämta nyheterna. Försök igen senare.',
       open: 'Öppna källa',
       source: 'Nyheter för redovisningsbyråer',
@@ -27,7 +27,7 @@
     en: {
       summaries: 'Show summaries',
       loading: 'Loading AML news…',
-      empty: 'No current news right now.',
+      empty: 'No new articles right now.',
       error: 'Could not load the news. Try again later.',
       open: 'Open source',
       source: 'News for accounting firms',
