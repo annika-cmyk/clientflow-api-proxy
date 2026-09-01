@@ -497,15 +497,18 @@ class ClientFlowApp {
             if (userData.role !== 'ClientFlowAdmin') {
                 console.log('User is not ClientFlowAdmin - hiding system status');
                 this.hideSystemStatus();
+                this.hideAdminOnlyNav();
             } else {
                 console.log('User is ClientFlowAdmin - showing system status');
                 this.showSystemStatus();
+                this.showAdminOnlyNav();
             }
 
         } catch (error) {
             console.error('Error applying role-based UI:', error);
             // Hide system status on error to be safe
             this.hideSystemStatus();
+            this.hideAdminOnlyNav();
         }
     }
 
@@ -521,6 +524,18 @@ class ClientFlowApp {
         if (statusSection) {
             statusSection.style.display = 'block';
         }
+    }
+
+    hideAdminOnlyNav() {
+        document.querySelectorAll('[data-admin-only="1"]').forEach((el) => {
+            el.style.display = 'none';
+        });
+    }
+
+    showAdminOnlyNav() {
+        document.querySelectorAll('[data-admin-only="1"]').forEach((el) => {
+            el.style.display = '';
+        });
     }
 
     validateOrgNumber(input) {
