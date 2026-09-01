@@ -2862,7 +2862,7 @@ body.sidebar-collapsed .logout-btn {
     color: var(--accent);
 }
 .kom-igang-desc {
-    margin: 0;
+    margin: 0.35rem 0 0;
     font-size: 0.9rem;
     color: var(--text);
     opacity: 0.85;
