@@ -142,10 +142,11 @@ const { parseAssistantJson } = require('./lib/aml-news/json');
 const { runIngestLayer, runClassifyLayer } = require('./lib/aml-news/pipeline');
 const { ingestSources } = require('./lib/aml-news/ingest');
 const { createMemoryStore } = require('./lib/aml-news/store-memory');
-const { buildFirmFeed } = require('./lib/aml-news/feed');
+const { buildFirmFeed, isRecentNews } = require('./lib/aml-news/feed');
 const { enrichItemsWithArticleBodies, newsItemNeedsBody } = require('./lib/aml-news/enrich');
 const { isRelevantForConsultants } = require('./lib/aml-news/sources');
 const { heuristicClassify, isThinSummary, needsAiSummary, classifyItem } = require('./lib/aml-news/classify');
+const { createAiCostGuard } = require('./lib/aml-news/ai-cost-guard');
 const kundDold = require('./lib/kund-dold');
 const { getWhatsNewPayload } = require('./lib/whats-new');
 const feedback = require('./lib/feedback');
@@ -809,6 +810,20 @@ app.get('/api/amla-news', authenticateToken, async (req, res) => {
 const amlNewsJobState = { lastIngestYmd: '', running: false };
 const amlNewsLiveCache = { items: [], fetchedAt: 0, errors: [] };
 const amlNewsClassifyState = { running: false };
+const amlNewsAiCostGuard = createAiCostGuard({
+  dailyCap: Math.max(0, parseInt(process.env.AML_NEWS_AI_DAILY_CAP || '40', 10) || 40),
+  onDemandBatch: Math.max(0, parseInt(process.env.AML_NEWS_AI_ON_DEMAND_BATCH || '3', 10) || 3),
+  maxFailures: Math.max(1, parseInt(process.env.AML_NEWS_AI_MAX_FAILURES || '2', 10) || 2)
+});
+
+function amlNewsAiEligible(row) {
+  return isRecentNews(row) && isRelevantForConsultants(row) && needsAiSummary(row);
+}
+
+function resolveAmlNewsAiModel() {
+  const fromEnv = String(process.env.OPENAI_AML_NEWS_MODEL || '').trim();
+  return fromEnv || 'gpt-4o-mini';
+}
 
 function getAmlNewsMemoryStore() {
   if (!global.__amlNewsMemoryStore) {
@@ -842,9 +857,13 @@ function applyAiSummaryToCache(item, cls) {
 }
 
 async function summarizeAmlNewsWithAi(rows) {
-  const slice = (rows || []).filter((row) => isRelevantForConsultants(row) && needsAiSummary(row)).slice(0, 8);
-  if (!slice.length) return { attempted: 0, classified: 0 };
+  const pending = (rows || []).filter(amlNewsAiEligible);
+  const slice = amlNewsAiCostGuard.selectCandidates(pending);
+  if (!slice.length) {
+    return { attempted: 0, classified: 0, skipped: pending.length, budget: amlNewsAiCostGuard.snapshot() };
+  }
   let classified = 0;
+  let givenUp = 0;
   for (const item of slice) {
     try {
       const cls = await classifyItem(item, { completeJson: completeAmlNewsClassificationJson });
@@ -852,23 +871,50 @@ async function summarizeAmlNewsWithAi(rows) {
       if (item.id && String(item.id).startsWith('rec')) {
         await getAmlNewsStore().saveClassification(item.id, cls);
       }
+      amlNewsAiCostGuard.recordSuccess(item);
       classified += 1;
     } catch (err) {
+      const fail = amlNewsAiCostGuard.recordFailure(item);
       console.warn('AML-nyheter AI-sammanfattning:', err.message);
+      if (fail.givenUp) {
+        // Stoppa omkörningar: lås heuristic-sammanfattning så needsAiSummary blir false.
+        const heuristic = {
+          ...heuristicClassify(item),
+          classified_at: new Date().toISOString()
+        };
+        applyAiSummaryToCache(item, heuristic);
+        if (item.id && String(item.id).startsWith('rec')) {
+          try {
+            await getAmlNewsStore().saveClassification(item.id, heuristic);
+          } catch (saveErr) {
+            console.warn('AML-nyheter heuristic save:', saveErr.message);
+          }
+        }
+        givenUp += 1;
+      }
     }
   }
-  return { attempted: slice.length, classified };
+  return {
+    attempted: slice.length,
+    classified,
+    givenUp,
+    budget: amlNewsAiCostGuard.snapshot()
+  };
 }
 
 function scheduleAmlNewsAiSummaries(rows) {
   if (amlNewsClassifyState.running) return;
   if (!process.env.OPENAI_API_KEY) return;
-  const pending = (rows || []).filter((row) => isRelevantForConsultants(row) && needsAiSummary(row));
+  if (!amlNewsAiCostGuard.canSpend(1)) return;
+  const pending = (rows || []).filter(amlNewsAiEligible);
   if (!pending.length) return;
+  if (!amlNewsAiCostGuard.selectCandidates(pending).length) return;
   amlNewsClassifyState.running = true;
   summarizeAmlNewsWithAi(pending)
     .then((out) => {
-      if (out.classified) console.log('📰 AML-nyheter AI-sammanfattningar', JSON.stringify(out));
+      if (out.classified || out.givenUp) {
+        console.log('📰 AML-nyheter AI-sammanfattningar', JSON.stringify(out));
+      }
     })
     .catch((err) => console.warn('AML-nyheter AI-sammanfattning:', err.message))
     .finally(() => { amlNewsClassifyState.running = false; });
@@ -985,6 +1031,7 @@ async function completeAmlNewsClassificationJson({ prompt, instructions }) {
     prompt,
     {
       instructions,
+      model: resolveAmlNewsAiModel(),
       maxWaitMs: 90000,
       pollMs: 1500,
       debugMeta: { route: 'aml-news-classify' }
@@ -1004,13 +1051,32 @@ async function runAmlNewsIngestAndClassify(opts = {}) {
   const ingest = await runIngestLayer({ fetchText: fetchAmlNewsText, store });
   let classify = { layer: 'classify', attempted: 0, classified: 0, results: [] };
   if (process.env.OPENAI_API_KEY) {
+    const jobLimit = Math.min(
+      opts.classifyLimit || 25,
+      amlNewsAiCostGuard.remaining()
+    );
     classify = await runClassifyLayer({
       store,
       completeJson: completeAmlNewsClassificationJson,
-      limit: opts.classifyLimit || 25
+      limit: jobLimit,
+      isEligible: (row) => isRecentNews(row),
+      selectCandidates: (rows, selOpts) => amlNewsAiCostGuard.selectCandidates(rows, selOpts),
+      onSuccess: (item) => amlNewsAiCostGuard.recordSuccess(item),
+      onFailure: (item) => {
+        const fail = amlNewsAiCostGuard.recordFailure(item);
+        if (fail.givenUp) {
+          const heuristic = {
+            ...heuristicClassify(item),
+            classified_at: new Date().toISOString()
+          };
+          store.saveClassification(item.id, heuristic).catch((saveErr) => {
+            console.warn('AML-nyheter heuristic save:', saveErr.message);
+          });
+        }
+      }
     });
   }
-  return { ingest, classify };
+  return { ingest, classify, budget: amlNewsAiCostGuard.snapshot() };
 }
 
 async function processAmlNewsJobs() {
