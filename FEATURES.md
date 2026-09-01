@@ -319,6 +319,7 @@ Vanlig PDF-export av byrådokumentet sparas **inte** automatiskt. «Skicka för 
 - Fältgranskning / hjälptexter på KYC och beskrivningskort.
 - Källor ska visa undersida och sökväg.
 - AI-innehåll ska kunna audit-loggas.
+- **AI-användning** (`ai-usage.html`): logg per användare. AML-nyhetssammanfattningar har kostnadsspärr så ingest inte skenar.
 
 ---
 
@@ -353,6 +354,7 @@ Prototypen lagrar i **Airtable**. En säljbar app ska ha egen databas. Tänk «b
 | `allman-riskbedomning-byra.html` | Allmän riskbedömning |
 | `byrarutiner.html` | Byrårutiner |
 | `amla-nyheter.html` | AML-nyheter |
+| `ai-usage.html` | AI-användning per användare |
 | `byra-anvandare.html` | Byrå, användare, behörighet, loggar |
 | `utbildning.html` | AML-grundkurs |
 | `dokumentation.html` | Byrådokument, dolda kunder, audit, export |
