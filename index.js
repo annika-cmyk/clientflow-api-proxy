@@ -1100,7 +1100,7 @@ async function processAmlNewsJobs() {
         fetched: out.ingest.fetched,
         errors: out.ingest.errors,
         classified: out.classify.classified,
-        fallbacks: out.classify.fallbacks || 0
+        budget: out.budget
       }));
     } else if (process.env.OPENAI_API_KEY) {
       // Timvis klassning av kvarvarande poster utan ny ingest
