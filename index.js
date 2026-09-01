@@ -93,9 +93,15 @@ const {
   resolveResponsesModel,
   buildResponsesPayload,
   extractResponsesText,
+  extractResponsesUsage,
   conversationIdFromResponse,
   isResponsesConversationId
 } = require('./lib/openai-assistant-run');
+const {
+  recordAiUsage,
+  summarizeAiUsage,
+  recentAiUsage
+} = require('./lib/ai-usage-log');
 const { applyKycAtgarderCorrection } = require('./lib/byra-policy-text');
 const personRegister = require('./lib/person-register');
 const dokumentKategori = require('./lib/dokument-kategori');
@@ -875,7 +881,7 @@ function scheduleAmlNewsAiSummaries(rows) {
 }
 
 function finishAmlNewsRows(rows) {
-  scheduleAmlNewsAiSummaries(rows);
+  // AI-klassning körs bara i bakgrundsjobb — inte vid varje sidladdning (kostnadsspik).
   return rows;
 }
 
@@ -980,14 +986,17 @@ function getAmlNewsStore() {
 async function completeAmlNewsClassificationJson({ prompt, instructions }) {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) throw new Error('OPENAI_API_KEY saknas');
+  const model = String(process.env.OPENAI_AML_NEWS_MODEL || 'gpt-4o-mini').trim() || 'gpt-4o-mini';
   const text = await runOpenAIAssistantRunWithRetry(
     openaiKey,
     prompt,
     {
+      model,
       instructions,
+      temperature: 0.2,
       maxWaitMs: 90000,
       pollMs: 1500,
-      debugMeta: { route: 'aml-news-classify' }
+      debugMeta: { route: 'aml-news-classify', user: 'system:aml-news' }
     },
     { maxAttempts: 2 }
   );
@@ -1018,15 +1027,31 @@ async function processAmlNewsJobs() {
   amlNewsJobState.running = true;
   try {
     const ymd = stockholmDateYmd();
-    if (amlNewsJobState.lastIngestYmd !== ymd) {
-      const out = await runAmlNewsIngestAndClassify();
+    const shouldIngest = amlNewsJobState.lastIngestYmd !== ymd;
+    if (shouldIngest) {
+      const out = await runAmlNewsIngestAndClassify({ classifyLimit: 20 });
       amlNewsJobState.lastIngestYmd = ymd;
       console.log('📰 AML-nyheter ingest', JSON.stringify({
         inserted: out.ingest.inserted,
         fetched: out.ingest.fetched,
         errors: out.ingest.errors,
-        classified: out.classify.classified
+        classified: out.classify.classified,
+        fallbacks: out.classify.fallbacks || 0
       }));
+    } else if (process.env.OPENAI_API_KEY) {
+      // Timvis klassning av kvarvarande poster utan ny ingest
+      const classify = await runClassifyLayer({
+        store: getAmlNewsStore(),
+        completeJson: completeAmlNewsClassificationJson,
+        limit: 10
+      });
+      if (classify.attempted) {
+        console.log('📰 AML-nyheter classify', JSON.stringify({
+          attempted: classify.attempted,
+          classified: classify.classified,
+          fallbacks: classify.fallbacks || 0
+        }));
+      }
     }
   } catch (err) {
     console.warn('AML-nyheter jobb:', err.message);
@@ -1177,6 +1202,25 @@ async function ensureOpenAIConversationId(openaiKey, headers, apiBase, requested
   return id;
 }
 
+function logOpenAiUsage(opts, usage, status, startedAt, errorMsg) {
+  try {
+    const debugMeta = opts && opts.debugMeta ? opts.debugMeta : {};
+    recordAiUsage({
+      user: debugMeta.user || '',
+      byraId: debugMeta.byraId || '',
+      byra: debugMeta.byra || '',
+      route: debugMeta.route || '',
+      model: resolveResponsesModel(opts && opts.model),
+      usage: usage || null,
+      status: status || 'ok',
+      durationMs: startedAt ? Date.now() - startedAt : 0,
+      error: errorMsg || ''
+    });
+  } catch (err) {
+    console.warn('AI-usage-log misslyckades:', err.message);
+  }
+}
+
 async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const vectorStoreId = resolveAssistantVectorStoreId(opts.vectorStoreId);
   const maxWaitMs = opts.maxWaitMs ?? 180000;
@@ -1184,6 +1228,7 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
   const instructions = (opts.instructions || '').toString().trim();
   const threadIdOut = opts.threadIdOut && typeof opts.threadIdOut === 'object' ? opts.threadIdOut : null;
   const debugMeta = opts.debugMeta || null;
+  const startedAt = Date.now();
   const debugId = pushAiDebugEvent({
     route: debugMeta?.route || '',
     user: debugMeta?.user || '',
@@ -1218,6 +1263,7 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     }
   } catch (e) {
     updateAiDebugEvent(debugId, { status: 'error_conversation' });
+    logOpenAiUsage(opts, null, 'error', startedAt, e.message || 'conversation');
     throw formatOpenAIAssistantError(e, 'OpenAI conversations');
   }
   if (threadIdOut && conversationId) threadIdOut.value = conversationId;
@@ -1272,10 +1318,12 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
         });
       } catch (e2) {
         updateAiDebugEvent(debugId, { status: 'error_response' });
+        logOpenAiUsage(opts, null, 'error', startedAt, e2.message || 'response');
         throw formatOpenAIAssistantError(e2, 'OpenAI responses');
       }
     } else {
       updateAiDebugEvent(debugId, { status: 'error_response' });
+      logOpenAiUsage(opts, null, isOpenAIRateLimitError(e) ? 'rate_limit' : 'error', startedAt, e.message || 'response');
       throw formatOpenAIAssistantError(e, 'OpenAI responses');
     }
   }
@@ -1284,6 +1332,7 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
     updateAiDebugEvent(debugId, { status: `response_${data.status}` });
     const errMsg = (data.error && data.error.message) || data.incomplete_details && data.incomplete_details.reason
       || `Status: ${data.status}`;
+    logOpenAiUsage(opts, extractResponsesUsage(data), 'incomplete', startedAt, errMsg);
     throw new Error(errMsg);
   }
 
@@ -1292,6 +1341,7 @@ async function runOpenAIAssistantRun(openaiKey, userContent, opts = {}) {
 
   const text = extractResponsesText(data);
   updateAiDebugEvent(debugId, { status: text ? 'completed' : 'empty' });
+  logOpenAiUsage(opts, extractResponsesUsage(data), text ? 'ok' : 'empty', startedAt);
   return text;
 }
 
@@ -1555,6 +1605,36 @@ app.get('/api/ai/debug/requests/:id', authenticateToken, async (req, res) => {
     res.json({ ok: true, item });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Kunde inte läsa AI debug' });
+  }
+});
+
+// GET /api/ai/usage — sammanställning per användare/route (ClientFlowAdmin)
+app.get('/api/ai/usage', authenticateToken, async (req, res) => {
+  try {
+    const user = await getAirtableUser(req.user.email);
+    if (!user || !access.isClientFlowAdmin(user.role)) {
+      return res.status(403).json({ error: 'Endast ClientFlowAdmin' });
+    }
+    const days = Math.max(1, Math.min(parseInt(req.query.days || '30', 10) || 30, 45));
+    const recentLimit = Math.max(1, Math.min(parseInt(req.query.recent || '40', 10) || 40, 200));
+    const summary = summarizeAiUsage({ days, recentLimit });
+    res.json({ ok: true, ...summary });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Kunde inte läsa AI-usage' });
+  }
+});
+
+// GET /api/ai/usage/recent — senaste AI-anropen
+app.get('/api/ai/usage/recent', authenticateToken, async (req, res) => {
+  try {
+    const user = await getAirtableUser(req.user.email);
+    if (!user || !access.isClientFlowAdmin(user.role)) {
+      return res.status(403).json({ error: 'Endast ClientFlowAdmin' });
+    }
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit || '50', 10) || 50, 200));
+    res.json({ ok: true, items: recentAiUsage(limit) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Kunde inte läsa AI-usage' });
   }
 });
 
