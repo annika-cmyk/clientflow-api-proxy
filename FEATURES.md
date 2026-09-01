@@ -1,435 +1,437 @@
-# ClientFlow – feature list för Tobias
+# ClientFlow – feature list for Tobias
 
-Det här är en inventering av **prototypen** (live: `https://www.app.clientflow.se`). Syftet är att du ska veta **vad produkten gör idag** och vad en säljbar applikation måste täcka – inte att du ska kopiera Airtable, Render-proxyn eller den nuvarande frontend-stacken.
+This is an inventory of the **prototype** (live: `https://www.app.clientflow.se`). The goal is to show **what the product does today** and what a sellable application must cover — not to copy Airtable, the Render proxy, or the current frontend stack.
 
-**ClientFlow** är ett PTL-system (penningtvättslagen) för svenska redovisningsbyråer. Byrån dokumenterar sin allmänna riskbedömning, sina tjänster och rutiner, gör kundkännedom (KYC) och individuell riskbedömning, screenar personer, hanterar uppdrag/körningar och kan exportera underlag till Länsstyrelsen.
+**ClientFlow** is an AML system for Swedish accounting firms (penningtvättslagen / PTL). The firm documents its general risk assessment, services and procedures, performs customer due diligence (KYC) and individual risk assessment, screens people, manages assignments/runs, and can export material for the County Administrative Board (Länsstyrelsen).
 
-Minibok (bokföring) läser uppdrag och AML via den här produkten. Det gränssnittet behöver finnas kvar eller ersättas med ett avtalat API.
+Minibok (bookkeeping) reads assignments and AML through this product. That interface must stay or be replaced with an agreed API.
+
+Swedish UI names are kept in *italics* where they help you find things in the prototype.
 
 ---
 
-## 1. Vem som använder det
+## 1. Who uses it
 
-Tre roller:
+Three roles:
 
-| Roll | Vad de får göra |
+| Role | What they can do |
 |---|---|
-| **Ledare** | Allt på den egna byrån. Ser alla kunder. Hanterar användare, behörigheter, kataloger, allmän riskbedömning och dokumentation. |
-| **Anställd** | Ser bara kunder hen är kopplad till (fältet *Användare* / kundbehörighet). När hen har tillgång till en kund: fullt arbete på det kundkortet. |
-| **ClientFlowAdmin** | Plattformsadmin. Ser alla byråer. |
+| **Leader** (*Ledare*) | Everything at their own firm. Sees all customers. Manages users, access, catalogues, the general risk assessment and documentation. |
+| **Employee** (*Anställd*) | Sees only customers they are assigned to (*Användare* / customer access). Once they have access: full work on that customer card. |
+| **ClientFlowAdmin** | Platform admin. Sees all firms. |
 
-Äldre data kan ha rollen «Användare» – den ska behandlas som Anställd.
+Older data may use the role «Användare» — treat it as Employee.
 
-**Kundbehörighet:** Ledare tilldelar en eller flera byråanvändare till en kund (en kund i taget eller i bulk från byråsidan). Anställd som inte är kopplad ska inte kunna öppna eller ändra kunden.
-
----
-
-## 2. Inloggning och skal
-
-- E-post + lösenord. Session via httpOnly-cookie (JWT).
-- Skyddade sidor: ej inloggad → login.
-- Sidomeny med sök på företag, org.nr och kontakt.
-- Mobil: menyn fälls undan, hamburgare öppnar den.
-- Feedback till `hej@clientflow.se`.
-- Dashboard visar «senaste ändringar» (produktnyheter).
+**Customer access:** a Leader assigns one or more firm users to a customer (one at a time or in bulk from the firm page). An employee who is not assigned must not be able to open or change the customer.
 
 ---
 
-## 3. Byråns grunddata (måste finnas innan kundarbetet)
+## 2. Login and shell
 
-Det här är byråns PTL-underlag. «Kom igång» på dashboarden leder genom det i den här ordningen.
-
-### 3.1 Byråns tjänster (`riskbedomning-byra`)
-
-Katalog över tjänster byrån säljer. Kunden får **bara** välja tjänster härifrån.
-
-Per tjänst:
-
-- Namn, beskrivning
-- **Inneboende risk** och **residualrisk** som S×K (sannolikhet × konsekvens) på skalan Låg / Normal / Förhöjd / Hög / Oacceptabel
-- **Hot** – ska klassas som penningtvätt (PT), terrorfinansiering (TF) eller båda. En tjänst kan ha båda. TF-täckning krävs innan tjänsten räknas som publicerbar.
-- **Sårbarheter**
-- **Åtgärder** – varje åtgärd klassas som:
-  - **Byrårutin** (alltid byråns ansvar), eller
-  - **Kundberoende förutsättning** (måste kryssas Ja/Nej på varje kund)
-- AI-analys mot en kunskapsbas (myndighetsvägledning). Förslag visas per flik (Översikt, Hot, Sårbarheter, Åtgärder). Inget sparas förrän användaren väljer. Tomma fält kan fyllas automatiskt; befintlig text är underlag, inte facit.
-
-### 3.2 Övriga riskfaktorer (`ovriga-riskfaktorer`)
-
-Byråns mallar för riskfaktorer **utanför tjänsterna**, grupperade i dimensioner:
-
-- Geografiska riskfaktorer
-- Riskfaktorer kopplat till kund
-- Distributionskanaler
-- Verksamhetsspecifika riskfaktorer
-
-Plus en katalog med **övriga varningsflaggor** (allvarlighet: Hög-aktiv / Bidrar vid kombination / Informativ). Byrån kan ta bort default-flaggor; borttagna ska stanna borttagna.
-
-Samma S×K, hot (PT/TF), sårbarheter, åtgärder och AI-stöd som på tjänster. PT/TF är obligatoriskt.
-
-### 3.3 Allmän riskbedömning byrå
-
-Dokumentet som motiverar byråns riskbaserade förhållningssätt (2017:630). Byggs från tjänster, övriga riskfaktorer och statistik. Innehåller bland annat riskaptit (redigerbar policy). AI hjälper till att skriva sektioner. Hänvisar till källsidorna (Byråns tjänster / Övriga riskfaktorer) i stället för att duplicera allt.
-
-### 3.4 Byrårutiner
-
-Interna rutiner (4 kap. 3 §). Utkast + AI utifrån det byrån redan angett.
-
-### 3.5 Uppgifter byrå & användare
-
-Flikar:
-
-- **Byråinformation** – namn, org.nr, logga, kontakt
-- **Uppdragsbrev** – mall + bilagor
-- **Användare** – skapa/hantera byråns personal och roller
-- **Utbildningar** – vilka som gått AML-utbildning
-- **Behörigheter** – koppla användare ↔ kunder (även bulk)
-- **Aktivitetsloggar**
-- Prislista kopplad till tjänster (+ fritextrader)
-
-Ledare ser byråns alla användare.
-
-### 3.6 Statistik för riskbedömning
-
-Aggrigerad bild av byråns kunder: tjänster, riskfaktorer, residualnivåer. Samma siffror ska in i Länsstyrelsen-exporten och i AI-texter för den allmänna riskbedömningen.
+- Email + password. Session via httpOnly cookie (JWT).
+- Protected pages: not logged in → login.
+- Sidebar search on company, org. no. and contact.
+- Mobile: menu collapses; hamburger opens it.
+- Feedback to `hej@clientflow.se`.
+- Dashboard shows “what’s new” (product news).
 
 ---
 
-## 4. Skala och residualmotor (kärnregler)
+## 3. Firm foundation data (must exist before customer work)
 
-Samma femgradiga skala överallt: **Låg · Normal · Förhöjd · Hög · Oacceptabel**.
+This is the firm’s PTL baseline. “Get started” on the dashboard walks through it in this order.
 
-### Kundens residual
+### 3.1 Firm services (*Byråns tjänster*, `riskbedomning-byra`)
 
-- **Beräknad residual** = maskinell startpunkt. Högsta residual-S×K bland valda tjänster och valda riskfaktorer, plus varningsflaggor och högriskbransch.
-- **Bedömd residual** = byråns aktiva val på kundkortet. Det är den som gäller.
-- Avviker bedömd från beräknad → **motivering krävs**. Samma värde kräver ingen motivering.
-- Motiveringen får **inte** avslutas med en slutsatsmening («den sammantagna riskbedömningen är Hög»).
-- Inneboende risk sätts på **tjänst och riskfaktor**, inte som ett separat kundval.
+Catalogue of services the firm sells. The customer may **only** pick services from here.
 
-### Golv från varningsflaggor
+Per service:
 
-- **Hög-aktiv** (GOLV_HOG) ensam → beräknad residual minst **Hög**.
-- Två flaggor som **bidrar vid kombination** → samma sak tillsammans.
-- «Inga» får inte kryssas samtidigt som andra flaggor.
-- Hög-golv **plus** minst två tjänster/riskfaktorer på Förhöjd eller högre → **Oacceptabel**.
-- Hög residual kräver riskaptitbeslut. Oacceptabel överskrider aptiten. Beslut: fortsätter med skärpta åtgärder / avslutas / avstår nytt uppdrag (motivering, minst 20 tecken).
-- Varnar om bedömd residual sätts lägre än en vald högrisktjänst.
+- Name, description
+- **Inherent risk** and **residual risk** as L×C (likelihood × consequence) on the scale Low / Normal / Elevated / High / Unacceptable (*Låg / Normal / Förhöjd / Hög / Oacceptabel*)
+- **Threats** — classified as money laundering (PT), terrorist financing (TF), or both. A service can have both. TF coverage is required before the service counts as publishable.
+- **Vulnerabilities**
+- **Measures** — each measure is classified as:
+  - **Firm routine** (*Byrårutin*) — always the firm’s responsibility, or
+  - **Customer-dependent prerequisite** (*Kundberoende förutsättning*) — must be ticked Yes/No on every customer
+- AI analysis against a knowledge base (authority guidance). Suggestions per tab (Overview, Threats, Vulnerabilities, Measures). Nothing is saved until the user chooses. Empty fields can be filled automatically; existing text is input, not the answer key.
 
-### Dimensioner måste vara kompletta
+### 3.2 Other risk factors (*Övriga riskfaktorer*, `ovriga-riskfaktorer`)
 
-Varje kund behöver minst ett val i varje dimension byrån faktiskt har mallar för (geografi, kund, distribution, verksamhet). Beräknad residual visas inte förrän underlaget är komplett.
+The firm’s templates for risk factors **outside services**, grouped into dimensions:
 
-### Kundberoende förutsättningar
+- Geographic risk factors
+- Customer-related risk factors
+- Distribution channels
+- Business-specific risk factors
 
-På kundens riskbedömning kryssas varje förutsättning **uppfylld / ej uppfylld**.
+Plus a catalogue of **other warning flags** (severity: High-active / Contributes in combination / Informative). The firm can remove default flags; removed ones must stay removed.
 
-- **Ej uppfylld** höjer beräknad residual. Mallens låga residual på tjänsten används då inte – inneboende risk räknas tills byrån sätter en kundspecifik residual.
-- AI kan föreslå kompletterande åtgärd. Användaren måste godkänna. Vissa åtgärder kan läggas på uppdragskörningen.
+Same L×C, threats (PT/TF), vulnerabilities, measures and AI support as on services. PT/TF is mandatory.
+
+### 3.3 General firm risk assessment (*Allmän riskbedömning byrå*)
+
+The document that justifies the firm’s risk-based approach (2017:630). Built from services, other risk factors and statistics. Includes risk appetite (editable policy). AI helps write sections. Refers to the source pages (Firm services / Other risk factors) instead of duplicating everything.
+
+### 3.4 Firm procedures (*Byrårutiner*)
+
+Internal procedures (ch. 4 § 3). Draft + AI from what the firm has already entered.
+
+### 3.5 Firm details & users (*Uppgifter byrå & användare*)
+
+Tabs:
+
+- **Firm information** — name, org. no., logo, contact
+- **Engagement letter** (*Uppdragsbrev*) — template + attachments
+- **Users** — create/manage staff and roles
+- **Training** — who has completed AML training
+- **Access** — link users ↔ customers (including bulk)
+- **Activity logs**
+- Price list tied to services (+ free-text rows)
+
+Leaders see all users at the firm.
+
+### 3.6 Risk-assessment statistics
+
+Aggregated view of the firm’s customers: services, risk factors, residual levels. The same numbers must go into the Länsstyrelsen export and into AI text for the general risk assessment.
 
 ---
 
-## 5. Ta in en kund
+## 4. Scale and residual engine (core rules)
 
-### Företagssök (dashboard)
+The same five-level scale everywhere: **Low · Normal · Elevated · High · Unacceptable**.
 
-Sök på organisationsnummer → Bolagsverket → spara som lead/kund.
+### Customer residual
 
-- Dubblettspärr: samma org.nr + byrå får bara finnas en gång.
-- Hämtar bolagsdata, företrädare, verkliga huvudmän, SNI, status (verksam/avregistrerad).
-- SNI som matchar högriskbransch ska synas automatiskt på kundkortet (inte bara som fri text).
+- **Calculated residual** = machine starting point. Highest residual L×C among selected services and risk factors, plus warning flags and high-risk industry.
+- **Assessed residual** = the firm’s active choice on the customer card. That is the one that counts.
+- If assessed differs from calculated → **rationale required**. Same value needs no rationale.
+- The rationale must **not** end with a conclusion sentence («the overall risk assessment is High»).
+- Inherent risk is set on **service and risk factor**, not as a separate customer choice.
 
-### Kundlista
+### Floors from warning flags
 
-- Lista byråns kunder (filtrerad på roll/behörighet).
-- Kundstatus: **Lead / Pågående kund / Avslutad** (standardfilter: Lead + Pågående). Lead kan sparas utan Bolagsverket.
-- Compliance-bock när KYC, riskbedömning och uppdragsavtal alla är klara.
-- Filter för kunder som kräver riskaptitbeslut.
-- Dold kund syns inte här – länken ligger under Dokumentation → Dolda kunder.
+- **High-active** (`GOLV_HOG`) alone → calculated residual at least **High**.
+- Two flags that **contribute in combination** → the same together.
+- “None” (*Inga*) must not be ticked together with other flags.
+- High floor **plus** at least two services/risk factors at Elevated or higher → **Unacceptable**.
+- High residual requires a risk-appetite decision. Unacceptable exceeds appetite. Decision: continue with enhanced measures / terminate / decline new engagement (rationale, at least 20 characters).
+- Warn if assessed residual is set lower than a selected high-risk service.
 
-### Personregister
+### Dimensions must be complete
 
-Sök företrädare och verkliga huvudmän över byråns kunder. Visa identitet, kopplingar, bolag, om kunden är dold/avslutad.
+Each customer needs at least one choice in every dimension the firm actually has templates for (geography, customer, distribution, business). Calculated residual is not shown until the file is complete.
+
+### Customer-dependent prerequisites
+
+On the customer risk assessment, each prerequisite is ticked **met / not met**.
+
+- **Not met** raises calculated residual. The template’s low residual on the service is then not used — inherent risk is used until the firm sets a customer-specific residual.
+- AI can suggest a complementary measure. The user must approve. Some measures can be placed on the assignment run.
 
 ---
 
-## 6. Kundkortet
+## 5. Onboarding a customer
 
-Ett kort per kund med status på varje flik (klar / ofullständig).
+### Company search (dashboard)
 
-### 6.1 Företagsinformation
+Search by organisation number → Swedish Companies Registration Office (*Bolagsverket*) → save as lead/customer.
 
-Bolagsdata från Bolagsverket (uppdatera-knapp), kontakter, kundstatus, beskrivning av kunden i fyra kort:
+- Duplicate guard: the same org. no. + firm may exist only once.
+- Fetches company data, representatives, beneficial owners (UBO), SNI, status (active/deregistered).
+- SNI that matches a high-risk industry must show automatically on the customer card (not only as free text).
 
-- Verksamhet
-- Kostnader
-- Intäkterna
-- Bokföring
+### Customer list
 
-Plus redovisningsuppgifter (metod, momsperiod, räkenskapsår, bokföringsprogram, bank, omsättning) och **befattningshavare & roller** (företrädare, verklig huvudman, styrelse) med PEP/sanktion per person. Screening av bolag och personer (i prototypen Dilisense).
+- List the firm’s customers (filtered by role/access).
+- Customer status: **Lead / Active customer / Closed** (*Lead / Pågående kund / Avslutad*). Default filter: Lead + Active. A lead can be saved without Bolagsverket.
+- Compliance tick when KYC, risk assessment and engagement agreement are all complete.
+- Filter for customers that require a risk-appetite decision.
+- A hidden customer does not appear here — the link is under Documentation → Hidden customers.
 
-Verksamhet, Kostnader och Intäkterna syns också i KYC och sparas åt båda håll.
+### Person register
 
-Kan dölja kunden från listan utan att radera kortet.
+Search representatives and beneficial owners across the firm’s customers. Show identity, links, companies, whether the customer is hidden/closed.
 
-### 6.2 KYC-formulär
+---
 
-Sektioner:
+## 6. The customer card
 
-1. Grunduppgifter (hemvist, TIN)
-2. Företrädare (flera rader)
-3. Verklig huvudman (döljs för enskild firma)
+One card per customer with status on each tab (complete / incomplete).
+
+### 6.1 Company information
+
+Company data from Bolagsverket (refresh button), contacts, customer status, customer description in four cards:
+
+- Business
+- Costs
+- Revenue
+- Bookkeeping
+
+Plus accounting details (method, VAT period, financial year, bookkeeping software, bank, turnover) and **officers & roles** (representatives, beneficial owner, board) with PEP/sanctions per person. Screening of company and people (Dilisense in the prototype).
+
+Business, Costs and Revenue also appear in KYC and save both ways.
+
+Can hide the customer from the list without deleting the card.
+
+### 6.2 KYC form
+
+Sections:
+
+1. Basic details (tax residence, TIN)
+2. Representatives (multiple rows)
+3. Beneficial owner (hidden for sole traders)
 4. PEP
-5. Affärsförbindelsens syfte (verksamhet, kostnader, intäkter)
-6. Internationell handel
-7. Kontanthantering
-8. Kundens intygande
+5. Purpose of the business relationship (business, costs, revenue)
+6. International trade
+7. Cash handling
+8. Customer declaration
 
-KYC-status per delmoment. Spara, PDF, skicka för signering, eller markera KYC utanför ClientFlow + datum.
+KYC status per subsection. Save, PDF, send for signing, or mark KYC outside ClientFlow + date.
 
-### 6.3 Riskbedömning (individuell)
+### 6.3 Risk assessment (individual)
 
-Det tyngsta flödet.
+The heaviest flow.
 
-**Tjänster** – endast från byråns katalog. Varning om kopplingen saknas i katalogen (visa namn, inte interna id:n).
+**Services** — only from the firm catalogue. Warn if the link is missing from the catalogue (show names, not internal ids).
 
-**Riskdimensioner** (varje kort har egna val + Spara):
+**Risk dimensions** (each card has its own choices + Save):
 
-1. Geografiska riskfaktorer
-2. Riskfaktorer kopplat till kund – inkl. högriskbransch-väljare (fasta branscher + SNI-träffar, SNI går inte att avmarkera)
-3. Distributionskanaler – t.ex. fysiskt möte, distans med BankID, distans utan verifiering, via ombud
-4. Verksamhetsspecifika riskfaktorer
+1. Geographic risk factors
+2. Customer-related risk factors — including high-risk industry picker (fixed industries + SNI hits; SNI cannot be unchecked)
+3. Distribution channels — e.g. in-person meeting, remote with BankID, remote without verification, via intermediary
+4. Business-specific risk factors
 
-**Varningsflaggor i samma tre kategori-kort** (inte ett extra block):
+**Warning flags in the same three category cards** (not an extra block):
 
-- I Distributionskanaler: identitet, kontakt, undvikande, tidsnöd
-- I Riskfaktorer kopplat till kund: ägarstruktur, brottshistorik, bulvan, bytt konsult, styrelseändringar
-- I Verksamhetsspecifika: kunder på distans, transaktioner utan syfte, bokföringsrutiner, otydlig affärsmodell
+- In Distribution channels: identity, contact, evasive behaviour, time pressure
+- In Customer-related: ownership structure, criminal history, nominee/front, changed accountant, board changes
+- In Business-specific: remote customers, transactions without purpose, bookkeeping routines, unclear business model
 
-Distans, ombud, PEP, högriskbransch och kontanter väljs **bara** som de formella dimensionvalen – inte som dubbletter bland flaggorna.
+Remote, intermediary, PEP, high-risk industry and cash are chosen **only** as the formal dimension choices — not as duplicates among the flags.
 
-**Kundens riskbedömning-kort:** bedömd residual, beräknad residual som referens, motivering, åtgärder, förutsättningar Ja/Nej, ev. avvikelsemotivering.
+**Customer risk-assessment card:** assessed residual, calculated residual as reference, rationale, measures, prerequisites Yes/No, deviation rationale if needed.
 
-**Risksänkande faktorer** och **kommentar**.
+**Risk-reducing factors** and **comment**.
 
-**Uppdraget kan antas** + avtalsdatum.
+**Engagement can be accepted** + agreement date.
 
-**Dokumentera riskbedömning** → PDF (risk + bedömningspunkter + tjänstelista utan byråns tjänstanalyser + KYC som bilaga) som sparas på Dokumentationsfliken. Kan skickas för BankID-signering.
+**Document risk assessment** → PDF (risk + assessment points + service list without the firm’s service analyses + KYC as appendix) saved on the Documentation tab. Can be sent for BankID signing.
 
-### 6.4 Uppdragsavtal
+### 6.4 Engagement agreement (*Uppdragsavtal*)
 
-Skapa/skicka uppdragsavtal för signering, eller markera att avtalet slöts utanför ClientFlow (med datum).
+Create/send an engagement agreement for signing, or mark that the agreement was signed outside ClientFlow (with date).
 
-### 6.5 Uppdrag
+### 6.5 Assignments (*Uppdrag*)
 
-Uppdragstyper:
+Assignment types:
 
-- Löneuppdrag / Löneuppdrag innevarande / Löneuppdrag efterhand
-- Momsredovisning
-- Bokslut
-- Deklaration
-- Eget uppdrag (fritt namn)
+- Payroll / payroll current period / payroll in arrears
+- VAT reporting
+- Year-end accounts
+- Tax return
+- Custom assignment (free name)
 
-Frekvens per typ (månad, kvartal, årsvis, veckovis, engång, …). Systemet genererar **körningar** med deadline, periodnyckel och arbetsfönster.
+Frequency per type (monthly, quarterly, yearly, weekly, one-off, …). The system generates **runs** (*körningar*) with deadline, period key and work window.
 
-På körningen:
+On the run:
 
-- Klarmarkering
-- Anteckning
-- Åtgärder från kundens riskbedömning måste bockas i innan klar
-- Försenade / deadline inom 5 dagar markeras
-- Ansvarig på körningen
-- Vissa körningar syns/döljs beroende på typ och period
+- Mark complete
+- Note
+- Measures from the customer risk assessment must be ticked before complete
+- Overdue / deadline within 5 days is highlighted
+- Responsible person on the run
+- Some runs show/hide depending on type and period
 
-Byråöversikt: `uppdrag-oversikt.html` — tavla per typ (lön/moms/bokslut/deklaration/övriga), filter Mina/Byrån, deadline/öppna, klara/ej klara.
+Firm overview: `uppdrag-oversikt.html` — board per type (payroll/VAT/year-end/tax/other), filter Mine/Firm, deadline/open, done/not done.
 
-### 6.6 Anteckningar
+### 6.6 Notes
 
-Fria anteckningar på kunden.
+Free notes on the customer.
 
-### 6.7 Avvikelser
+### 6.7 Deviations (*Avvikelser*)
 
-Registrera och följa avvikelser på kunden. Finns också som byråsida och dashboard-kort.
+Register and follow deviations on the customer. Also exists as a firm page and a dashboard card.
 
-### 6.8 Dokumentation (på kunden)
+### 6.8 Documentation (on the customer)
 
-Uppladdade filer i flera kategorier, KYC-PDF, signerade avtal, riskbedömnings-PDF. Flera filer per kategori. Drag-and-drop.
+Uploaded files in several categories, KYC PDF, signed agreements, risk-assessment PDF. Multiple files per category. Drag-and-drop.
 
-### 6.9 Samarbete
+### 6.9 Collaboration (*Samarbete*)
 
-Förfrågningar till andra parter (t.ex. tidigare byrå). Svar landar på dashboarden («Nyinkomna svar»). Extern svarsida: `samarbete-svar.html`.
-
----
-
-## 7. Screening och personer
-
-- **PEP / RCA** är Hög-aktiv och höjer residual.
-- Sanktionsscreening av bolaget (entity screening) med datum för senaste körning.
-- Antal träffar PEP/sanktion loggas.
-- Historik över företrädare och verkliga huvudmän (personnummer/org.nr, roller, från/till).
-- Personregistret slår ihop personer över kunder.
+Requests to other parties (e.g. previous firm). Replies land on the dashboard (“New replies”). External reply page: `samarbete-svar.html`.
 
 ---
 
-## 8. Signering och kvitton
+## 7. Screening and people
+
+- **PEP / RCA** is High-active and raises residual.
+- Sanctions screening of the company (entity screening) with date of last run.
+- Number of PEP/sanctions hits is logged.
+- History of representatives and beneficial owners (personal/org. no., roles, from/to).
+- The person register merges people across customers.
+
+---
+
+## 8. Signing and receipts
 
 Via Inleed / Docsign + BankID.
 
-Dokument som kan signeras:
+Documents that can be signed:
 
 - KYC
-- Uppdragsavtal
-- Byråns riskbedömning + rutiner (Länsstyrelsen-PDF)
-- Kundens dokumenterade riskbedömning
+- Engagement agreement
+- Firm risk assessment + procedures (Länsstyrelsen PDF)
+- The customer’s documented risk assessment
 
-**Kvitto** ska gå till den byrå som skickade dokumentet och till den som signerade – inte till ett delat Inleed-konto. PDF bifogas. Signerat dokument sparas. Godkännandedatum = signeringsdatum.
+**Receipt** must go to the firm that sent the document and to the person who signed — not to a shared Inleed account. PDF attached. Signed document is stored. Approval date = signing date.
 
-Vanlig PDF-export av byrådokumentet sparas **inte** automatiskt. «Skicka för signering och godkännande» är den officiella vägen.
-
----
-
-## 9. Dokumentation på byrån
-
-- Visning av byrårutiner + slutlig allmän riskbedömning
-- Godkända (signerade) dokument
-- Dolda kunder
-- Revisionslogg (append-only, minst fem år): riskändringar, AI-innehåll, screening, avvikelser. Filtrera på aktör, entitet, tid. Varje byrå ser bara sina poster.
-- Export: PDF, ZIP med alla dokument
-- Länsstyrelsen-export: allmän riskbedömning + rutiner + statistik
+A plain PDF export of the firm document is **not** saved automatically. “Send for signing and approval” is the official path.
 
 ---
 
-## 10. Dashboard (att göra)
+## 9. Documentation at the firm
 
-- Kom igång-flöde (5 steg, avbockningsbart)
-- Företagssök
-- AML-nyheter (SV/EN, sammanfattningar, filtrerade mot byråns profil)
-- Testa dig själv (AML-grundkurs) tills användaren slutfört
-- Mina uppgifter
-- Nyinkomna samarbetssvar
-- Kunder utan riskbedömning
-- Kunder som kräver riskaptitbeslut
-- Residual avviker från beräknad nivå
-- Kunder som saknar uppdragsavtal
-- Avvikelser
-- Systemstatus
+- Display of firm procedures + final general risk assessment
+- Approved (signed) documents
+- Hidden customers
+- Audit log (append-only, at least five years): risk changes, AI content, screening, deviations. Filter by actor, entity, time. Each firm sees only its own records.
+- Export: PDF, ZIP of all documents
+- Länsstyrelsen export: general risk assessment + procedures + statistics
 
 ---
 
-## 11. Utbildning och nyheter
+## 10. Dashboard (to-do)
 
-- **AML-grundkurs:** sex frågor («de 6 absoluta måsten»), rätt/fel med förklaring, registrera genomförd utbildning.
-- **AML-nyheter:** egen sida + kort på dashboard. Språk SV/EN.
+- Get-started flow (5 steps, checkable)
+- Company search
+- AML news (SV/EN, summaries, filtered to the firm’s profile)
+- Self-test (AML basics course) until the user has completed it
+- My tasks
+- New collaboration replies
+- Customers without a risk assessment
+- Customers that require a risk-appetite decision
+- Residual differs from calculated level
+- Customers missing an engagement agreement
+- Deviations
+- System status
+
+---
+
+## 11. Training and news
+
+- **AML basics course:** six questions (“the 6 absolute musts”), right/wrong with explanation, register completed training.
+- **AML news:** own page + card on the dashboard. Language SV/EN.
 
 ---
 
 ## 12. AI (PTL-AI)
 
-- Sidomeny-chatt med kunskapsbas (uppladdad myndighetsvägledning).
-- Analys av tjänster och övriga riskfaktorer (egna förslag, inte bara språkgranskning).
-- Förslag på kundens residualmotivering (får inte själv välja nivå eller hitta på avvikelse).
-- Förslag på kompletterande åtgärd när förutsättning är ej uppfylld.
-- Fältgranskning / hjälptexter på KYC och beskrivningskort.
-- Källor ska visa undersida och sökväg.
-- AI-innehåll ska kunna audit-loggas.
-- **AI-användning** (`ai-usage.html`): logg per användare. AML-nyhetssammanfattningar har kostnadsspärr så ingest inte skenar.
+- Sidebar chat with a knowledge base (uploaded authority guidance).
+- Analysis of services and other risk factors (own proposals, not only language review).
+- Suggestions for the customer residual rationale (must not choose the level itself or invent a deviation).
+- Suggestion for a complementary measure when a prerequisite is not met.
+- Field review / help text on KYC and description cards.
+- Sources must show subpage and path.
+- AI content must be auditable.
+- **AI usage** (`ai-usage.html`): log per user. AML news summaries have a cost cap so ingest cannot run away.
 
 ---
 
-## 13. Integrationer som produkten behöver
+## 13. Integrations the product needs
 
-| Integration | Används till |
+| Integration | Used for |
 |---|---|
-| **Bolagsverket** | Företagssök, bolagsdata, företrädare, UBO, SNI, verksam-status |
-| **BankID / Inleed (Docsign)** | Signering av KYC, avtal, riskdokument |
-| **E-post (SMTP)** | Kvitton och utskick till rätt byrå + signerare |
-| **Sanktions-/PEP-screening** | Bolag och personer (i prototypen Dilisense) |
-| **OpenAI + vector store** | PTL-AI-chatt och analyser mot kunskapsbas |
-| **Minibok** | API/proxy: uppdrag, körningar, AML-underlag. Ändringar Minibok behöver ska vara live. |
+| **Bolagsverket** | Company search, company data, representatives, UBO, SNI, active status |
+| **BankID / Inleed (Docsign)** | Signing KYC, agreements, risk documents |
+| **Email (SMTP)** | Receipts and mail to the correct firm + signer |
+| **Sanctions/PEP screening** | Companies and people (Dilisense in the prototype) |
+| **OpenAI + vector store** | PTL-AI chat and analyses against the knowledge base |
+| **Minibok** | API/proxy: assignments, runs, AML data. Changes Minibok needs must be live. |
 
-Prototypen lagrar i **Airtable**. En säljbar app ska ha egen databas. Tänk «byrå → användare → kund → tjänster/risker/dokument/uppdrag» – inte Airtable-tabeller.
+The prototype stores data in **Airtable**. A sellable app should have its own database. Think “firm → users → customer → services/risks/documents/assignments” — not Airtable tables.
 
 ---
 
-## 14. Sidor i prototypen (karta)
+## 14. Prototype pages (map)
 
-| Sida | Innehåll |
+| Page | Contents |
 |---|---|
-| `login.html` | Inloggning |
+| `login.html` | Login |
 | `index.html` | Dashboard |
-| `kundlista.html` | Kundlista |
-| `kundkort.html` | Kundkortet (alla flikar) |
-| `personregister.html` | Företrädare / UBO över kunder |
-| `avvikelser.html` | Avvikelser byråöversikt |
-| `riskbedomning-byra.html` | Byråns tjänstekatalog |
-| `ovriga-riskfaktorer.html` | Riskfaktormallar + varningsflaggor |
-| `statistik-riskbedomning.html` | Statistik |
-| `allman-riskbedomning-byra.html` | Allmän riskbedömning |
-| `byrarutiner.html` | Byrårutiner |
-| `amla-nyheter.html` | AML-nyheter |
-| `ai-usage.html` | AI-användning per användare |
-| `byra-anvandare.html` | Byrå, användare, behörighet, loggar |
-| `utbildning.html` | AML-grundkurs |
-| `dokumentation.html` | Byrådokument, dolda kunder, audit, export |
-| `uppdrag-oversikt.html` | Alla uppdrag/körningar |
-| `kyc.html` | Äldre fristående KYC (primär väg är kundkortet) |
-| `samarbete-svar.html` | Publik kundsida: lämna underlag utan inloggning |
-| `welcome.html` | Äldre välkomstsida |
-| `allman-riskbedomning.html` | Legacy/demo, inte byråspecifik |
+| `kundlista.html` | Customer list |
+| `kundkort.html` | Customer card (all tabs) |
+| `personregister.html` | Representatives / UBO across customers |
+| `avvikelser.html` | Deviations firm overview |
+| `riskbedomning-byra.html` | Firm service catalogue |
+| `ovriga-riskfaktorer.html` | Risk-factor templates + warning flags |
+| `statistik-riskbedomning.html` | Statistics |
+| `allman-riskbedomning-byra.html` | General risk assessment |
+| `byrarutiner.html` | Firm procedures |
+| `amla-nyheter.html` | AML news |
+| `ai-usage.html` | AI usage per user |
+| `byra-anvandare.html` | Firm, users, access, logs |
+| `utbildning.html` | AML basics course |
+| `dokumentation.html` | Firm documents, hidden customers, audit, export |
+| `uppdrag-oversikt.html` | All assignments/runs |
+| `kyc.html` | Older standalone KYC (primary path is the customer card) |
+| `samarbete-svar.html` | Public customer page: submit supporting documents without login |
+| `welcome.html` | Older welcome page |
+| `allman-riskbedomning.html` | Legacy/demo, not firm-specific |
 
 ---
 
-## 15. Viktiga produktregler (checklista)
+## 15. Important product rules (checklist)
 
-- [ ] Tjänster och riskfaktorer väljs bara från byråns katalog
-- [ ] Minst ett val per dimension som byrån har mallar för
-- [ ] Beräknad residual syns inte förrän underlaget är komplett
-- [ ] Bedömd residual är byråns val; avvikelse kräver motivering
-- [ ] Hög-aktiv / två «bidrar» / Oacceptabel-golv enligt avsnitt 4
-- [ ] Högriskbransch (val + SNI) räknas in i residual
-- [ ] Ej uppfylld förutsättning släcker mallens låga residual
-- [ ] PT/TF på övriga riskfaktorer och tjänstehot
-- [ ] Anställd ser bara tilldelade kunder; ledare ser hela byrån
-- [ ] En kund per org.nr och byrå
-- [ ] Signeringskvitto till avsändande byrå + signerare
-- [ ] Länsstyrelsen-PDF använder samma statistik som statistiksidan
-- [ ] Revisionslogg append-only, byråisolerad, lång lagring
-- [ ] Minibok kan läsa uppdrag och AML
-
----
-
-## 16. Förslag på byggordning
-
-Bygg i den här ordningen så att varje steg går att sälja och testa:
-
-1. **Konto, byrå, roller, kundbehörighet**
-2. **Tjänstekatalog + riskfaktorkatalog + skalan**
-3. **Kund + Bolagsverket + kundkort (företagsinfo)**
-4. **KYC + dimensioner + varningsflaggor + residualmotor**
-5. **Förutsättningar, åtgärder, dokumentera/PDF**
-6. **Uppdrag + körningar** (Minibok-API här)
-7. **Signering + kvitton**
-8. **Allmän riskbedömning, rutiner, Länsstyrelsen-export**
-9. **Dashboard-köer, avvikelser, personregister, samarbete**
-10. **AI och kunskapsbas** (kan parallelliseras sent; produkten ska fungera utan den)
-11. **Utbildning, nyheter, audit-logg**
+- [ ] Services and risk factors are chosen only from the firm catalogue
+- [ ] At least one choice per dimension the firm has templates for
+- [ ] Calculated residual is not shown until the file is complete
+- [ ] Assessed residual is the firm’s choice; deviation requires a rationale
+- [ ] High-active / two “contribute” / Unacceptable floor per section 4
+- [ ] High-risk industry (choice + SNI) is included in residual
+- [ ] Unmet prerequisite drops the template’s low residual
+- [ ] PT/TF on other risk factors and service threats
+- [ ] Employee sees only assigned customers; leader sees the whole firm
+- [ ] One customer per org. no. and firm
+- [ ] Signing receipt to sending firm + signer
+- [ ] Länsstyrelsen PDF uses the same statistics as the statistics page
+- [ ] Audit log append-only, firm-isolated, long retention
+- [ ] Minibok can read assignments and AML
 
 ---
 
-## 17. Prototype vs produkt
+## 16. Suggested build order
 
-Det här ska du **inte** ta med som krav:
+Build in this order so each step can be sold and tested:
 
-- Airtable som datalager eller «källa till sanning»
-- Cache-busting med `?v=` på varje JS-fil
-- Delat Inleed-konto mellan byråer (det är en bugg vi redan löst i kvittot – bygg rätt från början: en avsändare per byrå)
-- Hårdkodade testlösen i gamla setup-dokument
+1. **Account, firm, roles, customer access**
+2. **Service catalogue + risk-factor catalogue + the scale**
+3. **Customer + Bolagsverket + customer card (company info)**
+4. **KYC + dimensions + warning flags + residual engine**
+5. **Prerequisites, measures, document/PDF**
+6. **Assignments + runs** (Minibok API here)
+7. **Signing + receipts**
+8. **General risk assessment, procedures, Länsstyrelsen export**
+9. **Dashboard queues, deviations, person register, collaboration**
+10. **AI and knowledge base** (can be parallelised late; the product must work without it)
+11. **Training, news, audit log**
 
-Det här **ska** du ta med, även om koden är rörig:
+---
 
-- Residualmotorn och golvreglerna
-- Katalogtvång (inga fria tjänster/risker på kunden)
-- Roll + kundbehörighet
-- Signering med rätt kvitto-mottagare
-- Minibok-API för uppdrag/AML
-- Att Länsstyrelsen-dokumentet speglar samma data som i appen
+## 17. Prototype vs product
+
+Do **not** treat these as requirements:
+
+- Airtable as datastore or source of truth
+- Cache-busting with `?v=` on every JS file
+- A shared Inleed account across firms (a bug we already fixed in receipts — build it right: one sender per firm)
+- Hard-coded test passwords in old setup docs
+
+Do **take** these, even if the code is messy:
+
+- The residual engine and floor rules
+- Catalogue constraint (no free-text services/risks on the customer)
+- Role + customer access
+- Signing with the correct receipt recipients
+- Minibok API for assignments/AML
+- That the Länsstyrelsen document mirrors the same data as in the app
