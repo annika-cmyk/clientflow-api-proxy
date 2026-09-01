@@ -47,7 +47,7 @@ Per tjänst:
 
 - Namn, beskrivning
 - **Inneboende risk** och **residualrisk** som S×K (sannolikhet × konsekvens) på skalan Låg / Normal / Förhöjd / Hög / Oacceptabel
-- **Hot** – ska klassas som penningtvätt (PT), terrorfinansiering (TF) eller båda. En tjänst kan ha båda.
+- **Hot** – ska klassas som penningtvätt (PT), terrorfinansiering (TF) eller båda. En tjänst kan ha båda. TF-täckning krävs innan tjänsten räknas som publicerbar.
 - **Sårbarheter**
 - **Åtgärder** – varje åtgärd klassas som:
   - **Byrårutin** (alltid byråns ansvar), eller
@@ -113,7 +113,7 @@ Samma femgradiga skala överallt: **Låg · Normal · Förhöjd · Hög · Oacce
 - Två flaggor som **bidrar vid kombination** → samma sak tillsammans.
 - «Inga» får inte kryssas samtidigt som andra flaggor.
 - Hög-golv **plus** minst två tjänster/riskfaktorer på Förhöjd eller högre → **Oacceptabel**.
-- Hög residual kräver riskaptitbeslut. Oacceptabel överskrider aptiten.
+- Hög residual kräver riskaptitbeslut. Oacceptabel överskrider aptiten. Beslut: fortsätter med skärpta åtgärder / avslutas / avstår nytt uppdrag (motivering, minst 20 tecken).
 - Varnar om bedömd residual sätts lägre än en vald högrisktjänst.
 
 ### Dimensioner måste vara kompletta
@@ -142,7 +142,9 @@ Sök på organisationsnummer → Bolagsverket → spara som lead/kund.
 ### Kundlista
 
 - Lista byråns kunder (filtrerad på roll/behörighet).
-- Statusindikatorer (risk, KYC, avtal, …).
+- Kundstatus: **Lead / Pågående kund / Avslutad** (standardfilter: Lead + Pågående). Lead kan sparas utan Bolagsverket.
+- Compliance-bock när KYC, riskbedömning och uppdragsavtal alla är klara.
+- Filter för kunder som kräver riskaptitbeslut.
 - Dold kund syns inte här – länken ligger under Dokumentation → Dolda kunder.
 
 ### Personregister
@@ -157,12 +159,14 @@ Ett kort per kund med status på varje flik (klar / ofullständig).
 
 ### 6.1 Företagsinformation
 
-Bolagsdata från Bolagsverket, kontakter, beskrivning av kunden i fyra kort:
+Bolagsdata från Bolagsverket (uppdatera-knapp), kontakter, kundstatus, beskrivning av kunden i fyra kort:
 
 - Verksamhet
 - Kostnader
 - Intäkterna
 - Bokföring
+
+Plus redovisningsuppgifter (metod, momsperiod, räkenskapsår, bokföringsprogram, bank, omsättning) och **befattningshavare & roller** (företrädare, verklig huvudman, styrelse) med PEP/sanktion per person. Screening av bolag och personer (i prototypen Dilisense).
 
 Verksamhet, Kostnader och Intäkterna syns också i KYC och sparas åt båda håll.
 
@@ -170,9 +174,18 @@ Kan dölja kunden från listan utan att radera kortet.
 
 ### 6.2 KYC-formulär
 
-Kundkännedom: syfte med affärsförbindelsen, tidshorisont, betalningar, utlandstransaktioner, kapitalets ursprung, verklig huvudman, ombud, skatterättslig hemvist, m.m.
+Sektioner:
 
-KYC-status per delmoment (genomgången / ej). Formuläret kan skickas till kunden för ifyllnad/signering.
+1. Grunduppgifter (hemvist, TIN)
+2. Företrädare (flera rader)
+3. Verklig huvudman (döljs för enskild firma)
+4. PEP
+5. Affärsförbindelsens syfte (verksamhet, kostnader, intäkter)
+6. Internationell handel
+7. Kontanthantering
+8. Kundens intygande
+
+KYC-status per delmoment. Spara, PDF, skicka för signering, eller markera KYC utanför ClientFlow + datum.
 
 ### 6.3 Riskbedömning (individuell)
 
@@ -228,7 +241,7 @@ På körningen:
 - Ansvarig på körningen
 - Vissa körningar syns/döljs beroende på typ och period
 
-Byråöversikt: `uppdrag-oversikt.html`.
+Byråöversikt: `uppdrag-oversikt.html` — tavla per typ (lön/moms/bokslut/deklaration/övriga), filter Mina/Byrån, deadline/öppna, klara/ej klara.
 
 ### 6.6 Anteckningar
 
@@ -359,8 +372,10 @@ Prototypen lagrar i **Airtable**. En säljbar app ska ha egen databas. Tänk «b
 | `utbildning.html` | AML-grundkurs |
 | `dokumentation.html` | Byrådokument, dolda kunder, audit, export |
 | `uppdrag-oversikt.html` | Alla uppdrag/körningar |
-| `kyc.html` | Fristående KYC-vy |
-| `samarbete-svar.html` | Extern svarsida för förfrågan |
+| `kyc.html` | Äldre fristående KYC (primär väg är kundkortet) |
+| `samarbete-svar.html` | Publik kundsida: lämna underlag utan inloggning |
+| `welcome.html` | Äldre välkomstsida |
+| `allman-riskbedomning.html` | Legacy/demo, inte byråspecifik |
 
 ---
 
