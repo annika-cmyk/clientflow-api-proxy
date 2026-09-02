@@ -273,21 +273,74 @@ class ByraAnvandareManager {
   }
 
   _bolagsformerChoices() {
-    return ['AB', 'Enskild firma', 'HB', 'KB', 'Ekonomisk förening', 'Stiftelse', 'Filial/utländskt bolag', 'Övrigt'];
+    return [
+      'AB',
+      'Enskild firma',
+      'HB',
+      'KB',
+      'Ekonomisk förening',
+      'Bostadsrättsförening (BRF)',
+      'Ideell förening',
+      'Stiftelse',
+      'Filial/utländskt bolag',
+      'Övrigt'
+    ];
+  }
+
+  _matchBolagsform(name) {
+    const cleaned = String(name || '').trim().replace(/^(en|ett)\s+/i, '').trim();
+    if (!cleaned) return '';
+    const aliases = {
+      ab: 'AB',
+      aktiebolag: 'AB',
+      'enskild firma': 'Enskild firma',
+      enskild: 'Enskild firma',
+      ef: 'Enskild firma',
+      hb: 'HB',
+      handelsbolag: 'HB',
+      kb: 'KB',
+      kommanditbolag: 'KB',
+      'ekonomisk förening': 'Ekonomisk förening',
+      brf: 'Bostadsrättsförening (BRF)',
+      bostadsrättsförening: 'Bostadsrättsförening (BRF)',
+      'bostadsrättsförening (brf)': 'Bostadsrättsförening (BRF)',
+      'ideell förening': 'Ideell förening',
+      'idiell förening': 'Ideell förening',
+      ideell: 'Ideell förening',
+      idiell: 'Ideell förening',
+      stiftelse: 'Stiftelse',
+      filial: 'Filial/utländskt bolag',
+      'filial/utländskt bolag': 'Filial/utländskt bolag',
+      'utländskt bolag': 'Filial/utländskt bolag',
+      övrigt: 'Övrigt'
+    };
+    const key = cleaned.toLowerCase();
+    if (aliases[key]) return aliases[key];
+    const exact = this._bolagsformerChoices().find((c) => c.toLowerCase() === key);
+    return exact || cleaned;
   }
 
   _parseBolagsformer(raw) {
     const text = String(raw || '').trim();
     if (!text) return [];
-    if (!text.includes(':')) {
-      return text.split(/[,;|]/).map((s) => s.trim()).filter(Boolean).map((form) => ({ form, count: '' }));
-    }
-    return text.split(/[,;|]/).map((part) => {
-      const m = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
-      if (m) return { form: m[1].trim(), count: m[2] };
-      const form = String(part).trim();
-      return form ? { form, count: '' } : null;
-    }).filter(Boolean);
+    const parts = text.split(/[,;|]/).flatMap((part) => {
+      const chunk = String(part || '').trim();
+      if (!chunk) return [];
+      if (/:\s*\d+\s*$/.test(chunk)) return [chunk];
+      return chunk.split(/\s+och\s+/i).map((s) => s.trim()).filter(Boolean);
+    });
+    const seen = new Map();
+    parts.forEach((part) => {
+      const counted = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
+      const form = this._matchBolagsform(counted ? counted[1] : part);
+      if (!form) return;
+      const count = counted ? counted[2] : '';
+      const key = form.toLowerCase();
+      const prev = seen.get(key);
+      if (!prev) seen.set(key, { form, count });
+      else if (!prev.count && count) prev.count = count;
+    });
+    return Array.from(seen.values());
   }
 
   _formatBolagsformer(rows) {
@@ -308,8 +361,15 @@ class ByraAnvandareManager {
     if (!list || !hidden) return;
     const rows = [];
     list.querySelectorAll('.byra-bolagsformer-row').forEach((row) => {
-      const cb = row.querySelector('input[type="checkbox"]');
       const num = row.querySelector('input[type="number"]');
+      if (row.classList.contains('is-custom')) {
+        const nameEl = row.querySelector('input[type="text"]');
+        const form = nameEl ? String(nameEl.value || '').trim() : '';
+        const count = num ? String(num.value || '').trim() : '';
+        if (form) rows.push({ form, count });
+        return;
+      }
+      const cb = row.querySelector('input[type="checkbox"]');
       if (!cb) return;
       if (num) {
         num.disabled = !cb.checked;
@@ -322,13 +382,41 @@ class ByraAnvandareManager {
     hidden.value = this._formatBolagsformer(rows);
   }
 
+  _bindBolagsformerRow(row) {
+    row.querySelectorAll('input').forEach((el) => {
+      el.addEventListener('change', () => this._syncBolagsformerFromUi());
+      el.addEventListener('input', () => this._syncBolagsformerFromUi());
+    });
+    const removeBtn = row.querySelector('.byra-bolagsformer-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        this._syncBolagsformerFromUi();
+      });
+    }
+  }
+
+  _addCustomBolagsformRow(form = '', count = '') {
+    const list = document.getElementById('byra-bolagsformer-list');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'byra-bolagsformer-row is-custom';
+    row.innerHTML = `<input type="text" class="form-input" placeholder="Annan bolagsform" value="${String(form).replace(/"/g, '&quot;')}">
+      <input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="${String(count).replace(/"/g, '&quot;')}">
+      <button type="button" class="byra-bolagsformer-remove" aria-label="Ta bort form">×</button>`;
+    list.appendChild(row);
+    this._bindBolagsformerRow(row);
+  }
+
   _renderBolagsformerEditor(raw) {
     const list = document.getElementById('byra-bolagsformer-list');
     const hidden = document.getElementById('byra-bolagsformer');
+    const addBtn = document.getElementById('byra-bolagsformer-add');
     if (!list) return;
     const parsed = this._parseBolagsformer(raw);
     const selected = new Map(parsed.map((r) => [String(r.form).toLowerCase(), r.count]));
     const known = this._bolagsformerChoices();
+    const knownSet = new Set(known.map((f) => f.toLowerCase()));
     list.innerHTML = known.map((form, idx) => {
       const id = `byra-bolagsformer-${idx}`;
       const count = selected.get(form.toLowerCase()) || '';
@@ -338,12 +426,20 @@ class ByraAnvandareManager {
         <input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="${count}" ${checked ? '' : 'disabled'}>
       </div>`;
     }).join('');
-    list.querySelectorAll('input').forEach((el) => {
-      el.addEventListener('change', () => this._syncBolagsformerFromUi());
-      el.addEventListener('input', () => this._syncBolagsformerFromUi());
+    list.querySelectorAll('.byra-bolagsformer-row').forEach((row) => this._bindBolagsformerRow(row));
+    parsed.filter((r) => r.form && !knownSet.has(String(r.form).toLowerCase())).forEach((r) => {
+      this._addCustomBolagsformRow(r.form, r.count);
     });
+    if (addBtn && !addBtn.dataset.bound) {
+      addBtn.dataset.bound = '1';
+      addBtn.addEventListener('click', () => {
+        this._addCustomBolagsformRow('', '');
+        const last = list.querySelector('.byra-bolagsformer-row.is-custom:last-child input[type="text"]');
+        if (last) last.focus();
+      });
+    }
     this._syncBolagsformerFromUi();
-    if (hidden && parsed.length && !known.some((f) => selected.has(f.toLowerCase()))) {
+    if (hidden && parsed.length && !list.querySelector('input[type="checkbox"]:checked') && !list.querySelector('.is-custom')) {
       hidden.value = String(raw || '');
     }
   }

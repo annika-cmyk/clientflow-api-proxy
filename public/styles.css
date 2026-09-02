@@ -16891,6 +16891,18 @@ h5.ar-subsection-title {
     color: #64748b;
     font-size: 0.9rem;
 }
+.byra-bolagsformer-head,
+.byra-enkate-bolagsformer-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.5rem;
+    gap: 0.55rem;
+    margin: 0 0 0.35rem;
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
 .byra-bolagsformer-list,
 .byra-enkate-bolagsformer-list {
     display: flex;
@@ -16904,6 +16916,10 @@ h5.ar-subsection-title {
     gap: 0.55rem;
     align-items: center;
 }
+.byra-bolagsformer-row.is-custom,
+.byra-enkate-bolagsformer-row.is-custom {
+    grid-template-columns: minmax(0, 1fr) 7.5rem 2.25rem;
+}
 .byra-bolagsformer-row label,
 .byra-enkate-bolagsformer-row label {
     display: flex;
@@ -16914,10 +16930,44 @@ h5.ar-subsection-title {
     cursor: pointer;
 }
 .byra-bolagsformer-row input[type="number"],
-.byra-enkate-bolagsformer-row input[type="number"] {
+.byra-enkate-bolagsformer-row input[type="number"],
+.byra-bolagsformer-row.is-custom input[type="text"],
+.byra-enkate-bolagsformer-row.is-custom input[type="text"] {
     width: 100%;
 }
 .byra-bolagsformer-row.is-disabled input[type="number"],
 .byra-enkate-bolagsformer-row.is-disabled input[type="number"] {
     opacity: 0.45;
+}
+.byra-bolagsformer-add,
+.byra-enkate-bolagsformer-add {
+    margin-top: 0.55rem;
+    padding: 0.35rem 0;
+    border: 0;
+    background: none;
+    color: #1d4ed8;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.byra-bolagsformer-add:hover,
+.byra-enkate-bolagsformer-add:hover {
+    text-decoration: underline;
+}
+.byra-bolagsformer-remove,
+.byra-enkate-bolagsformer-remove {
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid #dbe2ea;
+    border-radius: 8px;
+    background: #fff;
+    color: #64748b;
+    font-size: 1.15rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.byra-bolagsformer-remove:hover,
+.byra-enkate-bolagsformer-remove:hover {
+    color: #b91c1c;
+    border-color: #fecaca;
 }

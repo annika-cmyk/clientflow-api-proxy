@@ -54,20 +54,80 @@
     ui.status.className = 'byra-enkate-status' + (isError ? ' is-error' : msg ? ' is-ok' : '');
   }
 
+  var DEFAULT_BOLAGSFORMER = [
+    'AB',
+    'Enskild firma',
+    'HB',
+    'KB',
+    'Ekonomisk förening',
+    'Bostadsrättsförening (BRF)',
+    'Ideell förening',
+    'Stiftelse',
+    'Filial/utländskt bolag',
+    'Övrigt'
+  ];
+  var BOLAGSFORM_ALIASES = {
+    ab: 'AB',
+    aktiebolag: 'AB',
+    'enskild firma': 'Enskild firma',
+    enskild: 'Enskild firma',
+    ef: 'Enskild firma',
+    hb: 'HB',
+    handelsbolag: 'HB',
+    kb: 'KB',
+    kommanditbolag: 'KB',
+    'ekonomisk förening': 'Ekonomisk förening',
+    brf: 'Bostadsrättsförening (BRF)',
+    bostadsrättsförening: 'Bostadsrättsförening (BRF)',
+    'bostadsrättsförening (brf)': 'Bostadsrättsförening (BRF)',
+    'ideell förening': 'Ideell förening',
+    'idiell förening': 'Ideell förening',
+    ideell: 'Ideell förening',
+    idiell: 'Ideell förening',
+    stiftelse: 'Stiftelse',
+    filial: 'Filial/utländskt bolag',
+    'filial/utländskt bolag': 'Filial/utländskt bolag',
+    'utländskt bolag': 'Filial/utländskt bolag',
+    övrigt: 'Övrigt'
+  };
+
+  function matchBolagsform(name, choices) {
+    var cleaned = String(name || '').trim().replace(/^(en|ett)\s+/i, '').trim();
+    if (!cleaned) return '';
+    var key = cleaned.toLowerCase();
+    if (BOLAGSFORM_ALIASES[key]) return BOLAGSFORM_ALIASES[key];
+    var list = choices && choices.length ? choices : DEFAULT_BOLAGSFORMER;
+    var exact = list.find(function (c) { return String(c).toLowerCase() === key; });
+    return exact || cleaned;
+  }
+
   function parseBolagsformer(raw) {
     var text = String(raw || '').trim();
     if (!text) return [];
-    if (text.indexOf(':') < 0) {
-      return text.split(/[,;|]/).map(function (s) { return s.trim(); }).filter(Boolean).map(function (form) {
-        return { form: form, count: '' };
-      });
-    }
-    return text.split(/[,;|]/).map(function (part) {
-      var m = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
-      if (m) return { form: m[1].trim(), count: m[2] };
-      var form = String(part).trim();
-      return form ? { form: form, count: '' } : null;
-    }).filter(Boolean);
+    var parts = text.split(/[,;|]/).reduce(function (acc, part) {
+      var chunk = String(part || '').trim();
+      if (!chunk) return acc;
+      if (/:\s*\d+\s*$/.test(chunk)) acc.push(chunk);
+      else chunk.split(/\s+och\s+/i).forEach(function (s) { if (s.trim()) acc.push(s.trim()); });
+      return acc;
+    }, []);
+    var seen = {};
+    var rows = [];
+    parts.forEach(function (part) {
+      var counted = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
+      var form = matchBolagsform(counted ? counted[1] : part);
+      if (!form) return;
+      var count = counted ? counted[2] : '';
+      var key = form.toLowerCase();
+      if (seen[key]) {
+        if (!seen[key].count && count) seen[key].count = count;
+        return;
+      }
+      var row = { form: form, count: count };
+      seen[key] = row;
+      rows.push(row);
+    });
+    return rows;
   }
 
   function formatBolagsformer(rows) {
@@ -85,8 +145,12 @@
     });
   }
 
+  function isBolagsformerField(field) {
+    return !!(field && (field.type === 'bolagsformer' || field.key === 'vanligasteBolagsformer'));
+  }
+
   function isAnswered(v, field) {
-    if (field && field.type === 'bolagsformer') return isBolagsformerAnswered(v);
+    if (isBolagsformerField(field)) return isBolagsformerAnswered(v);
     if (v == null) return false;
     if (typeof v === 'number') return Number.isFinite(v);
     return String(v).trim() !== '';
@@ -519,18 +583,31 @@
   function renderBolagsformer(field) {
     var wrap = document.createElement('div');
     wrap.className = 'byra-enkate-bolagsformer';
+    var head = document.createElement('div');
+    head.className = 'byra-enkate-bolagsformer-head';
+    head.innerHTML = '<span>Bolagsform</span><span>Uppskattat antal</span>';
     var list = document.createElement('div');
     list.className = 'byra-enkate-bolagsformer-list';
     var parsed = parseBolagsformer(values[field.key]);
     var selected = {};
     parsed.forEach(function (r) { selected[String(r.form).toLowerCase()] = r.count; });
-    var opts = (field.choices && field.choices.length) ? field.choices : ['AB', 'Enskild firma', 'HB', 'KB', 'Ekonomisk förening', 'Stiftelse', 'Filial/utländskt bolag', 'Övrigt'];
+    var opts = (field.choices && field.choices.length) ? field.choices : DEFAULT_BOLAGSFORMER;
+    var knownSet = {};
+    opts.forEach(function (form) { knownSet[String(form).toLowerCase()] = true; });
+    var extra = parsed.filter(function (r) { return r.form && !knownSet[String(r.form).toLowerCase()]; });
 
     function sync() {
       var rows = [];
       list.querySelectorAll('.byra-enkate-bolagsformer-row').forEach(function (row) {
-        var cb = row.querySelector('input[type="checkbox"]');
         var num = row.querySelector('input[type="number"]');
+        if (row.classList.contains('is-custom')) {
+          var nameEl = row.querySelector('input[type="text"]');
+          var form = nameEl ? String(nameEl.value || '').trim() : '';
+          var count = num ? String(num.value || '').trim() : '';
+          if (form) rows.push({ form: form, count: count });
+          return;
+        }
+        var cb = row.querySelector('input[type="checkbox"]');
         if (!cb) return;
         if (num) {
           num.disabled = !cb.checked;
@@ -547,6 +624,30 @@
       setStatus('');
     }
 
+    function bindRow(row) {
+      row.querySelectorAll('input').forEach(function (el) {
+        el.addEventListener('change', sync);
+        el.addEventListener('input', sync);
+      });
+      var removeBtn = row.querySelector('.byra-enkate-bolagsformer-remove');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function () {
+          row.remove();
+          sync();
+        });
+      }
+    }
+
+    function addCustomRow(form, count) {
+      var row = document.createElement('div');
+      row.className = 'byra-enkate-bolagsformer-row is-custom';
+      row.innerHTML = '<input type="text" class="form-input" placeholder="Annan bolagsform" value="' + String(form || '').replace(/"/g, '&quot;') + '">' +
+        '<input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="' + String(count || '').replace(/"/g, '&quot;') + '">' +
+        '<button type="button" class="byra-enkate-bolagsformer-remove" aria-label="Ta bort form">×</button>';
+      list.appendChild(row);
+      bindRow(row);
+    }
+
     opts.forEach(function (form, idx) {
       var id = 'enkate-bolagsform-' + idx;
       var count = selected[String(form).toLowerCase()] || '';
@@ -556,12 +657,23 @@
       row.innerHTML = '<label for="' + id + '"><input type="checkbox" id="' + id + '" value="' + String(form).replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '><span>' + form + '</span></label>' +
         '<input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="' + count + '"' + (checked ? '' : ' disabled') + '>';
       list.appendChild(row);
+      bindRow(row);
     });
-    list.querySelectorAll('input').forEach(function (el) {
-      el.addEventListener('change', sync);
-      el.addEventListener('input', sync);
+    extra.forEach(function (r) { addCustomRow(r.form, r.count); });
+
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'byra-enkate-bolagsformer-add';
+    addBtn.textContent = 'Lägg till annan form';
+    addBtn.addEventListener('click', function () {
+      addCustomRow('', '');
+      var last = list.querySelector('.byra-enkate-bolagsformer-row.is-custom:last-child input[type="text"]');
+      if (last) last.focus();
     });
+
+    wrap.appendChild(head);
     wrap.appendChild(list);
+    wrap.appendChild(addBtn);
     return wrap;
   }
 
@@ -587,7 +699,7 @@
       control = renderHogrisk(field);
     } else if (field.type === 'multiselect') {
       control = renderItSystemSelect(field);
-    } else if (field.type === 'bolagsformer') {
+    } else if (isBolagsformerField(field)) {
       control = renderBolagsformer(field);
     } else if (field.type === 'select') {
       control = renderSelect(field, values[field.key]);
@@ -753,6 +865,17 @@
     schema = data[0] || {};
     if (!Array.isArray(schema.sections)) schema.sections = [];
     if (!Array.isArray(schema.fields)) schema.fields = [];
+    schema.fields.forEach(function (f) {
+      if (!f || f.key !== 'vanligasteBolagsformer') return;
+      f.type = 'bolagsformer';
+      if (!f.choices || !f.choices.length) f.choices = DEFAULT_BOLAGSFORMER.slice();
+      if (!f.question || f.question.indexOf('antal') < 0) {
+        f.question = 'Vilka bolagsformer finns i kundstocken? Ange ett uppskattat antal per form.';
+      }
+      if (!f.hint) {
+        f.hint = 'Bocka alla former som förekommer. Antalet får vara ungefärligt – det används för att förstå kundstockens sammansättning.';
+      }
+    });
     var profil = data[1] || {};
     values = Object.assign({}, profil.fields || profil || {});
     var patterns = data[2] && Array.isArray(data[2].patterns) ? data[2].patterns : [];
