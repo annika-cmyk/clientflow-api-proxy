@@ -1262,7 +1262,7 @@ class RiskAssessmentManager {
         } else if (falt === 'motiveringInneboende') {
             const el = document.getElementById('tjanst-motivering-inneboende');
             if (el) el.value = String(forslag || '');
-            this.setTjanstTab('oversikt');
+            this.setTjanstTab('sarbarhet');
             this.updateMotiveringWarnings();
         } else if (falt === 'motiveringResidual') {
             const el = document.getElementById('tjanst-motivering-residual');
@@ -1597,9 +1597,9 @@ class RiskAssessmentManager {
         });
         if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
         this.updateTjanstAiSummary({
-            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
+            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag').length,
             hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag, #tjanst-tf-motivering ~ .field-ai-forslag').length,
-            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag').length,
+            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
             atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag, #tjanst-motivering-residual ~ .field-ai-forslag').length
         });
         if (firstTab) this.setTjanstTab(firstTab);
@@ -1740,7 +1740,7 @@ class RiskAssessmentManager {
                     ? 'tjanst-motivering-residual'
                     : 'tjanst-motivering-inneboende';
                 if (first.field === 'motivering_residual_risk') this.setTjanstTab('atgard');
-                else this.setTjanstTab('oversikt');
+                else this.setTjanstTab('sarbarhet');
                 document.getElementById(field)?.focus();
                 this.updateMotiveringWarnings();
                 return;
