@@ -1,6 +1,6 @@
 // Customer Card Management System
 // Version marker to verify browser cache.
-console.log('🔍 SCRIPT LOADED - kundkort.js v15.92', new Date().toISOString());
+console.log('🔍 SCRIPT LOADED - kundkort.js v16.56', new Date().toISOString());
 console.log('🔍 SCRIPT LOADED - Current URL:', window.location.href);
 console.log('🔍 SCRIPT LOADED - URL search:', window.location.search);
 
@@ -13,6 +13,23 @@ const KUND_OMSATTNING_VAL = [
     '200 000–1 500 000 kr',
     '1 500 000–10 000 000 kr',
     'Över 10 000 000 kr'
+];
+
+/** Räkenskapsår: kalenderår eller brutet år (månadsskiftet där året vänder). */
+const KUND_RAKENSKAPSAR_VAL = [
+    'kalenderår',
+    'jan-feb',
+    'feb-mars',
+    'mars-april',
+    'april-maj',
+    'maj-juni',
+    'juni-juli',
+    'juli-aug',
+    'aug-sep',
+    'sep-okt',
+    'okt-nov',
+    'nov-dec',
+    'dec-jan'
 ];
 
 const VERKSAM_ORG_HELP =
@@ -5201,7 +5218,7 @@ class CustomerCardManager {
         // Redovisningsuppgifter
         const redovisningsmetod = fields['Redovisningsmetod'] || '';
         const redovisningsperiod = fields['Redovisningsperiod'] || '';
-        const rakenskapsår = fields['Räkenskapsår'] || '';
+        const rakenskapsår = (fields['Räkenskapsår'] || '').toString().trim();
         const bokforingsprogramRaw = fields['Bokforingsprogram'] || fields['Bokföringsprogram'] || '';
         const bokforingsprogram = bokforingsprogramRaw === 'Spirius' ? 'Spiris' : bokforingsprogramRaw;
         const bank = fields['Bank'] || '';
@@ -5213,6 +5230,14 @@ class CustomerCardManager {
         }
         if (curOms && !KUND_OMSATTNING_VAL.includes(curOms)) {
             omsOpts += `<option value="${this._esc(curOms)}" selected>${this._esc(curOms)} (befintligt värde)</option>`;
+        }
+
+        let rakOpts = '<option value="">Välj...</option>';
+        for (const v of KUND_RAKENSKAPSAR_VAL) {
+            rakOpts += `<option value="${this._esc(v)}" ${rakenskapsår === v ? 'selected' : ''}>${this._esc(v)}</option>`;
+        }
+        if (rakenskapsår && !KUND_RAKENSKAPSAR_VAL.includes(rakenskapsår)) {
+            rakOpts += `<option value="${this._esc(rakenskapsår)}" selected>${this._esc(rakenskapsår)} (befintligt värde)</option>`;
         }
 
         const mis = '<span class="missing-data">Ej angiven</span>';
@@ -5467,8 +5492,9 @@ class CustomerCardManager {
                             </div>
                             <div class="kunduppgifter-form-row">
                                 <label>Räkenskapsår</label>
-                                <input type="text" id="redov-rakenskapsår-input" class="kunduppgifter-input"
-                                    value="${rakenskapsår}" placeholder="t.ex. 0101-1231 eller 0501-0430">
+                                <select id="redov-rakenskapsår-input" class="kunduppgifter-input">
+                                    ${rakOpts}
+                                </select>
                             </div>
                             <div class="kunduppgifter-form-row">
                                 <label>Bokföringsprogram</label>
