@@ -295,6 +295,179 @@
                                         </div>
                                     </div>
 
+                                    <div class="byra-profil-sektion">
+                                        <h3 class="byra-profil-rubrik">6. Historik och track record</h3>
+                                        <p class="dashboard-card-desc">Tidigare avvikelser, tillsynsanmärkningar och near misses.</p>
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="byra-finanspolisen-antal">Avvikelserapporter till Finanspolisen (antal senaste 3 åren)</label>
+                                                <input type="number" id="byra-finanspolisen-antal" class="form-input" min="0" step="1" placeholder="0">
+                                            </div>
+                                            <div class="form-group full-width">
+                                                <label for="byra-finanspolisen-typ">Typ av misstanke</label>
+                                                <p class="form-hint">Ange "Ej aktuellt" om antalet är 0.</p>
+                                                <textarea id="byra-finanspolisen-typ" class="form-input" rows="2" placeholder="T.ex. penningtvätt, terroristfinansiering, Ej aktuellt"></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-lanstyrelsen-anmarkningar">Anmärkningar från Länsstyrelsens tillsyn</label>
+                                                <select id="byra-lanstyrelsen-anmarkningar" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Vet ej">Vet ej</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group full-width">
+                                                <label for="byra-lanstyrelsen-detalj">Beskrivning av tillsynsanmärkningar</label>
+                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
+                                                <textarea id="byra-lanstyrelsen-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-near-misses">Near misses (avböjt/avslutat pga misstanke)</label>
+                                                <select id="byra-near-misses" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group full-width">
+                                                <label for="byra-near-misses-detalj">Beskrivning av near misses</label>
+                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
+                                                <textarea id="byra-near-misses-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="byra-profil-sektion">
+                                        <h3 class="byra-profil-rubrik">7. Ekonomiska beroendeförhållanden</h3>
+                                        <p class="dashboard-card-desc">Om enskilda kunder utgör en stor andel av byråns omsättning.</p>
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="byra-stora-kundberoenden">Enskilda kunder med stor andel av omsättningen</label>
+                                                <select id="byra-stora-kundberoenden" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-stora-kundberoenden-andel">Andel omsättning från de största kunderna</label>
+                                                <div class="input-with-suffix">
+                                                    <input type="number" id="byra-stora-kundberoenden-andel" class="form-input" min="0" max="100" step="1" placeholder="0">
+                                                    <span class="input-suffix">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="byra-profil-sektion">
+                                        <h3 class="byra-profil-rubrik">8. Tjänster med förhöjd risk i sig</h3>
+                                        <p class="dashboard-card-desc">Bolagsbildning, nominee-roller, säte/postadress och känsliga fullmakter.</p>
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="byra-bolagsbildning">Bolagsbildning åt kund</label>
+                                                <select id="byra-bolagsbildning" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-styrelse-nominee">Styrelseuppdrag eller nominee-liknande roller</label>
+                                                <select id="byra-styrelse-nominee" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-sate-postadress">Säte / postadress ("brevlådeföretag")</label>
+                                                <select id="byra-sate-postadress" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group full-width">
+                                                <label for="byra-fullmakt-bolagsverket">Fullmakt hos Bolagsverket</label>
+                                                <p class="form-hint">Känsligare än vanligt deklarationsombud – kan användas för att i praktiken ta över kontrollen över ett bolag.</p>
+                                                <select id="byra-fullmakt-bolagsverket" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-ombud-skatteprocesser">Ombud i skatteprocesser / tvister</label>
+                                                <select id="byra-ombud-skatteprocesser" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-generalfullmakt">Generalfullmakt / obegränsad myndighetsfullmakt</label>
+                                                <select id="byra-generalfullmakt" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="byra-profil-sektion">
+                                        <h3 class="byra-profil-rubrik">9. Kundens ursprung och introduktion</h3>
+                                        <p class="dashboard-card-desc">Hur kunder kommer in och andel nystartade bolag.</p>
+                                        <div class="form-grid">
+                                            <div class="form-group full-width">
+                                                <label for="byra-kund-introduktion">Hur nya kunder kommer in</label>
+                                                <select id="byra-kund-introduktion" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Egen marknadsföring">Egen marknadsföring</option>
+                                                    <option value="Rekommendation från bank/advokat">Rekommendation från bank/advokat</option>
+                                                    <option value="Walk-in via internet utan personlig relation">Walk-in via internet utan personlig relation</option>
+                                                    <option value="Blandat">Blandat</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="byra-andel-nystartade">Andel nystartade bolag i kundstocken</label>
+                                                <div class="input-with-suffix">
+                                                    <input type="number" id="byra-andel-nystartade" class="form-input" min="0" max="100" step="1" placeholder="0">
+                                                    <span class="input-suffix">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="byra-profil-sektion">
+                                        <h3 class="byra-profil-rubrik">10. Outsourcing och underleverantörer</h3>
+                                        <p class="dashboard-card-desc">Externa parter i byråns egen leveranskedja.</p>
+                                        <div class="form-grid">
+                                            <div class="form-group">
+                                                <label for="byra-outsourcing">Externa underleverantörer i produktionen</label>
+                                                <select id="byra-outsourcing" class="form-select">
+                                                    <option value="">Välj</option>
+                                                    <option value="Ja">Ja</option>
+                                                    <option value="Nej">Nej</option>
+                                                    <option value="Delvis">Delvis</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group full-width">
+                                                <label for="byra-outsourcing-detalj">Beskrivning av outsourcing</label>
+                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
+                                                <textarea id="byra-outsourcing-detalj" class="form-input" rows="2" placeholder="Vilka delar, land/region – eller Inga"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div class="form-actions">
                                         <button type="button" id="byra-spara" class="btn-primary">Spara byråinformation</button>
                                         <span class="byra-spara-status" id="byra-spara-status"></span>
@@ -660,7 +833,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902utsatta" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902historik" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>

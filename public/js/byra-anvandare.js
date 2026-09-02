@@ -356,6 +356,24 @@ class ByraAnvandareManager {
       setVal('byra-geografi', f.geografiskMarknad);
       setVal('byra-sanktionslander', f.sanktionslander);
       setVal('byra-kunder-utsatta-omraden', f.kunderIUtsattaOmraden);
+      setVal('byra-finanspolisen-antal', f.finanspolisenAvvikelserAntal);
+      setVal('byra-finanspolisen-typ', f.finanspolisenAvvikelserTyp);
+      setVal('byra-lanstyrelsen-anmarkningar', f.lanstyrelsenAnmarkningar);
+      setVal('byra-lanstyrelsen-detalj', f.lanstyrelsenAnmarkningarDetalj);
+      setVal('byra-near-misses', f.nearMisses);
+      setVal('byra-near-misses-detalj', f.nearMissesDetalj);
+      setVal('byra-stora-kundberoenden', f.storaKundberoenden);
+      setVal('byra-stora-kundberoenden-andel', f.storaKundberoendenAndel);
+      setVal('byra-bolagsbildning', f.bolagsbildningAtKund);
+      setVal('byra-styrelse-nominee', f.styrelseEllerNomineeRoller);
+      setVal('byra-sate-postadress', f.satePostadress);
+      setVal('byra-fullmakt-bolagsverket', f.fullmaktBolagsverket);
+      setVal('byra-ombud-skatteprocesser', f.ombudSkatteprocesser);
+      setVal('byra-generalfullmakt', f.generalfullmaktMyndighet);
+      setVal('byra-kund-introduktion', f.kundIntroduktion);
+      setVal('byra-andel-nystartade', f.andelNystartadeBolag);
+      setVal('byra-outsourcing', f.outsourcingUnderleverantorer);
+      setVal('byra-outsourcing-detalj', f.outsourcingUnderleverantorerDetalj);
       const komplettEl = document.getElementById('byra-profil-komplett');
       if (komplettEl) {
         const done = !!f.profilKomplett;
@@ -653,6 +671,8 @@ class ByraAnvandareManager {
     return checkPercent('byra-andel-utland', 'Andel internationell handel')
       || checkPercent('byra-andel-kontant', 'Andel kontantintensiva kunder')
       || checkPercent('byra-andel-hogrisk', 'Andel kunder i högriskbransch')
+      || checkPercent('byra-stora-kundberoenden-andel', 'Andel omsättning från de största kunderna')
+      || checkPercent('byra-andel-nystartade', 'Andel nystartade bolag')
       || '';
   }
 
@@ -693,7 +713,25 @@ class ByraAnvandareManager {
         andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
         geografiskMarknad: document.getElementById('byra-geografi')?.value ?? '',
         sanktionslander: document.getElementById('byra-sanktionslander')?.value ?? '',
-        kunderIUtsattaOmraden: document.getElementById('byra-kunder-utsatta-omraden')?.value ?? ''
+        kunderIUtsattaOmraden: document.getElementById('byra-kunder-utsatta-omraden')?.value ?? '',
+        finanspolisenAvvikelserAntal: document.getElementById('byra-finanspolisen-antal')?.value ?? '',
+        finanspolisenAvvikelserTyp: document.getElementById('byra-finanspolisen-typ')?.value ?? '',
+        lanstyrelsenAnmarkningar: document.getElementById('byra-lanstyrelsen-anmarkningar')?.value ?? '',
+        lanstyrelsenAnmarkningarDetalj: document.getElementById('byra-lanstyrelsen-detalj')?.value ?? '',
+        nearMisses: document.getElementById('byra-near-misses')?.value ?? '',
+        nearMissesDetalj: document.getElementById('byra-near-misses-detalj')?.value ?? '',
+        storaKundberoenden: document.getElementById('byra-stora-kundberoenden')?.value ?? '',
+        storaKundberoendenAndel: document.getElementById('byra-stora-kundberoenden-andel')?.value ?? '',
+        bolagsbildningAtKund: document.getElementById('byra-bolagsbildning')?.value ?? '',
+        styrelseEllerNomineeRoller: document.getElementById('byra-styrelse-nominee')?.value ?? '',
+        satePostadress: document.getElementById('byra-sate-postadress')?.value ?? '',
+        fullmaktBolagsverket: document.getElementById('byra-fullmakt-bolagsverket')?.value ?? '',
+        ombudSkatteprocesser: document.getElementById('byra-ombud-skatteprocesser')?.value ?? '',
+        generalfullmaktMyndighet: document.getElementById('byra-generalfullmakt')?.value ?? '',
+        kundIntroduktion: document.getElementById('byra-kund-introduktion')?.value ?? '',
+        andelNystartadeBolag: document.getElementById('byra-andel-nystartade')?.value ?? '',
+        outsourcingUnderleverantorer: document.getElementById('byra-outsourcing')?.value ?? '',
+        outsourcingUnderleverantorerDetalj: document.getElementById('byra-outsourcing-detalj')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       const j = await res.json().catch(() => ({}));
