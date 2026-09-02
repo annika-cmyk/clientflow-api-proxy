@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902hogriskantal8">
+    <link rel="stylesheet" href="styles.css?v=20260902nearmiss9">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -361,7 +361,8 @@
                                                 <textarea id="byra-lanstyrelsen-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
                                             </div>
                                             <div class="form-group">
-                                                <label for="byra-near-misses">Near misses (avböjt/avslutat pga misstanke)</label>
+                                                <label for="byra-near-misses">Near misses (avböjt/avslutat pga misstanke eller risk)</label>
+                                                <p class="form-hint">Räkna även in uppdrag ni tackat nej till när risken inte gick att hantera – inte bara avslutade kunder vid misstanke.</p>
                                                 <select id="byra-near-misses" class="form-select">
                                                     <option value="">Välj</option>
                                                     <option value="Ja">Ja</option>
@@ -370,7 +371,7 @@
                                             </div>
                                             <div class="form-group full-width">
                                                 <label for="byra-near-misses-detalj">Beskrivning av near misses</label>
-                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
+                                                <p class="form-hint">Ange "Inga" om ni svarat Nej. Skriv gärna om det gällde misstanke eller att risken inte kunde hanteras.</p>
                                                 <textarea id="byra-near-misses-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
                                             </div>
                                         </div>
@@ -863,7 +864,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902hogriskantal8" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902nearmiss9" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>
