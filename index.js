@@ -13000,9 +13000,15 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
       created.push(field.name);
     } catch (_) {}
   }
+
   // IT-systemfälten kan ha skapats som singleSelect – konvertera till text för flerval.
   const itTextNames = new Set(['Bokföringssystem', 'Bokslutssystem', 'Kundhanteringssystem']);
-  for (const field of byraTable.fields || []) {
+  let tableMeta = byraTable;
+  try {
+    tableMeta = (await getByraerTableMeta(airtableToken, baseId)) || byraTable;
+  } catch (_) {}
+  const convertErrors = [];
+  for (const field of tableMeta.fields || []) {
     const name = (field.name || '').trim();
     if (!itTextNames.has(name)) continue;
     if (field.type === 'singleLineText' || field.type === 'multilineText') continue;
@@ -13010,7 +13016,7 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
     try {
       // eslint-disable-next-line no-await-in-loop
       await axios.patch(
-        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields/${field.id}`,
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableMeta.id}/fields/${field.id}`,
         { type: 'singleLineText' },
         {
           headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
@@ -13018,14 +13024,22 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
         }
       );
       converted.push(name);
-    } catch (_) {}
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message || 'okänt fel';
+      console.warn('Kunde inte konvertera IT-fält till text:', name, msg);
+      convertErrors.push(`${name}: ${msg}`);
+    }
   }
-  return { created, converted, table: byraTable };
+  return { created, converted, convertErrors, table: tableMeta };
 }
 
 async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) {
   const patchUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}/${recordId}`;
-  let remaining = { ...fields };
+  // Tom sträng mot singleSelect → Airtable försöker skapa val "" och nekar.
+  let remaining = {};
+  Object.entries(fields || {}).forEach(([k, v]) => {
+    remaining[k] = (v === '') ? null : v;
+  });
   const skippedProfilFields = [];
   while (Object.keys(remaining).length > 0) {
     try {
@@ -13035,6 +13049,19 @@ async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) 
       return { skippedProfilFields };
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
+      if (/insufficient permissions to create new select option|INVALID_MULTIPLE_CHOICE|cannot create new select/i.test(String(msg))) {
+        let dropped = false;
+        Object.keys(remaining).forEach((k) => {
+          const v = remaining[k];
+          // Flerval (kommaseparerat) eller tom sträng funkar inte mot singleSelect.
+          if (v === '' || (typeof v === 'string' && v.includes(','))) {
+            skippedProfilFields.push(k);
+            delete remaining[k];
+            dropped = true;
+          }
+        });
+        if (dropped) continue;
+      }
       if (String(msg).toLowerCase().includes('unknown field name')) {
         const match = String(msg).match(/unknown field name[:\s]*["']?([^"']+)["']?/i);
         const badName = match?.[1]?.trim();
@@ -13230,7 +13257,15 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (body.geografiskMarknad !== undefined) fields['Geografisk marknad'] = body.geografiskMarknad;
 
     // Övriga byråprofilfält (enkät / utökad profil)
-    const toTextOrNull = (v) => (v == null ? null : String(v));
+    const toTextOrNull = (v) => {
+      if (v == null) return null;
+      if (Array.isArray(v)) {
+        const joined = v.map((x) => String(x || '').trim()).filter(Boolean).join(', ');
+        return joined || null;
+      }
+      const s = String(v).trim();
+      return s === '' ? null : s;
+    };
     ByraProfilFields.BYRA_PROFIL_FIELDS.forEach((def) => {
       if (def.existing) return;
       if (body[def.key] === undefined) return;

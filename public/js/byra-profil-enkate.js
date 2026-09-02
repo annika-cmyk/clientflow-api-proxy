@@ -355,6 +355,13 @@
     return IT_SYSTEM_KEYS.indexOf(key) >= 0;
   }
 
+  function itSystemFallbackChoices(key) {
+    if (key === 'bokforingssystem') return ['Visma', 'Spiris', 'Fortnox', 'BOKIO', 'OQTO', 'BRIOX', 'Annat'];
+    if (key === 'bokslutssystem') return ['Capego', 'Fortnox', 'Visma', 'Annat'];
+    if (key === 'kundhanteringssystem') return ['ClientFlow', 'Accountec', 'Annat'];
+    return [];
+  }
+
   function renderItSystemSelect(field) {
     var col = document.createElement('div');
     col.className = 'byra-enkate-it-col';
@@ -364,39 +371,53 @@
     lab.textContent = field.label;
     col.appendChild(lab);
 
+    var hint = document.createElement('p');
+    hint.className = 'byra-enkate-it-multi-hint';
+    hint.textContent = 'Flera val möjliga';
+    col.appendChild(hint);
+
     var selected = selectedValues(values[field.key]);
     var selectedSet = {};
     selected.forEach(function (v) { selectedSet[v.toLowerCase()] = true; });
 
-    var choices = document.createElement('div');
-    choices.className = 'byra-enkate-it-choices';
-    (field.choices || []).forEach(function (choice) {
+    var list = document.createElement('div');
+    list.className = 'byra-enkate-it-checks';
+    var opts = (field.choices && field.choices.length) ? field.choices : itSystemFallbackChoices(field.key);
+    opts.forEach(function (choice, idx) {
       var label = typeof choice === 'string' ? choice : choice.label;
       var value = typeof choice === 'string' ? choice : choice.value;
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'byra-enkate-choice' + (selectedSet[String(value).toLowerCase()] ? ' is-selected' : '');
-      btn.textContent = label;
-      btn.addEventListener('click', function () {
+      var id = 'enkate-' + field.key + '-' + idx;
+      var row = document.createElement('label');
+      row.className = 'byra-enkate-it-check';
+      row.setAttribute('for', id);
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.value = value;
+      cb.checked = !!selectedSet[String(value).toLowerCase()];
+      cb.addEventListener('change', function () {
         var cur = selectedValues(values[field.key]);
-        var idx = cur.findIndex(function (v) { return v.toLowerCase() === String(value).toLowerCase(); });
-        if (idx >= 0) cur.splice(idx, 1);
-        else cur.push(value);
+        var i = cur.findIndex(function (v) { return v.toLowerCase() === String(value).toLowerCase(); });
+        if (cb.checked && i < 0) cur.push(value);
+        if (!cb.checked && i >= 0) cur.splice(i, 1);
         values[field.key] = cur.join(', ');
         skipped[field.key] = false;
         var companion = companionFor(field);
         if (companion && !valueIncludesChoice(values[field.key], 'Annat')) {
           values[companion.key] = '';
         }
-        btn.classList.toggle('is-selected');
         syncItCompanionUi(field, col);
         updateProgress();
         updateNav();
         setStatus('');
       });
-      choices.appendChild(btn);
+      var span = document.createElement('span');
+      span.textContent = label;
+      row.appendChild(cb);
+      row.appendChild(span);
+      list.appendChild(row);
     });
-    col.appendChild(choices);
+    col.appendChild(list);
     syncItCompanionUi(field, col);
     return col;
   }
@@ -439,7 +460,7 @@
 
     var help = document.createElement('p');
     help.className = 'byra-enkate-q-help';
-    help.textContent = 'Ange ett eller flera system per område. Välj Annat om ni använder något som inte finns i listan.';
+    help.textContent = 'Bocka ett eller flera system per område. Välj Annat om ni använder något som inte finns i listan.';
     card.appendChild(help);
 
     var grid = document.createElement('div');
@@ -530,7 +551,10 @@
     var out = {};
     (schema.fields || []).forEach(function (f) {
       if (values[f.key] === undefined) return;
-      out[f.key] = values[f.key];
+      var v = values[f.key];
+      if (v == null) return;
+      if (typeof v === 'string' && v.trim() === '') return;
+      out[f.key] = typeof v === 'string' ? v.trim() : v;
     });
     return out;
   }

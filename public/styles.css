@@ -5172,6 +5172,32 @@ body.sidebar-collapsed .logout-btn {
 }
 .byra-it-system-check:hover { background: #f8fafc; }
 .byra-it-system-check input { margin-top: 0.15rem; flex-shrink: 0; }
+
+.byra-enkate-it-multi-hint {
+    margin: 0 0 0.35rem;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+.byra-enkate-it-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.byra-enkate-it-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0.28rem 0.35rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.88rem;
+    color: #0f172a;
+    font-weight: 500;
+}
+.byra-enkate-it-check:hover { background: #f8fafc; }
+.byra-enkate-it-check input { margin-top: 0.15rem; flex-shrink: 0; }
+
 .byra-enkate-it-choices {
     display: flex;
     flex-wrap: wrap;
