@@ -12588,6 +12588,9 @@ async function getByraerRecordForUser(req) {
   return { record: airtableRes.data.records[0], byraId, userData };
 }
 
+const ByraProfilFields = require('./lib/byra-profil-fields');
+const KomIgang = require('./lib/kom-igang');
+
 // BYRÅNS PROFIL – kalibreringsfält (lagras i Airtable-tabellen "Byråer")
 const BYRA_PROFIL_REQUIRED_FIELDS = [
   { name: 'Antal kunder', type: 'number', description: 'Antal kunder i byråns kundstock (för riskkalibrering)', options: { precision: 0 } },
@@ -12596,7 +12599,8 @@ const BYRA_PROFIL_REQUIRED_FIELDS = [
   { name: 'Andel kunder med internationell handel', type: 'number', description: 'Andel kunder med internationell handel (0–100 %)', options: { precision: 0 } },
   { name: 'Andel kontantintensiva kunder', type: 'number', description: 'Andel kontantintensiva kunder (0–100 %)', options: { precision: 0 } },
   { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur tjänster erbjuds', options: { choices: [{ name: 'På plats' }, { name: 'Distans' }, { name: 'Blandat' }] } },
-  { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' }
+  { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' },
+  ...ByraProfilFields.airtableEnsureSpecs()
 ];
 const BYRA_PROFIL_AIRTABLE_NAMES = new Set(BYRA_PROFIL_REQUIRED_FIELDS.map(f => f.name));
 
@@ -13028,52 +13032,38 @@ async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) 
 }
 
 function mapByraProfilFromAirtable(fields) {
-  const f = fields || {};
+  const mapped = ByraProfilFields.mapProfilFromAirtable(fields);
+  // Bakåtkompatibla nycklar som äldre klienter kan förvänta sig
   return {
-    antalKunder: f['Antal kunder'] ?? '',
-    vanligasteBolagsformer: f['Vanligaste bolagsformer'] ?? '',
-    branscherKundstock: f['Branscher i kundstocken'] ?? '',
-    andelInternationellHandel: f['Andel kunder med internationell handel'] ?? f['Andel internationell handel'] ?? '',
-    andelKontantintensiva: f['Andel kontantintensiva kunder'] ?? '',
-    leveranssatt: f['Leveranssätt'] ?? f['Leveranssatt'] ?? '',
-    geografiskMarknad: f['Geografisk marknad'] ?? ''
+    ...mapped,
+    antalKunder: mapped.antalKunder ?? '',
+    vanligasteBolagsformer: mapped.vanligasteBolagsformer ?? '',
+    branscherKundstock: mapped.branscherKundstock ?? '',
+    andelInternationellHandel: mapped.andelInternationellHandel ?? '',
+    andelKontantintensiva: mapped.andelKontantintensiva ?? '',
+    leveranssatt: mapped.leveranssatt ?? '',
+    geografiskMarknad: mapped.geografiskMarknad ?? '',
+    profilKomplett: ByraProfilFields.isProfilComplete(mapped)
   };
 }
 
 function formatByraProfilPromptBlock(profil) {
-  const p = profil || {};
-  const fmtPct = (v) => {
-    if (v === '' || v == null) return '–';
-    const n = Number(String(v).replace(',', '.'));
-    return Number.isFinite(n) ? `${n}%` : String(v);
-  };
-  const fmtNum = (v) => (v === '' || v == null ? '–' : String(v));
-  return [
-    'BYRÅPROFIL (för kalibrering av risknivåer):',
-    `- Antal kunder: ${fmtNum(p.antalKunder)}`,
-    `- Vanligaste bolagsformer: ${p.vanligasteBolagsformer || '–'}`,
-    `- Branscher i kundstocken: ${p.branscherKundstock || '–'}`,
-    `- Andel kunder med internationell handel: ${fmtPct(p.andelInternationellHandel)}`,
-    `- Andel kontantintensiva kunder: ${fmtPct(p.andelKontantintensiva)}`,
-    `- Tjänster erbjuds via: ${p.leveranssatt || '–'}`,
-    `- Geografisk marknad: ${p.geografiskMarknad || '–'}`
-  ].join('\n');
+  return ByraProfilFields.formatProfilPromptBlock(profil);
 }
 
 function normalizeClientByraProfil(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw.fields && typeof raw.fields === 'object' ? { ...raw, ...raw.fields } : raw;
-  const profil = {
-    antalKunder: p.antalKunder ?? '',
-    vanligasteBolagsformer: p.vanligasteBolagsformer ?? '',
-    branscherKundstock: p.branscherKundstock ?? p.branscher ?? '',
-    andelInternationellHandel: p.andelInternationellHandel ?? p.andelUtland ?? '',
-    andelKontantintensiva: p.andelKontantintensiva ?? p.andelKontant ?? '',
-    leveranssatt: p.leveranssatt ?? '',
-    geografiskMarknad: p.geografiskMarknad ?? p.geografi ?? '',
-    antalAnstallda: p.antalAnstallda ?? '',
-    typAvByra: p.typAvByra ?? p.bransch ?? ''
-  };
+  const profil = {};
+  ByraProfilFields.BYRA_PROFIL_FIELDS.forEach((def) => {
+    profil[def.key] = p[def.key] ?? '';
+  });
+  // Bakåtkompatibla alias
+  if (!profil.branscherKundstock) profil.branscherKundstock = p.branscher ?? '';
+  if (!profil.andelInternationellHandel) profil.andelInternationellHandel = p.andelUtland ?? '';
+  if (!profil.andelKontantintensiva) profil.andelKontantintensiva = p.andelKontant ?? '';
+  if (!profil.geografiskMarknad) profil.geografiskMarknad = p.geografi ?? '';
+  profil.typAvByra = p.typAvByra ?? p.bransch ?? '';
   const hasValue = Object.values(profil).some((v) => v !== '' && v != null);
   return hasValue ? profil : null;
 }
@@ -13118,6 +13108,14 @@ async function getByraProfilForRequest(req) {
 }
 
 // GET /api/byra/info – Hämta byråinfo (samma data som Allmän riskbedömning använder)
+app.get('/api/byra/profil-schema', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    sections: ByraProfilFields.BYRA_PROFIL_SECTIONS,
+    fields: ByraProfilFields.BYRA_PROFIL_FIELDS.map(({ airtable, existing, ...rest }) => rest)
+  });
+});
+
 app.get('/api/byra/info', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
@@ -13210,12 +13208,39 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     }
     if (body.leveranssatt !== undefined) fields['Leveranssätt'] = body.leveranssatt;
     if (body.geografiskMarknad !== undefined) fields['Geografisk marknad'] = body.geografiskMarknad;
+
+    // Övriga byråprofilfält (enkät / utökad profil)
+    const toTextOrNull = (v) => (v == null ? null : String(v));
+    ByraProfilFields.BYRA_PROFIL_FIELDS.forEach((def) => {
+      if (def.existing) return;
+      if (body[def.key] === undefined) return;
+      if (def.type === 'number' || def.type === 'percent') {
+        const n = toNumberOrNull(body[def.key]);
+        if (def.type === 'percent' && n != null && (n < 0 || n > 100)) {
+          // Valideras nedan via tidig return – markera med sentinel
+          fields.__percentError = `${def.label} måste vara mellan 0 och 100`;
+          return;
+        }
+        fields[def.airtable] = n;
+        return;
+      }
+      fields[def.airtable] = toTextOrNull(body[def.key]);
+    });
+    if (fields.__percentError) {
+      return res.status(400).json({ error: fields.__percentError });
+    }
+    delete fields.__percentError;
+
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
     }
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const profilFieldKeys = ['antalKunder', 'vanligasteBolagsformer', 'branscherKundstock', 'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad'];
+    const profilFieldKeys = [
+      'antalKunder', 'vanligasteBolagsformer', 'branscherKundstock',
+      'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad',
+      ...ByraProfilFields.BYRA_PROFIL_FIELDS.filter((f) => !f.existing).map((f) => f.key)
+    ];
     if (profilFieldKeys.some(k => body[k] !== undefined)) {
       await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId);
     }
@@ -14362,7 +14387,9 @@ app.get('/api/settings/kom-igang', authenticateToken, async (req, res) => {
         state = JSON.parse(raw);
       } catch (_) {}
     }
-    res.json({ state });
+    const migrated = KomIgang.migrateKomIgangRaw(state);
+    const parsed = KomIgang.parseKomIgangState(migrated);
+    res.json({ state: KomIgang.buildKomIgangState(parsed.checks, parsed.hidden) });
   } catch (error) {
     console.error('❌ GET /api/settings/kom-igang:', error.message);
     res.status(500).json({ error: error.message });
@@ -14390,6 +14417,9 @@ app.put('/api/settings/kom-igang', authenticateToken, async (req, res) => {
     if (!state || typeof state !== 'object') {
       return res.status(400).json({ error: 'Body måste innehålla { state: object }' });
     }
+    const migrated = KomIgang.migrateKomIgangRaw(state);
+    const parsed = KomIgang.parseKomIgangState(migrated);
+    const stateToStore = KomIgang.buildKomIgangState(parsed.checks, parsed.hidden || state.hidden === true);
 
     const num = parseInt(byraId);
     const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
@@ -14403,7 +14433,7 @@ app.put('/api/settings/kom-igang', authenticateToken, async (req, res) => {
     const recordId = listRes.data.records[0].id;
     const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}/${recordId}`;
     await axios.patch(patchUrl, {
-      fields: { [KOM_IGANG_FIELD]: JSON.stringify(state) }
+      fields: { [KOM_IGANG_FIELD]: JSON.stringify(stateToStore) }
     }, { headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } });
 
     res.json({ success: true });

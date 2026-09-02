@@ -182,9 +182,10 @@ class ClientFlowApp {
     static KOM_IGANG_STEP_IDS = {
         1: ['kom-igang-1-0'],
         2: ['kom-igang-2-0'],
-        3: ['kom-igang-3-0', 'kom-igang-3-1'],
-        4: ['kom-igang-4-0', 'kom-igang-4-1', 'kom-igang-4-2', 'kom-igang-4-3'],
-        5: ['kom-igang-5-0']
+        3: ['kom-igang-3-0'],
+        4: ['kom-igang-4-0', 'kom-igang-4-1'],
+        5: ['kom-igang-5-0', 'kom-igang-5-1', 'kom-igang-5-2', 'kom-igang-5-3'],
+        6: ['kom-igang-6-0']
     };
 
     static KOM_IGANG_HIDE_CONFIRM = 'Är du klar med allt i Kom igång och vill dölja flödet från startsidan? Du kan visa det igen via Visa Kom igång.';
@@ -420,6 +421,7 @@ class ClientFlowApp {
 
     async saveKomIgangState() {
         const state = this.komIgangChecksFromDom();
+                state.version = 2;
         if (this.komIgangHidden) state.hidden = true;
         const opts = window.AuthManager && AuthManager.getAuthFetchOptions ? AuthManager.getAuthFetchOptions() : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
         try {

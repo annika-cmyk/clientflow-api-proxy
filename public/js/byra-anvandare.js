@@ -332,14 +332,36 @@ class ByraAnvandareManager {
           }
         }
       }
-      const andelUtland = document.getElementById('byra-andel-utland');
-      if (andelUtland) andelUtland.value = f.andelInternationellHandel ?? '';
-      const andelKontant = document.getElementById('byra-andel-kontant');
-      if (andelKontant) andelKontant.value = f.andelKontantintensiva ?? '';
-      const leveranssatt = document.getElementById('byra-leveranssatt');
-      if (leveranssatt) leveranssatt.value = f.leveranssatt ?? '';
-      const geografi = document.getElementById('byra-geografi');
-      if (geografi) geografi.value = f.geografiskMarknad ?? '';
+      const setVal = (id, value) => {
+        const node = document.getElementById(id);
+        if (node) node.value = value ?? '';
+      };
+      setVal('byra-antal-kontor', f.antalKontor);
+      setVal('byra-it-system', f.itSystem);
+      setVal('byra-auktoriserade-konsulter', f.auktoriseradeKonsulter);
+      setVal('byra-lopande-utbildning', f.lopandeUtbildning);
+      setVal('byra-personalomsattning', f.personalomsattning);
+      setVal('byra-andel-hogrisk', f.andelHogriskbransch);
+      setVal('byra-andel-kontant', f.andelKontantintensiva);
+      setVal('byra-betalningsmonster', f.betalningsmonster);
+      setVal('byra-komplexa-agarstrukturer', f.komplexaAgarstrukturer);
+      setVal('byra-utlandska-agare', f.utlandskaAgare);
+      setVal('byra-pep-kunder', f.pepKunder);
+      setVal('byra-leveranssatt', f.leveranssatt);
+      setVal('byra-bankid-krav', f.bankIdKrav);
+      setVal('byra-kund-gor-lopande', f.kundGorLopande);
+      setVal('byra-betalningsuppdrag', f.betalningsuppdrag);
+      setVal('byra-bokforingsmetod', f.bokforingsmetod);
+      setVal('byra-andel-utland', f.andelInternationellHandel);
+      setVal('byra-geografi', f.geografiskMarknad);
+      setVal('byra-sanktionslander', f.sanktionslander);
+      setVal('byra-kunder-utsatta-omraden', f.kunderIUtsattaOmraden);
+      const komplettEl = document.getElementById('byra-profil-komplett');
+      if (komplettEl) {
+        const done = !!f.profilKomplett;
+        komplettEl.textContent = done ? 'Profil komplett' : 'Ej komplett';
+        komplettEl.classList.toggle('is-complete', done);
+      }
       const defUpps = document.getElementById('byra-default-uppsagningstid');
       if (defUpps) defUpps.value = f.defaultUppsagningstid ?? '';
       const defFaktura = document.getElementById('byra-default-fakturaperiod');
@@ -630,6 +652,7 @@ class ByraAnvandareManager {
     };
     return checkPercent('byra-andel-utland', 'Andel internationell handel')
       || checkPercent('byra-andel-kontant', 'Andel kontantintensiva kunder')
+      || checkPercent('byra-andel-hogrisk', 'Andel kunder i högriskbransch')
       || '';
   }
 
@@ -648,18 +671,42 @@ class ByraAnvandareManager {
         omsattning: document.getElementById('byra-omsattning')?.value ?? '',
         antalKundforetag: document.getElementById('byra-antal-kundforetag')?.value ?? '',
         bransch: document.getElementById('byra-bransch')?.value ?? '',
+        antalKontor: document.getElementById('byra-antal-kontor')?.value ?? '',
+        itSystem: document.getElementById('byra-it-system')?.value ?? '',
+        auktoriseradeKonsulter: document.getElementById('byra-auktoriserade-konsulter')?.value ?? '',
+        lopandeUtbildning: document.getElementById('byra-lopande-utbildning')?.value ?? '',
+        personalomsattning: document.getElementById('byra-personalomsattning')?.value ?? '',
         antalKunder: document.getElementById('byra-antal-kunder')?.value ?? '',
         vanligasteBolagsformer: document.getElementById('byra-bolagsformer')?.value ?? '',
         branscherKundstock: document.getElementById('byra-branscher-kundstock')?.value ?? '',
-        andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
+        andelHogriskbransch: document.getElementById('byra-andel-hogrisk')?.value ?? '',
         andelKontantintensiva: document.getElementById('byra-andel-kontant')?.value ?? '',
+        betalningsmonster: document.getElementById('byra-betalningsmonster')?.value ?? '',
+        komplexaAgarstrukturer: document.getElementById('byra-komplexa-agarstrukturer')?.value ?? '',
+        utlandskaAgare: document.getElementById('byra-utlandska-agare')?.value ?? '',
+        pepKunder: document.getElementById('byra-pep-kunder')?.value ?? '',
         leveranssatt: document.getElementById('byra-leveranssatt')?.value ?? '',
-        geografiskMarknad: document.getElementById('byra-geografi')?.value ?? ''
+        bankIdKrav: document.getElementById('byra-bankid-krav')?.value ?? '',
+        kundGorLopande: document.getElementById('byra-kund-gor-lopande')?.value ?? '',
+        betalningsuppdrag: document.getElementById('byra-betalningsuppdrag')?.value ?? '',
+        bokforingsmetod: document.getElementById('byra-bokforingsmetod')?.value ?? '',
+        andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
+        geografiskMarknad: document.getElementById('byra-geografi')?.value ?? '',
+        sanktionslander: document.getElementById('byra-sanktionslander')?.value ?? '',
+        kunderIUtsattaOmraden: document.getElementById('byra-kunder-utsatta-omraden')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || res.statusText);
       if (statusEl) statusEl.textContent = j.warning ? ('Sparat med varning: ' + j.warning) : 'Sparat.';
+      const komplettEl = document.getElementById('byra-profil-komplett');
+      if (komplettEl && j.fields) {
+        const done = !!j.fields.profilKomplett;
+        komplettEl.textContent = done ? 'Profil komplett' : 'Ej komplett';
+        komplettEl.classList.toggle('is-complete', done);
+      } else {
+        await this.loadByraInfo();
+      }
       setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
     } catch (err) {
       console.error('saveByraInfo:', err);
