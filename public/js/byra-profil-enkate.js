@@ -60,10 +60,22 @@
     return String(v).trim() !== '';
   }
 
+  function selectedValues(raw) {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+    return String(raw).split(/[,;|]/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+
+  function valueIncludesChoice(raw, choice) {
+    var target = String(choice || '').trim().toLowerCase();
+    if (!target) return false;
+    return selectedValues(raw).some(function (v) { return v.toLowerCase() === target; });
+  }
+
   function isFieldRequired(field) {
     if (!field) return false;
     if (field.requiredWhen && field.requiredWhen.key) {
-      return String(values[field.requiredWhen.key] || '') === String(field.requiredWhen.equals || '');
+      return valueIncludesChoice(values[field.requiredWhen.key], field.requiredWhen.equals);
     }
     return !field.optional;
   }
@@ -347,66 +359,72 @@
     var col = document.createElement('div');
     col.className = 'byra-enkate-it-col';
 
-    var lab = document.createElement('label');
+    var lab = document.createElement('div');
     lab.className = 'byra-enkate-it-label';
-    lab.setAttribute('for', 'enkate-' + field.key);
     lab.textContent = field.label;
     col.appendChild(lab);
 
-    var sel = document.createElement('select');
-    sel.className = 'form-select byra-enkate-it-select';
-    sel.id = 'enkate-' + field.key;
-    var blank = document.createElement('option');
-    blank.value = '';
-    blank.textContent = 'Välj';
-    sel.appendChild(blank);
+    var selected = selectedValues(values[field.key]);
+    var selectedSet = {};
+    selected.forEach(function (v) { selectedSet[v.toLowerCase()] = true; });
+
+    var choices = document.createElement('div');
+    choices.className = 'byra-enkate-it-choices';
     (field.choices || []).forEach(function (choice) {
       var label = typeof choice === 'string' ? choice : choice.label;
       var value = typeof choice === 'string' ? choice : choice.value;
-      var opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      sel.appendChild(opt);
-    });
-    sel.value = values[field.key] || '';
-
-    var companion = companionFor(field);
-    var annatInput = null;
-    if (companion) {
-      annatInput = document.createElement('input');
-      annatInput.type = 'text';
-      annatInput.className = 'form-input byra-enkate-it-annat';
-      annatInput.id = 'enkate-' + companion.key;
-      annatInput.placeholder = companion.hint || ('Ange ' + companion.label.toLowerCase());
-      annatInput.value = values[companion.key] || '';
-      annatInput.hidden = sel.value !== 'Annat';
-      annatInput.addEventListener('input', function () {
-        values[companion.key] = annatInput.value.trim();
-        skipped[companion.key] = false;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'byra-enkate-choice' + (selectedSet[String(value).toLowerCase()] ? ' is-selected' : '');
+      btn.textContent = label;
+      btn.addEventListener('click', function () {
+        var cur = selectedValues(values[field.key]);
+        var idx = cur.findIndex(function (v) { return v.toLowerCase() === String(value).toLowerCase(); });
+        if (idx >= 0) cur.splice(idx, 1);
+        else cur.push(value);
+        values[field.key] = cur.join(', ');
+        skipped[field.key] = false;
+        var companion = companionFor(field);
+        if (companion && !valueIncludesChoice(values[field.key], 'Annat')) {
+          values[companion.key] = '';
+        }
+        btn.classList.toggle('is-selected');
+        syncItCompanionUi(field, col);
         updateProgress();
         updateNav();
+        setStatus('');
       });
-    }
+      choices.appendChild(btn);
+    });
+    col.appendChild(choices);
+    syncItCompanionUi(field, col);
+    return col;
+  }
 
-    sel.addEventListener('change', function () {
-      values[field.key] = sel.value;
-      skipped[field.key] = false;
-      if (companion) {
-        if (sel.value !== 'Annat') values[companion.key] = '';
-        if (annatInput) {
-          annatInput.hidden = sel.value !== 'Annat';
-          annatInput.value = values[companion.key] || '';
-          if (sel.value === 'Annat') annatInput.focus();
-        }
-      }
+  function syncItCompanionUi(field, col) {
+    var companion = companionFor(field);
+    if (!companion) return;
+    var existing = col.querySelector('.byra-enkate-it-annat');
+    var needed = valueIncludesChoice(values[field.key], (companion.requiredWhen || {}).equals);
+    if (!needed) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
+    var annatInput = document.createElement('input');
+    annatInput.type = 'text';
+    annatInput.className = 'form-input byra-enkate-it-annat';
+    annatInput.id = 'enkate-' + companion.key;
+    annatInput.placeholder = companion.hint || ('Ange ' + companion.label.toLowerCase());
+    annatInput.value = values[companion.key] || '';
+    annatInput.addEventListener('input', function () {
+      values[companion.key] = annatInput.value.trim();
+      skipped[companion.key] = false;
       updateProgress();
       updateNav();
-      setStatus('');
     });
-
-    col.appendChild(sel);
-    if (annatInput) col.appendChild(annatInput);
-    return col;
+    col.appendChild(annatInput);
+    annatInput.focus();
   }
 
   function renderItSystemGroup() {
@@ -421,7 +439,7 @@
 
     var help = document.createElement('p');
     help.className = 'byra-enkate-q-help';
-    help.textContent = 'Ange system per område. Välj Annat om ni använder något som inte finns i listan.';
+    help.textContent = 'Ange ett eller flera system per område. Välj Annat om ni använder något som inte finns i listan.';
     card.appendChild(help);
 
     var grid = document.createElement('div');

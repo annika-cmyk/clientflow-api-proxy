@@ -271,28 +271,58 @@ class ByraAnvandareManager {
     this._bindItSystemAnnatToggles();
   }
 
-  _syncItSystemAnnatFields() {
-    document.querySelectorAll('select[data-annat-target]').forEach((sel) => {
-      const targetId = sel.getAttribute('data-annat-target');
-      const input = targetId ? document.getElementById(targetId) : null;
-      if (!input) return;
-      const show = sel.value === 'Annat';
-      input.hidden = !show;
-      if (!show) input.value = input.value; // keep value in DOM but hide
+  _parseItSystemValues(raw) {
+    return String(raw || '')
+      .split(/[,;|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  _syncItSystemGroup(group) {
+    if (!group) return;
+    const hiddenId = group.getAttribute('data-it-hidden');
+    const annatId = group.getAttribute('data-annat-target');
+    const hidden = hiddenId ? document.getElementById(hiddenId) : null;
+    const annat = annatId ? document.getElementById(annatId) : null;
+    const selected = Array.from(group.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((el) => String(el.value || '').trim())
+      .filter(Boolean);
+    if (hidden) hidden.value = selected.join(', ');
+    const showAnnat = selected.includes('Annat');
+    if (annat) {
+      annat.hidden = !showAnnat;
+      if (!showAnnat) annat.value = '';
+    }
+  }
+
+  _setItSystemValues(hiddenId, raw) {
+    const hidden = document.getElementById(hiddenId);
+    const group = document.querySelector('.byra-it-system-checks[data-it-hidden="' + hiddenId + '"]');
+    const values = this._parseItSystemValues(raw);
+    if (hidden) hidden.value = values.join(', ');
+    if (!group) return;
+    const selected = new Set(values.map((v) => v.toLowerCase()));
+    group.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+      box.checked = selected.has(String(box.value || '').toLowerCase());
     });
+    this._syncItSystemGroup(group);
+  }
+
+  _syncItSystemAnnatFields() {
+    document.querySelectorAll('.byra-it-system-checks').forEach((group) => this._syncItSystemGroup(group));
   }
 
   _bindItSystemAnnatToggles() {
-    document.querySelectorAll('select[data-annat-target]').forEach((sel) => {
-      sel.addEventListener('change', () => {
-        const targetId = sel.getAttribute('data-annat-target');
-        const input = targetId ? document.getElementById(targetId) : null;
-        if (!input) return;
-        const show = sel.value === 'Annat';
-        input.hidden = !show;
-        if (!show) input.value = '';
-        else input.focus();
+    document.querySelectorAll('.byra-it-system-checks').forEach((group) => {
+      group.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+        box.addEventListener('change', () => {
+          this._syncItSystemGroup(group);
+          const annatId = group.getAttribute('data-annat-target');
+          const annat = annatId ? document.getElementById(annatId) : null;
+          if (annat && !annat.hidden && box.value === 'Annat' && box.checked) annat.focus();
+        });
       });
+      this._syncItSystemGroup(group);
     });
   }
 
@@ -363,11 +393,11 @@ class ByraAnvandareManager {
         if (node) node.value = value ?? '';
       };
       setVal('byra-antal-kontor', f.antalKontor);
-      setVal('byra-bokforingssystem', f.bokforingssystem);
+      this._setItSystemValues('byra-bokforingssystem', f.bokforingssystem);
       setVal('byra-bokforingssystem-annat', f.bokforingssystemAnnat);
-      setVal('byra-bokslutssystem', f.bokslutssystem);
+      this._setItSystemValues('byra-bokslutssystem', f.bokslutssystem);
       setVal('byra-bokslutssystem-annat', f.bokslutssystemAnnat);
-      setVal('byra-kundhanteringssystem', f.kundhanteringssystem);
+      this._setItSystemValues('byra-kundhanteringssystem', f.kundhanteringssystem);
       setVal('byra-kundhanteringssystem-annat', f.kundhanteringssystemAnnat);
       this._syncItSystemAnnatFields();
       setVal('byra-auktoriserade-konsulter', f.auktoriseradeKonsulter);

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902itsystem2">
+    <link rel="stylesheet" href="styles.css?v=20260902itsystem3">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -95,41 +95,41 @@
                                             </div>
                                             <div class="form-group full-width">
                                                 <span class="byra-it-system-label">IT-system i det dagliga arbetet</span>
-                                                <p class="byra-it-system-desc">Ange system per område. Välj Annat om ni använder något som inte finns i listan.</p>
+                                                <p class="byra-it-system-desc">Ange ett eller flera system per område. Bocka Annat om ni använder något som inte finns i listan.</p>
                                                 <div class="byra-it-system-grid">
                                                     <div class="form-group byra-it-system-col">
-                                                        <label for="byra-bokforingssystem">Bokföringssystem</label>
-                                                        <select id="byra-bokforingssystem" class="form-select" data-annat-target="byra-bokforingssystem-annat">
-                                                            <option value="">Välj</option>
-                                                            <option value="Visma">Visma</option>
-                                                            <option value="Spiris">Spiris</option>
-                                                            <option value="Fortnox">Fortnox</option>
-                                                            <option value="BOKIO">BOKIO</option>
-                                                            <option value="OQTO">OQTO</option>
-                                                            <option value="BRIOX">BRIOX</option>
-                                                            <option value="Annat">Annat</option>
-                                                        </select>
+                                                        <span class="byra-it-system-col-label" id="byra-bokforingssystem-label">Bokföringssystem</span>
+                                                        <div class="byra-it-system-checks" role="group" aria-labelledby="byra-bokforingssystem-label" data-it-hidden="byra-bokforingssystem" data-annat-target="byra-bokforingssystem-annat">
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-0"><input type="checkbox" id="byra-bokforingssystem-0" value="Visma" data-it-system="byra-bokforingssystem"><span>Visma</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-1"><input type="checkbox" id="byra-bokforingssystem-1" value="Spiris" data-it-system="byra-bokforingssystem"><span>Spiris</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-2"><input type="checkbox" id="byra-bokforingssystem-2" value="Fortnox" data-it-system="byra-bokforingssystem"><span>Fortnox</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-3"><input type="checkbox" id="byra-bokforingssystem-3" value="BOKIO" data-it-system="byra-bokforingssystem"><span>BOKIO</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-4"><input type="checkbox" id="byra-bokforingssystem-4" value="OQTO" data-it-system="byra-bokforingssystem"><span>OQTO</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-5"><input type="checkbox" id="byra-bokforingssystem-5" value="BRIOX" data-it-system="byra-bokforingssystem"><span>BRIOX</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokforingssystem-6"><input type="checkbox" id="byra-bokforingssystem-6" value="Annat" data-it-system="byra-bokforingssystem"><span>Annat</span></label>
+                                                        </div>
+                                                        <input type="hidden" id="byra-bokforingssystem" value="">
                                                         <input type="text" id="byra-bokforingssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange bokföringssystem" hidden>
                                                     </div>
                                                     <div class="form-group byra-it-system-col">
-                                                        <label for="byra-bokslutssystem">Bokslutssystem</label>
-                                                        <select id="byra-bokslutssystem" class="form-select" data-annat-target="byra-bokslutssystem-annat">
-                                                            <option value="">Välj</option>
-                                                            <option value="Capego">Capego</option>
-                                                            <option value="Fortnox">Fortnox</option>
-                                                            <option value="Visma">Visma</option>
-                                                            <option value="Annat">Annat</option>
-                                                        </select>
+                                                        <span class="byra-it-system-col-label" id="byra-bokslutssystem-label">Bokslutssystem</span>
+                                                        <div class="byra-it-system-checks" role="group" aria-labelledby="byra-bokslutssystem-label" data-it-hidden="byra-bokslutssystem" data-annat-target="byra-bokslutssystem-annat">
+                                                            <label class="byra-it-system-check" for="byra-bokslutssystem-0"><input type="checkbox" id="byra-bokslutssystem-0" value="Capego" data-it-system="byra-bokslutssystem"><span>Capego</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokslutssystem-1"><input type="checkbox" id="byra-bokslutssystem-1" value="Fortnox" data-it-system="byra-bokslutssystem"><span>Fortnox</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokslutssystem-2"><input type="checkbox" id="byra-bokslutssystem-2" value="Visma" data-it-system="byra-bokslutssystem"><span>Visma</span></label>
+                                                            <label class="byra-it-system-check" for="byra-bokslutssystem-3"><input type="checkbox" id="byra-bokslutssystem-3" value="Annat" data-it-system="byra-bokslutssystem"><span>Annat</span></label>
+                                                        </div>
+                                                        <input type="hidden" id="byra-bokslutssystem" value="">
                                                         <input type="text" id="byra-bokslutssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange bokslutssystem" hidden>
                                                     </div>
                                                     <div class="form-group byra-it-system-col">
-                                                        <label for="byra-kundhanteringssystem">Kundhanteringssystem</label>
-                                                        <select id="byra-kundhanteringssystem" class="form-select" data-annat-target="byra-kundhanteringssystem-annat">
-                                                            <option value="">Välj</option>
-                                                            <option value="ClientFlow">ClientFlow</option>
-                                                            <option value="Accountec">Accountec</option>
-                                                            <option value="Annat">Annat</option>
-                                                        </select>
+                                                        <span class="byra-it-system-col-label" id="byra-kundhanteringssystem-label">Kundhanteringssystem</span>
+                                                        <div class="byra-it-system-checks" role="group" aria-labelledby="byra-kundhanteringssystem-label" data-it-hidden="byra-kundhanteringssystem" data-annat-target="byra-kundhanteringssystem-annat">
+                                                            <label class="byra-it-system-check" for="byra-kundhanteringssystem-0"><input type="checkbox" id="byra-kundhanteringssystem-0" value="ClientFlow" data-it-system="byra-kundhanteringssystem"><span>ClientFlow</span></label>
+                                                            <label class="byra-it-system-check" for="byra-kundhanteringssystem-1"><input type="checkbox" id="byra-kundhanteringssystem-1" value="Accountec" data-it-system="byra-kundhanteringssystem"><span>Accountec</span></label>
+                                                            <label class="byra-it-system-check" for="byra-kundhanteringssystem-2"><input type="checkbox" id="byra-kundhanteringssystem-2" value="Annat" data-it-system="byra-kundhanteringssystem"><span>Annat</span></label>
+                                                        </div>
+                                                        <input type="hidden" id="byra-kundhanteringssystem" value="">
                                                         <input type="text" id="byra-kundhanteringssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange kundhanteringssystem" hidden>
                                                     </div>
                                                 </div>
@@ -870,7 +870,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902itsystem2" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902itsystem3" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>

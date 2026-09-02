@@ -12981,11 +12981,11 @@ async function syncDokumentationSignering({
 
 async function ensureByraProfilAirtableFields(airtableToken, baseId) {
   const byraTable = await getByraerTableMeta(airtableToken, baseId);
-  if (!byraTable?.id) return { created: [], table: null };
+  if (!byraTable?.id) return { created: [], converted: [], table: null };
   const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
   const missing = BYRA_PROFIL_REQUIRED_FIELDS.filter(f => !existingNames.includes((f.name || '').trim()));
   const created = [];
-  if (!missing.length) return { created, table: byraTable };
+  const converted = [];
   const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
   for (const field of missing) {
     try {
@@ -13000,7 +13000,27 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
       created.push(field.name);
     } catch (_) {}
   }
-  return { created, table: byraTable };
+  // IT-systemfälten kan ha skapats som singleSelect – konvertera till text för flerval.
+  const itTextNames = new Set(['Bokföringssystem', 'Bokslutssystem', 'Kundhanteringssystem']);
+  for (const field of byraTable.fields || []) {
+    const name = (field.name || '').trim();
+    if (!itTextNames.has(name)) continue;
+    if (field.type === 'singleLineText' || field.type === 'multilineText') continue;
+    if (field.type !== 'singleSelect' && field.type !== 'multipleSelects') continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await axios.patch(
+        `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields/${field.id}`,
+        { type: 'singleLineText' },
+        {
+          headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        }
+      );
+      converted.push(name);
+    } catch (_) {}
+  }
+  return { created, converted, table: byraTable };
 }
 
 async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) {
