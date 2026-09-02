@@ -337,6 +337,113 @@
     return wrap;
   }
 
+  var IT_SYSTEM_KEYS = ['bokforingssystem', 'bokslutssystem', 'kundhanteringssystem'];
+
+  function isItSystemKey(key) {
+    return IT_SYSTEM_KEYS.indexOf(key) >= 0;
+  }
+
+  function renderItSystemSelect(field) {
+    var col = document.createElement('div');
+    col.className = 'byra-enkate-it-col';
+
+    var lab = document.createElement('label');
+    lab.className = 'byra-enkate-it-label';
+    lab.setAttribute('for', 'enkate-' + field.key);
+    lab.textContent = field.label;
+    col.appendChild(lab);
+
+    var sel = document.createElement('select');
+    sel.className = 'form-select byra-enkate-it-select';
+    sel.id = 'enkate-' + field.key;
+    var blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Välj';
+    sel.appendChild(blank);
+    (field.choices || []).forEach(function (choice) {
+      var label = typeof choice === 'string' ? choice : choice.label;
+      var value = typeof choice === 'string' ? choice : choice.value;
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+    sel.value = values[field.key] || '';
+
+    var companion = companionFor(field);
+    var annatInput = null;
+    if (companion) {
+      annatInput = document.createElement('input');
+      annatInput.type = 'text';
+      annatInput.className = 'form-input byra-enkate-it-annat';
+      annatInput.id = 'enkate-' + companion.key;
+      annatInput.placeholder = companion.hint || ('Ange ' + companion.label.toLowerCase());
+      annatInput.value = values[companion.key] || '';
+      annatInput.hidden = sel.value !== 'Annat';
+      annatInput.addEventListener('input', function () {
+        values[companion.key] = annatInput.value.trim();
+        skipped[companion.key] = false;
+        updateProgress();
+        updateNav();
+      });
+    }
+
+    sel.addEventListener('change', function () {
+      values[field.key] = sel.value;
+      skipped[field.key] = false;
+      if (companion) {
+        if (sel.value !== 'Annat') values[companion.key] = '';
+        if (annatInput) {
+          annatInput.hidden = sel.value !== 'Annat';
+          annatInput.value = values[companion.key] || '';
+          if (sel.value === 'Annat') annatInput.focus();
+        }
+      }
+      updateProgress();
+      updateNav();
+      setStatus('');
+    });
+
+    col.appendChild(sel);
+    if (annatInput) col.appendChild(annatInput);
+    return col;
+  }
+
+  function renderItSystemGroup() {
+    var card = document.createElement('article');
+    card.className = 'byra-enkate-q byra-enkate-q--it';
+    card.dataset.key = 'it-system';
+
+    var title = document.createElement('h3');
+    title.className = 'byra-enkate-q-title';
+    title.textContent = 'Vilka IT-system används i det dagliga arbetet?';
+    card.appendChild(title);
+
+    var help = document.createElement('p');
+    help.className = 'byra-enkate-q-help';
+    help.textContent = 'Ange system per område. Välj Annat om ni använder något som inte finns i listan.';
+    card.appendChild(help);
+
+    var grid = document.createElement('div');
+    grid.className = 'byra-enkate-it-grid';
+    IT_SYSTEM_KEYS.forEach(function (key) {
+      var field = fieldByKey(key);
+      if (field) grid.appendChild(renderItSystemSelect(field));
+    });
+    card.appendChild(grid);
+
+    var anySkipped = IT_SYSTEM_KEYS.some(function (key) {
+      return skipped[key] && !isAnswered(values[key]);
+    });
+    if (anySkipped) {
+      var note = document.createElement('p');
+      note.className = 'byra-enkate-skipped-note';
+      note.textContent = 'Överhoppad — du kan svara nu eller senare under Byråinformation.';
+      card.appendChild(note);
+    }
+    return card;
+  }
+
   function renderField(field) {
     var card = document.createElement('article');
     card.className = 'byra-enkate-q' + (skipped[field.key] && !isAnswered(values[field.key]) ? ' is-skipped' : '');
@@ -382,10 +489,18 @@
     ui.fields.innerHTML = '';
     var list = document.createElement('div');
     list.className = 'byra-enkate-q-list';
+    var itGroupRendered = false;
     keysForSection(sec).forEach(function (key) {
       var field = fieldByKey(key);
       if (!field) return;
       if (field.requiredWhen) return; // visas som följdfråga under föräldern
+      if (isItSystemKey(key)) {
+        if (!itGroupRendered) {
+          list.appendChild(renderItSystemGroup());
+          itGroupRendered = true;
+        }
+        return;
+      }
       list.appendChild(renderField(field));
     });
     ui.fields.appendChild(list);
