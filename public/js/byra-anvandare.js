@@ -269,6 +269,83 @@ class ByraAnvandareManager {
     const behSpara = document.getElementById('behorighet-spara-btn');
     if (behSpara) behSpara.addEventListener('click', () => this.saveBulkBehorighet());
     this._bindItSystemAnnatToggles();
+    this._renderBolagsformerEditor('');
+  }
+
+  _bolagsformerChoices() {
+    return ['AB', 'Enskild firma', 'HB', 'KB', 'Ekonomisk förening', 'Stiftelse', 'Filial/utländskt bolag', 'Övrigt'];
+  }
+
+  _parseBolagsformer(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return [];
+    if (!text.includes(':')) {
+      return text.split(/[,;|]/).map((s) => s.trim()).filter(Boolean).map((form) => ({ form, count: '' }));
+    }
+    return text.split(/[,;|]/).map((part) => {
+      const m = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
+      if (m) return { form: m[1].trim(), count: m[2] };
+      const form = String(part).trim();
+      return form ? { form, count: '' } : null;
+    }).filter(Boolean);
+  }
+
+  _formatBolagsformer(rows) {
+    return (rows || [])
+      .map((r) => {
+        const form = String(r?.form || '').trim();
+        if (!form) return '';
+        const count = String(r?.count || '').trim();
+        return count ? `${form}: ${count}` : form;
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  _syncBolagsformerFromUi() {
+    const list = document.getElementById('byra-bolagsformer-list');
+    const hidden = document.getElementById('byra-bolagsformer');
+    if (!list || !hidden) return;
+    const rows = [];
+    list.querySelectorAll('.byra-bolagsformer-row').forEach((row) => {
+      const cb = row.querySelector('input[type="checkbox"]');
+      const num = row.querySelector('input[type="number"]');
+      if (!cb) return;
+      if (num) {
+        num.disabled = !cb.checked;
+        row.classList.toggle('is-disabled', !cb.checked);
+        if (!cb.checked) num.value = '';
+      }
+      if (!cb.checked) return;
+      rows.push({ form: cb.value, count: num ? num.value : '' });
+    });
+    hidden.value = this._formatBolagsformer(rows);
+  }
+
+  _renderBolagsformerEditor(raw) {
+    const list = document.getElementById('byra-bolagsformer-list');
+    const hidden = document.getElementById('byra-bolagsformer');
+    if (!list) return;
+    const parsed = this._parseBolagsformer(raw);
+    const selected = new Map(parsed.map((r) => [String(r.form).toLowerCase(), r.count]));
+    const known = this._bolagsformerChoices();
+    list.innerHTML = known.map((form, idx) => {
+      const id = `byra-bolagsformer-${idx}`;
+      const count = selected.get(form.toLowerCase()) || '';
+      const checked = selected.has(form.toLowerCase());
+      return `<div class="byra-bolagsformer-row${checked ? '' : ' is-disabled'}">
+        <label for="${id}"><input type="checkbox" id="${id}" value="${form.replace(/"/g, '&quot;')}" ${checked ? 'checked' : ''}><span>${form}</span></label>
+        <input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="${count}" ${checked ? '' : 'disabled'}>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('input').forEach((el) => {
+      el.addEventListener('change', () => this._syncBolagsformerFromUi());
+      el.addEventListener('input', () => this._syncBolagsformerFromUi());
+    });
+    this._syncBolagsformerFromUi();
+    if (hidden && parsed.length && !known.some((f) => selected.has(f.toLowerCase()))) {
+      hidden.value = String(raw || '');
+    }
   }
 
   _parseItSystemValues(raw) {
@@ -372,8 +449,7 @@ class ByraAnvandareManager {
       if (antalKundforetag) antalKundforetag.value = f.antalKundforetag ?? '';
       const antalKunder = document.getElementById('byra-antal-kunder');
       if (antalKunder) antalKunder.value = f.antalKunder ?? '';
-      const bolagsformer = document.getElementById('byra-bolagsformer');
-      if (bolagsformer) bolagsformer.value = f.vanligasteBolagsformer ?? '';
+      this._renderBolagsformerEditor(f.vanligasteBolagsformer ?? '');
       const branscherKundstock = document.getElementById('byra-branscher-kundstock');
       if (branscherKundstock) {
         const raw = f.branscherKundstock ?? '';
@@ -747,6 +823,8 @@ class ByraAnvandareManager {
       return;
     }
     try {
+      this._syncBolagsformerFromUi();
+      this._syncItSystemAnnatFields();
       this.syncHogriskBranschSelection();
       const body = {
         antalAnstallda: document.getElementById('byra-antal-anstallda')?.value ?? '',
