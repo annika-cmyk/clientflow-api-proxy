@@ -350,7 +350,39 @@ class ByraAnvandareManager {
     const behSpara = document.getElementById('behorighet-spara-btn');
     if (behSpara) behSpara.addEventListener('click', () => this.saveBulkBehorighet());
     this._bindItSystemAnnatToggles();
+    this._bindConditionalProfilFields();
     this._renderBolagsformerEditor('');
+  }
+
+  _bindConditionalProfilFields() {
+    const applies = [];
+    document.querySelectorAll('[data-show-when]').forEach((el) => {
+      const spec = String(el.getAttribute('data-show-when') || '');
+      const sep = spec.lastIndexOf('=');
+      if (sep < 1) return;
+      const src = document.getElementById(spec.slice(0, sep));
+      const expected = spec.slice(sep + 1);
+      if (!src) return;
+      const apply = () => {
+        const show = String(src.value || '') === expected;
+        el.hidden = !show;
+        if (!show) {
+          const input = el.querySelector('textarea, input, select');
+          if (input && /^inga$/i.test(String(input.value || '').trim())) input.value = '';
+        }
+      };
+      applies.push(apply);
+      if (!src.dataset.showWhenBound) {
+        src.dataset.showWhenBound = '1';
+        src.addEventListener('change', () => this._applyConditionalProfilFields());
+      }
+    });
+    this._conditionalProfilApplies = applies;
+    this._applyConditionalProfilFields();
+  }
+
+  _applyConditionalProfilFields() {
+    (this._conditionalProfilApplies || []).forEach((fn) => fn());
   }
 
   _bolagsformerChoices() {
@@ -684,6 +716,7 @@ class ByraAnvandareManager {
       setVal('byra-andel-nystartade', f.andelNystartadeBolag);
       setVal('byra-outsourcing', f.outsourcingUnderleverantorer);
       setVal('byra-outsourcing-detalj', f.outsourcingUnderleverantorerDetalj);
+      this._applyConditionalProfilFields();
       const komplettEl = document.getElementById('byra-profil-komplett');
       if (komplettEl) {
         const done = !!f.profilKomplett;
