@@ -6913,6 +6913,28 @@ class CustomerCardManager {
             .some((cb) => /verklig\s+huvudman/i.test(String(cb.value || '').trim()));
         // Använd explicit block — tom sträng kan falla tillbaka till CSS display:none.
         if (hvWrap) hvWrap.style.display = (!isForetag && hasVh) ? 'block' : 'none';
+        this._syncIdentitetDatumVisibility();
+    }
+
+    _syncIdentitetDatumVisibility() {
+        const Id = window.IdentitetKontroll;
+        const metodEl = document.getElementById('rp-identitet-metod');
+        const datumEl = document.getElementById('rp-identitet-datum');
+        const hintEl = document.getElementById('rp-identitet-hint');
+        if (!metodEl || !datumEl) return;
+        const optional = !!(Id && Id.datumValfrittForMetod && Id.datumValfrittForMetod(metodEl.value || ''));
+        datumEl.style.display = optional ? 'none' : '';
+        datumEl.disabled = optional;
+        if (optional) datumEl.value = '';
+        if (hintEl) {
+            hintEl.textContent = optional
+                ? 'Vid BankID via ClientFlow behöver du inte ange datum – metoden räcker.'
+                : 'Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).';
+        }
+        const grid = datumEl.parentElement;
+        if (grid && grid.style) {
+            grid.style.gridTemplateColumns = optional ? '1fr' : 'minmax(0,1fr) minmax(0,1.4fr)';
+        }
     }
 
     _showRollePersonModal(person, idx) {
@@ -6966,8 +6988,8 @@ class CustomerCardManager {
                     <div id="rp-identitet-wrap" style="${isForetag ? 'display:none;' : ''}">
                         <div class="form-group">
                             <label>Identitet kontrollerad</label>
-                            <p class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).</p>
-                            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:0.5rem;">
+                            <p id="rp-identitet-hint" class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).</p>
+                            <div id="rp-identitet-fields" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:0.5rem;">
                                 <input type="date" id="rp-identitet-datum" class="form-control" value="${this._esc(idHit.datum || '')}">
                                 <select id="rp-identitet-metod" class="form-control">
                                     <option value="">Välj metod</option>
@@ -6993,7 +7015,9 @@ class CustomerCardManager {
         // change + click: vissa UI-automationer sätter checked utan change-event
         rollerWrap?.addEventListener('change', syncLabels);
         rollerWrap?.addEventListener('click', syncLabels);
+        document.getElementById('rp-identitet-metod')?.addEventListener('change', () => this._syncIdentitetDatumVisibility());
         syncLabels();
+        this._syncIdentitetDatumVisibility();
         document.getElementById('rp-namn').focus();
     }
 
@@ -7013,10 +7037,13 @@ class CustomerCardManager {
         const Id = window.IdentitetKontroll;
         if (!isForetag && Id && Id.applyToPerson) {
             const hasVh = Id.hasHuvudmanRoll ? Id.hasHuvudmanRoll(roller) : false;
+            const metod = document.getElementById('rp-identitet-metod')?.value || '';
+            const datumRaw = document.getElementById('rp-identitet-datum')?.value || '';
+            const datum = (Id.datumValfrittForMetod && Id.datumValfrittForMetod(metod)) ? '' : datumRaw;
             person = Id.applyToPerson(
                 person,
-                document.getElementById('rp-identitet-datum')?.value || '',
-                document.getElementById('rp-identitet-metod')?.value || '',
+                datum,
+                metod,
                 hasVh ? (document.getElementById('rp-huvudman-bv-datum')?.value || '') : ''
             );
         }

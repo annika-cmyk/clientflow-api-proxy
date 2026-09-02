@@ -93,6 +93,14 @@
     return next;
   }
 
+  /** Datum behövs inte när identiteten styrks via BankID i ClientFlow. */
+  function datumValfrittForMetod(metod) {
+    var raw = trimStr(metod);
+    if (!raw) return false;
+    if (raw === 'bankid_clientflow') return true;
+    return methodLabel(raw) === 'BankID via ClientFlow';
+  }
+
   var api = {
     METHODS: METHODS,
     methodLabel: methodLabel,
@@ -101,7 +109,8 @@
     fromPerson: fromPerson,
     formatLabel: formatLabel,
     formatHuvudmanBolagsverketLabel: formatHuvudmanBolagsverketLabel,
-    applyToPerson: applyToPerson
+    applyToPerson: applyToPerson,
+    datumValfrittForMetod: datumValfrittForMetod
   };
 
   if (typeof module !== 'undefined' && module.exports) {
