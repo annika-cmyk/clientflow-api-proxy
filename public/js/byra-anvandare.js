@@ -28,18 +28,150 @@ class ByraAnvandareManager {
     this.prislista = { tjanster: {}, fritext: [] };
     this.uppdragsbrevBilagor = [];
     this.currentTab = 'byra';
+    this.hogriskBranschLabels = [];
     this.init();
   }
 
   init() {
     this.setupEventListeners();
-    this.loadByraInfo();
+    this.initHogriskBranschMultiSelect()
+      .catch((err) => console.warn('Högriskbranscher:', err))
+      .finally(() => this.loadByraInfo());
     this.loadUppdragsbrevBilagor();
     this.loadUsers();
     this.loadLogs();
     this.loadUtbildningar();
     this.loadAmlGenomforda();
     this.initializeTabs();
+  }
+
+  hogriskBranschOptions() {
+    const fromApi = Array.isArray(this.hogriskBranschLabels) ? this.hogriskBranschLabels : [];
+    if (fromApi.length) return fromApi;
+    const HS = window.HogriskSni;
+    const defaults = HS && Array.isArray(HS.DEFAULT_PATTERNS)
+      ? HS.DEFAULT_PATTERNS.map((p) => String(p.label || '').trim()).filter(Boolean)
+      : [];
+    return defaults;
+  }
+
+  parseBranschTokens(raw) {
+    const HS = window.HogriskSni;
+    if (HS && typeof HS.listLabels === 'function') return HS.listLabels(raw);
+    return String(raw || '')
+      .split(/[,;\n]/)
+      .map((v) => v.trim())
+      .filter((v) => v && v !== '---');
+  }
+
+  foldBranschKey(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  matchSavedBranscherToOptions(raw, options) {
+    const tokens = this.parseBranschTokens(raw);
+    if (!tokens.length) return [];
+    const opts = Array.isArray(options) ? options : [];
+    const selected = [];
+    const used = new Set();
+    tokens.forEach((token) => {
+      const key = this.foldBranschKey(token);
+      if (!key) return;
+      const hit = opts.find((opt) => {
+        const ok = this.foldBranschKey(opt);
+        return ok === key || ok.includes(key) || key.includes(ok);
+      });
+      if (hit && !used.has(hit)) {
+        used.add(hit);
+        selected.push(hit);
+      }
+    });
+    return selected;
+  }
+
+  syncHogriskBranschSelection() {
+    const list = document.getElementById('byra-branscher-kundstock-list');
+    const hidden = document.getElementById('byra-branscher-kundstock');
+    const summary = document.getElementById('byra-branscher-kundstock-summary');
+    if (!list || !hidden) return;
+    const selected = Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((el) => String(el.value || '').trim())
+      .filter(Boolean);
+    hidden.value = selected.join(', ');
+    if (summary) {
+      if (!selected.length) {
+        summary.textContent = 'Välj högriskbranscher…';
+        summary.classList.add('is-placeholder');
+      } else if (selected.length <= 2) {
+        summary.textContent = selected.join(', ');
+        summary.classList.remove('is-placeholder');
+      } else {
+        summary.textContent = selected.length + ' branscher valda';
+        summary.classList.remove('is-placeholder');
+      }
+    }
+  }
+
+  renderHogriskBranschOptions(selectedValues) {
+    const list = document.getElementById('byra-branscher-kundstock-list');
+    if (!list) return;
+    const options = this.hogriskBranschOptions();
+    const selected = new Set(
+      (Array.isArray(selectedValues) ? selectedValues : this.parseBranschTokens(selectedValues))
+        .map((v) => this.foldBranschKey(v))
+    );
+    if (!options.length) {
+      list.innerHTML = '<p class="form-hint" style="margin:0.35rem 0.55rem;">Inga högriskbranscher tillgängliga.</p>';
+      this.syncHogriskBranschSelection();
+      return;
+    }
+    list.innerHTML = options.map((label, idx) => {
+      const id = 'byra-hogrisk-bransch-' + idx;
+      const checked = selected.has(this.foldBranschKey(label)) ? ' checked' : '';
+      const safeLabel = String(label)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+      return '<label class="multi-select-option" for="' + id + '">'
+        + '<input type="checkbox" id="' + id + '" value="' + safeLabel + '"' + checked + '>'
+        + '<span>' + safeLabel + '</span>'
+        + '</label>';
+    }).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+      el.addEventListener('change', () => this.syncHogriskBranschSelection());
+    });
+    this.syncHogriskBranschSelection();
+  }
+
+  async initHogriskBranschMultiSelect() {
+    const pendingValue = document.getElementById('byra-branscher-kundstock')?.value || '';
+    this.renderHogriskBranschOptions(pendingValue);
+    try {
+      const res = await fetch(getBaseUrl() + '/api/hogrisk-sni', getAuthOpts());
+      if (res.ok) {
+        const data = await res.json();
+        const patterns = Array.isArray(data.patterns) ? data.patterns : [];
+        const labels = [];
+        const seen = new Set();
+        patterns.forEach((p) => {
+          const label = String(p && p.label || '').trim();
+          const key = this.foldBranschKey(label);
+          if (!label || !key || seen.has(key)) return;
+          seen.add(key);
+          labels.push(label);
+        });
+        if (labels.length) this.hogriskBranschLabels = labels;
+      }
+    } catch (err) {
+      console.warn('Kunde inte hämta högriskbranscher:', err);
+    }
+    const current = document.getElementById('byra-branscher-kundstock')?.value || pendingValue;
+    const selected = this.matchSavedBranscherToOptions(current, this.hogriskBranschOptions());
+    this.renderHogriskBranschOptions(selected.length ? selected : current);
   }
 
   setupEventListeners() {
@@ -187,7 +319,19 @@ class ByraAnvandareManager {
       const bolagsformer = document.getElementById('byra-bolagsformer');
       if (bolagsformer) bolagsformer.value = f.vanligasteBolagsformer ?? '';
       const branscherKundstock = document.getElementById('byra-branscher-kundstock');
-      if (branscherKundstock) branscherKundstock.value = f.branscherKundstock ?? '';
+      if (branscherKundstock) {
+        const raw = f.branscherKundstock ?? '';
+        const selected = this.matchSavedBranscherToOptions(raw, this.hogriskBranschOptions());
+        this.renderHogriskBranschOptions(selected);
+        if (!selected.length && String(raw).trim()) {
+          branscherKundstock.value = String(raw).trim();
+          const summary = document.getElementById('byra-branscher-kundstock-summary');
+          if (summary) {
+            summary.textContent = String(raw).trim();
+            summary.classList.remove('is-placeholder');
+          }
+        }
+      }
       const andelUtland = document.getElementById('byra-andel-utland');
       if (andelUtland) andelUtland.value = f.andelInternationellHandel ?? '';
       const andelKontant = document.getElementById('byra-andel-kontant');
@@ -498,6 +642,7 @@ class ByraAnvandareManager {
       return;
     }
     try {
+      this.syncHogriskBranschSelection();
       const body = {
         antalAnstallda: document.getElementById('byra-antal-anstallda')?.value ?? '',
         omsattning: document.getElementById('byra-omsattning')?.value ?? '',
