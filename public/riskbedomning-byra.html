@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902guide">
+    <link rel="stylesheet" href="styles.css?v=20260902tjanstai">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="riskbedomning-byra-page">
@@ -202,6 +202,23 @@
                     </div>
                 </header>
 
+            <section class="tjanst-utforande-section" id="tjanst-utforande-section">
+                <div class="container">
+                    <div class="tjanst-utforande-head">
+                        <div>
+                            <h3>Vilka tjänster erbjuder ni?</h3>
+                            <p class="tjanst-utforande-help">Svara utifrån hur tjänsten normalt utförs. Du behöver inte själv bedöma penningtvättsrisken. AI:n analyserar risker, sårbarheter och åtgärder baserat på dina svar och systemets kunddata.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary" id="tjanst-utforande-add-custom">
+                            <i class="fas fa-plus"></i>
+                            Lägg till egen tjänst
+                        </button>
+                    </div>
+                    <div id="tjanst-utforande-katalog" class="tjanst-utforande-katalog">
+                        <p class="tjanst-panel-hint">Laddar tjänstemallar…</p>
+                    </div>
+                </div>
+            </section>
 
             <!-- Risk Assessment List -->
             <section class="risk-assessment-section">
@@ -337,8 +354,8 @@
                                     <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                                 </div>
                                 <label for="tjanst-beskrivning">Tjänsten</label>
-                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
-                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär — inte byrån, personal eller era kontroller."></textarea>
+                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär hos er — gärna med bekräftade fakta som antal kunder och hur underlag tas emot. Nämn INTE kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken. Hitta inte på bemanning eller kapacitet som systemet inte vet.</p>
+                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär hos er, med bekräftade fakta. Inte era kontroller."></textarea>
                                 <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
                                 <div id="tjanst-tf-oversikt-flag" class="tf-missing-banner tf-missing-banner-compact" hidden></div>
                                 </div>
@@ -480,7 +497,8 @@
     <script src="js/tjanst-tf-tackning.js?v=1" defer></script>
     <script src="js/hot-aml-tf.js?v=3" defer></script>
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
+    <script src="js/tjanst-utforande-mallar.js?v=1" defer></script>
     <script src="js/ai-falt-granskning.js?v=12" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=32" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=33" defer></script>
 </body>
 </html>

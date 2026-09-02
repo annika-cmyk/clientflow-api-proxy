@@ -19,6 +19,8 @@ class RiskAssessmentManager {
         this.userByraIds = [];
         this.byraProfil = null;
         this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        this.utforandeState = { version: 1, tjanster: {} };
+        this._utforandeSaveTimer = null;
 
         this.init();
     }
@@ -30,6 +32,7 @@ class RiskAssessmentManager {
         this.setupRoleBasedUI();
         await this.loadRiskAssessments();
         await this.loadKundantal();
+        await this.loadUtforande();
         this.applyFilters();
     }
 
@@ -48,6 +51,180 @@ class RiskAssessmentManager {
         } catch (err) {
             console.warn('Kunde inte ladda kundantal:', err);
         }
+    }
+
+    async loadUtforande() {
+        const Mallar = window.TjanstUtforandeMallar;
+        this.utforandeState = Mallar ? Mallar.emptyState() : { version: 1, tjanster: {} };
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-utforande`);
+            if (res.ok) {
+                const data = await res.json();
+                this.utforandeState = (Mallar && Mallar.parseState(data.state)) || data.state || this.utforandeState;
+            }
+        } catch (err) {
+            console.warn('Kunde inte ladda tjänsteutförande:', err);
+        }
+        this.renderUtforandeKatalog();
+    }
+
+    renderUtforandeKatalog() {
+        const host = document.getElementById('tjanst-utforande-katalog');
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!host || !Mallar) return;
+        const cards = Mallar.listCatalogCards(this.utforandeState);
+        host.innerHTML = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
+        host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
+            const mallId = cardEl.getAttribute('data-mall-id');
+            cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
+                this.patchUtforandeEntry(mallId, { aktiv: !!e.target.checked });
+            });
+            cardEl.querySelectorAll('[data-q-id]').forEach((qEl) => {
+                const qid = qEl.getAttribute('data-q-id');
+                qEl.querySelectorAll('input, textarea, select').forEach((input) => {
+                    input.addEventListener('change', () => this.collectUtforandeQuestion(mallId, qid, qEl));
+                    if (input.tagName === 'TEXTAREA' && input.classList.contains('tjanst-mall-text')) {
+                        input.addEventListener('input', () => this.collectUtforandeQuestion(mallId, qid, qEl));
+                    }
+                });
+                qEl.querySelector('.tjanst-mall-comment')?.addEventListener('input', () => {
+                    this.collectUtforandeQuestion(mallId, qid, qEl);
+                });
+            });
+            cardEl.querySelector('[data-open-analys]')?.addEventListener('click', () => {
+                const namn = cardEl.getAttribute('data-mall-namn') || '';
+                const existing = this.risks.find((r) => (r.fields && r.fields['Task Name']) === namn);
+                if (existing) this.openEditModal(existing.id);
+                else {
+                    this.openAddModal();
+                    const nameEl = document.getElementById('tjanst-name');
+                    if (nameEl) nameEl.value = namn;
+                }
+            });
+        });
+    }
+
+    renderUtforandeCard(template, entry) {
+        const aktiv = !!(entry && entry.aktiv);
+        const questions = window.TjanstUtforandeMallar.questionsForTemplate(template);
+        const analysNamn = entry.namn || template.name;
+        const existing = this.risks.find((r) => (r.fields && r.fields['Task Name']) === analysNamn);
+        const qHtml = questions.map((q) => this.renderUtforandeQuestion(template.id, q, entry)).join('');
+        return `
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+                <div class="tjanst-mall-top">
+                    <div>
+                        <h4 class="tjanst-mall-title">${this.esc(template.name)}</h4>
+                        ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
+                        ${template.helpText ? `<p class="tjanst-mall-help">${this.esc(template.helpText)}</p>` : ''}
+                    </div>
+                    <label class="tjanst-mall-toggle">
+                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''}>
+                        ${aktiv ? 'Aktiv' : 'Inaktiv'}
+                    </label>
+                </div>
+                <div class="tjanst-mall-body">
+                    ${qHtml}
+                    <div class="tjanst-mall-actions">
+                        <button type="button" class="btn btn-secondary" data-open-analys>${existing ? 'Öppna analys' : 'Skapa analys'}</button>
+                        <span class="tjanst-mall-status">${existing ? 'AML-analys finns' : 'Ingen analys skapad ännu'}</span>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    renderUtforandeQuestion(mallId, question, entry) {
+        const answers = (entry && entry.answers) || {};
+        const comments = (entry && entry.kommentarer) || {};
+        const value = answers[question.id];
+        const selected = new Set(Array.isArray(value) ? value : (value ? [value] : []));
+        const showComment = (question.showCommentWhen || []).some((opt) => selected.has(opt));
+        let control = '';
+        if (question.type === 'text') {
+            control = `<textarea class="tjanst-mall-text" rows="3">${this.esc(value || '')}</textarea>`;
+        } else {
+            const type = question.type === 'multi' ? 'checkbox' : 'radio';
+            const name = `utforande-${mallId}-${question.id}`;
+            control = `<div class="tjanst-mall-options">${(question.options || []).map((opt) => `
+                <label><input type="${type}" name="${this.esc(name)}" value="${this.esc(opt)}"${selected.has(opt) ? ' checked' : ''}> ${this.esc(opt)}</label>
+            `).join('')}</div>`;
+        }
+        return `
+            <div class="tjanst-mall-q" data-q-id="${this.esc(question.id)}" data-q-type="${this.esc(question.type)}">
+                <label>${this.esc(question.label)}</label>
+                ${question.helpText ? `<p class="tjanst-mall-q-help">${this.esc(question.helpText)}</p>` : ''}
+                ${control}
+                ${(question.showCommentWhen && showComment) || question.type === 'single' && (question.showCommentWhen || []).length
+                    ? `<textarea class="tjanst-mall-comment" rows="2" placeholder="Kommentar"${showComment ? '' : ' hidden'}>${this.esc(comments[question.id] || '')}</textarea>`
+                    : ''}
+            </div>
+        `;
+    }
+
+    collectUtforandeQuestion(mallId, qid, qEl) {
+        const type = qEl.getAttribute('data-q-type');
+        const Mallar = window.TjanstUtforandeMallar;
+        const entry = Mallar.getEntry(this.utforandeState, mallId);
+        const answers = Object.assign({}, entry.answers);
+        const kommentarer = Object.assign({}, entry.kommentarer);
+        if (type === 'text') {
+            answers[qid] = qEl.querySelector('.tjanst-mall-text')?.value.trim() || '';
+        } else if (type === 'multi') {
+            answers[qid] = [...qEl.querySelectorAll('input:checked')].map((el) => el.value);
+        } else {
+            answers[qid] = qEl.querySelector('input:checked')?.value || '';
+        }
+        const commentEl = qEl.querySelector('.tjanst-mall-comment');
+        if (commentEl) {
+            const template = Mallar.templateById(mallId);
+            const question = Mallar.questionsForTemplate(template).find((q) => q.id === qid);
+            const selected = Array.isArray(answers[qid]) ? answers[qid] : (answers[qid] ? [answers[qid]] : []);
+            const show = (question && question.showCommentWhen || []).some((opt) => selected.includes(opt));
+            commentEl.hidden = !show;
+            kommentarer[qid] = show ? commentEl.value.trim() : '';
+        }
+        this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: false });
+    }
+
+    patchUtforandeEntry(mallId, patch, opts = {}) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar) return;
+        this.utforandeState = Mallar.upsertEntry(this.utforandeState, mallId, patch);
+        if (opts.rerender !== false) this.renderUtforandeKatalog();
+        this.scheduleUtforandeSave();
+    }
+
+    scheduleUtforandeSave() {
+        clearTimeout(this._utforandeSaveTimer);
+        this._utforandeSaveTimer = setTimeout(() => this.saveUtforande(), 600);
+    }
+
+    async saveUtforande() {
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-utforande`, {
+                method: 'PUT',
+                body: JSON.stringify({ state: this.utforandeState })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+        } catch (err) {
+            console.warn('Kunde inte spara tjänsteutförande:', err);
+            this.showNotification('Kunde inte spara hur tjänsten utförs: ' + err.message, 'error');
+        }
+    }
+
+    addCustomUtforandeTjanst() {
+        const namn = window.prompt('Namn på den egna tjänsten');
+        if (!namn || !namn.trim()) return;
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar) return;
+        const added = Mallar.addCustomService(this.utforandeState, namn.trim());
+        this.utforandeState = added.state;
+        this.renderUtforandeKatalog();
+        this.scheduleUtforandeSave();
     }
 
     renderKundCountBadge(n) {
@@ -178,6 +355,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-form')?.addEventListener('submit', (e) => this.handleSaveTjanst(e));
         document.getElementById('tjanst-save-draft-btn')?.addEventListener('click', (e) => this.handleSaveTjanst(e, { asDraft: true }));
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
+        document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });
@@ -416,7 +594,10 @@ class RiskAssessmentManager {
                 const tagClass = tagClassMap[kat] || 'tag-verk';
                 return `
                     <div class="vuln-item">
-                        <div class="tags-row"><span class="tag ${tagClass}">${this.esc(kat)}</span></div>
+                        <div class="tags-row">
+                            <span class="tag ${tagClass}">${this.esc(kat)}</span>
+                            <span class="evidens-tag evidens-${this.normalizeEvidens(s.evidens)}">${this.esc(this.evidensLabel(s.evidens))}</span>
+                        </div>
                         <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
                         <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
                     </div>
@@ -438,6 +619,7 @@ class RiskAssessmentManager {
                 <div class="action-item">
                     <i class="fas fa-check action-icon"></i>
                     <span class="action-text"><strong>${this.esc(a.titel || '')}</strong>${a.beskrivning ? ' — ' + this.esc(a.beskrivning) : ''}</span>
+                    <span class="atgard-status-badge${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' is-befintlig' : ''}">${this.normalizeAtgardStatus(a.status) === 'befintlig' ? 'Befintlig' : 'Föreslagen'}</span>
                 </div>
             `).join('');
             sections.push(`
@@ -820,7 +1002,13 @@ class RiskAssessmentManager {
         const kategori = data.kategori ?? data.category ?? '';
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
+        const evidens = this.normalizeEvidens(data.evidens);
         const optsHtml = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
+        const evidensHtml = [
+            ['bekraftad', 'Bekräftad byråspecifik'],
+            ['tjanstetypisk', 'Tjänstetypisk risk'],
+            ['saknas', 'Saknad information']
+        ].map(([v, label]) => `<option value="${v}"${evidens === v ? ' selected' : ''}>${label}</option>`).join('');
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
         row.innerHTML = `
@@ -829,6 +1017,7 @@ class RiskAssessmentManager {
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <select class="dyn-kategori" aria-label="Sårbarhetskategori">${optsHtml}</select>
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
+                <select class="dyn-evidens" aria-label="Evidensnivå">${evidensHtml}</select>
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
             </div>
@@ -869,6 +1058,12 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet.">${this.esc(beskrivning)}</textarea>
+                <label class="tjanst-panel-hint">Åtgärdens status
+                    <select class="dyn-atgard-status" aria-label="Åtgärdsstatus">
+                        <option value="foreslagen"${this.normalizeAtgardStatus(data.status) === 'foreslagen' ? ' selected' : ''}>Föreslagen</option>
+                        <option value="befintlig"${this.normalizeAtgardStatus(data.status) === 'befintlig' ? ' selected' : ''}>Befintlig kontroll</option>
+                    </select>
+                </label>
                 <div class="dyn-atgard-typ" role="radiogroup" aria-label="Åtgärdstyp">
                     <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="byrarutin"${typ === 'byrarutin' ? ' checked' : ''}> Byrårutin — ingår i vårt normala arbetssätt</label>
                     <label class="dyn-atgard-typ-opt"><input type="radio" name="${name}" value="kundberoende_forutsattning"${typ === 'kundberoende_forutsattning' ? ' checked' : ''}> Kundspecifik åtgärd</label>
@@ -891,11 +1086,31 @@ class RiskAssessmentManager {
         })).filter(h => h.titel || h.beskrivning || h.kalla);
     }
 
+    normalizeEvidens(raw) {
+        const t = String(raw || '').trim().toLowerCase();
+        if (t === 'bekraftad' || t === 'bekräftad') return 'bekraftad';
+        if (t === 'saknas' || t === 'saknad') return 'saknas';
+        return 'tjanstetypisk';
+    }
+
+    evidensLabel(raw) {
+        const v = this.normalizeEvidens(raw);
+        if (v === 'bekraftad') return 'Bekräftad byråspecifik faktor';
+        if (v === 'saknas') return 'Saknad information';
+        return 'Tjänstetypisk risk';
+    }
+
+    normalizeAtgardStatus(raw) {
+        const t = String(raw || '').trim().toLowerCase();
+        return t === 'befintlig' ? 'befintlig' : 'foreslagen';
+    }
+
     collectSarbarhet() {
         return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map(row => ({
             kategori: row.querySelector('.dyn-kategori')?.value || 'Verksamhet',
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+            evidens: this.normalizeEvidens(row.querySelector('.dyn-evidens')?.value)
         })).filter(s => s.titel || s.beskrivning);
     }
 
@@ -904,7 +1119,8 @@ class RiskAssessmentManager {
             const typ = row.querySelector('.dyn-atgard-typ input:checked')?.value || '';
             const item = {
                 titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || ''
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+                status: this.normalizeAtgardStatus(row.querySelector('.dyn-atgard-status')?.value)
             };
             if (typ) item.atgardTyp = typ;
             if (typ === 'uppdragsatgard') item.lagsUtSomUppdragsatgard = true;
@@ -1652,7 +1868,13 @@ class RiskAssessmentManager {
                 method: 'POST',
                 ...opts,
                 headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-                body: JSON.stringify({ namn, befintligt, byraProfil })
+                body: JSON.stringify({
+                    namn,
+                    recordId: document.getElementById('tjanst-record-id')?.value || '',
+                    befintligt,
+                    byraProfil,
+                    utforande: this.utforandeState
+                })
             });
 
             if (!response.ok) {
@@ -1801,6 +2023,7 @@ class RiskAssessmentManager {
             if (response.ok) {
                 this.closeModal('tjanst-modal');
                 await this.loadRiskAssessments();
+                this.renderUtforandeKatalog();
                 this.showNotification(
                     asDraft
                         ? 'Utkast sparat. TF-täckning krävs innan tjänsten kan användas i AR-exporten.'
