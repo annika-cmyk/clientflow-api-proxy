@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Byråprofil-enkät</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260902historik">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="byra-enkate-page">
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+        <main class="main-content">
+            <div class="container byra-enkate-container">
+                <header class="byra-enkate-hero">
+                    <p class="byra-enkate-kicker">Kom igång · Steg 1</p>
+                    <h1>Byråprofil</h1>
+                    <p class="byra-enkate-lead">Svara steg för steg så att AI och riskbedömningen utgår från er faktiska verksamhet. Ni kan hoppa över frågor, men klarmarkering kräver att allt är ifyllt.</p>
+                </header>
+
+                <div class="byra-enkate-progress" id="byra-enkate-progress" aria-label="Förlopp"></div>
+
+                <section class="dashboard-card byra-enkate-card">
+                    <div class="byra-enkate-card-head">
+                        <div>
+                            <p class="byra-enkate-step-label" id="byra-enkate-step-label">Steg 1 av 5</p>
+                            <h2 id="byra-enkate-section-title">Byråns interna profil</h2>
+                            <p class="byra-enkate-section-sub" id="byra-enkate-section-sub"></p>
+                        </div>
+                        <div class="byra-enkate-remaining" id="byra-enkate-remaining"></div>
+                    </div>
+                    <div class="byra-enkate-fields" id="byra-enkate-fields"></div>
+                    <div class="byra-enkate-actions">
+                        <button type="button" class="btn-secondary" id="byra-enkate-back" hidden>Tillbaka</button>
+                        <div class="byra-enkate-actions-right">
+                            <button type="button" class="btn-secondary" id="byra-enkate-skip">Hoppa över</button>
+                            <button type="button" class="btn-primary" id="byra-enkate-next">Nästa</button>
+                            <button type="button" class="btn-primary" id="byra-enkate-finish" hidden disabled>Klarmarkera</button>
+                        </div>
+                    </div>
+                    <p class="byra-enkate-status" id="byra-enkate-status" role="status"></p>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/navigation.js" defer></script>
+    <script src="js/components.js?v=2.2" defer></script>
+    <script src="js/hogrisk-sni.js?v=1" defer></script>
+    <script src="js/byra-profil-enkate.js?v=20260902historik" defer></script>
+    <script src="app.js" defer></script>
+</body>
+</html>

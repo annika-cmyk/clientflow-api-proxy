@@ -28,18 +28,150 @@ class ByraAnvandareManager {
     this.prislista = { tjanster: {}, fritext: [] };
     this.uppdragsbrevBilagor = [];
     this.currentTab = 'byra';
+    this.hogriskBranschLabels = [];
     this.init();
   }
 
   init() {
     this.setupEventListeners();
-    this.loadByraInfo();
+    this.initHogriskBranschMultiSelect()
+      .catch((err) => console.warn('Högriskbranscher:', err))
+      .finally(() => this.loadByraInfo());
     this.loadUppdragsbrevBilagor();
     this.loadUsers();
     this.loadLogs();
     this.loadUtbildningar();
     this.loadAmlGenomforda();
     this.initializeTabs();
+  }
+
+  hogriskBranschOptions() {
+    const fromApi = Array.isArray(this.hogriskBranschLabels) ? this.hogriskBranschLabels : [];
+    if (fromApi.length) return fromApi;
+    const HS = window.HogriskSni;
+    const defaults = HS && Array.isArray(HS.DEFAULT_PATTERNS)
+      ? HS.DEFAULT_PATTERNS.map((p) => String(p.label || '').trim()).filter(Boolean)
+      : [];
+    return defaults;
+  }
+
+  parseBranschTokens(raw) {
+    const HS = window.HogriskSni;
+    if (HS && typeof HS.listLabels === 'function') return HS.listLabels(raw);
+    return String(raw || '')
+      .split(/[,;\n]/)
+      .map((v) => v.trim())
+      .filter((v) => v && v !== '---');
+  }
+
+  foldBranschKey(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  matchSavedBranscherToOptions(raw, options) {
+    const tokens = this.parseBranschTokens(raw);
+    if (!tokens.length) return [];
+    const opts = Array.isArray(options) ? options : [];
+    const selected = [];
+    const used = new Set();
+    tokens.forEach((token) => {
+      const key = this.foldBranschKey(token);
+      if (!key) return;
+      const hit = opts.find((opt) => {
+        const ok = this.foldBranschKey(opt);
+        return ok === key || ok.includes(key) || key.includes(ok);
+      });
+      if (hit && !used.has(hit)) {
+        used.add(hit);
+        selected.push(hit);
+      }
+    });
+    return selected;
+  }
+
+  syncHogriskBranschSelection() {
+    const list = document.getElementById('byra-branscher-kundstock-list');
+    const hidden = document.getElementById('byra-branscher-kundstock');
+    const summary = document.getElementById('byra-branscher-kundstock-summary');
+    if (!list || !hidden) return;
+    const selected = Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((el) => String(el.value || '').trim())
+      .filter(Boolean);
+    hidden.value = selected.join(', ');
+    if (summary) {
+      if (!selected.length) {
+        summary.textContent = 'Välj högriskbranscher…';
+        summary.classList.add('is-placeholder');
+      } else if (selected.length <= 2) {
+        summary.textContent = selected.join(', ');
+        summary.classList.remove('is-placeholder');
+      } else {
+        summary.textContent = selected.length + ' branscher valda';
+        summary.classList.remove('is-placeholder');
+      }
+    }
+  }
+
+  renderHogriskBranschOptions(selectedValues) {
+    const list = document.getElementById('byra-branscher-kundstock-list');
+    if (!list) return;
+    const options = this.hogriskBranschOptions();
+    const selected = new Set(
+      (Array.isArray(selectedValues) ? selectedValues : this.parseBranschTokens(selectedValues))
+        .map((v) => this.foldBranschKey(v))
+    );
+    if (!options.length) {
+      list.innerHTML = '<p class="form-hint" style="margin:0.35rem 0.55rem;">Inga högriskbranscher tillgängliga.</p>';
+      this.syncHogriskBranschSelection();
+      return;
+    }
+    list.innerHTML = options.map((label, idx) => {
+      const id = 'byra-hogrisk-bransch-' + idx;
+      const checked = selected.has(this.foldBranschKey(label)) ? ' checked' : '';
+      const safeLabel = String(label)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+      return '<label class="multi-select-option" for="' + id + '">'
+        + '<input type="checkbox" id="' + id + '" value="' + safeLabel + '"' + checked + '>'
+        + '<span>' + safeLabel + '</span>'
+        + '</label>';
+    }).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach((el) => {
+      el.addEventListener('change', () => this.syncHogriskBranschSelection());
+    });
+    this.syncHogriskBranschSelection();
+  }
+
+  async initHogriskBranschMultiSelect() {
+    const pendingValue = document.getElementById('byra-branscher-kundstock')?.value || '';
+    this.renderHogriskBranschOptions(pendingValue);
+    try {
+      const res = await fetch(getBaseUrl() + '/api/hogrisk-sni', getAuthOpts());
+      if (res.ok) {
+        const data = await res.json();
+        const patterns = Array.isArray(data.patterns) ? data.patterns : [];
+        const labels = [];
+        const seen = new Set();
+        patterns.forEach((p) => {
+          const label = String(p && p.label || '').trim();
+          const key = this.foldBranschKey(label);
+          if (!label || !key || seen.has(key)) return;
+          seen.add(key);
+          labels.push(label);
+        });
+        if (labels.length) this.hogriskBranschLabels = labels;
+      }
+    } catch (err) {
+      console.warn('Kunde inte hämta högriskbranscher:', err);
+    }
+    const current = document.getElementById('byra-branscher-kundstock')?.value || pendingValue;
+    const selected = this.matchSavedBranscherToOptions(current, this.hogriskBranschOptions());
+    this.renderHogriskBranschOptions(selected.length ? selected : current);
   }
 
   setupEventListeners() {
@@ -187,15 +319,67 @@ class ByraAnvandareManager {
       const bolagsformer = document.getElementById('byra-bolagsformer');
       if (bolagsformer) bolagsformer.value = f.vanligasteBolagsformer ?? '';
       const branscherKundstock = document.getElementById('byra-branscher-kundstock');
-      if (branscherKundstock) branscherKundstock.value = f.branscherKundstock ?? '';
-      const andelUtland = document.getElementById('byra-andel-utland');
-      if (andelUtland) andelUtland.value = f.andelInternationellHandel ?? '';
-      const andelKontant = document.getElementById('byra-andel-kontant');
-      if (andelKontant) andelKontant.value = f.andelKontantintensiva ?? '';
-      const leveranssatt = document.getElementById('byra-leveranssatt');
-      if (leveranssatt) leveranssatt.value = f.leveranssatt ?? '';
-      const geografi = document.getElementById('byra-geografi');
-      if (geografi) geografi.value = f.geografiskMarknad ?? '';
+      if (branscherKundstock) {
+        const raw = f.branscherKundstock ?? '';
+        const selected = this.matchSavedBranscherToOptions(raw, this.hogriskBranschOptions());
+        this.renderHogriskBranschOptions(selected);
+        if (!selected.length && String(raw).trim()) {
+          branscherKundstock.value = String(raw).trim();
+          const summary = document.getElementById('byra-branscher-kundstock-summary');
+          if (summary) {
+            summary.textContent = String(raw).trim();
+            summary.classList.remove('is-placeholder');
+          }
+        }
+      }
+      const setVal = (id, value) => {
+        const node = document.getElementById(id);
+        if (node) node.value = value ?? '';
+      };
+      setVal('byra-antal-kontor', f.antalKontor);
+      setVal('byra-it-system', f.itSystem);
+      setVal('byra-auktoriserade-konsulter', f.auktoriseradeKonsulter);
+      setVal('byra-lopande-utbildning', f.lopandeUtbildning);
+      setVal('byra-personalomsattning', f.personalomsattning);
+      setVal('byra-andel-hogrisk', f.andelHogriskbransch);
+      setVal('byra-andel-kontant', f.andelKontantintensiva);
+      setVal('byra-betalningsmonster', f.betalningsmonster);
+      setVal('byra-komplexa-agarstrukturer', f.komplexaAgarstrukturer);
+      setVal('byra-utlandska-agare', f.utlandskaAgare);
+      setVal('byra-pep-kunder', f.pepKunder);
+      setVal('byra-leveranssatt', f.leveranssatt);
+      setVal('byra-bankid-krav', f.bankIdKrav);
+      setVal('byra-kund-gor-lopande', f.kundGorLopande);
+      setVal('byra-betalningsuppdrag', f.betalningsuppdrag);
+      setVal('byra-bokforingsmetod', f.bokforingsmetod);
+      setVal('byra-andel-utland', f.andelInternationellHandel);
+      setVal('byra-geografi', f.geografiskMarknad);
+      setVal('byra-sanktionslander', f.sanktionslander);
+      setVal('byra-kunder-utsatta-omraden', f.kunderIUtsattaOmraden);
+      setVal('byra-finanspolisen-antal', f.finanspolisenAvvikelserAntal);
+      setVal('byra-finanspolisen-typ', f.finanspolisenAvvikelserTyp);
+      setVal('byra-lanstyrelsen-anmarkningar', f.lanstyrelsenAnmarkningar);
+      setVal('byra-lanstyrelsen-detalj', f.lanstyrelsenAnmarkningarDetalj);
+      setVal('byra-near-misses', f.nearMisses);
+      setVal('byra-near-misses-detalj', f.nearMissesDetalj);
+      setVal('byra-stora-kundberoenden', f.storaKundberoenden);
+      setVal('byra-stora-kundberoenden-andel', f.storaKundberoendenAndel);
+      setVal('byra-bolagsbildning', f.bolagsbildningAtKund);
+      setVal('byra-styrelse-nominee', f.styrelseEllerNomineeRoller);
+      setVal('byra-sate-postadress', f.satePostadress);
+      setVal('byra-fullmakt-bolagsverket', f.fullmaktBolagsverket);
+      setVal('byra-ombud-skatteprocesser', f.ombudSkatteprocesser);
+      setVal('byra-generalfullmakt', f.generalfullmaktMyndighet);
+      setVal('byra-kund-introduktion', f.kundIntroduktion);
+      setVal('byra-andel-nystartade', f.andelNystartadeBolag);
+      setVal('byra-outsourcing', f.outsourcingUnderleverantorer);
+      setVal('byra-outsourcing-detalj', f.outsourcingUnderleverantorerDetalj);
+      const komplettEl = document.getElementById('byra-profil-komplett');
+      if (komplettEl) {
+        const done = !!f.profilKomplett;
+        komplettEl.textContent = done ? 'Profil komplett' : 'Ej komplett';
+        komplettEl.classList.toggle('is-complete', done);
+      }
       const defUpps = document.getElementById('byra-default-uppsagningstid');
       if (defUpps) defUpps.value = f.defaultUppsagningstid ?? '';
       const defFaktura = document.getElementById('byra-default-fakturaperiod');
@@ -486,6 +670,9 @@ class ByraAnvandareManager {
     };
     return checkPercent('byra-andel-utland', 'Andel internationell handel')
       || checkPercent('byra-andel-kontant', 'Andel kontantintensiva kunder')
+      || checkPercent('byra-andel-hogrisk', 'Andel kunder i högriskbransch')
+      || checkPercent('byra-stora-kundberoenden-andel', 'Andel omsättning från de största kunderna')
+      || checkPercent('byra-andel-nystartade', 'Andel nystartade bolag')
       || '';
   }
 
@@ -498,23 +685,66 @@ class ByraAnvandareManager {
       return;
     }
     try {
+      this.syncHogriskBranschSelection();
       const body = {
         antalAnstallda: document.getElementById('byra-antal-anstallda')?.value ?? '',
         omsattning: document.getElementById('byra-omsattning')?.value ?? '',
         antalKundforetag: document.getElementById('byra-antal-kundforetag')?.value ?? '',
         bransch: document.getElementById('byra-bransch')?.value ?? '',
+        antalKontor: document.getElementById('byra-antal-kontor')?.value ?? '',
+        itSystem: document.getElementById('byra-it-system')?.value ?? '',
+        auktoriseradeKonsulter: document.getElementById('byra-auktoriserade-konsulter')?.value ?? '',
+        lopandeUtbildning: document.getElementById('byra-lopande-utbildning')?.value ?? '',
+        personalomsattning: document.getElementById('byra-personalomsattning')?.value ?? '',
         antalKunder: document.getElementById('byra-antal-kunder')?.value ?? '',
         vanligasteBolagsformer: document.getElementById('byra-bolagsformer')?.value ?? '',
         branscherKundstock: document.getElementById('byra-branscher-kundstock')?.value ?? '',
-        andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
+        andelHogriskbransch: document.getElementById('byra-andel-hogrisk')?.value ?? '',
         andelKontantintensiva: document.getElementById('byra-andel-kontant')?.value ?? '',
+        betalningsmonster: document.getElementById('byra-betalningsmonster')?.value ?? '',
+        komplexaAgarstrukturer: document.getElementById('byra-komplexa-agarstrukturer')?.value ?? '',
+        utlandskaAgare: document.getElementById('byra-utlandska-agare')?.value ?? '',
+        pepKunder: document.getElementById('byra-pep-kunder')?.value ?? '',
         leveranssatt: document.getElementById('byra-leveranssatt')?.value ?? '',
-        geografiskMarknad: document.getElementById('byra-geografi')?.value ?? ''
+        bankIdKrav: document.getElementById('byra-bankid-krav')?.value ?? '',
+        kundGorLopande: document.getElementById('byra-kund-gor-lopande')?.value ?? '',
+        betalningsuppdrag: document.getElementById('byra-betalningsuppdrag')?.value ?? '',
+        bokforingsmetod: document.getElementById('byra-bokforingsmetod')?.value ?? '',
+        andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
+        geografiskMarknad: document.getElementById('byra-geografi')?.value ?? '',
+        sanktionslander: document.getElementById('byra-sanktionslander')?.value ?? '',
+        kunderIUtsattaOmraden: document.getElementById('byra-kunder-utsatta-omraden')?.value ?? '',
+        finanspolisenAvvikelserAntal: document.getElementById('byra-finanspolisen-antal')?.value ?? '',
+        finanspolisenAvvikelserTyp: document.getElementById('byra-finanspolisen-typ')?.value ?? '',
+        lanstyrelsenAnmarkningar: document.getElementById('byra-lanstyrelsen-anmarkningar')?.value ?? '',
+        lanstyrelsenAnmarkningarDetalj: document.getElementById('byra-lanstyrelsen-detalj')?.value ?? '',
+        nearMisses: document.getElementById('byra-near-misses')?.value ?? '',
+        nearMissesDetalj: document.getElementById('byra-near-misses-detalj')?.value ?? '',
+        storaKundberoenden: document.getElementById('byra-stora-kundberoenden')?.value ?? '',
+        storaKundberoendenAndel: document.getElementById('byra-stora-kundberoenden-andel')?.value ?? '',
+        bolagsbildningAtKund: document.getElementById('byra-bolagsbildning')?.value ?? '',
+        styrelseEllerNomineeRoller: document.getElementById('byra-styrelse-nominee')?.value ?? '',
+        satePostadress: document.getElementById('byra-sate-postadress')?.value ?? '',
+        fullmaktBolagsverket: document.getElementById('byra-fullmakt-bolagsverket')?.value ?? '',
+        ombudSkatteprocesser: document.getElementById('byra-ombud-skatteprocesser')?.value ?? '',
+        generalfullmaktMyndighet: document.getElementById('byra-generalfullmakt')?.value ?? '',
+        kundIntroduktion: document.getElementById('byra-kund-introduktion')?.value ?? '',
+        andelNystartadeBolag: document.getElementById('byra-andel-nystartade')?.value ?? '',
+        outsourcingUnderleverantorer: document.getElementById('byra-outsourcing')?.value ?? '',
+        outsourcingUnderleverantorerDetalj: document.getElementById('byra-outsourcing-detalj')?.value ?? ''
       };
       const res = await fetch(getBaseUrl() + '/api/byra/info', getAuthOpts('PUT', body));
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || res.statusText);
       if (statusEl) statusEl.textContent = j.warning ? ('Sparat med varning: ' + j.warning) : 'Sparat.';
+      const komplettEl = document.getElementById('byra-profil-komplett');
+      if (komplettEl && j.fields) {
+        const done = !!j.fields.profilKomplett;
+        komplettEl.textContent = done ? 'Profil komplett' : 'Ej komplett';
+        komplettEl.classList.toggle('is-complete', done);
+      } else {
+        await this.loadByraInfo();
+      }
       setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
     } catch (err) {
       console.error('saveByraInfo:', err);
