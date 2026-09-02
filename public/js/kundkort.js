@@ -12423,7 +12423,8 @@ class CustomerCardManager {
             'Signerat av byrå':    rawF['Signerat av byra'] || rawF['Signerat av byrå'] || '',
             // Om fältet inte finns på avtalet än: default = true (ikryssad)
             'Bifoga prislista':    hasField('Bifoga prislista') ? !!rawF['Bifoga prislista'] : true,
-            'Valda byråbilagor (JSON)': rawF['Valda byråbilagor (JSON)'] || ''
+            'Valda byråbilagor (JSON)': rawF['Valda byråbilagor (JSON)'] || '',
+            'Kundbilagor': Array.isArray(rawF['Kundbilagor']) ? rawF['Kundbilagor'] : []
         };
         const isNew = !avtal;
         const kundFields = this.customerData?.fields || {};
@@ -12470,23 +12471,64 @@ class CustomerCardManager {
             selectedByraBilagaIds = byraBilagor.map(b => (b?.id || '').toString()).filter(Boolean);
         }
         const isSelected = (id) => selectedByraBilagaIds.includes(id);
+        
+        const kundBilagor = Array.isArray(f['Kundbilagor']) ? f['Kundbilagor'] : [];
+        const avtalIdForBilagor = avtal?.id || '';
         const bilageChecklistHtml = `
-            <div style="display:grid;gap:0.45rem;margin-top:0.25rem;">
-                <label style="display:flex;align-items:center;gap:0.6rem;margin:0;">
-                    <input type="checkbox" id="ua-bifoga-prislista" ${f['Bifoga prislista'] ? 'checked' : ''}>
-                    <span style="font-weight:650;">Prislista</span>
-                </label>
-
-                ${byraBilagor.length ? byraBilagor.map((b) => {
-                    const id = (b.id || '').toString();
-                    const label = (b.label || b.filename || 'Bilaga').toString();
-                    return `
-                        <label style="display:flex;align-items:center;gap:0.6rem;margin:0;">
-                            <input type="checkbox" class="ua-byra-bilaga-cb" value="${esc(id)}" ${isSelected(id) ? 'checked' : ''}>
-                            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(label)}</span>
+            <div class="ua-bilagor-panel">
+                <div class="ua-bilagor-group">
+                    <div class="ua-bilagor-group-title">Standardbilagor från byrån</div>
+                    <label class="ua-bilaga-row">
+                        <input type="checkbox" id="ua-bifoga-prislista" ${f['Bifoga prislista'] ? 'checked' : ''}>
+                        <span>Prislista</span>
+                    </label>
+                    ${byraBilagor.length ? byraBilagor.map((b) => {
+                        const id = (b.id || '').toString();
+                        const label = (b.label || b.filename || 'Bilaga').toString();
+                        return `
+                            <label class="ua-bilaga-row">
+                                <input type="checkbox" class="ua-byra-bilaga-cb" value="${esc(id)}" ${isSelected(id) ? 'checked' : ''}>
+                                <span title="${esc(label)}">${esc(label)}</span>
+                            </label>
+                        `;
+                    }).join('') : `<div class="ua-bilagor-empty">Inga byråbilagor upplagda ännu. Ladda upp dem under Byrå &amp; användare.</div>`}
+                </div>
+                <div class="ua-bilagor-group ua-bilagor-group--kund">
+                    <div class="ua-bilagor-group-title">Egna bilagor för denna kund</div>
+                    <p class="ua-bilagor-hint">T.ex. särskild tjänstebeskrivning, kundspecifikt avtal eller annan PDF som ska bifogas just det här uppdragsavtalet.</p>
+                    <div id="ua-kundbilagor-list" class="ua-kundbilagor-list">
+                        ${kundBilagor.length ? kundBilagor.map((b) => {
+                            const id = (b.id || '').toString();
+                            const name = (b.filename || b.name || 'Bilaga').toString();
+                            const url = (b.url || '').toString();
+                            const title = url
+                                ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(name)}</a>`
+                                : esc(name);
+                            return `
+                                <div class="ua-kundbilaga-item" data-id="${esc(id)}">
+                                    <div class="ua-kundbilaga-meta">
+                                        <i class="fas fa-file-pdf"></i>
+                                        ${title}
+                                    </div>
+                                    ${avtalIdForBilagor ? `<button type="button" class="ua-kundbilaga-remove" data-action="remove-kundbilaga" data-id="${esc(id)}" title="Ta bort"><i class="fas fa-trash-alt"></i></button>` : ''}
+                                </div>
+                            `;
+                        }).join('') : `<div class="ua-bilagor-empty">Inga egna bilagor uppladdade.</div>`}
+                    </div>
+                    ${avtalIdForBilagor ? `
+                    <div class="ua-kundbilagor-upload">
+                        <input type="text" id="ua-kundbilaga-namn" class="uppdrag-input" placeholder="Namn (t.ex. Tjänstespecifikation)">
+                        <label class="ua-kundbilaga-file-btn">
+                            <i class="fas fa-upload"></i> Välj PDF
+                            <input type="file" id="ua-kundbilaga-fil" accept="application/pdf,.pdf" hidden>
                         </label>
-                    `;
-                }).join('') : `<div class="uppdrag-muted">Inga byråbilagor upplagda.</div>`}
+                        <button type="button" class="btn btn-secondary btn-sm" id="ua-kundbilaga-ladda-upp">
+                            Ladda upp
+                        </button>
+                    </div>
+                    <div id="ua-kundbilaga-status" class="ua-kundbilaga-status"></div>
+                    ` : `<div class="ua-bilagor-empty">Spara utkastet först för att kunna ladda upp egna bilagor.</div>`}
+                </div>
             </div>
         `;
 
@@ -12702,13 +12744,13 @@ class CustomerCardManager {
                     </div>
 
                     <!-- BILAGOR (valbara) -->
-                    <div class="uppdrag-section">
-                        <div class="uppdrag-section-title"><i class="fas fa-paperclip"></i> Bilagor till uppdragsavtal</div>
-                        <div class="uppdrag-bilaga-toggle" onclick="this.classList.toggle('is-open'); this.nextElementSibling.classList.toggle('open')">
-                            <i class="fas fa-chevron-right uppdrag-bilaga-chevron"></i>
-                            Välj bilagor
+                    <div class="uppdrag-section uppdrag-section--card">
+                        <div class="uppdrag-section-header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                            <div class="uppdrag-section-title"><i class="fas fa-paperclip"></i> Bilagor till uppdragsavtal</div>
+                            <i class="fas fa-chevron-down uppdrag-section-chevron"></i>
                         </div>
-                        <div class="uppdrag-bilaga-text">
+                        <div class="uppdrag-section-body">
+                            <p class="uppdrag-hint">Välj vilka bilagor som ska bifogas PDF:en, och ladda gärna upp kundspecifika PDF:er.</p>
                             ${bilageChecklistHtml}
                         </div>
                     </div>
@@ -12771,8 +12813,111 @@ class CustomerCardManager {
                 </form>
             </div>
         `;
+        this._uppdragsavtal = avtal || null;
+        this._uppdragsavtalByraData = byraData || {};
+        this._bindKundbilagorUpload(avtal?.id || null);
         if (window.DateInput) DateInput.bindDateInputs(container);
     }
+
+
+    _bindKundbilagorUpload(avtalId) {
+        const uploadBtn = document.getElementById('ua-kundbilaga-ladda-upp');
+        const fileInput = document.getElementById('ua-kundbilaga-fil');
+        const nameInput = document.getElementById('ua-kundbilaga-namn');
+        const statusEl = document.getElementById('ua-kundbilaga-status');
+        const setStatus = (msg, isErr) => {
+            if (!statusEl) return;
+            statusEl.textContent = msg || '';
+            statusEl.className = 'ua-kundbilaga-status' + (isErr ? ' is-error' : (msg ? ' is-ok' : ''));
+        };
+        if (fileInput && nameInput) {
+            fileInput.addEventListener('change', () => {
+                if (!nameInput.value.trim() && fileInput.files?.[0]?.name) {
+                    nameInput.value = fileInput.files[0].name.replace(/\.pdf$/i, '');
+                }
+            });
+        }
+        uploadBtn?.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (!avtalId) { setStatus('Spara utkastet först.', true); return; }
+            const file = fileInput?.files?.[0];
+            if (!file) { setStatus('Välj en PDF först.', true); return; }
+            if (file.type && file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name || '')) {
+                setStatus('Endast PDF är tillåtet.', true); return;
+            }
+            const label = (nameInput?.value || '').trim() || file.name.replace(/\.pdf$/i, '');
+            setStatus('Laddar upp...');
+            uploadBtn.disabled = true;
+            try {
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const r = String(reader.result || '');
+                        const i = r.indexOf(',');
+                        resolve(i >= 0 ? r.slice(i + 1) : r);
+                    };
+                    reader.onerror = () => reject(reader.error || new Error('Kunde inte läsa filen'));
+                    reader.readAsDataURL(file);
+                });
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const res = await fetch(`${baseUrl}/api/uppdragsavtal/${encodeURIComponent(avtalId)}/kundbilagor`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    headers: { ...(getAuthOptsKundkort().headers || {}), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        label,
+                        originalFilename: file.name,
+                        contentType: file.type || 'application/pdf',
+                        base64
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.statusText);
+                setStatus('Uppladdad.');
+                // Uppdatera lokal avtalscache och rita om
+                if (this._uppdragsavtal?.id === avtalId) {
+                    this._uppdragsavtal.fields = this._uppdragsavtal.fields || {};
+                    this._uppdragsavtal.fields['Kundbilagor'] = data.bilagor || [];
+                    this._uppdragsavtalFields = this._uppdragsavtal.fields;
+                }
+                await this.renderUppdragsavtal(this._uppdragsavtal, this._uppdragsavtalByraData || {});
+            } catch (err) {
+                console.error('upload kundbilaga:', err);
+                setStatus(err.message || 'Uppladdning misslyckades.', true);
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        });
+
+        document.querySelectorAll('[data-action="remove-kundbilaga"]').forEach((btn) => {
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const attId = btn.getAttribute('data-id');
+                if (!avtalId || !attId) return;
+                if (!confirm('Ta bort bilagan?')) return;
+                setStatus('Tar bort...');
+                try {
+                    const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                    const res = await fetch(`${baseUrl}/api/uppdragsavtal/${encodeURIComponent(avtalId)}/kundbilagor/${encodeURIComponent(attId)}`, {
+                        method: 'DELETE',
+                        ...getAuthOptsKundkort()
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || res.statusText);
+                    if (this._uppdragsavtal?.id === avtalId) {
+                        this._uppdragsavtal.fields = this._uppdragsavtal.fields || {};
+                        this._uppdragsavtal.fields['Kundbilagor'] = data.bilagor || [];
+                    this._uppdragsavtalFields = this._uppdragsavtal.fields;
+                    }
+                    await this.renderUppdragsavtal(this._uppdragsavtal, this._uppdragsavtalByraData || {});
+                } catch (err) {
+                    console.error('remove kundbilaga:', err);
+                    setStatus(err.message || 'Kunde inte ta bort.', true);
+                }
+            });
+        });
+    }
+
 
     async saveUppdragsavtal(avtalId) {
         const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';

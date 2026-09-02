@@ -12902,6 +12902,111 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .uppdrag-bilaga-text li { margin-bottom: 0.3rem; }
 .uppdrag-bilaga-text p { margin: 0 0 0.6rem; }
 
+/* Kundspecifika bilagor i uppdragsavtal */
+.ua-bilagor-panel {
+    display: grid;
+    gap: 1rem;
+}
+.ua-bilagor-group {
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+}
+.ua-bilagor-group-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #0f172a;
+    margin-bottom: 0.55rem;
+}
+.ua-bilagor-hint {
+    margin: 0 0 0.7rem;
+    color: #64748b;
+    font-size: 0.84rem;
+    line-height: 1.4;
+}
+.ua-bilaga-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.28rem 0;
+    font-size: 0.92rem;
+}
+.ua-bilagor-empty {
+    color: #94a3b8;
+    font-size: 0.86rem;
+}
+.ua-kundbilagor-list {
+    display: grid;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+.ua-kundbilaga-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+.ua-kundbilaga-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.ua-kundbilaga-meta a {
+    color: #4f46e5;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ua-kundbilaga-meta i { color: #ef4444; }
+.ua-kundbilaga-remove {
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.25rem;
+}
+.ua-kundbilaga-remove:hover { color: #dc2626; }
+.ua-kundbilagor-upload {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+@media (max-width: 720px) {
+    .ua-kundbilagor-upload { grid-template-columns: 1fr; }
+}
+.ua-kundbilaga-file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.8rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.86rem;
+    color: #475569;
+    background: #fff;
+    white-space: nowrap;
+}
+.ua-kundbilaga-file-btn:hover { border-color: #6366f1; color: #4f46e5; }
+.ua-kundbilaga-status {
+    margin-top: 0.45rem;
+    font-size: 0.84rem;
+    color: #64748b;
+    min-height: 1.1em;
+}
+.ua-kundbilaga-status.is-ok { color: #059669; }
+.ua-kundbilaga-status.is-error { color: #dc2626; }
+.uppdrag-section--card .uppdrag-section-body { padding-top: 0.25rem; }
+
+
 /* =====================================================
    Modal: .modal-box + .modal-footer (generisk modal)
    ===================================================== */

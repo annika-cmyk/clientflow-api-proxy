@@ -17399,6 +17399,35 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
 
 // ─── UPPDRAGSAVTAL ───────────────────────────────────────────────────────────
 const UPPDRAGSAVTAL_TABLE = 'tblpKIMpde6sFFqDH'; // Uppdragsavtal tabell-ID
+
+const UPPDRAGSAVTAL_KUNDBILAGOR_FIELD = 'Kundbilagor';
+const UPPDRAGSAVTAL_KUNDBILAGOR_MAX = 10;
+
+async function ensureUppdragsavtalKundbilagorField(airtableToken, baseId) {
+  const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+    headers: { Authorization: `Bearer ${airtableToken}` },
+    timeout: 15000
+  });
+  const tables = metaRes.data?.tables || [];
+  const table = tables.find(t => t.id === UPPDRAGSAVTAL_TABLE)
+    || tables.find(t => (t.name || '').trim().toLowerCase() === 'uppdragsavtal');
+  if (!table) throw new Error('Tabellen Uppdragsavtal hittades inte.');
+  const existing = (table.fields || []).find(f => (f.name || '').trim() === UPPDRAGSAVTAL_KUNDBILAGOR_FIELD);
+  if (existing) return existing;
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields`;
+  const created = await axios.post(createUrl, {
+    name: UPPDRAGSAVTAL_KUNDBILAGOR_FIELD,
+    type: 'multipleAttachments',
+    description: 'Kundspecifika bilagor till uppdragsavtalet (t.ex. särskild tjänstebeskrivning eller avtal).'
+  }, {
+    headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+    timeout: 15000
+  });
+  // clear field id cache for this table/field
+  try { delete AIRTABLE_FIELD_ID_CACHE[`${table.id}:${UPPDRAGSAVTAL_KUNDBILAGOR_FIELD}`]; } catch (_) {}
+  return created.data;
+}
+
 const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50'; // Global för alla uppdragsavtal-endpoints
 
 // GET /api/uppdragsavtal/status-map – Kund-ID → avtalsstatus (för kundlista m.m.)
@@ -17617,6 +17646,116 @@ app.post('/api/uppdragsavtal', authenticateToken, async (req, res) => {
       return res.status(error.response.status || 500).json({ error: error.response.data?.error?.message || error.message, airtableError: error.response.data });
     }
     res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+// POST /api/uppdragsavtal/:id/kundbilagor – Ladda upp kundspecifik bilaga (PDF)
+app.post('/api/uppdragsavtal/:id/kundbilagor', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const body = req.body || {};
+    const label = (body.label || body.namn || body.name || '').toString().trim();
+    const originalFilename = (body.originalFilename || body.filename || '').toString();
+    const contentType = (body.contentType || body.mime || 'application/pdf').toString();
+    const base64 = (body.base64 || '').toString();
+    if (!id) return res.status(400).json({ error: 'Avtals-id saknas' });
+    if (!base64 || base64.length < 16) return res.status(400).json({ error: 'base64 saknas' });
+    const isPdf = contentType === 'application/pdf'
+      || originalFilename.toLowerCase().endsWith('.pdf')
+      || !originalFilename;
+    if (!isPdf) return res.status(400).json({ error: 'Endast PDF är tillåtet.' });
+
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const resolvedBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!token) return res.status(500).json({ error: 'Airtable inte konfigurerad' });
+
+    await ensureUppdragsavtalKundbilagorField(token, resolvedBaseId);
+
+    const getUrl = `https://api.airtable.com/v0/${resolvedBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`;
+    const currentRes = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000
+    });
+    const currentList = Array.isArray(currentRes.data?.fields?.[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD])
+      ? currentRes.data.fields[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD]
+      : [];
+    if (currentList.length >= UPPDRAGSAVTAL_KUNDBILAGOR_MAX) {
+      return res.status(400).json({ error: `Max ${UPPDRAGSAVTAL_KUNDBILAGOR_MAX} egna bilagor per avtal.` });
+    }
+
+    const fileBuffer = Buffer.from(base64, 'base64');
+    const filename = (typeof safeFilenameFromLabel === 'function')
+      ? safeFilenameFromLabel(label || 'kundbilaga', 'kundbilaga', 'pdf')
+      : (((label || 'kundbilaga').replace(/[^a-zA-Z0-9åäöÅÄÖ _-]/g, '').trim() || 'kundbilaga') + '.pdf');
+
+    const att = await uploadAttachmentToAirtableFieldReturnAttachment(
+      token,
+      resolvedBaseId,
+      id,
+      fileBuffer,
+      filename,
+      'application/pdf',
+      UPPDRAGSAVTAL_TABLE,
+      UPPDRAGSAVTAL_KUNDBILAGOR_FIELD
+    );
+    if (!att) {
+      return res.status(400).json({ error: `Kunde inte ladda upp till fältet "${UPPDRAGSAVTAL_KUNDBILAGOR_FIELD}".` });
+    }
+
+    const refreshed = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000
+    });
+    const bilagor = Array.isArray(refreshed.data?.fields?.[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD])
+      ? refreshed.data.fields[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD]
+      : [];
+    return res.json({ success: true, attachment: att, bilagor, max: UPPDRAGSAVTAL_KUNDBILAGOR_MAX });
+  } catch (error) {
+    console.error('❌ POST /api/uppdragsavtal/:id/kundbilagor:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    return res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+// DELETE /api/uppdragsavtal/:id/kundbilagor/:attachmentId
+app.delete('/api/uppdragsavtal/:id/kundbilagor/:attachmentId', authenticateToken, async (req, res) => {
+  try {
+    const { id, attachmentId } = req.params;
+    if (!id || !attachmentId) return res.status(400).json({ error: 'id och attachmentId krävs' });
+    const token = process.env.AIRTABLE_ACCESS_TOKEN;
+    const resolvedBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!token) return res.status(500).json({ error: 'Airtable inte konfigurerad' });
+
+    const getUrl = `https://api.airtable.com/v0/${resolvedBaseId}/${UPPDRAGSAVTAL_TABLE}/${id}`;
+    const currentRes = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000
+    });
+    const list = Array.isArray(currentRes.data?.fields?.[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD])
+      ? currentRes.data.fields[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD]
+      : [];
+    const remaining = list.filter(a => (a && a.id) ? a.id !== attachmentId : true);
+    const toSend = remaining.map(a => (a && a.id) ? { id: a.id } : null).filter(Boolean);
+
+    await axios.patch(getUrl, { fields: { [UPPDRAGSAVTAL_KUNDBILAGOR_FIELD]: toSend } }, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      timeout: 15000
+    });
+
+    const refreshed = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000
+    });
+    const bilagor = Array.isArray(refreshed.data?.fields?.[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD])
+      ? refreshed.data.fields[UPPDRAGSAVTAL_KUNDBILAGOR_FIELD]
+      : [];
+    return res.json({ success: true, bilagor, max: UPPDRAGSAVTAL_KUNDBILAGOR_MAX });
+  } catch (error) {
+    console.error('❌ DELETE kundbilagor:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    return res.status(status).json({ error: error.response?.data?.error?.message || error.message });
   }
 });
 
