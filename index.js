@@ -83,6 +83,8 @@ const AtgardKonkret = require('./public/js/atgard-konkret');
 const HotAmlTf = require('./public/js/hot-aml-tf');
 const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifieradeCompiledDump, mapOvrigRiskRecord, sortOvriga } = require('./lib/identifierade-risker');
 const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./lib/inneboende-beskrivning');
+const AiTjanstAnalys = require('./lib/ai-tjanst-analys');
+const TjanstUtforandeMallar = require('./public/js/tjanst-utforande-mallar');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
 const { formatOvrigRiskfaktorSubjectBlock } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -12588,6 +12590,62 @@ async function getByraerRecordForUser(req) {
   return { record: airtableRes.data.records[0], byraId, userData };
 }
 
+const TJANST_UTFORANDE_FIELD = 'Tjänsteutförande (JSON)';
+
+function readTjanstUtforandeFromFields(fields) {
+  const raw = fields && (fields[TJANST_UTFORANDE_FIELD] ?? fields['Tjansteutforande (JSON)'] ?? '');
+  return TjanstUtforandeMallar.parseState(raw);
+}
+
+async function ensureTjanstUtforandeAirtableField(airtableToken, baseId) {
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { created: false };
+  const existingNames = (byraTable.fields || []).map((f) => (f.name || '').trim());
+  if (existingNames.includes(TJANST_UTFORANDE_FIELD)) return { created: false };
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
+  await axios.post(createUrl, {
+    name: TJANST_UTFORANDE_FIELD,
+    type: 'multilineText',
+    description: 'JSON med aktiva tjänster och praktiska utförandesvar per byrå.'
+  }, {
+    headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+    timeout: 10000
+  });
+  return { created: true };
+}
+
+async function resolveTjanstExponeringForAi(req, namn) {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData || !statistikRiskbedomning.canBuildForUser(userData)) {
+      return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+    }
+    const records = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const ids = statistikRiskbedomning.collectLookupIds(records);
+    const tjanstRecords = await fetchAirtableRecordsByIds(
+      airtableAccessToken,
+      airtableBaseId,
+      RISK_ASSESSMENT_TABLE,
+      ids.tjanstIds,
+      { concurrency: 8 }
+    );
+    return statistikRiskbedomning.buildTjanstExponering(records, {
+      tjanstId: (req.body?.recordId || '').toString().trim(),
+      tjanstNamn: namn,
+      tjanstIdToName: statistikRiskbedomning.mapTjanstNames
+        ? statistikRiskbedomning.mapTjanstNames(tjanstRecords)
+        : undefined
+    });
+  } catch (_) {
+    return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+  }
+}
+
 const ByraProfilFields = require('./lib/byra-profil-fields');
 const KomIgang = require('./lib/kom-igang');
 
@@ -13279,6 +13337,71 @@ app.get('/api/byra/info', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ GET /api/byra/info:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+app.get('/api/tjanst-utforande-mallar', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    helpText: TjanstUtforandeMallar.HELP_TEXT,
+    basfragor: TjanstUtforandeMallar.BASE_QUESTIONS,
+    mallar: TjanstUtforandeMallar.SERVICE_TEMPLATES
+  });
+});
+
+app.get('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const state = readTjanstUtforandeFromFields(result.record.fields || {});
+    res.json({
+      success: true,
+      byraId: result.byraId,
+      state,
+      kort: TjanstUtforandeMallar.listCatalogCards(state)
+    });
+  } catch (error) {
+    console.error('❌ GET /api/byra/tjanst-utforande:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const incoming = TjanstUtforandeMallar.parseState(req.body?.state || req.body);
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    try {
+      await ensureTjanstUtforandeAirtableField(airtableAccessToken, airtableBaseId);
+    } catch (ensureErr) {
+      console.warn('Kunde inte säkerställa Tjänsteutförande-fält:', ensureErr.message);
+    }
+    const payload = { [TJANST_UTFORANDE_FIELD]: JSON.stringify(incoming) };
+    try {
+      await patchByraerRecordFields(airtableAccessToken, airtableBaseId, result.record.id, payload);
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message || 'Kunde inte spara tjänsteutförande';
+      if (String(msg).toLowerCase().includes('unknown field name')) {
+        return res.status(400).json({
+          error: `Fältet "${TJANST_UTFORANDE_FIELD}" saknas i Airtable-tabellen Byråer. Skapa ett långtextfält med det namnet.`,
+          details: msg
+        });
+      }
+      throw e;
+    }
+    res.json({
+      success: true,
+      state: incoming,
+      kort: TjanstUtforandeMallar.listCatalogCards(incoming)
+    });
+  } catch (error) {
+    console.error('❌ PUT /api/byra/tjanst-utforande:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
   }
@@ -23092,9 +23215,24 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
     byraProfil = await resolveByraProfilForAiRequest(req);
   } catch (_) { /* profil är valfritt underlag */ }
 
+  let utforandeState = TjanstUtforandeMallar.parseState(req.body?.utforande);
+  if (!Object.keys(utforandeState.tjanster || {}).length) {
+    try {
+      const profilResult = await getByraerRecordForUser(req);
+      if (!profilResult.error && profilResult.record) {
+        utforandeState = readTjanstUtforandeFromFields(profilResult.record.fields || {});
+      }
+    } catch (_) { /* utförande är valfritt underlag */ }
+  }
+  const exponering = req.body?.exponering && typeof req.body.exponering === 'object'
+    ? req.body.exponering
+    : await resolveTjanstExponeringForAi(req, namn);
+
   const byraProfilUserBlock = byraProfil
-    ? formatByraProfilUserMessageBlock(byraProfil)
-    : 'Byråns profil:\n- (Profil saknas – kalibrera utifrån generella antaganden för svenska redovisningsbyråer)';
+    ? AiTjanstAnalys.formatByraFactsBlock(byraProfil)
+    : 'BEKRÄFTADE BYRÅUPPGIFTER:\n- Inga byråuppgifter är ifyllda.\n\nSAKNADE BYRÅUPPGIFTER:\n- Byråprofil saknas – skriv "uppgift saknas", kalibrera inte utifrån påhittade antaganden om personal eller kapacitet.';
+  const utforandeBlock = AiTjanstAnalys.formatUtforandeBlock(namn, utforandeState);
+  const exponeringBlock = AiTjanstAnalys.formatExponeringBlock(exponering);
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
@@ -23106,13 +23244,15 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
 
 ${REDOVISNINGSBYRA_AI_RULES}
 
-Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, sannolikhet/konsekvens och byråns faktiska verksamhetsprofil.
+${AiTjanstAnalys.TJANST_ANALYS_AI_RULES}
+
+Din uppgift är att föreslå innehåll för en tjänst som en redovisningsbyrå utför åt sina kunder, utifrån tjänstens namn, hur just denna byrå utför den, kundexponering och bekräftade byråuppgifter.
 
 REGLER:
 - Håll dig strikt till tjänstens domän
 - Blanda INTE in KYC, verkliga huvudmän eller penningtvättskontroller om tjänsten inte handlar om det
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
-- Om tjänsten är av redovisningskaraktär: beskriv vad som utförs och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
+- Om tjänsten är av redovisningskaraktär: beskriv vad som utförs hos just denna byrå och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
 - Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot.
 ${HotAmlTf.AI_RULES}
@@ -23122,19 +23262,19 @@ ${AmlKalla.KALLA_AI_RULES}
 - Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
 - tfMotivering bara när ett separat TF-hot verkligen inte är relevant. Då 2–4 tjänstespecifika meningar. Om minst ett TF-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
-${INHERENT_DESCRIPTION_AI_RULES}
+${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${katalogBlock ? `\n${RiskanalysTjanstKatalog.PROMPT_RULES}\n` : ''}${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
-BYRÅPROFILEN SKA PÅVERKA RISKBEDÖMNINGEN (inte beskrivningstexten):
-Använd byråns profil för att kalibrera sannolikhet, konsekvens, hot, sårbarheter och åtgärder.
-Skriv INTE in byråns storlek, personal, kapacitet eller andra profiluppgifter i fältet beskrivning.
-Exempel på hur profilen påverkar S×K och övriga fält:
-- Låg andel internationella kunder → minska risken för hot kopplade till gränsöverskridande transaktioner och utlandsbetalningar
-- Hög andel kontantintensiva kunder → öka risken för kontantrelaterade hot
-- Tjänster erbjuds på distans → öka risken kopplad till leveranssätt
-- Kundstock med enkel bolagsstruktur → minska risken för komplexa ägarstrukturrelaterade hot
-- Specifika branscher i kundstocken → lyft fram branschspecifika hot om de är relevanta
+BYRÅUNDERLAGET SKA PÅVERKA ANALYSEN:
+Använd bara bekräftade uppgifter som fakta. Saknad information ska märkas, inte fyllas i.
+Exempel:
+- Antal anställda = 1 i underlaget → det är en bekräftad sårbarhet kring second review.
+- Antal anställda saknas → skriv "uppgift saknas", påstå inte att byrån är enmansbyrå.
+- Låg andel internationella kunder → minska risken för gränsöverskridande hot.
+- Hög andel kontantintensiva kunder eller kunder med tjänsten som har kontanter → öka kontantrelaterade hot.
+- Distansleverans i underlaget → öka sårbarhet kopplad till leveranssätt.
+- Kundexponering med 0 PEP → säg att inga PEP är registrerade för tjänsten, hitta inte på PEP.
 
 KÄLLOR ATT UTGÅ FRÅN:
 - Polismyndigheten / Finanspolisen (polisen.se)
@@ -23150,16 +23290,17 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "3-5 meningar om tjänsten och den inneboende risken. Nämn inte byrån, personal eller kapacitet. Inga kontroller, rutiner eller åtgärder.",
+  "beskrivning": "3-5 meningar om vad tjänsten innebär hos just denna byrå, med bekräftade fakta. Inga kontroller eller påhittad bemanning.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y.",
-  "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas.",
+  "motiveringResidual": "2-4 meningar: hur bekräftade eller föreslagna åtgärder sänkt S och/eller K.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — Undersida — https://.../undersida" } ],
-  "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
-  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör." } ],
+  "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "evidens": "bekraftad|tjanstetypisk|saknas" } ],
+  "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
+  "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"],
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
   "granskning": {
     "poster": [
@@ -23183,7 +23324,11 @@ ${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.
 ${residualIn.level ? `Befintlig residualbedömning: sannolikhet ${residualIn.sannolikhet}, konsekvens ${residualIn.konsekvens} → ${residualIn.badge}` : ''}
 ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` : ''}
 
-${byraProfilUserBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
+${byraProfilUserBlock}
+
+${utforandeBlock}
+
+${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -23260,10 +23405,19 @@ ${byraProfilUserBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBloc
       .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
       .filter(h => h.titel || h.beskrivning) : []);
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
-      .map(s => ({ kategori: normKategori(s?.kategori), titel: cleanStr(s?.titel), beskrivning: cleanStr(s?.beskrivning) }))
+      .map(s => ({
+        kategori: normKategori(s?.kategori),
+        titel: cleanStr(s?.titel),
+        beskrivning: cleanStr(s?.beskrivning),
+        evidens: AiTjanstAnalys.normalizeEvidens(s?.evidens)
+      }))
       .filter(s => s.titel || s.beskrivning) : [];
     const atgarder = Array.isArray(result.atgarder) ? result.atgarder
-      .map(a => ({ titel: cleanStr(a?.titel ?? a?.namn), beskrivning: cleanStr(a?.beskrivning) }))
+      .map(a => ({
+        titel: cleanStr(a?.titel ?? a?.namn),
+        beskrivning: cleanStr(a?.beskrivning),
+        status: AiTjanstAnalys.normalizeAtgardStatus(a?.status)
+      }))
       .filter(a => a.titel || a.beskrivning) : [];
 
     const inherentOut = RiskSkala.assessRisk(result.sannolikhet, result.konsekvens);
@@ -23286,7 +23440,10 @@ ${byraProfilUserBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBloc
       hot,
       sarbarheter,
       atgarder,
-      tfMotivering: TjanstTfTackning.hasTfHot(hot) ? '' : cleanStr(result.tfMotivering)
+      tfMotivering: TjanstTfTackning.hasTfHot(hot) ? '' : cleanStr(result.tfMotivering),
+      saknadInformation: Array.isArray(result.saknadInformation)
+        ? result.saknadInformation.map((s) => cleanStr(s)).filter(Boolean)
+        : []
     };
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'tjanst', befintligt)
