@@ -20,6 +20,7 @@ class RiskAssessmentManager {
         this.byraProfil = null;
         this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
         this.utforandeState = { version: 1, tjanster: {} };
+        this.utforandeViews = {};
         this._utforandeSaveTimer = null;
 
         this.init();
@@ -91,27 +92,77 @@ class RiskAssessmentManager {
                     this.collectUtforandeQuestion(mallId, qid, qEl);
                 });
             });
-            cardEl.querySelector('[data-open-analys]')?.addEventListener('click', () => {
-                const namn = cardEl.getAttribute('data-mall-namn') || '';
-                const existing = this.risks.find((r) => (r.fields && r.fields['Task Name']) === namn);
-                if (existing) this.openEditModal(existing.id);
-                else {
-                    this.openAddModal();
-                    const nameEl = document.getElementById('tjanst-name');
-                    if (nameEl) nameEl.value = namn;
-                }
+            cardEl.querySelectorAll('[data-utforande-view]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const next = btn.getAttribute('data-utforande-view') || '';
+                    this.utforandeViews[mallId] = this.utforandeViews[mallId] === next ? '' : next;
+                    this.renderUtforandeKatalog();
+                });
+            });
+            cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '');
+                });
             });
         });
+    }
+
+    findTjanstRiskByName(namn) {
+        return (this.risks || []).find((r) => (r.fields && r.fields['Task Name']) === namn) || null;
+    }
+
+    openTjanstAnalysFromCard(mallId, namn) {
+        this.utforandeViews[mallId] = 'analys';
+        const existing = this.findTjanstRiskByName(namn);
+        if (existing) {
+            this.openEditModal(existing.id);
+            return;
+        }
+        this.openAddModal();
+        const nameEl = document.getElementById('tjanst-name');
+        if (nameEl) nameEl.value = namn;
+    }
+
+    renderUtforandeRiskMeta(risk) {
+        const f = (risk && risk.fields) || {};
+        const scored = (window.RiskSkala && RiskSkala.readTjanstRisk(f)) || {};
+        const riskLevel = scored.level || (window.RiskSkala && RiskSkala.riskLabelSv(f['Riskbedömning'])) || f['Riskbedömning'] || '';
+        const residualLevel = scored.residualLevel || '';
+        const badges = (window.RiskSkala && RiskSkala.listBadgeLabels(scored)) || {
+            inneboende: scored.badge || riskLevel,
+            residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : ''
+        };
+        if (!badges.inneboende && !badges.residual) {
+            return '<span class="tjanst-mall-status">AML-analys finns</span>';
+        }
+        return `
+            <span class="tjanst-mall-meta">
+                ${badges.inneboende ? `<span class="risk-level-badge ${this.getRiskLevelClass(riskLevel)}">${this.esc(badges.inneboende)}</span>` : ''}
+                ${badges.residual ? `<span class="risk-level-badge ${this.getRiskLevelClass(residualLevel)}">${this.esc(badges.residual)}</span>` : ''}
+            </span>
+        `;
     }
 
     renderUtforandeCard(template, entry) {
         const aktiv = !!(entry && entry.aktiv);
         const questions = window.TjanstUtforandeMallar.questionsForTemplate(template);
         const analysNamn = entry.namn || template.name;
-        const existing = this.risks.find((r) => (r.fields && r.fields['Task Name']) === analysNamn);
+        const existing = this.findTjanstRiskByName(analysNamn);
+        const view = this.utforandeViews[template.id] || '';
         const qHtml = questions.map((q) => this.renderUtforandeQuestion(template.id, q, entry)).join('');
+        const analysHtml = existing
+            ? `${this.buildTjanstRiskSections(existing)}
+                <div class="tjanst-mall-actions">
+                    <button type="button" class="btn btn-primary" data-open-analys>Redigera riskbedömning</button>
+                </div>`
+            : `<div class="tjanst-mall-empty">
+                    <p>Ingen riskbedömning skapad ännu. Svara på utförandefrågorna och skapa sedan analysen — AI:n bedömer hot, sårbarheter och residualrisk utifrån hur ni utför tjänsten.</p>
+                    <div class="tjanst-mall-actions">
+                        <button type="button" class="btn btn-primary" data-open-analys>Skapa riskbedömning</button>
+                    </div>
+                </div>`;
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${view ? ` is-view-${this.esc(view)}` : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div>
                         <h4 class="tjanst-mall-title">${this.esc(template.name)}</h4>
@@ -123,12 +174,14 @@ class RiskAssessmentManager {
                         ${aktiv ? 'Aktiv' : 'Inaktiv'}
                     </label>
                 </div>
+                <div class="tjanst-mall-nav" role="tablist">
+                    <button type="button" class="tjanst-mall-nav-btn${view === 'fragor' ? ' is-active' : ''}" data-utforande-view="fragor" aria-pressed="${view === 'fragor' ? 'true' : 'false'}">Utförandefrågor</button>
+                    <button type="button" class="tjanst-mall-nav-btn${view === 'analys' ? ' is-active' : ''}" data-utforande-view="analys" aria-pressed="${view === 'analys' ? 'true' : 'false'}">Riskbedömning</button>
+                    ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
+                </div>
                 <div class="tjanst-mall-body">
-                    ${qHtml}
-                    <div class="tjanst-mall-actions">
-                        <button type="button" class="btn btn-secondary" data-open-analys>${existing ? 'Öppna analys' : 'Skapa analys'}</button>
-                        <span class="tjanst-mall-status">${existing ? 'AML-analys finns' : 'Ingen analys skapad ännu'}</span>
-                    </div>
+                    <div class="tjanst-mall-panel" data-panel="fragor">${qHtml}</div>
+                    <div class="tjanst-mall-panel" data-panel="analys">${analysHtml}</div>
                 </div>
             </article>
         `;
@@ -491,6 +544,119 @@ class RiskAssessmentManager {
             .join('');
     }
 
+    buildTjanstRiskSections(risk) {
+        const f = (risk && risk.fields) || {};
+        const scored = (window.RiskSkala && RiskSkala.readTjanstRisk(f)) || {};
+        const beskrivning = f['Tjänstebeskrivning'] || '';
+        const hot = this.parseJsonField(f['Hot']);
+        const sarbarheter = this.parseJsonField(f['Sårbarheter']);
+        const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
+        const legacyBeskrivning = f['Beskrivning av riskfaktor'] || '';
+        const legacyAtgard = f['Åtgjärd'] || '';
+        const sections = [];
+
+        if (beskrivning) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-file-lines"></i> Tjänsten</h5>
+                    <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
+                </div>
+            `);
+        } else if (legacyBeskrivning) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Beskrivning av riskfaktor</h5>
+                    <p class="risk-content-text">${this.formatDescription(legacyBeskrivning)}</p>
+                </div>
+            `);
+        }
+
+        if (hot.length) {
+            const rows = hot.map((h) => {
+                const typ = (window.RiskSkala && RiskSkala.normalizePtTf(h.typ)) || ((h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT');
+                const typClass = (window.TjanstTfTackning ? TjanstTfTackning.isTfHot(h) : typ === 'TF') ? 'tag-tf' : 'tag-pt';
+                return `
+                    <div class="threat-row">
+                        <span class="tag ${typClass}">${typ}</span>
+                        <div class="threat-body">
+                            <div class="threat-title">${this.esc(h.titel || '')}</div>
+                            <div class="threat-desc">${this.esc(h.beskrivning || '')}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
+                    <div class="threat-list">${rows}</div>
+                </div>
+            `);
+        }
+
+        if (sarbarheter.length) {
+            const tagClassMap = { 'Kunder': 'tag-kund', 'Distribution': 'tag-dist', 'Geografi': 'tag-geo', 'Verksamhet': 'tag-verk' };
+            const items = sarbarheter.map((s) => {
+                const kat = s.kategori || 'Verksamhet';
+                const tagClass = tagClassMap[kat] || 'tag-verk';
+                return `
+                    <div class="vuln-item">
+                        <div class="tags-row">
+                            <span class="tag ${tagClass}">${this.esc(kat)}</span>
+                            <span class="evidens-tag evidens-${this.normalizeEvidens(s.evidens)}">${this.esc(this.evidensLabel(s.evidens))}</span>
+                        </div>
+                        <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
+                        <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
+                    </div>
+                `;
+            }).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-shield-halved"></i> Sårbarheter</h5>
+                    <div class="vuln-grid">${items}</div>
+                </div>
+            `);
+        }
+
+        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
+        if (motInneboende) sections.push(motInneboende);
+
+        if (atgarder.length) {
+            const items = atgarder.map((a) => `
+                <div class="action-item">
+                    <i class="fas fa-check action-icon"></i>
+                    <span class="action-text"><strong>${this.esc(a.titel || '')}</strong>${a.beskrivning ? ' — ' + this.esc(a.beskrivning) : ''}</span>
+                    <span class="atgard-status-badge${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' is-befintlig' : ''}">${this.normalizeAtgardStatus(a.status) === 'befintlig' ? 'Befintlig' : 'Föreslagen'}</span>
+                </div>
+            `).join('');
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-list-check"></i> Riskreducerande åtgärder</h5>
+                    <div class="action-list">${items}</div>
+                </div>
+            `);
+        } else if (legacyAtgard) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <h5><i class="fas fa-tools"></i> Riskreducerande åtgärder</h5>
+                    <p class="risk-content-text">${this.formatDescription(legacyAtgard)}</p>
+                </div>
+            `);
+        }
+
+        const motResidual = this.renderMotiveringSections(scored, { keys: ['residual'] });
+        if (motResidual) sections.push(motResidual);
+
+        if (!sections.length) {
+            sections.push(`
+                <div class="risk-content-section">
+                    <p class="risk-content-text"><em>Inget innehåll ännu. Klicka på "Redigera riskbedömning" och låt AI föreslå ett underlag.</em></p>
+                </div>
+            `);
+        }
+
+        return sections.join('');
+    }
+
     // ---- Rendering ----
     renderRiskList() {
         const riskList = document.getElementById('risk-list');
@@ -539,115 +705,6 @@ class RiskAssessmentManager {
                 ? '<span class="risk-motivering-warn risk-motivering-warn--list risk-motivering-warn--flag" title="Kräver uppdaterad motivering">!</span>'
                 : '');
 
-        const beskrivning = f['Tjänstebeskrivning'] || '';
-        const hot = this.parseJsonField(f['Hot']);
-        const sarbarheter = this.parseJsonField(f['Sårbarheter']);
-        const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
-        // Bakåtkompatibilitet: gamla fritextfält
-        const legacyBeskrivning = f['Beskrivning av riskfaktor'] || '';
-        const legacyAtgard = f['Åtgjärd'] || '';
-
-        const sections = [];
-
-        if (beskrivning) {
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-file-lines"></i> Tjänsten</h5>
-                    <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
-                </div>
-            `);
-        } else if (legacyBeskrivning) {
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-exclamation-triangle"></i> Beskrivning av riskfaktor</h5>
-                    <p class="risk-content-text">${this.formatDescription(legacyBeskrivning)}</p>
-                </div>
-            `);
-        }
-
-        if (hot.length) {
-            const rows = hot.map(h => {
-                const typ = (window.RiskSkala && RiskSkala.normalizePtTf(h.typ)) || ((h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT');
-                const typClass = (window.TjanstTfTackning ? TjanstTfTackning.isTfHot(h) : typ === 'TF') ? 'tag-tf' : 'tag-pt';
-                return `
-                    <div class="threat-row">
-                        <span class="tag ${typClass}">${typ}</span>
-                        <div class="threat-body">
-                            <div class="threat-title">${this.esc(h.titel || '')}</div>
-                            <div class="threat-desc">${this.esc(h.beskrivning || '')}</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
-                    <div class="threat-list">${rows}</div>
-                </div>
-            `);
-        }
-
-        if (sarbarheter.length) {
-            const tagClassMap = { 'Kunder': 'tag-kund', 'Distribution': 'tag-dist', 'Geografi': 'tag-geo', 'Verksamhet': 'tag-verk' };
-            const items = sarbarheter.map(s => {
-                const kat = s.kategori || 'Verksamhet';
-                const tagClass = tagClassMap[kat] || 'tag-verk';
-                return `
-                    <div class="vuln-item">
-                        <div class="tags-row">
-                            <span class="tag ${tagClass}">${this.esc(kat)}</span>
-                            <span class="evidens-tag evidens-${this.normalizeEvidens(s.evidens)}">${this.esc(this.evidensLabel(s.evidens))}</span>
-                        </div>
-                        <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
-                        <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
-                    </div>
-                `;
-            }).join('');
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-shield-halved"></i> Sårbarheter</h5>
-                    <div class="vuln-grid">${items}</div>
-                </div>
-            `);
-        }
-
-        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
-        if (motInneboende) sections.push(motInneboende);
-
-        if (atgarder.length) {
-            const items = atgarder.map(a => `
-                <div class="action-item">
-                    <i class="fas fa-check action-icon"></i>
-                    <span class="action-text"><strong>${this.esc(a.titel || '')}</strong>${a.beskrivning ? ' — ' + this.esc(a.beskrivning) : ''}</span>
-                    <span class="atgard-status-badge${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' is-befintlig' : ''}">${this.normalizeAtgardStatus(a.status) === 'befintlig' ? 'Befintlig' : 'Föreslagen'}</span>
-                </div>
-            `).join('');
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-list-check"></i> Riskreducerande åtgärder</h5>
-                    <div class="action-list">${items}</div>
-                </div>
-            `);
-        } else if (legacyAtgard) {
-            sections.push(`
-                <div class="risk-content-section">
-                    <h5><i class="fas fa-tools"></i> Riskreducerande åtgärder</h5>
-                    <p class="risk-content-text">${this.formatDescription(legacyAtgard)}</p>
-                </div>
-            `);
-        }
-
-        const motResidual = this.renderMotiveringSections(scored, { keys: ['residual'] });
-        if (motResidual) sections.push(motResidual);
-
-        if (!sections.length) {
-            sections.push(`
-                <div class="risk-content-section">
-                    <p class="risk-content-text"><em>Inget innehåll ännu. Klicka på "Redigera" och låt AI föreslå ett underlag.</em></p>
-                </div>
-            `);
-        }
-
         return `
             <div class="risk-item ${riskLevelClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
@@ -673,7 +730,7 @@ class RiskAssessmentManager {
                 </div>
 
                 <div class="risk-item-content">
-                    ${sections.join('')}
+                    ${this.buildTjanstRiskSections(risk)}
 
                     <div class="risk-item-footer">
                         <button class="btn btn-secondary btn-sm edit-risk" data-record-id="${risk.id}">
