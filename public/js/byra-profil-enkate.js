@@ -54,7 +54,39 @@
     ui.status.className = 'byra-enkate-status' + (isError ? ' is-error' : msg ? ' is-ok' : '');
   }
 
-  function isAnswered(v) {
+  function parseBolagsformer(raw) {
+    var text = String(raw || '').trim();
+    if (!text) return [];
+    if (text.indexOf(':') < 0) {
+      return text.split(/[,;|]/).map(function (s) { return s.trim(); }).filter(Boolean).map(function (form) {
+        return { form: form, count: '' };
+      });
+    }
+    return text.split(/[,;|]/).map(function (part) {
+      var m = String(part).trim().match(/^(.+?):\s*(\d+)\s*$/);
+      if (m) return { form: m[1].trim(), count: m[2] };
+      var form = String(part).trim();
+      return form ? { form: form, count: '' } : null;
+    }).filter(Boolean);
+  }
+
+  function formatBolagsformer(rows) {
+    return (rows || []).map(function (r) {
+      var form = String((r && r.form) || '').trim();
+      if (!form) return '';
+      var count = String((r && r.count) || '').trim();
+      return count ? (form + ': ' + count) : form;
+    }).filter(Boolean).join(', ');
+  }
+
+  function isBolagsformerAnswered(raw) {
+    return parseBolagsformer(raw).some(function (r) {
+      return r.form && String(r.count || '').trim() !== '';
+    });
+  }
+
+  function isAnswered(v, field) {
+    if (field && field.type === 'bolagsformer') return isBolagsformerAnswered(v);
     if (v == null) return false;
     if (typeof v === 'number') return Number.isFinite(v);
     return String(v).trim() !== '';
@@ -92,7 +124,7 @@
 
   function allUnanswered() {
     return (schema.fields || [])
-      .filter(function (f) { return isFieldRequired(f) && !isAnswered(values[f.key]); })
+      .filter(function (f) { return isFieldRequired(f) && !isAnswered(values[f.key], f); })
       .map(function (f) { return f.key; });
   }
 
@@ -106,13 +138,13 @@
   function unansweredInSection(sec) {
     return keysForSection(sec).filter(function (k) {
       var f = fieldByKey(k);
-      return isFieldRequired(f) && !isAnswered(values[k]);
+      return isFieldRequired(f) && !isAnswered(values[k], f);
     });
   }
 
   function answeredCount() {
     return (schema.fields || []).filter(function (f) {
-      return isFieldRequired(f) && isAnswered(values[f.key]);
+      return isFieldRequired(f) && isAnswered(values[f.key], f);
     }).length;
   }
 
@@ -483,9 +515,59 @@
     return card;
   }
 
+
+  function renderBolagsformer(field) {
+    var wrap = document.createElement('div');
+    wrap.className = 'byra-enkate-bolagsformer';
+    var list = document.createElement('div');
+    list.className = 'byra-enkate-bolagsformer-list';
+    var parsed = parseBolagsformer(values[field.key]);
+    var selected = {};
+    parsed.forEach(function (r) { selected[String(r.form).toLowerCase()] = r.count; });
+    var opts = (field.choices && field.choices.length) ? field.choices : ['AB', 'Enskild firma', 'HB', 'KB', 'Ekonomisk förening', 'Stiftelse', 'Filial/utländskt bolag', 'Övrigt'];
+
+    function sync() {
+      var rows = [];
+      list.querySelectorAll('.byra-enkate-bolagsformer-row').forEach(function (row) {
+        var cb = row.querySelector('input[type="checkbox"]');
+        var num = row.querySelector('input[type="number"]');
+        if (!cb) return;
+        if (num) {
+          num.disabled = !cb.checked;
+          row.classList.toggle('is-disabled', !cb.checked);
+          if (!cb.checked) num.value = '';
+        }
+        if (!cb.checked) return;
+        rows.push({ form: cb.value, count: num ? num.value : '' });
+      });
+      values[field.key] = formatBolagsformer(rows);
+      skipped[field.key] = false;
+      updateProgress();
+      updateNav();
+      setStatus('');
+    }
+
+    opts.forEach(function (form, idx) {
+      var id = 'enkate-bolagsform-' + idx;
+      var count = selected[String(form).toLowerCase()] || '';
+      var checked = Object.prototype.hasOwnProperty.call(selected, String(form).toLowerCase());
+      var row = document.createElement('div');
+      row.className = 'byra-enkate-bolagsformer-row' + (checked ? '' : ' is-disabled');
+      row.innerHTML = '<label for="' + id + '"><input type="checkbox" id="' + id + '" value="' + String(form).replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '><span>' + form + '</span></label>' +
+        '<input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="' + count + '"' + (checked ? '' : ' disabled') + '>';
+      list.appendChild(row);
+    });
+    list.querySelectorAll('input').forEach(function (el) {
+      el.addEventListener('change', sync);
+      el.addEventListener('input', sync);
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
   function renderField(field) {
     var card = document.createElement('article');
-    card.className = 'byra-enkate-q' + (skipped[field.key] && !isAnswered(values[field.key]) ? ' is-skipped' : '');
+    card.className = 'byra-enkate-q' + (skipped[field.key] && !isAnswered(values[field.key], field) ? ' is-skipped' : '');
     card.dataset.key = field.key;
 
     var title = document.createElement('h3');
@@ -501,8 +583,12 @@
     }
 
     var control;
-    if (field.key === 'branscherKundstock' || field.type === 'multiselect') {
+    if (field.key === 'branscherKundstock') {
       control = renderHogrisk(field);
+    } else if (field.type === 'multiselect') {
+      control = renderItSystemSelect(field);
+    } else if (field.type === 'bolagsformer') {
+      control = renderBolagsformer(field);
     } else if (field.type === 'select') {
       control = renderSelect(field, values[field.key]);
     } else {
@@ -510,7 +596,7 @@
     }
     card.appendChild(control);
 
-    if (skipped[field.key] && !isAnswered(values[field.key])) {
+    if (skipped[field.key] && !isAnswered(values[field.key], field)) {
       var note = document.createElement('p');
       note.className = 'byra-enkate-skipped-note';
       note.textContent = 'Överhoppad — du kan svara nu eller senare under Byråinformation.';

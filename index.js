@@ -13001,45 +13001,126 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
     } catch (_) {}
   }
 
-  // IT-systemfälten kan ha skapats som singleSelect – konvertera till text för flerval.
-  const itTextNames = new Set(['Bokföringssystem', 'Bokslutssystem', 'Kundhanteringssystem']);
+  // Flerval/text som skapats som select måste konverteras – annars failar "Fortnox, Visma".
   let tableMeta = byraTable;
   try {
     tableMeta = (await getByraerTableMeta(airtableToken, baseId)) || byraTable;
   } catch (_) {}
   const convertErrors = [];
+  const toConvert = ByraProfilFields.fieldsNeedingTextConversion(tableMeta.fields || []);
+  const existingAfterCreate = new Set((tableMeta.fields || []).map((f) => (f.name || '').trim()));
+  for (const field of toConvert) {
+    const name = (field.name || '').trim();
+    const targetType = ByraProfilFields.airtableTypeForField(
+      ByraProfilFields.BYRA_PROFIL_FIELDS.find((f) => f.airtable === name)
+    );
+    const nextType = targetType === 'multilineText' ? 'multilineText' : 'singleLineText';
+    const legacyName = ByraProfilFields.legacySelectName(name);
+    try {
+      // Airtable tillåter inte type-byte select→text. Döp om och skapa nytt textfält.
+      if (!existingAfterCreate.has(legacyName) && !existingAfterCreate.has(`${name} (singleSelect-legacy)`)) {
+        // eslint-disable-next-line no-await-in-loop
+        await axios.patch(
+          `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableMeta.id}/fields/${field.id}`,
+          { name: legacyName },
+          {
+            headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+            timeout: 10000
+          }
+        );
+        existingAfterCreate.delete(name);
+        existingAfterCreate.add(legacyName);
+      }
+      if (!existingAfterCreate.has(name)) {
+        const createBody = { name, type: nextType };
+        const spec = ByraProfilFields.BYRA_PROFIL_FIELDS.find((f) => f.airtable === name);
+        if (spec && spec.label) createBody.description = spec.label;
+        // eslint-disable-next-line no-await-in-loop
+        await axios.post(createUrl, createBody, {
+          headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        existingAfterCreate.add(name);
+        created.push(name);
+      }
+      converted.push(name);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message || 'okänt fel';
+      console.warn('Kunde inte konvertera profilfält till text:', name, msg);
+      convertErrors.push(`${name}: ${msg}`);
+    }
+  }
+
+  // Om ett select redan bytt namn till legacy: skapa textfältet med originalnamnet.
+  const textNames = new Set(ByraProfilFields.textStoredAirtableNames());
   for (const field of tableMeta.fields || []) {
     const name = (field.name || '').trim();
-    if (!itTextNames.has(name)) continue;
-    if (field.type === 'singleLineText' || field.type === 'multilineText') continue;
-    if (field.type !== 'singleSelect' && field.type !== 'multipleSelects') continue;
+    if (!ByraProfilFields.isLegacySelectName(name)) continue;
+    const original = ByraProfilFields.originalNameFromLegacy(name);
+    if (!textNames.has(original) || existingAfterCreate.has(original)) continue;
+    const targetType = ByraProfilFields.airtableTypeForField(
+      ByraProfilFields.BYRA_PROFIL_FIELDS.find((f) => f.airtable === original)
+    );
+    const nextType = targetType === 'multilineText' ? 'multilineText' : 'singleLineText';
+    try {
+      const spec = ByraProfilFields.BYRA_PROFIL_FIELDS.find((f) => f.airtable === original);
+      const createBody = { name: original, type: nextType };
+      if (spec && spec.label) createBody.description = spec.label;
+      // eslint-disable-next-line no-await-in-loop
+      await axios.post(createUrl, createBody, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      existingAfterCreate.add(original);
+      created.push(original);
+      converted.push(original);
+    } catch (err) {
+      const msg = err.response?.data?.error?.message || err.message || 'okänt fel';
+      console.warn('Kunde inte skapa textfält efter legacy-select:', original, msg);
+      convertErrors.push(`${original}: ${msg}`);
+    }
+  }
+
+  // Lägg till saknade singleSelect-val (ta inte bort extra val som redan finns).
+  if (converted.length) {
+    try {
+      tableMeta = (await getByraerTableMeta(airtableToken, baseId)) || tableMeta;
+    } catch (_) {}
+  }
+  const choiceSynced = [];
+  const choiceSyncErrors = [];
+  const neededByName = ByraProfilFields.selectChoicesByAirtableName();
+  for (const field of tableMeta.fields || []) {
+    const name = (field.name || '').trim();
+    if (field.type !== 'singleSelect' || !field.id || !neededByName.has(name)) continue;
+    const needed = neededByName.get(name);
+    const missingChoices = ByraProfilFields.missingSelectChoices(field, needed);
+    if (!missingChoices.length) continue;
     try {
       // eslint-disable-next-line no-await-in-loop
       await axios.patch(
         `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableMeta.id}/fields/${field.id}`,
-        { type: 'singleLineText' },
+        { options: { choices: ByraProfilFields.mergedSelectChoiceOptions(field, needed) } },
         {
           headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
           timeout: 10000
         }
       );
-      converted.push(name);
+      choiceSynced.push(name);
     } catch (err) {
       const msg = err.response?.data?.error?.message || err.message || 'okänt fel';
-      console.warn('Kunde inte konvertera IT-fält till text:', name, msg);
-      convertErrors.push(`${name}: ${msg}`);
+      console.warn('Kunde inte synka select-val:', name, msg);
+      choiceSyncErrors.push(`${name}: ${msg}`);
     }
   }
-  return { created, converted, convertErrors, table: tableMeta };
+  return { created, converted, convertErrors, choiceSynced, choiceSyncErrors, table: tableMeta };
 }
+
 
 async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) {
   const patchUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent('Byråer')}/${recordId}`;
-  // Tom sträng mot singleSelect → Airtable försöker skapa val "" och nekar.
-  let remaining = {};
-  Object.entries(fields || {}).forEach(([k, v]) => {
-    remaining[k] = (v === '') ? null : v;
-  });
+  // Tom sträng / "Välj..." mot singleSelect → Airtable försöker skapa val "" och nekar.
+  let remaining = ByraProfilFields.sanitizeAirtablePatchFields(fields);
   const skippedProfilFields = [];
   while (Object.keys(remaining).length > 0) {
     try {
@@ -13051,10 +13132,15 @@ async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) 
       const msg = e.response?.data?.error?.message || e.message || '';
       if (/insufficient permissions to create new select option|INVALID_MULTIPLE_CHOICE|cannot create new select/i.test(String(msg))) {
         let dropped = false;
+        const quoted = String(msg).match(/select option[:\s]*["“”']([^"“”']*)["“”']/i);
+        const badOption = quoted ? quoted[1] : null;
         Object.keys(remaining).forEach((k) => {
           const v = remaining[k];
-          // Flerval (kommaseparerat) eller tom sträng funkar inte mot singleSelect.
-          if (v === '' || (typeof v === 'string' && v.includes(','))) {
+          // Flerval (kommaseparerat), tomt val eller just det val Airtable nekade.
+          const isBlank = v == null || (typeof v === 'string' && ByraProfilFields.isBlankWriteValue(v));
+          const isMulti = typeof v === 'string' && v.includes(',');
+          const isQuoted = badOption != null && String(v) === badOption;
+          if (isBlank || isMulti || isQuoted) {
             skippedProfilFields.push(k);
             delete remaining[k];
             dropped = true;
@@ -13209,82 +13295,24 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     if (!allowedRoles.includes(result.userData.role)) {
       return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får redigera byråinfo' });
     }
-    const toNumberOrNull = (v) => {
-      if (v == null) return null;
-      if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-      const s = String(v).trim();
-      if (!s) return null;
-      // Tillåt både "10" och "10,5" från UI
-      const n = Number(s.replace(',', '.'));
-      return Number.isFinite(n) ? n : null;
-    };
+    const toNumberOrNull = ByraProfilFields.toNumberOrNull;
+    const toTextOrNull = ByraProfilFields.toTextOrNull;
     const fields = {};
-    if (body.antalAnstallda !== undefined) fields['Antal anställda'] = body.antalAnstallda;
-    if (body.omsattning !== undefined) fields['Omsättning'] = body.omsattning;
-    if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = body.antalKundforetag;
+    if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = toNumberOrNull(body.antalKundforetag);
     if (body.logga !== undefined) fields['Logga'] = body.logga;
-    if (body.bransch !== undefined) fields['Typ av byrå'] = body.bransch;
+    if (body.bransch !== undefined) fields['Typ av byrå'] = toTextOrNull(body.bransch);
     if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = toNumberOrNull(body.defaultUppsagningstid);
-    if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = body.defaultFakturaperiod;
+    if (body.defaultFakturaperiod !== undefined) fields['Default faktureringsperiod'] = toTextOrNull(body.defaultFakturaperiod);
     if (body.defaultBetalningsvillkor !== undefined) fields['Default betalningsvillkor'] = toNumberOrNull(body.defaultBetalningsvillkor);
     if (body.tjanstepriserJson !== undefined) fields['Tjänstepriser (JSON)'] = body.tjanstepriserJson;
     if (body.fritexttjansterJson !== undefined) fields['Fritexttjänster (JSON)'] = body.fritexttjansterJson;
     if (body.uppdragsbrevInformationstext !== undefined) fields['Uppdragsbrev informationstext'] = body.uppdragsbrevInformationstext;
-    const toPercentOrNull = (v, label) => {
-      const n = toNumberOrNull(v);
-      if (n == null) return v === '' || v == null ? null : { error: `${label} måste vara ett tal mellan 0 och 100` };
-      if (n < 0 || n > 100) return { error: `${label} måste vara mellan 0 och 100` };
-      return n;
-    };
-    if (body.antalKunder !== undefined) {
-      const n = toNumberOrNull(body.antalKunder);
-      if (n != null && n < 0) return res.status(400).json({ error: 'Antal kunder måste vara 0 eller högre' });
-      fields['Antal kunder'] = n;
-    }
-    if (body.vanligasteBolagsformer !== undefined) fields['Vanligaste bolagsformer'] = body.vanligasteBolagsformer;
-    if (body.branscherKundstock !== undefined) fields['Branscher i kundstocken'] = body.branscherKundstock;
-    if (body.andelInternationellHandel !== undefined) {
-      const pct = toPercentOrNull(body.andelInternationellHandel, 'Andel internationell handel');
-      if (pct && typeof pct === 'object' && pct.error) return res.status(400).json({ error: pct.error });
-      fields['Andel kunder med internationell handel'] = pct;
-    }
-    if (body.andelKontantintensiva !== undefined) {
-      const pct = toPercentOrNull(body.andelKontantintensiva, 'Andel kontantintensiva kunder');
-      if (pct && typeof pct === 'object' && pct.error) return res.status(400).json({ error: pct.error });
-      fields['Andel kontantintensiva kunder'] = pct;
-    }
-    if (body.leveranssatt !== undefined) fields['Leveranssätt'] = body.leveranssatt;
-    if (body.geografiskMarknad !== undefined) fields['Geografisk marknad'] = body.geografiskMarknad;
 
-    // Övriga byråprofilfält (enkät / utökad profil)
-    const toTextOrNull = (v) => {
-      if (v == null) return null;
-      if (Array.isArray(v)) {
-        const joined = v.map((x) => String(x || '').trim()).filter(Boolean).join(', ');
-        return joined || null;
-      }
-      const s = String(v).trim();
-      return s === '' ? null : s;
-    };
-    ByraProfilFields.BYRA_PROFIL_FIELDS.forEach((def) => {
-      if (def.existing) return;
-      if (body[def.key] === undefined) return;
-      if (def.type === 'number' || def.type === 'percent') {
-        const n = toNumberOrNull(body[def.key]);
-        if (def.type === 'percent' && n != null && (n < 0 || n > 100)) {
-          // Valideras nedan via tidig return – markera med sentinel
-          fields.__percentError = `${def.label} måste vara mellan 0 och 100`;
-          return;
-        }
-        fields[def.airtable] = n;
-        return;
-      }
-      fields[def.airtable] = toTextOrNull(body[def.key]);
-    });
-    if (fields.__percentError) {
-      return res.status(400).json({ error: fields.__percentError });
+    const built = ByraProfilFields.buildProfilAirtableFields(body);
+    if (built.errors.length) {
+      return res.status(400).json({ error: built.errors[0] });
     }
-    delete fields.__percentError;
+    Object.assign(fields, built.fields);
 
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
@@ -13763,41 +13791,21 @@ app.post('/api/setup/airtable-byra-profil-fields', authenticateToken, async (req
   const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
   try {
-    const byraTable = await getByraerTableMeta(airtableAccessToken, baseId);
-    if (!byraTable) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" (BYRÅNS PROFIL) hittades inte i basen.' });
-
-    const required = BYRA_PROFIL_REQUIRED_FIELDS;
-
-    const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
-    const toCreate = required.filter(f => !existingNames.includes((f.name || '').trim()));
-    const created = [];
-    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
-
-    for (const field of toCreate) {
-      try {
-        const body = { name: field.name, type: field.type };
-        if (field.description) body.description = field.description;
-        if (field.options) body.options = field.options;
-        await axios.post(createUrl, body, {
-          headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
-          timeout: 10000
-        });
-        created.push(field.name);
-      } catch (e) {
-        const msg = e.response?.data?.error?.message || e.message;
-        console.warn('Kunde inte skapa BYRÅNS PROFIL-fält', field.name, msg);
-      }
-    }
-
-    const skipped = required.length - toCreate.length;
+    const ensured = await ensureByraProfilAirtableFields(airtableAccessToken, baseId);
+    if (!ensured.table) return res.status(404).json({ success: false, error: 'Tabellen "Byråer" (BYRÅNS PROFIL) hittades inte i basen.' });
+    const created = ensured.created || [];
+    const converted = ensured.converted || [];
+    const alreadyExisted = BYRA_PROFIL_REQUIRED_FIELDS.length - created.length;
     return res.json({
       success: true,
-      message: created.length
-        ? `${created.length} BYRÅNS PROFIL-fält lades till i "${byraTable.name}". ${skipped} fanns redan.`
-        : `Alla ${required.length} BYRÅNS PROFIL-fält finns redan i tabellen ${byraTable.name}.`,
-      table: byraTable.name,
+      message: created.length || converted.length
+        ? `${created.length} BYRÅNS PROFIL-fält lades till, ${converted.length} konverterades till text i "${ensured.table.name}".`
+        : `Alla ${BYRA_PROFIL_REQUIRED_FIELDS.length} BYRÅNS PROFIL-fält finns redan i tabellen ${ensured.table.name}.`,
+      table: ensured.table.name,
       created,
-      alreadyExisted: skipped
+      converted,
+      choiceSynced: ensured.choiceSynced || [],
+      alreadyExisted
     });
   } catch (err) {
     const status = err.response?.status;
