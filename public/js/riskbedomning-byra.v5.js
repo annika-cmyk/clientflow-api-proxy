@@ -374,7 +374,7 @@ class RiskAssessmentManager {
         if (beskrivning) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning</h5>
+                    <h5><i class="fas fa-file-lines"></i> Tjänsten</h5>
                     <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
                 </div>
             `);
@@ -386,9 +386,6 @@ class RiskAssessmentManager {
                 </div>
             `);
         }
-
-        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
-        if (motInneboende) sections.push(motInneboende);
 
         if (hot.length) {
             const rows = hot.map(h => {
@@ -406,7 +403,7 @@ class RiskAssessmentManager {
             }).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-triangle-exclamation"></i> Hot</h5>
+                    <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
                     <div class="threat-list">${rows}</div>
                 </div>
             `);
@@ -433,6 +430,9 @@ class RiskAssessmentManager {
             `);
         }
 
+        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
+        if (motInneboende) sections.push(motInneboende);
+
         if (atgarder.length) {
             const items = atgarder.map(a => `
                 <div class="action-item">
@@ -442,14 +442,14 @@ class RiskAssessmentManager {
             `).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-list-check"></i> Tjänstespecifika åtgärder</h5>
+                    <h5><i class="fas fa-list-check"></i> Riskreducerande åtgärder</h5>
                     <div class="action-list">${items}</div>
                 </div>
             `);
         } else if (legacyAtgard) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-tools"></i> Åtgärd</h5>
+                    <h5><i class="fas fa-tools"></i> Riskreducerande åtgärder</h5>
                     <p class="risk-content-text">${this.formatDescription(legacyAtgard)}</p>
                 </div>
             `);
@@ -645,7 +645,7 @@ class RiskAssessmentManager {
     }
 
     updateTjanstAiSummary(counts) {
-        const labels = { oversikt: 'Översikt', hot: 'Hot', sarbarhet: 'Sårbarheter', atgard: 'Åtgärder' };
+        const labels = { oversikt: 'Översikt', hot: 'Hot och modus', sarbarhet: 'Sårbarheter', atgard: 'Riskreducerande åtgärder' };
         const present = Object.keys(labels).filter((key) => (counts && counts[key]) > 0);
         document.querySelectorAll('.tjanst-tab-ai').forEach((el) => {
             const key = el.getAttribute('data-ai-for');
@@ -1262,7 +1262,7 @@ class RiskAssessmentManager {
         } else if (falt === 'motiveringInneboende') {
             const el = document.getElementById('tjanst-motivering-inneboende');
             if (el) el.value = String(forslag || '');
-            this.setTjanstTab('oversikt');
+            this.setTjanstTab('sarbarhet');
             this.updateMotiveringWarnings();
         } else if (falt === 'motiveringResidual') {
             const el = document.getElementById('tjanst-motivering-residual');
@@ -1537,7 +1537,7 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = 'oversikt';
+                if (!firstTab) firstTab = 'sarbarhet';
                 return;
             }
             if (item.falt === 'motiveringResidual') {
@@ -1592,14 +1592,18 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = item.falt === 'residual' ? 'atgard' : 'oversikt';
+                if (!firstTab) {
+                    if (item.falt === 'residual' || item.falt === 'motiveringResidual') firstTab = 'atgard';
+                    else if (item.falt === 'motiveringInneboende') firstTab = 'sarbarhet';
+                    else firstTab = 'oversikt';
+                }
             }
         });
         if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
         this.updateTjanstAiSummary({
-            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
+            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag').length,
             hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag, #tjanst-tf-motivering ~ .field-ai-forslag').length,
-            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag').length,
+            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
             atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag, #tjanst-motivering-residual ~ .field-ai-forslag').length
         });
         if (firstTab) this.setTjanstTab(firstTab);
@@ -1740,7 +1744,7 @@ class RiskAssessmentManager {
                     ? 'tjanst-motivering-residual'
                     : 'tjanst-motivering-inneboende';
                 if (first.field === 'motivering_residual_risk') this.setTjanstTab('atgard');
-                else this.setTjanstTab('oversikt');
+                else this.setTjanstTab('sarbarhet');
                 document.getElementById(field)?.focus();
                 this.updateMotiveringWarnings();
                 return;

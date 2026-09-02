@@ -297,7 +297,7 @@ class RiskAssessmentManager {
         if (beskrivning) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning</h5>
+                    <h5><i class="fas fa-file-lines"></i> Tjänsten</h5>
                     <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
                 </div>
             `);
@@ -326,7 +326,7 @@ class RiskAssessmentManager {
             }).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-triangle-exclamation"></i> Hot</h5>
+                    <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
                     <div class="threat-list">${rows}</div>
                 </div>
             `);
@@ -362,7 +362,7 @@ class RiskAssessmentManager {
             `).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-list-check"></i> Tjänstespecifika åtgärder</h5>
+                    <h5><i class="fas fa-list-check"></i> Riskreducerande åtgärder</h5>
                     <div class="action-list">${items}</div>
                 </div>
             `);

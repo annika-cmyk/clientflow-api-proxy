@@ -204,14 +204,14 @@
         if (mot.motivering_inneboende_risk) {
             parts.push({
                 key: 'inneboende',
-                title: 'Motivering av S och K (inneboende risk)',
+                title: 'Motivering av inneboende risk',
                 text: mot.motivering_inneboende_risk
             });
         }
         if (mot.motivering_residual_risk) {
             parts.push({
                 key: 'residual',
-                title: 'Motivering av residual-S och K',
+                title: 'Motivering av residualrisk',
                 text: mot.motivering_residual_risk
             });
         }
