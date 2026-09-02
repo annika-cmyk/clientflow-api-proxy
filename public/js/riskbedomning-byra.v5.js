@@ -1537,7 +1537,7 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = 'oversikt';
+                if (!firstTab) firstTab = 'sarbarhet';
                 return;
             }
             if (item.falt === 'motiveringResidual') {
@@ -1592,7 +1592,11 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = item.falt === 'residual' ? 'atgard' : 'oversikt';
+                if (!firstTab) {
+                    if (item.falt === 'residual' || item.falt === 'motiveringResidual') firstTab = 'atgard';
+                    else if (item.falt === 'motiveringInneboende') firstTab = 'sarbarhet';
+                    else firstTab = 'oversikt';
+                }
             }
         });
         if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
