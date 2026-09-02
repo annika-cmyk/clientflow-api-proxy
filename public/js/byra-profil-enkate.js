@@ -290,9 +290,9 @@
       btn.addEventListener('click', function () {
         values[field.key] = value;
         skipped[field.key] = false;
-        if (value !== 'Annat') {
-          var companion = companionFor(field);
-          if (companion) values[companion.key] = '';
+        var companion = companionFor(field);
+        if (companion && !valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
+          values[companion.key] = '';
         }
         choices.querySelectorAll('.byra-enkate-choice').forEach(function (b) { b.classList.remove('is-selected'); });
         btn.classList.add('is-selected');
@@ -312,7 +312,7 @@
     var companion = companionFor(field);
     if (!companion) return;
     var existing = wrap.querySelector('.byra-enkate-annat');
-    var needed = String(values[field.key] || '') === String(companion.requiredWhen.equals || '');
+    var needed = valueIncludesChoice(values[field.key], (companion.requiredWhen || {}).equals);
     if (!needed) {
       if (existing) existing.remove();
       return;

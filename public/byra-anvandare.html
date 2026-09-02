@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902nearmiss9">
+    <link rel="stylesheet" href="styles.css?v=20260902villkor10">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -355,10 +355,10 @@
                                                     <option value="Vet ej">Vet ej</option>
                                                 </select>
                                             </div>
-                                            <div class="form-group full-width">
+                                            <div class="form-group full-width" data-show-when="byra-lanstyrelsen-anmarkningar=Ja" hidden>
                                                 <label for="byra-lanstyrelsen-detalj">Beskrivning av tillsynsanmärkningar</label>
-                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
-                                                <textarea id="byra-lanstyrelsen-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
+                                                <p class="form-hint">Visas när ni svarat Ja.</p>
+                                                <textarea id="byra-lanstyrelsen-detalj" class="form-input" rows="2" placeholder="Kort beskrivning"></textarea>
                                             </div>
                                             <div class="form-group">
                                                 <label for="byra-near-misses">Near misses (avböjt/avslutat pga misstanke eller risk)</label>
@@ -369,10 +369,10 @@
                                                     <option value="Nej">Nej</option>
                                                 </select>
                                             </div>
-                                            <div class="form-group full-width">
+                                            <div class="form-group full-width" data-show-when="byra-near-misses=Ja" hidden>
                                                 <label for="byra-near-misses-detalj">Beskrivning av near misses</label>
-                                                <p class="form-hint">Ange "Inga" om ni svarat Nej. Skriv gärna om det gällde misstanke eller att risken inte kunde hanteras.</p>
-                                                <textarea id="byra-near-misses-detalj" class="form-input" rows="2" placeholder="Kort beskrivning eller Inga"></textarea>
+                                                <p class="form-hint">Visas när ni svarat Ja. Skriv gärna om det gällde misstanke eller att risken inte kunde hanteras.</p>
+                                                <textarea id="byra-near-misses-detalj" class="form-input" rows="2" placeholder="Kort beskrivning"></textarea>
                                             </div>
                                         </div>
                                     </div>
@@ -389,7 +389,7 @@
                                                     <option value="Nej">Nej</option>
                                                 </select>
                                             </div>
-                                            <div class="form-group">
+                                            <div class="form-group" data-show-when="byra-stora-kundberoenden=Ja" hidden>
                                                 <label for="byra-stora-kundberoenden-andel">Andel omsättning från de största kunderna</label>
                                                 <div class="input-with-suffix">
                                                     <input type="number" id="byra-stora-kundberoenden-andel" class="form-input" min="0" max="100" step="1" placeholder="0">
@@ -491,10 +491,10 @@
                                                     <option value="Nej">Nej</option>
                                                 </select>
                                             </div>
-                                            <div class="form-group full-width">
+                                            <div class="form-group full-width" data-show-when="byra-outsourcing=Ja" hidden>
                                                 <label for="byra-outsourcing-detalj">Beskrivning av outsourcing</label>
-                                                <p class="form-hint">Ange "Inga" om ni svarat Nej.</p>
-                                                <textarea id="byra-outsourcing-detalj" class="form-input" rows="2" placeholder="Vilka delar, land/region – eller Inga"></textarea>
+                                                <p class="form-hint">Visas när ni svarat Ja.</p>
+                                                <textarea id="byra-outsourcing-detalj" class="form-input" rows="2" placeholder="Vilka delar, land/region"></textarea>
                                             </div>
                                         </div>
                                     </div>
@@ -864,7 +864,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902nearmiss9" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902villkor10" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>
