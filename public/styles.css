@@ -5763,6 +5763,23 @@ body.sidebar-collapsed .logout-btn {
     margin: 1.1rem 0 0.4rem 0;
     color: var(--title-text);
 }
+.risk-guide-example {
+    margin: 0.85rem 0 1.15rem;
+    padding: 0.95rem 1rem;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+}
+.risk-guide-example h4 {
+    margin-top: 1rem;
+}
+.risk-guide-example h4:first-child {
+    margin-top: 0;
+}
+.risk-guide-example ul {
+    margin-bottom: 0.35rem;
+}
 
 /* Introtext under rubrik – samma bredd som övrigt innehåll, tydlig spacing */
 .risk-header-body {
