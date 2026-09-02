@@ -5707,6 +5707,63 @@ body.sidebar-collapsed .logout-btn {
     color: var(--title-text);
 }
 
+/* Infällbar vägledning under risksidornas rubrik */
+.risk-guide {
+    margin-top: 0.85rem;
+}
+.risk-guide-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    padding: 0.7rem 0.95rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #f8fafc;
+    font-family: var(--body-font);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--title-text);
+    line-height: 1.4;
+}
+.risk-guide-summary::-webkit-details-marker { display: none; }
+.risk-guide-summary::after {
+    content: '▸';
+    color: #94a3b8;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+.risk-guide[open] > .risk-guide-summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+}
+.risk-guide[open] > .risk-guide-summary::after {
+    content: '▾';
+}
+.risk-guide-summary-text {
+    flex: 1;
+    min-width: 0;
+}
+.risk-guide .risk-header-body {
+    margin-top: 0;
+    padding: 1rem 0.95rem 1.1rem;
+    border: 1px solid var(--line);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: #fff;
+}
+.risk-guide .risk-header-body h4 {
+    font-family: var(--title-font);
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 1.1rem 0 0.4rem 0;
+    color: var(--title-text);
+}
+
 /* Introtext under rubrik – samma bredd som övrigt innehåll, tydlig spacing */
 .risk-header-body {
     line-height: 1.65;
