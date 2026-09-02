@@ -322,7 +322,15 @@ class ByraAnvandareManager {
       if (branscherKundstock) {
         const raw = f.branscherKundstock ?? '';
         const selected = this.matchSavedBranscherToOptions(raw, this.hogriskBranschOptions());
-        this.renderHogriskBranschOptions(selected.length ? selected : this.parseBranschTokens(raw));
+        this.renderHogriskBranschOptions(selected);
+        if (!selected.length && String(raw).trim()) {
+          branscherKundstock.value = String(raw).trim();
+          const summary = document.getElementById('byra-branscher-kundstock-summary');
+          if (summary) {
+            summary.textContent = String(raw).trim();
+            summary.classList.remove('is-placeholder');
+          }
+        }
       }
       const andelUtland = document.getElementById('byra-andel-utland');
       if (andelUtland) andelUtland.value = f.andelInternationellHandel ?? '';
