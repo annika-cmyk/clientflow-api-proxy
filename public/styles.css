@@ -5113,6 +5113,56 @@ body.sidebar-collapsed .logout-btn {
     font-weight: 600;
 }
 
+.byra-it-system-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.byra-it-system-desc {
+    margin: 0 0 0.75rem;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.byra-it-system-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.byra-it-system-col {
+    margin: 0;
+}
+
+.byra-it-system-annat {
+    margin-top: 0.5rem;
+}
+
+.byra-enkate-select-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.byra-enkate-annat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.byra-enkate-annat-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #334155;
+}
+
+@media (max-width: 900px) {
+    .byra-it-system-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .form-hint {
     margin: 0 0 0.45rem;
     font-size: 0.82rem;

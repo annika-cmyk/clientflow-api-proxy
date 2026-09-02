@@ -268,6 +268,32 @@ class ByraAnvandareManager {
     if (behCustomerAll) behCustomerAll.addEventListener('change', () => this.toggleVisibleBehorighetCustomers(behCustomerAll.checked));
     const behSpara = document.getElementById('behorighet-spara-btn');
     if (behSpara) behSpara.addEventListener('click', () => this.saveBulkBehorighet());
+    this._bindItSystemAnnatToggles();
+  }
+
+  _syncItSystemAnnatFields() {
+    document.querySelectorAll('select[data-annat-target]').forEach((sel) => {
+      const targetId = sel.getAttribute('data-annat-target');
+      const input = targetId ? document.getElementById(targetId) : null;
+      if (!input) return;
+      const show = sel.value === 'Annat';
+      input.hidden = !show;
+      if (!show) input.value = input.value; // keep value in DOM but hide
+    });
+  }
+
+  _bindItSystemAnnatToggles() {
+    document.querySelectorAll('select[data-annat-target]').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const targetId = sel.getAttribute('data-annat-target');
+        const input = targetId ? document.getElementById(targetId) : null;
+        if (!input) return;
+        const show = sel.value === 'Annat';
+        input.hidden = !show;
+        if (!show) input.value = '';
+        else input.focus();
+      });
+    });
   }
 
   switchTab(tabName) {
@@ -337,7 +363,13 @@ class ByraAnvandareManager {
         if (node) node.value = value ?? '';
       };
       setVal('byra-antal-kontor', f.antalKontor);
-      setVal('byra-it-system', f.itSystem);
+      setVal('byra-bokforingssystem', f.bokforingssystem);
+      setVal('byra-bokforingssystem-annat', f.bokforingssystemAnnat);
+      setVal('byra-bokslutssystem', f.bokslutssystem);
+      setVal('byra-bokslutssystem-annat', f.bokslutssystemAnnat);
+      setVal('byra-kundhanteringssystem', f.kundhanteringssystem);
+      setVal('byra-kundhanteringssystem-annat', f.kundhanteringssystemAnnat);
+      this._syncItSystemAnnatFields();
       setVal('byra-auktoriserade-konsulter', f.auktoriseradeKonsulter);
       setVal('byra-lopande-utbildning', f.lopandeUtbildning);
       setVal('byra-personalomsattning', f.personalomsattning);
@@ -692,7 +724,12 @@ class ByraAnvandareManager {
         antalKundforetag: document.getElementById('byra-antal-kundforetag')?.value ?? '',
         bransch: document.getElementById('byra-bransch')?.value ?? '',
         antalKontor: document.getElementById('byra-antal-kontor')?.value ?? '',
-        itSystem: document.getElementById('byra-it-system')?.value ?? '',
+        bokforingssystem: document.getElementById('byra-bokforingssystem')?.value ?? '',
+        bokforingssystemAnnat: document.getElementById('byra-bokforingssystem-annat')?.value ?? '',
+        bokslutssystem: document.getElementById('byra-bokslutssystem')?.value ?? '',
+        bokslutssystemAnnat: document.getElementById('byra-bokslutssystem-annat')?.value ?? '',
+        kundhanteringssystem: document.getElementById('byra-kundhanteringssystem')?.value ?? '',
+        kundhanteringssystemAnnat: document.getElementById('byra-kundhanteringssystem-annat')?.value ?? '',
         auktoriseradeKonsulter: document.getElementById('byra-auktoriserade-konsulter')?.value ?? '',
         lopandeUtbildning: document.getElementById('byra-lopande-utbildning')?.value ?? '',
         personalomsattning: document.getElementById('byra-personalomsattning')?.value ?? '',

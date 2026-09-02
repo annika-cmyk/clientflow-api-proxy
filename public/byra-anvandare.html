@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902utsatta">
+    <link rel="stylesheet" href="styles.css?v=20260902itsystem">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -93,9 +93,46 @@
                                                 <label for="byra-antal-kontor">Antal kontor</label>
                                                 <input type="number" id="byra-antal-kontor" class="form-input" min="0" placeholder="0">
                                             </div>
-                                            <div class="form-group">
-                                                <label for="byra-it-system">IT-system i det dagliga arbetet</label>
-                                                <input type="text" id="byra-it-system" class="form-input" placeholder="T.ex. Fortnox, ClientFlow, eget system">
+                                            <div class="form-group full-width">
+                                                <span class="byra-it-system-label">IT-system i det dagliga arbetet</span>
+                                                <p class="byra-it-system-desc">Ange system per område. Välj Annat om ni använder något som inte finns i listan.</p>
+                                                <div class="byra-it-system-grid">
+                                                    <div class="form-group byra-it-system-col">
+                                                        <label for="byra-bokforingssystem">Bokföringssystem</label>
+                                                        <select id="byra-bokforingssystem" class="form-select" data-annat-target="byra-bokforingssystem-annat">
+                                                            <option value="">Välj</option>
+                                                            <option value="Visma">Visma</option>
+                                                            <option value="Spiris">Spiris</option>
+                                                            <option value="Fortnox">Fortnox</option>
+                                                            <option value="BOKIO">BOKIO</option>
+                                                            <option value="OQTO">OQTO</option>
+                                                            <option value="BRIOX">BRIOX</option>
+                                                            <option value="Annat">Annat</option>
+                                                        </select>
+                                                        <input type="text" id="byra-bokforingssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange bokföringssystem" hidden>
+                                                    </div>
+                                                    <div class="form-group byra-it-system-col">
+                                                        <label for="byra-bokslutssystem">Bokslutssystem</label>
+                                                        <select id="byra-bokslutssystem" class="form-select" data-annat-target="byra-bokslutssystem-annat">
+                                                            <option value="">Välj</option>
+                                                            <option value="Capego">Capego</option>
+                                                            <option value="Fortnox">Fortnox</option>
+                                                            <option value="Visma">Visma</option>
+                                                            <option value="Annat">Annat</option>
+                                                        </select>
+                                                        <input type="text" id="byra-bokslutssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange bokslutssystem" hidden>
+                                                    </div>
+                                                    <div class="form-group byra-it-system-col">
+                                                        <label for="byra-kundhanteringssystem">Kundhanteringssystem</label>
+                                                        <select id="byra-kundhanteringssystem" class="form-select" data-annat-target="byra-kundhanteringssystem-annat">
+                                                            <option value="">Välj</option>
+                                                            <option value="ClientFlow">ClientFlow</option>
+                                                            <option value="Accountec">Accountec</option>
+                                                            <option value="Annat">Annat</option>
+                                                        </select>
+                                                        <input type="text" id="byra-kundhanteringssystem-annat" class="form-input byra-it-system-annat" placeholder="Ange kundhanteringssystem" hidden>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div class="form-group">
                                                 <label for="byra-auktoriserade-konsulter">Auktoriserade konsulter</label>
@@ -833,7 +870,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902historik" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902itsystem" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>
