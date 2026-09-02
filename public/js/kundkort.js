@@ -6920,20 +6920,25 @@ class CustomerCardManager {
         const Id = window.IdentitetKontroll;
         const metodEl = document.getElementById('rp-identitet-metod');
         const datumEl = document.getElementById('rp-identitet-datum');
+        const datumWrap = document.getElementById('rp-identitet-datum-wrap');
         const hintEl = document.getElementById('rp-identitet-hint');
-        if (!metodEl || !datumEl) return;
+        const noteEl = document.getElementById('rp-identitet-clientflow-note');
+        if (!metodEl) return;
         const optional = !!(Id && Id.datumValfrittForMetod && Id.datumValfrittForMetod(metodEl.value || ''));
-        datumEl.style.display = optional ? 'none' : '';
-        datumEl.disabled = optional;
-        if (optional) datumEl.value = '';
+        if (datumWrap) datumWrap.style.display = optional ? 'none' : '';
+        if (datumEl) {
+            datumEl.disabled = optional;
+            if (optional) datumEl.value = '';
+        }
+        if (noteEl) noteEl.style.display = optional ? 'block' : 'none';
         if (hintEl) {
             hintEl.textContent = optional
-                ? 'Vid BankID via ClientFlow behöver du inte ange datum – metoden räcker.'
-                : 'Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).';
+                ? 'Metod: BankID via ClientFlow. Datum behövs inte.'
+                : 'Välj metod. Datum behövs för alla metoder utom BankID via ClientFlow.';
         }
-        const grid = datumEl.parentElement;
+        const grid = document.getElementById('rp-identitet-fields');
         if (grid && grid.style) {
-            grid.style.gridTemplateColumns = optional ? '1fr' : 'minmax(0,1fr) minmax(0,1.4fr)';
+            grid.style.gridTemplateColumns = optional ? '1fr' : 'minmax(0,1.4fr) minmax(0,1fr)';
         }
     }
 
@@ -6988,14 +6993,17 @@ class CustomerCardManager {
                     <div id="rp-identitet-wrap" style="${isForetag ? 'display:none;' : ''}">
                         <div class="form-group">
                             <label>Identitet kontrollerad</label>
-                            <p id="rp-identitet-hint" class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Datum och metod för hur personens identitet styrkts (t.ex. BankID eller före ClientFlow).</p>
-                            <div id="rp-identitet-fields" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:0.5rem;">
-                                <input type="date" id="rp-identitet-datum" class="form-control" value="${this._esc(idHit.datum || '')}">
+                            <p id="rp-identitet-hint" class="tjanst-panel-hint" style="margin:0 0 0.4rem;">Välj metod. Datum behövs för alla metoder utom BankID via ClientFlow.</p>
+                            <div id="rp-identitet-fields" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:0.5rem;align-items:start;">
                                 <select id="rp-identitet-metod" class="form-control">
                                     <option value="">Välj metod</option>
                                     ${methodOpts}
                                 </select>
+                                <div id="rp-identitet-datum-wrap">
+                                    <input type="date" id="rp-identitet-datum" class="form-control" value="${this._esc(idHit.datum || '')}" aria-label="Datum för identitetskontroll">
+                                </div>
                             </div>
+                            <p id="rp-identitet-clientflow-note" class="tjanst-panel-hint" style="display:none;margin:0.35rem 0 0;color:#0f766e;">Datum behövs inte när identiteten styrkts via BankID i ClientFlow.</p>
                         </div>
                         <div class="form-group" id="rp-huvudman-bv-wrap" style="${(Id && Id.hasHuvudmanRoll && Id.hasHuvudmanRoll(person)) ? '' : 'display:none;'}">
                             <label>Huvudman kontrollerad mot Bolagsverket</label>
@@ -7015,7 +7023,10 @@ class CustomerCardManager {
         // change + click: vissa UI-automationer sätter checked utan change-event
         rollerWrap?.addEventListener('change', syncLabels);
         rollerWrap?.addEventListener('click', syncLabels);
-        document.getElementById('rp-identitet-metod')?.addEventListener('change', () => this._syncIdentitetDatumVisibility());
+        const metodSelect = document.getElementById('rp-identitet-metod');
+        const syncIdentitet = () => this._syncIdentitetDatumVisibility();
+        metodSelect?.addEventListener('change', syncIdentitet);
+        metodSelect?.addEventListener('input', syncIdentitet);
         syncLabels();
         this._syncIdentitetDatumVisibility();
         document.getElementById('rp-namn').focus();
