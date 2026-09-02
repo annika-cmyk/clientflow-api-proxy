@@ -60,13 +60,27 @@
     return String(v).trim() !== '';
   }
 
+  function isFieldRequired(field) {
+    if (!field) return false;
+    if (field.requiredWhen && field.requiredWhen.key) {
+      return String(values[field.requiredWhen.key] || '') === String(field.requiredWhen.equals || '');
+    }
+    return !field.optional;
+  }
+
   function fieldByKey(key) {
     return (schema.fields || []).find(function (f) { return f.key === key; });
   }
 
+  function companionFor(field) {
+    return (schema.fields || []).find(function (f) {
+      return f.requiredWhen && f.requiredWhen.key === field.key;
+    });
+  }
+
   function allUnanswered() {
     return (schema.fields || [])
-      .filter(function (f) { return !isAnswered(values[f.key]); })
+      .filter(function (f) { return isFieldRequired(f) && !isAnswered(values[f.key]); })
       .map(function (f) { return f.key; });
   }
 
@@ -78,15 +92,24 @@
   }
 
   function unansweredInSection(sec) {
-    return keysForSection(sec).filter(function (k) { return !isAnswered(values[k]); });
+    return keysForSection(sec).filter(function (k) {
+      var f = fieldByKey(k);
+      return isFieldRequired(f) && !isAnswered(values[k]);
+    });
   }
 
   function answeredCount() {
-    return (schema.fields || []).filter(function (f) { return isAnswered(values[f.key]); }).length;
+    return (schema.fields || []).filter(function (f) {
+      return isFieldRequired(f) && isAnswered(values[f.key]);
+    }).length;
+  }
+
+  function requiredCount() {
+    return (schema.fields || []).filter(function (f) { return isFieldRequired(f); }).length;
   }
 
   function updateProgress() {
-    var total = (schema.fields || []).length || 1;
+    var total = requiredCount() || 1;
     var n = answeredCount();
     var pct = Math.round((n / total) * 100);
     if (ui.progress) {
@@ -95,7 +118,7 @@
         pct + '%"></div></div><p class="byra-enkate-progress-text">' + n + ' av ' + total + ' besvarade</p>';
     }
     if (ui.remaining) {
-      var left = total - n;
+      var left = Math.max(0, total - n);
       ui.remaining.textContent = left === 0 ? 'Komplett' : left + ' kvar';
       ui.remaining.classList.toggle('is-complete', left === 0);
     }
@@ -127,7 +150,10 @@
 
   function renderSelect(field, current) {
     var wrap = document.createElement('div');
-    wrap.className = 'byra-enkate-choices';
+    wrap.className = 'byra-enkate-select-block';
+
+    var choices = document.createElement('div');
+    choices.className = 'byra-enkate-choices';
     (field.choices || []).forEach(function (choice) {
       var label = typeof choice === 'string' ? choice : choice.label;
       var value = typeof choice === 'string' ? choice : choice.value;
@@ -138,15 +164,43 @@
       btn.addEventListener('click', function () {
         values[field.key] = value;
         skipped[field.key] = false;
-        wrap.querySelectorAll('.byra-enkate-choice').forEach(function (b) { b.classList.remove('is-selected'); });
+        if (value !== 'Annat') {
+          var companion = companionFor(field);
+          if (companion) values[companion.key] = '';
+        }
+        choices.querySelectorAll('.byra-enkate-choice').forEach(function (b) { b.classList.remove('is-selected'); });
         btn.classList.add('is-selected');
+        syncCompanionUi(field, wrap);
         updateProgress();
         updateNav();
         setStatus('');
       });
-      wrap.appendChild(btn);
+      choices.appendChild(btn);
     });
+    wrap.appendChild(choices);
+    syncCompanionUi(field, wrap);
     return wrap;
+  }
+
+  function syncCompanionUi(field, wrap) {
+    var companion = companionFor(field);
+    if (!companion) return;
+    var existing = wrap.querySelector('.byra-enkate-annat');
+    var needed = String(values[field.key] || '') === String(companion.requiredWhen.equals || '');
+    if (!needed) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
+    var box = document.createElement('div');
+    box.className = 'byra-enkate-annat';
+    var lab = document.createElement('label');
+    lab.className = 'byra-enkate-annat-label';
+    lab.setAttribute('for', 'enkate-' + companion.key);
+    lab.textContent = companion.question || companion.label;
+    box.appendChild(lab);
+    box.appendChild(renderInput(companion, values[companion.key]));
+    wrap.appendChild(box);
   }
 
   function renderInput(field, current) {
@@ -283,6 +337,113 @@
     return wrap;
   }
 
+  var IT_SYSTEM_KEYS = ['bokforingssystem', 'bokslutssystem', 'kundhanteringssystem'];
+
+  function isItSystemKey(key) {
+    return IT_SYSTEM_KEYS.indexOf(key) >= 0;
+  }
+
+  function renderItSystemSelect(field) {
+    var col = document.createElement('div');
+    col.className = 'byra-enkate-it-col';
+
+    var lab = document.createElement('label');
+    lab.className = 'byra-enkate-it-label';
+    lab.setAttribute('for', 'enkate-' + field.key);
+    lab.textContent = field.label;
+    col.appendChild(lab);
+
+    var sel = document.createElement('select');
+    sel.className = 'form-select byra-enkate-it-select';
+    sel.id = 'enkate-' + field.key;
+    var blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Välj';
+    sel.appendChild(blank);
+    (field.choices || []).forEach(function (choice) {
+      var label = typeof choice === 'string' ? choice : choice.label;
+      var value = typeof choice === 'string' ? choice : choice.value;
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+    sel.value = values[field.key] || '';
+
+    var companion = companionFor(field);
+    var annatInput = null;
+    if (companion) {
+      annatInput = document.createElement('input');
+      annatInput.type = 'text';
+      annatInput.className = 'form-input byra-enkate-it-annat';
+      annatInput.id = 'enkate-' + companion.key;
+      annatInput.placeholder = companion.hint || ('Ange ' + companion.label.toLowerCase());
+      annatInput.value = values[companion.key] || '';
+      annatInput.hidden = sel.value !== 'Annat';
+      annatInput.addEventListener('input', function () {
+        values[companion.key] = annatInput.value.trim();
+        skipped[companion.key] = false;
+        updateProgress();
+        updateNav();
+      });
+    }
+
+    sel.addEventListener('change', function () {
+      values[field.key] = sel.value;
+      skipped[field.key] = false;
+      if (companion) {
+        if (sel.value !== 'Annat') values[companion.key] = '';
+        if (annatInput) {
+          annatInput.hidden = sel.value !== 'Annat';
+          annatInput.value = values[companion.key] || '';
+          if (sel.value === 'Annat') annatInput.focus();
+        }
+      }
+      updateProgress();
+      updateNav();
+      setStatus('');
+    });
+
+    col.appendChild(sel);
+    if (annatInput) col.appendChild(annatInput);
+    return col;
+  }
+
+  function renderItSystemGroup() {
+    var card = document.createElement('article');
+    card.className = 'byra-enkate-q byra-enkate-q--it';
+    card.dataset.key = 'it-system';
+
+    var title = document.createElement('h3');
+    title.className = 'byra-enkate-q-title';
+    title.textContent = 'Vilka IT-system används i det dagliga arbetet?';
+    card.appendChild(title);
+
+    var help = document.createElement('p');
+    help.className = 'byra-enkate-q-help';
+    help.textContent = 'Ange system per område. Välj Annat om ni använder något som inte finns i listan.';
+    card.appendChild(help);
+
+    var grid = document.createElement('div');
+    grid.className = 'byra-enkate-it-grid';
+    IT_SYSTEM_KEYS.forEach(function (key) {
+      var field = fieldByKey(key);
+      if (field) grid.appendChild(renderItSystemSelect(field));
+    });
+    card.appendChild(grid);
+
+    var anySkipped = IT_SYSTEM_KEYS.some(function (key) {
+      return skipped[key] && !isAnswered(values[key]);
+    });
+    if (anySkipped) {
+      var note = document.createElement('p');
+      note.className = 'byra-enkate-skipped-note';
+      note.textContent = 'Överhoppad — du kan svara nu eller senare under Byråinformation.';
+      card.appendChild(note);
+    }
+    return card;
+  }
+
   function renderField(field) {
     var card = document.createElement('article');
     card.className = 'byra-enkate-q' + (skipped[field.key] && !isAnswered(values[field.key]) ? ' is-skipped' : '');
@@ -328,9 +489,19 @@
     ui.fields.innerHTML = '';
     var list = document.createElement('div');
     list.className = 'byra-enkate-q-list';
+    var itGroupRendered = false;
     keysForSection(sec).forEach(function (key) {
       var field = fieldByKey(key);
-      if (field) list.appendChild(renderField(field));
+      if (!field) return;
+      if (field.requiredWhen) return; // visas som följdfråga under föräldern
+      if (isItSystemKey(key)) {
+        if (!itGroupRendered) {
+          list.appendChild(renderItSystemGroup());
+          itGroupRendered = true;
+        }
+        return;
+      }
+      list.appendChild(renderField(field));
     });
     ui.fields.appendChild(list);
     updateProgress();
