@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902bolagsform7">
+    <link rel="stylesheet" href="styles.css?v=20260902hogriskantal8">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -178,13 +178,16 @@
                                                 <button type="button" class="byra-bolagsformer-add" id="byra-bolagsformer-add">Lägg till annan form</button>
                                                 <input type="hidden" id="byra-bolagsformer" value="">
                                             </div>
-                                            <div class="form-group">
-                                                <label for="byra-branscher-kundstock-summary">Högriskbranscher i kundstocken</label>
-                                                <p class="form-hint">Välj vilka högriskbranscher som finns bland era kunder.</p>
-                                                <details class="multi-select" id="byra-branscher-kundstock-ms">
-                                                    <summary class="multi-select-summary" id="byra-branscher-kundstock-summary">Välj högriskbranscher…</summary>
-                                                    <div class="multi-select-panel" id="byra-branscher-kundstock-list" role="group" aria-label="Högriskbranscher"></div>
-                                                </details>
+                                            <div class="form-group full-width">
+                                                <span class="byra-bolagsformer-label" id="byra-hogrisk-label">Högriskbranscher i kundstocken</span>
+                                                <p class="byra-bolagsformer-desc">Bocka de branscher som förekommer och ange ett uppskattat antal kunder per bransch.</p>
+                                                <label class="byra-enkate-check byra-enkate-check--none" for="byra-hogrisk-none">
+                                                    <input type="checkbox" id="byra-hogrisk-none">
+                                                    <span>Inga högriskbranscher</span>
+                                                </label>
+                                                <input type="search" id="byra-hogrisk-search" class="form-input" placeholder="Sök bransch…">
+                                                <div class="byra-bolagsformer-head" id="byra-hogrisk-head" aria-hidden="true"><span>Bransch</span><span>Uppskattat antal</span></div>
+                                                <div class="byra-hogrisk-count-list" id="byra-branscher-kundstock-list" role="group" aria-labelledby="byra-hogrisk-label"></div>
                                                 <input type="hidden" id="byra-branscher-kundstock" value="">
                                             </div>
                                             <div class="form-group">
@@ -860,7 +863,7 @@
     <script src="js/components.js?v=2.2" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902bolagsform7" defer></script>
+    <script src="js/byra-anvandare.js?v=20260902hogriskantal8" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>

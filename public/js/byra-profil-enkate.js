@@ -149,8 +149,18 @@
     return !!(field && (field.type === 'bolagsformer' || field.key === 'vanligasteBolagsformer'));
   }
 
+  function isHogriskAnswered(raw) {
+    var text = String(raw || '').trim();
+    if (!text) return false;
+    if (text === HOGRISK_NONE) return true;
+    return parseBolagsformer(text).some(function (r) {
+      return r.form && String(r.count || '').trim() !== '';
+    });
+  }
+
   function isAnswered(v, field) {
     if (isBolagsformerField(field)) return isBolagsformerAnswered(v);
+    if (field && field.key === 'branscherKundstock') return isHogriskAnswered(v);
     if (v == null) return false;
     if (typeof v === 'number') return Number.isFinite(v);
     return String(v).trim() !== '';
@@ -253,7 +263,15 @@
   function selectedBranscher() {
     var raw = values.branscherKundstock;
     if (!raw) return [];
-    return String(raw).split(/[,;|]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (String(raw).trim() === HOGRISK_NONE) return [HOGRISK_NONE];
+    return parseBolagsformer(raw).map(function (r) { return r.form; }).filter(Boolean);
+  }
+
+  function hogriskCountFor(label) {
+    var hit = parseBolagsformer(values.branscherKundstock).find(function (r) {
+      return String(r.form).toLowerCase() === String(label || '').toLowerCase();
+    });
+    return hit && hit.count ? hit.count : '';
   }
 
   function renderSelect(field, current) {
@@ -373,6 +391,11 @@
     search.placeholder = 'Sök bransch…';
     wrap.appendChild(search);
 
+    var head = document.createElement('div');
+    head.className = 'byra-enkate-bolagsformer-head byra-enkate-hogrisk-head';
+    head.innerHTML = '<span>Bransch</span><span>Uppskattat antal</span>';
+    wrap.appendChild(head);
+
     var list = document.createElement('div');
     list.className = 'byra-enkate-hogrisk-list';
     wrap.appendChild(list);
@@ -381,16 +404,40 @@
     summary.className = 'byra-enkate-hint';
     wrap.appendChild(summary);
 
+    function collectRows() {
+      var kept = {};
+      parseBolagsformer(values[field.key] === HOGRISK_NONE ? '' : values[field.key]).forEach(function (r) {
+        if (r.form) kept[String(r.form).toLowerCase()] = { form: r.form, count: r.count || '' };
+      });
+      list.querySelectorAll('.byra-enkate-hogrisk-row').forEach(function (row) {
+        var cb = row.querySelector('input[type="checkbox"]');
+        var num = row.querySelector('input[type="number"]');
+        if (!cb) return;
+        if (num) {
+          num.disabled = !cb.checked;
+          row.classList.toggle('is-disabled', !cb.checked);
+          if (!cb.checked) num.value = '';
+        }
+        var key = String(cb.value || '').toLowerCase();
+        if (!cb.checked) {
+          delete kept[key];
+          return;
+        }
+        kept[key] = { form: cb.value, count: num ? num.value : '' };
+      });
+      return Object.keys(kept).map(function (k) { return kept[k]; });
+    }
+
     function syncSummary() {
       if (noneCb.checked) {
         values[field.key] = HOGRISK_NONE;
         summary.textContent = HOGRISK_NONE + '.';
       } else {
-        var sel = selectedBranscher().filter(function (s) { return s !== HOGRISK_NONE; });
-        values[field.key] = sel.join(', ');
-        summary.textContent = sel.length === 0
-          ? 'Välj branscher eller markera att ni saknar högriskbranscher.'
-          : sel.length + ' valda: ' + sel.join(', ');
+        var rows = collectRows();
+        values[field.key] = formatBolagsformer(rows);
+        summary.textContent = rows.length === 0
+          ? 'Välj branscher och ange ett uppskattat antal, eller markera att ni saknar högriskbranscher.'
+          : rows.length + ' valda: ' + formatBolagsformer(rows);
       }
       skipped[field.key] = false;
       updateProgress();
@@ -400,9 +447,11 @@
     function paint(filter) {
       list.innerHTML = '';
       if (noneCb.checked) {
+        head.hidden = true;
         list.innerHTML = '<p class="byra-enkate-hint">Avmarkera "' + HOGRISK_NONE + '" för att välja branscher.</p>';
         return;
       }
+      head.hidden = false;
       var q = (filter || '').toLowerCase();
       var items = hogriskLabels.filter(function (label) {
         return !q || String(label).toLowerCase().indexOf(q) >= 0;
@@ -411,25 +460,23 @@
         list.innerHTML = '<p class="byra-enkate-hint">Inga träffar.</p>';
         return;
       }
-      items.forEach(function (label) {
-        var row = document.createElement('label');
-        row.className = 'byra-enkate-check';
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = selectedBranscher().indexOf(label) >= 0;
-        cb.addEventListener('change', function () {
-          var cur = selectedBranscher().filter(function (s) { return s !== HOGRISK_NONE; });
-          var idx = cur.indexOf(label);
-          if (cb.checked && idx < 0) cur.push(label);
-          if (!cb.checked && idx >= 0) cur.splice(idx, 1);
-          values.branscherKundstock = cur.join(', ');
-          syncSummary();
-        });
-        var span = document.createElement('span');
-        span.textContent = label;
-        row.appendChild(cb);
-        row.appendChild(span);
+      var selected = {};
+      selectedBranscher().forEach(function (label) {
+        selected[String(label).toLowerCase()] = hogriskCountFor(label);
+      });
+      items.forEach(function (label, idx) {
+        var id = 'enkate-hogrisk-' + idx;
+        var checked = Object.prototype.hasOwnProperty.call(selected, String(label).toLowerCase());
+        var count = checked ? (selected[String(label).toLowerCase()] || '') : '';
+        var row = document.createElement('div');
+        row.className = 'byra-enkate-hogrisk-row' + (checked ? '' : ' is-disabled');
+        row.innerHTML = '<label for="' + id + '"><input type="checkbox" id="' + id + '" value="' + String(label).replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '><span>' + label + '</span></label>' +
+          '<input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="' + count + '"' + (checked ? '' : ' disabled') + '>';
         list.appendChild(row);
+      });
+      list.querySelectorAll('input').forEach(function (el) {
+        el.addEventListener('change', syncSummary);
+        el.addEventListener('input', syncSummary);
       });
     }
 
@@ -866,14 +913,24 @@
     if (!Array.isArray(schema.sections)) schema.sections = [];
     if (!Array.isArray(schema.fields)) schema.fields = [];
     schema.fields.forEach(function (f) {
-      if (!f || f.key !== 'vanligasteBolagsformer') return;
-      f.type = 'bolagsformer';
-      if (!f.choices || !f.choices.length) f.choices = DEFAULT_BOLAGSFORMER.slice();
-      if (!f.question || f.question.indexOf('antal') < 0) {
-        f.question = 'Vilka bolagsformer finns i kundstocken? Ange ett uppskattat antal per form.';
+      if (!f) return;
+      if (f.key === 'vanligasteBolagsformer') {
+        f.type = 'bolagsformer';
+        if (!f.choices || !f.choices.length) f.choices = DEFAULT_BOLAGSFORMER.slice();
+        if (!f.question || f.question.indexOf('antal') < 0) {
+          f.question = 'Vilka bolagsformer finns i kundstocken? Ange ett uppskattat antal per form.';
+        }
+        if (!f.hint) {
+          f.hint = 'Bocka alla former som förekommer. Antalet får vara ungefärligt – det används för att förstå kundstockens sammansättning.';
+        }
       }
-      if (!f.hint) {
-        f.hint = 'Bocka alla former som förekommer. Antalet får vara ungefärligt – det används för att förstå kundstockens sammansättning.';
+      if (f.key === 'branscherKundstock') {
+        if (!f.question || f.question.indexOf('antal') < 0) {
+          f.question = 'Vilka högriskbranscher finns bland era kunder? Ange ett uppskattat antal per bransch.';
+        }
+        if (!f.hint || f.hint.indexOf('T.ex.') === 0) {
+          f.hint = 'Bocka de branscher som förekommer och ange ungefär hur många kunder. Välj Inga högriskbranscher om det inte finns några.';
+        }
       }
     });
     var profil = data[1] || {};
