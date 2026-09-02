@@ -4,12 +4,12 @@
  */
 (function (global) {
   const TJANST_FALT = {
-    tjanstebeskrivning: { etikett: 'Tjänstebeskrivning' },
+    tjanstebeskrivning: { etikett: 'Tjänsten' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },
-    motiveringInneboende: { etikett: 'Motivering av S och K (inneboende risk)' },
+    motiveringInneboende: { etikett: 'Motivering av inneboende risk' },
     residual: { etikett: 'Risk efter åtgärder' },
-    motiveringResidual: { etikett: 'Motivering av residual-S och K' },
-    hot: { etikett: 'Hot' },
+    motiveringResidual: { etikett: 'Motivering av residualrisk' },
+    hot: { etikett: 'Hot och modus' },
     sarbarheter: { etikett: 'Sårbarheter' },
     atgarder: { etikett: 'Åtgärder' },
     tfMotivering: { etikett: 'TF-motivering' }
@@ -20,9 +20,9 @@
     atgard: { etikett: 'Åtgärd' },
     ptTfRelevans: { etikett: 'PT/TF-relevans' },
     sxk: { etikett: 'Sannolikhet och konsekvens' },
-    motiveringInneboende: { etikett: 'Motivering av S och K (inneboende risk)' },
+    motiveringInneboende: { etikett: 'Motivering av inneboende risk' },
     residual: { etikett: 'Risk efter åtgärd' },
-    motiveringResidual: { etikett: 'Motivering av residual-S och K' }
+    motiveringResidual: { etikett: 'Motivering av residualrisk' }
   };
 
   const MOTIVERING_AI_RULES = `- MOTIVERING AV S×K (krav vid tillsyn): Skriv alltid motiveringInneboende och motiveringResidual när du sätter S/K.
@@ -140,7 +140,7 @@
     if (!keys.length) return '';
     const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
     if (keys.includes('tjanstebeskrivning')) {
-      parts.push(`Tjänstebeskrivning:\n${trimStr(o.tjanstebeskrivning)}`);
+      parts.push(`Tjänsten:\n${trimStr(o.tjanstebeskrivning)}`);
     }
     if (keys.includes('sxk')) {
       parts.push(`Inneboende S×K: sannolikhet ${o.sannolikhet || '–'}, konsekvens ${o.konsekvens || '–'}`);

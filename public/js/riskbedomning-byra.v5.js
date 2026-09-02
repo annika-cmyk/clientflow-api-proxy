@@ -374,7 +374,7 @@ class RiskAssessmentManager {
         if (beskrivning) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-file-lines"></i> Tjänstebeskrivning</h5>
+                    <h5><i class="fas fa-file-lines"></i> Tjänsten</h5>
                     <p class="risk-content-text">${this.formatDescription(beskrivning)}</p>
                 </div>
             `);
@@ -386,9 +386,6 @@ class RiskAssessmentManager {
                 </div>
             `);
         }
-
-        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
-        if (motInneboende) sections.push(motInneboende);
 
         if (hot.length) {
             const rows = hot.map(h => {
@@ -406,7 +403,7 @@ class RiskAssessmentManager {
             }).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-triangle-exclamation"></i> Hot</h5>
+                    <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
                     <div class="threat-list">${rows}</div>
                 </div>
             `);
@@ -433,6 +430,9 @@ class RiskAssessmentManager {
             `);
         }
 
+        const motInneboende = this.renderMotiveringSections(scored, { keys: ['inneboende'] });
+        if (motInneboende) sections.push(motInneboende);
+
         if (atgarder.length) {
             const items = atgarder.map(a => `
                 <div class="action-item">
@@ -442,14 +442,14 @@ class RiskAssessmentManager {
             `).join('');
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-list-check"></i> Tjänstespecifika åtgärder</h5>
+                    <h5><i class="fas fa-list-check"></i> Riskreducerande åtgärder</h5>
                     <div class="action-list">${items}</div>
                 </div>
             `);
         } else if (legacyAtgard) {
             sections.push(`
                 <div class="risk-content-section">
-                    <h5><i class="fas fa-tools"></i> Åtgärd</h5>
+                    <h5><i class="fas fa-tools"></i> Riskreducerande åtgärder</h5>
                     <p class="risk-content-text">${this.formatDescription(legacyAtgard)}</p>
                 </div>
             `);
@@ -645,7 +645,7 @@ class RiskAssessmentManager {
     }
 
     updateTjanstAiSummary(counts) {
-        const labels = { oversikt: 'Översikt', hot: 'Hot', sarbarhet: 'Sårbarheter', atgard: 'Åtgärder' };
+        const labels = { oversikt: 'Översikt', hot: 'Hot och modus', sarbarhet: 'Sårbarheter', atgard: 'Riskreducerande åtgärder' };
         const present = Object.keys(labels).filter((key) => (counts && counts[key]) > 0);
         document.querySelectorAll('.tjanst-tab-ai').forEach((el) => {
             const key = el.getAttribute('data-ai-for');

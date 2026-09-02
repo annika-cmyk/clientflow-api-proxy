@@ -10137,11 +10137,11 @@ class CustomerCardManager {
 
         if (beskrivning) {
             parts.push(`
-                <div class="risker-vald-section-label">Tjänstebeskrivning</div>
+                <div class="risker-vald-section-label">Tjänsten</div>
                 <div class="risker-vald-desc">${this._nl(beskrivning)}</div>`);
         }
         if (hot.length) {
-            parts.push(`<div class="risker-vald-section-label">Hot</div>`);
+            parts.push(`<div class="risker-vald-section-label">Hot och modus</div>`);
             parts.push(hot.map((h) => {
                 const typ = String(h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
                 const title = String(h.titel || h.title || '').trim();
@@ -10178,7 +10178,7 @@ class CustomerCardManager {
             const TF = window.TjanstForutsattning;
             const ovriga = TF ? atgarder.filter((a) => !TF.isKundberoende(a)) : atgarder;
             if (ovriga.length) {
-                parts.push(`<div class="risker-vald-section-label">Tjänstespecifika åtgärder</div>`);
+                parts.push(`<div class="risker-vald-section-label">Riskreducerande åtgärder</div>`);
                 parts.push(ovriga.map((a) => {
                     const title = String(a.titel || a.title || a.namn || '').trim();
                     const desc = String(a.beskrivning || a.description || '').trim();

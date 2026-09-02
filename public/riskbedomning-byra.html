@@ -292,9 +292,9 @@
 
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
                             <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot och modus <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span> <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span> <span class="tjanst-tab-ai" data-ai-for="atgard" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Riskreducerande åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span> <span class="tjanst-tab-ai" data-ai-for="atgard" hidden>AI</span></button>
                         </nav>
 
                         <div class="tjanst-modal-body">
@@ -335,15 +335,8 @@
                                         <span class="ai-btn-label">Generera med AI</span>
                                     </button>
                                     <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
-                                    <div class="form-group risk-motivering-field">
-                                        <label for="tjanst-motivering-inneboende">Motivering av S och K (inneboende risk)
-                                            <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                        </label>
-                                        <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
-                                        <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
-                                    </div>
                                 </div>
-                                <label for="tjanst-beskrivning">Tjänstebeskrivning</label>
+                                <label for="tjanst-beskrivning">Tjänsten</label>
                                 <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken.</p>
                                 <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär — inte byrån, personal eller era kontroller."></textarea>
                                 <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
@@ -354,7 +347,7 @@
                             <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
                                 <div class="form-group-head">
                                     <div>
-                                        <label>Hot (PT/TF)</label>
+                                        <label>Hot och modus (PT/TF)</label>
                                         <p class="tjanst-panel-hint">Ett hot per rad. Klicka på en rad för att skriva beskrivning och källa.</p>
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till</button>
@@ -384,13 +377,22 @@
                                     <div id="tjanst-ai-sarbarhet" class="ai-review ai-review--inline" hidden></div>
                                     <div id="sarbarhet-empty" class="tjanst-empty">Inga sårbarheter ännu.</div>
                                     <div id="sarbarhet-list" class="dyn-list"></div>
+
+                                    <div class="form-group risk-motivering-field">
+                                        <label for="tjanst-motivering-inneboende">Motivering av inneboende risk
+                                            <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                        </label>
+                                        <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                        <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                                    </div>
+
                                 </div>
                             </section>
 
                             <section class="tjanst-panel" data-tjanst-panel="atgard" hidden>
                                 <div class="form-group-head">
                                     <div>
-                                        <label>Tjänstespecifika åtgärder</label>
+                                        <label>Riskreducerande åtgärder</label>
                                         <p class="tjanst-panel-hint">Vad ni gör för att hantera hoten och sårbarheterna. Markera varje åtgärd som byrårutin (ingår i det normala arbetssättet), kundspecifik åtgärd (bedöms per kund) eller risksänkande åtgärd som ska kopplas till specifika uppdragskörningar. Kontroller och rutiner hör hit, inte i översikten.</p>
                                     </div>
                                     <button type="button" class="btn-add-row" data-add="atgard"><i class="fas fa-plus"></i> Lägg till</button>
@@ -431,7 +433,7 @@
                                         <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
                                     </div>
                                     <div class="form-group risk-motivering-field">
-                                        <label for="tjanst-motivering-residual">Motivering av residual-S och K
+                                        <label for="tjanst-motivering-residual">Motivering av residualrisk
                                             <span id="tjanst-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
                                         </label>
                                         <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
@@ -479,6 +481,6 @@
     <script src="js/hot-aml-tf.js?v=3" defer></script>
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
     <script src="js/ai-falt-granskning.js?v=12" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=31" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=32" defer></script>
 </body>
 </html>

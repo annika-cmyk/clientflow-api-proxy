@@ -105,7 +105,7 @@
         + '</div></div>';
     }).filter(Boolean).join('');
     if (!rows) return '';
-    return section('fa-triangle-exclamation', 'Hot', '<div class="threat-list">' + rows + '</div>');
+    return section('fa-triangle-exclamation', 'Hot och modus', '<div class="threat-list">' + rows + '</div>');
   }
 
   function renderSarbarheter(items) {
@@ -139,10 +139,10 @@
           + '</span></div>';
       }).filter(Boolean).join('');
       if (!rows) return '';
-      return section('fa-list-check', 'Åtgärder', '<div class="action-list">' + rows + '</div>');
+      return section('fa-list-check', 'Riskreducerande åtgärder', '<div class="action-list">' + rows + '</div>');
     }
     if (text(legacy)) {
-      return section('fa-tools', 'Åtgärd', '<p class="risk-content-text">' + nl(legacy) + '</p>');
+      return section('fa-tools', 'Riskreducerande åtgärder', '<p class="risk-content-text">' + nl(legacy) + '</p>');
     }
     return '';
   }
@@ -211,12 +211,12 @@
     const beskrivning = text(item.tjanstebeskrivning || item.beskrivning);
     const parts = [];
     if (beskrivning) {
-      parts.push(section('fa-file-lines', 'Tjänstebeskrivning',
+      parts.push(section('fa-file-lines', 'Tjänsten',
         '<p class="risk-content-text">' + nl(beskrivning) + '</p>'));
     }
-    parts.push(renderMotiveringSections(item, ['inneboende']));
     parts.push(renderHot(item.hot));
     parts.push(renderSarbarheter(item.sarbarheter));
+    parts.push(renderMotiveringSections(item, ['inneboende']));
     if (!Tf || !Tf.hasTfHot || !Tf.hasTfHot(item.hot)) {
       const motivering = text(item.tfMotivering);
       if (motivering) {
