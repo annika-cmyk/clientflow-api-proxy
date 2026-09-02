@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260828date2">
+    <link rel="stylesheet" href="styles.css?v=20260902guide">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="riskbedomning-byra-page">
@@ -24,46 +24,181 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Riskbedömning av byråns tjänster</h1>
-                        <p class="risk-header-sub">Att tänka på vid riskbedömning av byråns tjänster</p>
-                        <div class="risk-header-body">
-                            <p>
-                                En noggrann riskbedömning av byråns tjänster är grunden för ett effektivt arbete mot penningtvätt och finansiering av terrorism.
-                                Som redovisningsbyrå behöver ni identifiera hur varje tjänst skulle kunna utnyttjas — till exempel för att dölja brottsvinster,
-                                kanalisera medel till fel mottagare, eller vilseleda genom felaktig redovisning.
-                            </p>
-                            <h3>Tänk särskilt på:</h3>
-                            <ul>
-                                <li>Hur tjänsten skulle kunna utnyttjas för penningtvätt (dölja pengars ursprung) eller finansiering av terrorism (styra pengar mot fel mottagare eller ändamål) — de två är inte samma sak, se nedan.</li>
-                                <li>Var i tjänsten det är svårt att upptäcka fel eller manipulation.</li>
-                                <li>Vilka åtgärder ni faktiskt vidtar, i praktiken, för att hantera och minska riskerna.</li>
-                            </ul>
-                            <h3>Skriv risk och åtgärd i rätt ordning — blanda inte ihop dem</h3>
-                            <p>
-                                Det vanligaste felet i riskbedömningar är att beskriva tjänstens fara och byråns kontroller i samma mening. Håll isär de två stegen:
-                            </p>
-                            <div class="risk-begrepp">
-                                <article class="risk-begrepp-card">
-                                    <h4>Inneboende risk</h4>
-                                    <p>Hur farlig är tjänsten i sig, innan era kontroller räknas in? Beskriv hot och sårbarheter utan att nämna vad byrån gör åt dem. (“Byrån kontrollerar…”, “vi har rutin för…” hör inte hemma här.)</p>
-                                </article>
-                                <article class="risk-begrepp-card">
-                                    <h4>Residualrisk</h4>
-                                    <p>Vad blir kvar av risken efter att era faktiska åtgärder tillämpats? Här beskriver ni kontrollerna och deras effekt.</p>
-                                </article>
+                        <details class="risk-guide">
+                            <summary class="risk-guide-summary">
+                                <span class="risk-guide-summary-text">Vägledning: Riskbedömning av byråns tjänster (Allmän riskbedömning)</span>
+                            </summary>
+                            <div class="risk-header-body">
+                                <p>
+                                    Denna sida i ClientFlow är utformad för att hjälpa er att genomföra en verksamhetsanpassad och juridiskt skottsäker riskbedömning av era produkter och tjänster. Detta är ett absolut krav enligt 2&nbsp;kap.&nbsp;1&nbsp;§ penningtvättslagen och utgör själva grundbulten i er Allmänna Riskbedömning (AR).
+                                </p>
+                                <p>
+                                    Tillsynsmyndigheterna (Länsstyrelsen) granskar numera redovisningsbyråers tjänstebedömningar under lupp. De absolut vanligaste bristerna som leder till sanktionsavgifter på hundratusentals kronor är att byråer använder intetsägande malltexter, saknar konkret analys av hur deras specifika tjänster kan utnyttjas av kriminella, eller blandar ihop sårbarheten i själva tjänsten med byråns interna rutiner.
+                                </p>
+                                <p>
+                                    Följ denna metodik steg för steg för att säkerställa att er analys håller högsta klass och uppfyller lagens alla krav.
+                                </p>
+
+                                <h3>Metodiken i 5 steg (Så här gör ni)</h3>
+                                <p>
+                                    För varje enskild tjänst som ni erbjuder (t.ex. Löpande bokföring, Bokslut, Momsredovisning, Lönehantering, Rådgivning, Bolagsärenden) ska ni genomföra följande fem steg. I ClientFlow fyller ni i dessa steg direkt i fritextfälten och i S×K-matrisen.
+                                </p>
+
+                                <h3>Steg 1: Identifiera och beskriv tjänsten</h3>
+                                <p>
+                                    <strong>Vad ska göras?</strong> Ni måste beskriva exakt vad tjänsten innebär i er specifika verksamhet.
+                                </p>
+                                <p>
+                                    <strong>Länsstyrelsens krav:</strong> Det räcker inte att bara skriva namnet på tjänsten. Ni måste tydligt definiera dess omfattning och vad som faktiskt utförs (t.ex. om ni utför betalningar åt kunden eller om ni enbart agerar deklarationsombud). Att utelämna eller inte definiera en tjänst ni erbjuder är ett direkt regelbrott.
+                                </p>
+
+                                <h3>Steg 2: Identifiera hot, tillvägagångssätt (Modus) och sårbarheter (Inneboende risk)</h3>
+                                <p>
+                                    Här ska ni göra en analys av den Inneboende risken (Inherent risk) – det vill säga sårbarheten i själva tjänsten i ett vakuum, helt utan att ta hänsyn till era egna rutiner, kontroller eller BankID-verifieringar.
+                                </p>
+                                <p>
+                                    <strong>A. Beskriv hot och tillvägagångssätt (Modus):</strong> Hur skulle en kriminell aktör, rent hypotetiskt, kunna utnyttja just denna tjänst för att dölja brottsliga pengars ursprung (penningtvätt) eller stödja terrorism? Använd er fantasi och erfarenheter från myndigheters rapporter.
+                                </p>
+                                <p>
+                                    <strong>B. Beskriv sårbarheter:</strong> Vilka egenskaper i tjänsten eller ert sätt att arbeta gör det möjligt för hotet att inträffa? (T.ex. brist på fysiska möten, digital hantering, komplexa regelverk eller beroende av kundens egna underlag).
+                                </p>
+                                <p>
+                                    <strong>C. Terrorfinansiering (TF):</strong> Ni måste inkludera en specifik analys av risker för terrorfinansiering för varje enskild tjänst. Det räcker inte med ett allmänt stycke i slutet av dokumentet. Analysera om tjänsten kan användas för att t.ex. slussa pengar utomlands via fiktiva underlag eller Swish-flöden.
+                                </p>
+
+                                <h3>Steg 3: Värdera den Inneboende Risken med S×K-modellen</h3>
+                                <p>
+                                    Kombinera sannolikheten för att hotet inträffar med konsekvensen av att det sker.
+                                </p>
+                                <ul>
+                                    <li><strong>Sannolikhet (S) 1–5:</strong> Hur troligt är det att kriminella försöker utnyttja denna tjänst hos er? (1 = Mycket låg, 5 = Mycket hög).</li>
+                                    <li><strong>Konsekvens (K) 1–5:</strong> Hur allvarlig skulle skadan bli för samhället och byrån om det lyckas? (1 = Obetydlig, 5 = Katastrofal).</li>
+                                </ul>
+                                <p>
+                                    <strong>Inneboende risknivå (S × K = 1–25):</strong>
+                                </p>
+                                <ul>
+                                    <li><strong>1–4:</strong> Låg risk</li>
+                                    <li><strong>5–9:</strong> Normal risk (det naturliga utgångsläget för de flesta redovisningstjänster)</li>
+                                    <li><strong>10–15:</strong> Förhöjd risk</li>
+                                    <li><strong>16–19:</strong> Hög risk (t.ex. ROT/RUT-ansökningar, hantering av utlandsbetalningar eller komplex skatterådgivning)</li>
+                                    <li><strong>20–25:</strong> Oacceptabel risk</li>
+                                </ul>
+
+                                <h3>Steg 4: Beskriv era riskreducerande åtgärder och kontroller</h3>
+                                <p>
+                                    Först nu, i detta separata steg, beskriver ni hur ni faktiskt arbetar för att motverka den inneboende risken.
+                                </p>
+                                <p>
+                                    <strong>Vad ska göras?</strong> Dokumentera era specifika granskningar och kontroller. Hur upptäcker ni avvikelser? Hur kontrollerar ni underlag? (T.ex. stickprover i kundkonton, regelbunden matchning av utbetalningar, krav på originalfakturor, begränsning i betalningsbehörighet eller integration av modellriskhantering för AI-verktyg).
+                                </p>
+                                <p>
+                                    <strong>Viktigt:</strong> Beskriv hur ni följer upp och utvärderar att dessa åtgärder faktiskt fungerar i praktiken.
+                                </p>
+
+                                <h3>Steg 5: Värdera och motivera residualrisken (Restrisken)</h3>
+                                <p>
+                                    Bedöm vilken risknivå som kvarstår efter att era kontroller har tillämpats.
+                                </p>
+                                <p>
+                                    Gör en ny S×K-bedömning där ni visar hur era kontroller sänker sannolikheten för att ett utnyttjande lyckas.
+                                </p>
+                                <p>
+                                    <strong>Skriftlig motivering:</strong> Länsstyrelsen underkänner dokument som bara visar en siffra eller matris. Ni måste i fritext skriftligen motivera varför ni anser att restrisken har sjunkit (eller varför den ligger kvar på samma nivå) och vad detta innebär för er riskaptit.
+                                </p>
+
+                                <h3>Konkret exempel</h3>
+                                <div class="risk-guide-example">
+                                    <h4>1. Beskrivning av tjänsten (Bokslut)</h4>
+                                    <p>
+                                        Byrån sammanställer, kvalitetssäkrar och rapporterar ekonomisk information för våra kunder vid räkenskapsårets slut. Tjänsten omfattar upprättande av årsbokslut och periodbokslut utifrån löpande redovisning (som antingen har utförts av oss själva, av kunden själv eller av en extern part).
+                                    </p>
+
+                                    <h4>2. Inneboende risk (Hot, Modus &amp; Sårbarhet)</h4>
+                                    <ul>
+                                        <li><strong>Hot och tillvägagångssätt (Penningtvätt):</strong> Kriminella aktörer kan försöka använda bokslutstjänsten för att ”legitimera” och tvätta svarta pengar som har smusslats in i den löpande bokföringen under året. Detta görs typiskt genom osanna bokslutsdispositioner, fiktiva värderingar av lagertillgångar, felaktigt upptagna skulder eller räntefria lån från närstående/fysiska personer utan affärsmässig grund, i syfte att ge företaget en fin fasad och försvåra spårbarheten.</li>
+                                        <li><strong>Hot och tillvägagångssätt (Terrorfinansiering):</strong> Det finns en hypotetisk risk att fiktiva periodiseringar eller räntekostnader används för att dölja uttag av medel som ska finansiera extremistiska nätverk eller skickas utomlands.</li>
+                                        <li><strong>Sårbarheter:</strong> Bokslutet baseras på information från den löpande bokföringen. Om kunden själv har skött bokföringen, eller om en extern part har gjort det, har vi begränsad insyn i de dagliga transaktionerna. Sårbarheten ökar vid komplexa bolagsstrukturer eller när kunden lämnar in material i sista sekund under extrem tidsnöd.</li>
+                                    </ul>
+
+                                    <h4>3. Värdering av inneboende risk (S×K)</h4>
+                                    <ul>
+                                        <li>Sannolikhet: 3 (Kriminella riktar aktivt in sig på att få sina bokslut godkända av auktoriserade byråer för att vinna trovärdighet).</li>
+                                        <li>Konsekvens: 4 (Goda bokslut ger kriminella en fasad som kan användas för att söka stora banklån eller delta i offentliga upphandlingar).</li>
+                                        <li><strong>Inneboende risknivå: 12 (Förhöjd risk)</strong></li>
+                                    </ul>
+
+                                    <h4>4. Riskreducerande åtgärder och kontroller</h4>
+                                    <p>
+                                        För att reducera risken tillämpar byrån följande strikta kontroller vid bokslutsarbete:
+                                    </p>
+                                    <ul>
+                                        <li><strong>Rimlighetsbedömning:</strong> Vi gör alltid en grundlig rimlighetsanalys av omsättning, bruttomarginal och förändringar i resultat jämfört med föregående år och branschsnitt.</li>
+                                        <li><strong>Kontroll av ingångsvärden och skulder:</strong> Lån från fysiska personer granskas alltid mot låneavtal och kontoutdrag. Vi verifierar att långivarens identitet är känd.</li>
+                                        <li><strong>Lagerkontroll:</strong> Vid misstanke om felaktiga lagervärden kräver vi in fysiska eller virtuella inventeringsunderlag.</li>
+                                        <li><strong>Strikt policy mot tidsnöd:</strong> Vi accepterar inte att upprätta bokslut under extrem, omotiverad tidsnöd utan att kundens riskprofil omedelbart omprövas.</li>
+                                        <li><strong>Utvärdering:</strong> Centralt funktionsansvarig genomför stickprovskontroller på avslutade bokslutsfiler årligen för att säkerställa att kontrollerna efterlevts.</li>
+                                    </ul>
+
+                                    <h4>5. Residualrisk och skriftlig motivering</h4>
+                                    <ul>
+                                        <li>Sannolikhet efter åtgärder: 2 (Våra ingående rimlighetstester och strikta regler kring verifiering av skulder/lån gör det mycket svårt att dölja penningtvätt i bokslutet utan att det upptäcks).</li>
+                                        <li>Konsekvens efter åtgärder: 3 (Konsekvensen sänks något eftersom vi avbryter uppdraget och rapporterar till Finanspolisen om misstankar inte kan avfärdas, vilket hindrar kunden från att använda oss som fasad).</li>
+                                        <li><strong>Residualrisk: 6 (Normal risk)</strong></li>
+                                        <li><em>Motivering:</em> Tack vare att vi har full kontroll över arbetsprocessen, tillämpar god redovisningssed och systematiskt ifrågasätter avvikande bokslutsdispositioner, bedömer vi att risken för att byrån utnyttjas i bokslutsmomentet sänks till en kontrollerbar och acceptabel nivå som ryms inom vår fastställda riskaptit.</li>
+                                    </ul>
+                                </div>
+                                <p>
+                                    Här har byrån gjort en tydlig beskrivning av vad tjänsten innebär i deras verksamhet samt en analys av hur tjänsten skulle kunna användas för PT/TF. Man har även gjort en bedömning och motivering av hur stor sannolikheten och konsekvensen är.
+                                </p>
+                                <p>
+                                    Sedan har man specificerat vad byrån gör för att hantera dessa risker. Det är alltså bara här som byråns rutiner och åtgärder ska presenteras.
+                                </p>
+                                <p>
+                                    Slutligen – en bedömning av risken med tanke på de rutiner, åtgärder och kontroller byrån gör.
+                                </p>
+
+                                <h3>4 allvarliga fällor att undvika (lärdomar från Länsstyrelsens sanktionsbeslut)</h3>
+
+                                <h4>Fällan med ”Separation av risk och åtgärd”</h4>
+                                <p>
+                                    <strong>Felet:</strong> Att skriva ”Risken för löpande bokföring är låg eftersom vi kräver BankID på kunden och kontrollerar alla kvitton”.
+                                </p>
+                                <p>
+                                    <strong>Lösningen:</strong> Ni får inte nämna era kontroller när ni analyserar den inneboende risken. Skilj dem åt kirurgiskt. Inneboende risk beskriver faran i ett vakuum. Först i Steg 4 och 5 beskriver ni hur era kontroller sänker denna risk till en lägre residualrisk.
+                                </p>
+
+                                <h4>Fällan med ”Bara kryssrutor / Ingen analys” (Adners-fallet)</h4>
+                                <p>
+                                    <strong>Felet:</strong> Att bara klicka i riskklasser (t.ex. ”Låg risk”) i en matris eller svara på korta Ja/Nej-frågor med enstaka ord.
+                                </p>
+                                <p>
+                                    <strong>Lösningen:</strong> Länsstyrelsen kräver skriftliga, analyserande fritextmotiveringar. Ni måste förklara varför en tjänst har en viss risknivå och hur ni har resonerat.
+                                </p>
+
+                                <h4>Fällan med ”Rent återgivande av NRA” (Elite/Noyan/One-fallen)</h4>
+                                <p>
+                                    <strong>Felet:</strong> Att kopiera generella texter om risker direkt från den Nationella riskbedömningen (NRA) utan att koppla det till er egen byrå.
+                                </p>
+                                <p>
+                                    <strong>Lösningen:</strong> Förklara hur dessa branschomfattande tillvägagångssätt (modus) rent praktiskt utgör en risk i er verksamhet med era specifika kunder och system.
+                                </p>
+
+                                <h4>Fällan med ”Terrorfinansiering saknas” (JYS-fallet)</h4>
+                                <p>
+                                    <strong>Felet:</strong> Att glömma bort finansiering av terrorism eller bara nämna det i en förbifart i inledningen.
+                                </p>
+                                <p>
+                                    <strong>Lösningen:</strong> Skriv ett separat litet stycke om terrorfinansiering under analysen av varje enskild tjänst. Även om risken i Sverige ofta är låg, kräver tillsynsmyndigheten att ni analyserar möjligheten (t.ex. hur fiktiva underlag eller Swish-konton i löpande bokföring kan utgöra TF-kanaler).
+                                </p>
+
+                                <p class="risk-header-note">
+                                    ClientFlow ger stöd och mallar för riskbedömningen, men det är alltid byråns ansvar att anpassa
+                                    och komplettera innehållet utifrån den egna verksamheten. Inga digitala verktyg eller mallar kan garantera att alla
+                                    risker är upptäckta eller hanterade — se texterna som ett stöd, inte en garanti.
+                                </p>
                             </div>
-                            <p>
-                                Båda räknas som sannolikhet × konsekvens (S×K), på skalan 1–5 × 1–5. Sannolikhet = hur troligt är det att hotet realiseras, givet sårbarheterna. Konsekvens = hur allvarlig blir skadan om det sker. Produkten avgör risknivån: Låg, Normal, Förhöjd, Hög eller Oacceptabel.
-                            </p>
-                            <h3>Glöm inte finansiering av terrorism (TF)</h3>
-                            <p>
-                                Till skillnad från penningtvätt kräver TF inget förbrott — även helt legalt intjänade pengar kan utgöra TF om syftet är fel. Fråga er för varje tjänst: skulle den här kunna användas för att styra medel till någon som stödjer terrorverksamhet, oavsett om pengarna lämnar Sverige eller ej? Om TF-risken för en tjänst i huvudsak sammanfaller med penningtvättsanalysen ovan, ange det uttryckligen — annars beskriv den separat.
-                            </p>
-                            <p class="risk-header-note">
-                                ClientFlow ger stöd och mallar för riskbedömningen, men det är alltid byråns ansvar att anpassa
-                                och komplettera innehållet utifrån den egna verksamheten. Inga digitala verktyg eller mallar kan garantera att alla
-                                risker är upptäckta eller hanterade — se texterna som ett stöd, inte en garanti.
-                            </p>
-                        </div>
+                        </details>
                     </div>
                 </header>
 
