@@ -249,9 +249,14 @@
             'Sannolikhet (S) 1–5: 1 Mycket låg, 2 Låg, 3 Medel, 4 Hög, 5 Mycket hög.',
             'Konsekvens (K) 1–5: 1 Obetydlig, 2 Lindrig, 3 Kännbar, 4 Allvarlig, 5 Katastrofal.',
             'Risknivå = S×K: 1–4 Låg, 5–9 Normal, 10–15 Förhöjd, 16–19 Hög, 20–25 Oacceptabel.',
+            '3 = medel/kännbar — inte «lite förhöjt». Soft-default till S=2–3 och K=2–3 är fel när exponeringen, statistiken eller hoten visar konkret AML-risk.',
+            'Inneboende risk speglar exponering före kontroller. Soft-score inte inneboende bara för att residualen ska se lugn ut.',
+            'När byrån hanterar myndighetsansökan och betalningsuppgifter: inneboende ska normalt vara minst Förhöjd (S×K ≥ 10), t.ex. S=3 K=4 eller S=4 K=3 — inte Normal (3×3).',
             'Orden Låg/Normal/Förhöjd/Hög/Oacceptabel får BARA beskriva den beräknade risknivån (produkten), aldrig sannolikhet eller konsekvens ensamma.',
             'Exempel fel: S=3 K=3 (Normal) men motivering säger «sannolikheten är förhöjd» eller «konsekvensen är betydande».',
-            'Exempel rätt: «Sannolikheten bedöms till 3 (medel) eftersom … Konsekvensen bedöms till 3 (kännbar) eftersom … Inneboende risk blir därmed Normal (S×K 9).»'
+            'Exempel fel (undervärdering): ansökan + betalningsuppgifter utan rimlighetskontroll men S=3 K=3 (Normal) trots konkreta hot om felaktiga utbetalningar.',
+            'Exempel rätt (Normal): «Sannolikheten bedöms till 3 (medel) eftersom … Konsekvensen bedöms till 3 (kännbar) eftersom … Inneboende risk blir därmed Normal (S×K 9).»',
+            'Exempel rätt (Förhöjd): «Sannolikheten bedöms till 3 (medel) eftersom … Konsekvensen bedöms till 4 (allvarlig) eftersom felaktiga utbetalningar kan legitimera medel. Inneboende risk blir därmed Förhöjd (S×K 12).»'
         ].join('\n');
     }
 
