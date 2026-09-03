@@ -422,7 +422,7 @@ class RiskAssessmentManager {
                     ${row('PEP eller PEP-anhörig', expo.pep)}
                     ${row('Högriskland', expo.hogrisksland)}
                 </div>
-                ${notes.length ? `<p class="tjanst-mall-q-help">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
+                ${notes.length ? `<p class="tjanst-mall-stats-note">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
         } catch (err) {
             host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
         }
@@ -1100,8 +1100,12 @@ class RiskAssessmentManager {
             return;
         }
         bar.hidden = false;
+        const primary = present.includes('oversikt') ? 'oversikt' : present[0];
         bar.innerHTML = `
-            <p>AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}.</p>
+            <p class="tjanst-ai-summary-text">AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}</p>
+            <button type="button" class="tjanst-ai-summary-goto" data-goto-tab="${primary}" title="Gå till ${labels[primary]}" aria-label="Gå till ${labels[primary]}">
+                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </button>
             <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all-tabs>Avfärda alla</button>
         `;
         bar.onclick = (ev) => {

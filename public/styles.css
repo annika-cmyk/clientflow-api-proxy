@@ -14890,7 +14890,7 @@ h5.ar-subsection-title {
     box-sizing: border-box;
 }
 .modal-content.tjanst-modal-content {
-    max-width: none;
+    max-width: min(1480px, 98.5vw);
     width: min(1480px, 98.5vw);
     height: calc(100dvh - 0.75rem);
     max-height: calc(100dvh - 0.75rem);
@@ -14898,6 +14898,7 @@ h5.ar-subsection-title {
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+    box-sizing: border-box;
 }
 .tjanst-modal-content .modal-header {
     flex-shrink: 0;
@@ -14961,11 +14962,64 @@ h5.ar-subsection-title {
     padding: 0;
     overflow: hidden;
 }
-#tjanst-ai-summary {
+#tjanst-ai-summary.tjanst-ai-summary,
+.tjanst-ai-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    box-sizing: border-box;
     flex-shrink: 0;
-    margin-left: 1.6rem;
-    margin-right: 1.6rem;
-    margin-top: 0.85rem;
+    margin: 0.55rem 0 0;
+    padding: 0.35rem 0.55rem 0.35rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--accent, #13505c) 22%, var(--line, #e8eaee));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent, #13505c) 10%, var(--panel-2, #fafbfc));
+}
+#tjanst-ai-summary.tjanst-ai-summary[hidden],
+.tjanst-ai-summary[hidden] {
+    display: none;
+}
+.tjanst-ai-summary .tjanst-ai-summary-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    font-weight: 600;
+    color: var(--accent, #13505c);
+}
+.tjanst-ai-summary .tjanst-ai-summary-text a {
+    color: var(--accent, #13505c);
+    font-weight: 750;
+    text-decoration: underline;
+    text-underline-offset: 0.12em;
+}
+.tjanst-ai-summary .tjanst-ai-summary-goto {
+    appearance: none;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--accent, #13505c) 14%, transparent);
+    color: var(--accent, #13505c);
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: background 120ms ease, color 120ms ease;
+}
+.tjanst-ai-summary .tjanst-ai-summary-goto:hover {
+    background: color-mix(in srgb, var(--accent, #13505c) 22%, transparent);
+    color: var(--accent-dark, #0d3a43);
+}
+.tjanst-ai-summary .btn {
+    flex-shrink: 0;
+    margin: 0;
 }
 .tjanst-modal-identity {
     display: flex;
@@ -15053,6 +15107,12 @@ h5.ar-subsection-title {
 }
 .tjanst-modal-utforande {
     margin-bottom: 0;
+    min-width: 0;
+    max-width: 100%;
+}
+.tjanst-modal-utforande-body {
+    min-width: 0;
+    max-width: 100%;
 }
 .tjanst-modal-utforande-head .tjanst-mall-group-title {
     margin-top: 0;
@@ -15293,15 +15353,18 @@ h5.ar-subsection-title {
 }
 .tjanst-modal-body {
     flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
     padding: 1.15rem 1.6rem 1.25rem;
     display: flex;
     flex-direction: column;
     background: var(--app-bg, #f5f6f8);
+    box-sizing: border-box;
 }
 .tjanst-panel.is-active {
     flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -15309,8 +15372,9 @@ h5.ar-subsection-title {
 }
 .tjanst-panel-scroll {
     flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
-    overflow-x: hidden;
+    overflow-x: auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -15437,13 +15501,13 @@ h5.ar-subsection-title {
 .ai-review-summary[hidden] {
     display: none;
 }
-.ai-review-summary p {
+.ai-review-summary:not(.tjanst-ai-summary) p {
     margin: 0;
     font-size: 0.86rem;
     line-height: 1.45;
     color: #134e4a;
 }
-.ai-review-summary a {
+.ai-review-summary:not(.tjanst-ai-summary) a {
     color: #13505c;
     font-weight: 700;
 }
@@ -17364,6 +17428,9 @@ h5.ar-subsection-title {
     border: 1px solid var(--border, #dcdfe5);
     border-radius: var(--radius, 12px);
     background: var(--card-bg, #fff);
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .tjanst-modal-utforande .tjanst-mall-q {
     padding: 1.15rem 1.25rem;
@@ -17386,12 +17453,15 @@ h5.ar-subsection-title {
     display: flex;
     flex-wrap: wrap;
     gap: 0.55rem;
+    min-width: 0;
+    max-width: 100%;
 }
 .tjanst-mall-chip {
     position: relative;
     display: inline-flex;
     align-items: center;
     margin: 0;
+    max-width: 100%;
     font-weight: 500;
     font-size: 0.82rem;
     line-height: 1.25;
@@ -17401,13 +17471,20 @@ h5.ar-subsection-title {
     border-radius: 999px;
     padding: 0.4rem 0.85rem;
     cursor: pointer;
+    box-sizing: border-box;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.tjanst-mall-chip span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 .tjanst-mall-chip input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
 }
-.tjanst-mall-chip:hover {
+.tjanst-mall-chip:hover:not(.is-selected):not(:has(input:checked)) {
+    background: var(--app-bg, #f5f6f8);
     border-color: var(--ink-3, #8b929d);
 }
 .tjanst-mall-chip:has(input:checked),
@@ -17439,6 +17516,9 @@ h5.ar-subsection-title {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .tjanst-mall-stats-title {
     margin: 0 0 0.55rem;
@@ -17454,16 +17534,34 @@ h5.ar-subsection-title {
 .tjanst-mall-stat-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem 1rem;
+    column-gap: 1.25rem;
+    row-gap: 0.55rem;
+    align-items: start;
 }
 .tjanst-mall-stat {
     display: flex;
     justify-content: space-between;
+    align-items: baseline;
     gap: 0.75rem;
+    min-width: 0;
     font-size: 0.8rem;
+    line-height: 1.35;
     color: #475569;
 }
+.tjanst-mall-stat span,
+.tjanst-mall-stat strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 .tjanst-mall-stat strong { color: #0f172a; }
+.tjanst-mall-stats-note {
+    margin: 0.7rem 0 0;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--line, #e8eaee);
+    color: var(--text, #5a626d);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
 .tjanst-mall-byra-antal {
     margin: -0.35rem 0 1rem;
 }
