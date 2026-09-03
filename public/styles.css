@@ -15196,38 +15196,61 @@ h5.ar-subsection-title {
     font-size: 0.92rem;
 }
 .tjanst-residual-feedback {
-    margin-top: 1.1rem;
-    padding-top: 0.9rem;
-    border-top: 1px dashed var(--line, #e8eaee);
+    flex-shrink: 0;
+    margin-top: 0.85rem;
+    padding: 0.9rem 1.05rem;
+    border: 1px solid color-mix(in srgb, var(--accent, #13505c) 18%, var(--line, #e8eaee));
+    border-radius: var(--radius, 12px);
+    background: color-mix(in srgb, var(--accent, #13505c) 8%, #fff);
+    box-sizing: border-box;
 }
 .tjanst-residual-feedback > label {
     display: block;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #475569;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #64748b;
     margin-bottom: 0.2rem;
 }
 .tjanst-residual-feedback .tjanst-panel-hint {
-    margin-bottom: 0.45rem;
+    margin: 0 0 0.55rem;
+    font-size: 0.78rem;
+    color: var(--text, #5a626d);
+    line-height: 1.4;
 }
 .tjanst-residual-feedback-row {
     display: flex;
-    gap: 0.5rem;
-    align-items: flex-start;
+    gap: 0.55rem;
+    align-items: stretch;
 }
 .tjanst-residual-feedback-row textarea {
-    flex: 1;
-    min-height: 2.6rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 2.75rem;
+    margin: 0;
     resize: vertical;
+    font: inherit;
     font-size: 0.9rem;
+    line-height: 1.4;
+    border: 1px solid #d7dee8;
+    border-radius: 10px;
+    padding: 0.55rem 0.75rem;
+    background: #fff;
+    box-sizing: border-box;
 }
 .tjanst-residual-feedback-row .btn {
     flex-shrink: 0;
-    margin-top: 0.15rem;
+    align-self: stretch;
+    margin: 0;
+    min-height: 2.75rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
 }
 .tjanst-residual-feedback-status {
-    margin: 0.4rem 0 0;
-    font-size: 0.82rem;
+    margin: 0.45rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
     color: #64748b;
 }
 .tjanst-residual-feedback-status.is-ok {
@@ -15235,6 +15258,16 @@ h5.ar-subsection-title {
 }
 .tjanst-residual-feedback-status.is-error {
     color: #b91c1c;
+}
+@media (max-width: 640px) {
+    .tjanst-residual-feedback-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .tjanst-residual-feedback-row .btn {
+        align-self: flex-end;
+        min-height: 2.25rem;
+    }
 }
 .tjanst-panel[data-tjanst-panel="hot"] #hot-list,
 .tjanst-panel[data-tjanst-panel="sarbarhet"] #sarbarhet-list,
