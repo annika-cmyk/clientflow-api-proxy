@@ -17072,17 +17072,6 @@ h5.ar-subsection-title {
 .tjanst-mall-card.is-inactive {
     background: #f8fafc;
 }
-.tjanst-mall-card.is-view-fragor,
-.tjanst-mall-card.is-view-analys {
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-}
-.tjanst-mall-card:not(.is-view-fragor):not(.is-view-analys) .tjanst-mall-body {
-    display: none;
-}
-.tjanst-mall-card.is-view-fragor .tjanst-mall-panel[data-panel="analys"],
-.tjanst-mall-card.is-view-analys .tjanst-mall-panel[data-panel="fragor"] {
-    display: none;
-}
 .tjanst-mall-toolbar {
     display: flex;
     flex-wrap: wrap;
