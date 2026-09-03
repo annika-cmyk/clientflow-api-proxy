@@ -16,9 +16,11 @@
 - Dåligt: rykte, förtroende, arbetsmiljö, effektivitet, kundnöjdhet, "ekonomiska förluster" som enda konsekvens, skattetillägg eller myndighetsböter som enda skada.
 - Fokusera på: felaktiga eller falska underlag, osanna fakturor, att transaktioner ges legitimitet, felaktiga utbetalningar eller skattereduktioner, byrån som legitimerande mellanled.
 - Typiska AML-hot för redovisningsbyråer (Länsstyrelsen): kontantbetalda fakturor, osanna fakturor, kapitaltillskott utan underlag, lån, utlandsbetalningar.
-- Prioritera de mest sannolika PT-huvudhoten. TF får nämnas försiktigt, inte som spekulativt huvudhot utan konkreta riskfaktorer i underlaget (t.ex. utlandsbetalning, högriskland).
-- Dåligt TF-huvudhot: "Falska ROT/RUT-tjänster kan deklareras för att flytta pengar till organisationer som finansierar terrorism."
-- Bra PT-huvudhot: "Felaktiga eller överdrivna ROT/RUT-underlag kan användas för att legitimera kostnader, betalningar eller skattereduktioner."
+- Förklara mekanismen konkret: felaktig uppgift/faktura/betalning/ansökan; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda.
+- Avfärda inte terrorismfinansiering bara för att tjänsten inte direkt avser en ideell organisation eller utlandsbetalning. Bedrägerier och felaktiga utbetalningar kan vara en finansieringskälla.
+- Dåligt: "Tjänsten kan användas för att tvätta pengar."
+- Dåligt (påhittad terrororg): "Falska ROT/RUT-tjänster kan deklareras för att flytta pengar till organisationer som finansierar terrorism."
+- Bra: "Oriktiga ROT-/RUT-ansökningar med överdriven arbetskostnad kan ge felaktiga utbetalningar från Skatteverket. Byrån som lämnar in uppgifterna ger underlaget legitimitet. Offentliga medel kan därefter tas ut eller föras vidare — relevant för både penningtvätt och terrorismfinansiering."
 - Bra: "Oriktiga eller överdrivna löneutbetalningar kan användas för att dölja eller legitimera brottsvinster."
 - Bra: "Anläggningstillgångar kan användas för att dölja eller legitimera medel."`;
 

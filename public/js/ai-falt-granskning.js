@@ -31,7 +31,7 @@
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
 - Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot).
-- Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, lägg till saknade hot (särskilt TF), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn.
+- Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, skriv om vaga hot till konkret mekanism (felaktig uppgift/faktura/betalning/ansökan; hur pengar kommer in, flyttas eller legitimeras; byråns roll; PT, TF eller båda), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn. Kräv inte ett separat TF-hot per tjänst. Avfärda inte TF bara för att tjänsten inte avser ideell organisation eller utlandsbetalning.
 - Kopiera inte rakt av. En lätt omskrivning räcker inte.
 - Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
 - Ifyllda fält: lägg en post i granskning.poster med andra=true. forslag ska vara SAMMA kompletta innehåll som i huvudfälten (hela listan, inte en kommentar eller en enstaka punkt).
