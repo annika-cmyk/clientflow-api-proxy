@@ -1273,9 +1273,10 @@ class RiskFactorsManager {
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (reviewMode) {
                 this.applyOvrigAiIfEmpty(prefix, befintligt, data);
-                const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
+                const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
-                    : Ai.ensureAnalysisPosters('ovrig', befintligt, data, []);
+                    : [];
+                const poster = Ai.ensureAnalysisPosters('ovrig', befintligt, data, basePoster);
                 const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
                 this.showNotification(changed
                     ? 'AI har lagt förslag under era fält. Jämför och kopiera in det ni vill använda. Du ansvarar för vad som sparas.'

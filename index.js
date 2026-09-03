@@ -23335,10 +23335,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"]${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet", "andringar": [ { "titel": "Hotets titel", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1-2 meningar: varför just denna rad ändras" } ] }
+      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "valfritt — servern lyfter kompletta huvudfält", "andringar": [ { "titel": "Hotets titel", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1-2 meningar: varför just denna rad ändras" } ] }
     ]
   }` : ''}
 }
+
+KOMPLETT SVAR (krav): Fyll alltid huvudfälten beskrivning, hot, sarbarheter, atgarder, S×K, residual och båda motiveringarna. Analysera inte bara Översikt — alla sektioner i tjänstmodalen ska ha innehåll i samma JSON-svar.
 
 ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 - hot: 2 (Låg), 3 (Normal), 3 (Förhöjd), 4 (Hög), 4 (Oacceptabel)

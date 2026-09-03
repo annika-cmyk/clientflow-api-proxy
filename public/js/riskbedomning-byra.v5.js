@@ -2151,14 +2151,16 @@ class RiskAssessmentManager {
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
             if (reviewMode) {
-                this.applyTjanstAiIfEmpty(befintligt, data);
-                const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
+                const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
-                    : Ai.ensureAnalysisPosters('tjanst', befintligt, data, []);
+                    : [];
+                // Alltid lyft kompletta huvudfält till posters för alla sektioner — även tomma
+                // fält och även om modellen bara skickade Översikt i granskning.poster.
+                const poster = Ai.ensureAnalysisPosters('tjanst', befintligt, data, basePoster);
                 const changed = this.paintInlineTjanstAi(poster, befintligt);
                 this.showNotification(changed
                     ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
-                    : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
+                    : 'Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyTjanstAiAll(data);
                 this.setTjanstTab('hot');
