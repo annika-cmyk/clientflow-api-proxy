@@ -216,11 +216,12 @@
                     <div id="tjanst-utforande-katalog" class="tjanst-utforande-katalog">
                         <p class="tjanst-panel-hint">Laddar tjänstemallar…</p>
                     </div>
+                    <div id="atgard-typ-granskning" class="atgard-typ-granskning" hidden></div>
                 </div>
             </section>
 
-            <!-- Risk Assessment List -->
-            <section class="risk-assessment-section">
+            <!-- Dold lista: JS använder filtren och risk-list, men innehållet visas i katalogen ovan. -->
+            <section class="risk-assessment-section" hidden>
                 <div class="container">
                     <div class="risk-list-header">
                         <h3>Riskbedömningar</h3>
@@ -276,8 +277,6 @@
                             </button>
                         </div>
                     </div>
-
-                    <div id="atgard-typ-granskning" class="atgard-typ-granskning" hidden></div>
 
                     <div id="risk-list" class="risk-list">
                         <!-- Risk items will be loaded here -->
@@ -498,6 +497,6 @@
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
     <script src="js/tjanst-utforande-mallar.js?v=1" defer></script>
     <script src="js/ai-falt-granskning.js?v=12" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=35" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=36" defer></script>
 </body>
 </html>

@@ -110,7 +110,9 @@ class RiskAssessmentManager {
             });
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
                 btn.addEventListener('click', () => {
-                    this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '');
+                    this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '', {
+                        ai: btn.hasAttribute('data-open-analys-ai')
+                    });
                 });
             });
         });
@@ -120,16 +122,16 @@ class RiskAssessmentManager {
         return (this.risks || []).find((r) => (r.fields && r.fields['Task Name']) === namn) || null;
     }
 
-    openTjanstAnalysFromCard(mallId, namn) {
+    openTjanstAnalysFromCard(mallId, namn, opts = {}) {
         this.utforandeViews[mallId] = 'analys';
         const existing = this.findTjanstRiskByName(namn);
-        if (existing) {
-            this.openEditModal(existing.id);
-            return;
+        if (existing) this.openEditModal(existing.id);
+        else {
+            this.openAddModal();
+            const nameEl = document.getElementById('tjanst-name');
+            if (nameEl) nameEl.value = namn;
         }
-        this.openAddModal();
-        const nameEl = document.getElementById('tjanst-name');
-        if (nameEl) nameEl.value = namn;
+        if (opts.ai) this.generateAiSuggestion();
     }
 
     renderUtforandeRiskMeta(risk) {
@@ -178,9 +180,10 @@ class RiskAssessmentManager {
                     <button type="button" class="btn btn-primary" data-open-analys>Redigera riskbedömning</button>
                 </div>`
             : `<div class="tjanst-mall-empty">
-                    <p>Ingen riskbedömning skapad ännu. Svara på utförandefrågorna och skapa sedan analysen — AI:n bedömer hot, sårbarheter och residualrisk utifrån hur ni utför tjänsten.</p>
-                    <div class="tjanst-mall-actions">
-                        <button type="button" class="btn btn-primary" data-open-analys>Skapa riskbedömning</button>
+                    <p>Ingen riskbedömning ännu. Välj hur ni vill ta fram den.</p>
+                    <div class="tjanst-mall-choice">
+                        <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
+                        <button type="button" class="btn btn-secondary" data-open-analys>Hantera manuellt</button>
                     </div>
                 </div>`;
         return `
@@ -1930,8 +1933,8 @@ class RiskAssessmentManager {
         }
 
         const btn = document.getElementById('ai-suggest-btn');
-        const label = btn.querySelector('.ai-btn-label');
-        const originalLabel = label.textContent;
+        const label = btn && btn.querySelector('.ai-btn-label');
+        const originalLabel = (label && label.textContent) || 'Generera AI-förslag';
         const Ai = window.AiFaltGranskning;
         const poang = this.collectRiskPoang();
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
@@ -1950,9 +1953,11 @@ class RiskAssessmentManager {
             motiveringResidual: poang.motivering_residual_risk || ''
         };
         const reviewMode = !!(Ai && Ai.hasExistingTjanstContent(befintligt));
-        btn.disabled = true;
-        btn.classList.add('loading');
-        label.textContent = reviewMode ? 'Analyserar…' : 'Genererar…';
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('loading');
+        }
+        if (label) label.textContent = reviewMode ? 'Analyserar…' : 'Genererar…';
 
         try {
             const byraProfil = await this.fetchByraProfil();
@@ -1999,9 +2004,11 @@ class RiskAssessmentManager {
             console.error('AI-förslag fel:', error);
             this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
         } finally {
-            btn.disabled = false;
-            btn.classList.remove('loading');
-            label.textContent = originalLabel;
+            if (btn) {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            }
+            if (label) label.textContent = originalLabel;
         }
     }
 
