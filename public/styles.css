@@ -17285,13 +17285,19 @@ h5.ar-subsection-title {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    margin-top: 0.85rem;
+    margin-top: 1.5rem;
 }
 .tjanst-mall-panel[data-panel="analys"] .risk-content-section {
-    margin: 0 0 0.85rem;
+    margin: 0;
+    padding: 1.85rem 0 1.9rem;
+    border-top: 1px solid #e8eef3;
+}
+.tjanst-mall-panel[data-panel="analys"] .risk-content-section:first-child {
+    padding-top: 0.35rem;
+    border-top: none;
 }
 .tjanst-mall-panel[data-panel="analys"] .risk-content-section:last-child {
-    margin-bottom: 0;
+    padding-bottom: 0.25rem;
 }
 .evidens-badge,
 .evidens-tag {

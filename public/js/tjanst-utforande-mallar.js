@@ -94,229 +94,202 @@
       id: id,
       name: name,
       aiQuestionSupport: true,
+      replaceBaseQuestions: true,
       questions: questions || []
     }, extra || {});
   }
 
+  function omTjanstenUtfor(id, extra) {
+    return Object.assign({ showWhen: { id: id, any: ['Ja', 'I vissa uppdrag'] } }, extra || {});
+  }
+
   const SERVICE_TEMPLATES = [
     spec('rot-rut', 'ROT-/RUT-administration', [
-      q('rotVad', 'Vad gör byrån normalt i ROT-/RUT-processen?', 'multi', [
-        'Kontrollerar kundens underlag',
-        'Beräknar ROT/RUT-belopp',
-        'Upprättar ansökan',
-        'Skickar in ansökan',
-        'Följer upp beslut/utbetalning',
-        'Hjälper till vid korrigering eller avslag',
-        'Annat'
-      ]),
-      q('rotBedomerKrav', 'Vem bedömer normalt om arbetet uppfyller ROT-/RUT-kraven?', 'single', [
-        'Kunden',
-        'Byrån',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('rotStammerOverens', 'Kontrollerar byrån att faktura, betalning och underlag stämmer överens innan ansökan skickas?', 'single', [
-        'Ja, alltid',
-        'Ja, vid större eller avvikande ärenden',
-        'Ja, stickprovsvis',
-        'Nej, kunden ansvarar för detta',
-        'Varierar mellan kunder'
-      ]),
-      q('rotUtanVerifiering', 'Förekommer det att byrån skickar in ROT-/RUT-ansökningar baserat på uppgifter som kunden lämnat utan att byrån kan verifiera dem?', 'single', [
+      q('rotHjalper', 'Hjälper byrån kunden att hantera ROT-/RUT-underlag eller ansökningar?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Vet ej'
+        'I vissa uppdrag'
       ]),
-      q('rotAvslag', 'Hur hanteras avslag, återkrav eller korrigeringar från Skatteverket?', 'multi', [
-        'Kunden hanterar detta själv',
-        'Byrån hjälper till att rätta',
-        'Byrån utreder orsaken innan ny ansökan',
-        'Det finns ingen särskild rutin',
-        'Har inte förekommit',
+      q('rotUppgifter', 'Vilka uppgifter hanterar byrån normalt inom ROT/RUT?', 'multi', [
+        'Kundens personuppgifter',
+        'Fastighets-/bostadsuppgifter',
+        'Fakturaunderlag',
+        'Arbetskostnad/materialkostnad',
+        'Ansökan till Skatteverket',
+        'Betalningsuppgifter',
         'Annat'
-      ])
+      ], omTjanstenUtfor('rotHjalper')),
+      q('rotRimlighet', 'Kontrolleras att ROT-/RUT-underlaget verkar rimligt?', 'single', [
+        'Ja, normalt',
+        'Ja, vid avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('rotHjalper')),
+      q('rotOklar', 'Hanteras fall där arbetet, kunden eller betalningen verkar oklar?', 'multi', [
+        'Kunden får komplettera',
+        'Underlaget dokumenteras',
+        'Byrån gör rimlighetsbedömning',
+        'Ansvarig granskar',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('rotHjalper'))
     ], { description: 'Administration av skattereduktioner för ROT och RUT.' }),
     spec('lopande-bokforing', 'Löpande bokföring', [
-      q('bokfDelar', 'Vilka delar ingår normalt i den löpande bokföringen?', 'multi', [
-        'Kundfakturor',
-        'Leverantörsfakturor',
-        'Kvitton och utlägg',
-        'Bankhändelser',
-        'Moms',
-        'Lönerelaterade bokningar',
-        'Periodiseringar',
-        'Avstämningar',
+      q('bokfMaterialFran', 'Vem lämnar normalt det bokföringsmaterial som byrån bokför?', 'multi', [
+        'Kunden',
+        'Byrån hämtar från system/bank',
+        'Annan part'
+      ]),
+      q('underlagKanal', 'Hur får byrån normalt materialet?', 'multi', [
+        'Bokföringssystem/app',
+        'Kundportal',
+        'E-post',
+        'Bankintegration',
+        'Fysiskt material',
         'Annat'
       ]),
-      q('bokfUnderlagKund', 'Bokför byrån normalt utifrån underlag som kunden själv laddar upp eller skickar in?', 'single', [
-        'Ja, huvudsakligen',
-        'Nej, byrån hämtar mest från system/integrationer',
-        'Både och',
-        'Varierar mellan kunder'
+      q('bokfKontanter', 'Förekommer kontanta betalningar eller kontanta dagskassor hos kunder som använder tjänsten?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
       ]),
-      q('bokfOtydligt', 'Hur hanteras underlag som är otydliga, saknas eller inte verkar höra till verksamheten?', 'multi', [
-        'Kunden kontaktas',
-        'Underlaget bokförs inte förrän det är utrett',
-        'Ansvarig konsult granskar',
-        'Avvikelsen dokumenteras',
-        'Det hanteras från fall till fall',
-        'Ingen särskild rutin'
-      ]),
-      q('bokfOvanliga', 'Kontrolleras större, ovanliga eller verksamhetsfrämmande transaktioner innan de bokförs?', 'single', [
-        'Ja, normalt',
-        'Ja, vid högriskkunder eller större belopp',
-        'Ibland',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('bokfKontanter', 'Förekommer kunder där byrån bokför kontanta intäkter, dagskassor eller många manuella underlag?', 'single', [
+      q('bokfSvartBedoma', 'Förekommer fakturor eller underlag som byrån inte enkelt kan bedöma rimligheten i?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Vet ej/systemdata används'
+        'I vissa uppdrag'
+      ]),
+      q('bokfOtydligt', 'Hur hanteras oklara eller avvikande transaktioner?', 'multi', [
+        'Kunden får komplettera',
+        'Transaktionen dokumenteras',
+        'Byrån gör rimlighetsbedömning',
+        'Ansvarig granskar',
+        'Uppdraget eskaleras vid misstanke',
+        'Ingen särskild rutin'
+      ]),
+      q('bokfUtland', 'Förekommer utlandsbetalningar eller utländska motparter i bokföringen?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
       ])
     ]),
     spec('anlaggningsregister', 'Anläggningsregister och avskrivningar', [
-      q('anlVad', 'Vad ingår normalt?', 'multi', [
-        'Registrera nya anläggningstillgångar',
-        'Beräkna avskrivningar',
-        'Stämma av anläggningsregister mot bokföring',
-        'Hantera försäljning/utrangering',
-        'Bedöma nedskrivningsbehov',
+      q('anlUpprattar', 'Upprättar eller uppdaterar byrån anläggningsregister åt kunden?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('anlTillgangar', 'Vilka typer av tillgångar hanteras normalt?', 'multi', [
+        'Maskiner/inventarier',
+        'Fordon',
+        'Fastigheter/byggnader',
+        'Immateriella tillgångar',
         'Annat'
-      ]),
-      q('anlInfo', 'Vem lämnar normalt information om inköp, försäljning eller utrangering av tillgångar?', 'single', [
-        'Kunden',
-        'Byrån utifrån bokföringen',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('anlUnderlag', 'Kontrollerar byrån större inköp av tillgångar mot faktura, avtal eller annat underlag?', 'single', [
+      ], omTjanstenUtfor('anlUpprattar')),
+      q('anlKunduppgifter', 'Behöver kunden normalt lämna uppgifter om inköp, försäljning eller utrangering av tillgångar?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('anlUpprattar')),
+      q('anlUnderlag', 'Kontrolleras större inköp eller försäljningar av tillgångar mot underlag?', 'single', [
         'Ja, normalt',
         'Ja, vid större belopp',
-        'Stickprovsvis',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('anlRimlighet', 'Kontrolleras att större tillgångar verkar rimliga i förhållande till kundens verksamhet?', 'single', [
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('anlUpprattar')),
+      q('anlNarstaende', 'Hanteras tillgångar med koppling till ägare, närstående eller koncernbolag?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
-      ])
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('anlUpprattar'))
     ]),
     spec('kontoavstamningar', 'Kontoavstämningar och periodavstämningar', [
-      q('avstVilka', 'Vilka avstämningar gör byrån normalt?', 'multi', [
+      q('avstVilka', 'Vilka konton/poster stämmer byrån normalt av?', 'multi', [
         'Bank',
-        'Skattekonto',
-        'Moms',
-        'Kundreskontra',
-        'Leverantörsreskontra',
-        'Löner',
         'Kassa',
-        'Balanskonton',
+        'Kundfordringar',
+        'Leverantörsskulder',
+        'Skattekonto',
+        'Lån',
+        'Ägarkonton',
         'Annat'
       ]),
-      q('avstHurOfta', 'Hur ofta görs avstämningar normalt?', 'single', [
-        'Månadsvis',
-        'Kvartalsvis',
-        'Årligen',
-        'Vid bokslut',
-        'Vid behov',
-        'Varierar mellan kunder'
+      q('avstDifferensKontroll', 'Kontrolleras differenser eller poster utan tydligt underlag?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp',
+        'Nej, normalt inte'
       ]),
-      q('avstDifferens', 'Hur hanteras differenser eller poster som inte går att stämma av?', 'multi', [
-        'Kunden kontaktas',
-        'Differensen utreds av byrån',
-        'Differensen bokas om efter bedömning',
-        'Ansvarig konsult granskar',
-        'Dokumenteras i arbetsmaterial',
-        'Ingen särskild rutin',
-        'Annat'
-      ]),
-      q('avstGrans', 'Finns beloppsgräns eller annan praktisk gräns för när differenser måste utredas vidare?', 'single', [
+      q('avstUtland', 'Förekommer avstämning av konton med utlandsbetalningar eller utländska motparter?', 'single', [
         'Ja',
         'Nej',
-        'Informellt/från fall till fall',
-        'Varierar mellan kunder'
+        'I vissa uppdrag'
+      ]),
+      q('avstDifferens', 'Hur hanteras oförklarade differenser?', 'multi', [
+        'Kunden får komplettera',
+        'Differensen dokumenteras',
+        'Ansvarig granskar',
+        'Posten rättas',
+        'Ingen särskild rutin'
       ])
     ]),
     spec('kontrollbalansrakning', 'Kontrollbalansräkning', [
-      q('kbrNar', 'När upprättar byrån normalt kontrollbalansräkning?', 'multi', [
-        'När kunden begär det',
-        'När byrån uppmärksammar kapitalbrist',
-        'Efter dialog med revisor',
-        'Vid rekonstruktion/ekonomiska problem',
-        'Annat'
-      ]),
-      q('kbrUnderlag', 'Vilket underlag används normalt?', 'multi', [
-        'Kundens löpande bokföring',
-        'Bokslutsunderlag',
-        'Kundens egna värderingar',
-        'Värderingsintyg',
-        'Avtal eller externa handlingar',
-        'Annat'
-      ]),
-      q('kbrEgnaVarden', 'Förekommer det att kunden lämnar egna uppskattningar eller värderingar som byrån inte kan verifiera fullt ut?', 'single', [
+      q('kbrUpprattar', 'Upprättar byrån kontrollbalansräkning åt kunder?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Vet ej'
+        'I vissa uppdrag'
       ]),
-      q('kbrJusteringar', 'Hur hanteras större värderingar eller justeringar i kontrollbalansräkningen?', 'multi', [
-        'Kunden får lämna skriftlig förklaring',
-        'Externt underlag begärs',
-        'Ansvarig konsult granskar',
-        'Byrån avstår om underlaget är otillräckligt',
-        'Det hanteras från fall till fall',
-        'Ingen särskild rutin'
-      ]),
-      q('kbrExtra', 'Sker extra granskning innan kontrollbalansräkningen lämnas till kunden?', 'single', [
-        'Ja, alltid',
-        'Ja, vid större eller osäkra värden',
+      q('kbrUppgifterFran', 'Vem tar normalt fram uppgifterna som kontrollbalansräkningen bygger på?', 'multi', [
+        'Byrån',
+        'Kunden',
+        'Annan redovisningsbyrå/konsult',
+        'Revisor'
+      ], omTjanstenUtfor('kbrUpprattar')),
+      q('kbrKundvarden', 'Förekommer värderingar eller justeringar som bygger på kundens uppgifter?', 'single', [
+        'Ja',
         'Nej',
-        'Varierar mellan kunder'
-      ])
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('kbrUpprattar')),
+      q('kbrKapital', 'Kontrolleras större kapitaltillskott, ägarinsättningar eller lån i samband med kontrollbalansräkning?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('kbrUpprattar')),
+      q('kbrOklar', 'Hur hanteras oklara uppgifter?', 'multi', [
+        'Kunden får komplettera',
+        'Underlag krävs',
+        'Ansvarig granskar',
+        'Uppgiften dokumenteras',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('kbrUpprattar'))
     ]),
     spec('kundfakturering', 'Kundfakturering och kundreskontra', [
-      q('kfVad', 'Vad gör byrån normalt?', 'multi', [
-        'Skapar kundfakturor',
-        'Skickar kundfakturor',
-        'Bokför kundfakturor',
-        'Följer upp betalningar',
-        'Skickar påminnelser',
-        'Stämmer av kundreskontra',
-        'Hanterar kreditfakturor',
+      q('kfHanterar', 'Hanterar byrån kundreskontra åt kunden?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('kfVad', 'Vilka moment ingår normalt?', 'multi', [
+        'Registrera kundfakturor',
+        'Matcha inbetalningar',
+        'Påminnelser/krav',
+        'Bedöma obetalda kundfordringar',
         'Annat'
-      ]),
-      q('kfBestammer', 'Vem bestämmer normalt vad som ska faktureras, till vem och med vilket belopp?', 'single', [
-        'Kunden',
-        'Byrån utifrån avtal/tidrapporter/underlag',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('kfUtanGodkannande', 'Kan byrån skapa eller ändra kundfakturor utan att kunden godkänner varje faktura?', 'single', [
+      ], omTjanstenUtfor('kfHanterar')),
+      q('kfKontantAnnan', 'Förekommer kontantbetalningar eller betalningar från annan än fakturamottagaren?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
-      ]),
-      q('kfKredit', 'Kontrolleras kreditfakturor, makuleringar eller ovanligt stora fakturor särskilt?', 'single', [
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('kfHanterar')),
+      q('kfOvanliga', 'Kontrolleras större eller ovanliga kundfakturor/inbetalningar?', 'single', [
         'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('kfUtland', 'Förekommer fakturering till utlandet eller till närstående bolag inom tjänsten?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa fall',
-        'Vet ej/systemdata används'
-      ])
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('kfHanterar')),
+      q('kfAvvikelse', 'Hur hanteras betalningar som inte stämmer med faktura eller kund?', 'multi', [
+        'Kunden får förklara',
+        'Underlag sparas',
+        'Posten utreds',
+        'Ansvarig granskar',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('kfHanterar'))
     ]),
     spec('bokslut', 'Bokslut', [
       q('bsLopandeBokforing', 'Vem har normalt skött den löpande bokföringen som bokslutet bygger på?', 'multi', [
@@ -378,294 +351,286 @@
       ])
     ], { replaceBaseQuestions: true }),
     spec('momsredovisning', 'Momsredovisning', [
-      q('momsVad', 'Vad gör byrån normalt i momsredovisningen?', 'multi', [
-        'Tar fram momsrapport',
-        'Kontrollerar momsrapport',
-        'Lämnar in momsdeklaration',
-        'Hanterar rättelser',
-        'Hanterar EU-handel/import/export',
-        'Hanterar omvänd moms',
-        'Annat'
-      ]),
-      q('momsAvdrag', 'Kontrolleras större momsavdrag eller ovanliga momsposter innan redovisning?', 'single', [
-        'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
-        'Stickprovsvis',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('momsEu', 'Förekommer kunder med EU-handel, import/export eller omvänd skattskyldighet?', 'single', [
-        'Ja',
+      q('momsGor', 'Upprättar eller lämnar byrån momsredovisning åt kunden?', 'single', [
+        'Ja, upprättar',
+        'Ja, lämnar in',
         'Nej',
-        'I vissa fall',
-        'Vet ej/systemdata används'
+        'I vissa uppdrag'
       ]),
-      q('momsDifferens', 'Hur hanteras differenser mellan bokföring, momsrapport och tidigare perioder?', 'multi', [
-        'Differensen utreds',
-        'Kunden kontaktas',
-        'Rättelse görs vid behov',
-        'Ansvarig konsult granskar',
-        'Det hanteras från fall till fall',
+      q('momsOvanliga', 'Kontrolleras större eller ovanliga momsbelopp?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ], { showWhen: { id: 'momsGor', any: ['Ja, upprättar', 'Ja, lämnar in', 'I vissa uppdrag'] } }),
+      q('momsEu', 'Förekommer EU-handel, import/export eller omvänd skattskyldighet hos kunder som använder tjänsten?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
+      ], { showWhen: { id: 'momsGor', any: ['Ja, upprättar', 'Ja, lämnar in', 'I vissa uppdrag'] } }),
+      q('momsAvdrag', 'Kontrolleras fakturor eller transaktioner som ger större momsavdrag?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp',
+        'Nej, normalt inte'
+      ], { showWhen: { id: 'momsGor', any: ['Ja, upprättar', 'Ja, lämnar in', 'I vissa uppdrag'] } }),
+      q('momsOklar', 'Hur hanteras oklar momsbehandling?', 'multi', [
+        'Kunden får komplettera',
+        'Byrån gör rimlighetsbedömning',
+        'Ansvarig granskar',
+        'Fråga ställs till Skatteverket/extern expert',
         'Ingen särskild rutin'
-      ])
+      ], { showWhen: { id: 'momsGor', any: ['Ja, upprättar', 'Ja, lämnar in', 'I vissa uppdrag'] } })
     ]),
     spec('deklarationer', 'Deklarationer', [
-      q('dekVilka', 'Vilka deklarationer hjälper byrån normalt till med?', 'multi', [
-        'Inkomstdeklaration aktiebolag',
-        'Inkomstdeklaration enskild firma',
-        'Inkomstdeklaration fysisk person/företagare',
-        'K10',
-        'NE-bilaga',
-        'Skattebilagor',
+      q('dekVilka', 'Vilka deklarationer hanterar byrån normalt?', 'multi', [
+        'Inkomstdeklaration företag',
+        'Inkomstdeklaration privatperson',
+        'Momsdeklaration',
+        'Arbetsgivardeklaration',
         'Annat'
       ]),
-      q('dekEgetUnderlag', 'Bygger deklarationen normalt på bokföring/bokslut som byrån själv har tagit fram?', 'single', [
-        'Ja, huvudsakligen',
-        'Nej, kunden/annan part lämnar huvudsakligen uppgifter',
-        'Både och',
-        'Varierar mellan kunder'
+      q('dekLamnarIn', 'Lämnar byrån normalt in deklaration som ombud?', 'single', [
+        'Ja',
+        'Nej, kunden lämnar in själv',
+        'I vissa uppdrag'
       ]),
-      q('dekAvdrag', 'Kontrolleras större avdrag, skattemässiga justeringar eller ovanliga uppgifter särskilt?', 'single', [
+      q('dekKunduppgifterKraver', 'Bygger deklarationen på uppgifter som kunden behöver lämna eller bekräfta?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('dekKunduppgifter', 'Vilka kunduppgifter förekommer normalt?', 'multi', [
+        'Privata inkomster/utgifter',
+        'Kapitalvinster/försäljningar',
+        'Lån eller ränteuppgifter',
+        'Utländska inkomster/tillgångar',
+        'Avdrag',
+        'Annat'
+      ]),
+      q('dekAvvikande', 'Kontrolleras större eller avvikande deklarationsposter?', 'single', [
         'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
       ]),
-      q('dekLamnarIn', 'Lämnar byrån normalt in deklarationen åt kunden?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
-      ]),
-      q('dekUtland', 'Förekommer deklarationer med utländska inkomster, tillgångar eller transaktioner?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa fall',
-        'Vet ej/systemdata används'
+      q('dekOklar', 'Hur hanteras uppgifter som inte kan styrkas?', 'multi', [
+        'Kunden får komplettera',
+        'Uppgiften dokumenteras',
+        'Byrån gör rimlighetsbedömning',
+        'Uppgiften tas inte med förrän den är utredd',
+        'Ingen särskild rutin'
       ])
     ]),
     spec('leverantorsfakturor', 'Leverantörsfakturor och leverantörsreskontra', [
-      q('lfVad', 'Vad gör byrån normalt?', 'multi', [
-        'Tar emot leverantörsfakturor',
-        'Registrerar leverantörsfakturor',
-        'Konterar leverantörsfakturor',
-        'Skapar betalningsförslag',
-        'Stämmer av leverantörsreskontra',
-        'Följer upp obetalda fakturor',
-        'Hanterar kreditfakturor',
-        'Annat'
-      ]),
-      q('lfGodkannande', 'Vem godkänner normalt leverantörsfakturor innan betalning eller bokföring?', 'single', [
-        'Kunden',
-        'Byrån',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('lfNyaLeverantorer', 'Kan byrån lägga upp nya leverantörer eller ändra leverantörers bankkonton i kundens system?', 'single', [
+      q('lfHanterar', 'Hanterar byrån leverantörsreskontra åt kunden?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
+        'I vissa uppdrag'
       ]),
-      q('lfKontrollNy', 'Kontrolleras nya leverantörer, ändrade bankkonton eller ovanliga betalningsmottagare särskilt?', 'single', [
+      q('lfVad', 'Vilka moment ingår normalt?', 'multi', [
+        'Registrera leverantörsfakturor',
+        'Matcha betalningar',
+        'Kontrollera obetalda fakturor',
+        'Förbereda betalningsunderlag',
+        'Annat'
+      ], omTjanstenUtfor('lfHanterar')),
+      q('lfKontrollNy', 'Kontrolleras nya leverantörer eller ändrade betalningsuppgifter?', 'single', [
         'Ja, normalt',
-        'Ja, vid avvikelse eller större belopp',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('lfOvanliga', 'Hur hanteras leverantörsfakturor som verkar ovanliga, oklara eller saknar tillräckligt underlag?', 'multi', [
-        'Kunden kontaktas',
-        'Fakturan stoppas/pausas',
-        'Ansvarig konsult granskar',
-        'Avvikelsen dokumenteras',
-        'Det hanteras från fall till fall',
+        'Ja, vid avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('lfHanterar')),
+      q('lfUtland', 'Förekommer leverantörer i andra länder?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('lfHanterar')),
+      q('lfOvanligaBelopp', 'Kontrolleras större eller ovanliga leverantörsfakturor?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('lfHanterar')),
+      q('lfOvanliga', 'Hur hanteras fakturor som verkar oklara eller ovanliga?', 'multi', [
+        'Kunden får komplettera',
+        'Fakturan dokumenteras',
+        'Byrån gör rimlighetsbedömning',
+        'Ansvarig granskar',
+        'Betalning/registrering stoppas tills frågan är utredd',
         'Ingen särskild rutin'
-      ])
+      ], omTjanstenUtfor('lfHanterar'))
     ]),
     spec('arsredovisning', 'Årsredovisning', [
-      q('arVad', 'Vad ingår normalt i tjänsten?', 'multi', [
-        'Upprättande av årsredovisning',
-        'Digital inlämning',
-        'Fastställelseintyg',
-        'Dialog med revisor',
-        'Genomgång med kund',
-        'Annat'
-      ]),
-      q('arEgetBokslut', 'Bygger årsredovisningen normalt på bokslut som byrån själv har upprättat?', 'single', [
-        'Ja, huvudsakligen',
-        'Nej',
-        'Både och',
-        'Varierar mellan kunder'
-      ]),
-      q('arStammer', 'Kontrolleras att årsredovisningen stämmer mot bokslut och huvudbok innan den lämnas till kund eller skickas in?', 'single', [
-        'Ja, normalt',
-        'Ja, vid vissa uppdrag',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('arGodkannande', 'Vem ansvarar normalt för att godkänna årsredovisningen innan eventuell inlämning?', 'single', [
-        'Kunden/styrelsen',
-        'Byrån',
-        'Kunden och byrån tillsammans',
-        'Revisor',
-        'Varierar mellan kunder'
-      ]),
-      q('arDigital', 'Hanterar byrån digital inlämning till Bolagsverket?', 'single', [
+      q('arUpprattar', 'Upprättar byrån årsredovisningen?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
+        'I vissa uppdrag'
+      ]),
+      q('arInlamning', 'Hjälper byrån kunden med inlämning till Bolagsverket?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('arEgetBokslut', 'Bygger årsredovisningen normalt på bokslut som byrån själv har gjort?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('arAvvikande', 'Kontrolleras större eller avvikande poster innan årsredovisningen färdigställs?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ]),
+      q('arNarstaende', 'Kontrolleras lån, ägartransaktioner eller närståendeposter?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte',
+        'Ej relevant'
+      ]),
+      q('arExternPart', 'Hanteras uppgifter som ska lämnas till bank, investerare eller annan extern part?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
       ])
     ]),
     spec('lonehantering', 'Lönehantering', [
-      q('lonVad', 'Vad ingår normalt i lönehanteringen?', 'multi', [
-        'Löneberedning',
-        'Lönebesked',
+      q('lonHanterar', 'Hanterar byrån löner åt kunden?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('lonVad', 'Vilka moment ingår normalt?', 'multi', [
+        'Beräkna lön',
+        'Registrera nya anställda',
+        'Hantera utlägg/förmåner',
         'Arbetsgivardeklaration',
-        'Semesterhantering',
-        'Förmåner',
-        'Utlägg/traktamenten',
         'Löneutbetalningsfil',
         'Annat'
-      ]),
-      q('lonUnderlag', 'Vem lämnar normalt löneunderlag, exempelvis timmar, frånvaro, bonusar och ersättningar?', 'single', [
+      ], omTjanstenUtfor('lonHanterar')),
+      q('lonUnderlag', 'Vem lämnar normalt uppgifter om arbetad tid, ersättningar och utlägg?', 'multi', [
         'Kunden',
-        'Byrån',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('lonAndra', 'Kan byrån lägga upp nya anställda eller ändra lön, förmåner eller bankkonto i lönesystemet?', 'single', [
+        'Anställda',
+        'Byrån hämtar från system',
+        'Annan part'
+      ], omTjanstenUtfor('lonHanterar')),
+      q('lonOvanliga', 'Kontrolleras ovanliga löner, bonusar, utlägg eller ersättningar?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('lonHanterar')),
+      q('lonAgarlon', 'Förekommer löner till ägare, närstående eller personer med oklar koppling till verksamheten?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
-      ]),
-      q('lonGodkannande', 'Vem godkänner normalt lönerna innan de rapporteras eller betalas ut?', 'single', [
-        'Kunden',
-        'Byrån',
-        'Kunden och byrån tillsammans',
-        'Annan part',
-        'Varierar mellan kunder'
-      ]),
-      q('lonOvanliga', 'Kontrolleras ovanliga löner, bonusar, utlägg, traktamenten eller förändrade bankkonton särskilt?', 'single', [
-        'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ])
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('lonHanterar')),
+      q('lonOklar', 'Hur hanteras oklara löneuppgifter eller utlägg?', 'multi', [
+        'Kunden får komplettera',
+        'Underlag krävs',
+        'Ansvarig granskar',
+        'Posten tas inte med förrän den är utredd',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('lonHanterar'))
     ]),
     spec('lagerredovisning', 'Lagerredovisning och lagervärdering', [
-      q('lagerVad', 'Vad gör byrån normalt kopplat till lager?', 'multi', [
-        'Bokför lagerförändring',
-        'Stämmer av lager mot underlag',
-        'Hjälper till med lagervärdering',
-        'Bedömer inkurans',
-        'Bokför bokslutsjusteringar',
-        'Annat'
+      q('lagerHanterar', 'Hanterar byrån lageruppgifter åt kunden?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
       ]),
-      q('lagerUnderlag', 'Vem lämnar normalt lagerlistor eller uppgifter om lagervärde?', 'single', [
+      q('lagerUnderlag', 'Vem lämnar normalt uppgifter om lagret?', 'multi', [
         'Kunden',
-        'Extern part',
-        'Byrån utifrån system',
-        'Kunden och byrån tillsammans',
-        'Varierar mellan kunder'
-      ]),
-      q('lagerRimlighet', 'Gör byrån rimlighetsbedömning av lagerlistor eller lagervärden?', 'single', [
+        'Byrån hämtar från system',
+        'Annan part'
+      ], omTjanstenUtfor('lagerHanterar')),
+      q('lagerForandring', 'Kontrolleras större förändringar i lager jämfört med tidigare perioder?', 'single', [
         'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('lagerJustering', 'Hur hanteras större lagerjusteringar, nedskrivningar eller inkuransbedömningar?', 'multi', [
-        'Kunden får lämna förklaring',
-        'Underlag begärs in',
-        'Ansvarig konsult granskar',
-        'Bedömningen dokumenteras',
-        'Det hanteras från fall till fall',
+        'Ja, vid större avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('lagerHanterar')),
+      q('lagerHogrisk', 'Förekommer lager i branscher med högre risk, t.ex. kontanthandel, bygg, fordon, elektronik eller varor med högt värde?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('lagerHanterar')),
+      q('lagerOsaker', 'Hur hanteras lageruppgifter som verkar osäkra?', 'multi', [
+        'Kunden får komplettera',
+        'Underlag/inventeringslista krävs',
+        'Byrån gör rimlighetsbedömning',
+        'Ansvarig granskar',
         'Ingen särskild rutin'
-      ])
+      ], omTjanstenUtfor('lagerHanterar'))
     ]),
     spec('betalningsuppdrag', 'Betalningsuppdrag och betalningshantering', [
-      q('betVad', 'Vad gör byrån inom betalningshantering?', 'multi', [
-        'Förbereder betalningar',
-        'Skapar betalningsfil',
-        'Skickar betalningsfil till bank',
-        'Godkänner betalningar',
-        'Hanterar lönebetalningar',
-        'Följer upp genomförda betalningar',
-        'Annat'
-      ]),
-      q('betGodkannande', 'Vem godkänner normalt betalningar slutligt?', 'single', [
-        'Kunden godkänner alltid',
-        'Byrån kan godkänna',
-        'Kunden och byrån godkänner tillsammans',
-        'Varierar mellan kunder'
-      ]),
-      q('betAndra', 'Kan byrån ändra betalningsmottagare, belopp eller bankkonto innan betalning skickas?', 'single', [
+      q('betUtfor', 'Utför byrån betalningar för kundens räkning?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Varierar mellan kunder'
+        'I vissa uppdrag'
       ]),
-      q('betTvasteg', 'Finns tvåstegsgodkännande eller annan praktisk kontroll innan betalning genomförs?', 'single', [
+      q('betVad', 'Vilka betalningar hanteras normalt?', 'multi', [
+        'Leverantörsbetalningar',
+        'Löner',
+        'Skatter/avgifter',
+        'Utlägg/ersättningar',
+        'Betalningar till ägare/närstående',
+        'Utlandsbetalningar',
+        'Annat'
+      ], omTjanstenUtfor('betUtfor')),
+      q('betGodkannande', 'Krävs kundens godkännande innan betalning genomförs?', 'single', [
         'Ja, alltid',
-        'Ja, vid större belopp eller nya mottagare',
-        'Nej',
-        'Varierar mellan kunder'
-      ]),
-      q('betNya', 'Kontrolleras nya betalningsmottagare, ändrade bankkonton eller betalningar till utlandet särskilt?', 'single', [
+        'Ja, vid större belopp',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('betUtfor')),
+      q('betNya', 'Kontrolleras nya mottagare eller ändrade kontonummer?', 'single', [
         'Ja, normalt',
-        'Ja, vid större belopp eller avvikelse',
+        'Ja, vid avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('betUtfor')),
+      q('betSarskild', 'Kontrolleras betalningar till ägare, närstående eller utlandet särskilt?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
         'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('betBradskande', 'Hur hanteras brådskande betalningar eller betalningar utanför ordinarie rutin?', 'multi', [
-        'Kunden måste godkänna skriftligt',
-        'Ansvarig på byrån granskar',
-        'Betalningen pausas vid oklarhet',
-        'Avvikelsen dokumenteras',
-        'Ingen särskild rutin',
-        'Förekommer normalt inte'
-      ])
+        'Ej relevant'
+      ], omTjanstenUtfor('betUtfor')),
+      q('betOklar', 'Hur hanteras betalningar som verkar oklara eller avvikande?', 'multi', [
+        'Kunden får komplettera',
+        'Betalningen stoppas tills den är utredd',
+        'Ansvarig granskar',
+        'Underlag dokumenteras',
+        'Misstanke eskaleras',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('betUtfor'))
     ]),
     spec('radgivning', 'Rådgivning', [
-      q('radTyp', 'Vilken typ av rådgivning förekommer normalt när denna tjänst är aktiv?', 'multi', [
-        'Ekonomisk rådgivning/budget/prognos',
-        'Skatterådgivning',
-        'Ägarfrågor/utdelning/lön',
-        'Momsfrågor',
-        'Bolagsstruktur eller ombildning',
-        'Stöd vid myndighetskontakt',
-        'Finansieringsunderlag',
-        'Företagsöverlåtelse eller generationsskifte',
+      q('radTyp', 'Vilken typ av rådgivning lämnar byrån normalt?', 'multi', [
+        'Skatt',
+        'Finansiering/lån',
+        'Utdelning/lön',
+        'Förvärv/försäljning av bolag eller tillgångar',
+        'Internationella frågor',
+        'Allmän ekonomisk rådgivning',
         'Annat'
       ]),
-      q('radKoppling', 'Är rådgivningen normalt fristående eller kopplad till andra tjänster?', 'single', [
-        'Fristående uppdrag',
-        'Kopplad till bokföring/bokslut/deklaration',
-        'Både och',
-        'Varierar mellan kunder'
-      ]),
-      q('radDokumenteras', 'Dokumenteras råd, bedömningar och kundens beslut?', 'single', [
-        'Ja, normalt',
-        'Ja, vid större eller mer komplexa frågor',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
-      ]),
-      q('radKomplex', 'Förekommer rådgivning kring större transaktioner, bolagsstrukturer, närstående eller internationella frågor?', 'single', [
+      q('radAgar', 'Förekommer rådgivning om ägartransaktioner, lån eller kapitaltillskott?', 'single', [
         'Ja',
         'Nej',
-        'I vissa fall',
-        'Vet ej'
+        'I vissa uppdrag'
       ]),
-      q('radExtra', 'Sker extra granskning eller intern avstämning vid mer komplex rådgivning?', 'single', [
+      q('radUtland', 'Förekommer rådgivning med koppling till utlandet?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
+      ]),
+      q('radDokumenteras', 'Dokumenteras syftet med rådgivningen vid större eller ovanliga upplägg?', 'single', [
         'Ja, normalt',
-        'Ja, vid behov',
-        'Nej',
-        'Ej relevant, byrån är liten/ensam',
-        'Varierar mellan kunder'
+        'Ja, vid större/ovanliga upplägg',
+        'Nej, normalt inte'
+      ]),
+      q('radRiskfylld', 'Hur hanteras rådgivning som kan framstå som ovanlig eller riskfylld?', 'multi', [
+        'Ansvarig granskar',
+        'Extern expert anlitas',
+        'Rådgivningen dokumenteras',
+        'Uppdraget avböjs',
+        'Misstanke eskaleras',
+        'Ingen särskild rutin'
       ])
     ], {
       helpText: 'Aktivera Rådgivning om byrån erbjuder fristående eller särskilt debiterad rådgivning som går utöver normal återkoppling inom bokföring, bokslut, moms, deklaration eller årsredovisning. Normal förklaring av rapporter, bokslut eller deklaration behöver inte anges som separat rådgivning.'
@@ -767,6 +732,22 @@
       : (template.questions || []);
   }
 
+  function selectedValues(raw) {
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (raw == null || raw === '') return [];
+    return [String(raw)];
+  }
+
+  function questionIsVisible(question, answers) {
+    const rule = question && question.showWhen;
+    if (!rule || !rule.id) return true;
+    const selected = selectedValues(answers && answers[rule.id]);
+    if (Array.isArray(rule.any) && rule.any.length) {
+      return rule.any.some((opt) => selected.indexOf(opt) !== -1);
+    }
+    return selected.length > 0;
+  }
+
   function questionsForTemplate(template) {
     const extra = extraQuestionsForTemplate(template);
     if (template && template.replaceBaseQuestions) return extra.slice();
@@ -858,6 +839,7 @@
     const rows = [];
     const unanswered = [];
     questions.forEach((question) => {
+      if (!questionIsVisible(question, answers)) return;
       const raw = answers[question.id];
       const text = formatAnswerValue(raw);
       const comment = formatAnswerValue(comments[question.id]);
@@ -906,6 +888,7 @@
     resolveTemplateId: resolveTemplateId,
     resolveTemplate: resolveTemplate,
     extraQuestionsForTemplate: extraQuestionsForTemplate,
+    questionIsVisible: questionIsVisible,
     questionsForTemplate: questionsForTemplate,
     groupQuestionsForTemplate: groupQuestionsForTemplate,
     emptyState: emptyState,
