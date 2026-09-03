@@ -9796,6 +9796,16 @@ class CustomerCardManager {
         return t._mergedRecordIds && t._mergedRecordIds.length ? t._mergedRecordIds : [t.id];
     }
 
+    /** Aktuell riskpost + aktiv i byråns utförandekatalog (server sätter valbar). */
+    _isTjanstValbarForKund(t) {
+        if (!t) return false;
+        const TK = window.TjanstKatalog;
+        if (TK && TK.isActiveCatalogItem) return TK.isActiveCatalogItem(t);
+        if (t.valbar != null) return t.valbar === true;
+        if (t.aktiv != null) return t.aktuell === true && t.aktiv === true;
+        return t.aktuell === true;
+    }
+
     _tjanstKatalogOpts() {
         return { idLookup: this._kundTjanstLookup || {} };
     }
@@ -9952,7 +9962,7 @@ class CustomerCardManager {
                 const data = res.ok ? await res.json() : {};
                 const raw = data.tjanster?.length ? data.tjanster : [];
                 this._byransTjansterAll = this._dedupeByraTjanster(raw);
-                this._byransTjanster = this._byransTjansterAll.filter((t) => t.aktuell === true);
+                this._byransTjanster = this._byransTjansterAll.filter((t) => this._isTjanstValbarForKund(t));
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta tjänster:', e.message);
                 if (!this._byransTjanster) this._byransTjanster = [];
@@ -10632,7 +10642,7 @@ class CustomerCardManager {
                 const data = res.ok ? await res.json() : {};
                 const raw = data.tjanster?.length ? data.tjanster : [];
                 this._byransTjansterAll = this._dedupeByraTjanster ? this._dedupeByraTjanster(raw) : raw;
-                this._byransTjanster = (this._byransTjansterAll || []).filter((t) => t.aktuell === true);
+                this._byransTjanster = (this._byransTjansterAll || []).filter((t) => this._isTjanstValbarForKund(t));
             } catch (e) {
                 console.warn('⚠️ Kunde inte hämta byråns tjänster för KYC:', e.message);
                 if (!this._byransTjanster) this._byransTjanster = [];

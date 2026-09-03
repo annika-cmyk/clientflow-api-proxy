@@ -17639,6 +17639,13 @@ h5.ar-subsection-title {
 .tjanst-mall-switch input:checked + .tjanst-mall-switch-ui::after {
     transform: translateX(14px);
 }
+.tjanst-mall-switch.is-locked {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+.tjanst-mall-switch.is-locked input {
+    cursor: not-allowed;
+}
 .tjanst-mall-switch input:focus-visible + .tjanst-mall-switch-ui {
     outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
     outline-offset: 2px;

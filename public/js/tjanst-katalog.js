@@ -73,6 +73,8 @@
         ids: ids,
         aktuell: rec.aktuell === true || !!(rec.fields && rec.fields.Aktuell === true)
       };
+      if (Object.prototype.hasOwnProperty.call(rec, 'aktiv')) item.aktiv = rec.aktiv === true;
+      if (Object.prototype.hasOwnProperty.call(rec, 'valbar')) item.valbar = rec.valbar === true;
       items.push(item);
       ids.forEach(function (id) { byId[id] = item; });
       var key = foldName(namn);
@@ -208,7 +210,12 @@
   }
 
   function isActiveCatalogItem(item) {
-    return !!(item && item.aktuell === true);
+    if (!item || item.aktuell !== true) return false;
+    // valbar beräknas server-side (Aktuell + utförande aktiv)
+    if (Object.prototype.hasOwnProperty.call(item, 'valbar')) return item.valbar === true;
+    // aktiv från utförandekatalogen — inaktiva ska inte kunna väljas
+    if (Object.prototype.hasOwnProperty.call(item, 'aktiv')) return item.aktiv === true;
+    return true;
   }
 
   function sanitizeToActiveCatalogIds(values, catalog, opts) {

@@ -85,6 +85,7 @@ const { compileIdentifieradeRisker, referralIdentifieradeRisker, isIdentifierade
 const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./lib/inneboende-beskrivning');
 const AiTjanstAnalys = require('./lib/ai-tjanst-analys');
 const TjanstUtforandeMallar = require('./public/js/tjanst-utforande-mallar');
+const TjanstAktivKundkoppling = require('./lib/tjanst-aktiv-kundkoppling');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
 const { formatOvrigRiskfaktorSubjectBlock } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -6829,10 +6830,38 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       try {
         const byraId = (payload['Byrå ID'] || customerRecord.fields?.['Byrå ID'] || '').toString().trim();
         const catalogRecs = await fetchByraTjansterRecordsForPdf(airtableAccessToken, airtableBaseId, byraId);
+        let catalogForFilter = catalogRecs.map((r) => ({
+          id: r.id,
+          namn: r.namn,
+          aktuell: r.fields?.Aktuell === true,
+          fields: r.fields
+        }));
+        try {
+          const num = parseInt(String(byraId));
+          const ff = isNaN(num)
+            ? `{Byrå ID}="${byraId}"`
+            : `OR({Byrå ID}="${byraId}",{Byrå ID}=${num})`;
+          const byraUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}?filterByFormula=${encodeURIComponent(ff)}&maxRecords=1`;
+          const byraRes = await axios.get(byraUrl, {
+            headers: { Authorization: `Bearer ${airtableAccessToken}` },
+            timeout: 10000
+          });
+          const byraRec = byraRes.data.records && byraRes.data.records[0];
+          if (byraRec) {
+            const utforandeState = readTjanstUtforandeFromFields(byraRec.fields || {});
+            catalogForFilter = TjanstAktivKundkoppling.enrichTjansterWithAktiv(catalogForFilter, utforandeState);
+            catalogForFilter = catalogForFilter.map((t) => ({
+              ...t,
+              valbar: TjanstAktivKundkoppling.isSelectableForKund(t, utforandeState)
+            }));
+          }
+        } catch (enrichErr) {
+          console.warn('⚠️ Kunde inte berika tjänstfilter med utförande:', enrichErr.message);
+        }
         payload['Kundens utvalda tjänster'] = TjanstKatalog.filterIncomingToCatalog(
           payload['Kundens utvalda tjänster'],
           customerRecord.fields?.['Kundens utvalda tjänster'],
-          catalogRecs
+          catalogForFilter
         );
       } catch (e) {
         console.warn('⚠️ Kunde inte filtrera tjänstekatalog:', e.message);
@@ -13384,10 +13413,49 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
   try {
     const result = await getByraerRecordForUser(req);
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const previous = readTjanstUtforandeFromFields(result.record.fields || {});
     const incoming = TjanstUtforandeMallar.parseState(req.body?.state || req.body);
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const deactivations = TjanstAktivKundkoppling.findDeactivations(previous, incoming);
+    if (deactivations.length) {
+      let kundAntalTjanster = {};
+      let riskRecords = [];
+      try {
+        const userData = result.userData || await getAirtableUser(req.user.email);
+        if (userData && statistikRiskbedomning.canBuildForUser(userData)) {
+          const kunder = kundDold.filterAktivaKunder(
+            await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+          );
+          kundAntalTjanster = (statistikRiskbedomning.buildKundantalMaps(kunder) || {}).tjanster || {};
+        }
+        riskRecords = await fetchByraTjansterRecordsForPdf(
+          airtableAccessToken,
+          airtableBaseId,
+          result.byraId
+        );
+      } catch (countErr) {
+        console.warn('Kunde inte kontrollera kundkoppling vid inaktivering:', countErr.message);
+      }
+      const blocked = TjanstAktivKundkoppling.findBlockedDeactivation(
+        previous,
+        incoming,
+        riskRecords,
+        kundAntalTjanster
+      );
+      if (blocked) {
+        return res.status(409).json({
+          error: blocked.message,
+          code: 'tjanst_har_kunder',
+          mallId: blocked.mallId,
+          namn: blocked.namn,
+          kundCount: blocked.kundCount
+        });
+      }
+    }
+
     try {
       await ensureTjanstUtforandeAirtableField(airtableAccessToken, airtableBaseId);
     } catch (ensureErr) {
@@ -20364,9 +20432,32 @@ app.get('/api/byra-tjanster', authenticateToken, async (req, res) => {
       offset = response.data.offset;
     } while (offset);
 
-    const tjanster = allRecords
+    let tjanster = allRecords
       .map((r) => mapByraTjanstRecord(r))
       .filter((t) => t.namn);
+
+    try {
+      const num = parseInt(String(byraId));
+      const ff = isNaN(num)
+        ? `{Byrå ID}="${byraId}"`
+        : `OR({Byrå ID}="${byraId}",{Byrå ID}=${num})`;
+      const byraUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}?filterByFormula=${encodeURIComponent(ff)}&maxRecords=1`;
+      const byraRes = await axios.get(byraUrl, {
+        headers: { Authorization: `Bearer ${airtableAccessToken}` },
+        timeout: 10000
+      });
+      const byraRec = byraRes.data.records && byraRes.data.records[0];
+      if (byraRec) {
+        const utforandeState = readTjanstUtforandeFromFields(byraRec.fields || {});
+        tjanster = TjanstAktivKundkoppling.enrichTjansterWithAktiv(tjanster, utforandeState);
+        tjanster = tjanster.map((t) => ({
+          ...t,
+          valbar: TjanstAktivKundkoppling.isSelectableForKund(t, utforandeState)
+        }));
+      }
+    } catch (enrichErr) {
+      console.warn('⚠️ Kunde inte berika tjänster med utförande-aktiv:', enrichErr.message);
+    }
 
     console.log(`✅ Byråns tjänster (${byraId}):`, tjanster.map(t => t.namn));
     res.json({ tjanster });
