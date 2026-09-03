@@ -415,10 +415,27 @@ class RiskAssessmentManager {
         return '';
     }
 
+    /** Risk-poster with exact (normalized) Task Name — for statistik IDs, not mall aliases. */
+    findTjanstRisksByExactName(namn) {
+        const wanted = String(namn || '').trim();
+        if (!wanted) return [];
+        const Mallar = window.TjanstUtforandeMallar;
+        const fold = Mallar && Mallar.foldName
+            ? (v) => Mallar.foldName(v)
+            : (v) => String(v || '').trim().toLowerCase();
+        const wantedFold = fold(wanted);
+        return (this.risks || []).filter((r) => {
+            const task = (r.fields && r.fields['Task Name']) || '';
+            if (!task) return false;
+            if (task === wanted) return true;
+            return !!(wantedFold && fold(task) === wantedFold);
+        });
+    }
+
     async loadUtforandeClientflowStats(mallId, namn, host) {
         if (!host) return;
         try {
-            const matches = this.findTjanstRisksByName(namn);
+            const matches = this.findTjanstRisksByExactName(namn);
             const query = new URLSearchParams({ namn: namn || '' });
             const recordIds = matches.map((r) => r.id).filter(Boolean);
             if (recordIds.length) query.set('recordId', recordIds.join(','));
@@ -436,15 +453,6 @@ class RiskAssessmentManager {
             }
             const row = (label, value) => `<div class="tjanst-mall-stat"><span>${this.esc(label)}</span><strong>${this.esc(value == null ? 'uppgift saknas' : value)}</strong></div>`;
             const notes = [];
-            const matchedNames = Array.isArray(expo.matchade_namn) ? expo.matchade_namn : [];
-            const Mallar = window.TjanstUtforandeMallar;
-            const otherNames = matchedNames.filter((label) => {
-                if (!label || label === namn) return false;
-                return !(Mallar && Mallar.foldName && Mallar.foldName(label) === Mallar.foldName(namn));
-            });
-            if (otherNames.length) {
-                notes.push(`Matchade kundernas tjänst: ${otherNames.join(', ')}.`);
-            }
             if (expo.antal_kunder === 0) {
                 notes.push(expo.kopplad
                     ? 'Inga aktiva kunder har den här tjänsten.'
