@@ -86,6 +86,11 @@ const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./l
 const AiTjanstAnalys = require('./lib/ai-tjanst-analys');
 const TjanstUtforandeMallar = require('./public/js/tjanst-utforande-mallar');
 const TjanstAktivKundkoppling = require('./lib/tjanst-aktiv-kundkoppling');
+const {
+  withAirtableRetry,
+  isRetryableAirtableError,
+  friendlyAirtableRateLimitMessage
+} = require('./lib/airtable-retry');
 const { REDOVISNINGSBYRA_AI_RULES } = require('./lib/redovisningsbyra-ai-kontext');
 const { formatOvrigRiskfaktorSubjectBlock } = require('./lib/ai-ovrig-riskfaktor-prompt');
 const AiFaltGranskning = require('./public/js/ai-falt-granskning');
@@ -12605,20 +12610,28 @@ function readTjanstUtforandeFromFields(fields) {
   return TjanstUtforandeMallar.parseState(raw);
 }
 
+/** Skip meta API on every auto-save once field is known to exist. */
+let _tjanstUtforandeFieldReady = false;
+
 async function ensureTjanstUtforandeAirtableField(airtableToken, baseId) {
+  if (_tjanstUtforandeFieldReady) return { created: false, cached: true };
   const byraTable = await getByraerTableMeta(airtableToken, baseId);
   if (!byraTable?.id) return { created: false };
   const existingNames = (byraTable.fields || []).map((f) => (f.name || '').trim());
-  if (existingNames.includes(TJANST_UTFORANDE_FIELD)) return { created: false };
+  if (existingNames.includes(TJANST_UTFORANDE_FIELD)) {
+    _tjanstUtforandeFieldReady = true;
+    return { created: false };
+  }
   const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`;
-  await axios.post(createUrl, {
+  await withAirtableRetry(() => axios.post(createUrl, {
     name: TJANST_UTFORANDE_FIELD,
     type: 'multilineText',
     description: 'JSON med aktiva tjänster och praktiska utförandesvar per byrå.'
   }, {
     headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
     timeout: 10000
-  });
+  }));
+  _tjanstUtforandeFieldReady = true;
   return { created: true };
 }
 
@@ -12663,12 +12676,13 @@ async function resolveTjanstExponeringForAi(req, namn) {
         console.warn('resolveTjanstExponeringForAi katalog:', catalogErr.message);
       }
     }
+    // Keep concurrency low so stats fetch does not starve auto-saves (Airtable ~5 req/s).
     const tjanstRecords = await fetchAirtableRecordsByIds(
       airtableAccessToken,
       airtableBaseId,
       RISK_ASSESSMENT_TABLE,
       ids.tjanstIds.concat(recordIds),
-      { concurrency: 8 }
+      { concurrency: 3 }
     );
     Object.assign(tjanstIdToName, statistikRiskbedomning.mapTjanstNames(tjanstRecords));
     return statistikRiskbedomning.buildTjanstExponering(records, {
@@ -13222,9 +13236,9 @@ async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) 
   const skippedProfilFields = [];
   while (Object.keys(remaining).length > 0) {
     try {
-      await axios.patch(patchUrl, { fields: remaining }, {
+      await withAirtableRetry(() => axios.patch(patchUrl, { fields: remaining }, {
         headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }
-      });
+      }), { maxAttempts: 3, baseDelayMs: 500 });
       return { skippedProfilFields };
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
@@ -13482,6 +13496,13 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('❌ PUT /api/byra/tjanst-utforande:', error.response?.data || error.message);
     const status = error.response?.status || 500;
+    if (status === 429 || isRetryableAirtableError(error)) {
+      return res.status(429).json({
+        error: friendlyAirtableRateLimitMessage(),
+        code: 'airtable_rate_limit',
+        retryable: true
+      });
+    }
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
   }
 });

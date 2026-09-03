@@ -22,6 +22,11 @@ class RiskAssessmentManager {
         this.utforandeState = { version: 1, tjanster: {} };
         this._modalUtforandeMallId = null;
         this._utforandeSaveTimer = null;
+        this._utforandeSaveInFlight = false;
+        this._utforandeSavePending = false;
+        this._utforandeStatsKey = null;
+        this._utforandeStatsHtml = null;
+        this._utforandeStatsPromise = null;
         this.klarmarkeradeFlikar = new Set();
         this._activeTjanstTab = 'utforande';
 
@@ -123,7 +128,18 @@ class RiskAssessmentManager {
         const namn = document.getElementById('tjanst-name')?.value.trim()
             || (window.TjanstUtforandeMallar && TjanstUtforandeMallar.templateById(mallId)?.name)
             || '';
-        if (statsHost) this.loadUtforandeClientflowStats(mallId, namn, statsHost);
+        if (statsHost) this.fillUtforandeStatsHost(mallId, namn, statsHost);
+    }
+
+    /** Reuse cached Clientflow stats HTML across modal re-renders (chip clicks). */
+    fillUtforandeStatsHost(mallId, namn, host) {
+        if (!host) return;
+        const key = `${mallId}::${String(namn || '').trim()}`;
+        if (this._utforandeStatsKey === key && this._utforandeStatsHtml) {
+            host.innerHTML = this._utforandeStatsHtml;
+            return;
+        }
+        this.loadUtforandeClientflowStats(mallId, namn, host);
     }
 
     renderModalUtforande(mallId) {
@@ -468,7 +484,21 @@ class RiskAssessmentManager {
 
     async loadUtforandeClientflowStats(mallId, namn, host) {
         if (!host) return;
-        try {
+        const key = `${mallId}::${String(namn || '').trim()}`;
+        if (this._utforandeStatsKey === key && this._utforandeStatsPromise) {
+            try {
+                const html = await this._utforandeStatsPromise;
+                if (host.isConnected !== false) host.innerHTML = html;
+            } catch (err) {
+                if (host.isConnected !== false) {
+                    host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
+                }
+            }
+            return;
+        }
+        this._utforandeStatsKey = key;
+        this._utforandeStatsHtml = null;
+        const fetchPromise = (async () => {
             const matches = this.findTjanstRisksByExactName(namn);
             const query = new URLSearchParams({ namn: namn || '' });
             const recordIds = matches.map((r) => r.id).filter(Boolean);
@@ -476,14 +506,16 @@ class RiskAssessmentManager {
             const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-exponering?${query}`);
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
+                if (res.status === 429 || data.code === 'airtable_rate_limit') {
+                    throw new Error(data.error || 'Clientflow är tillfälligt överbelastad. Vänta några sekunder och försök igen.');
+                }
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
             const expo = data.exponering || {};
             if (expo.ok === false || expo.antal_kunder == null) {
                 const msg = expo.fel || (Array.isArray(expo.saknade) && expo.saknade[0])
                     || 'Kunde inte hämta statistik från Clientflow.';
-                host.innerHTML = `<p class="tjanst-mall-stats-error">${this.esc(msg)}</p>`;
-                return;
+                return `<p class="tjanst-mall-stats-error">${this.esc(msg)}</p>`;
             }
             const row = (label, value) => `<div class="tjanst-mall-stat"><span>${this.esc(label)}</span><strong>${this.esc(value == null ? 'uppgift saknas' : value)}</strong></div>`;
             const notes = [];
@@ -492,7 +524,7 @@ class RiskAssessmentManager {
                     ? 'Inga aktiva kunder har den här tjänsten.'
                     : `Hittade inga kunder kopplade till «${namn}». Kontrollera att namnet stämmer med kundernas tjänster.`);
             }
-            host.innerHTML = `
+            return `
                 <p class="tjanst-mall-stats-title">Statistik från Clientflow</p>
                 <div class="tjanst-mall-stat-grid">
                     ${row('Kunder med tjänsten', expo.antal_kunder)}
@@ -503,8 +535,22 @@ class RiskAssessmentManager {
                     ${row('Högriskland', expo.hogrisksland)}
                 </div>
                 ${notes.length ? `<p class="tjanst-mall-stats-note">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
+        })();
+        this._utforandeStatsPromise = fetchPromise;
+        try {
+            const html = await fetchPromise;
+            if (this._utforandeStatsKey === key) this._utforandeStatsHtml = html;
+            if (host.isConnected !== false) host.innerHTML = html;
         } catch (err) {
-            host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
+            if (this._utforandeStatsKey === key) {
+                this._utforandeStatsHtml = null;
+                this._utforandeStatsPromise = null;
+            }
+            if (host.isConnected !== false) {
+                host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
+            }
+        } finally {
+            if (this._utforandeStatsPromise === fetchPromise) this._utforandeStatsPromise = null;
         }
     }
 
@@ -533,25 +579,51 @@ class RiskAssessmentManager {
 
     scheduleUtforandeSave() {
         clearTimeout(this._utforandeSaveTimer);
-        this._utforandeSaveTimer = setTimeout(() => this.saveUtforande(), 600);
+        // Debounce chip clicks; coalesce overlapping PUTs so Airtable is not flooded.
+        this._utforandeSaveTimer = setTimeout(() => this.saveUtforande(), 900);
     }
 
     async saveUtforande() {
+        if (this._utforandeSaveInFlight) {
+            this._utforandeSavePending = true;
+            return;
+        }
+        this._utforandeSaveInFlight = true;
+        this._utforandeSavePending = false;
         try {
-            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-utforande`, {
-                method: 'PUT',
-                body: JSON.stringify({ state: this.utforandeState })
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                if (err.code === 'tjanst_har_kunder' || res.status === 409) {
-                    await this.loadUtforande();
-                }
-                throw new Error(err.error || `HTTP ${res.status}`);
-            }
+            await this._putUtforandeState({ allowRetry: true });
         } catch (err) {
             console.warn('Kunde inte spara tjänsteutförande:', err);
             this.showNotification('Kunde inte spara hur tjänsten utförs: ' + err.message, 'error');
+        } finally {
+            this._utforandeSaveInFlight = false;
+            if (this._utforandeSavePending) {
+                this._utforandeSavePending = false;
+                this.scheduleUtforandeSave();
+            }
+        }
+    }
+
+    async _putUtforandeState(opts = {}) {
+        const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-utforande`, {
+            method: 'PUT',
+            body: JSON.stringify({ state: this.utforandeState })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            if (err.code === 'tjanst_har_kunder' || res.status === 409) {
+                await this.loadUtforande();
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const rateLimited = res.status === 429 || err.code === 'airtable_rate_limit' || err.retryable;
+            if (rateLimited && opts.allowRetry) {
+                await new Promise((r) => setTimeout(r, 1200));
+                return this._putUtforandeState({ allowRetry: false });
+            }
+            if (rateLimited) {
+                throw new Error(err.error || 'Clientflow är tillfälligt överbelastad. Vänta några sekunder och försök igen.');
+            }
+            throw new Error(err.error || `HTTP ${res.status}`);
         }
     }
 
