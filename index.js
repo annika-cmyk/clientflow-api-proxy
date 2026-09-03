@@ -12618,31 +12618,63 @@ async function resolveTjanstExponeringForAi(req, namn) {
   try {
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    if (!airtableAccessToken) return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+    if (!airtableAccessToken) {
+      return statistikRiskbedomning.buildTjanstExponering([], {
+        unavailable: true,
+        fel: 'Clientflow är inte kopplat (Airtable-nyckel saknas).'
+      });
+    }
     const userData = await getAirtableUser(req.user.email);
     if (!userData || !statistikRiskbedomning.canBuildForUser(userData)) {
-      return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+      return statistikRiskbedomning.buildTjanstExponering([], {
+        unavailable: true,
+        fel: 'Kunde inte läsa kunddata för er byrå.'
+      });
     }
     const records = kundDold.filterAktivaKunder(
       await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
     );
     const ids = statistikRiskbedomning.collectLookupIds(records);
+    const recordIds = statistikRiskbedomning.parseTjanstRecordIds(
+      req.body?.recordId || req.body?.recordIds || req.query?.recordId || req.query?.recordIds || ''
+    );
+    const tjanstIdToName = {};
+    const byraId = String(userData.byraId || '').trim();
+    if (byraId) {
+      try {
+        const catalog = await buildTjanstIdToNamnMap(
+          airtableAccessToken,
+          airtableBaseId,
+          byraId,
+          ids.tjanstIds.concat(recordIds)
+        );
+        catalog.forEach((tjanstNamn, id) => {
+          if (id && tjanstNamn) tjanstIdToName[id] = tjanstNamn;
+        });
+      } catch (catalogErr) {
+        console.warn('resolveTjanstExponeringForAi katalog:', catalogErr.message);
+      }
+    }
     const tjanstRecords = await fetchAirtableRecordsByIds(
       airtableAccessToken,
       airtableBaseId,
       RISK_ASSESSMENT_TABLE,
-      ids.tjanstIds,
+      ids.tjanstIds.concat(recordIds),
       { concurrency: 8 }
     );
+    Object.assign(tjanstIdToName, statistikRiskbedomning.mapTjanstNames(tjanstRecords));
     return statistikRiskbedomning.buildTjanstExponering(records, {
-      tjanstId: (req.body?.recordId || req.query?.recordId || '').toString().trim(),
+      tjanstId: recordIds[0] || '',
+      tjanstIds: recordIds,
       tjanstNamn: namn,
-      tjanstIdToName: statistikRiskbedomning.mapTjanstNames
-        ? statistikRiskbedomning.mapTjanstNames(tjanstRecords)
-        : undefined
+      tjanstIdToName
     });
-  } catch (_) {
-    return statistikRiskbedomning.buildTjanstExponering([], { unavailable: true });
+  } catch (err) {
+    console.warn('resolveTjanstExponeringForAi:', err.message);
+    return statistikRiskbedomning.buildTjanstExponering([], {
+      unavailable: true,
+      fel: err.message || 'Kunde inte hämta statistik från Clientflow.'
+    });
   }
 }
 
@@ -13411,6 +13443,12 @@ app.get('/api/byra/tjanst-exponering', authenticateToken, async (req, res) => {
   const namn = (req.query?.namn || '').toString().trim();
   if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
   const exponering = await resolveTjanstExponeringForAi(req, namn);
+  if (exponering && exponering.ok === false) {
+    return res.status(503).json({
+      error: exponering.fel || 'Kunde inte hämta statistik från Clientflow.',
+      exponering
+    });
+  }
   res.json({ exponering: exponering });
 });
 

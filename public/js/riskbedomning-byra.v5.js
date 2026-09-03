@@ -122,8 +122,23 @@ class RiskAssessmentManager {
         });
     }
 
+    findTjanstRisksByName(namn) {
+        const wanted = String(namn || '').trim();
+        if (!wanted) return [];
+        const Mallar = window.TjanstUtforandeMallar;
+        return (this.risks || []).filter((r) => {
+            const task = (r.fields && r.fields['Task Name']) || '';
+            if (!task) return false;
+            if (task === wanted) return true;
+            if (Mallar && Mallar.tjanstNamesMatch) return Mallar.tjanstNamesMatch(task, wanted);
+            return String(task).trim().toLowerCase() === wanted.toLowerCase();
+        });
+    }
+
     findTjanstRiskByName(namn) {
-        return (this.risks || []).find((r) => (r.fields && r.fields['Task Name']) === namn) || null;
+        const matches = this.findTjanstRisksByName(namn);
+        const exact = matches.find((r) => (r.fields && r.fields['Task Name']) === namn);
+        return exact || matches[0] || null;
     }
 
     openTjanstAnalysFromCard(mallId, namn, opts = {}) {
@@ -314,14 +329,38 @@ class RiskAssessmentManager {
     async loadUtforandeClientflowStats(mallId, namn, host) {
         if (!host) return;
         try {
-            const existing = this.findTjanstRiskByName(namn);
+            const matches = this.findTjanstRisksByName(namn);
             const query = new URLSearchParams({ namn: namn || '' });
-            if (existing && existing.id) query.set('recordId', existing.id);
+            const recordIds = matches.map((r) => r.id).filter(Boolean);
+            if (recordIds.length) query.set('recordId', recordIds.join(','));
             const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-exponering?${query}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
             const expo = data.exponering || {};
+            if (expo.ok === false || expo.antal_kunder == null) {
+                const msg = expo.fel || (Array.isArray(expo.saknade) && expo.saknade[0])
+                    || 'Kunde inte hämta statistik från Clientflow.';
+                host.innerHTML = `<p class="tjanst-mall-stats-error">${this.esc(msg)}</p>`;
+                return;
+            }
             const row = (label, value) => `<div class="tjanst-mall-stat"><span>${this.esc(label)}</span><strong>${this.esc(value == null ? 'uppgift saknas' : value)}</strong></div>`;
+            const notes = [];
+            const matchedNames = Array.isArray(expo.matchade_namn) ? expo.matchade_namn : [];
+            const Mallar = window.TjanstUtforandeMallar;
+            const otherNames = matchedNames.filter((label) => {
+                if (!label || label === namn) return false;
+                return !(Mallar && Mallar.foldName && Mallar.foldName(label) === Mallar.foldName(namn));
+            });
+            if (otherNames.length) {
+                notes.push(`Matchade kundernas tjänst: ${otherNames.join(', ')}.`);
+            }
+            if (expo.antal_kunder === 0) {
+                notes.push(expo.kopplad
+                    ? 'Inga aktiva kunder har den här tjänsten.'
+                    : `Hittade inga kunder kopplade till «${namn}». Kontrollera att namnet stämmer med kundernas tjänster.`);
+            }
             host.innerHTML = `
                 <p class="tjanst-mall-stats-title">Statistik från Clientflow</p>
                 <div class="tjanst-mall-stat-grid">
@@ -331,9 +370,10 @@ class RiskAssessmentManager {
                     ${row('Högriskbranscher', expo.hogrisksbranscher)}
                     ${row('PEP eller PEP-anhörig', expo.pep)}
                     ${row('Högriskland', expo.hogrisksland)}
-                </div>`;
+                </div>
+                ${notes.length ? `<p class="tjanst-mall-q-help">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
         } catch (err) {
-            host.innerHTML = '<p class="tjanst-mall-q-help">Kunde inte hämta statistik från Clientflow just nu.</p>';
+            host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
         }
     }
 
