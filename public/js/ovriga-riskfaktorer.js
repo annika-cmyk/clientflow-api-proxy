@@ -1272,7 +1272,6 @@ class RiskFactorsManager {
             const data = await response.json();
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (reviewMode) {
-                this.applyOvrigAiIfEmpty(prefix, befintligt, data);
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
                     : [];
@@ -1280,7 +1279,7 @@ class RiskFactorsManager {
                 const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
                 this.showNotification(changed
                     ? 'AI har lagt förslag under era fält. Jämför och kopiera in det ni vill använda. Du ansvarar för vad som sparas.'
-                    : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
+                    : 'Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);
                 this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
