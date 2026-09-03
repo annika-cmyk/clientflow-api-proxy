@@ -250,7 +250,7 @@ class RiskAssessmentManager {
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const analysHtml = existing
-            ? `<p class="tjanst-mall-summary">Riskbedömning finns. Klicka <strong>Redigera</strong> för att uppdatera utförandefrågor, hot, sårbarheter och åtgärder.</p>`
+            ? ''
             : `<div class="tjanst-mall-empty">
                     <p>Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.</p>
                     <div class="tjanst-mall-choice">
@@ -276,9 +276,7 @@ class RiskAssessmentManager {
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
                     <button type="button" class="btn btn-secondary btn-sm" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
                 </div>
-                <div class="tjanst-mall-body">
-                    ${analysHtml}
-                </div>
+                ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
             </article>
         `;
     }
