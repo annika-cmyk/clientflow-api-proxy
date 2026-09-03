@@ -720,19 +720,14 @@ class RiskAssessmentManager {
         }
 
         if (hot.length) {
-            const rows = hot.map((h) => {
-                const typ = (window.RiskSkala && RiskSkala.normalizePtTf(h.typ)) || ((h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT');
-                const typClass = (window.TjanstTfTackning ? TjanstTfTackning.isTfHot(h) : typ === 'TF') ? 'tag-tf' : 'tag-pt';
-                return `
+            const rows = hot.map((h) => `
                     <div class="threat-row">
-                        <span class="tag ${typClass}">${typ}</span>
                         <div class="threat-body">
                             <div class="threat-title">${this.esc(h.titel || '')}</div>
                             <div class="threat-desc">${this.esc(h.beskrivning || '')}</div>
                         </div>
                     </div>
-                `;
-            }).join('');
+                `).join('');
             sections.push(`
                 <div class="risk-content-section">
                     <h5><i class="fas fa-triangle-exclamation"></i> Hot och modus</h5>
@@ -742,21 +737,12 @@ class RiskAssessmentManager {
         }
 
         if (sarbarheter.length) {
-            const tagClassMap = { 'Kunder': 'tag-kund', 'Distribution': 'tag-dist', 'Geografi': 'tag-geo', 'Verksamhet': 'tag-verk' };
-            const items = sarbarheter.map((s) => {
-                const kat = s.kategori || 'Verksamhet';
-                const tagClass = tagClassMap[kat] || 'tag-verk';
-                return `
+            const items = sarbarheter.map((s) => `
                     <div class="vuln-item">
-                        <div class="tags-row">
-                            <span class="tag ${tagClass}">${this.esc(kat)}</span>
-                            <span class="evidens-tag evidens-${this.normalizeEvidens(s.evidens)}">${this.esc(this.evidensLabel(s.evidens))}</span>
-                        </div>
                         <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
                         <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
                     </div>
-                `;
-            }).join('');
+                `).join('');
             sections.push(`
                 <div class="risk-content-section">
                     <h5><i class="fas fa-shield-halved"></i> Sårbarheter</h5>
@@ -1167,15 +1153,11 @@ class RiskAssessmentManager {
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-hot dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        row.dataset.hotTyp = typ;
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
-                <select class="dyn-typ" aria-label="Hottyp">
-                    <option value="PT" ${typ === 'PT' ? 'selected' : ''}>PT</option>
-                    <option value="TF" ${typ === 'TF' ? 'selected' : ''}>TF</option>
-                    <option value="Båda" ${typ === 'Båda' ? 'selected' : ''}>Båda</option>
-                </select>
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
@@ -1190,7 +1172,6 @@ class RiskAssessmentManager {
             </div>
         `;
         this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
-        row.querySelector('.dyn-typ')?.addEventListener('change', () => this.updateTfBanner());
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -1203,26 +1184,19 @@ class RiskAssessmentManager {
     addSarbarhetRow(data = {}, opts = {}) {
         const list = document.getElementById('sarbarhet-list');
         if (!list) return;
-        const kategorier = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
-        const kategori = data.kategori ?? data.category ?? '';
+        const kategori = data.kategori ?? data.category ?? 'Verksamhet';
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const evidens = this.normalizeEvidens(data.evidens);
-        const optsHtml = kategorier.map(k => `<option value="${k}" ${kategori === k ? 'selected' : ''}>${k}</option>`).join('');
-        const evidensHtml = [
-            ['bekraftad', 'Bekräftad byråspecifik'],
-            ['tjanstetypisk', 'Tjänstetypisk risk'],
-            ['saknas', 'Saknad information']
-        ].map(([v, label]) => `<option value="${v}"${evidens === v ? ' selected' : ''}>${label}</option>`).join('');
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        row.dataset.kategori = kategori || 'Verksamhet';
+        row.dataset.evidens = evidens;
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
-                <select class="dyn-kategori" aria-label="Sårbarhetskategori">${optsHtml}</select>
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
-                <select class="dyn-evidens" aria-label="Evidensnivå">${evidensHtml}</select>
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
             </div>
@@ -1283,12 +1257,12 @@ class RiskAssessmentManager {
     }
 
     collectHot() {
-        return [...document.querySelectorAll('#hot-list .dyn-row')].map(row => ({
-            typ: row.querySelector('.dyn-typ')?.value || 'PT',
+        return [...document.querySelectorAll('#hot-list .dyn-row')].map((row) => ({
+            typ: (window.RiskSkala && RiskSkala.normalizePtTf(row.dataset.hotTyp)) || row.dataset.hotTyp || 'PT',
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
             beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
             kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
-        })).filter(h => h.titel || h.beskrivning || h.kalla);
+        })).filter((h) => h.titel || h.beskrivning || h.kalla);
     }
 
     normalizeEvidens(raw) {
@@ -1311,12 +1285,12 @@ class RiskAssessmentManager {
     }
 
     collectSarbarhet() {
-        return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map(row => ({
-            kategori: row.querySelector('.dyn-kategori')?.value || 'Verksamhet',
+        return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map((row) => ({
+            kategori: row.dataset.kategori || 'Verksamhet',
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
             beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
-            evidens: this.normalizeEvidens(row.querySelector('.dyn-evidens')?.value)
-        })).filter(s => s.titel || s.beskrivning);
+            evidens: this.normalizeEvidens(row.dataset.evidens)
+        })).filter((s) => s.titel || s.beskrivning);
     }
 
     collectAtgard() {
@@ -1787,31 +1761,14 @@ class RiskAssessmentManager {
         row.querySelector('.dyn-ai-forslag')?.remove();
         const box = document.createElement('div');
         box.className = 'dyn-ai-forslag';
-        const typ = forslag.typ || 'PT';
-        const kat = forslag.kategori || 'Verksamhet';
         const fieldChanges = Ai ? Ai.listItemFieldChanges(kind, current, forslag) : [];
-        const extra = kind === 'hot'
-            ? `<select class="dyn-ai-typ dyn-ai-control" aria-label="PT eller TF">
-                <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
-                <option value="TF"${typ === 'TF' ? ' selected' : ''}>TF</option>
-                <option value="Båda"${typ === 'Båda' ? ' selected' : ''}>Båda</option>
-              </select>`
-            : kind === 'sarbarheter'
-                ? `<select class="dyn-ai-kat dyn-ai-control" aria-label="Kategori">
-                    <option${kat === 'Verksamhet' ? ' selected' : ''}>Verksamhet</option>
-                    <option${kat === 'Kunder' ? ' selected' : ''}>Kunder</option>
-                    <option${kat === 'Distribution' ? ' selected' : ''}>Distribution</option>
-                    <option${kat === 'Geografi' ? ' selected' : ''}>Geografi</option>
-                  </select>`
-                : '';
         box.innerHTML = `
             <div class="dyn-ai-forslag-head">
                 <span class="dyn-ai-label">AI föreslår ändring</span>
             </div>
             ${comment ? `<p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
             ${fieldChanges.length ? `<p class="dyn-ai-change-hint"><strong>Ändras:</strong> ${this.esc(fieldChanges.join(', '))}</p>` : ''}
-            <div class="dyn-ai-form${extra ? ' dyn-ai-form--with-meta' : ''}">
-                ${extra ? `<div class="dyn-ai-field dyn-ai-field--meta">${extra}</div>` : ''}
+            <div class="dyn-ai-form">
                 <div class="dyn-ai-field dyn-ai-field--titel">
                     <label class="dyn-ai-field-label">Titel</label>
                     <input type="text" class="dyn-ai-titel dyn-ai-control" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
@@ -1838,17 +1795,18 @@ class RiskAssessmentManager {
                 if (row.querySelector('.dyn-titel')) row.querySelector('.dyn-titel').value = titel;
                 if (row.querySelector('.dyn-besk')) row.querySelector('.dyn-besk').value = besk;
                 if (kind === 'hot') {
-                    const typEl = row.querySelector('.dyn-typ');
+                    const typ = (window.RiskSkala && RiskSkala.normalizePtTf(forslag.typ)) || forslag.typ || '';
+                    if (typ) row.dataset.hotTyp = typ;
                     const kallaEl = row.querySelector('.dyn-kalla');
-                    if (typEl) typEl.value = box.querySelector('.dyn-ai-typ')?.value || 'PT';
                     if (kallaEl) {
                         kallaEl.value = box.querySelector('.dyn-ai-kalla')?.value || '';
                         kallaEl.dispatchEvent(new Event('input'));
                     }
                     this.updateTfBanner();
                 }
-                if (kind === 'sarbarheter' && row.querySelector('.dyn-kategori')) {
-                    row.querySelector('.dyn-kategori').value = box.querySelector('.dyn-ai-kat')?.value || 'Verksamhet';
+                if (kind === 'sarbarheter') {
+                    if (forslag.kategori) row.dataset.kategori = forslag.kategori;
+                    if (forslag.evidens) row.dataset.evidens = this.normalizeEvidens(forslag.evidens);
                 }
                 box.remove();
             }
