@@ -1122,7 +1122,7 @@ class RiskAssessmentManager {
     }
 
     setTjanstTab(tabId) {
-        const id = tabId || 'oversikt';
+        const id = tabId || 'utforande';
         document.querySelectorAll('.tjanst-tab').forEach((tab) => {
             const on = tab.getAttribute('data-tjanst-tab') === id;
             tab.classList.toggle('is-active', on);
@@ -1506,7 +1506,7 @@ class RiskAssessmentManager {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '';
         });
-        this.setTjanstTab('oversikt');
+        this.setTjanstTab('utforande');
         this.updateTjanstLists();
         this.updateRiskBadges();
         this._modalUtforandeMallId = null;

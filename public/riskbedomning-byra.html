@@ -302,7 +302,6 @@
                             </button>
                         </div>
                         <h3 id="tjanst-modal-title" class="visually-hidden">Lägg till tjänst</h3>
-                        <p class="tjanst-modal-kicker">Börja med utförandefrågor och tjänstebeskrivning — de har egna flikar. Inneboende risk (S×K före åtgärder) och residualrisk har också egna flikar.</p>
                     </div>
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
@@ -310,8 +309,8 @@
                         <div id="tjanst-ai-summary" class="ai-review-summary" hidden></div>
 
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
-                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="utforande" role="tab" aria-selected="false">Utförandefrågor</button>
+                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="utforande" role="tab" aria-selected="true">Utförandefrågor</button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="oversikt" role="tab" aria-selected="false">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot och modus <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span> <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="inneboende" role="tab" aria-selected="false">Inneboende risk <span class="tjanst-tab-ai" data-ai-for="inneboende" hidden>AI</span></button>
@@ -320,16 +319,7 @@
                         </nav>
 
                         <div class="tjanst-modal-body">
-                            <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
-                                <div class="tjanst-panel-scroll">
-                                <label for="tjanst-beskrivning">Tjänsten</label>
-                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär hos er — gärna med bekräftade fakta som antal kunder och hur underlag tas emot. Nämn INTE kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken. Hitta inte på bemanning eller kapacitet som systemet inte vet.</p>
-                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär hos er, med bekräftade fakta. Inte era kontroller."></textarea>
-                                <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
-                                </div>
-                            </section>
-
-                            <section class="tjanst-panel" data-tjanst-panel="utforande" hidden>
+                            <section class="tjanst-panel is-active" data-tjanst-panel="utforande">
                                 <div class="tjanst-panel-scroll">
                                     <div id="tjanst-modal-utforande" class="tjanst-modal-utforande" hidden></div>
                                     <div id="tjanst-ai-utforande" class="ai-review ai-review--inline" hidden></div>
@@ -339,6 +329,15 @@
                                         <i class="fas fa-wand-magic-sparkles"></i>
                                         <span class="ai-btn-label">Generera AI-analys</span>
                                     </button>
+                                </div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="oversikt" hidden>
+                                <div class="tjanst-panel-scroll">
+                                <label for="tjanst-beskrivning">Tjänsten</label>
+                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär hos er — gärna med bekräftade fakta som antal kunder och hur underlag tas emot. Nämn INTE kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken. Hitta inte på bemanning eller kapacitet som systemet inte vet.</p>
+                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär hos er, med bekräftade fakta. Inte era kontroller."></textarea>
+                                <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
                                 </div>
                             </section>
 
