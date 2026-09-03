@@ -187,10 +187,135 @@
         return best;
     }
 
-    function resolveKalla(raw) {
-        const text = String(raw == null ? '' : raw).trim();
-        if (!text) return { text: '', label: '', url: '', host: '' };
+    const NRA_2024_PDF =
+        'https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf';
+    const NRA_RAPPORTER_URL =
+        'https://polisen.se/om-polisen/samordning-mot-penningtvatt-och-finansiering-av-terrorism/rapporter/';
 
+    const KALLA_DOKUMENT = [
+        {
+            id: 'nra-2024-2025',
+            keys: ['nationell riskbedomning', 'nationella riskbedomningen', 'nra 2024', '2024/2025'],
+            publisher: 'Samordningsfunktionen',
+            title: 'Nationell riskbedömning 2024/2025',
+            url: NRA_2024_PDF,
+            sections: [
+                { keys: ['finansiering av terrorism', 'terrorfinans', 'terror'], label: 'kap. 4 Finansiering av terrorism' },
+                { keys: ['bokforing', 'redovisning', 'bokslut'], label: 'kap. 7.19 Bokförings- och revisionstjänster' },
+                { keys: ['skatteradgiv', 'deklaration', 'rot', 'rut'], label: 'kap. 7.20 Skatterådgivare' },
+                { keys: ['revisor'], label: 'kap. 7.18 Revisorer' },
+                { keys: ['mojliggorare'], label: 'kap. 5 Tvärgående risker' }
+            ]
+        },
+        {
+            id: 'ebm-pt-naringsverksamhet',
+            keys: ['penningtvatt i naringsverksamhet'],
+            publisher: 'Ekobrottsmyndigheten',
+            title: 'Penningtvätt i näringsverksamhet (2024)',
+            url: 'https://www.ekobrottsmyndigheten.se/wp-content/uploads/se/2024/12/penningtvatt-i-naringsverksamhet-inkl-sammanfattning-1.pdf'
+        },
+        {
+            id: 'ebm-penningtvattsbrott',
+            keys: ['penningtvattsbrott'],
+            publisher: 'Ekobrottsmyndigheten',
+            title: 'Penningtvättsbrott',
+            url: 'https://www.ekobrottsmyndigheten.se/om-ekobrott/brotten-vi-utreder/penningtvattsbrott/'
+        },
+        {
+            id: 'ebm-redovisningskonsult',
+            keys: ['vagledning for redovisningskonsulter', 'redovisningskonsult'],
+            publisher: 'Ekobrottsmyndigheten',
+            title: 'Vägledning för redovisningskonsulter',
+            url: 'https://www.ekobrottsmyndigheten.se/om-ekobrott/tipsa-om-ekobrott/redovisningskonsult/'
+        },
+        {
+            id: 'fi-prioriterade-2026',
+            keys: ['prioriterade risker'],
+            publisher: 'Finansinspektionen',
+            title: 'Prioriterade risker inom penningtvätt, TF och sanktioner (2026)',
+            url: 'https://www.fi.se/sv/publicerat/rapporter/rapporter/2026/fis-prioriterade-risker-inom-penningtvatt-finansiering-av-terrorism-och-internationella-sanktioner/'
+        },
+        {
+            id: 'polisen-rapporter',
+            keys: ['rapporter och omvarldsbevak'],
+            publisher: 'Polismyndigheten',
+            title: 'Rapporter och omvärldsbevakningar',
+            url: NRA_RAPPORTER_URL
+        },
+        {
+            id: 'fatf-recommendations',
+            keys: ['fatf-rekommendation', 'fatf recommendations', 'fatf standards'],
+            publisher: 'FATF',
+            title: 'FATF Recommendations',
+            url: 'https://www.fatf-gafi.org/en/publications/Fatfrecommendations/Fatf-recommendations.html'
+        }
+    ];
+
+    const GENERIC_LANDING_PATHS = [
+        'om-polisen/polisens-arbete/finanspolisen',
+        'om-polisen/organisation/sarskilda-organisationer/finanspolisen',
+        'om-polisen',
+        'sv/penningtvatt',
+        'sv/penningtvatt/samordningsfunktionen-mot-penningtvatt-och-finansiering-av-terrorism',
+        'om-ekobrott',
+        'om-oss'
+    ];
+
+    function matchBest(list, text, pickKeys) {
+        const hay = fold(text);
+        let best = null;
+        let bestLen = 0;
+        list.forEach((item) => {
+            (pickKeys(item) || []).forEach((key) => {
+                if (includesKey(hay, key) && key.length > bestLen) {
+                    best = item;
+                    bestLen = key.length;
+                }
+            });
+        });
+        return best;
+    }
+
+    function matchDokument(text) {
+        return matchBest(KALLA_DOKUMENT, text, (doc) => doc.keys);
+    }
+
+    function matchDokumentSection(doc, text) {
+        if (!doc || !Array.isArray(doc.sections) || !doc.sections.length) return '';
+        const hit = matchBest(doc.sections, text, (sec) => sec.keys);
+        return hit ? hit.label : '';
+    }
+
+    function isGenericKallaUrl(url) {
+        const raw = String(url || '').trim();
+        if (!raw) return true;
+        if (isHomepage(raw)) return true;
+        const path = pathParts(raw).join('/').replace(/\/+$/, '').toLowerCase();
+        if (!path) return true;
+        return GENERIC_LANDING_PATHS.some((g) => path === g);
+    }
+
+    function formatDokumentKalla(doc, section, url) {
+        const href = url || doc.url;
+        const mid = section ? `${doc.title}, ${section}` : doc.title;
+        return `${doc.publisher} — ${mid} — ${href}`;
+    }
+
+    function normalizeKalla(raw) {
+        const text = String(raw == null ? '' : raw).trim();
+        if (!text) return '';
+        const doc = matchDokument(text);
+        if (!doc) return text;
+        const urls = extractUrls(text);
+        const url = urls[0] || '';
+        const leftover = text.replace(url, '').replace(/[()[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const named = splitNamePage(leftover);
+        const section = matchDokumentSection(doc, leftover + ' ' + named.page) || named.page || '';
+        const keepUrl = url && !isGenericKallaUrl(url);
+        return formatDokumentKalla(doc, section, keepUrl ? url : doc.url);
+    }
+
+    function resolveFromText(text) {
         const urls = extractUrls(text);
         if (urls.length) {
             const url = urls[0];
@@ -229,6 +354,15 @@
         return { text, label: text, page: '', path: '', url: '', host: '' };
     }
 
+    function resolveKalla(raw) {
+        const original = String(raw == null ? '' : raw).trim();
+        if (!original) return { text: '', label: '', url: '', host: '' };
+        const normalized = normalizeKalla(original);
+        const parsed = resolveFromText(normalized);
+        parsed.text = original;
+        return parsed;
+    }
+
     function formatKallaDisplay(rawOrResolved) {
         const r = rawOrResolved && typeof rawOrResolved === 'object' && ('url' in rawOrResolved || 'label' in rawOrResolved)
             ? rawOrResolved
@@ -248,19 +382,36 @@
     }
 
     const KALLA_AI_RULES = `KÄLLA på varje hot:
-- Format: "Myndighet — Undersida — https://fullständig-url-till-undersidan"
-- Peka på den undersida som faktiskt beskriver tillvägagångssättet, inte bara myndighetens startsida.
-- Bra: "Ekobrottsmyndigheten — Penningtvätt — https://www.ekobrottsmyndigheten.se/om-ekobrott/penningtvatt/"
-- Dåligt: "Ekobrottsmyndigheten — https://www.ekobrottsmyndigheten.se/"`;
+- Format: "Utgivare — Dokumenttitel ÅÅÅÅ, kap. X Avsnitt — https://exakt-url-till-dokumentet"
+- Peka på det dokument eller den rapportsida som faktiskt beskriver tillvägagångssättet. Inte myndighetens startsida och inte en generell avdelningssida (t.ex. Finanspolisens startsida).
+- Ange år och kapitel/avsnitt när dokumentet har det. För nationell riskbedömning: kap. 4 vid TF, kap. 7.19 vid bokföring/redovisning, kap. 7.20 vid skatt/deklaration/ROT-RUT, kap. 7.18 vid revision.
+- Hitta inte på webbadresser. Använd bara URL:er från källistan eller från file_search-träffar med synlig URL.
+- Bra: "Samordningsfunktionen — Nationell riskbedömning 2024/2025, kap. 4 Finansiering av terrorism — ${NRA_2024_PDF}"
+- Dåligt: "Nationell riskbedömning — Finansiering av terrorism — https://www.polisen.se/om-polisen/polisens-arbete/finanspolisen/"`;
+
+    const KALLA_DOKUMENT_PROMPT = [
+        'GODKÄNDA DOKUMENT (använd dessa URL:er i stället för myndigheters startsidor):',
+        ...KALLA_DOKUMENT.map((doc) => {
+            const secs = Array.isArray(doc.sections) && doc.sections.length
+                ? ` Avsnitt: ${doc.sections.map((s) => s.label).join('; ')}.`
+                : '';
+            return `- ${doc.publisher} — ${doc.title} — ${doc.url}.${secs}`;
+        })
+    ].join('\n');
 
     const api = {
         SITES,
+        KALLA_DOKUMENT,
         isKallaUrl,
+        isGenericKallaUrl,
+        matchDokument,
+        normalizeKalla,
         resolveKalla,
         formatKallaDisplay,
         pageFromUrl,
         pathDisplay,
-        KALLA_AI_RULES
+        KALLA_AI_RULES,
+        KALLA_DOKUMENT_PROMPT
     };
 
     if (typeof module !== 'undefined' && module.exports) {
