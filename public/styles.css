@@ -14965,13 +14965,9 @@ h5.ar-subsection-title {
     flex-shrink: 0;
 }
 .tjanst-modal-identity {
-    display: grid;
-    grid-template-columns: minmax(min-content, auto) auto;
-    grid-template-areas:
-        "scores ai"
-        "hint hint";
-    gap: 0.65rem 1rem;
-    align-items: end;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
     padding: 0 0 1rem;
     margin: 0 0 1rem;
     background: transparent;
@@ -14979,15 +14975,9 @@ h5.ar-subsection-title {
     flex-shrink: 0;
 }
 .tjanst-modal-identity .tjanst-risk-scores {
-    grid-area: scores;
-}
-.tjanst-modal-identity .btn-ai {
-    grid-area: ai;
-    align-self: end;
-    justify-self: end;
+    min-width: 0;
 }
 .tjanst-modal-identity .tjanst-sxk-hint {
-    grid-area: hint;
     margin: 0;
     max-width: 52rem;
 }
@@ -15059,11 +15049,20 @@ h5.ar-subsection-title {
     border-top: none;
 }
 .tjanst-modal-utforande {
-    margin-bottom: 1.25rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--line, #e8eaee);
+    margin-bottom: 0;
 }
 .tjanst-modal-utforande-head .tjanst-mall-group-title {
+    margin-top: 0;
+}
+.tjanst-utforande-ai-bar {
+    margin-top: 0.85rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--line, #e8eaee);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+}
+[data-tjanst-panel="utforande"] .tjanst-utforande-ai-bar {
     margin-top: 0;
 }
 .tjanst-residual-title {
@@ -16113,18 +16112,6 @@ h5.ar-subsection-title {
 }
 
 @media (max-width: 960px) {
-    .tjanst-modal-identity {
-        grid-template-columns: 1fr;
-        grid-template-areas:
-            "name"
-            "scores"
-            "ai"
-            "hint";
-        align-items: stretch;
-    }
-    .tjanst-modal-identity .btn-ai {
-        justify-self: start;
-    }
     .tjanst-modal-identity .tjanst-risk-scores,
     .tjanst-risk-scores {
         flex-wrap: wrap;
