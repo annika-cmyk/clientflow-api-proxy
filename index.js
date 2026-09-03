@@ -23265,8 +23265,8 @@ REGLER:
 - Håll dig strikt till tjänstens domän
 - Blanda INTE in KYC, verkliga huvudmän eller penningtvättskontroller om tjänsten inte handlar om det
 - Utgå från svensk redovisningssed, BAS-kontoplanen och god revisionspraxis
-- Om tjänsten är av redovisningskaraktär: beskriv vad som utförs hos just denna byrå och var den inneboende risken ligger (t.ex. beroende av kundens underlag). Byråns avstämningar, kontroller och dokumentationskrav hör till atgarder, inte beskrivningen.
-- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv tjänsten och den inneboende risken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
+- Om tjänsten är av redovisningskaraktär: beskriv tjänstens omfattning och vilka moment byrån utför. Kontroller, rutiner, residualrisk och bemanning hör inte i beskrivningen.
+- Om tjänsten är av compliance-karaktär (t.ex. AML, KYC): beskriv vad tjänsten innebär i praktiken. Identitetskontroll, uppföljning och dokumentationsrutiner hör till atgarder.
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot.
 ${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
@@ -23279,11 +23279,13 @@ ${AmlKalla.KALLA_DOKUMENT_PROMPT}
 - Om minst ett TF- eller Båda-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
+${AiTjanstAnalys.HOT_MODUS_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${katalogBlock ? `\n${RiskanalysTjanstKatalog.PROMPT_RULES}\n` : ''}${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
 BYRÅUNDERLAGET SKA PÅVERKA ANALYSEN:
 Använd bara bekräftade uppgifter som fakta. Saknad information ska märkas, inte fyllas i.
+Skriv inte in bemanning, residualrisk, kontroller eller geografisk kundspridning i fältet Tjänsten. Byråfakta används i motivering och sårbarheter om de är relevanta.
 Exempel:
 - Antal anställda = 1 i underlaget → det är en bekräftad sårbarhet kring second review.
 - Antal anställda saknas → skriv "uppgift saknas", påstå inte att byrån är enmansbyrå.
@@ -23301,14 +23303,14 @@ KÄLLOR ATT UTGÅ FRÅN:
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
-  "beskrivning": "3-5 meningar om vad tjänsten innebär hos just denna byrå, med bekräftade fakta. Inga kontroller eller påhittad bemanning.",
+  "beskrivning": "2-4 korta stycken om tjänstens omfattning och vad byrån gör. Inga kontroller, rutiner, åtgärder, residualrisk, bemanning eller allmän byråfakta.",
   "sannolikhet": 1,
   "konsekvens": 1,
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas.",
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas. Byråfakta bara här om de är relevanta.",
   "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
-  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 konkreta meningar: vilken handling som kan vara felaktig, hur tjänsten används, varför byråns medverkan ger legitimitet, vilken PT/TF-risk. Inga vaga eller dramatiska påståenden.", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "evidens": "bekraftad|tjanstetypisk|saknas" } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"],
