@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260903rader3">
+    <link rel="stylesheet" href="styles.css?v=20260903tjanstkort">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="riskbedomning-byra-page">
@@ -27,6 +27,7 @@
                         <details class="risk-guide">
                             <summary class="risk-guide-summary">
                                 <span class="risk-guide-summary-text">Vägledning: Riskbedömning av byråns tjänster (Allmän riskbedömning)</span>
+                                <i class="fas fa-chevron-right risk-guide-chevron" aria-hidden="true"></i>
                             </summary>
                             <div class="risk-header-body">
                                 <p>
@@ -208,7 +209,7 @@
                         <div>
                             <h3>Vilka tjänster erbjuder ni?</h3>
                         </div>
-                        <button type="button" class="btn btn-secondary" id="tjanst-utforande-add-custom">
+                        <button type="button" class="btn-add-row" id="tjanst-utforande-add-custom">
                             <i class="fas fa-plus"></i>
                             Lägg till egen tjänst
                         </button>
@@ -301,12 +302,11 @@
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
+                        <div id="tjanst-ai-summary" class="ai-review-summary tjanst-ai-summary" hidden></div>
                         <h3 id="tjanst-modal-title" class="visually-hidden">Lägg till tjänst</h3>
                     </div>
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
-
-                        <div id="tjanst-ai-summary" class="ai-review-summary" hidden></div>
 
                         <div class="tjanst-modal-layout">
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
@@ -498,16 +498,16 @@
                                         <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
                                         <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
                                     </div>
-                                </div>
-                                </div>
-                                <div class="tjanst-residual-feedback" id="tjanst-residual-feedback">
-                                    <label for="tjanst-residual-feedback-text">Feedback till ClientFlow</label>
-                                    <p class="tjanst-panel-hint">Synpunkter på residualriskbedömningen skickas till feedback@clientflow.se (med byrå och inloggad användare).</p>
-                                    <div class="tjanst-residual-feedback-row">
-                                        <textarea id="tjanst-residual-feedback-text" name="residual-feedback" rows="2" maxlength="4000" placeholder="Skriv en kort synpunkt…" autocomplete="off"></textarea>
-                                        <button type="button" class="btn btn-secondary btn-sm" id="tjanst-residual-feedback-send">Skicka</button>
+                                    <div class="tjanst-residual-feedback" id="tjanst-residual-feedback">
+                                        <label for="tjanst-residual-feedback-text">Feedback till ClientFlow</label>
+                                        <p class="tjanst-panel-hint">Synpunkter på residualriskbedömningen skickas till feedback@clientflow.se (med byrå och inloggad användare).</p>
+                                        <div class="tjanst-residual-feedback-row">
+                                            <textarea id="tjanst-residual-feedback-text" name="residual-feedback" rows="2" maxlength="4000" placeholder="Skriv en kort synpunkt…" autocomplete="off"></textarea>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="tjanst-residual-feedback-send">Skicka</button>
+                                        </div>
+                                        <p id="tjanst-residual-feedback-status" class="tjanst-residual-feedback-status" hidden></p>
                                     </div>
-                                    <p id="tjanst-residual-feedback-status" class="tjanst-residual-feedback-status" hidden></p>
+                                </div>
                                 </div>
                             </section>
                         </div>

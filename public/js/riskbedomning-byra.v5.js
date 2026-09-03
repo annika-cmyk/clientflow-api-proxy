@@ -213,6 +213,35 @@ class RiskAssessmentManager {
         if (opts.ai) this.generateAiSuggestion();
     }
 
+    utforandeServiceIcon(mallId) {
+        const map = {
+            'rot-rut': 'fa-receipt',
+            'lopande-bokforing': 'fa-book',
+            'anlaggningsregister': 'fa-screwdriver-wrench',
+            'kontoavstamningar': 'fa-scale-balanced',
+            'kontrollbalansrakning': 'fa-scale-balanced',
+            'kundfakturering': 'fa-file-invoice',
+            'bokslut': 'fa-scale-balanced',
+            'momsredovisning': 'fa-percent',
+            'deklarationer': 'fa-file-lines',
+            'leverantorsfakturor': 'fa-file-invoice-dollar',
+            'arsredovisning': 'fa-book-open',
+            'lonehantering': 'fa-users',
+            'lagerredovisning': 'fa-boxes-stacked',
+            'betalningsuppdrag': 'fa-money-bill-transfer',
+            'radgivning': 'fa-comments'
+        };
+        if (map[mallId]) return map[mallId];
+        if (String(mallId || '').indexOf('custom:') === 0) return 'fa-puzzle-piece';
+        return 'fa-briefcase';
+    }
+
+    formatCatalogRiskBadge(label) {
+        return String(label || '')
+            .replace(/\(S\s*[×xX]\s*K\s+(\d+)\)/g, '($1)')
+            .replace(/:\s*([^\s(]+)/, (_, level) => ': ' + String(level).toLocaleLowerCase('sv-SE'));
+    }
+
     renderUtforandeRiskMeta(risk) {
         const f = (risk && risk.fields) || {};
         const scored = (window.RiskSkala && RiskSkala.readTjanstRisk(f)) || {};
@@ -225,10 +254,12 @@ class RiskAssessmentManager {
         if (!badges.inneboende && !badges.residual) {
             return '<span class="tjanst-mall-status">AML-analys finns</span>';
         }
+        const inneboende = this.formatCatalogRiskBadge(badges.inneboende);
+        const residual = this.formatCatalogRiskBadge(badges.residual);
         return `
             <span class="tjanst-mall-meta">
-                ${badges.inneboende ? `<span class="risk-level-badge ${this.getRiskLevelClass(riskLevel)}">${this.esc(badges.inneboende)}</span>` : ''}
-                ${badges.residual ? `<span class="risk-level-badge ${this.getRiskLevelClass(residualLevel)}">${this.esc(badges.residual)}</span>` : ''}
+                ${inneboende ? `<span class="risk-level-badge ${this.getRiskLevelClass(riskLevel)}">${this.esc(inneboende)}</span>` : ''}
+                ${residual ? `<span class="risk-level-badge ${this.getRiskLevelClass(residualLevel)}">${this.esc(residual)}</span>` : ''}
             </span>
         `;
     }
@@ -249,6 +280,8 @@ class RiskAssessmentManager {
         const aktiv = !!(entry && entry.aktiv);
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
+        const icon = this.utforandeServiceIcon(template.id);
+        const toggleLabel = aktiv ? 'Inaktivera tjänsten' : 'Aktivera tjänsten';
         const analysHtml = existing
             ? ''
             : `<div class="tjanst-mall-empty">
@@ -261,20 +294,25 @@ class RiskAssessmentManager {
         return `
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
-                    <div>
-                        <h4 class="tjanst-mall-title">
-                            <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>
-                        </h4>
-                        ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
+                    <div class="tjanst-mall-identity">
+                        <span class="tjanst-mall-icon${aktiv ? ' is-active' : ''}" aria-hidden="true">
+                            <i class="fas ${icon}"></i>
+                        </span>
+                        <div class="tjanst-mall-copy">
+                            <h4 class="tjanst-mall-title">
+                                <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>
+                            </h4>
+                            ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
+                        </div>
                     </div>
-                    <label class="tjanst-mall-toggle">
-                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''}>
-                        <span>${aktiv ? 'Aktiv' : 'Inaktiv'}</span>
+                    <label class="tjanst-mall-switch">
+                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} aria-label="${toggleLabel}">
+                        <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
                     </label>
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
-                    <button type="button" class="btn btn-secondary btn-sm" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
+                    <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
             </article>
@@ -422,7 +460,7 @@ class RiskAssessmentManager {
                     ${row('PEP eller PEP-anhörig', expo.pep)}
                     ${row('Högriskland', expo.hogrisksland)}
                 </div>
-                ${notes.length ? `<p class="tjanst-mall-q-help">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
+                ${notes.length ? `<p class="tjanst-mall-stats-note">${notes.map((n) => this.esc(n)).join(' ')}</p>` : ''}`;
         } catch (err) {
             host.innerHTML = `<p class="tjanst-mall-stats-error">Kunde inte hämta statistik från Clientflow: ${this.esc(err.message || 'okänt fel')}</p>`;
         }
@@ -1100,8 +1138,12 @@ class RiskAssessmentManager {
             return;
         }
         bar.hidden = false;
+        const primary = present.includes('oversikt') ? 'oversikt' : present[0];
         bar.innerHTML = `
-            <p>AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}.</p>
+            <p class="tjanst-ai-summary-text">AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}</p>
+            <button type="button" class="tjanst-ai-summary-goto" data-goto-tab="${primary}" title="Gå till ${labels[primary]}" aria-label="Gå till ${labels[primary]}">
+                <i class="fas fa-arrow-right" aria-hidden="true"></i>
+            </button>
             <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all-tabs>Avfärda alla</button>
         `;
         bar.onclick = (ev) => {
@@ -2147,14 +2189,16 @@ class RiskAssessmentManager {
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
 
             if (reviewMode) {
-                this.applyTjanstAiIfEmpty(befintligt, data);
-                const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
+                const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
-                    : Ai.ensureAnalysisPosters('tjanst', befintligt, data, []);
+                    : [];
+                // Alltid lyft kompletta huvudfält till posters för alla sektioner — även tomma
+                // fält och även om modellen bara skickade Översikt i granskning.poster.
+                const poster = Ai.ensureAnalysisPosters('tjanst', befintligt, data, basePoster);
                 const changed = this.paintInlineTjanstAi(poster, befintligt);
                 this.showNotification(changed
                     ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
-                    : 'AI har fyllt tomma fält. Inga nya förslag skilde sig från era texter.', 'success');
+                    : 'Inga nya förslag skilde sig från era texter.', 'success');
             } else {
                 this.applyTjanstAiAll(data);
                 this.setTjanstTab('hot');
