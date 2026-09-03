@@ -319,44 +319,64 @@
       ])
     ]),
     spec('bokslut', 'Bokslut', [
-      q('bsEgenBokforing', 'Bygger bokslutet normalt på bokföring som byrån själv har skött under året?', 'single', [
-        'Ja, huvudsakligen',
-        'Nej, kunden/annan part har gjort bokföringen',
-        'Både och',
-        'Varierar mellan kunder'
+      q('bsLopandeBokforing', 'Vem har normalt skött den löpande bokföringen som bokslutet bygger på?', 'multi', [
+        'Byrån',
+        'Kunden',
+        'Annan redovisningsbyrå/konsult'
+      ], { helpText: 'Avser vem som bokfört under året, inte vem som lämnar kvitton eller annat material.' }),
+      q('bsAndraTjanster', 'Ingår andra tjänster normalt i samband med bokslutet?', 'multi', [
+        'Deklaration',
+        'Årsredovisning',
+        'Genomgång/rådgivning med kund',
+        'Underlag till bank eller annan extern part',
+        'Nej, normalt inte'
       ]),
-      q('bsMoment', 'Vilka moment ingår normalt i bokslutsarbetet?', 'multi', [
-        'Avstämningar',
-        'Bokslutsbilagor',
-        'Periodiseringar',
-        'Skatteberäkning',
-        'Värdering av lager/tillgångar/fordringar',
-        'Kontroll av ägarlån/närstående',
-        'Genomgång med kund',
+      // Samma id som basfrågan underlagKanal, så tidigare svar på Bokslut behålls.
+      q('underlagKanal', 'Hur får byrån normalt tillgång till information inför bokslut?', 'multi', [
+        'Bokföringssystem',
+        'Kundportal',
+        'E-post',
+        'Bankintegration',
+        'Fysiskt material',
+        'Möte/telefon/chatt',
         'Annat'
       ]),
-      q('bsJusteringar', 'Kontrolleras större bokslutsjusteringar, manuella bokningar eller poster som avviker från tidigare år?', 'single', [
-        'Ja, normalt',
-        'Ja, vid väsentliga belopp eller avvikelse',
-        'Nej, normalt inte',
-        'Varierar mellan kunder'
+      q('bsKunduppgifter', 'Vilka uppgifter behöver kunden normalt lämna eller bekräfta inför bokslut?', 'multi', [
+        'Inga särskilda uppgifter',
+        'Lager',
+        'Pågående arbeten',
+        'Lån',
+        'Kundfordringar som kan vara svåra att få betalt för',
+        'Privata insättningar eller uttag',
+        'Transaktioner med ägare eller närstående',
+        'Större kostnader eller intäkter som ska periodiseras',
+        'Annat'
+      ], { helpText: 'Avser uppgifter som byrån normalt inte fullt ut kan ta fram själv från bokföringen eller system.' }),
+      q('bsBokningar', 'Gör byrån normalt bokslutsbokningar eller justeringar i kundens bokföring?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
       ]),
-      q('bsOverifierat', 'Hur hanteras uppgifter som kunden lämnar inför bokslut och som byrån inte kan verifiera fullt ut?', 'multi', [
-        'Kundens uppgift dokumenteras',
-        'Kunden får lämna kompletterande underlag',
-        'Ansvarig konsult gör rimlighetsbedömning',
+      q('bsJusteringar', 'Kontrolleras större eller avvikande bokslutsposter?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller tydliga avvikelser',
+        'Nej, ingen särskild kontroll'
+      ], { helpText: 'Exempelvis större justeringar, ovanliga poster eller stora förändringar jämfört med tidigare år.' }),
+      q('bsOverifierat', 'Hur hanteras uppgifter eller poster som är oklara?', 'multi', [
+        'Kunden får komplettera',
+        'Byrån gör rimlighetsbedömning',
+        'Uppgiften/posten dokumenteras',
         'Posten tas inte med förrän den är utredd',
-        'Det hanteras från fall till fall',
+        'Ansvarig konsult/chef granskar',
         'Ingen särskild rutin'
       ]),
-      q('bsAgarlan', 'Kontrolleras lån till/från ägare, närstående eller koncernbolag när sådana poster finns?', 'single', [
+      q('bsAgarlan', 'Kontrolleras lån eller transaktioner med ägare, närstående eller koncernbolag?', 'single', [
         'Ja, normalt',
-        'Ja, vid större belopp',
+        'Ja, vid större belopp eller avvikelser',
         'Nej, normalt inte',
-        'Ej relevant',
-        'Varierar mellan kunder'
+        'Ej relevant'
       ])
-    ]),
+    ], { replaceBaseQuestions: true }),
     spec('momsredovisning', 'Momsredovisning', [
       q('momsVad', 'Vad gör byrån normalt i momsredovisningen?', 'multi', [
         'Tar fram momsrapport',
@@ -748,13 +768,19 @@
   }
 
   function questionsForTemplate(template) {
-    return BASE_QUESTIONS.concat(extraQuestionsForTemplate(template));
+    const extra = extraQuestionsForTemplate(template);
+    if (template && template.replaceBaseQuestions) return extra.slice();
+    return BASE_QUESTIONS.concat(extra);
   }
 
   function groupQuestionsForTemplate(template) {
+    const extra = extraQuestionsForTemplate(template);
+    if (template && template.replaceBaseQuestions) {
+      return { base: extra.slice(), extra: [] };
+    }
     return {
       base: BASE_QUESTIONS.slice(),
-      extra: extraQuestionsForTemplate(template)
+      extra: extra
     };
   }
 
