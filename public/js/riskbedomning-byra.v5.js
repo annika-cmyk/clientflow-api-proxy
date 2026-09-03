@@ -168,7 +168,20 @@ class RiskAssessmentManager {
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
-                this.patchUtforandeEntry(mallId, { aktiv: !!e.target.checked });
+                const wantAktiv = !!e.target.checked;
+                if (!wantAktiv) {
+                    const namn = cardEl.getAttribute('data-mall-namn') || '';
+                    const kundCount = this.kundCountForUtforandeTjanst(mallId, namn);
+                    if (kundCount > 0) {
+                        e.target.checked = true;
+                        const msg = kundCount === 1
+                            ? `Kan inte inaktivera «${namn}»: 1 kund har tjänsten. Ta bort den från kunden först.`
+                            : `Kan inte inaktivera «${namn}»: ${kundCount} kunder har tjänsten. Ta bort den från kunderna först.`;
+                        this.showNotification(msg, 'error');
+                        return;
+                    }
+                }
+                this.patchUtforandeEntry(mallId, { aktiv: wantAktiv });
             });
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
                 btn.addEventListener('click', () => {
@@ -178,6 +191,19 @@ class RiskAssessmentManager {
                 });
             });
         });
+    }
+
+    kundCountForUtforandeTjanst(mallId, namn) {
+        const analysNamn = namn || '';
+        const risks = this.findTjanstRisksByName(analysNamn);
+        let total = 0;
+        const seen = new Set();
+        for (const risk of risks) {
+            if (!risk || !risk.id || seen.has(risk.id)) continue;
+            seen.add(risk.id);
+            total += Number(this.kundAntalMaps.tjanster && this.kundAntalMaps.tjanster[risk.id]) || 0;
+        }
+        return total;
     }
 
     findTjanstRisksByName(namn) {
@@ -281,7 +307,11 @@ class RiskAssessmentManager {
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const icon = this.utforandeServiceIcon(template.id);
-        const toggleLabel = aktiv ? 'Inaktivera tjänsten' : 'Aktivera tjänsten';
+        const kundCount = this.kundCountForUtforandeTjanst(template.id, analysNamn);
+        const lockedInactive = aktiv && kundCount > 0;
+        const toggleLabel = lockedInactive
+            ? `Kan inte inaktiveras — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
+            : (aktiv ? 'Inaktivera tjänsten' : 'Aktivera tjänsten');
         const analysHtml = existing
             ? ''
             : `<div class="tjanst-mall-empty">
@@ -305,13 +335,14 @@ class RiskAssessmentManager {
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                         </div>
                     </div>
-                    <label class="tjanst-mall-switch">
-                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} aria-label="${toggleLabel}">
+                    <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
+                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
                         <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
                     </label>
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
+                    ${kundCount > 0 ? this.renderKundCountBadge(kundCount) : ''}
                     <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
@@ -510,6 +541,9 @@ class RiskAssessmentManager {
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
+                if (err.code === 'tjanst_har_kunder' || res.status === 409) {
+                    await this.loadUtforande();
+                }
                 throw new Error(err.error || `HTTP ${res.status}`);
             }
         } catch (err) {
