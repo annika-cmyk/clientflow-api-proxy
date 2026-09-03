@@ -91,6 +91,15 @@ class RiskAssessmentManager {
                 qEl.querySelector('.tjanst-mall-comment')?.addEventListener('input', () => {
                     this.collectUtforandeQuestion(mallId, qid, qEl);
                 });
+                qEl.querySelector('[data-comment-add]')?.addEventListener('click', () => {
+                    const commentEl = qEl.querySelector('.tjanst-mall-comment');
+                    const addEl = qEl.querySelector('[data-comment-add]');
+                    if (addEl) addEl.hidden = true;
+                    if (commentEl) {
+                        commentEl.hidden = false;
+                        commentEl.focus();
+                    }
+                });
             });
             cardEl.querySelectorAll('[data-utforande-view]').forEach((btn) => {
                 btn.addEventListener('click', () => {
@@ -143,13 +152,26 @@ class RiskAssessmentManager {
         `;
     }
 
+    renderUtforandeQuestionGroup(mallId, title, questions, entry) {
+        if (!questions.length) return '';
+        return `
+            <section class="tjanst-mall-group">
+                <h5 class="tjanst-mall-group-title">${this.esc(title)}</h5>
+                <div class="tjanst-mall-group-list">
+                    ${questions.map((q) => this.renderUtforandeQuestion(mallId, q, entry)).join('')}
+                </div>
+            </section>
+        `;
+    }
+
     renderUtforandeCard(template, entry) {
         const aktiv = !!(entry && entry.aktiv);
-        const questions = window.TjanstUtforandeMallar.questionsForTemplate(template);
+        const grouped = window.TjanstUtforandeMallar.groupQuestionsForTemplate(template);
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const view = this.utforandeViews[template.id] || '';
-        const qHtml = questions.map((q) => this.renderUtforandeQuestion(template.id, q, entry)).join('');
+        const qHtml = `${this.renderUtforandeQuestionGroup(template.id, 'Så här görs tjänsten', grouped.base, entry)}
+            ${this.renderUtforandeQuestionGroup(template.id, 'Specifikt för ' + (template.name || 'tjänsten'), grouped.extra, entry)}`;
         const analysHtml = existing
             ? `${this.buildTjanstRiskSections(existing)}
                 <div class="tjanst-mall-actions">
@@ -167,16 +189,17 @@ class RiskAssessmentManager {
                     <div>
                         <h4 class="tjanst-mall-title">${this.esc(template.name)}</h4>
                         ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
-                        ${template.helpText ? `<p class="tjanst-mall-help">${this.esc(template.helpText)}</p>` : ''}
                     </div>
                     <label class="tjanst-mall-toggle">
                         <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''}>
-                        ${aktiv ? 'Aktiv' : 'Inaktiv'}
+                        <span>${aktiv ? 'Aktiv' : 'Inaktiv'}</span>
                     </label>
                 </div>
-                <div class="tjanst-mall-nav" role="tablist">
-                    <button type="button" class="tjanst-mall-nav-btn${view === 'fragor' ? ' is-active' : ''}" data-utforande-view="fragor" aria-pressed="${view === 'fragor' ? 'true' : 'false'}">Utförandefrågor</button>
-                    <button type="button" class="tjanst-mall-nav-btn${view === 'analys' ? ' is-active' : ''}" data-utforande-view="analys" aria-pressed="${view === 'analys' ? 'true' : 'false'}">Riskbedömning</button>
+                <div class="tjanst-mall-toolbar">
+                    <div class="tjanst-mall-tabs" role="tablist">
+                        <button type="button" class="tjanst-mall-nav-btn${view === 'fragor' ? ' is-active' : ''}" data-utforande-view="fragor" aria-pressed="${view === 'fragor' ? 'true' : 'false'}">Utförandefrågor</button>
+                        <button type="button" class="tjanst-mall-nav-btn${view === 'analys' ? ' is-active' : ''}" data-utforande-view="analys" aria-pressed="${view === 'analys' ? 'true' : 'false'}">Riskbedömning</button>
+                    </div>
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
                 </div>
                 <div class="tjanst-mall-body">
@@ -193,23 +216,29 @@ class RiskAssessmentManager {
         const value = answers[question.id];
         const selected = new Set(Array.isArray(value) ? value : (value ? [value] : []));
         const showComment = (question.showCommentWhen || []).some((opt) => selected.has(opt));
+        const commentValue = comments[question.id] || '';
+        const hasCommentField = !!(question.showCommentWhen && question.showCommentWhen.length);
         let control = '';
         if (question.type === 'text') {
             control = `<textarea class="tjanst-mall-text" rows="3">${this.esc(value || '')}</textarea>`;
         } else {
             const type = question.type === 'multi' ? 'checkbox' : 'radio';
             const name = `utforande-${mallId}-${question.id}`;
-            control = `<div class="tjanst-mall-options">${(question.options || []).map((opt) => `
-                <label><input type="${type}" name="${this.esc(name)}" value="${this.esc(opt)}"${selected.has(opt) ? ' checked' : ''}> ${this.esc(opt)}</label>
+            control = `<div class="tjanst-mall-options" role="${type === 'radio' ? 'radiogroup' : 'group'}">${(question.options || []).map((opt) => `
+                <label class="tjanst-mall-chip${selected.has(opt) ? ' is-selected' : ''}">
+                    <input type="${type}" name="${this.esc(name)}" value="${this.esc(opt)}"${selected.has(opt) ? ' checked' : ''}>
+                    <span>${this.esc(opt)}</span>
+                </label>
             `).join('')}</div>`;
         }
         return `
             <div class="tjanst-mall-q" data-q-id="${this.esc(question.id)}" data-q-type="${this.esc(question.type)}">
-                <label>${this.esc(question.label)}</label>
+                <p class="tjanst-mall-q-label">${this.esc(question.label)}</p>
                 ${question.helpText ? `<p class="tjanst-mall-q-help">${this.esc(question.helpText)}</p>` : ''}
                 ${control}
-                ${(question.showCommentWhen && showComment) || question.type === 'single' && (question.showCommentWhen || []).length
-                    ? `<textarea class="tjanst-mall-comment" rows="2" placeholder="Kommentar"${showComment ? '' : ' hidden'}>${this.esc(comments[question.id] || '')}</textarea>`
+                ${hasCommentField
+                    ? `<button type="button" class="tjanst-mall-comment-add" data-comment-add${showComment && !commentValue ? '' : ' hidden'}>Lägg till kommentar</button>
+                    <textarea class="tjanst-mall-comment" rows="2" placeholder="Valfri kommentar"${showComment && commentValue ? '' : ' hidden'}>${this.esc(commentValue)}</textarea>`
                     : ''}
             </div>
         `;
@@ -229,14 +258,22 @@ class RiskAssessmentManager {
             answers[qid] = qEl.querySelector('input:checked')?.value || '';
         }
         const commentEl = qEl.querySelector('.tjanst-mall-comment');
-        if (commentEl) {
+        const addEl = qEl.querySelector('[data-comment-add]');
+        if (commentEl || addEl) {
             const template = Mallar.templateById(mallId);
             const question = Mallar.questionsForTemplate(template).find((q) => q.id === qid);
             const selected = Array.isArray(answers[qid]) ? answers[qid] : (answers[qid] ? [answers[qid]] : []);
             const show = (question && question.showCommentWhen || []).some((opt) => selected.includes(opt));
-            commentEl.hidden = !show;
-            kommentarer[qid] = show ? commentEl.value.trim() : '';
+            const commentValue = show && commentEl ? commentEl.value.trim() : '';
+            const commentOpen = !!(commentEl && !commentEl.hidden);
+            if (commentEl) commentEl.hidden = !(show && (commentOpen || commentValue));
+            if (addEl) addEl.hidden = !(show && commentEl && commentEl.hidden);
+            kommentarer[qid] = commentValue;
         }
+        qEl.querySelectorAll('.tjanst-mall-chip').forEach((chip) => {
+            const input = chip.querySelector('input');
+            chip.classList.toggle('is-selected', !!(input && input.checked));
+        });
         this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: false });
     }
 
