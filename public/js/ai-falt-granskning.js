@@ -26,7 +26,10 @@
 
   const MOTIVERING_AI_RULES = `- MOTIVERING AV S×K (krav vid tillsyn): Skriv alltid motiveringInneboende och motiveringResidual när du sätter S/K.
 - motiveringInneboende: 2–4 meningar som förklarar VARFÖR sannolikheten är som den är (hot/sårbarhet) och VARFÖR konsekvensen är som den är (skada/regulatorisk påverkan). Minst 50 tecken om inneboende risk blir Förhöjd, Hög eller Oacceptabel.
-- motiveringResidual: 2–4 meningar om hur åtgärderna sänkt sannolikhet och/eller konsekvens. Minst 50 tecken om residual blir Förhöjd+. Om residual är Hög eller Oacceptabel: nämn riskaptit eller fattat beslut.`;
+- motiveringResidual: 2–4 meningar om hur åtgärderna sänkt sannolikhet och/eller konsekvens. Minst 50 tecken om residual blir Förhöjd+. Om residual är Hög eller Oacceptabel: nämn riskaptit eller fattat beslut.
+- ORDLISTA — skilj dimensioner från risknivå: När du beskriver S eller K ska du alltid nämna siffran (1–5) och använda dimensionsorden: Sannolikhet 1 Mycket låg / 2 Låg / 3 Medel / 4 Hög / 5 Mycket hög; Konsekvens 1 Obetydlig / 2 Lindrig / 3 Kännbar / 4 Allvarlig / 5 Katastrofal.
+- Använd ALDRIG orden Förhöjd, Normal eller Oacceptabel som adjektiv för sannolikhet eller konsekvens ensamma. De orden är reserverade för den beräknade risknivån (S×K-produkten: 1–4 Låg, 5–9 Normal, 10–15 Förhöjd, 16–19 Hög, 20–25 Oacceptabel).
+- Skriv inte «sannolikheten är förhöjd» eller «konsekvensen är betydande». Rätt: «Sannolikheten bedöms till 3 (medel) … Konsekvensen bedöms till 3 (kännbar) …» Om du nämner inneboende/residual risknivå ska den stämma med S×K.`;
 
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.

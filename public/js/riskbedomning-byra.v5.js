@@ -2044,8 +2044,16 @@ class RiskAssessmentManager {
                     label: item.falt === 'sxk' ? 'AI-förslag S×K' : 'AI-förslag residual',
                     comment,
                     html: `<div class="ai-review-scores">
-                        <label>Sannolikhet <select data-ai-s>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.sannolikhet) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-                        <label>Konsekvens <select data-ai-k>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${String(s.konsekvens) === String(n) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                        <label>Sannolikhet <select data-ai-s>${[1, 2, 3, 4, 5].map((n) => {
+                            const lab = (window.RiskSkala && RiskSkala.sannolikhetLabel(n)) || '';
+                            const text = lab ? `${n} — ${lab}` : String(n);
+                            return `<option value="${n}"${String(s.sannolikhet) === String(n) ? ' selected' : ''}>${text}</option>`;
+                        }).join('')}</select></label>
+                        <label>Konsekvens <select data-ai-k>${[1, 2, 3, 4, 5].map((n) => {
+                            const lab = (window.RiskSkala && RiskSkala.konsekvensLabel(n)) || '';
+                            const text = lab ? `${n} — ${lab}` : String(n);
+                            return `<option value="${n}"${String(s.konsekvens) === String(n) ? ' selected' : ''}>${text}</option>`;
+                        }).join('')}</select></label>
                     </div>`,
                     onApply: (box) => {
                         if (item.falt === 'sxk') {

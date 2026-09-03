@@ -23344,11 +23344,12 @@ ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 - hot: 2 (Låg), 3 (Normal), 3 (Förhöjd), 4 (Hög), 4 (Oacceptabel)
 - sarbarheter: 2 (Låg), 2 (Normal), 3 (Förhöjd), 3 (Hög), 3 (Oacceptabel)
 - atgarder: 3 (Låg), 4 (Normal), 4 (Förhöjd), 5 (Hög), 5 (Oacceptabel)
-SANNOLIKHET och KONSEKVENS är heltal 1–5 (1 mycket låg, 5 mycket hög).
+SANNOLIKHET och KONSEKVENS är heltal 1–5.
+${RiskSkala.sxkScalePromptBlock()}
 - sannolikhet: hur troligt att något av de listade hoten realiseras, givet sårbarheterna.
 - konsekvens: hur allvarlig skadan blir om det händer.
 - sannolikhetEfter / konsekvensEfter: samma bedömning efter de kontroller som faktiskt finns (residualrisk). Sänk inte till Låg (S×K ≤ 4) om byrån hanterar myndighetsansökan eller betalningsuppgifter och saknar normal rimlighetskontroll.
-Returnera bara talen. Inneboende risk och residualrisk räknas som S×K mot skalan Låg/Normal/Förhöjd/Hög/Oacceptabel.`;
+Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nämna siffrorna — inte hitta på synonymer som «förhöjd sannolikhet» eller «betydande konsekvens».`;
 
   const userPrompt = `Tjänst: ${namn}
 ${inherentIn.level ? `Befintlig inneboende bedömning: sannolikhet ${inherentIn.sannolikhet}, konsekvens ${inherentIn.konsekvens} → ${inherentIn.badge}` : 'Ingen inneboende S×K är satt — föreslå sannolikhet och konsekvens.'}
@@ -23568,7 +23569,9 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   }` : ''}
 }
 
-SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen efter åtgärden. Returnera bara talen — risknivån räknas som S×K.`;
+SANNOLIKHET och KONSEKVENS är heltal 1–5. Residualvärdena är bedömningen efter åtgärden.
+${RiskSkala.sxkScalePromptBlock()}
+Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nämna siffrorna — inte «förhöjd sannolikhet» eller «betydande konsekvens».`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
