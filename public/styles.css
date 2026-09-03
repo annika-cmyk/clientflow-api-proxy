@@ -15925,7 +15925,7 @@ h5.ar-subsection-title {
     text-transform: uppercase;
     color: var(--text-muted, var(--ink-3, #8b929d));
 }
-.dyn-card.is-ai-add {
+.dyn-row.dyn-card.is-ai-add {
     background: var(--surface-1, var(--card-bg));
     border-radius: 12px;
     border-left-width: 3px;
@@ -15948,7 +15948,7 @@ h5.ar-subsection-title {
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
-.dyn-card.is-ai-remove {
+.dyn-row.dyn-card.is-ai-remove {
     background: var(--surface-1, var(--card-bg));
     border-radius: 12px;
     border-left-width: 3px;
@@ -15961,6 +15961,9 @@ h5.ar-subsection-title {
     text-decoration: none;
     color: inherit;
 }
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-hot,
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-sarbarhet,
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-atgard,
 .dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card {
     border-left-width: 1px;
     border-left-color: var(--border, #dcdfe5);
