@@ -17814,6 +17814,27 @@ h5.ar-subsection-title {
     border-color: var(--border-strong, var(--border));
     color: var(--title-text);
 }
+.tjanst-mall-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+}
+.tjanst-mall-delete.btn-ghost {
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--error, #c0392b) 35%, var(--border, #dcdfe5));
+    color: var(--error, #c0392b);
+}
+.tjanst-mall-delete.btn-ghost:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--error, #c0392b) 10%, transparent);
+    border-color: color-mix(in srgb, var(--error, #c0392b) 55%, var(--border, #dcdfe5));
+    color: var(--error, #c0392b);
+}
+.tjanst-mall-delete.btn-ghost:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
 .tjanst-mall-status {
     font-size: 0.82rem;
     color: var(--text-secondary, var(--text));

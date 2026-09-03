@@ -913,6 +913,19 @@
     };
   }
 
+  /**
+   * Ta bort en egen (custom:) tjänst från katalogen.
+   * Standardmallar lämnas orörda — de inaktiveras i stället.
+   */
+  function removeEntry(state, mallId) {
+    const parsed = parseState(state);
+    if (!isCustomId(mallId)) return parsed;
+    if (parsed.tjanster && Object.prototype.hasOwnProperty.call(parsed.tjanster, mallId)) {
+      delete parsed.tjanster[mallId];
+    }
+    return parsed;
+  }
+
   function listCatalogCards(state) {
     const parsed = parseState(state);
     const cards = SERVICE_TEMPLATES.map((t) => {
@@ -1008,6 +1021,7 @@
     getEntry: getEntry,
     upsertEntry: upsertEntry,
     addCustomService: addCustomService,
+    removeEntry: removeEntry,
     listCatalogCards: listCatalogCards,
     formatAnswersForAi: formatAnswersForAi,
     findEntryForNamn: findEntryForNamn

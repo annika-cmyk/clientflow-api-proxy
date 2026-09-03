@@ -208,6 +208,11 @@ class RiskAssessmentManager {
                     });
                 });
             });
+            cardEl.querySelector('[data-delete-tjanst]')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.deleteCustomUtforandeTjanst(mallId, cardEl.getAttribute('data-mall-namn') || '');
+            });
         });
     }
 
@@ -326,11 +331,16 @@ class RiskAssessmentManager {
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const icon = this.utforandeServiceIcon(template.id);
+        const isCustom = String(template.id || '').indexOf('custom:') === 0;
         const kundCount = this.kundCountForUtforandeTjanst(template.id, analysNamn);
         const lockedInactive = aktiv && kundCount > 0;
+        const lockedDelete = isCustom && kundCount > 0;
         const toggleLabel = lockedInactive
             ? `Kan inte inaktiveras — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : (aktiv ? 'Inaktivera tjänsten' : 'Aktivera tjänsten');
+        const deleteLabel = lockedDelete
+            ? `Kan inte raderas — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
+            : 'Ta bort tjänsten från katalogen';
         const analysHtml = existing
             ? ''
             : `<div class="tjanst-mall-empty">
@@ -340,6 +350,9 @@ class RiskAssessmentManager {
                         <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
                     </div>
                 </div>`;
+        const deleteBtn = isCustom
+            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`
+            : '';
         return `
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
@@ -362,7 +375,10 @@ class RiskAssessmentManager {
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
                     ${kundCount > 0 ? this.renderKundCountBadge(kundCount) : ''}
-                    <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
+                    <div class="tjanst-mall-actions">
+                        <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
+                        ${deleteBtn}
+                    </div>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
             </article>
@@ -636,6 +652,67 @@ class RiskAssessmentManager {
         this.utforandeState = added.state;
         this.renderUtforandeKatalog();
         this.scheduleUtforandeSave();
+    }
+
+    async deleteCustomUtforandeTjanst(mallId, namn) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !Mallar.isCustomId(mallId)) return;
+        const label = String(namn || '').trim() || 'tjänsten';
+        const kundCount = this.kundCountForUtforandeTjanst(mallId, label);
+        if (kundCount > 0) {
+            const msg = kundCount === 1
+                ? `Kan inte radera «${label}»: 1 kund har tjänsten. Ta bort den från kunden först.`
+                : `Kan inte radera «${label}»: ${kundCount} kunder har tjänsten. Ta bort den från kunderna först.`;
+            this.showNotification(msg, 'error');
+            return;
+        }
+        if (!confirm(`Vill du ta bort «${label}» från byråns katalog?\n\nRiskanalysen tas också bort om den finns.`)) return;
+
+        const risks = this.findTjanstRisksByName(label);
+        const seen = new Set();
+        for (const risk of risks) {
+            if (!risk || !risk.id || seen.has(risk.id)) continue;
+            seen.add(risk.id);
+            try {
+                const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${risk.id}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                console.error('Error deleting risk for tjänst:', error);
+                this.showNotification('Kunde inte ta bort riskanalysen. Försök igen.', 'error');
+                return;
+            }
+        }
+
+        clearTimeout(this._utforandeSaveTimer);
+        this.utforandeState = Mallar.removeEntry(this.utforandeState, mallId);
+        this.renderUtforandeKatalog();
+        try {
+            if (this._utforandeSaveInFlight) {
+                this._utforandeSavePending = true;
+            } else {
+                this._utforandeSaveInFlight = true;
+                try {
+                    await this._putUtforandeState({ allowRetry: true });
+                } finally {
+                    this._utforandeSaveInFlight = false;
+                    if (this._utforandeSavePending) {
+                        this._utforandeSavePending = false;
+                        this.scheduleUtforandeSave();
+                    }
+                }
+            }
+            if (typeof this.loadRiskAssessments === 'function') {
+                await this.loadRiskAssessments();
+            }
+            this.showNotification(`«${label}» borttagen från katalogen.`, 'success');
+        } catch (err) {
+            this.showNotification('Kunde inte spara borttagningen: ' + (err && err.message ? err.message : err), 'error');
+            await this.loadUtforande();
+        }
     }
 
     renderKundCountBadge(n) {

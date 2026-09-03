@@ -13434,7 +13434,8 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
     if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
 
     const deactivations = TjanstAktivKundkoppling.findDeactivations(previous, incoming);
-    if (deactivations.length) {
+    const removals = TjanstAktivKundkoppling.findRemovals(previous, incoming);
+    if (deactivations.length || removals.length) {
       let kundAntalTjanster = {};
       let riskRecords = [];
       try {
@@ -13451,7 +13452,22 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
           result.byraId
         );
       } catch (countErr) {
-        console.warn('Kunde inte kontrollera kundkoppling vid inaktivering:', countErr.message);
+        console.warn('Kunde inte kontrollera kundkoppling vid inaktivering/radering:', countErr.message);
+      }
+      const blockedDeletion = TjanstAktivKundkoppling.findBlockedDeletion(
+        previous,
+        incoming,
+        riskRecords,
+        kundAntalTjanster
+      );
+      if (blockedDeletion) {
+        return res.status(409).json({
+          error: blockedDeletion.message,
+          code: 'tjanst_har_kunder',
+          mallId: blockedDeletion.mallId,
+          namn: blockedDeletion.namn,
+          kundCount: blockedDeletion.kundCount
+        });
       }
       const blocked = TjanstAktivKundkoppling.findBlockedDeactivation(
         previous,
