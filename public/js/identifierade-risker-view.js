@@ -86,43 +86,32 @@
   }
 
   function renderHot(hot) {
-    const Tf = tfLib();
     const rows = asList(hot).map((h) => {
-      const typ = (Tf && Tf.hotTyp && Tf.hotTyp(h))
-        || (skala() && skala().normalizePtTf && skala().normalizePtTf(h.typ))
-        || ((String(h.typ || 'PT').toUpperCase() === 'TF') ? 'TF' : 'PT');
       const title = text(h.titel || h.title);
       const desc = text(h.beskrivning || h.description);
       if (!title && !desc) return '';
-      const tags = typ === 'Båda'
-        ? '<span class="tag tag-pt">PT</span><span class="tag tag-tf">TF</span>'
-        : '<span class="tag ' + (typ === 'TF' ? 'tag-tf' : 'tag-pt') + '">' + esc(typ || 'PT') + '</span>';
       return '<div class="threat-row">'
-        + tags
         + '<div class="threat-body">'
         + (title ? '<div class="threat-title">' + esc(title) + '</div>' : '')
         + (desc ? '<div class="threat-desc">' + nl(desc) + '</div>' : '')
         + '</div></div>';
     }).filter(Boolean).join('');
     if (!rows) return '';
-    return section('fa-triangle-exclamation', 'Hot och modus', '<div class="threat-list">' + rows + '</div>');
+    return section('fa-triangle-exclamation', 'Vad kan gå fel?', '<div class="threat-list">' + rows + '</div>');
   }
 
   function renderSarbarheter(items) {
-    const tagClassMap = { Kunder: 'tag-kund', Distribution: 'tag-dist', Geografi: 'tag-geo', Verksamhet: 'tag-verk' };
     const cards = asList(items).map((s) => {
-      const kat = text(s.kategori || s.category) || 'Verksamhet';
       const title = text(s.titel || s.title);
       const desc = text(s.beskrivning || s.description);
       if (!title && !desc) return '';
       return '<div class="vuln-item">'
-        + '<div class="tags-row"><span class="tag ' + (tagClassMap[kat] || 'tag-verk') + '">' + esc(kat) + '</span></div>'
         + (title ? '<div class="vuln-item-title">' + esc(title) + '</div>' : '')
         + (desc ? '<div class="vuln-item-desc">' + nl(desc) + '</div>' : '')
         + '</div>';
     }).filter(Boolean).join('');
     if (!cards) return '';
-    return section('fa-shield-halved', 'Sårbarheter', '<div class="vuln-grid">' + cards + '</div>');
+    return section('fa-shield-halved', 'Varför kan det hända hos byrån?', '<div class="vuln-grid">' + cards + '</div>');
   }
 
   function renderAtgarder(items, legacy) {
@@ -132,14 +121,17 @@
         const title = text(a.titel || a.title || a.namn);
         const desc = text(a.beskrivning || a.description);
         if (!title && !desc) return '';
+        const existing = String(a.status || '').trim().toLowerCase() === 'befintlig';
         return '<div class="action-item"><i class="fas fa-check action-icon"></i>'
           + '<span class="action-text">'
           + (title ? '<strong>' + esc(title) + '</strong>' : '')
           + (desc ? (title ? ' — ' : '') + esc(desc) : '')
-          + '</span></div>';
+          + '</span>'
+          + (existing ? '<span class="atgard-status-badge is-befintlig">Befintlig</span>' : '')
+          + '</div>';
       }).filter(Boolean).join('');
       if (!rows) return '';
-      return section('fa-list-check', 'Riskreducerande åtgärder', '<div class="action-list">' + rows + '</div>');
+      return section('fa-list-check', 'Hur hanteras risken?', '<div class="action-list">' + rows + '</div>');
     }
     if (text(legacy)) {
       return section('fa-tools', 'Riskreducerande åtgärder', '<p class="risk-content-text">' + nl(legacy) + '</p>');

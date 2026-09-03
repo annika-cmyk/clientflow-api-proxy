@@ -157,12 +157,12 @@
     if (keys.includes('hot')) {
       parts.push('Hot:\n' + formatList(o.hot, (h) => {
         const kalla = h.kalla ? ` (källa: ${h.kalla})` : '';
-        return `${h.typ || 'PT'}: ${h.titel || ''} — ${h.beskrivning || ''}${kalla}`;
+        return `${h.titel || ''} — ${h.beskrivning || ''}${kalla}`;
       }));
     }
     if (keys.includes('sarbarheter')) {
       parts.push('Sårbarheter:\n' + formatList(o.sarbarheter, (s) => (
-        `${s.kategori || ''}: ${s.titel || ''} — ${s.beskrivning || ''}`
+        `${s.titel || ''} — ${s.beskrivning || ''}`
       )));
     }
     if (keys.includes('atgarder')) {
@@ -331,10 +331,9 @@
     if (Array.isArray(forslag)) {
       if (!forslag.length) return '(tom lista)';
       return forslag.map((item, i) => {
-        const typ = item.typ || item.kategori || '';
         const title = item.titel || item.namn || '';
         const desc = item.beskrivning || '';
-        return `${i + 1}. ${typ ? `${typ}: ` : ''}${title}${desc ? ` — ${desc}` : ''}`;
+        return `${i + 1}. ${title}${desc ? ` — ${desc}` : ''}`;
       }).join('\n');
     }
     return trimStr(forslag);
@@ -387,8 +386,6 @@
 
   function listItemSignature(item) {
     return [
-      fold(item && (item.typ || '')),
-      fold(item && (item.kategori || '')),
       fold(item && (item.titel || item.namn || '')),
       fold(item && (item.beskrivning || '')),
       fold(item && (item.kalla || item.källa || ''))
@@ -502,19 +499,13 @@
   function listItemFieldChanges(falt, current, forslag) {
     const parts = [];
     if (!current || !forslag) return parts;
-    if (falt === 'hot' && fold(current.typ) !== fold(forslag.typ)) {
-      parts.push(`typ (${trimStr(current.typ) || 'PT'} → ${trimStr(forslag.typ) || 'PT'})`);
-    }
-    if (falt === 'sarbarheter' && fold(current.kategori) !== fold(forslag.kategori)) {
-      parts.push(`kategori (${trimStr(current.kategori) || '–'} → ${trimStr(forslag.kategori) || '–'})`);
-    }
     if (fold(current.titel || current.namn) !== fold(forslag.titel || forslag.namn)) {
       parts.push('titeln');
     }
     if (fold(current.beskrivning) !== fold(forslag.beskrivning)) {
       parts.push('beskrivningen');
     }
-    if (falt === 'hot') {
+    if (falt === 'hot' || falt === 'sarbarheter') {
       const curK = trimStr(current.kalla || current.källa);
       const nextK = trimStr(forslag.kalla || forslag.källa);
       if (fold(curK) !== fold(nextK)) {
@@ -528,8 +519,7 @@
     const title = itemTitle(forslag || current);
     if (changeKind === 'lagg-till') {
       if (falt === 'hot') {
-        const typ = (forslag && forslag.typ) || 'PT';
-        return `AI vill lägga till «${title}» (${typ}) eftersom hotet saknas i er lista men är relevant för tjänsten enligt analysen.`;
+        return `AI vill lägga till «${title}» eftersom hotet saknas i er lista men är relevant för tjänsten enligt analysen.`;
       }
       if (falt === 'sarbarheter') {
         return `AI vill lägga till sårbarheten «${title}» eftersom den saknas men påverkar hur hot kan realiseras.`;
@@ -710,30 +700,15 @@
   }
 
   function listItemEditorHtml(falt, item, isNew, prev) {
-    const typ = item.typ || 'PT';
-    const kat = item.kategori || 'Verksamhet';
-    const extra = falt === 'hot'
-      ? `<select data-ai-typ aria-label="PT eller TF">
-          <option value="PT"${typ === 'PT' ? ' selected' : ''}>PT</option>
-          <option value="TF"${typ === 'TF' ? ' selected' : ''}>TF</option>
-          <option value="Båda"${typ === 'Båda' ? ' selected' : ''}>Båda</option>
-        </select>`
-      : falt === 'sarbarheter'
-        ? `<select data-ai-kat aria-label="Kategori">
-            <option${kat === 'Verksamhet' ? ' selected' : ''}>Verksamhet</option>
-            <option${kat === 'Kunder' ? ' selected' : ''}>Kunder</option>
-            <option${kat === 'Distribution' ? ' selected' : ''}>Distribution</option>
-            <option${kat === 'Geografi' ? ' selected' : ''}>Geografi</option>
-          </select>`
-        : '';
+    const typ = (item && item.typ) || '';
     const descChanged = !isNew && prev && fold(prev.beskrivning) !== fold(item.beskrivning);
-    const kallaChanged = !isNew && prev && falt === 'hot'
+    const showKalla = falt === 'hot' || falt === 'sarbarheter';
+    const kallaChanged = !isNew && prev && showKalla
       && fold(prev.kalla || prev.källa) !== fold(item.kalla || item.källa);
     return `
-      <div class="ai-review-item"${isNew ? ' data-ai-new' : ''}${descChanged || kallaChanged ? ' data-ai-changed' : ''} data-ai-item>
+      <div class="ai-review-item"${isNew ? ' data-ai-new' : ''}${descChanged || kallaChanged ? ' data-ai-changed' : ''} data-ai-item${typ ? ` data-typ="${esc(typ)}"` : ''}>
         <div class="ai-review-item-head">
           ${isNew ? '<span class="ai-review-item-new">Ny</span>' : descChanged || kallaChanged ? '<span class="ai-review-item-changed">Ändrad</span>' : ''}
-          ${extra ? `<div class="ai-review-item-meta">${extra}</div>` : ''}
           <div class="ai-review-item-titel">
             <label class="ai-review-field-label">Titel</label>
             <input type="text" data-ai-titel value="${esc(item.titel || item.namn || '')}" placeholder="Titel">
@@ -743,7 +718,7 @@
           <label class="ai-review-field-label">Beskrivning</label>
           <textarea data-ai-beskrivning rows="3" placeholder="Beskrivning">${esc(item.beskrivning || '')}</textarea>
         </div>
-        ${falt === 'hot' ? `<div class="ai-review-item-kalla">
+        ${showKalla ? `<div class="ai-review-item-kalla">
           <label class="ai-review-field-label">Källa</label>
           <input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Utgivare — dokument, kap. — https://…">
         </div>` : ''}
@@ -805,10 +780,13 @@
           beskrivning: (el.querySelector('[data-ai-beskrivning]')?.value || '').trim()
         };
         if (falt === 'hot') {
-          item.typ = el.querySelector('[data-ai-typ]')?.value || 'PT';
+          const typ = (el.getAttribute('data-typ') || '').trim();
+          if (typ) item.typ = typ;
           item.kalla = (el.querySelector('[data-ai-kalla]')?.value || '').trim();
         }
-        if (falt === 'sarbarheter') item.kategori = el.querySelector('[data-ai-kat]')?.value || 'Verksamhet';
+        if (falt === 'sarbarheter') {
+          item.kalla = (el.querySelector('[data-ai-kalla]')?.value || '').trim();
+        }
         return item;
       }).filter((item) => item.titel || item.beskrivning || item.kalla);
     }

@@ -22586,21 +22586,19 @@ app.post('/api/ai-riskbedomning/:kundId', authenticateToken, async (req, res) =>
                 if (tjBeskr) line += `\n    ${TJANST_BESKRIVNING_LABEL}: ${tjBeskr}`;
                 if (brf) line += `\n    Byråns beskrivning av riskfaktor: ${brf}`;
                 if (hot.length) {
-                  line += `\n    Hot (penningtvätt/terrorfinansiering) kopplade till tjänsten:`;
+                  line += `\n    Vad kan gå fel (hot och modus):`;
                   hot.slice(0, 8).forEach(h => {
-                    const t = (h && (h.typ || '')).toString().toUpperCase() === 'TF' ? 'TF' : 'PT';
                     const titel = (h && h.titel || '').toString().trim();
                     const besk = clip(h && h.beskrivning, 280);
-                    if (titel || besk) line += `\n      - [${t}] ${titel}${besk ? `: ${besk}` : ''}`;
+                    if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (sarbarheter.length) {
-                  line += `\n    Sårbarheter/riskfaktorer kopplade till tjänsten:`;
+                  line += `\n    Varför det kan hända hos byrån (sårbarheter):`;
                   sarbarheter.slice(0, 8).forEach(s => {
-                    const kat = (s && s.kategori || '').toString().trim();
                     const titel = (s && s.titel || '').toString().trim();
                     const besk = clip(s && s.beskrivning, 280);
-                    if (titel || besk) line += `\n      - ${kat ? `[${kat}] ` : ''}${titel}${besk ? `: ${besk}` : ''}`;
+                    if (titel || besk) line += `\n      - ${titel}${besk ? `: ${besk}` : ''}`;
                   });
                 }
                 if (atgarder.length) {
@@ -23309,7 +23307,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas.",
   "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
-  "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "evidens": "bekraftad|tjanstetypisk|saknas" } ],
+  "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"],
   "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
@@ -23379,20 +23377,6 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     if (fromText === 'TF' || fromText === 'Båda') return fromText;
     return 'PT';
   };
-  const KATEGORIER = ['Kunder', 'Distribution', 'Geografi', 'Verksamhet'];
-  // Frontend-dropdownen har 4 kategorier. Prompten kan föreslå fler (t.ex.
-  // "Leveranskanaler", "Produkter") – mappa dem till närmaste giltiga kategori.
-  const KATEGORI_ALIAS = {
-    'leveranskanaler': 'Distribution',
-    'leveranskanal': 'Distribution',
-    'produkter': 'Verksamhet',
-    'produkt': 'Verksamhet'
-  };
-  const normKategori = (v) => {
-    const t = (v || '').toString().trim().toLowerCase();
-    if (KATEGORI_ALIAS[t]) return KATEGORI_ALIAS[t];
-    return KATEGORIER.find(k => k.toLowerCase() === t) || 'Verksamhet';
-  };
   const cleanStr = (v) => (v == null ? '' : String(v).trim());
 
   try {
@@ -23417,12 +23401,11 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
       .filter(h => h.titel || h.beskrivning) : []);
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map(s => ({
-        kategori: normKategori(s?.kategori),
         titel: cleanStr(s?.titel),
         beskrivning: cleanStr(s?.beskrivning),
-        evidens: AiTjanstAnalys.normalizeEvidens(s?.evidens)
+        kalla: cleanStr(s?.kalla ?? s?.källa ?? s?.source)
       }))
-      .filter(s => s.titel || s.beskrivning) : [];
+      .filter(s => s.titel || s.beskrivning || s.kalla) : [];
     const atgarder = Array.isArray(result.atgarder) ? result.atgarder
       .map(a => ({
         titel: cleanStr(a?.titel ?? a?.namn),
