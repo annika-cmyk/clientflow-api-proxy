@@ -1223,13 +1223,15 @@ class RiskAssessmentManager {
                 : { url: this.isKallaUrl(val) ? val : '', host: '', label: val, page: '', path: '' };
             const display = (typeof AmlKalla !== 'undefined' && AmlKalla.formatKallaDisplay)
                 ? AmlKalla.formatKallaDisplay(resolved)
-                : { linkText: resolved.host || resolved.label || 'Öppna webbplats', url: resolved.url, title: resolved.url };
+                : { linkText: resolved.host || resolved.label || 'Öppna webbplats', url: resolved.url, title: resolved.url, primary: resolved.label, secondary: resolved.page, host: resolved.host };
             if (display.url) {
                 kallaLink.href = display.url;
                 kallaLink.hidden = false;
-                const page = resolved.page ? `<span class="dyn-kalla-page">${this.esc(resolved.page)}</span>` : '';
-                const path = resolved.path ? `<span class="dyn-kalla-path">${this.esc(resolved.path)}</span>` : '';
-                kallaLink.innerHTML = `<span class="dyn-kalla-name">${this.esc(resolved.label || display.linkText)}</span>${page}${path}`;
+                // One source name + link underneath (no triple-repeated title)
+                const name = display.linkText || resolved.label || 'Öppna källa';
+                const under = display.host || resolved.host || '';
+                kallaLink.innerHTML = `<span class="dyn-kalla-name">${this.esc(name)}</span>`
+                    + (under ? `<span class="dyn-kalla-path">${this.esc(under)}</span>` : '');
                 kallaLink.title = display.title || display.url;
                 row.classList.add('has-kalla-link');
             } else {
