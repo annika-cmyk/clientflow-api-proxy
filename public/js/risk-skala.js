@@ -353,9 +353,6 @@
         if (poang && (poang.kraverManualOversyn === true || poang.requiresReview === true)) {
             out.kraverManualOversyn = true;
         }
-        if (poang && poang.tfMotivering != null && String(poang.tfMotivering).trim()) {
-            out.tfMotivering = String(poang.tfMotivering).trim();
-        }
         return JSON.stringify(out);
     }
 

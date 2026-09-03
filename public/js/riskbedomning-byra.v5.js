@@ -20,7 +20,7 @@ class RiskAssessmentManager {
         this.byraProfil = null;
         this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
         this.utforandeState = { version: 1, tjanster: {} };
-        this.utforandeViews = {};
+        this._modalUtforandeMallId = null;
         this._utforandeSaveTimer = null;
 
         this.init();
@@ -70,6 +70,95 @@ class RiskAssessmentManager {
         this.renderUtforandeKatalog();
     }
 
+    findUtforandeMallIdForNamn(namn) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !namn) return '';
+        const tid = Mallar.resolveTemplateId(namn);
+        if (tid) return tid;
+        const folded = Mallar.foldName(namn);
+        for (const [id, entry] of Object.entries(this.utforandeState.tjanster || {})) {
+            if (Mallar.foldName(entry && entry.namn) === folded) return id;
+        }
+        return '';
+    }
+
+    renderUtforandeQuestionsHtml(mallId, entry) {
+        const Mallar = window.TjanstUtforandeMallar;
+        const template = Mallar && Mallar.templateById(mallId);
+        if (!template) return '';
+        const grouped = Mallar.groupQuestionsForTemplate(template);
+        return `${this.renderUtforandeQuestionGroup(mallId, 'Kundunderlag', grouped.stats || [], entry)}
+            ${this.renderUtforandeStatsHint(template, entry)}
+            ${this.renderUtforandeQuestionGroup(mallId, 'Så här görs tjänsten', grouped.base, entry)}
+            ${this.renderUtforandeQuestionGroup(mallId, 'Specifikt för ' + (template.name || 'tjänsten'), grouped.extra, entry)}`;
+    }
+
+    bindUtforandeQuestionEvents(root, mallId) {
+        if (!root || !mallId) return;
+        root.querySelectorAll('[data-q-id]').forEach((qEl) => {
+            const qid = qEl.getAttribute('data-q-id');
+            qEl.querySelectorAll('input, textarea, select').forEach((input) => {
+                input.addEventListener('change', () => this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' }));
+                if (input.classList.contains('tjanst-mall-text') || input.classList.contains('tjanst-mall-number')) {
+                    input.addEventListener('input', () => this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' }));
+                }
+            });
+            qEl.querySelector('.tjanst-mall-comment')?.addEventListener('input', () => {
+                this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' });
+            });
+            qEl.querySelector('[data-comment-add]')?.addEventListener('click', () => {
+                const commentEl = qEl.querySelector('.tjanst-mall-comment');
+                const addEl = qEl.querySelector('[data-comment-add]');
+                if (addEl) addEl.hidden = true;
+                if (commentEl) {
+                    commentEl.hidden = false;
+                    commentEl.focus();
+                }
+            });
+        });
+        this.applyUtforandeQuestionVisibility(mallId, root);
+        const statsHost = root.querySelector('[data-tjanst-stats]');
+        const namn = document.getElementById('tjanst-name')?.value.trim()
+            || (window.TjanstUtforandeMallar && TjanstUtforandeMallar.templateById(mallId)?.name)
+            || '';
+        if (statsHost) this.loadUtforandeClientflowStats(mallId, namn, statsHost);
+    }
+
+    renderModalUtforande(mallId) {
+        const host = document.getElementById('tjanst-modal-utforande');
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!host || !Mallar) return;
+        const id = mallId || this._modalUtforandeMallId || this.findUtforandeMallIdForNamn(document.getElementById('tjanst-name')?.value.trim());
+        this._modalUtforandeMallId = id || null;
+        if (!id) {
+            host.innerHTML = '';
+            host.hidden = true;
+            return;
+        }
+        const template = Mallar.templateById(id);
+        const entry = Mallar.getEntry(this.utforandeState, id);
+        const questions = Mallar.questionsForTemplate(template);
+        if (!questions.length) {
+            host.innerHTML = '';
+            host.hidden = true;
+            return;
+        }
+        host.hidden = false;
+        host.innerHTML = `
+            <div class="tjanst-modal-utforande-head">
+                <h4 class="tjanst-mall-group-title">Utförandefrågor</h4>
+                <p class="tjanst-panel-hint">Svara på hur ni utför tjänsten — svaren sparas automatiskt och används av AI vid riskbedömning.</p>
+            </div>
+            <div class="tjanst-modal-utforande-body">${this.renderUtforandeQuestionsHtml(id, entry)}</div>`;
+        this.bindUtforandeQuestionEvents(host, id);
+    }
+
+    syncModalUtforandeFromNamn() {
+        const namn = document.getElementById('tjanst-name')?.value.trim();
+        const mallId = this.findUtforandeMallIdForNamn(namn);
+        if (mallId !== this._modalUtforandeMallId) this.renderModalUtforande(mallId);
+    }
+
     renderUtforandeKatalog() {
         const host = document.getElementById('tjanst-utforande-katalog');
         const Mallar = window.TjanstUtforandeMallar;
@@ -81,37 +170,6 @@ class RiskAssessmentManager {
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
                 this.patchUtforandeEntry(mallId, { aktiv: !!e.target.checked });
             });
-            cardEl.querySelectorAll('[data-q-id]').forEach((qEl) => {
-                const qid = qEl.getAttribute('data-q-id');
-                qEl.querySelectorAll('input, textarea, select').forEach((input) => {
-                    input.addEventListener('change', () => this.collectUtforandeQuestion(mallId, qid, qEl));
-                    if (input.classList.contains('tjanst-mall-text') || input.classList.contains('tjanst-mall-number')) {
-                        input.addEventListener('input', () => this.collectUtforandeQuestion(mallId, qid, qEl));
-                    }
-                });
-                qEl.querySelector('.tjanst-mall-comment')?.addEventListener('input', () => {
-                    this.collectUtforandeQuestion(mallId, qid, qEl);
-                });
-                qEl.querySelector('[data-comment-add]')?.addEventListener('click', () => {
-                    const commentEl = qEl.querySelector('.tjanst-mall-comment');
-                    const addEl = qEl.querySelector('[data-comment-add]');
-                    if (addEl) addEl.hidden = true;
-                    if (commentEl) {
-                        commentEl.hidden = false;
-                        commentEl.focus();
-                    }
-                });
-            });
-            cardEl.querySelectorAll('[data-utforande-view]').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    const next = btn.getAttribute('data-utforande-view') || '';
-                    this.utforandeViews[mallId] = this.utforandeViews[mallId] === next ? '' : next;
-                    this.renderUtforandeKatalog();
-                });
-            });
-            this.applyUtforandeQuestionVisibility(mallId, cardEl);
-            const statsHost = cardEl.querySelector('[data-tjanst-stats]');
-            if (statsHost) this.loadUtforandeClientflowStats(mallId, cardEl.getAttribute('data-mall-namn'), statsHost);
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '', {
@@ -142,7 +200,7 @@ class RiskAssessmentManager {
     }
 
     openTjanstAnalysFromCard(mallId, namn, opts = {}) {
-        this.utforandeViews[mallId] = 'analys';
+        this._modalUtforandeMallId = mallId || null;
         const existing = this.findTjanstRiskByName(namn);
         if (existing) this.openEditModal(existing.id);
         else {
@@ -150,6 +208,7 @@ class RiskAssessmentManager {
             const nameEl = document.getElementById('tjanst-name');
             if (nameEl) nameEl.value = namn;
         }
+        this.renderModalUtforande(mallId);
         if (opts.ai) this.generateAiSuggestion();
     }
 
@@ -187,28 +246,22 @@ class RiskAssessmentManager {
 
     renderUtforandeCard(template, entry) {
         const aktiv = !!(entry && entry.aktiv);
-        const grouped = window.TjanstUtforandeMallar.groupQuestionsForTemplate(template);
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
-        const view = this.utforandeViews[template.id] || '';
-        const qHtml = `${this.renderUtforandeQuestionGroup(template.id, 'Kundunderlag', grouped.stats || [], entry)}
-            ${this.renderUtforandeStatsHint(template, entry)}
-            ${this.renderUtforandeQuestionGroup(template.id, 'Så här görs tjänsten', grouped.base, entry)}
-            ${this.renderUtforandeQuestionGroup(template.id, 'Specifikt för ' + (template.name || 'tjänsten'), grouped.extra, entry)}`;
         const analysHtml = existing
             ? `${this.buildTjanstRiskSections(existing)}
                 <div class="tjanst-mall-actions">
                     <button type="button" class="btn btn-primary" data-open-analys>Redigera riskbedömning</button>
                 </div>`
             : `<div class="tjanst-mall-empty">
-                    <p>Ingen riskbedömning ännu. Välj hur ni vill ta fram den.</p>
+                    <p>Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.</p>
                     <div class="tjanst-mall-choice">
                         <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
-                        <button type="button" class="btn btn-secondary" data-open-analys>Hantera manuellt</button>
+                        <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
                     </div>
                 </div>`;
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${view ? ` is-view-${this.esc(view)}` : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div>
                         <h4 class="tjanst-mall-title">${this.esc(template.name)}</h4>
@@ -220,15 +273,10 @@ class RiskAssessmentManager {
                     </label>
                 </div>
                 <div class="tjanst-mall-toolbar">
-                    <div class="tjanst-mall-tabs" role="tablist">
-                        <button type="button" class="tjanst-mall-nav-btn${view === 'fragor' ? ' is-active' : ''}" data-utforande-view="fragor" aria-pressed="${view === 'fragor' ? 'true' : 'false'}">Utförandefrågor</button>
-                        <button type="button" class="tjanst-mall-nav-btn${view === 'analys' ? ' is-active' : ''}" data-utforande-view="analys" aria-pressed="${view === 'analys' ? 'true' : 'false'}">Riskbedömning</button>
-                    </div>
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
                 </div>
                 <div class="tjanst-mall-body">
-                    <div class="tjanst-mall-panel" data-panel="fragor">${qHtml}</div>
-                    <div class="tjanst-mall-panel" data-panel="analys">${analysHtml}</div>
+                    ${analysHtml}
                 </div>
             </article>
         `;
@@ -273,7 +321,7 @@ class RiskAssessmentManager {
         `;
     }
 
-    collectUtforandeQuestion(mallId, qid, qEl) {
+    collectUtforandeQuestion(mallId, qid, qEl, opts = {}) {
         const type = qEl.getAttribute('data-q-type');
         const Mallar = window.TjanstUtforandeMallar;
         const entry = Mallar.getEntry(this.utforandeState, mallId);
@@ -305,9 +353,13 @@ class RiskAssessmentManager {
             const input = chip.querySelector('input');
             chip.classList.toggle('is-selected', !!(input && input.checked));
         });
-        this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: qid === 'hamtaClientflowStatistik' });
+        const rerender = opts.rerender === 'modal' ? 'modal' : (opts.rerender !== false);
+        this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender });
         if (qid !== 'hamtaClientflowStatistik') {
-            this.applyUtforandeQuestionVisibility(mallId, qEl.closest('[data-mall-id]'));
+            const root = opts.rerender === 'modal'
+                ? document.getElementById('tjanst-modal-utforande')
+                : qEl.closest('[data-mall-id]');
+            this.applyUtforandeQuestionVisibility(mallId, root);
         }
     }
 
@@ -392,7 +444,11 @@ class RiskAssessmentManager {
         const Mallar = window.TjanstUtforandeMallar;
         if (!Mallar) return;
         this.utforandeState = Mallar.upsertEntry(this.utforandeState, mallId, patch);
-        if (opts.rerender !== false) this.renderUtforandeKatalog();
+        if (opts.rerender === 'modal') {
+            this.renderModalUtforande(mallId);
+        } else if (opts.rerender !== false) {
+            this.renderUtforandeKatalog();
+        }
         this.scheduleUtforandeSave();
     }
 
@@ -556,6 +612,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-form')?.addEventListener('submit', (e) => this.handleSaveTjanst(e));
         document.getElementById('tjanst-save-draft-btn')?.addEventListener('click', (e) => this.handleSaveTjanst(e, { asDraft: true }));
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
+        document.getElementById('tjanst-name')?.addEventListener('input', () => this.syncModalUtforandeFromNamn());
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
@@ -854,7 +911,6 @@ class RiskAssessmentManager {
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
                                 ${this.renderKundCountBadge((this.kundAntalMaps.tjanster && this.kundAntalMaps.tjanster[risk.id]) || 0)}
-                                ${(window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(f)) ? '<span class="tf-missing-pill"><span class="tf-missing-dot" aria-hidden="true"></span>TF saknas</span>' : ''}
                             </div>
                         </div>
                     </div>
@@ -1006,7 +1062,9 @@ class RiskAssessmentManager {
             oversikt: document.getElementById('tjanst-ai-oversikt'),
             hot: document.getElementById('tjanst-ai-hot'),
             sarbarhet: document.getElementById('tjanst-ai-sarbarhet'),
-            atgard: document.getElementById('tjanst-ai-atgard')
+            inneboende: document.getElementById('tjanst-ai-inneboende'),
+            atgard: document.getElementById('tjanst-ai-atgard'),
+            residual: document.getElementById('tjanst-ai-residual')
         };
     }
 
@@ -1020,7 +1078,14 @@ class RiskAssessmentManager {
     }
 
     updateTjanstAiSummary(counts) {
-        const labels = { oversikt: 'Översikt', hot: 'Hot och modus', sarbarhet: 'Sårbarheter', atgard: 'Riskreducerande åtgärder' };
+        const labels = {
+            oversikt: 'Översikt',
+            hot: 'Hot och modus',
+            sarbarhet: 'Sårbarheter',
+            inneboende: 'Inneboende risk',
+            atgard: 'Riskreducerande åtgärder',
+            residual: 'Residualrisk'
+        };
         const present = Object.keys(labels).filter((key) => (counts && counts[key]) > 0);
         document.querySelectorAll('.tjanst-tab-ai').forEach((el) => {
             const key = el.getAttribute('data-ai-for');
@@ -1080,21 +1145,6 @@ class RiskAssessmentManager {
             const empty = document.getElementById(`${key}-empty`);
             if (empty) empty.hidden = n > 0;
         });
-        this.updateTfBanner();
-    }
-
-    updateTfBanner() {
-        const Tf = window.TjanstTfTackning;
-        const hasTf = !!(Tf && Tf.hasTfHot(this.collectHot()));
-        const banner = document.getElementById('tjanst-tf-banner');
-        const textEl = document.getElementById('tjanst-tf-banner-text');
-        const overview = document.getElementById('tjanst-tf-oversikt-flag');
-        if (textEl && Tf) textEl.textContent = Tf.TF_BANNER_TEXT;
-        if (banner) banner.hidden = hasTf;
-        if (overview) {
-            overview.hidden = hasTf;
-            overview.textContent = hasTf ? '' : ((Tf && Tf.TF_BANNER_TEXT) || '');
-        }
     }
 
     bindDynCard(row, { expand = false, hasSource = false } = {}) {
@@ -1458,14 +1508,17 @@ class RiskAssessmentManager {
         this.setTjanstTab('oversikt');
         this.updateTjanstLists();
         this.updateRiskBadges();
-        const tfEl = document.getElementById('tjanst-tf-motivering');
-        if (tfEl) tfEl.value = '';
+        this._modalUtforandeMallId = null;
+        const utforHost = document.getElementById('tjanst-modal-utforande');
+        if (utforHost) {
+            utforHost.innerHTML = '';
+            utforHost.hidden = true;
+        }
         const motIn = document.getElementById('tjanst-motivering-inneboende');
         const motRes = document.getElementById('tjanst-motivering-residual');
         if (motIn) motIn.value = '';
         if (motRes) motRes.value = '';
         this.updateMotiveringWarnings();
-        this.updateTfBanner();
         if (window.AiFaltGranskning) {
             AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
             this.clearTjanstAiSummary();
@@ -1487,8 +1540,6 @@ class RiskAssessmentManager {
         if (motIn) motIn.value = scored.motivering_inneboende_risk || '';
         if (motRes) motRes.value = scored.motivering_residual_risk || '';
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
-        const tfEl = document.getElementById('tjanst-tf-motivering');
-        if (tfEl) tfEl.value = (window.TjanstTfTackning && TjanstTfTackning.readTfMotivering(f)) || '';
 
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
         this.parseJsonField(f['Sårbarheter']).forEach(s => this.addSarbarhetRow(s));
@@ -1500,6 +1551,7 @@ class RiskAssessmentManager {
         this.resetModal();
         document.getElementById('tjanst-modal-title').textContent = 'Lägg till tjänst';
         document.getElementById('tjanst-modal').style.display = 'flex';
+        this.renderModalUtforande();
     }
 
     openEditModal(recordId) {
@@ -1509,6 +1561,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-modal-title').textContent = 'Redigera tjänst';
         this.fillModal(risk);
         document.getElementById('tjanst-modal').style.display = 'flex';
+        this.renderModalUtforande();
     }
 
     closeModal(modalId) {
@@ -1606,9 +1659,6 @@ class RiskAssessmentManager {
         this.replaceTjanstList('hot', data.hot);
         this.replaceTjanstList('sarbarheter', data.sarbarheter);
         this.replaceTjanstList('atgarder', data.atgarder);
-        const tfEl = document.getElementById('tjanst-tf-motivering');
-        if (tfEl) tfEl.value = data.tfMotivering || '';
-        this.updateTfBanner();
     }
 
     applyTjanstAiIfEmpty(existing, data) {
@@ -1625,11 +1675,6 @@ class RiskAssessmentManager {
         if (!(existing.atgarder || []).length && (data.atgarder || []).length) {
             this.replaceTjanstList('atgarder', data.atgarder);
         }
-        const tfEl = document.getElementById('tjanst-tf-motivering');
-        if (tfEl && !(Ai && Ai.isFilledText(existing.tfMotivering)) && data.tfMotivering) {
-            tfEl.value = data.tfMotivering;
-        }
-        this.updateTfBanner();
     }
 
     applyTjanstAiField(falt, forslag) {
@@ -1641,12 +1686,13 @@ class RiskAssessmentManager {
             if (scores.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet', scores.sannolikhet);
             if (scores.konsekvens != null) this.setScoreSelect('tjanst-konsekvens', scores.konsekvens);
             this.updateRiskBadges();
+            this.setTjanstTab('inneboende');
         } else if (falt === 'residual') {
             const scores = forslag && typeof forslag === 'object' ? forslag : {};
             if (scores.sannolikhet != null) this.setScoreSelect('tjanst-sannolikhet-efter', scores.sannolikhet);
             if (scores.konsekvens != null) this.setScoreSelect('tjanst-konsekvens-efter', scores.konsekvens);
             this.updateRiskBadges();
-            this.setTjanstTab('atgard');
+            this.setTjanstTab('residual');
         } else if (falt === 'hot') {
             this.replaceTjanstList('hot', forslag);
             this.setTjanstTab('hot');
@@ -1656,20 +1702,15 @@ class RiskAssessmentManager {
         } else if (falt === 'atgarder') {
             this.replaceTjanstList('atgarder', forslag);
             this.setTjanstTab('atgard');
-        } else if (falt === 'tfMotivering') {
-            const tfEl = document.getElementById('tjanst-tf-motivering');
-            if (tfEl) tfEl.value = String(forslag || '');
-            this.setTjanstTab('hot');
-            this.updateTfBanner();
         } else if (falt === 'motiveringInneboende') {
             const el = document.getElementById('tjanst-motivering-inneboende');
             if (el) el.value = String(forslag || '');
-            this.setTjanstTab('sarbarhet');
+            this.setTjanstTab('inneboende');
             this.updateMotiveringWarnings();
         } else if (falt === 'motiveringResidual') {
             const el = document.getElementById('tjanst-motivering-residual');
             if (el) el.value = String(forslag || '');
-            this.setTjanstTab('atgard');
+            this.setTjanstTab('residual');
             this.updateMotiveringWarnings();
         }
     }
@@ -1813,7 +1854,6 @@ class RiskAssessmentManager {
                     const typ = (window.RiskSkala && RiskSkala.normalizePtTf(forslag.typ)) || '';
                     if (typ) row.dataset.hotTyp = typ;
                     else delete row.dataset.hotTyp;
-                    this.updateTfBanner();
                 }
                 box.remove();
             }
@@ -1923,7 +1963,7 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = 'sarbarhet';
+                if (!firstTab) firstTab = 'inneboende';
                 return;
             }
             if (item.falt === 'motiveringResidual') {
@@ -1937,21 +1977,7 @@ class RiskAssessmentManager {
                     }
                 });
                 changed = true;
-                if (!firstTab) firstTab = 'atgard';
-                return;
-            }
-            if (item.falt === 'tfMotivering') {
-                const tf = document.getElementById('tjanst-tf-motivering');
-                this.attachFieldAiForslag(tf, {
-                    comment,
-                    html: `<textarea data-ai-forslag rows="4">${this.esc(item.forslag || '')}</textarea>`,
-                    onApply: (box) => {
-                        if (tf) tf.value = box.querySelector('[data-ai-forslag]')?.value || '';
-                        this.updateTfBanner();
-                    }
-                });
-                changed = true;
-                if (!firstTab) firstTab = 'hot';
+                if (!firstTab) firstTab = 'residual';
                 return;
             }
             if (item.falt === 'sxk' || item.falt === 'residual') {
@@ -1979,18 +2005,19 @@ class RiskAssessmentManager {
                 });
                 changed = true;
                 if (!firstTab) {
-                    if (item.falt === 'residual' || item.falt === 'motiveringResidual') firstTab = 'atgard';
-                    else if (item.falt === 'motiveringInneboende') firstTab = 'sarbarhet';
-                    else firstTab = 'oversikt';
+                    if (item.falt === 'residual') firstTab = 'residual';
+                    else firstTab = 'inneboende';
                 }
             }
         });
         if (Ai) Ai.hideReviewHosts(this.tjanstAiHosts());
         this.updateTjanstAiSummary({
-            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag, #tjanst-inneboende-badge ~ .field-ai-forslag').length,
-            hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag, #tjanst-tf-motivering ~ .field-ai-forslag').length,
-            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
-            atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag, #tjanst-residual-badge ~ .field-ai-forslag, #tjanst-motivering-residual ~ .field-ai-forslag').length
+            oversikt: document.querySelectorAll('#tjanst-beskrivning ~ .field-ai-forslag').length,
+            hot: document.querySelectorAll('#hot-list .is-ai-add, #hot-list .is-ai-remove, #hot-list .dyn-ai-forslag').length,
+            sarbarhet: document.querySelectorAll('#sarbarhet-list .is-ai-add, #sarbarhet-list .is-ai-remove, #sarbarhet-list .dyn-ai-forslag').length,
+            inneboende: document.querySelectorAll('#tjanst-inneboende-badge ~ .field-ai-forslag, #tjanst-motivering-inneboende ~ .field-ai-forslag').length,
+            atgard: document.querySelectorAll('#atgard-list .is-ai-add, #atgard-list .is-ai-remove, #atgard-list .dyn-ai-forslag').length,
+            residual: document.querySelectorAll('#tjanst-residual-badge ~ .field-ai-forslag, #tjanst-motivering-residual ~ .field-ai-forslag').length
         });
         if (firstTab) this.setTjanstTab(firstTab);
         return changed;
@@ -2021,7 +2048,6 @@ class RiskAssessmentManager {
             hot: this.collectHot(),
             sarbarheter: this.collectSarbarhet(),
             atgarder: this.collectAtgard(),
-            tfMotivering: document.getElementById('tjanst-tf-motivering')?.value.trim() || '',
             motiveringInneboende: poang.motivering_inneboende_risk || '',
             motiveringResidual: poang.motivering_residual_risk || ''
         };
@@ -2061,9 +2087,7 @@ class RiskAssessmentManager {
                 this.applyTjanstAiIfEmpty(befintligt, data);
                 const poster = (data.granskning && Array.isArray(data.granskning.poster) && data.granskning.poster.length)
                     ? data.granskning.poster
-                    : (Ai.ensureAnalysisPosters('tjanst', befintligt, data, []).concat(
-                        Ai.ensureTfCoveragePosters(befintligt, data, [])
-                    ));
+                    : Ai.ensureAnalysisPosters('tjanst', befintligt, data, []);
                 const changed = this.paintInlineTjanstAi(poster, befintligt);
                 this.showNotification(changed
                     ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
@@ -2089,8 +2113,7 @@ class RiskAssessmentManager {
     buildPayload() {
         const poang = this.collectRiskPoang();
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
-        const tfMotivering = document.getElementById('tjanst-tf-motivering')?.value.trim() || '';
-        const serialized = (window.RiskSkala && RiskSkala.serializeRiskPoang({ ...poang, tfMotivering })) || JSON.stringify({ ...poang, tfMotivering });
+        const serialized = (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang);
         return {
             'Task Name': document.getElementById('tjanst-name').value.trim(),
             'Riskbedömning': inherent.level || '',
@@ -2098,8 +2121,7 @@ class RiskAssessmentManager {
             'Tjänstebeskrivning': document.getElementById('tjanst-beskrivning').value.trim(),
             'Hot': JSON.stringify(this.collectHot()),
             'Sårbarheter': JSON.stringify(this.collectSarbarhet()),
-            'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard()),
-            'TF-motivering': tfMotivering
+            'Tjänstespecifika åtgärder': JSON.stringify(this.collectAtgard())
         };
     }
 
@@ -2115,21 +2137,6 @@ class RiskAssessmentManager {
         }
 
         const payload = this.buildPayload();
-        const Tf = window.TjanstTfTackning;
-        if (Tf && !asDraft) {
-            const check = Tf.validateTjanstTfTackning({
-                hot: this.collectHot(),
-                tfMotivering: payload['TF-motivering'],
-                asDraft: false
-            });
-            if (!check.ok) {
-                this.setTjanstTab('hot');
-                this.updateTfBanner();
-                this.showNotification(check.error, 'error');
-                document.getElementById('tjanst-tf-motivering')?.focus();
-                return;
-            }
-        }
         const RM = window.RiskMotivering;
         if (RM && !asDraft) {
             const motCheck = RM.validatePoangMotivering(this.collectRiskPoang(), { asDraft: false });
@@ -2139,8 +2146,8 @@ class RiskAssessmentManager {
                 const field = first.field === 'motivering_residual_risk'
                     ? 'tjanst-motivering-residual'
                     : 'tjanst-motivering-inneboende';
-                if (first.field === 'motivering_residual_risk') this.setTjanstTab('atgard');
-                else this.setTjanstTab('sarbarhet');
+                if (first.field === 'motivering_residual_risk') this.setTjanstTab('residual');
+                else this.setTjanstTab('inneboende');
                 document.getElementById(field)?.focus();
                 this.updateMotiveringWarnings();
                 return;
@@ -2171,7 +2178,7 @@ class RiskAssessmentManager {
             });
             if (response.ok) this._lastAiAudit = null;
 
-            if (!response.ok && (body['Riskpoäng'] || body['TF-motivering'])) {
+            if (!response.ok && body['Riskpoäng']) {
                 const err = await response.json().catch(() => ({}));
                 const raw = JSON.stringify(err);
                 if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
@@ -2180,7 +2187,6 @@ class RiskAssessmentManager {
                         body['Samspelsexempel'] = body['Riskpoäng'];
                         delete body['Riskpoäng'];
                     }
-                    delete body['TF-motivering'];
                     response = await riskAuthFetch(url, {
                         method,
                         body: JSON.stringify(body)
@@ -2200,7 +2206,7 @@ class RiskAssessmentManager {
                 this.renderUtforandeKatalog();
                 this.showNotification(
                     asDraft
-                        ? 'Utkast sparat. TF-täckning krävs innan tjänsten kan användas i AR-exporten.'
+                        ? 'Utkast sparat.'
                         : (recordId ? 'Tjänsten uppdaterad.' : 'Tjänsten tillagd.'),
                     'success'
                 );
@@ -2222,12 +2228,6 @@ class RiskAssessmentManager {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
         const newStatus = !(risk.fields['Aktuell'] === true);
-        if (newStatus && window.TjanstTfTackning && TjanstTfTackning.tjanstSaknarTfTackning(risk.fields)) {
-            this.showNotification(TjanstTfTackning.TF_SAVE_ERROR, 'error');
-            this.openEditModal(recordId);
-            this.setTjanstTab('hot');
-            return;
-        }
         try {
             const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
                 method: 'PUT',
