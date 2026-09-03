@@ -252,6 +252,7 @@ class RiskAssessmentManager {
             'bokslut': 'fa-scale-balanced',
             'momsredovisning': 'fa-percent',
             'deklarationer': 'fa-file-lines',
+            'kapitalvinstberakningar': 'fa-chart-line',
             'leverantorsfakturor': 'fa-file-invoice-dollar',
             'arsredovisning': 'fa-book-open',
             'lonehantering': 'fa-users',

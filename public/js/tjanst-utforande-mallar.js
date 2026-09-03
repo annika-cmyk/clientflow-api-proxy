@@ -437,6 +437,50 @@
         'Ingen särskild rutin'
       ])
     ]),
+    spec('kapitalvinstberakningar', 'Kapitalvinstberäkningar', [
+      q('kvBeraknar', 'Beräknar byrån kapitalvinst eller kapitalförlust åt kunden?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('kvTillgangar', 'Vilka typer av tillgångar beräknas normalt?', 'multi', [
+        'Fastigheter/bostäder',
+        'Värdepapper/aktier',
+        'Andelar i fåmansbolag',
+        'Kryptovaluta eller andra digitala tillgångar',
+        'Fordringar',
+        'Annat'
+      ], omTjanstenUtfor('kvBeraknar')),
+      q('kvUnderlag', 'Vem lämnar normalt underlag om anskaffning, försäljning och kostnader?', 'multi', [
+        'Kunden',
+        'Byrån hämtar från system/bank/mäklare',
+        'Annan part'
+      ], omTjanstenUtfor('kvBeraknar')),
+      q('kvKontroll', 'Kontrolleras anskaffningsvärde, försäljningspris eller avdrag mot underlag?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större belopp eller avvikelser',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('kvBeraknar')),
+      q('kvUtland', 'Förekommer försäljningar eller tillgångar med koppling till utlandet?', 'single', [
+        'Ja, ofta',
+        'Ja, ibland',
+        'Nej, sällan',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('kvBeraknar')),
+      q('kvNarstaende', 'Förekommer försäljningar till eller från ägare, närstående eller närstående bolag?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ], omTjanstenUtfor('kvBeraknar')),
+      q('kvOklar', 'Hur hanteras beräkningar där underlaget är ofullständigt eller oklart?', 'multi', [
+        'Kunden får komplettera i efterhand',
+        'Underlaget dokumenteras',
+        'Byrån gör rimlighetsbedömning',
+        'Beräkningen tas inte med förrän den är utredd',
+        'Ansvarig granskar',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('kvBeraknar'))
+    ], { description: 'Beräkning av kapitalvinst och kapitalförlust vid försäljning av tillgångar.' }),
     spec('leverantorsfakturor', 'Leverantörsfakturor och leverantörsreskontra', [
       q('lfHanterar', 'Hanterar byrån leverantörsreskontra åt kunder?', 'single', [
         'Ja',
@@ -683,6 +727,10 @@
     'deklarationer': 'deklarationer',
     'deklaration': 'deklarationer',
     'inkomstdeklaration': 'deklarationer',
+    'kapitalvinstberakningar': 'kapitalvinstberakningar',
+    'kapitalvinstberakning': 'kapitalvinstberakningar',
+    'kapitalvinst': 'kapitalvinstberakningar',
+    'kapitalvinst forlust': 'kapitalvinstberakningar',
     'leverantorsfakturor': 'leverantorsfakturor',
     'leverantorsfakturor och leverantorsreskontra': 'leverantorsfakturor',
     'leverantorsreskontra': 'leverantorsfakturor',
