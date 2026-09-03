@@ -301,6 +301,14 @@
         return `${doc.publisher} — ${mid} — ${href}`;
     }
 
+    function sameishKallaTitle(a, b) {
+        const clean = (v) => fold(v).replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+        const fa = clean(a);
+        const fb = clean(b);
+        if (!fa || !fb) return false;
+        return fa === fb || fa.includes(fb) || fb.includes(fa);
+    }
+
     function normalizeKalla(raw) {
         const text = String(raw == null ? '' : raw).trim();
         if (!text) return '';
@@ -310,7 +318,11 @@
         const url = urls[0] || '';
         const leftover = text.replace(url, '').replace(/[()[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
         const named = splitNamePage(leftover);
-        const section = matchDokumentSection(doc, leftover + ' ' + named.page) || named.page || '';
+        const sectionMatch = matchDokumentSection(doc, leftover + ' ' + named.page);
+        // Do not treat the document title itself as a "section" — that duplicated
+        // "Penningtvätt i näringsverksamhet (2024)" in the stored/display string.
+        const pageAsSection = named.page && !sameishKallaTitle(named.page, doc.title) ? named.page : '';
+        const section = sectionMatch || pageAsSection || '';
         const keepUrl = url && !isGenericKallaUrl(url);
         return formatDokumentKalla(doc, section, keepUrl ? url : doc.url);
     }
@@ -368,13 +380,14 @@
             ? rawOrResolved
             : resolveKalla(rawOrResolved);
         const primary = r.label || r.host || r.text || '';
-        const secondary = r.page || '';
+        const secondary = r.page && !sameishKallaTitle(r.page, primary) ? r.page : '';
         const path = r.path || r.host || '';
         const linkText = [primary, secondary].filter(Boolean).join(' · ') || path || 'Öppna källa';
         return {
             primary,
             secondary,
             path,
+            host: r.host || '',
             url: r.url || '',
             linkText,
             title: r.url || primary
