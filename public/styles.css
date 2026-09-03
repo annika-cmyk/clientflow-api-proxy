@@ -15318,6 +15318,9 @@ h5.ar-subsection-title {
     border-radius: 10px;
     background: #f3fafb;
 }
+.ai-review-summary[hidden] {
+    display: none;
+}
 .ai-review-summary p {
     margin: 0;
     font-size: 0.86rem;
