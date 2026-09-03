@@ -66,6 +66,7 @@ class RiskAssessmentManager {
         } catch (err) {
             console.warn('Kunde inte ladda tjänsteutförande:', err);
         }
+        await this.fetchByraProfil().catch(() => {});
         this.renderUtforandeKatalog();
     }
 
@@ -84,7 +85,7 @@ class RiskAssessmentManager {
                 const qid = qEl.getAttribute('data-q-id');
                 qEl.querySelectorAll('input, textarea, select').forEach((input) => {
                     input.addEventListener('change', () => this.collectUtforandeQuestion(mallId, qid, qEl));
-                    if (input.tagName === 'TEXTAREA' && input.classList.contains('tjanst-mall-text')) {
+                    if (input.classList.contains('tjanst-mall-text') || input.classList.contains('tjanst-mall-number')) {
                         input.addEventListener('input', () => this.collectUtforandeQuestion(mallId, qid, qEl));
                     }
                 });
@@ -109,6 +110,8 @@ class RiskAssessmentManager {
                 });
             });
             this.applyUtforandeQuestionVisibility(mallId, cardEl);
+            const statsHost = cardEl.querySelector('[data-tjanst-stats]');
+            if (statsHost) this.loadUtforandeClientflowStats(mallId, cardEl.getAttribute('data-mall-namn'), statsHost);
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '', {
@@ -173,7 +176,9 @@ class RiskAssessmentManager {
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const view = this.utforandeViews[template.id] || '';
-        const qHtml = `${this.renderUtforandeQuestionGroup(template.id, 'Så här görs tjänsten', grouped.base, entry)}
+        const qHtml = `${this.renderUtforandeQuestionGroup(template.id, 'Kundunderlag', grouped.stats || [], entry)}
+            ${this.renderUtforandeStatsHint(template, entry)}
+            ${this.renderUtforandeQuestionGroup(template.id, 'Så här görs tjänsten', grouped.base, entry)}
             ${this.renderUtforandeQuestionGroup(template.id, 'Specifikt för ' + (template.name || 'tjänsten'), grouped.extra, entry)}`;
         const analysHtml = existing
             ? `${this.buildTjanstRiskSections(existing)}
@@ -225,6 +230,8 @@ class RiskAssessmentManager {
         let control = '';
         if (question.type === 'text') {
             control = `<textarea class="tjanst-mall-text" rows="3">${this.esc(value || '')}</textarea>`;
+        } else if (question.type === 'number') {
+            control = `<input type="number" min="0" step="1" class="tjanst-mall-number" value="${this.esc(value || '')}" placeholder="t.ex. 12">`;
         } else {
             const type = question.type === 'multi' ? 'checkbox' : 'radio';
             const name = `utforande-${mallId}-${question.id}`;
@@ -259,6 +266,8 @@ class RiskAssessmentManager {
         const kommentarer = Object.assign({}, entry.kommentarer);
         if (type === 'text') {
             answers[qid] = qEl.querySelector('.tjanst-mall-text')?.value.trim() || '';
+        } else if (type === 'number') {
+            answers[qid] = qEl.querySelector('.tjanst-mall-number')?.value.trim() || '';
         } else if (type === 'multi') {
             answers[qid] = [...qEl.querySelectorAll('input:checked')].map((el) => el.value);
         } else {
@@ -281,8 +290,51 @@ class RiskAssessmentManager {
             const input = chip.querySelector('input');
             chip.classList.toggle('is-selected', !!(input && input.checked));
         });
-        this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: false });
-        this.applyUtforandeQuestionVisibility(mallId, qEl.closest('[data-mall-id]'));
+        this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: qid === 'hamtaClientflowStatistik' });
+        if (qid !== 'hamtaClientflowStatistik') {
+            this.applyUtforandeQuestionVisibility(mallId, qEl.closest('[data-mall-id]'));
+        }
+    }
+
+    renderUtforandeStatsHint(template, entry) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (Mallar && Mallar.wantsClientflowStatistik(entry)) {
+            return `<div class="tjanst-mall-stats" data-tjanst-stats="${this.esc(template.id)}">Hämtar statistik från Clientflow…</div>`;
+        }
+        if (entry && entry.answers && entry.answers.hamtaClientflowStatistik === 'Nej') {
+            const tot = this.byraProfil && this.byraProfil.antalKunder;
+            if (tot !== '' && tot != null) {
+                return `<p class="tjanst-mall-q-help tjanst-mall-byra-antal">Byråns totala kundantal enligt byråuppgifterna: <strong>${this.esc(tot)}</strong>.</p>`;
+            }
+            return '<p class="tjanst-mall-q-help tjanst-mall-byra-antal">Byråns totala kundantal saknas i byråuppgifterna.</p>';
+        }
+        return '';
+    }
+
+    async loadUtforandeClientflowStats(mallId, namn, host) {
+        if (!host) return;
+        try {
+            const existing = this.findTjanstRiskByName(namn);
+            const query = new URLSearchParams({ namn: namn || '' });
+            if (existing && existing.id) query.set('recordId', existing.id);
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/tjanst-exponering?${query}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const expo = data.exponering || {};
+            const row = (label, value) => `<div class="tjanst-mall-stat"><span>${this.esc(label)}</span><strong>${this.esc(value == null ? 'uppgift saknas' : value)}</strong></div>`;
+            host.innerHTML = `
+                <p class="tjanst-mall-stats-title">Statistik från Clientflow</p>
+                <div class="tjanst-mall-stat-grid">
+                    ${row('Kunder med tjänsten', expo.antal_kunder)}
+                    ${row('Kontanthantering', expo.kontanthantering)}
+                    ${row('Utlandstransaktioner', expo.internationella_transaktioner)}
+                    ${row('Högriskbranscher', expo.hogrisksbranscher)}
+                    ${row('PEP eller PEP-anhörig', expo.pep)}
+                    ${row('Högriskland', expo.hogrisksland)}
+                </div>`;
+        } catch (err) {
+            host.innerHTML = '<p class="tjanst-mall-q-help">Kunde inte hämta statistik från Clientflow just nu.</p>';
+        }
     }
 
     applyUtforandeQuestionVisibility(mallId, cardEl) {
