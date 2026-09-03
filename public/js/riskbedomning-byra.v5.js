@@ -146,7 +146,7 @@ class RiskAssessmentManager {
         host.hidden = false;
         host.innerHTML = `
             <div class="tjanst-modal-utforande-head">
-                <h4 class="tjanst-mall-group-title">Utförandefrågor</h4>
+                <h4 class="tjanst-mall-group-title">Frågor från din ClientFlow AI</h4>
                 <p class="tjanst-panel-hint">Svara på hur ni utför tjänsten — svaren sparas automatiskt och används av AI vid riskbedömning.</p>
             </div>
             <div class="tjanst-modal-utforande-body">${this.renderUtforandeQuestionsHtml(id, entry)}</div>`;
@@ -1090,7 +1090,6 @@ class RiskAssessmentManager {
             const key = el.getAttribute('data-ai-for');
             const n = (counts && counts[key]) || 0;
             el.hidden = n < 1;
-            el.textContent = n > 1 ? `AI ${n}` : 'AI';
         });
         const bar = document.getElementById('tjanst-ai-summary');
         if (!bar) return;
@@ -1207,6 +1206,7 @@ class RiskAssessmentManager {
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                <span class="dyn-row-kind is-hot" aria-hidden="true" title="${typ === 'tf' ? 'Terrorismfinansiering' : typ === 'pt' ? 'Penningtvätt' : 'Hot'}"><i class="fas ${typ === 'tf' ? 'fa-hand-holding-heart' : typ === 'pt' ? 'fa-coins' : 'fa-triangle-exclamation'}"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -1242,6 +1242,7 @@ class RiskAssessmentManager {
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                <span class="dyn-row-kind is-sarbarhet" aria-hidden="true"><i class="fas fa-circle-exclamation"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -1281,6 +1282,7 @@ class RiskAssessmentManager {
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                <span class="dyn-row-kind is-atgard" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
                 <span class="dyn-header-label">Åtgärd</span>
                 <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
