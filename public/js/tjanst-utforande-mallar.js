@@ -738,6 +738,16 @@
     return id ? templateById(id) : null;
   }
 
+  function tjanstNamesMatch(a, b) {
+    const fa = foldName(a);
+    const fb = foldName(b);
+    if (!fa || !fb) return false;
+    if (fa === fb) return true;
+    const idA = resolveTemplateId(a);
+    const idB = resolveTemplateId(b);
+    return !!(idA && idB && idA === idB);
+  }
+
   function extraQuestionsForTemplate(template) {
     if (!template) return [];
     return template.aiQuestionSupport === false
@@ -908,6 +918,7 @@
     templateById: templateById,
     resolveTemplateId: resolveTemplateId,
     resolveTemplate: resolveTemplate,
+    tjanstNamesMatch: tjanstNamesMatch,
     extraQuestionsForTemplate: extraQuestionsForTemplate,
     questionIsVisible: questionIsVisible,
     wantsClientflowStatistik: wantsClientflowStatistik,
