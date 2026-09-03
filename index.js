@@ -23268,6 +23268,7 @@ REGLER:
 - Hot ska grundas på kända tillvägagångssätt från myndigheter — ange alltid källan för varje hot.
 ${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
+${AmlKalla.KALLA_DOKUMENT_PROMPT}
 - TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", om du inte lämnar en tjänstespecifik tfMotivering. Defaulta inte till enbart PT.
 - Föredra ett konkret TF-hot när tjänsten kan användas för att flytta, dölja eller legitimera medel (de flesta redovisnings- och skattetjänster). Utgå från kända TF-tillvägagångssätt hos FATF, Säpo, Polisen eller Samordningsfunktionen.
 - Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
@@ -23288,15 +23289,10 @@ Exempel:
 - Kundexponering med 0 PEP → säg att inga PEP är registrerade för tjänsten, hitta inte på PEP.
 
 KÄLLOR ATT UTGÅ FRÅN:
-- Polismyndigheten / Finanspolisen (polisen.se)
-- Samordningsfunktionen mot penningtvätt och finansiering av terrorism
-- Ekobrottsmyndigheten (ekobrottsmyndigheten.se)
-- Skatteverket (skatteverket.se)
-- FATF — Financial Action Task Force (fatf-gafi.org)
-- Europol (europol.europa.eu)
-- EU-kommissionen (commission.europa.eu)
-- Brottsförebyggande rådet, Brå (bra.se)
-- Säkerhetspolisen, Säpo (sakerhetspolisen.se)
+- Använd dokumenten i GODKÄNDA DOKUMENT ovan. Peka på PDF eller rapportsida, inte myndighetens startsida.
+- Polismyndigheten / Samordningsfunktionen: nationell riskbedömning och rapporter (polisen.se)
+- Ekobrottsmyndigheten: penningtvättsbrott och vägledning för redovisningskonsulter
+- Skatteverket, FATF, Europol, EU-kommissionen, Brå, Säpo — bara när du har en konkret undersida eller publikation, inte startsidan.
 
 Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
@@ -23308,7 +23304,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas.",
   "motiveringResidual": "2-4 meningar: hur bekräftade eller föreslagna åtgärder sänkt S och/eller K.",
-  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Myndighet — Undersida — https://.../undersida" } ],
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "evidens": "bekraftad|tjanstetypisk|saknas" } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"],
@@ -23413,7 +23409,7 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
 
     const hot = HotAmlTf.filterHots(Array.isArray(result.hot) ? result.hot
-      .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: cleanStr(h?.kalla ?? h?.källa ?? h?.source) }))
+      .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: AmlKalla.normalizeKalla(cleanStr(h?.kalla ?? h?.källa ?? h?.source)) }))
       .filter(h => h.titel || h.beskrivning) : []);
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map(s => ({

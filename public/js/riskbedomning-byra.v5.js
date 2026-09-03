@@ -1145,7 +1145,7 @@ class RiskAssessmentManager {
             </div>
             <div class="dyn-kalla-row">
                 <span class="dyn-kalla-label">Källa</span>
-                <input type="text" class="dyn-kalla" placeholder="Myndighet — undersida — https://…" value="${this.esc(kalla)}" aria-label="Källa">
+                <input type="text" class="dyn-kalla" placeholder="Utgivare — dokument, kap. — https://…" value="${this.esc(kalla)}" aria-label="Källa">
                 <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
             </div>
         `;
@@ -1782,7 +1782,7 @@ class RiskAssessmentManager {
                 </div>
                 ${kind === 'hot' ? `<div class="dyn-ai-field dyn-ai-field--kalla">
                     <label class="dyn-ai-field-label">Källa</label>
-                    <input type="text" class="dyn-ai-kalla dyn-ai-control" value="${this.esc(forslag.kalla || '')}" placeholder="Myndighet — undersida — https://…">
+                    <input type="text" class="dyn-ai-kalla dyn-ai-control" value="${this.esc(forslag.kalla || '')}" placeholder="Utgivare — dokument, kap. — https://…">
                 </div>` : ''}
             </div>
             <div class="dyn-ai-actions">
