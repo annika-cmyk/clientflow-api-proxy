@@ -198,6 +198,7 @@
         'Fordon',
         'Fastigheter/byggnader',
         'Immateriella tillgångar',
+        'Tillgångar i lantbruk',
         'Annat'
       ], omTjanstenUtfor('anlUpprattar')),
       q('anlKunduppgifter', 'Behöver kunden normalt lämna uppgifter om inköp, försäljning eller utrangering av tillgångar?', 'single', [
