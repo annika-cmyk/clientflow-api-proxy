@@ -15053,6 +15053,19 @@ h5.ar-subsection-title {
     border-top: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
 }
+[data-tjanst-panel="residual"] .tjanst-residual-bar {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+.tjanst-modal-utforande {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--line, #e8eaee);
+}
+.tjanst-modal-utforande-head .tjanst-mall-group-title {
+    margin-top: 0;
+}
 .tjanst-residual-title {
     margin: 0 0 0.2rem;
     font-weight: 700;
