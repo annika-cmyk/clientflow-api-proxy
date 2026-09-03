@@ -22,6 +22,8 @@ class RiskAssessmentManager {
         this.utforandeState = { version: 1, tjanster: {} };
         this._modalUtforandeMallId = null;
         this._utforandeSaveTimer = null;
+        this.klarmarkeradeFlikar = new Set();
+        this._activeTjanstTab = 'utforande';
 
         this.init();
     }
@@ -715,6 +717,7 @@ class RiskAssessmentManager {
         document.querySelectorAll('.tjanst-tab').forEach((tab) => {
             tab.addEventListener('click', () => this.setTjanstTab(tab.getAttribute('data-tjanst-tab')));
         });
+        document.getElementById('tjanst-klarmarkera-btn')?.addEventListener('click', () => this.toggleKlarmarkering());
 
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
@@ -1205,6 +1208,7 @@ class RiskAssessmentManager {
 
     setTjanstTab(tabId) {
         const id = tabId || 'utforande';
+        this._activeTjanstTab = id;
         document.querySelectorAll('.tjanst-tab').forEach((tab) => {
             const on = tab.getAttribute('data-tjanst-tab') === id;
             tab.classList.toggle('is-active', on);
@@ -1215,6 +1219,42 @@ class RiskAssessmentManager {
             panel.classList.toggle('is-active', on);
             panel.hidden = !on;
         });
+        this.syncTjanstTabDoneState();
+        this.syncKlarmarkeraBtn();
+    }
+
+    syncTjanstTabDoneState() {
+        document.querySelectorAll('.tjanst-tab').forEach((tab) => {
+            const id = tab.getAttribute('data-tjanst-tab');
+            tab.classList.toggle('is-done', this.klarmarkeradeFlikar.has(id));
+        });
+    }
+
+    syncKlarmarkeraBtn() {
+        const btn = document.getElementById('tjanst-klarmarkera-btn');
+        const label = btn?.querySelector('.tjanst-klarmarkera-label');
+        if (!btn) return;
+        const done = this.klarmarkeradeFlikar.has(this._activeTjanstTab);
+        btn.classList.toggle('is-done', done);
+        btn.setAttribute('aria-pressed', done ? 'true' : 'false');
+        if (label) label.textContent = done ? 'Ta bort klarmarkering' : 'Klarmarkera';
+    }
+
+    toggleKlarmarkering() {
+        const id = this._activeTjanstTab || 'utforande';
+        if (this.klarmarkeradeFlikar.has(id)) this.klarmarkeradeFlikar.delete(id);
+        else this.klarmarkeradeFlikar.add(id);
+        this.syncTjanstTabDoneState();
+        this.syncKlarmarkeraBtn();
+    }
+
+    setKlarmarkeradeFlikar(list) {
+        const allowed = (window.RiskSkala && RiskSkala.normalizeKlarmarkeradeFlikar)
+            ? RiskSkala.normalizeKlarmarkeradeFlikar(list)
+            : (Array.isArray(list) ? list : []);
+        this.klarmarkeradeFlikar = new Set(allowed);
+        this.syncTjanstTabDoneState();
+        this.syncKlarmarkeraBtn();
     }
 
     updateTjanstLists() {
@@ -1634,7 +1674,8 @@ class RiskAssessmentManager {
             sannolikhetEfter: document.getElementById('tjanst-sannolikhet-efter')?.value,
             konsekvensEfter: document.getElementById('tjanst-konsekvens-efter')?.value,
             motivering_inneboende_risk: document.getElementById('tjanst-motivering-inneboende')?.value.trim() || '',
-            motivering_residual_risk: document.getElementById('tjanst-motivering-residual')?.value.trim() || ''
+            motivering_residual_risk: document.getElementById('tjanst-motivering-residual')?.value.trim() || '',
+            klarmarkeradeFlikar: [...this.klarmarkeradeFlikar]
         };
     }
 
@@ -1645,6 +1686,7 @@ class RiskAssessmentManager {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '';
         });
+        this.setKlarmarkeradeFlikar([]);
         this.setTjanstTab('utforande');
         this.updateTjanstLists();
         this.updateRiskBadges();
@@ -1685,6 +1727,7 @@ class RiskAssessmentManager {
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));
         this.parseJsonField(f['Sårbarheter']).forEach(s => this.addSarbarhetRow(s));
         this.parseJsonField(f['Tjänstespecifika åtgärder']).forEach(a => this.addAtgardRow(a));
+        this.setKlarmarkeradeFlikar(scored.klarmarkeradeFlikar || []);
         this.updateRiskBadges();
     }
 

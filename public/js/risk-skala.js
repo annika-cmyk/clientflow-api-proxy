@@ -385,6 +385,24 @@
         return html;
     }
 
+    var TJANST_RESA_FLIKAR = [
+        'utforande', 'oversikt', 'hot', 'sarbarhet', 'inneboende', 'atgard', 'residual'
+    ];
+
+    function normalizeKlarmarkeradeFlikar(raw) {
+        if (!Array.isArray(raw)) return [];
+        var seen = Object.create(null);
+        var out = [];
+        for (var i = 0; i < raw.length; i++) {
+            var key = String(raw[i] == null ? '' : raw[i]).trim();
+            if (!key || seen[key]) continue;
+            if (TJANST_RESA_FLIKAR.indexOf(key) === -1) continue;
+            seen[key] = true;
+            out.push(key);
+        }
+        return out;
+    }
+
     function looksLikeRiskPoang(obj) {
         if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
         return toScore(obj.sannolikhet ?? obj.s ?? obj.likelihood) != null
@@ -394,7 +412,8 @@
             || trimMotiveringText(obj.motivering_inneboende_risk ?? obj.motiveringInneboende) !== ''
             || trimMotiveringText(obj.motivering_residual_risk ?? obj.motiveringResidual) !== ''
             || obj.kraver_uppdaterad_motivering === true
-            || obj.kraverUppdateradMotivering === true;
+            || obj.kraverUppdateradMotivering === true
+            || normalizeKlarmarkeradeFlikar(obj.klarmarkeradeFlikar).length > 0;
     }
 
     function trimMotiveringText(value) {
@@ -415,7 +434,8 @@
                 raw.motivering_residual_risk ?? raw.motiveringResidual ?? raw.residualMotivering
             ),
             kraver_uppdaterad_motivering: raw.kraver_uppdaterad_motivering === true
-                || raw.kraverUppdateradMotivering === true
+                || raw.kraverUppdateradMotivering === true,
+            klarmarkeradeFlikar: normalizeKlarmarkeradeFlikar(raw.klarmarkeradeFlikar)
         };
     }
 
@@ -446,6 +466,9 @@
         if (n.motivering_inneboende_risk) out.motivering_inneboende_risk = n.motivering_inneboende_risk;
         if (n.motivering_residual_risk) out.motivering_residual_risk = n.motivering_residual_risk;
         if (n.kraver_uppdaterad_motivering) out.kraver_uppdaterad_motivering = true;
+        if (n.klarmarkeradeFlikar && n.klarmarkeradeFlikar.length) {
+            out.klarmarkeradeFlikar = n.klarmarkeradeFlikar.slice();
+        }
         if (poang && (poang.kraverManualOversyn === true || poang.requiresReview === true)) {
             out.kraverManualOversyn = true;
         }
@@ -511,7 +534,8 @@
         var mot = stored ? {
             motivering_inneboende_risk: stored.motivering_inneboende_risk,
             motivering_residual_risk: stored.motivering_residual_risk,
-            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering
+            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering,
+            klarmarkeradeFlikar: stored.klarmarkeradeFlikar
         } : {};
         return {
             sannolikhet: inherent.sannolikhet,
@@ -526,7 +550,8 @@
             residualBadge: residual.badge,
             motivering_inneboende_risk: mot.motivering_inneboende_risk || '',
             motivering_residual_risk: mot.motivering_residual_risk || '',
-            kraver_uppdaterad_motivering: mot.kraver_uppdaterad_motivering === true
+            kraver_uppdaterad_motivering: mot.kraver_uppdaterad_motivering === true,
+            klarmarkeradeFlikar: Array.isArray(mot.klarmarkeradeFlikar) ? mot.klarmarkeradeFlikar.slice() : []
         };
     }
 
@@ -621,6 +646,8 @@
         listBadgeLabels: listBadgeLabels,
         scoresFromLegacyLevel: scoresFromLegacyLevel,
         scoreOptionHtml: scoreOptionHtml,
+        TJANST_RESA_FLIKAR: TJANST_RESA_FLIKAR,
+        normalizeKlarmarkeradeFlikar: normalizeKlarmarkeradeFlikar,
         parseRiskPoang: parseRiskPoang,
         serializeRiskPoang: serializeRiskPoang,
         readTjanstRisk: readTjanstRisk,

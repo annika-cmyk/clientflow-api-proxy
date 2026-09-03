@@ -15400,10 +15400,57 @@ h5.ar-subsection-title {
     font-weight: 500;
     background: transparent;
 }
+.tjanst-tab.is-done .tjanst-tab-dot {
+    background: var(--accent, #13505c);
+    border-color: var(--accent, #13505c);
+}
+.tjanst-tab.is-done:not(.is-active) .tjanst-tab-dot {
+    box-shadow: none;
+}
+.tjanst-tab.is-done:not(.is-active) .tjanst-tab-label {
+    color: var(--title-text, #15181d);
+}
 .tjanst-tab.is-active .tjanst-tab-dot {
     background: var(--accent, #13505c);
     border-color: var(--accent, #13505c);
     box-shadow: 0 0 0 4px var(--card-bg, #ffffff);
+}
+.tjanst-panel-klar-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-shrink: 0;
+    margin: 0 0 0.65rem;
+}
+.tjanst-klarmarkera-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--border, #dcdfe5);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text, #5a626d);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.tjanst-klarmarkera-btn:hover {
+    border-color: var(--accent, #13505c);
+    color: var(--accent, #13505c);
+}
+.tjanst-klarmarkera-btn.is-done {
+    border-color: color-mix(in srgb, var(--accent, #13505c) 35%, transparent);
+    background: color-mix(in srgb, var(--accent, #13505c) 10%, #fff);
+    color: var(--accent, #13505c);
+}
+.tjanst-klarmarkera-btn .fas {
+    font-size: 0.72rem;
 }
 .tjanst-tab-ai {
     display: inline-flex;
