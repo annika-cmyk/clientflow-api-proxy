@@ -60,6 +60,7 @@
   --border-strong: var(--border);
   --text-secondary: var(--text);
   --text-accent:   var(--accent);
+  --text-muted:    var(--ink-3);
 }
 
 /* Varm temperatur för kundvända ytor (underlags-formuläret).
@@ -856,6 +857,34 @@ body.sidebar-collapsed .logout-btn {
     background: #f0fdf4;
     border-color: #86efac;
     color: #14532d;
+}
+
+
+/* Semantic status utilities (reuse --success/--error tokens) */
+.text-muted { color: var(--text-muted, var(--ink-3, #8b929d)); }
+.border-strong { border-color: var(--border-strong, var(--border)) !important; }
+.border-danger { border-left-color: var(--error) !important; }
+.border-success { border-left-color: var(--success) !important; }
+.bg-success { background: var(--success) !important; color: #fff !important; }
+.fill-danger {
+    background: var(--error) !important;
+    border-color: var(--error) !important;
+    color: #fff !important;
+}
+.fill-danger:hover {
+    background: color-mix(in srgb, var(--error) 88%, #000) !important;
+    border-color: color-mix(in srgb, var(--error) 88%, #000) !important;
+    color: #fff !important;
+}
+.fill-success {
+    background: var(--success) !important;
+    border-color: var(--success) !important;
+    color: #fff !important;
+}
+.fill-success:hover {
+    background: color-mix(in srgb, var(--success) 88%, #000) !important;
+    border-color: color-mix(in srgb, var(--success) 88%, #000) !important;
+    color: #fff !important;
 }
 
 /* Cards */
@@ -15057,6 +15086,14 @@ h5.ar-subsection-title {
     flex-shrink: 0;
     margin: 0;
 }
+.tjanst-ai-summary-actions,
+.ai-review-head .tjanst-ai-summary-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    margin-left: auto;
+}
 .tjanst-modal-identity {
     display: flex;
     flex-direction: column;
@@ -15694,12 +15731,12 @@ h5.ar-subsection-title {
 #tjanst-beskrivning.is-ai-change,
 #tjanst-tf-motivering.is-ai-change,
 .dyn-card.is-ai-change .dyn-besk {
-    border-color: #93c5fd;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+    border-color: var(--border, #dcdfe5);
+    box-shadow: none;
 }
 .dyn-card.is-ai-change {
-    border-color: #93c5fd;
-    background: #f8fbff;
+    border-color: var(--border, #dcdfe5);
+    background: var(--surface-1, var(--card-bg));
 }
 .ai-review-item-changed {
     display: inline-flex;
@@ -15874,51 +15911,99 @@ h5.ar-subsection-title {
     border-color: #86efac;
     background: #f0fdf4;
 }
-.dyn-card.is-ai-add {
-    border-color: #86efac;
-    background: #f0fdf4;
-    box-shadow: 0 0 0 1px #bbf7d0;
+.dyn-ai-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+.dyn-ai-zone-label,
+.dyn-ai-zone-label.text-muted {
+    margin: 0.15rem 0 0.05rem;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted, var(--ink-3, #8b929d));
+}
+.dyn-row.dyn-card.is-ai-add {
+    background: var(--surface-1, var(--card-bg));
+    border-radius: 12px;
+    border-left-width: 3px;
+    border-left-color: var(--success);
+    opacity: 1;
+    box-shadow: none;
 }
 .dyn-card.is-ai-add .dyn-titel,
 .dyn-card.is-ai-add .dyn-besk {
-    background: #fff;
+    background: transparent;
 }
 .dyn-ai-badge {
     flex-shrink: 0;
-    padding: 0.1rem 0.4rem;
+    padding: 0.12rem 0.45rem;
     border-radius: 999px;
-    background: #166534;
-    color: #fff;
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.03em;
+    background: var(--success-tint);
+    color: var(--success);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
 }
-.dyn-card.is-ai-remove {
-    opacity: 0.72;
-    background: #f8fafc;
+.dyn-row.dyn-card.is-ai-remove {
+    background: var(--surface-1, var(--card-bg));
+    border-radius: 12px;
+    border-left-width: 3px;
+    border-left-color: var(--error);
+    opacity: 0.85;
 }
 .dyn-card.is-ai-remove .dyn-titel,
 .dyn-card.is-ai-remove .dyn-besk,
 .dyn-card.is-ai-remove .dyn-kalla {
-    text-decoration: line-through;
-    color: #64748b;
+    text-decoration: none;
+    color: inherit;
+}
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-hot,
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-sarbarhet,
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card.dyn-row-atgard,
+.dyn-ai-zone[data-zone="unchanged"] .dyn-row.dyn-card {
+    border-left-width: 1px;
+    border-left-color: var(--border, #dcdfe5);
+    background: var(--surface-1, var(--card-bg));
+}
+.dyn-ai-edit {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border-strong, var(--border));
+    border-radius: 8px;
+    background: var(--surface-1, var(--card-bg));
+    color: var(--text-secondary, var(--text));
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+}
+.dyn-ai-edit:hover {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .dyn-ai-forslag,
 .dyn-ai-bar {
     margin: 0;
-    padding: 0.75rem 0.85rem;
+    padding: 0.65rem 0.85rem 0.75rem;
     border: none;
-    border-top: 1px solid #86efac;
+    border-top: 1px solid var(--line, #e8eaee);
     border-radius: 0;
-    background: #f0fdf4;
+    background: transparent;
 }
 .field-ai-forslag {
     margin: 0.55rem 0 0;
     padding: 0.75rem 0.85rem;
-    border: 1px solid #86efac;
+    border: 1px solid var(--border, #dcdfe5);
     border-radius: 10px;
-    background: #f0fdf4;
+    background: var(--surface-1, var(--card-bg));
 }
 .dyn-card .dyn-ai-forslag,
 .dyn-card .dyn-ai-bar {
@@ -15993,8 +16078,8 @@ h5.ar-subsection-title {
     min-width: 5.5rem;
 }
 .dyn-ai-bar {
-    border-top-color: #fecaca;
-    background: #fef2f2;
+    border-top-color: var(--line, #e8eaee);
+    background: transparent;
 }
 .dyn-ai-label,
 .field-ai-label {
@@ -16008,10 +16093,10 @@ h5.ar-subsection-title {
 }
 .dyn-ai-bar .dyn-ai-label { color: #991b1b; }
 .dyn-ai-bar-add {
-    border-color: #bbf7d0;
-    background: #f0fdf4;
+    border-color: transparent;
+    background: transparent;
 }
-.dyn-ai-bar-add .dyn-ai-label { color: #166534; }
+.dyn-ai-bar-add .dyn-ai-label { color: var(--success); }
 .dyn-ai-change-hint {
     margin: 0 0 0.45rem;
     font-size: 0.78rem;
@@ -16030,7 +16115,31 @@ h5.ar-subsection-title {
     margin: 0 0 0.45rem;
     font-size: 0.8rem;
     line-height: 1.45;
-    color: #334155;
+    color: var(--text, #5a626d);
+}
+.dyn-ai-motivering,
+.field-ai-comment {
+    padding: 0.45rem 0.55rem;
+    border-radius: 8px;
+    background: var(--surface-2, var(--panel-2));
+    border: 1px solid var(--line, #e8eaee);
+}
+.dyn-ai-motivering-label {
+    font-weight: 650;
+    color: var(--title-text, #15181d);
+    margin-right: 0.2rem;
+}
+.dyn-card.is-collapsed .dyn-ai-forslag,
+.dyn-card.is-collapsed .dyn-ai-bar {
+    display: block;
+}
+.dyn-card.is-collapsed .dyn-ai-forslag .dyn-ai-form,
+.dyn-card.is-collapsed .dyn-ai-forslag .dyn-ai-change-hint {
+    display: none;
+}
+.dyn-card.is-ai-add.is-collapsed .dyn-ai-bar,
+.dyn-card.is-ai-remove.is-collapsed .dyn-ai-bar {
+    display: block;
 }
 .dyn-ai-actions,
 .field-ai-actions {
@@ -16282,9 +16391,7 @@ h5.ar-subsection-title {
     padding: 0.7rem 0.85rem 0.55rem;
 }
 .dyn-card.is-collapsed .dyn-row-body,
-.dyn-card.is-collapsed .dyn-kalla-row,
-.dyn-card.is-collapsed .dyn-ai-forslag,
-.dyn-card.is-collapsed .dyn-ai-bar { display: none; }
+.dyn-card.is-collapsed .dyn-kalla-row { display: none; }
 
 .dyn-row-body .dyn-besk {
     width: 100%;
