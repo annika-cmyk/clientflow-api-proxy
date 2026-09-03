@@ -209,6 +209,7 @@ class RiskAssessmentManager {
             if (nameEl) nameEl.value = namn;
         }
         this.renderModalUtforande(mallId);
+        this.setTjanstTab('utforande');
         if (opts.ai) this.generateAiSuggestion();
     }
 
@@ -2034,7 +2035,7 @@ class RiskAssessmentManager {
 
         const btn = document.getElementById('ai-suggest-btn');
         const label = btn && btn.querySelector('.ai-btn-label');
-        const originalLabel = (label && label.textContent) || 'Generera AI-förslag';
+        const originalLabel = (label && label.textContent) || 'Generera AI-analys';
         const Ai = window.AiFaltGranskning;
         const poang = this.collectRiskPoang();
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
