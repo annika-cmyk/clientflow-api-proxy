@@ -198,11 +198,39 @@
 
     // S×K (1–5) → femgradig skala. Samma trösklar för inneboende risk och residualrisk.
     // 1–4 Låg, 5–9 Normal, 10–15 Förhöjd, 16–19 Hög, 20–25 Oacceptabel.
+    //
+    // Dimensionsetiketter (S respektive K) ≠ risknivåetiketter (S×K-produkten).
+    // "Förhöjd"/"Normal"/"Oacceptabel" är bara produktnivåer — inte adjektiv för S eller K.
+    var SANNOLIKHET_LABELS = {
+        1: 'Mycket låg',
+        2: 'Låg',
+        3: 'Medel',
+        4: 'Hög',
+        5: 'Mycket hög'
+    };
+    var KONSEKVENS_LABELS = {
+        1: 'Obetydlig',
+        2: 'Lindrig',
+        3: 'Kännbar',
+        4: 'Allvarlig',
+        5: 'Katastrofal'
+    };
+
     function toScore(value) {
         if (value == null || value === '') return null;
         var n = Number(value);
         if (!Number.isInteger(n) || n < 1 || n > 5) return null;
         return n;
+    }
+
+    function sannolikhetLabel(score) {
+        var n = toScore(score);
+        return n ? SANNOLIKHET_LABELS[n] : '';
+    }
+
+    function konsekvensLabel(score) {
+        var n = toScore(score);
+        return n ? KONSEKVENS_LABELS[n] : '';
     }
 
     function levelFromProduct(product) {
@@ -212,6 +240,65 @@
         if (product <= 15) return BY_KEY.elevated;
         if (product <= 19) return BY_KEY.high;
         return BY_KEY.unacceptable;
+    }
+
+    /** Promptblock: trösklar + dimensionsordlista så AI inte blandar ihop S/K-adjektiv med risknivå. */
+    function sxkScalePromptBlock() {
+        return [
+            'S×K-SKALA (obligatorisk ordlista):',
+            'Sannolikhet (S) 1–5: 1 Mycket låg, 2 Låg, 3 Medel, 4 Hög, 5 Mycket hög.',
+            'Konsekvens (K) 1–5: 1 Obetydlig, 2 Lindrig, 3 Kännbar, 4 Allvarlig, 5 Katastrofal.',
+            'Risknivå = S×K: 1–4 Låg, 5–9 Normal, 10–15 Förhöjd, 16–19 Hög, 20–25 Oacceptabel.',
+            'Orden Låg/Normal/Förhöjd/Hög/Oacceptabel får BARA beskriva den beräknade risknivån (produkten), aldrig sannolikhet eller konsekvens ensamma.',
+            'Exempel fel: S=3 K=3 (Normal) men motivering säger «sannolikheten är förhöjd» eller «konsekvensen är betydande».',
+            'Exempel rätt: «Sannolikheten bedöms till 3 (medel) eftersom … Konsekvensen bedöms till 3 (kännbar) eftersom … Inneboende risk blir därmed Normal (S×K 9).»'
+        ].join('\n');
+    }
+
+    /**
+     * Upptäck när motivering använder risknivåord som adjektiv för S/K,
+     * eller nämner fel produktnivå jämfört med assessRisk(S,K).
+     */
+    function motiveringScoreVocabIssues(motivering, sannolikhet, konsekvens) {
+        var text = String(motivering == null ? '' : motivering).trim();
+        var issues = [];
+        if (!text) return issues;
+
+        var reservedAsDimension = /(?:sannolikhet(?:en)?|konsekvens(?:en)?)\s+(?:är|bedöms|anses|ses|satt|sattes|ligger)\s+(?:som\s+|till\s+)?(?:\*\*)?(förhöjd|oacceptabel|normal)(?:\*\*)?/i;
+        var reservedBeforeDimension = /(?:\*\*)?(förhöjd|oacceptabel)\s+(?:\*\*)?(?:sannolikhet|konsekvens)/i;
+        var betydandeKonsekvens = /konsekvens(?:en)?\s+(?:är|bedöms|anses|ses)\s+(?:som\s+)?(?:\*\*)?betydande(?:\*\*)?/i;
+
+        if (reservedAsDimension.test(text) || reservedBeforeDimension.test(text)) {
+            issues.push({
+                code: 'dimension_uses_riskniva_ord',
+                message: 'Motiveringen använder risknivåord (t.ex. förhöjd/normal/oacceptabel) som adjektiv för sannolikhet eller konsekvens. Använd dimensionsorden (medel/kännbar m.m.) och nämn siffran 1–5.'
+            });
+        }
+        if (betydandeKonsekvens.test(text)) {
+            issues.push({
+                code: 'konsekvens_betydande',
+                message: '«Betydande» är inte en konsekvensetikett. Använd Obetydlig/Lindrig/Kännbar/Allvarlig/Katastrofal tillsammans med siffran.'
+            });
+        }
+
+        var assessed = assessRisk(sannolikhet, konsekvens);
+        if (assessed.level) {
+            var claimed = text.match(/(?:inneboende\s+risk|risknivån|risknivå)\s+(?:är|bedöms(?:\s+som)?|blir|som)\s+(?:därmed\s+)?(?:\*\*)?(låg|normal|förhöjd|hög|oacceptabel)(?:\*\*)?/i);
+            if (claimed) {
+                var claimedLabel = riskLabelSv(claimed[1]);
+                if (claimedLabel && !sameLevel(claimedLabel, assessed.level)) {
+                    issues.push({
+                        code: 'riskniva_mismatch',
+                        message: 'Motiveringen nämner risknivå ' + claimedLabel + ' men S×K ' + assessed.product + ' ger ' + assessed.level + '.'
+                    });
+                }
+            }
+        }
+        return issues;
+    }
+
+    function motiveringScoreVocabOk(motivering, sannolikhet, konsekvens) {
+        return motiveringScoreVocabIssues(motivering, sannolikhet, konsekvens).length === 0;
     }
 
     function assessRisk(sannolikhet, konsekvens) {
@@ -282,9 +369,13 @@
     function scoreOptionHtml(selected, opts) {
         var emptyLabel = (opts && opts.emptyLabel) || 'Ej satt';
         var selectedScore = toScore(selected);
+        var kind = (opts && opts.kind) || 'sannolikhet';
+        var labels = kind === 'konsekvens' ? KONSEKVENS_LABELS : SANNOLIKHET_LABELS;
         var html = '<option value="">' + emptyLabel + '</option>';
         for (var i = 1; i <= 5; i++) {
-            html += '<option value="' + i + '"' + (selectedScore === i ? ' selected' : '') + '>' + i + '</option>';
+            var label = labels[i] || '';
+            var text = label ? (i + ' — ' + label) : String(i);
+            html += '<option value="' + i + '"' + (selectedScore === i ? ' selected' : '') + '>' + text + '</option>';
         }
         return html;
     }
@@ -509,8 +600,15 @@
         definitionsPlain: definitionsPlain,
         fold: fold,
         toScore: toScore,
+        SANNOLIKHET_LABELS: SANNOLIKHET_LABELS,
+        KONSEKVENS_LABELS: KONSEKVENS_LABELS,
+        sannolikhetLabel: sannolikhetLabel,
+        konsekvensLabel: konsekvensLabel,
         levelFromProduct: levelFromProduct,
         assessRisk: assessRisk,
+        sxkScalePromptBlock: sxkScalePromptBlock,
+        motiveringScoreVocabIssues: motiveringScoreVocabIssues,
+        motiveringScoreVocabOk: motiveringScoreVocabOk,
         INNEBOENDE_BEGREPP: INNEBOENDE_BEGREPP,
         RESIDUAL_BEGREPP: RESIDUAL_BEGREPP,
         formatInneboendeBadge: formatInneboendeBadge,

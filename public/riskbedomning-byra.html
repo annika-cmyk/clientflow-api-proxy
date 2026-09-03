@@ -71,8 +71,8 @@
                                     Kombinera sannolikheten för att hotet inträffar med konsekvensen av att det sker.
                                 </p>
                                 <ul>
-                                    <li><strong>Sannolikhet (S) 1–5:</strong> Hur troligt är det att kriminella försöker utnyttja denna tjänst hos er? (1 = Mycket låg, 5 = Mycket hög).</li>
-                                    <li><strong>Konsekvens (K) 1–5:</strong> Hur allvarlig skulle skadan bli för samhället och byrån om det lyckas? (1 = Obetydlig, 5 = Katastrofal).</li>
+                                    <li><strong>Sannolikhet (S) 1–5:</strong> Hur troligt är det att kriminella försöker utnyttja denna tjänst hos er? (1 = Mycket låg, 2 = Låg, 3 = Medel, 4 = Hög, 5 = Mycket hög).</li>
+                                    <li><strong>Konsekvens (K) 1–5:</strong> Hur allvarlig skulle skadan bli för samhället och byrån om det lyckas? (1 = Obetydlig, 2 = Lindrig, 3 = Kännbar, 4 = Allvarlig, 5 = Katastrofal).</li>
                                 </ul>
                                 <p>
                                     <strong>Inneboende risknivå (S × K = 1–25):</strong>
@@ -410,22 +410,22 @@
                                             <label for="tjanst-sannolikhet" title="Hur troligt är det att något av de listade hoten realiseras, givet sårbarheterna">Sannolikhet (1–5)</label>
                                             <select id="tjanst-sannolikhet" name="sannolikhet">
                                                 <option value="">Ej satt</option>
-                                                <option value="1">1</option>
-                                                <option value="2">2</option>
-                                                <option value="3">3</option>
-                                                <option value="4">4</option>
-                                                <option value="5">5</option>
+                                                <option value="1">1 — Mycket låg</option>
+                                                <option value="2">2 — Låg</option>
+                                                <option value="3">3 — Medel</option>
+                                                <option value="4">4 — Hög</option>
+                                                <option value="5">5 — Mycket hög</option>
                                             </select>
                                         </div>
                                         <div class="form-group">
                                             <label for="tjanst-konsekvens" title="Hur allvarlig är skadan om det händer">Konsekvens (1–5)</label>
                                             <select id="tjanst-konsekvens" name="konsekvens">
                                                 <option value="">Ej satt</option>
-                                                <option value="1">1</option>
-                                                <option value="2">2</option>
-                                                <option value="3">3</option>
-                                                <option value="4">4</option>
-                                                <option value="5">5</option>
+                                                <option value="1">1 — Obetydlig</option>
+                                                <option value="2">2 — Lindrig</option>
+                                                <option value="3">3 — Kännbar</option>
+                                                <option value="4">4 — Allvarlig</option>
+                                                <option value="5">5 — Katastrofal</option>
                                             </select>
                                         </div>
                                         <div id="tjanst-inneboende-badge" class="tjanst-risk-badge is-empty" role="status" title="Inneboende risk är risken i tjänsten i sig, innan era åtgärder. Räknas som S×K.">Inneboende risk: Ej satt</div>
@@ -470,22 +470,22 @@
                                             <label for="tjanst-sannolikhet-efter">Sannolikhet efter åtgärder (1–5)</label>
                                             <select id="tjanst-sannolikhet-efter" name="sannolikhet-efter">
                                                 <option value="">Ej satt</option>
-                                                <option value="1">1</option>
-                                                <option value="2">2</option>
-                                                <option value="3">3</option>
-                                                <option value="4">4</option>
-                                                <option value="5">5</option>
+                                                <option value="1">1 — Mycket låg</option>
+                                                <option value="2">2 — Låg</option>
+                                                <option value="3">3 — Medel</option>
+                                                <option value="4">4 — Hög</option>
+                                                <option value="5">5 — Mycket hög</option>
                                             </select>
                                         </div>
                                         <div class="form-group">
                                             <label for="tjanst-konsekvens-efter">Konsekvens efter åtgärder (1–5)</label>
                                             <select id="tjanst-konsekvens-efter" name="konsekvens-efter">
                                                 <option value="">Ej satt</option>
-                                                <option value="1">1</option>
-                                                <option value="2">2</option>
-                                                <option value="3">3</option>
-                                                <option value="4">4</option>
-                                                <option value="5">5</option>
+                                                <option value="1">1 — Obetydlig</option>
+                                                <option value="2">2 — Lindrig</option>
+                                                <option value="3">3 — Kännbar</option>
+                                                <option value="4">4 — Allvarlig</option>
+                                                <option value="5">5 — Katastrofal</option>
                                             </select>
                                         </div>
                                         <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
