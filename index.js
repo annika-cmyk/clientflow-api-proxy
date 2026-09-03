@@ -23244,6 +23244,8 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
     : 'BEKRÄFTADE BYRÅUPPGIFTER:\n- Inga byråuppgifter är ifyllda.\n\nSAKNADE BYRÅUPPGIFTER:\n- Byråprofil saknas – skriv "uppgift saknas", kalibrera inte utifrån påhittade antaganden om personal eller kapacitet.';
   const utforandeBlock = AiTjanstAnalys.formatUtforandeBlock(namn, utforandeState);
   const exponeringBlock = AiTjanstAnalys.formatExponeringBlock(exponering);
+  const utforandeSignals = AiTjanstAnalys.analyzeUtforandeSignals(namn, utforandeState);
+  const riskreglerBlock = AiTjanstAnalys.formatRiskreglerBlock(utforandeSignals);
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
@@ -23269,10 +23271,12 @@ REGLER:
 ${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
 ${AmlKalla.KALLA_DOKUMENT_PROMPT}
-- TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", om du inte lämnar en tjänstespecifik tfMotivering. Defaulta inte till enbart PT.
-- Föredra ett konkret TF-hot när tjänsten kan användas för att flytta, dölja eller legitimera medel (de flesta redovisnings- och skattetjänster). Utgå från kända TF-tillvägagångssätt hos FATF, Säpo, Polisen eller Samordningsfunktionen.
+- TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", ELLER en tjänstespecifik tfMotivering. Lämna inte luckan tom.
+- Prioritera de mest sannolika PT-huvudhoten (osanna fakturor, felaktiga underlag, överdrivna kostnader, oklara betalningar, legitimering av transaktioner).
+- TF får inte vara spekulativt huvudhot. Nämn TF försiktigt som sidonot eller sätt typ "Båda" bara när underlaget stöder det (t.ex. utlandsbetalningar, högriskland, oklara betalningsmottagare). Annars skriv en kort tfMotivering.
+- Hitta inte på terrorismscenarier som "flytta pengar till organisationer som finansierar terrorism" utan konkreta riskfaktorer.
 - Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
-- tfMotivering bara när ett separat TF-hot verkligen inte är relevant. Då 2–4 tjänstespecifika meningar. Om minst ett TF-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
+- Om minst ett TF- eller Båda-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
 ${AtgardKonkret.AI_RULES}
@@ -23303,7 +23307,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "sannolikhetEfter": 1,
   "konsekvensEfter": 1,
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas.",
-  "motiveringResidual": "2-4 meningar: hur bekräftade eller föreslagna åtgärder sänkt S och/eller K.",
+  "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "kategori": "...", "titel": "Kort titel, max 5 ord", "beskrivning": "...", "evidens": "bekraftad|tjanstetypisk|saknas" } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
@@ -23323,7 +23327,7 @@ ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 SANNOLIKHET och KONSEKVENS är heltal 1–5 (1 mycket låg, 5 mycket hög).
 - sannolikhet: hur troligt att något av de listade hoten realiseras, givet sårbarheterna.
 - konsekvens: hur allvarlig skadan blir om det händer.
-- sannolikhetEfter / konsekvensEfter: samma bedömning efter de föreslagna åtgärderna (residualrisk).
+- sannolikhetEfter / konsekvensEfter: samma bedömning efter de kontroller som faktiskt finns (residualrisk). Sänk inte till Låg (S×K ≤ 4) om byrån hanterar myndighetsansökan eller betalningsuppgifter och saknar normal rimlighetskontroll.
 Returnera bara talen. Inneboende risk och residualrisk räknas som S×K mot skalan Låg/Normal/Förhöjd/Hög/Oacceptabel.`;
 
   const userPrompt = `Tjänst: ${namn}
@@ -23334,7 +23338,7 @@ ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` 
 ${byraProfilUserBlock}
 
 ${utforandeBlock}
-
+${riskreglerBlock ? `\n${riskreglerBlock}\n` : ''}
 ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
 
   const extractFirstJsonObject = (text) => {
@@ -23430,19 +23434,27 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     const inherentOut = RiskSkala.assessRisk(result.sannolikhet, result.konsekvens);
     const residualOut = RiskSkala.assessRisk(result.sannolikhetEfter, result.konsekvensEfter);
     const fallbackLevel = inherentOut.level || normRisk(result.riskniva || riskniva);
-    const fallbackScores = inherentOut.level ? inherentOut : RiskSkala.assessRisk(
-      RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
-      RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
+    const fallbackScores = AiTjanstAnalys.applyRiskFloor(
+      inherentOut.level ? inherentOut : RiskSkala.assessRisk(
+        RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
+        RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
+      ),
+      utforandeSignals.inherentFloor
     );
+    const residualScores = AiTjanstAnalys.applyRiskFloor(residualOut, utforandeSignals.residualFloor);
 
     const tjanstAiPayload = {
       tjanstebeskrivning: cleanStr(result.beskrivning ?? result.tjanstebeskrivning),
       sannolikhet: fallbackScores.sannolikhet,
       konsekvens: fallbackScores.konsekvens,
-      sannolikhetEfter: residualOut.sannolikhet,
-      konsekvensEfter: residualOut.konsekvens,
+      sannolikhetEfter: residualScores.sannolikhet,
+      konsekvensEfter: residualScores.konsekvens,
       motiveringInneboende: cleanStr(result.motiveringInneboende ?? result.motivering_inneboende_risk),
-      motiveringResidual: cleanStr(result.motiveringResidual ?? result.motivering_residual_risk),
+      motiveringResidual: AiTjanstAnalys.ensureResidualMotivering(
+        cleanStr(result.motiveringResidual ?? result.motivering_residual_risk),
+        utforandeSignals,
+        residualScores.floored
+      ),
       riskniva: fallbackScores.level || fallbackLevel,
       hot,
       sarbarheter,
