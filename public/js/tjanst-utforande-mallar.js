@@ -277,7 +277,7 @@
       ], omTjanstenUtfor('kbrUpprattar'))
     ]),
     spec('kundfakturering', 'Kundfakturering och kundreskontra', [
-      q('kfHanterar', 'Hanterar byrån kundreskontra åt kunden?', 'single', [
+      q('kfHanterar', 'Hanterar byrån kundreskontra åt kunder?', 'single', [
         'Ja',
         'Nej',
         'I vissa uppdrag'
@@ -438,7 +438,7 @@
       ])
     ]),
     spec('leverantorsfakturor', 'Leverantörsfakturor och leverantörsreskontra', [
-      q('lfHanterar', 'Hanterar byrån leverantörsreskontra åt kunden?', 'single', [
+      q('lfHanterar', 'Hanterar byrån leverantörsreskontra åt kunder?', 'single', [
         'Ja',
         'Nej',
         'I vissa uppdrag'
