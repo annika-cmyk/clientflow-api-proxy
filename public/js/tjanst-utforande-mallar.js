@@ -740,12 +740,22 @@
     return id ? templateById(id) : null;
   }
 
-  function questionsForTemplate(template) {
-    if (!template) return BASE_QUESTIONS.slice();
-    const extra = template.aiQuestionSupport === false
+  function extraQuestionsForTemplate(template) {
+    if (!template) return [];
+    return template.aiQuestionSupport === false
       ? (template.extraQuestions || [EGEN_BESKRIVNING])
       : (template.questions || []);
-    return BASE_QUESTIONS.concat(extra);
+  }
+
+  function questionsForTemplate(template) {
+    return BASE_QUESTIONS.concat(extraQuestionsForTemplate(template));
+  }
+
+  function groupQuestionsForTemplate(template) {
+    return {
+      base: BASE_QUESTIONS.slice(),
+      extra: extraQuestionsForTemplate(template)
+    };
   }
 
   function emptyState() {
@@ -869,7 +879,9 @@
     templateById: templateById,
     resolveTemplateId: resolveTemplateId,
     resolveTemplate: resolveTemplate,
+    extraQuestionsForTemplate: extraQuestionsForTemplate,
     questionsForTemplate: questionsForTemplate,
+    groupQuestionsForTemplate: groupQuestionsForTemplate,
     emptyState: emptyState,
     parseState: parseState,
     emptyEntry: emptyEntry,
