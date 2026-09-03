@@ -33,18 +33,19 @@
 
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
-- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot).
+- OBLIGATORISKT — komplettera ALLA sektioner i ETT svar. Huvudfälten ska alltid innehålla din fullständiga analys för: beskrivning, hot, sarbarheter, atgarder, sannolikhet, konsekvens, motiveringInneboende, sannolikhetEfter, konsekvensEfter, motiveringResidual. Lämna aldrig hot/sårbarheter/åtgärder/motivering tomma bara för att beskrivningen redan är ifylld.
+- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot). Antalet poster enligt ANTAL-regeln.
 - Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, skriv om vaga hot till konkret mekanism (felaktig uppgift/faktura/betalning/ansökan; hur pengar kommer in, flyttas eller legitimeras; byråns roll; PT, TF eller båda), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn. Kräv inte ett separat TF-hot per tjänst. Avfärda inte TF bara för att tjänsten inte avser ideell organisation eller utlandsbetalning.
-- Kopiera inte rakt av. En lätt omskrivning räcker inte.
-- Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
-- Ifyllda fält: lägg en post i granskning.poster med andra=true. forslag ska vara SAMMA kompletta innehåll som i huvudfälten (hela listan, inte en kommentar eller en enstaka punkt).
+- Kopiera inte rakt av befintliga listor eller motiveringar. En lätt omskrivning räcker inte. Skriv om hot/sårbarheter/åtgärder med konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas — även när listorna redan har poster.
+- Tomma fält: skriv ditt förslag i huvudfälten.
+- Ifyllda fält som skiljer sig från din analys: lägg en post i granskning.poster med andra=true. forslag är valfritt (servern lyfter innehållet från huvudfälten) — prioritera kommentar och andringar[].
 - kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor). Skriv så att en kollega förstår utan att läsa hela listan.
 - För listfält (hot, sarbarheter, atgarder): lägg OCKSÅ andringar[] med EN post per tillägg, redigering eller borttagning:
   { "titel": "samma titel som raden gäller", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1–2 meningar: VARFÖR just denna ändring — koppla till tjänsten, TF, källor eller varför något ska bort." }
 - Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten).
 - Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar.
 - Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
-- andra=false bara om ditt förslag är identiskt med nuvarande innehåll.`;
+- andra=false bara om ditt förslag är identiskt med nuvarande innehåll efter en genuin omprövning.`;
 
   function getTjanstTfTackning() {
     if (typeof global !== 'undefined' && global.TjanstTfTackning) return global.TjanstTfTackning;
@@ -815,14 +816,19 @@
     const list = Array.isArray(posters) ? posters.slice() : [];
     Object.keys(catalog).forEach((key) => {
       const current = currentValueFor(key, befintligt);
-      if (isEmptyCurrent(key, current)) return;
       const forslag = generatedValueFor(key, generated);
+      // Lyft förslag även för tomma fält så banner/flikar listar alla sektioner
+      // (inte bara Översikt). Tomma fält visas som AI-förslag i stället för tyst ifyllning.
       if (!hasForslag(key, forslag) || sameForslag(key, current, forslag)) return;
       const existing = list.find((item) => item && item.falt === key);
+      const empty = isEmptyCurrent(key, current);
       upsertPoster(list, {
         falt: key,
         etikett: catalog[key].etikett,
-        kommentar: (existing && existing.kommentar) || 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.',
+        kommentar: (existing && existing.kommentar)
+          || (empty
+            ? 'Fältet var tomt — AI:s förslag efter en samlad analys av hela tjänsten.'
+            : 'AI:s eget förslag efter en samlad analys. Jämför med nuvarande text.'),
         andra: true,
         forslag
       });
