@@ -15174,7 +15174,7 @@ h5.ar-subsection-title {
     flex-shrink: 0;
     width: 1rem;
     margin-top: 0.1rem;
-    color: var(--ink-3, #8b929d);
+    color: var(--text, #5a626d);
     font-size: 0.82rem;
     text-align: center;
 }
@@ -15188,8 +15188,8 @@ h5.ar-subsection-title {
 }
 .tjanst-tab:hover .tjanst-tab-icon { color: var(--accent, #13505c); }
 .tjanst-tab.is-active {
-    color: var(--title-text, #15181d);
-    background: var(--card-bg, #fff);
+    color: var(--accent, #13505c);
+    background: color-mix(in srgb, var(--accent, #13505c) 10%, var(--panel-2, #fafbfc));
     border-bottom-color: transparent;
 }
 .tjanst-tab.is-active .tjanst-tab-icon {
@@ -15214,6 +15214,15 @@ h5.ar-subsection-title {
 .tjanst-tab.is-active .tjanst-tab-count {
     background: var(--accent-tint, #e3eef0);
     color: var(--accent, #13505c);
+}
+.tjanst-tab[data-tjanst-tab="hot"] .tjanst-tab-count,
+.tjanst-tab[data-tjanst-tab="sarbarhet"] .tjanst-tab-count {
+    background: var(--error-tint, #fbe9e7);
+    color: var(--error, #c23b2e);
+}
+.tjanst-tab[data-tjanst-tab="atgard"] .tjanst-tab-count {
+    background: var(--success-tint, #e7f3ec);
+    color: var(--success, #1f8a4c);
 }
 .tjanst-tab-ai {
     display: inline-flex;
@@ -15248,7 +15257,7 @@ h5.ar-subsection-title {
     padding: 1.15rem 1.6rem 1.25rem;
     display: flex;
     flex-direction: column;
-    background: var(--card-bg, #fff);
+    background: var(--app-bg, #f5f6f8);
 }
 .tjanst-panel.is-active {
     flex: 1 1 0;
@@ -16222,6 +16231,7 @@ h5.ar-subsection-title {
         background: transparent;
     }
     .tjanst-tab.is-active {
+        color: var(--accent, #13505c);
         background: transparent;
         border-bottom-color: var(--accent, #13505c);
     }
@@ -17361,9 +17371,9 @@ h5.ar-subsection-title {
 }
 .tjanst-mall-chip:has(input:checked),
 .tjanst-mall-chip.is-selected {
-    background: var(--title-text, #15181d);
-    border-color: var(--title-text, #15181d);
-    color: #fff;
+    background: var(--accent, #13505c);
+    border-color: var(--accent, #13505c);
+    color: var(--btn-text, #fff);
 }
 .tjanst-mall-chip:has(input:focus-visible) {
     outline: 2px solid var(--accent-light, #bcd6da);
