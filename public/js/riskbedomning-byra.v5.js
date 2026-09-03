@@ -108,6 +108,7 @@ class RiskAssessmentManager {
                     this.renderUtforandeKatalog();
                 });
             });
+            this.applyUtforandeQuestionVisibility(mallId, cardEl);
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '', {
@@ -234,8 +235,11 @@ class RiskAssessmentManager {
                 </label>
             `).join('')}</div>`;
         }
+        const visible = !window.TjanstUtforandeMallar || !window.TjanstUtforandeMallar.questionIsVisible
+            ? true
+            : window.TjanstUtforandeMallar.questionIsVisible(question, answers);
         return `
-            <div class="tjanst-mall-q" data-q-id="${this.esc(question.id)}" data-q-type="${this.esc(question.type)}">
+            <div class="tjanst-mall-q" data-q-id="${this.esc(question.id)}" data-q-type="${this.esc(question.type)}"${visible ? '' : ' hidden'}>
                 <p class="tjanst-mall-q-label">${this.esc(question.label)}</p>
                 ${question.helpText ? `<p class="tjanst-mall-q-help">${this.esc(question.helpText)}</p>` : ''}
                 ${control}
@@ -278,6 +282,18 @@ class RiskAssessmentManager {
             chip.classList.toggle('is-selected', !!(input && input.checked));
         });
         this.patchUtforandeEntry(mallId, { answers, kommentarer }, { rerender: false });
+        this.applyUtforandeQuestionVisibility(mallId, qEl.closest('[data-mall-id]'));
+    }
+
+    applyUtforandeQuestionVisibility(mallId, cardEl) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !cardEl || !Mallar.questionIsVisible) return;
+        const template = Mallar.templateById(mallId);
+        const entry = Mallar.getEntry(this.utforandeState, mallId);
+        Mallar.questionsForTemplate(template).forEach((q) => {
+            const el = cardEl.querySelector(`[data-q-id="${CSS.escape(q.id)}"]`);
+            if (el) el.hidden = !Mallar.questionIsVisible(q, entry.answers);
+        });
     }
 
     patchUtforandeEntry(mallId, patch, opts = {}) {
