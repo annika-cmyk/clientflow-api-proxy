@@ -139,7 +139,7 @@
         'Nej, normalt inte'
       ], omTjanstenUtfor('rotHjalper')),
       q('rotOklar', 'Hanteras fall där arbetet, kunden eller betalningen verkar oklar?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Underlaget dokumenteras',
         'Byrån gör rimlighetsbedömning',
         'Ansvarig granskar',
@@ -173,7 +173,7 @@
         'I vissa uppdrag'
       ]),
       q('bokfOtydligt', 'Hur hanteras oklara eller avvikande transaktioner?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Transaktionen dokumenteras',
         'Byrån gör rimlighetsbedömning',
         'Ansvarig granskar',
@@ -239,7 +239,7 @@
         'I vissa uppdrag'
       ]),
       q('avstDifferens', 'Hur hanteras oförklarade differenser?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Differensen dokumenteras',
         'Ansvarig granskar',
         'Posten rättas',
@@ -269,7 +269,7 @@
         'Nej, normalt inte'
       ], omTjanstenUtfor('kbrUpprattar')),
       q('kbrOklar', 'Hur hanteras oklara uppgifter?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Underlag krävs',
         'Ansvarig granskar',
         'Uppgiften dokumenteras',
@@ -353,7 +353,7 @@
         'Nej, ingen särskild kontroll'
       ], { helpText: 'Exempelvis större justeringar, ovanliga poster eller stora förändringar jämfört med tidigare år.' }),
       q('bsOverifierat', 'Hur hanteras uppgifter eller poster som är oklara?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Byrån gör rimlighetsbedömning',
         'Uppgiften/posten dokumenteras',
         'Posten tas inte med förrän den är utredd',
@@ -391,7 +391,7 @@
         'Nej, normalt inte'
       ], { showWhen: { id: 'momsGor', any: ['Ja, upprättar', 'Ja, lämnar in', 'I vissa uppdrag'] } }),
       q('momsOklar', 'Hur hanteras oklar momsbehandling?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Byrån gör rimlighetsbedömning',
         'Ansvarig granskar',
         'Fråga ställs till Skatteverket/extern expert',
@@ -430,7 +430,7 @@
         'Nej, normalt inte'
       ]),
       q('dekOklar', 'Hur hanteras uppgifter som inte kan styrkas?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Uppgiften dokumenteras',
         'Byrån gör rimlighetsbedömning',
         'Uppgiften tas inte med förrän den är utredd',
@@ -467,7 +467,7 @@
         'Nej, normalt inte'
       ], omTjanstenUtfor('lfHanterar')),
       q('lfOvanliga', 'Hur hanteras fakturor som verkar oklara eller ovanliga?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Fakturan dokumenteras',
         'Byrån gör rimlighetsbedömning',
         'Ansvarig granskar',
@@ -539,7 +539,7 @@
         'I vissa uppdrag'
       ], omTjanstenUtfor('lonHanterar')),
       q('lonOklar', 'Hur hanteras oklara löneuppgifter eller utlägg?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Underlag krävs',
         'Ansvarig granskar',
         'Posten tas inte med förrän den är utredd',
@@ -568,7 +568,7 @@
         'I vissa uppdrag'
       ], omTjanstenUtfor('lagerHanterar')),
       q('lagerOsaker', 'Hur hanteras lageruppgifter som verkar osäkra?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Underlag/inventeringslista krävs',
         'Byrån gör rimlighetsbedömning',
         'Ansvarig granskar',
@@ -607,7 +607,7 @@
         'Ej relevant'
       ], omTjanstenUtfor('betUtfor')),
       q('betOklar', 'Hur hanteras betalningar som verkar oklara eller avvikande?', 'multi', [
-        'Kunden får komplettera',
+        'Kunden får komplettera i efterhand',
         'Betalningen stoppas tills den är utredd',
         'Ansvarig granskar',
         'Underlag dokumenteras',
@@ -826,15 +826,39 @@
     }, extra || {});
   }
 
+
+  /** Old chip labels → current labels (keeps saved answers selected in UI). */
+  const ANSWER_LABEL_ALIASES = {
+    'Kunden får komplettera': 'Kunden får komplettera i efterhand'
+  };
+
+  function normalizeAnswerValue(value) {
+    if (Array.isArray(value)) return value.map(normalizeAnswerValue);
+    if (typeof value === 'string' && ANSWER_LABEL_ALIASES[value]) {
+      return ANSWER_LABEL_ALIASES[value];
+    }
+    return value;
+  }
+
+  function normalizeEntryAnswers(entry) {
+    if (!entry || !entry.answers || typeof entry.answers !== 'object') return entry;
+    const answers = {};
+    Object.keys(entry.answers).forEach((key) => {
+      answers[key] = normalizeAnswerValue(entry.answers[key]);
+    });
+    return Object.assign({}, entry, { answers: answers });
+  }
+
   function getEntry(state, mallId) {
     const parsed = parseState(state);
-    return parsed.tjanster[mallId] || emptyEntry(mallId);
+    return normalizeEntryAnswers(parsed.tjanster[mallId] || emptyEntry(mallId));
   }
 
   function upsertEntry(state, mallId, patch) {
     const parsed = parseState(state);
     const prev = parsed.tjanster[mallId] || emptyEntry(mallId);
-    parsed.tjanster[mallId] = Object.assign({}, prev, patch, { id: mallId });
+    const merged = Object.assign({}, prev, patch, { id: mallId });
+    parsed.tjanster[mallId] = normalizeEntryAnswers(merged);
     return parsed;
   }
 
@@ -849,12 +873,12 @@
   function listCatalogCards(state) {
     const parsed = parseState(state);
     const cards = SERVICE_TEMPLATES.map((t) => {
-      const entry = parsed.tjanster[t.id] || emptyEntry(t.id);
+      const entry = normalizeEntryAnswers(parsed.tjanster[t.id] || emptyEntry(t.id));
       return { template: t, entry: entry };
     });
     Object.keys(parsed.tjanster).forEach((id) => {
       if (!isCustomId(id)) return;
-      const entry = parsed.tjanster[id];
+      const entry = normalizeEntryAnswers(parsed.tjanster[id]);
       cards.push({ template: customTemplate({ id: id, namn: entry.namn }), entry: entry });
     });
     return cards;
@@ -868,8 +892,9 @@
 
   function formatAnswersForAi(template, entry) {
     const questions = questionsForTemplate(template);
-    const answers = (entry && entry.answers) || {};
-    const comments = (entry && entry.kommentarer) || {};
+    const normalized = normalizeEntryAnswers(entry || emptyEntry(template && template.id));
+    const answers = normalized.answers || {};
+    const comments = (normalized && normalized.kommentarer) || {};
     const rows = [];
     const unanswered = [];
     questions.forEach((question) => {
@@ -898,13 +923,17 @@
   function findEntryForNamn(state, namn) {
     const parsed = parseState(state);
     const mallId = resolveTemplateId(namn);
-    if (mallId && parsed.tjanster[mallId]) return { mallId: mallId, entry: parsed.tjanster[mallId] };
+    if (mallId && parsed.tjanster[mallId]) {
+      return { mallId: mallId, entry: normalizeEntryAnswers(parsed.tjanster[mallId]) };
+    }
     const folded = foldName(namn);
     const customId = Object.keys(parsed.tjanster).find((id) => {
       if (!isCustomId(id)) return false;
       return foldName(parsed.tjanster[id].namn) === folded;
     });
-    if (customId) return { mallId: customId, entry: parsed.tjanster[customId] };
+    if (customId) {
+      return { mallId: customId, entry: normalizeEntryAnswers(parsed.tjanster[customId]) };
+    }
     if (mallId) return { mallId: mallId, entry: emptyEntry(mallId) };
     return null;
   }
@@ -931,6 +960,8 @@
     emptyState: emptyState,
     parseState: parseState,
     emptyEntry: emptyEntry,
+    normalizeAnswerValue: normalizeAnswerValue,
+    normalizeEntryAnswers: normalizeEntryAnswers,
     getEntry: getEntry,
     upsertEntry: upsertEntry,
     addCustomService: addCustomService,

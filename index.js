@@ -23419,7 +23419,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "sannolikhetEfter": 3,
   "konsekvensEfter": 3,
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X (dimensionsord) och varför konsekvens Y (dimensionsord). Skilj bekräftat / tjänstetypiskt / saknas. Undervärdera inte när exponeringen är konkret.",
-  "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
+  "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera i efterhand» är reaktiv.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 meningar steg för steg: vilken uppgift/faktura/betalning/ansökan som kan vara felaktig; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda. Inga vaga «kan användas för att tvätta pengar».", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
