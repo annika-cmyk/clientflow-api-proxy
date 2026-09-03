@@ -23286,10 +23286,11 @@ REGLER:
 ${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
 ${AmlKalla.KALLA_DOKUMENT_PROMPT}
-- Prioritera de mest sannolika PT-huvudhoten (osanna fakturor, felaktiga underlag, överdrivna kostnader, oklara betalningar, legitimering av transaktioner).
-- TF får inte vara spekulativt huvudhot. Nämn TF försiktigt som sidonot eller sätt typ "Båda" bara när underlaget stöder det (t.ex. utlandsbetalningar, högriskland, oklara betalningsmottagare).
-- Hitta inte på terrorismscenarier som "flytta pengar till organisationer som finansierar terrorism" utan konkreta riskfaktorer.
-- Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
+- Prioritera konkreta AML-mekanismer (osanna fakturor, felaktiga underlag, överdrivna kostnader, oklara betalningar, felaktiga utbetalningar, legitimering av transaktioner).
+- Varje hotbeskrivning ska steg för steg förklara: felaktig uppgift/faktura/betalning/ansökan; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll (administrera, bokföra, kontrollera, lämna in); och om det avser penningtvätt, terrorismfinansiering eller båda.
+- Avfärda inte terrorismfinansiering bara för att tjänsten inte direkt avser en ideell organisation eller utlandsbetalning. Bedrägerier och felaktiga utbetalningar kan vara en finansieringskälla.
+- Hitta inte på terrororganisationer eller vaga formuleringar som "kan användas för att tvätta pengar". Kräv inte ett separat TF-hot per tjänst.
+- Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Typen ska stämma med beskrivningen.
 
 ${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
 ${AiTjanstAnalys.HOT_MODUS_AI_RULES}
@@ -23323,7 +23324,7 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas. Byråfakta bara här om de är relevanta.",
   "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
-  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 konkreta meningar: vilken handling som kan vara felaktig, hur tjänsten används, varför byråns medverkan ger legitimitet, vilken PT/TF-risk. Inga vaga eller dramatiska påståenden.", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
+  "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 meningar steg för steg: vilken uppgift/faktura/betalning/ansökan som kan vara felaktig; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda. Inga vaga «kan användas för att tvätta pengar».", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
   "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"]${reviewMode ? `,
