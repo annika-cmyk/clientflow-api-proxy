@@ -23518,11 +23518,7 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
       .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: AmlKalla.normalizeKalla(cleanStr(h?.kalla ?? h?.källa ?? h?.source)) }))
       .filter(h => h.titel || h.beskrivning) : []);
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
-      .map(s => ({
-        titel: cleanStr(s?.titel),
-        beskrivning: cleanStr(s?.beskrivning),
-        kalla: cleanStr(s?.kalla ?? s?.källa ?? s?.source)
-      }))
+      .map((s) => AiTjanstAnalys.cleanSarbarhetItem(s))
       .filter(s => s.titel || s.beskrivning || s.kalla) : [];
     const atgarder = Array.isArray(result.atgarder) ? result.atgarder
       .map(a => ({
