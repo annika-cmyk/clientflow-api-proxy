@@ -249,10 +249,7 @@ class RiskAssessmentManager {
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
         const analysHtml = existing
-            ? `${this.buildTjanstRiskSections(existing)}
-                <div class="tjanst-mall-actions">
-                    <button type="button" class="btn btn-primary" data-open-analys>Redigera riskbedömning</button>
-                </div>`
+            ? `<p class="tjanst-mall-summary">Riskbedömning finns. Klicka <strong>Redigera</strong> för att uppdatera utförandefrågor, hot, sårbarheter och åtgärder.</p>`
             : `<div class="tjanst-mall-empty">
                     <p>Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.</p>
                     <div class="tjanst-mall-choice">
@@ -264,7 +261,9 @@ class RiskAssessmentManager {
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div>
-                        <h4 class="tjanst-mall-title">${this.esc(template.name)}</h4>
+                        <h4 class="tjanst-mall-title">
+                            <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>
+                        </h4>
                         ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                     </div>
                     <label class="tjanst-mall-toggle">
@@ -274,6 +273,7 @@ class RiskAssessmentManager {
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
+                    <button type="button" class="btn btn-secondary btn-sm" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
                 </div>
                 <div class="tjanst-mall-body">
                     ${analysHtml}
