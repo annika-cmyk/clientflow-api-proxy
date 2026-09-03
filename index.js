@@ -23323,11 +23323,11 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
 
 {
   "beskrivning": "2-4 korta stycken om tjänstens omfattning och vad byrån gör. Inga kontroller, rutiner, åtgärder, residualrisk, bemanning eller allmän byråfakta.",
-  "sannolikhet": 1,
-  "konsekvens": 1,
-  "sannolikhetEfter": 1,
-  "konsekvensEfter": 1,
-  "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y. Skilj bekräftat / tjänstetypiskt / saknas. Byråfakta bara här om de är relevanta.",
+  "sannolikhet": 3,
+  "konsekvens": 4,
+  "sannolikhetEfter": 3,
+  "konsekvensEfter": 3,
+  "motiveringInneboende": "2-4 meningar: varför sannolikhet X (dimensionsord) och varför konsekvens Y (dimensionsord). Skilj bekräftat / tjänstetypiskt / saknas. Undervärdera inte när exponeringen är konkret.",
   "motiveringResidual": "2-4 meningar: hur bekräftade förebyggande kontroller sänkt S och/eller K. Sänk inte till låg bara för att någon åtgärd finns. «Kunden får komplettera» är reaktiv.",
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 meningar steg för steg: vilken uppgift/faktura/betalning/ansökan som kan vara felaktig; hur tjänsten ger in, flyttar eller legitimerar pengar; byråns roll; om det avser PT, TF eller båda. Inga vaga «kan användas för att tvätta pengar».", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
@@ -23348,8 +23348,10 @@ ANTAL (anpassa efter risknivå efter sammanvägning med byråprofil):
 - atgarder: 3 (Låg), 4 (Normal), 4 (Förhöjd), 5 (Hög), 5 (Oacceptabel)
 SANNOLIKHET och KONSEKVENS är heltal 1–5.
 ${RiskSkala.sxkScalePromptBlock()}
-- sannolikhet: hur troligt att något av de listade hoten realiseras, givet sårbarheterna.
-- konsekvens: hur allvarlig skadan blir om det händer.
+- sannolikhet: hur troligt att något av de listade hoten realiseras, givet sårbarheterna och utförandesvaren/statistiken.
+- konsekvens: hur allvarlig skadan blir om det händer (AML: felaktiga utbetalningar, legitimering, myndighetsinlämning).
+- Kalibrera mot faktisk exponering — undervärdera inte till 2–3 som default. 3 = medel/kännbar. Ansökan + betalningsuppgifter ⇒ inneboende oftast Förhöjd (S×K ≥ 10).
+- Inneboende = före kontroller. Residual får vara lägre efter åtgärder; soft-score inte inneboende bara för att det ska se lugnt ut.
 - sannolikhetEfter / konsekvensEfter: samma bedömning efter de kontroller som faktiskt finns (residualrisk). Sänk inte till Låg (S×K ≤ 4) om byrån hanterar myndighetsansökan eller betalningsuppgifter och saknar normal rimlighetskontroll.
 Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nämna siffrorna — inte hitta på synonymer som «förhöjd sannolikhet» eller «betydande konsekvens».`;
 
