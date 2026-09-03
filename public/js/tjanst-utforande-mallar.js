@@ -48,6 +48,7 @@
     q('underlagKanal', 'Hur får byrån normalt tillgång till underlag eller information?', 'multi', [
       'Bokföringssystem',
       'Kundportal',
+      'Uppladdning i kundmapp (utan BankID-inlogg)',
       'E-post',
       'Bankintegration',
       'Lönesystem',
@@ -154,6 +155,7 @@
       q('underlagKanal', 'Hur får byrån normalt materialet?', 'multi', [
         'Bokföringssystem/app',
         'Kundportal',
+        'Uppladdning i kundmapp (utan BankID-inlogg)',
         'E-post',
         'Bankintegration',
         'Fysiskt material',
@@ -321,6 +323,7 @@
       q('underlagKanal', 'Hur får byrån normalt tillgång till information inför bokslut?', 'multi', [
         'Bokföringssystem',
         'Kundportal',
+        'Uppladdning i kundmapp (utan BankID-inlogg)',
         'E-post',
         'Bankintegration',
         'Fysiskt material',
