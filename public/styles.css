@@ -17100,6 +17100,11 @@ h5.ar-subsection-title {
 .tjanst-mall-empty p {
     margin: 0 0 0.75rem;
 }
+.tjanst-mall-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
 .tjanst-mall-top {
     display: flex;
     align-items: flex-start;
