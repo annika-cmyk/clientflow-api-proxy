@@ -502,12 +502,6 @@
   function listItemFieldChanges(falt, current, forslag) {
     const parts = [];
     if (!current || !forslag) return parts;
-    if (falt === 'hot' && fold(current.typ) !== fold(forslag.typ)) {
-      parts.push(`typ (${trimStr(current.typ) || 'PT'} → ${trimStr(forslag.typ) || 'PT'})`);
-    }
-    if (falt === 'sarbarheter' && fold(current.kategori) !== fold(forslag.kategori)) {
-      parts.push(`kategori (${trimStr(current.kategori) || '–'} → ${trimStr(forslag.kategori) || '–'})`);
-    }
     if (fold(current.titel || current.namn) !== fold(forslag.titel || forslag.namn)) {
       parts.push('titeln');
     }
