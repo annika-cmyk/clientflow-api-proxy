@@ -302,7 +302,7 @@
                             </button>
                         </div>
                         <h3 id="tjanst-modal-title" class="visually-hidden">Lägg till tjänst</h3>
-                        <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärder.</p>
+                        <p class="tjanst-modal-kicker">Börja med utförandefrågor och tjänstebeskrivning. Inneboende risk (S×K före åtgärder) och residualrisk har egna flikar.</p>
                     </div>
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
@@ -313,11 +313,53 @@
                             <button type="button" class="tjanst-tab is-active" data-tjanst-tab="oversikt" role="tab" aria-selected="true">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot och modus <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span> <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="inneboende" role="tab" aria-selected="false">Inneboende risk <span class="tjanst-tab-ai" data-ai-for="inneboende" hidden>AI</span></button>
                             <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Riskreducerande åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span> <span class="tjanst-tab-ai" data-ai-for="atgard" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="residual" role="tab" aria-selected="false">Residualrisk <span class="tjanst-tab-ai" data-ai-for="residual" hidden>AI</span></button>
                         </nav>
 
                         <div class="tjanst-modal-body">
                             <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
+                                <div class="tjanst-panel-scroll">
+                                <div id="tjanst-modal-utforande" class="tjanst-modal-utforande" hidden></div>
+                                <label for="tjanst-beskrivning">Tjänsten</label>
+                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär hos er — gärna med bekräftade fakta som antal kunder och hur underlag tas emot. Nämn INTE kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken. Hitta inte på bemanning eller kapacitet som systemet inte vet.</p>
+                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär hos er, med bekräftade fakta. Inte era kontroller."></textarea>
+                                <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
+                                </div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
+                                <div class="form-group-head">
+                                    <div>
+                                        <label>Vad kan gå fel?</label>
+                                        <p class="tjanst-panel-hint">Hot och modus. Ett hot per rad. Klicka på en rad för att skriva beskrivning och källa.</p>
+                                    </div>
+                                    <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div class="tjanst-panel-scroll">
+                                    <div id="tjanst-ai-hot" class="ai-review ai-review--inline" hidden></div>
+                                    <div id="hot-empty" class="tjanst-empty">Inga hot ännu.</div>
+                                    <div id="hot-list" class="dyn-list"></div>
+                                </div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="sarbarhet" hidden>
+                                <div class="form-group-head">
+                                    <div>
+                                        <label>Varför kan det hända hos byrån?</label>
+                                        <p class="tjanst-panel-hint">Sårbarheter hos er. Klicka på en rad för att redigera.</p>
+                                    </div>
+                                    <button type="button" class="btn-add-row" data-add="sarbarhet"><i class="fas fa-plus"></i> Lägg till</button>
+                                </div>
+                                <div class="tjanst-panel-scroll">
+                                    <div id="tjanst-ai-sarbarhet" class="ai-review ai-review--inline" hidden></div>
+                                    <div id="sarbarhet-empty" class="tjanst-empty">Inga sårbarheter ännu.</div>
+                                    <div id="sarbarhet-list" class="dyn-list"></div>
+                                </div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="inneboende" hidden>
                                 <div class="tjanst-panel-scroll">
                                 <div class="tjanst-modal-identity">
                                     <div class="tjanst-risk-scores">
@@ -351,56 +393,14 @@
                                     </button>
                                     <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                                 </div>
-                                <label for="tjanst-beskrivning">Tjänsten</label>
-                                <p class="tjanst-panel-hint">Beskriv vad tjänsten innebär hos er — gärna med bekräftade fakta som antal kunder och hur underlag tas emot. Nämn INTE kontroller, rutiner eller åtgärder här; de hör hemma i Åtgärder-fliken. Hitta inte på bemanning eller kapacitet som systemet inte vet.</p>
-                                <textarea id="tjanst-beskrivning" name="tjanstebeskrivning" rows="8" placeholder="Vad tjänsten innebär hos er, med bekräftade fakta. Inte era kontroller."></textarea>
-                                <div id="tjanst-ai-oversikt" class="ai-review ai-review--inline" hidden></div>
-                                <div id="tjanst-tf-oversikt-flag" class="tf-missing-banner tf-missing-banner-compact" hidden></div>
+                                <div id="tjanst-ai-inneboende" class="ai-review ai-review--inline" hidden></div>
+                                <div class="form-group risk-motivering-field">
+                                    <label for="tjanst-motivering-inneboende">Motivering av inneboende risk
+                                        <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                    </label>
+                                    <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                    <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
                                 </div>
-                            </section>
-
-                            <section class="tjanst-panel" data-tjanst-panel="hot" hidden>
-                                <div class="form-group-head">
-                                    <div>
-                                        <label>Vad kan gå fel?</label>
-                                        <p class="tjanst-panel-hint">Hot och modus. Ett hot per rad. Klicka på en rad för att skriva beskrivning och källa.</p>
-                                    </div>
-                                    <button type="button" class="btn-add-row" data-add="hot"><i class="fas fa-plus"></i> Lägg till</button>
-                                </div>
-                                <div class="tjanst-panel-scroll">
-                                    <div id="tjanst-tf-banner" class="tf-missing-banner" hidden>
-                                        <p id="tjanst-tf-banner-text"></p>
-                                        <label for="tjanst-tf-motivering">TF-motivering</label>
-                                        <p class="tjanst-panel-hint">Förklara varför TF-analysen bedöms tillräckligt täckt av PT-analysen för just den här tjänsten. Minst 20 tecken.</p>
-                                        <textarea id="tjanst-tf-motivering" name="tfMotivering" rows="4" placeholder="Varför räcker PT-analysen för finansiering av terrorism i den här tjänsten?"></textarea>
-                                    </div>
-                                    <div id="tjanst-ai-hot" class="ai-review ai-review--inline" hidden></div>
-                                    <div id="hot-empty" class="tjanst-empty">Inga hot ännu.</div>
-                                    <div id="hot-list" class="dyn-list"></div>
-                                </div>
-                            </section>
-
-                            <section class="tjanst-panel" data-tjanst-panel="sarbarhet" hidden>
-                                <div class="form-group-head">
-                                    <div>
-                                        <label>Varför kan det hända hos byrån?</label>
-                                        <p class="tjanst-panel-hint">Sårbarheter hos er. Klicka på en rad för att redigera.</p>
-                                    </div>
-                                    <button type="button" class="btn-add-row" data-add="sarbarhet"><i class="fas fa-plus"></i> Lägg till</button>
-                                </div>
-                                <div class="tjanst-panel-scroll">
-                                    <div id="tjanst-ai-sarbarhet" class="ai-review ai-review--inline" hidden></div>
-                                    <div id="sarbarhet-empty" class="tjanst-empty">Inga sårbarheter ännu.</div>
-                                    <div id="sarbarhet-list" class="dyn-list"></div>
-
-                                    <div class="form-group risk-motivering-field">
-                                        <label for="tjanst-motivering-inneboende">Motivering av inneboende risk
-                                            <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                        </label>
-                                        <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
-                                        <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
-                                    </div>
-
                                 </div>
                             </section>
 
@@ -417,10 +417,14 @@
                                     <div id="atgard-empty" class="tjanst-empty">Inga åtgärder ännu.</div>
                                     <div id="atgard-list" class="dyn-list"></div>
                                 </div>
+                            </section>
+
+                            <section class="tjanst-panel" data-tjanst-panel="residual" hidden>
+                                <div class="tjanst-panel-scroll">
                                 <div class="tjanst-residual-bar">
                                     <div>
                                         <p class="tjanst-residual-title">Vilken risk återstår?</p>
-                                        <p class="tjanst-panel-hint">Residualrisk efter åtgärder. Sätt sannolikhet och konsekvens när åtgärderna ovan är på plats — det är också S×K.</p>
+                                        <p class="tjanst-panel-hint">Residualrisk efter åtgärder. Sätt sannolikhet och konsekvens när riskreducerande åtgärder är på plats — det är också S×K.</p>
                                     </div>
                                     <div class="tjanst-risk-scores tjanst-residual-scores">
                                         <div class="form-group">
@@ -447,6 +451,7 @@
                                         </div>
                                         <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
                                     </div>
+                                    <div id="tjanst-ai-residual" class="ai-review ai-review--inline" hidden></div>
                                     <div class="form-group risk-motivering-field">
                                         <label for="tjanst-motivering-residual">Motivering av residualrisk
                                             <span id="tjanst-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
@@ -454,6 +459,7 @@
                                         <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
                                         <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
                                     </div>
+                                </div>
                                 </div>
                             </section>
                         </div>

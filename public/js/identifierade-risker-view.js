@@ -170,9 +170,6 @@
       ? '<span class="risk-level-badge ' + esc(opts.residualClass) + '" title="' + esc(opts.badges.residualTitle || '') + '">'
         + esc(opts.badges.residual) + '</span>'
       : '';
-    const tfMissing = opts.saknarTf
-      ? '<span class="tf-missing-pill"><span class="tf-missing-dot" aria-hidden="true"></span>TF saknas</span>'
-      : '';
     return '<div class="risk-item ' + esc(opts.levelClass) + (checked ? '' : ' inactive') + '"'
       + (opts.id ? ' data-record-id="' + esc(opts.id) + '"' : '') + '>'
       + '<div class="risk-item-header">'
@@ -184,7 +181,6 @@
       + '<span class="risk-level-badge ' + esc(opts.levelClass) + '" title="' + esc(opts.badges.inneboendeTitle || '') + '">'
       + esc(opts.badges.inneboende) + '</span>'
       + residualBadge
-      + tfMissing
       + '</div></div></div>'
       + '<div class="risk-item-actions">'
       + '<button type="button" class="expand-toggle" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>'
@@ -197,9 +193,6 @@
   function renderTjanstCard(t) {
     const item = t || {};
     const info = scoredFrom(item);
-    const Tf = tfLib();
-    const saknarTf = item.saknarTfTackning === true
-      || (Tf && Tf.tjanstSaknarTfTackning && Tf.tjanstSaknarTfTackning(item));
     const beskrivning = text(item.tjanstebeskrivning || item.beskrivning);
     const parts = [];
     if (beskrivning) {
@@ -209,13 +202,6 @@
     parts.push(renderHot(item.hot));
     parts.push(renderSarbarheter(item.sarbarheter));
     parts.push(renderMotiveringSections(item, ['inneboende']));
-    if (!Tf || !Tf.hasTfHot || !Tf.hasTfHot(item.hot)) {
-      const motivering = text(item.tfMotivering);
-      if (motivering) {
-        parts.push(section('fa-scale-balanced', 'TF-analys',
-          '<p class="risk-content-text">' + nl(motivering) + '</p>'));
-      }
-    }
     parts.push(renderAtgarder(item.atgarder, item.atgard));
     parts.push(renderMotiveringSections(item, ['residual']));
     const body = parts.filter(Boolean).join('') || section('fa-circle-info', 'Innehåll',
@@ -225,7 +211,6 @@
       title: text(item.namn || item.title) || 'Namnlös tjänst',
       aktuell: item.aktuell === true,
       ptTf: coverageOf(item),
-      saknarTf: saknarTf,
       levelClass: levelClass(info.scored.level),
       residualClass: levelClass(info.scored.residualLevel),
       badges: info.badges,
@@ -256,7 +241,6 @@
       title: title,
       aktuell: item.aktuell === true,
       ptTf: coverageOf(item),
-      saknarTf: false,
       levelClass: levelClass(info.scored.level),
       residualClass: levelClass(info.scored.residualLevel),
       badges: info.badges,

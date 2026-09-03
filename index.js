@@ -5131,25 +5131,6 @@ let _airtableTablesCache = null;
 let _airtableTablesCacheAt = 0;
 const _riskSkalaChoicesEnsured = new Set();
 
-function rejectTjanstWithoutTfTackning(res, riskData, existingFields = {}) {
-  const incoming = riskData || {};
-  const existing = existingFields || {};
-  const asDraft = incoming.utkast === true || incoming.Aktuell === false
-    || (incoming.Aktuell == null && existing.Aktuell === false && incoming.Hot == null);
-  const merged = { ...existing, ...incoming };
-  const check = TjanstTfTackning.validateTjanstTfTackning({
-    hot: incoming.Hot != null ? incoming.Hot : existing.Hot,
-    tfMotivering: TjanstTfTackning.readTfMotivering(merged),
-    asDraft
-  });
-  if (check.ok) return false;
-  res.status(400).json({
-    error: check.error,
-    message: check.error
-  });
-  return true;
-}
-
 function rejectRiskWithoutMotivering(res, riskData, existingFields = {}) {
   const incoming = riskData || {};
   const existing = existingFields || {};
@@ -5879,7 +5860,6 @@ app.post('/api/risk-assessments', authenticateToken, async (req, res) => {
     const asDraftCreate = riskData.utkast === true;
     delete riskData.utkast;
     if (asDraftCreate) riskData.Aktuell = false;
-    if (rejectTjanstWithoutTfTackning(res, riskData)) return;
     const riskDataWithFlag = applyMotiveringMigrationFlag(riskData);
     if (rejectRiskWithoutMotivering(res, riskDataWithFlag)) return;
     console.log('📝 Mottaget riskbedömningsdata:', riskDataWithFlag);
@@ -5999,7 +5979,6 @@ app.put('/api/risk-assessments/:id', authenticateToken, async (req, res) => {
       const prev = await axios.get(url, { headers, timeout: 10000 });
       beforeTjanst = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
-    if (rejectTjanstWithoutTfTackning(res, riskData, beforeTjanst)) return;
     const riskDataWithFlag = applyMotiveringMigrationFlag(riskData, beforeTjanst);
     if (rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeTjanst)) return;
     const airtableData = mapNamedFieldsToAirtable(riskDataWithFlag, RISK_ASSESSMENT_FIELD_MAPPING);
@@ -23307,12 +23286,10 @@ REGLER:
 ${HotAmlTf.AI_RULES}
 ${AmlKalla.KALLA_AI_RULES}
 ${AmlKalla.KALLA_DOKUMENT_PROMPT}
-- TF-TÄCKNING: minst ett hot MÅSTE ha typ "TF" eller "Båda", ELLER en tjänstespecifik tfMotivering. Lämna inte luckan tom.
 - Prioritera de mest sannolika PT-huvudhoten (osanna fakturor, felaktiga underlag, överdrivna kostnader, oklara betalningar, legitimering av transaktioner).
-- TF får inte vara spekulativt huvudhot. Nämn TF försiktigt som sidonot eller sätt typ "Båda" bara när underlaget stöder det (t.ex. utlandsbetalningar, högriskland, oklara betalningsmottagare). Annars skriv en kort tfMotivering.
+- TF får inte vara spekulativt huvudhot. Nämn TF försiktigt som sidonot eller sätt typ "Båda" bara när underlaget stöder det (t.ex. utlandsbetalningar, högriskland, oklara betalningsmottagare).
 - Hitta inte på terrorismscenarier som "flytta pengar till organisationer som finansierar terrorism" utan konkreta riskfaktorer.
 - Sätt typ till exakt "PT", "TF" eller "Båda" — inte en mening. Om beskrivningen handlar om finansiering av terrorism ska typ vara TF eller Båda.
-- Om minst ett TF- eller Båda-hot finns: tfMotivering ska vara tom. Lämna inte både noll TF-hot och tom tfMotivering.
 
 ${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
 ${AiTjanstAnalys.HOT_MODUS_AI_RULES}
@@ -23349,11 +23326,10 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "hot": [ { "typ": "PT, TF eller Båda", "titel": "Kort titel, max 5 ord", "beskrivning": "2-4 konkreta meningar: vilken handling som kan vara felaktig, hur tjänsten används, varför byråns medverkan ger legitimitet, vilken PT/TF-risk. Inga vaga eller dramatiska påståenden.", "kalla": "Utgivare — Dokument ÅÅÅÅ, kap. X — https://.../dokument.pdf" } ],
   "sarbarheter": [ { "titel": "Kort titel, max 5 ord", "beskrivning": "..." } ],
   "atgarder": [ { "namn": "Kort namn, max 5 ord", "beskrivning": "Vad byrån gör nu, eller en plan med när/vem/var. Inte Inför/öka/bör.", "status": "befintlig|foreslagen" } ],
-  "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"],
-  "tfMotivering": "Tom om minst ett TF-hot finns. Annars 2-4 meningar om varför PT-analysen räcker för just denna tjänst."${reviewMode ? `,
+  "saknadInformation": ["Vilka uppgifter som saknas för en säkrare bedömning"]${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder|tfMotivering", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet", "andringar": [ { "titel": "Hotets titel", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1-2 meningar: varför just denna rad ändras" } ] }
+      { "falt": "tjanstebeskrivning|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter|atgarder", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet", "andringar": [ { "titel": "Hotets titel", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1-2 meningar: varför just denna rad ändras" } ] }
     ]
   }` : ''}
 }
@@ -23377,7 +23353,7 @@ ${byraProfilUserBlock}
 
 ${utforandeBlock}
 ${riskreglerBlock ? `\n${riskreglerBlock}\n` : ''}
-${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}${TjanstTfTackning.tjanstSaknarTfTackning(befintligt) ? '\n\nTF-LUCKA: Tjänsten har inget TF-hot och ingen TF-motivering. Föreslå minst ett TF- eller Båda-hot, eller en tfMotivering. Lämna inte luckan tom.' : ''}`;
+${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}`;
 
   const extractFirstJsonObject = (text) => {
     if (!text) return null;
@@ -23482,7 +23458,6 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
       hot,
       sarbarheter,
       atgarder,
-      tfMotivering: TjanstTfTackning.hasTfHot(hot) ? '' : cleanStr(result.tfMotivering),
       saknadInformation: Array.isArray(result.saknadInformation)
         ? result.saknadInformation.map((s) => cleanStr(s)).filter(Boolean)
         : []
@@ -23496,7 +23471,6 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     });
     if (reviewMode) {
       granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster);
-      granskningPoster = AiFaltGranskning.ensureTfCoveragePosters(befintligt, tjanstAiPayload, granskningPoster);
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const tjanstAiLog = await auditHooks.logAiGenerated({

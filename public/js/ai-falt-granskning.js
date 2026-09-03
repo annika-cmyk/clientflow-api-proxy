@@ -11,8 +11,7 @@
     motiveringResidual: { etikett: 'Motivering av residualrisk' },
     hot: { etikett: 'Hot och modus' },
     sarbarheter: { etikett: 'Sårbarheter' },
-    atgarder: { etikett: 'Åtgärder' },
-    tfMotivering: { etikett: 'TF-motivering' }
+    atgarder: { etikett: 'Åtgärder' }
   };
 
   const OVRIG_FALT = {
@@ -31,7 +30,7 @@
 
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
-- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot), och TF-täckning.
+- Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot).
 - Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, lägg till saknade hot (särskilt TF), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn.
 - Kopiera inte rakt av. En lätt omskrivning räcker inte.
 - Tomma fält: skriv ditt förslag i huvudfälten (de fylls i automatiskt).
@@ -42,8 +41,7 @@
 - Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten).
 - Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar.
 - Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
-- andra=false bara om ditt förslag är identiskt med nuvarande innehåll.
-- TF-LUCKA: Om tjänsten saknar TF-hot (typ TF eller Båda) och saknar TF-motivering är det ett måste. Ditt hot-förslag ska innehålla minst ett TF- eller Båda-hot, annars tfMotivering.`;
+- andra=false bara om ditt förslag är identiskt med nuvarande innehåll.`;
 
   function getTjanstTfTackning() {
     if (typeof global !== 'undefined' && global.TjanstTfTackning) return global.TjanstTfTackning;
@@ -103,7 +101,6 @@
     if (hasListItems(o.hot)) keys.push('hot');
     if (hasListItems(o.sarbarheter)) keys.push('sarbarheter');
     if (hasListItems(o.atgarder)) keys.push('atgarder');
-    if (isFilledText(o.tfMotivering)) keys.push('tfMotivering');
     return keys;
   }
 
@@ -170,13 +167,6 @@
         `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`
       )));
     }
-    if (keys.includes('tfMotivering')) {
-      parts.push(`TF-motivering:\n${trimStr(o.tfMotivering)}`);
-    }
-    const Tf = getTjanstTfTackning();
-    if (Tf && Tf.tjanstSaknarTfTackning(o)) {
-      parts.push('TF-LUCKA: Inget TF-hot och ingen TF-motivering. Du MÅSTE föreslå minst ett TF- eller Båda-hot (prefererat) eller en tfMotivering.');
-    }
     return parts.join('\n\n');
   }
 
@@ -208,7 +198,6 @@
     beskrivning: ['beskrivning', 'beskrivning och inneboende risk'],
     atgard: ['atgard', 'atgarder', 'atgjard', 'action'],
     atgarder: ['atgarder', 'atgard', 'tjanstespecifika atgarder'],
-    tfMotivering: ['tfmotivering', 'tf motivering', 'tf analys'],
     hot: ['hot'],
     sarbarheter: ['sarbarheter', 'sarbarhet'],
     sxk: ['sxk', 'sannolikhet', 'konsekvens', 'inneboende', 'riskniva'],
@@ -308,7 +297,6 @@
   function generatedValueFor(falt, generated) {
     const g = generated || {};
     if (falt === 'tjanstebeskrivning') return trimStr(g.tjanstebeskrivning || g.beskrivning);
-    if (falt === 'tfMotivering') return trimStr(g.tfMotivering);
     if (falt === 'beskrivning') return trimStr(g.beskrivning);
     if (falt === 'atgard') return trimStr(g.atgard);
     if (falt === 'ptTfRelevans') return trimStr(g.ptTfRelevans);
@@ -342,7 +330,6 @@
   function currentValueFor(falt, befintligt) {
     const o = befintligt || {};
     if (falt === 'tjanstebeskrivning') return trimStr(o.tjanstebeskrivning);
-    if (falt === 'tfMotivering') return trimStr(o.tfMotivering);
     if (falt === 'beskrivning') return trimStr(o.beskrivning);
     if (falt === 'atgard') return trimStr(o.atgard);
     if (falt === 'ptTfRelevans') return trimStr(o.ptTfRelevans);
@@ -840,39 +827,6 @@
     return list;
   }
 
-  function ensureTfCoveragePosters(befintligt, generated, posters) {
-    const Tf = getTjanstTfTackning();
-    const list = Array.isArray(posters) ? posters.slice() : [];
-    const existingHot = list.find((item) => item && item.falt === 'hot');
-    if (existingHot && Tf && Tf.hasTfHot(existingHot.forslag)) return list;
-    if (!Tf || !Tf.tjanstSaknarTfTackning(befintligt || {})) return list;
-    const genHot = generated && generated.hot;
-    const genMot = generated && generated.tfMotivering;
-    if (Tf.hasTfHot(genHot)) {
-      const base = existingHot && hasForslag('hot', existingHot.forslag)
-        ? existingHot.forslag
-        : (befintligt && befintligt.hot);
-      return upsertPoster(list, {
-        falt: 'hot',
-        etikett: TJANST_FALT.hot.etikett,
-        kommentar: (existingHot && existingHot.kommentar)
-          || 'Tjänsten saknade TF-hot. AI föreslår minst ett TF-hot som komplement till era befintliga hot.',
-        andra: true,
-        forslag: mergeHotLists(base, genHot)
-      });
-    }
-    if (Tf.tfMotiveringOk(genMot)) {
-      return upsertPoster(list, {
-        falt: 'tfMotivering',
-        etikett: TJANST_FALT.tfMotivering.etikett,
-        kommentar: 'Tjänsten saknade TF-täckning. AI föreslår en motivering till varför PT-analysen räcker.',
-        andra: true,
-        forslag: trimStr(genMot)
-      });
-    }
-    return list;
-  }
-
   function fallbackPosters(kind, generated, befintligt) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const keys = kind === 'ovrig' ? Object.keys(OVRIG_FALT) : Object.keys(TJANST_FALT);
@@ -907,14 +861,13 @@
 
   const TJANST_TAB_FOR_FALT = {
     tjanstebeskrivning: 'oversikt',
-    sxk: 'oversikt',
-    motiveringInneboende: 'oversikt',
+    sxk: 'inneboende',
+    motiveringInneboende: 'inneboende',
     hot: 'hot',
-    tfMotivering: 'hot',
     sarbarheter: 'sarbarhet',
     atgarder: 'atgard',
-    residual: 'atgard',
-    motiveringResidual: 'atgard'
+    residual: 'residual',
+    motiveringResidual: 'residual'
   };
 
   const OVRIG_HOST_FOR_FALT = {
@@ -1202,7 +1155,6 @@
     readEditedForslag,
     fallbackPosters,
     ensureAnalysisPosters,
-    ensureTfCoveragePosters,
     mergeHotLists,
     hasForslag,
     renderReview,
