@@ -14526,7 +14526,7 @@ const feedbackLimiter = rateLimit({
   message: { error: 'För många feedbackförsök. Försök igen om en stund.' }
 });
 
-// POST /api/feedback – Skicka feedback till hej@clientflow.se
+// POST /api/feedback – Skicka feedback (dashboard → hej@, residualrisk → feedback@)
 app.post('/api/feedback', authenticateToken, feedbackLimiter, async (req, res) => {
   try {
     const input = feedback.normalizeFeedback(req.body || {}, req.user || {});
@@ -14538,7 +14538,12 @@ app.post('/api/feedback', authenticateToken, feedbackLimiter, async (req, res) =
     const passRaw = process.env.SMTP_PASS ?? process.env.SMTP_PASSWORD;
     const pass = typeof passRaw === 'string' ? passRaw.replace(/^["']|["']$/g, '').trim() : '';
     if (!host || !user || !pass) {
-      return res.status(503).json({ error: 'E-post är inte konfigurerad just nu. Mejla hej@clientflow.se i stället.' });
+      const fallbackTo = input.source === 'residualrisk'
+        ? feedback.FEEDBACK_TO_RESIDUAL
+        : feedback.FEEDBACK_TO;
+      return res.status(503).json({
+        error: `E-post är inte konfigurerad just nu. Mejla ${fallbackTo} i stället.`
+      });
     }
 
     const mail = feedback.buildFeedbackEmail(input);

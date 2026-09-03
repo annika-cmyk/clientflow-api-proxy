@@ -619,6 +619,7 @@ class RiskAssessmentManager {
         ['tjanst-motivering-inneboende', 'tjanst-motivering-residual'].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', () => this.updateMotiveringWarnings());
         });
+        document.getElementById('tjanst-residual-feedback-send')?.addEventListener('click', () => this.sendResidualFeedback());
 
         // Lägg till-rad-knappar i modalen
         document.querySelectorAll('.btn-add-row').forEach(btn => {
@@ -1474,6 +1475,58 @@ class RiskAssessmentManager {
         return { inherent, residual };
     }
 
+    setResidualFeedbackStatus(message, kind) {
+        const el = document.getElementById('tjanst-residual-feedback-status');
+        if (!el) return;
+        el.hidden = !message;
+        el.textContent = message || '';
+        el.classList.toggle('is-ok', kind === 'ok');
+        el.classList.toggle('is-error', kind === 'error');
+    }
+
+    resetResidualFeedback() {
+        const textEl = document.getElementById('tjanst-residual-feedback-text');
+        if (textEl) textEl.value = '';
+        this.setResidualFeedbackStatus('', '');
+        const btn = document.getElementById('tjanst-residual-feedback-send');
+        if (btn) btn.disabled = false;
+    }
+
+    async sendResidualFeedback() {
+        const textEl = document.getElementById('tjanst-residual-feedback-text');
+        const sendBtn = document.getElementById('tjanst-residual-feedback-send');
+        const message = (textEl && textEl.value || '').trim();
+        this.setResidualFeedbackStatus('', '');
+        if (!message || message.length < 8) {
+            this.setResidualFeedbackStatus('Skriv lite mer så vi förstår din feedback.', 'error');
+            textEl?.focus();
+            return;
+        }
+        if (sendBtn) sendBtn.disabled = true;
+        try {
+            const tjanstNamn = document.getElementById('tjanst-name')?.value.trim() || '';
+            const response = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/feedback`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    source: 'residualrisk',
+                    message,
+                    tjanstNamn
+                })
+            });
+            let data = {};
+            try { data = await response.json(); } catch (_) {}
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Kunde inte skicka feedback just nu.');
+            }
+            if (textEl) textEl.value = '';
+            this.setResidualFeedbackStatus('Tack! Feedbacken är skickad.', 'ok');
+        } catch (err) {
+            this.setResidualFeedbackStatus(err.message || 'Kunde inte skicka feedback just nu.', 'error');
+        } finally {
+            if (sendBtn) sendBtn.disabled = false;
+        }
+    }
+
     updateMotiveringWarnings() {
         const RM = window.RiskMotivering;
         if (!RM) return;
@@ -1519,6 +1572,7 @@ class RiskAssessmentManager {
         const motRes = document.getElementById('tjanst-motivering-residual');
         if (motIn) motIn.value = '';
         if (motRes) motRes.value = '';
+        this.resetResidualFeedback();
         this.updateMotiveringWarnings();
         if (window.AiFaltGranskning) {
             AiFaltGranskning.hideReviewHosts(this.tjanstAiHosts());
