@@ -12635,7 +12635,7 @@ async function resolveTjanstExponeringForAi(req, namn) {
       { concurrency: 8 }
     );
     return statistikRiskbedomning.buildTjanstExponering(records, {
-      tjanstId: (req.body?.recordId || '').toString().trim(),
+      tjanstId: (req.body?.recordId || req.query?.recordId || '').toString().trim(),
       tjanstNamn: namn,
       tjanstIdToName: statistikRiskbedomning.mapTjanstNames
         ? statistikRiskbedomning.mapTjanstNames(tjanstRecords)
@@ -13405,6 +13405,13 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
   }
+});
+
+app.get('/api/byra/tjanst-exponering', authenticateToken, async (req, res) => {
+  const namn = (req.query?.namn || '').toString().trim();
+  if (!namn) return res.status(400).json({ error: 'Tjänstens namn (namn) saknas.' });
+  const exponering = await resolveTjanstExponeringForAi(req, namn);
+  res.json({ exponering: exponering });
 });
 
 // PUT /api/byra/info – Uppdatera byråinfo (Antal anställda, Omsättning, Antal kundföretag, Logga, Typ av byrå)
@@ -23224,9 +23231,13 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
       }
     } catch (_) { /* utförande är valfritt underlag */ }
   }
-  const exponering = req.body?.exponering && typeof req.body.exponering === 'object'
-    ? req.body.exponering
-    : await resolveTjanstExponeringForAi(req, namn);
+  const utforandeHit = TjanstUtforandeMallar.findEntryForNamn(utforandeState, namn);
+  const useClientflowStats = TjanstUtforandeMallar.wantsClientflowStatistik(utforandeHit && utforandeHit.entry);
+  const exponering = useClientflowStats
+    ? (req.body?.exponering && typeof req.body.exponering === 'object'
+      ? req.body.exponering
+      : await resolveTjanstExponeringForAi(req, namn))
+    : AiTjanstAnalys.buildByraExponering(utforandeHit && utforandeHit.entry, byraProfil);
 
   const byraProfilUserBlock = byraProfil
     ? AiTjanstAnalys.formatByraFactsBlock(byraProfil)

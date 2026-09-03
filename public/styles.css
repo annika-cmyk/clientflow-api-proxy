@@ -17266,6 +17266,43 @@ h5.ar-subsection-title {
     text-underline-offset: 0.15em;
     cursor: pointer;
 }
+.tjanst-mall-stats {
+    margin: 0.15rem 0 1.1rem;
+    padding: 0.85rem 0.95rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+.tjanst-mall-stats-title {
+    margin: 0 0 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+}
+.tjanst-mall-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem 1rem;
+}
+.tjanst-mall-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: #475569;
+}
+.tjanst-mall-stat strong { color: #0f172a; }
+.tjanst-mall-byra-antal {
+    margin: -0.35rem 0 1rem;
+}
+.tjanst-mall-number {
+    width: 8rem;
+    max-width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font: inherit;
+}
 .tjanst-mall-comment,
 .tjanst-mall-text {
     width: 100%;

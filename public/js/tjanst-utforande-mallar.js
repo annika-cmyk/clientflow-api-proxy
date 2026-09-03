@@ -89,6 +89,19 @@
     { required: true, helpText: 'Beskriv vad som ingår och hur arbetet går till. Analysera inte penningtvättsrisken här.' }
   );
 
+  const STATISTIK_QUESTIONS = [
+    q('hamtaClientflowStatistik', 'Hämta statistik från Clientflow?', 'single', [
+      'Ja',
+      'Nej'
+    ], {
+      helpText: 'Vid Ja hämtas antal kunder med tjänsten plus riskindikatorer som kontanter, utlandstransaktioner, högriskbransch och PEP. Vid Nej används byråns angivna kundantal och ni fyller i ungefär hur många kunder som har tjänsten.'
+    }),
+    q('antalKunderTjanst', 'Ungefär hur många kunder har den här tjänsten?', 'number', null, {
+      showWhen: { id: 'hamtaClientflowStatistik', any: ['Nej'] },
+      helpText: 'En uppskattning räcker. Byråns totala kundantal från byråuppgifterna används som bakgrund.'
+    })
+  ];
+
   function spec(id, name, questions, extra) {
     return Object.assign({
       id: id,
@@ -750,19 +763,26 @@
 
   function questionsForTemplate(template) {
     const extra = extraQuestionsForTemplate(template);
-    if (template && template.replaceBaseQuestions) return extra.slice();
-    return BASE_QUESTIONS.concat(extra);
+    const stats = STATISTIK_QUESTIONS.slice();
+    if (template && template.replaceBaseQuestions) return stats.concat(extra);
+    return stats.concat(BASE_QUESTIONS, extra);
   }
 
   function groupQuestionsForTemplate(template) {
     const extra = extraQuestionsForTemplate(template);
+    const stats = STATISTIK_QUESTIONS.slice();
     if (template && template.replaceBaseQuestions) {
-      return { base: extra.slice(), extra: [] };
+      return { stats: stats, base: extra.slice(), extra: [] };
     }
     return {
+      stats: stats,
       base: BASE_QUESTIONS.slice(),
       extra: extra
     };
+  }
+
+  function wantsClientflowStatistik(entry) {
+    return selectedValues(entry && entry.answers && entry.answers.hamtaClientflowStatistik).indexOf('Ja') !== -1;
   }
 
   function emptyState() {
@@ -843,11 +863,11 @@
       const raw = answers[question.id];
       const text = formatAnswerValue(raw);
       const comment = formatAnswerValue(comments[question.id]);
-      if (!text && question.type !== 'text') {
+      if (!text && question.type !== 'text' && question.type !== 'number') {
         unanswered.push(question.label);
         return;
       }
-      if (question.type === 'text' && !text) {
+      if ((question.type === 'text' || question.type === 'number') && !text) {
         unanswered.push(question.label);
         return;
       }
@@ -878,6 +898,7 @@
   const api = {
     HELP_TEXT: HELP_TEXT,
     BASE_QUESTIONS: BASE_QUESTIONS,
+    STATISTIK_QUESTIONS: STATISTIK_QUESTIONS,
     EGEN_BESKRIVNING: EGEN_BESKRIVNING,
     SERVICE_TEMPLATES: SERVICE_TEMPLATES,
     foldName: foldName,
@@ -889,6 +910,7 @@
     resolveTemplate: resolveTemplate,
     extraQuestionsForTemplate: extraQuestionsForTemplate,
     questionIsVisible: questionIsVisible,
+    wantsClientflowStatistik: wantsClientflowStatistik,
     questionsForTemplate: questionsForTemplate,
     groupQuestionsForTemplate: groupQuestionsForTemplate,
     emptyState: emptyState,
