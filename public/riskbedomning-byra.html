@@ -308,14 +308,45 @@
 
                         <div id="tjanst-ai-summary" class="ai-review-summary" hidden></div>
 
+                        <div class="tjanst-modal-layout">
                         <nav class="tjanst-tabs" role="tablist" aria-label="Tjänstdelar">
-                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="utforande" role="tab" aria-selected="true">Utförandefrågor</button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="oversikt" role="tab" aria-selected="false">Översikt <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">Hot och modus <span class="tjanst-tab-count" data-count-for="hot">0</span> <span class="tjanst-tab-ai" data-ai-for="hot" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">Sårbarheter <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span> <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="inneboende" role="tab" aria-selected="false">Inneboende risk <span class="tjanst-tab-ai" data-ai-for="inneboende" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">Riskreducerande åtgärder <span class="tjanst-tab-count" data-count-for="atgard">0</span> <span class="tjanst-tab-ai" data-ai-for="atgard" hidden>AI</span></button>
-                            <button type="button" class="tjanst-tab" data-tjanst-tab="residual" role="tab" aria-selected="false">Residualrisk <span class="tjanst-tab-ai" data-ai-for="residual" hidden>AI</span></button>
+                            <button type="button" class="tjanst-tab is-active" data-tjanst-tab="utforande" role="tab" aria-selected="true">
+                                <i class="tjanst-tab-icon fas fa-list-check" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Frågor från din ClientFlow AI</span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="oversikt" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-file-lines" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Översikt</span>
+                                <span class="tjanst-tab-ai" data-ai-for="oversikt" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="hot" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-triangle-exclamation" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Hot och modus</span>
+                                <span class="tjanst-tab-count" data-count-for="hot">0</span>
+                                <span class="tjanst-tab-ai" data-ai-for="hot" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="sarbarhet" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-circle-exclamation" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Sårbarheter</span>
+                                <span class="tjanst-tab-count" data-count-for="sarbarhet">0</span>
+                                <span class="tjanst-tab-ai" data-ai-for="sarbarhet" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="inneboende" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-gauge-high" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Inneboende risk</span>
+                                <span class="tjanst-tab-ai" data-ai-for="inneboende" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="atgard" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-shield-halved" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Riskreducerande åtgärder</span>
+                                <span class="tjanst-tab-count" data-count-for="atgard">0</span>
+                                <span class="tjanst-tab-ai" data-ai-for="atgard" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
+                            <button type="button" class="tjanst-tab" data-tjanst-tab="residual" role="tab" aria-selected="false">
+                                <i class="tjanst-tab-icon fas fa-scale-balanced" aria-hidden="true"></i>
+                                <span class="tjanst-tab-label">Residualrisk</span>
+                                <span class="tjanst-tab-ai" data-ai-for="residual" hidden title="AI-förslag" aria-label="AI-förslag"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+                            </button>
                         </nav>
 
                         <div class="tjanst-modal-body">
@@ -470,6 +501,7 @@
                                 </div>
                                 </div>
                             </section>
+                        </div>
                         </div>
 
                         <div class="form-actions tjanst-modal-footer">
