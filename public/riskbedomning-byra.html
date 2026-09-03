@@ -498,6 +498,15 @@
                                         <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
                                         <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
                                     </div>
+                                    <div class="tjanst-residual-feedback" id="tjanst-residual-feedback">
+                                        <label for="tjanst-residual-feedback-text">Feedback till ClientFlow</label>
+                                        <p class="tjanst-panel-hint">Synpunkter på residualriskbedömningen skickas till feedback@clientflow.se (med byrå och inloggad användare).</p>
+                                        <div class="tjanst-residual-feedback-row">
+                                            <textarea id="tjanst-residual-feedback-text" name="residual-feedback" rows="2" maxlength="4000" placeholder="Skriv en kort synpunkt…" autocomplete="off"></textarea>
+                                            <button type="button" class="btn btn-secondary btn-sm" id="tjanst-residual-feedback-send">Skicka</button>
+                                        </div>
+                                        <p id="tjanst-residual-feedback-status" class="tjanst-residual-feedback-status" hidden></p>
+                                    </div>
                                 </div>
                                 </div>
                             </section>
@@ -543,6 +552,6 @@
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
     <script src="js/tjanst-utforande-mallar.js?v=6" defer></script>
     <script src="js/ai-falt-granskning.js?v=13" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=45" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=46" defer></script>
 </body>
 </html>
