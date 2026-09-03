@@ -745,7 +745,7 @@
         </div>
         ${falt === 'hot' ? `<div class="ai-review-item-kalla">
           <label class="ai-review-field-label">Källa</label>
-          <input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Myndighet — undersida — https://…">
+          <input type="text" data-ai-kalla value="${esc(item.kalla || item.källa || '')}" placeholder="Utgivare — dokument, kap. — https://…">
         </div>` : ''}
       </div>
     `;
