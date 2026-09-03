@@ -501,11 +501,6 @@
         'Ja, vid större belopp eller avvikelser',
         'Nej, normalt inte',
         'Ej relevant'
-      ]),
-      q('arExternPart', 'Hanteras uppgifter som ska lämnas till bank, investerare eller annan extern part?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa uppdrag'
       ])
     ]),
     spec('lonehantering', 'Lönehantering', [
