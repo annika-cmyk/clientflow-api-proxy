@@ -881,7 +881,7 @@ class RiskAssessmentManager {
             const items = sarbarheter.map((s) => `
                     <div class="vuln-item">
                         <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
-                        <div class="vuln-item-desc">${this.esc(this.stripEvidensLeakFromText(s.beskrivning || ''))}</div>
+                        <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
                         ${this.renderDiscreteKalla(s.kalla ?? s.källa ?? s.source)}
                     </div>
                 `).join('');
@@ -1186,10 +1186,10 @@ class RiskAssessmentManager {
         const primary = present.includes('oversikt') ? 'oversikt' : present[0];
         bar.innerHTML = `
             <p class="tjanst-ai-summary-text">AI har förslag på ${present.map((key) => `<a href="#" data-goto-tab="${key}">${labels[key]}</a>`).join(', ')}</p>
-            <button type="button" class="tjanst-ai-summary-goto" data-goto-tab="${primary}" title="Gå till ${labels[primary]}" aria-label="Gå till ${labels[primary]}">
-                <i class="fas fa-arrow-right" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all-tabs>Avfärda alla</button>
+            <div class="tjanst-ai-summary-actions">
+                <button type="button" class="btn btn-primary btn-sm" data-goto-tab="${primary}">Granska alla</button>
+                <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-dismiss-all-tabs>Avfärda alla</button>
+            </div>
         `;
         bar.onclick = (ev) => {
             const link = ev.target.closest('[data-goto-tab]');
@@ -1334,7 +1334,7 @@ class RiskAssessmentManager {
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-hot" aria-hidden="true" title="${typ === 'tf' ? 'Terrorismfinansiering' : typ === 'pt' ? 'Penningtvätt' : 'Hot'}"><i class="fas ${typ === 'tf' ? 'fa-hand-holding-heart' : typ === 'pt' ? 'fa-coins' : 'fa-triangle-exclamation'}"></i></span>
-                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
@@ -1348,7 +1348,7 @@ class RiskAssessmentManager {
                 <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
             </div>
         `;
-        this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
+        this.bindDynCard(row, { expand: opts.aiAdd ? false : !!opts.expand, hasSource: true });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -1362,7 +1362,7 @@ class RiskAssessmentManager {
         const list = document.getElementById('sarbarhet-list');
         if (!list) return;
         const titel = data.titel ?? data.title ?? '';
-        const beskrivning = this.stripEvidensLeakFromText(data.beskrivning ?? data.description ?? '');
+        const beskrivning = data.beskrivning ?? data.description ?? '';
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
@@ -1370,7 +1370,7 @@ class RiskAssessmentManager {
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-sarbarhet" aria-hidden="true"><i class="fas fa-circle-exclamation"></i></span>
-                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
@@ -1384,7 +1384,7 @@ class RiskAssessmentManager {
                 <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
             </div>
         `;
-        this.bindDynCard(row, { expand: !!opts.expand, hasSource: true });
+        this.bindDynCard(row, { expand: opts.aiAdd ? false : !!opts.expand, hasSource: true });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -1410,7 +1410,7 @@ class RiskAssessmentManager {
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-atgard" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>
-                ${opts.aiAdd ? '<span class="dyn-ai-badge">Ny</span>' : ''}
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
                 <span class="dyn-header-label">Åtgärd</span>
                 <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -1432,7 +1432,7 @@ class RiskAssessmentManager {
                 ${forslagHtml}
             </div>
         `;
-        this.bindDynCard(row, { expand: !!opts.expand || !typ });
+        this.bindDynCard(row, { expand: opts.aiAdd ? false : (!!opts.expand || !typ) });
         list.appendChild(row);
         this.updateTjanstLists();
     }
@@ -1470,22 +1470,10 @@ class RiskAssessmentManager {
         return t === 'befintlig' ? 'befintlig' : 'foreslagen';
     }
 
-    stripEvidensLeakFromText(value) {
-        const re = /(?:^|\s+)(?:Bekräftad(?:\s+byråspecifik(?:\s+faktor)?)?|Tjänstetypisk(?:\s+risk)?|Saknad(?:\s+information)?|bekraftad|tjanstetypisk|saknas)\.?$/iu;
-        let out = String(value == null ? '' : value).trim();
-        if (!out) return '';
-        let prev = '';
-        while (out !== prev) {
-            prev = out;
-            out = out.replace(re, '').trim();
-        }
-        return out;
-    }
-
     collectSarbarhet() {
         return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map((row) => ({
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: this.stripEvidensLeakFromText(row.querySelector('.dyn-besk')?.value || ''),
+            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
             kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
         })).filter((s) => s.titel || s.beskrivning || s.kalla);
     }
@@ -1913,12 +1901,103 @@ class RiskAssessmentManager {
 
     clearInlineAi() {
         document.querySelectorAll('.dyn-ai-forslag, .dyn-ai-bar, .field-ai-forslag, .dyn-ai-list-note').forEach((el) => el.remove());
+        document.querySelectorAll('.dyn-ai-edit').forEach((el) => el.remove());
         document.querySelectorAll('.dyn-card.is-ai-remove').forEach((row) => {
             row.classList.remove('is-ai-remove');
             row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = false; });
         });
         document.querySelectorAll('.dyn-card.is-ai-add').forEach((row) => row.remove());
+        ['hot-list', 'sarbarhet-list', 'atgard-list'].forEach((id) => this.unwrapDynAiZones(document.getElementById(id)));
         this.updateTjanstLists();
+    }
+
+    unwrapDynAiZones(list) {
+        if (!list) return;
+        [...list.querySelectorAll(':scope > .dyn-ai-zone')].forEach((zone) => {
+            const rows = [...zone.querySelectorAll(':scope > .dyn-row')];
+            rows.forEach((row) => list.insertBefore(row, zone));
+            zone.remove();
+        });
+    }
+
+    groupDynListAiZones(list) {
+        if (!list) return;
+        this.unwrapDynAiZones(list);
+        const rows = [...list.querySelectorAll(':scope > .dyn-row')];
+        if (!rows.length) return;
+        const remove = [];
+        const neu = [];
+        const edit = [];
+        const unchanged = [];
+        rows.forEach((row) => {
+            if (row.classList.contains('is-ai-remove')) remove.push(row);
+            else if (row.classList.contains('is-ai-add')) neu.push(row);
+            else if (row.querySelector(':scope > .dyn-ai-forslag')) edit.push(row);
+            else unchanged.push(row);
+        });
+        if (!remove.length && !neu.length && !edit.length) return;
+
+        const appendZone = (key, label, items) => {
+            if (!items.length) return;
+            const zone = document.createElement('div');
+            zone.className = 'dyn-ai-zone';
+            zone.dataset.zone = key;
+            const lab = document.createElement('div');
+            lab.className = 'dyn-ai-zone-label text-muted';
+            lab.textContent = label;
+            zone.appendChild(lab);
+            items.forEach((row) => zone.appendChild(row));
+            list.appendChild(zone);
+        };
+
+        rows.forEach((row) => row.remove());
+        appendZone('remove', 'Föreslås tas bort', remove);
+        appendZone('add', 'Nytt förslag', neu.concat(edit));
+        appendZone('unchanged', 'Oförändrat', unchanged);
+    }
+
+    refreshDynListAiZones(rowOrList) {
+        const list = rowOrList?.closest?.('.dyn-list') || rowOrList;
+        if (!list || !list.classList.contains('dyn-list')) return;
+        this.groupDynListAiZones(list);
+        this.updateTjanstLists();
+    }
+
+    ensureAiEditPencil(row, onEdit) {
+        if (!row) return null;
+        const header = row.querySelector('.dyn-row-header');
+        if (!header) return null;
+        let pencil = header.querySelector('.dyn-ai-edit');
+        if (pencil) return pencil;
+        pencil = document.createElement('button');
+        pencil.type = 'button';
+        pencil.className = 'dyn-ai-edit';
+        pencil.title = 'Redigera förslag';
+        pencil.setAttribute('aria-label', 'Redigera förslag');
+        pencil.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+        const toggle = header.querySelector('.dyn-toggle');
+        if (toggle) header.insertBefore(pencil, toggle);
+        else header.appendChild(pencil);
+        pencil.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (typeof onEdit === 'function') onEdit(row, pencil);
+            else {
+                row.classList.remove('is-collapsed');
+                row.querySelector('.dyn-titel')?.focus();
+            }
+        });
+        return pencil;
+    }
+
+    acceptAiAddRow(row) {
+        if (!row) return;
+        row.classList.remove('is-ai-add');
+        row.querySelector('.dyn-ai-badge')?.remove();
+        row.querySelector('.dyn-ai-bar')?.remove();
+        row.querySelector('.dyn-ai-edit')?.remove();
+        row.classList.add('is-collapsed');
+        this.refreshDynListAiZones(row);
     }
 
     paintInlineAiSummary(host, hasChanges) {
@@ -1934,9 +2013,11 @@ class RiskAssessmentManager {
             <div class="ai-review-head">
                 <div>
                     <strong>AI har lagt förslag i formuläret</strong>
-                    <p>Grönt kort = ny faktor (med motivering). Överstruket = föreslås tas bort (med varför). Ändringsförslag visar vad som ändras och varför. Du ansvarar för vad som sparas.</p>
+                    <p>Listorna är uppdelade i tre zoner: föreslås tas bort, nytt förslag och oförändrat. Du ansvarar för vad som sparas.</p>
                 </div>
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-all>Avfärda alla</button>
+                <div class="tjanst-ai-summary-actions">
+                    <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-dismiss-all>Avfärda alla</button>
+                </div>
             </div>
         `;
         host.onclick = (ev) => {
@@ -1953,11 +2034,11 @@ class RiskAssessmentManager {
         box.className = 'field-ai-forslag';
         box.innerHTML = `
             <span class="field-ai-label">${this.esc(label || 'AI-förslag')}</span>
-            ${comment ? `<p class="field-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
+            ${comment ? `<p class="field-ai-comment"><span class="dyn-ai-motivering-label">Varför AI föreslår detta:</span> ${this.esc(comment)}</p>` : ''}
             ${html}
             <div class="field-ai-actions">
                 <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+                <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-dismiss>Avfärda</button>
             </div>
         `;
         afterEl.insertAdjacentElement('afterend', box);
@@ -1971,17 +2052,17 @@ class RiskAssessmentManager {
         if (!row) return;
         row.classList.remove('is-ai-add');
         row.classList.add('is-ai-remove');
-        row.classList.remove('is-collapsed');
+        row.classList.add('is-collapsed');
         row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = true; });
         row.querySelector('.dyn-ai-bar')?.remove();
+        row.querySelector('.dyn-ai-edit')?.remove();
         const bar = document.createElement('div');
         bar.className = 'dyn-ai-bar';
         bar.innerHTML = `
-            <span class="dyn-ai-label">Föreslås tas bort</span>
-            <p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment || 'AI tar inte med den här faktorn i sin samlade analys. Du avgör om den ska vara kvar.')}</p>
+            <p class="dyn-ai-comment dyn-ai-motivering"><span class="dyn-ai-motivering-label">AI:s motivering:</span> ${this.esc(comment || 'AI tar inte med den här faktorn i sin samlade analys. Du avgör om den ska vara kvar.')}</p>
             <div class="dyn-ai-actions">
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-keep>Behåll</button>
-                <button type="button" class="btn btn-primary btn-sm" data-ai-drop>Ta bort</button>
+                <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-keep>Behåll</button>
+                <button type="button" class="btn btn-sm fill-danger" data-ai-drop>Ta bort</button>
             </div>
         `;
         row.appendChild(bar);
@@ -1990,9 +2071,12 @@ class RiskAssessmentManager {
                 row.classList.remove('is-ai-remove');
                 row.querySelectorAll('input, textarea, select').forEach((el) => { el.disabled = false; });
                 bar.remove();
+                this.refreshDynListAiZones(row);
             }
             if (ev.target.closest('[data-ai-drop]')) {
+                const list = row.closest('.dyn-list');
                 row.remove();
+                this.groupDynListAiZones(list);
                 this.updateTjanstLists();
             }
         });
@@ -2001,26 +2085,23 @@ class RiskAssessmentManager {
     markRowAiUpdate(row, kind, forslag, comment, current) {
         if (!row || !forslag) return;
         const Ai = window.AiFaltGranskning;
-        row.classList.remove('is-collapsed');
+        row.classList.add('is-collapsed');
         row.querySelector('.dyn-ai-forslag')?.remove();
         const box = document.createElement('div');
         box.className = 'dyn-ai-forslag';
         const fieldChanges = Ai ? Ai.listItemFieldChanges(kind, current, forslag) : [];
         const showKalla = kind === 'hot' || kind === 'sarbarheter';
         box.innerHTML = `
-            <div class="dyn-ai-forslag-head">
-                <span class="dyn-ai-label">AI föreslår ändring</span>
-            </div>
-            ${comment ? `<p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>` : ''}
+            ${comment ? `<p class="dyn-ai-comment dyn-ai-motivering"><span class="dyn-ai-motivering-label">Varför AI föreslår detta:</span> ${this.esc(comment)}</p>` : ''}
             ${fieldChanges.length ? `<p class="dyn-ai-change-hint"><strong>Ändras:</strong> ${this.esc(fieldChanges.join(', '))}</p>` : ''}
-            <div class="dyn-ai-form">
+            <div class="dyn-ai-form is-ai-edit-panel" hidden>
                 <div class="dyn-ai-field dyn-ai-field--titel">
                     <label class="dyn-ai-field-label">Titel</label>
                     <input type="text" class="dyn-ai-titel dyn-ai-control" value="${this.esc(forslag.titel || forslag.namn || '')}" placeholder="Titel">
                 </div>
                 <div class="dyn-ai-field dyn-ai-field--besk">
                     <label class="dyn-ai-field-label">Beskrivning</label>
-                    <textarea class="dyn-ai-besk dyn-ai-control" rows="3">${this.esc(kind === 'sarbarheter' ? this.stripEvidensLeakFromText(forslag.beskrivning || '') : (forslag.beskrivning || ''))}</textarea>
+                    <textarea class="dyn-ai-besk dyn-ai-control" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
                 </div>
                 ${showKalla ? `<div class="dyn-ai-field dyn-ai-field--kalla">
                     <label class="dyn-ai-field-label">Källa</label>
@@ -2028,11 +2109,24 @@ class RiskAssessmentManager {
                 </div>` : ''}
             </div>
             <div class="dyn-ai-actions">
-                <button type="button" class="btn btn-primary btn-sm" data-ai-apply>Kopiera in</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss>Avfärda</button>
+                <button type="button" class="btn btn-sm fill-success" data-ai-apply>Kopiera in</button>
+                <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-dismiss>Avfärda</button>
             </div>
         `;
         row.appendChild(box);
+        const editPanel = box.querySelector('.is-ai-edit-panel');
+        this.ensureAiEditPencil(row, () => {
+            if (!editPanel) return;
+            const open = editPanel.hasAttribute('hidden');
+            if (open) {
+                editPanel.removeAttribute('hidden');
+                row.classList.remove('is-collapsed');
+                editPanel.querySelector('.dyn-ai-titel')?.focus();
+            } else {
+                editPanel.setAttribute('hidden', '');
+                row.classList.add('is-collapsed');
+            }
+        });
         box.addEventListener('click', (ev) => {
             if (ev.target.closest('[data-ai-apply]')) {
                 const titel = box.querySelector('.dyn-ai-titel')?.value || '';
@@ -2052,27 +2146,40 @@ class RiskAssessmentManager {
                     else delete row.dataset.hotTyp;
                 }
                 box.remove();
+                row.querySelector('.dyn-ai-edit')?.remove();
+                this.refreshDynListAiZones(row);
             }
-            if (ev.target.closest('[data-ai-dismiss]')) box.remove();
+            if (ev.target.closest('[data-ai-dismiss]')) {
+                box.remove();
+                row.querySelector('.dyn-ai-edit')?.remove();
+                this.refreshDynListAiZones(row);
+            }
         });
     }
 
     markRowAiAdd(row, comment) {
         if (!row || !comment) return;
+        row.classList.add('is-collapsed');
         row.querySelector('.dyn-ai-bar')?.remove();
+        this.ensureAiEditPencil(row);
         const bar = document.createElement('div');
         bar.className = 'dyn-ai-bar dyn-ai-bar-add';
         bar.innerHTML = `
-            <span class="dyn-ai-label">Ny faktor</span>
-            <p class="dyn-ai-comment"><strong>Varför:</strong> ${this.esc(comment)}</p>
+            <p class="dyn-ai-comment dyn-ai-motivering"><span class="dyn-ai-motivering-label">Varför AI föreslår detta:</span> ${this.esc(comment)}</p>
             <div class="dyn-ai-actions">
-                <button type="button" class="btn btn-secondary btn-sm" data-ai-dismiss-add>Avfärda</button>
+                <button type="button" class="btn btn-sm fill-success" data-ai-accept-add>Lägg till</button>
+                <button type="button" class="btn btn-ghost btn-sm border-strong" data-ai-dismiss-add>Avfärda</button>
             </div>
         `;
         row.appendChild(bar);
         bar.addEventListener('click', (ev) => {
+            if (ev.target.closest('[data-ai-accept-add]')) {
+                this.acceptAiAddRow(row);
+            }
             if (ev.target.closest('[data-ai-dismiss-add]')) {
+                const list = row.closest('.dyn-list');
                 row.remove();
+                this.groupDynListAiZones(list);
                 this.updateTjanstLists();
             }
         });
@@ -2087,14 +2194,15 @@ class RiskAssessmentManager {
         const diff = Ai.listDiff(current, forslag);
         if (!Ai.listDiffHasChanges(diff)) return false;
         const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
+        const list = document.getElementById(listId);
+        this.unwrapDynAiZones(list);
         const rows = [...document.querySelectorAll(`#${listId} .dyn-row:not(.is-ai-add)`)];
         const note = Ai.usefulComment(item.kommentar);
-        const list = document.getElementById(listId);
-        if (list) list.querySelectorAll('.dyn-ai-list-note').forEach((el) => el.remove());
+        if (list) list.parentElement?.querySelectorAll('.dyn-ai-list-note').forEach((el) => el.remove());
         if (list && note && (diff.updated.length > 1 || (diff.updated.length && (diff.added.length || diff.removed.length)) || diff.added.length > 1 || diff.removed.length > 1)) {
             const banner = document.createElement('p');
             banner.className = 'dyn-ai-list-note dyn-ai-comment';
-            banner.innerHTML = `<strong>AI:s helhetsmotivering:</strong> ${this.esc(note)}`;
+            banner.innerHTML = `<span class="dyn-ai-motivering-label">AI:s helhetsmotivering:</span> ${this.esc(note)}`;
             list.insertAdjacentElement('beforebegin', banner);
         }
         diff.updated.forEach((row) => {
@@ -2106,16 +2214,17 @@ class RiskAssessmentManager {
             this.markRowAiRemove(rows[row.currentIndex], comment);
         });
         const add = kind === 'hot'
-            ? (rowItem) => this.addHotRow(rowItem, { expand: true, aiAdd: true })
+            ? (rowItem) => this.addHotRow(rowItem, { expand: false, aiAdd: true })
             : kind === 'sarbarheter'
-                ? (rowItem) => this.addSarbarhetRow(rowItem, { expand: true, aiAdd: true })
-                : (rowItem) => this.addAtgardRow(rowItem, { expand: true, aiAdd: true });
+                ? (rowItem) => this.addSarbarhetRow(rowItem, { expand: false, aiAdd: true })
+                : (rowItem) => this.addAtgardRow(rowItem, { expand: false, aiAdd: true });
         diff.added.forEach((rowItem) => {
             add(rowItem);
             const addedRows = list ? [...list.querySelectorAll('.dyn-row.is-ai-add')] : [];
             const row = addedRows[addedRows.length - 1];
             this.markRowAiAdd(row, Ai.getListItemComment(item, 'lagg-till', null, rowItem));
         });
+        this.groupDynListAiZones(list);
         return true;
     }
 
