@@ -14901,12 +14901,54 @@ h5.ar-subsection-title {
 }
 .tjanst-modal-content .modal-header {
     flex-shrink: 0;
-    padding: 1.2rem 1.6rem 0.95rem;
+    padding: 1.05rem 1.6rem 0.85rem;
     border-bottom: 1px solid var(--line, #e8eaee);
     align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.tjanst-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+}
+.tjanst-name-field--top {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+.tjanst-name-field--top label {
+    display: block;
+    margin: 0 0 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.tjanst-modal-name {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    font-size: 1.45rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+    line-height: 1.2;
+}
+.tjanst-modal-name:focus {
+    outline: none;
+}
+.tjanst-modal-name::placeholder {
+    color: #94a3b8;
+    font-weight: 650;
 }
 .tjanst-modal-kicker {
-    margin: 0.25rem 0 0;
+    margin: 0.15rem 0 0;
     font-size: 0.8rem;
     color: #64748b;
     font-weight: 500;
@@ -14924,10 +14966,10 @@ h5.ar-subsection-title {
 }
 .tjanst-modal-identity {
     display: grid;
-    grid-template-columns: minmax(14rem, 1.3fr) minmax(min-content, auto) auto;
+    grid-template-columns: minmax(min-content, auto) auto;
     grid-template-areas:
-        "name scores ai"
-        "hint hint hint";
+        "scores ai"
+        "hint hint";
     gap: 0.65rem 1rem;
     align-items: end;
     padding: 0 0 1rem;
@@ -14935,10 +14977,6 @@ h5.ar-subsection-title {
     background: transparent;
     border-bottom: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
-}
-.tjanst-modal-identity .tjanst-name-field {
-    grid-area: name;
-    min-width: 0;
 }
 .tjanst-modal-identity .tjanst-risk-scores {
     grid-area: scores;

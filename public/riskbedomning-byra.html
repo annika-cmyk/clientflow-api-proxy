@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260903tjanststada">
+    <link rel="stylesheet" href="styles.css?v=20260903tjanstnamn">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="riskbedomning-byra-page">
@@ -292,13 +292,17 @@
             <div id="tjanst-modal" class="modal" style="display: none;">
                 <div class="modal-content tjanst-modal-content">
                     <div class="modal-header">
-                        <div>
-                            <h3 id="tjanst-modal-title">Lägg till tjänst</h3>
-                            <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärder.</p>
+                        <div class="tjanst-modal-head">
+                            <div class="form-group tjanst-name-field tjanst-name-field--top">
+                                <label for="tjanst-name">Tjänstens namn *</label>
+                                <input type="text" id="tjanst-name" name="task-name" class="tjanst-modal-name" placeholder="t.ex. Löpande bokföring" required>
+                            </div>
+                            <button class="modal-close" type="button" onclick="closeModal('tjanst-modal')">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
-                        <button class="modal-close" type="button" onclick="closeModal('tjanst-modal')">
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <h3 id="tjanst-modal-title" class="visually-hidden">Lägg till tjänst</h3>
+                        <p class="tjanst-modal-kicker">Namn, sannolikhet och konsekvens ger inneboende risk (S×K före åtgärder). Residualrisk sätts under Åtgärder.</p>
                     </div>
                     <form id="tjanst-form" class="modal-form tjanst-form">
                         <input type="hidden" id="tjanst-record-id" name="record-id">
@@ -316,10 +320,6 @@
                             <section class="tjanst-panel is-active" data-tjanst-panel="oversikt">
                                 <div class="tjanst-panel-scroll">
                                 <div class="tjanst-modal-identity">
-                                    <div class="form-group tjanst-name-field">
-                                        <label for="tjanst-name">Tjänstens namn *</label>
-                                        <input type="text" id="tjanst-name" name="task-name" placeholder="t.ex. Löpande bokföring" required>
-                                    </div>
                                     <div class="tjanst-risk-scores">
                                         <div class="form-group">
                                             <label for="tjanst-sannolikhet" title="Hur troligt är det att något av de listade hoten realiseras, givet sårbarheterna">Sannolikhet (1–5)</label>
