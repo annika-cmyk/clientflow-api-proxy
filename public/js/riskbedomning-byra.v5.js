@@ -882,7 +882,7 @@ class RiskAssessmentManager {
             const items = sarbarheter.map((s) => `
                     <div class="vuln-item">
                         <div class="vuln-item-title">${this.esc(s.titel || '')}</div>
-                        <div class="vuln-item-desc">${this.esc(s.beskrivning || '')}</div>
+                        <div class="vuln-item-desc">${this.esc(this.stripEvidensLeakFromText(s.beskrivning || ''))}</div>
                         ${this.renderDiscreteKalla(s.kalla ?? s.källa ?? s.source)}
                     </div>
                 `).join('');
@@ -1363,7 +1363,7 @@ class RiskAssessmentManager {
         const list = document.getElementById('sarbarhet-list');
         if (!list) return;
         const titel = data.titel ?? data.title ?? '';
-        const beskrivning = data.beskrivning ?? data.description ?? '';
+        const beskrivning = this.stripEvidensLeakFromText(data.beskrivning ?? data.description ?? '');
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
         const row = document.createElement('div');
         row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
@@ -1471,10 +1471,23 @@ class RiskAssessmentManager {
         return t === 'befintlig' ? 'befintlig' : 'foreslagen';
     }
 
+    /** AI brukade läcka evidensetiketter sist i sårbarhetsbeskrivningen. */
+    stripEvidensLeakFromText(value) {
+        const re = /(?:^|\s+)(?:Bekräftad(?:\s+byråspecifik(?:\s+faktor)?)?|Tjänstetypisk(?:\s+risk)?|Saknad(?:\s+information)?|bekraftad|tjanstetypisk|saknas)\.?$/iu;
+        let out = String(value == null ? '' : value).trim();
+        if (!out) return '';
+        let prev = '';
+        while (out !== prev) {
+            prev = out;
+            out = out.replace(re, '').trim();
+        }
+        return out;
+    }
+
     collectSarbarhet() {
         return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map((row) => ({
             titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+            beskrivning: this.stripEvidensLeakFromText(row.querySelector('.dyn-besk')?.value || ''),
             kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
         })).filter((s) => s.titel || s.beskrivning || s.kalla);
     }
@@ -2102,7 +2115,7 @@ class RiskAssessmentManager {
                 </div>
                 <div class="dyn-ai-field dyn-ai-field--besk">
                     <label class="dyn-ai-field-label">Beskrivning</label>
-                    <textarea class="dyn-ai-besk dyn-ai-control" rows="3">${this.esc(forslag.beskrivning || '')}</textarea>
+                    <textarea class="dyn-ai-besk dyn-ai-control" rows="3">${this.esc(kind === 'sarbarheter' ? this.stripEvidensLeakFromText(forslag.beskrivning || '') : (forslag.beskrivning || ''))}</textarea>
                 </div>
                 ${showKalla ? `<div class="dyn-ai-field dyn-ai-field--kalla">
                     <label class="dyn-ai-field-label">Källa</label>
@@ -2131,7 +2144,8 @@ class RiskAssessmentManager {
         box.addEventListener('click', (ev) => {
             if (ev.target.closest('[data-ai-apply]')) {
                 const titel = box.querySelector('.dyn-ai-titel')?.value || '';
-                const besk = box.querySelector('.dyn-ai-besk')?.value || '';
+                let besk = box.querySelector('.dyn-ai-besk')?.value || '';
+                if (kind === 'sarbarheter') besk = this.stripEvidensLeakFromText(besk);
                 if (row.querySelector('.dyn-titel')) row.querySelector('.dyn-titel').value = titel;
                 if (row.querySelector('.dyn-besk')) row.querySelector('.dyn-besk').value = besk;
                 if (kind === 'hot' || kind === 'sarbarheter') {
