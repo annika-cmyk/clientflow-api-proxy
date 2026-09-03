@@ -15904,20 +15904,6 @@ h5.ar-subsection-title {
     flex-shrink: 0;
 }
 
-.dyn-row .dyn-typ,
-.dyn-row .dyn-kategori {
-    flex-shrink: 0;
-    font-size: 0.78rem;
-    font-weight: 700;
-    padding: 0.3rem 0.45rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #f8fafc;
-}
-
-.dyn-row .dyn-typ { min-width: 64px; }
-.dyn-row .dyn-kategori { min-width: 118px; }
-
 .dyn-row-header .dyn-titel {
     flex: 1;
     min-width: 0;
@@ -17341,19 +17327,6 @@ h5.ar-subsection-title {
 .tjanst-mall-panel[data-panel="analys"] .risk-content-section:last-child {
     padding-bottom: 0.25rem;
 }
-.evidens-badge,
-.evidens-tag {
-    display: inline-flex;
-    align-items: center;
-    border-radius: 999px;
-    padding: 0.1rem 0.45rem;
-    font-size: 0.68rem;
-    font-weight: 750;
-    letter-spacing: 0.01em;
-}
-.evidens-bekraftad { background: #dcfce7; color: #166534; }
-.evidens-tjanstetypisk { background: #e0e7ff; color: #3730a3; }
-.evidens-saknas { background: #fef3c7; color: #92400e; }
 .atgard-status-badge {
     display: inline-flex;
     border-radius: 999px;
@@ -17364,7 +17337,6 @@ h5.ar-subsection-title {
     color: #334155;
 }
 .atgard-status-badge.is-befintlig { background: #dcfce7; color: #166534; }
-.dyn-evidens,
 .dyn-atgard-status {
     border: 1px solid #d7dee8;
     border-radius: 8px;

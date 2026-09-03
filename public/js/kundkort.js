@@ -10141,16 +10141,14 @@ class CustomerCardManager {
                 <div class="risker-vald-desc">${this._nl(beskrivning)}</div>`);
         }
         if (hot.length) {
-            parts.push(`<div class="risker-vald-section-label">Hot och modus</div>`);
+            parts.push(`<div class="risker-vald-section-label">Vad kan gå fel?</div>`);
             parts.push(hot.map((h) => {
-                const typ = String(h.typ || 'PT').toUpperCase() === 'TF' ? 'TF' : 'PT';
                 const title = String(h.titel || h.title || '').trim();
                 const desc = String(h.beskrivning || h.description || '').trim();
                 const kallaHtml = this._renderKalla(h.kalla ?? h.källa ?? h.source);
                 if (!title && !desc && !kallaHtml) return '';
                 return `
                     <div class="threat-row" style="margin-bottom:0.55rem;">
-                        <span class="tag ${typ === 'TF' ? 'tag-tf' : 'tag-pt'}">${typ}</span>
                         <div class="threat-body">
                             ${title ? `<div class="threat-title">${this._esc(title)}</div>` : ''}
                             ${desc ? `<div class="threat-desc">${this._nl(desc)}</div>` : ''}
@@ -10160,17 +10158,17 @@ class CustomerCardManager {
             }).join(''));
         }
         if (sarbarheter.length) {
-            parts.push(`<div class="risker-vald-section-label">Sårbarheter</div>`);
+            parts.push(`<div class="risker-vald-section-label">Varför kan det hända hos byrån?</div>`);
             parts.push(sarbarheter.map((s) => {
-                const kat = String(s.kategori || s.category || '').trim();
                 const title = String(s.titel || s.title || '').trim();
                 const desc = String(s.beskrivning || s.description || '').trim();
-                if (!title && !desc) return '';
+                const kallaHtml = this._renderKalla(s.kalla ?? s.källa ?? s.source);
+                if (!title && !desc && !kallaHtml) return '';
                 return `
                     <div class="vuln-item" style="margin-bottom:0.55rem;">
-                        ${kat ? `<div class="tags-row"><span class="tag tag-verk">${this._esc(kat)}</span></div>` : ''}
                         ${title ? `<div class="vuln-item-title">${this._esc(title)}</div>` : ''}
                         ${desc ? `<div class="vuln-item-desc">${this._nl(desc)}</div>` : ''}
+                        ${kallaHtml}
                     </div>`;
             }).join(''));
         }
@@ -10178,7 +10176,7 @@ class CustomerCardManager {
             const TF = window.TjanstForutsattning;
             const ovriga = TF ? atgarder.filter((a) => !TF.isKundberoende(a)) : atgarder;
             if (ovriga.length) {
-                parts.push(`<div class="risker-vald-section-label">Riskreducerande åtgärder</div>`);
+                parts.push(`<div class="risker-vald-section-label">Hur hanteras risken?</div>`);
                 parts.push(ovriga.map((a) => {
                     const title = String(a.titel || a.title || a.namn || '').trim();
                     const desc = String(a.beskrivning || a.description || '').trim();
