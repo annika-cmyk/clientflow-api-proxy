@@ -18397,3 +18397,120 @@ h5.ar-subsection-title {
   .kundformular-header { flex-direction: column; }
   .kundformular-person-row { flex-direction: column; }
 }
+
+/* Byråprofil-kaskad på Övriga riskfaktorer */
+.byra-profil-kaskad {
+  margin: 0 0 1.75rem;
+}
+.byra-profil-kaskad-card {
+  border: 1px solid var(--line, #d7dde5);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  background: linear-gradient(180deg, #f7f9fc 0%, #fff 48%);
+}
+.byra-profil-kaskad-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.25rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+.byra-profil-kaskad-head h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink, #1a2332);
+}
+.byra-profil-kaskad-lead {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text, #445066);
+}
+.byra-profil-kaskad-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+.byra-profil-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 6.5rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line, #d7dde5);
+  border-radius: 8px;
+  background: #fff;
+}
+.byra-profil-chip.is-empty {
+  opacity: 0.55;
+}
+.byra-profil-chip-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text, #667288);
+}
+.byra-profil-chip-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink, #1a2332);
+}
+.byra-profil-kaskad-forslag-wrap h3 {
+  margin: 0.4rem 0 0.25rem;
+  font-size: 0.98rem;
+}
+.byra-profil-kaskad-hint,
+.byra-profil-kaskad-empty {
+  margin: 0 0 0.75rem;
+  font-size: 0.86rem;
+  color: var(--text, #445066);
+}
+.byra-profil-kaskad-forslag {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.byra-profil-forslag-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line, #d7dde5);
+  border-radius: 10px;
+  background: #fff;
+}
+.byra-profil-forslag-main {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.byra-profil-forslag-main h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+.byra-profil-forslag-meta,
+.byra-profil-forslag-why {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text, #556277);
+}
+.byra-profil-forslag-why {
+  margin-top: 0.25rem;
+}
+.byra-profil-forslag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+@media (max-width: 720px) {
+  .byra-profil-kaskad-head {
+    flex-direction: column;
+  }
+}

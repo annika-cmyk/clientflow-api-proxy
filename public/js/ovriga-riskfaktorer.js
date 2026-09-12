@@ -17,6 +17,8 @@ class RiskFactorsManager {
         this.userByraIds = [];
         this.pageScope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
         this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
+        this.byraProfil = null;
+        this._profilForslagDismissed = this.readDismissedProfilSuggestions();
 
         this.init();
     }
@@ -153,16 +155,139 @@ class RiskFactorsManager {
         await this.loadUserData();
         this.setupEventListeners();
         this.setupRoleBasedUI();
+        await this.loadByraProfilForKaskad();
         await this.loadRiskFactors();
         await this.loadKundantal();
         
         // Apply initial filtering based on user role
         this.applyFilters();
+        this.renderByraProfilKaskad();
         if (document.getElementById('riskhoj-katalog-list')) {
             this.setupRiskhojandeKatalog();
         }
         if (document.getElementById('risksank-katalog-list')) {
             this.setupRisksankandeKatalog();
+        }
+    }
+
+    readDismissedProfilSuggestions() {
+        try {
+            const raw = sessionStorage.getItem('byraProfilRiskForslagDismissed');
+            const arr = raw ? JSON.parse(raw) : [];
+            return Array.isArray(arr) ? arr.map(String) : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    persistDismissedProfilSuggestions() {
+        try {
+            sessionStorage.setItem(
+                'byraProfilRiskForslagDismissed',
+                JSON.stringify(this._profilForslagDismissed || [])
+            );
+        } catch (_) { /* ignore */ }
+    }
+
+    async loadByraProfilForKaskad() {
+        if (this.isKundriskerPage()) return;
+        this.byraProfil = null;
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra/info`);
+            if (!res.ok) return;
+            const data = await res.json();
+            this.byraProfil = data.fields || data || {};
+        } catch (err) {
+            console.warn('Kunde inte ladda byråprofil för kaskad:', err);
+        }
+    }
+
+    renderByraProfilKaskad() {
+        const root = document.getElementById('byra-profil-kaskad');
+        if (!root || this.isKundriskerPage()) return;
+        const API = window.ByraProfilRiskForslag;
+        if (!API) {
+            root.hidden = true;
+            return;
+        }
+        root.hidden = false;
+        const chips = document.getElementById('byra-profil-kaskad-chips');
+        const forslagHost = document.getElementById('byra-profil-kaskad-forslag');
+        const forslagWrap = document.getElementById('byra-profil-kaskad-forslag-wrap');
+        const empty = document.getElementById('byra-profil-kaskad-empty');
+        const summary = API.buildProfilSummary(this.byraProfil || {});
+        const answered = summary.filter((r) => r.answered);
+        if (chips) {
+            chips.innerHTML = summary.map((row) => {
+                const val = row.answered ? this.esc(row.value) : '–';
+                const cls = row.answered ? '' : ' is-empty';
+                return `<span class="byra-profil-chip${cls}" title="${this.esc(row.label)}"><span class="byra-profil-chip-label">${this.esc(row.label)}</span><span class="byra-profil-chip-value">${val}</span></span>`;
+            }).join('');
+        }
+        const open = API.filterOpenSuggestions(
+            API.suggestFromProfil(this.byraProfil || {}),
+            this.risks || [],
+            this._profilForslagDismissed || []
+        );
+        if (forslagWrap) forslagWrap.hidden = open.length === 0;
+        if (empty) empty.hidden = answered.length > 0 || open.length > 0;
+        if (forslagHost) {
+            forslagHost.innerHTML = open.map((s) => `
+                <article class="byra-profil-forslag-card" data-forslag-id="${this.esc(s.id)}">
+                    <div class="byra-profil-forslag-main">
+                        <h4>${this.esc(s.riskfaktor)}</h4>
+                        <p class="byra-profil-forslag-meta">${this.esc(s.typ)} · ${this.esc(s.triggerLabel || '')}</p>
+                        <p class="byra-profil-forslag-why">${this.esc(s.why || '')}</p>
+                    </div>
+                    <div class="byra-profil-forslag-actions">
+                        <button type="button" class="btn btn-primary btn-sm" data-profil-accept="${this.esc(s.id)}">Acceptera</button>
+                        <button type="button" class="btn btn-ghost btn-sm" data-profil-dismiss="${this.esc(s.id)}">Avfärda</button>
+                    </div>
+                </article>
+            `).join('');
+            forslagHost.querySelectorAll('[data-profil-accept]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-profil-accept');
+                    const row = open.find((s) => s.id === id);
+                    if (row) this.acceptProfilSuggestion(row);
+                });
+            });
+            forslagHost.querySelectorAll('[data-profil-dismiss]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-profil-dismiss');
+                    this.dismissProfilSuggestion(id);
+                });
+            });
+        }
+    }
+
+    dismissProfilSuggestion(id) {
+        if (!id) return;
+        const list = Array.isArray(this._profilForslagDismissed) ? this._profilForslagDismissed.slice() : [];
+        if (!list.includes(id)) list.push(id);
+        this._profilForslagDismissed = list;
+        this.persistDismissedProfilSuggestions();
+        this.renderByraProfilKaskad();
+    }
+
+    acceptProfilSuggestion(suggestion) {
+        if (!suggestion) return;
+        this.openAddModal({
+            typ: suggestion.typ,
+            riskfaktor: suggestion.riskfaktor,
+            beskrivning: suggestion.beskrivning || '',
+            ptTf: suggestion.ptTf || ''
+        });
+    }
+
+    setSelectValue(id, value) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const wanted = String(value || '');
+        if ([...el.options].some((o) => o.value === wanted)) {
+            el.value = wanted;
+        } else {
+            el.value = '';
         }
     }
 
@@ -1300,7 +1425,7 @@ class RiskFactorsManager {
         }
     }
 
-    openAddModal() {
+    openAddModal(prefill) {
         document.getElementById('add-risk-form')?.reset();
         const pt = document.getElementById('pt-tf');
         if (pt) pt.value = '';
@@ -1309,6 +1434,14 @@ class RiskFactorsManager {
             typ.selectedIndex = 1;
         } else if (typ && this.isKundriskerPage()) {
             typ.value = this.kundRiskTypLabel();
+        }
+        if (prefill && typeof prefill === 'object') {
+            if (prefill.typ) this.setSelectValue('risk-type', prefill.typ);
+            const nameEl = document.getElementById('risk-factor');
+            if (nameEl && prefill.riskfaktor) nameEl.value = prefill.riskfaktor;
+            const descEl = document.getElementById('description');
+            if (descEl && prefill.beskrivning) descEl.value = prefill.beskrivning;
+            if (prefill.ptTf) this.setSelectValue('pt-tf', prefill.ptTf);
         }
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
@@ -1395,6 +1528,7 @@ class RiskFactorsManager {
             if (response.ok) {
                 this.closeModal('add-risk-modal');
                 await this.loadRiskFactors();
+                this.renderByraProfilKaskad();
                 this.showNotification('Riskfaktor tillagd framgångsrikt', 'success');
             } else {
                 const err = await response.json().catch(() => ({}));
