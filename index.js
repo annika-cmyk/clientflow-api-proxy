@@ -9479,21 +9479,42 @@ app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
     list.unshift(stored);
     const trimmed = list.slice(0, 25);
 
-    try {
-      await axios.patch(
+    const patchRuns = () =>
+      axios.patch(
         `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
         { fields: { [AML_KOLLEN_RUNS_FIELD]: JSON.stringify(trimmed) } },
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
       );
+
+    try {
+      await patchRuns();
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message;
       if (e.response?.status === 422 && /Unknown field name/i.test(String(msg))) {
-        return res.status(422).json({
-          error: `Fältet "${AML_KOLLEN_RUNS_FIELD}" saknas i Airtable. Skapa det som Long text i KUNDDATA (eller kör POST /api/setup/airtable-aml-kollen-fields).`,
-          run: stored
-        });
+        // Skapa fältet automatiskt (kräver schema.bases:write) och försök igen.
+        try {
+          const ensured = await ensureAmlKollenRunsField({
+            airtableAccessToken,
+            airtableBaseId,
+            tableId: KUNDDATA_TABLE
+          });
+          if (!ensured.ok) {
+            return res.status(422).json({
+              error: ensured.reason || `Fältet "${AML_KOLLEN_RUNS_FIELD}" saknas i Airtable.`,
+              run: stored
+            });
+          }
+          await patchRuns();
+        } catch (e2) {
+          const msg2 = e2.response?.data?.error?.message || e2.message;
+          return res.status(422).json({
+            error: `Fältet "${AML_KOLLEN_RUNS_FIELD}" saknas i Airtable. Skapa det som Long text i KUNDDATA (eller kör POST /api/setup/airtable-aml-kollen-fields). ${msg2 || ''}`.trim(),
+            run: stored
+          });
+        }
+      } else {
+        throw e;
       }
-      throw e;
     }
 
     res.set('Cache-Control', 'no-store');
