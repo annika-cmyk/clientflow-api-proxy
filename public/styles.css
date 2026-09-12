@@ -19144,6 +19144,12 @@ body.byra-resa-page .risk-header h1 {
   line-height: 1.45;
   color: var(--text, #445066);
 }
+.byra-profil-katalogversion {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--muted, #5a6577);
+}
 .byra-profil-kaskad-chips {
   display: flex;
   flex-wrap: wrap;

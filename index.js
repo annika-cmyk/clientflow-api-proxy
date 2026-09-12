@@ -132,6 +132,7 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const ByraResa = require('./lib/byra-resa');
+const RiskFactorCatalog = require('./lib/risk-factor-catalog');
 const NavStatus = require('./lib/nav-status');
 const Kundformular = require('./lib/kundformular');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
@@ -2527,6 +2528,8 @@ const KUNDDATA_OPTIONAL_FIELDS = [
   },
   { name: 'Kund föreslagen drivande faktor', type: 'singleLineText', description: 'Vilken tjänst eller riskfaktor som gav den högsta residual-S×K.' },
   { name: 'Kund avvikelse motivering', type: 'multilineText', description: 'Obligatorisk när residual skiljer sig från den beräknade föreslagna nivån.' },
+  { name: RiskFactorCatalog.KUND_FIELDS.CATALOG_VERSION, type: 'number', description: 'Version av byråns riskfaktorkatalog som kundens residual bedömdes mot.', options: { precision: 0 } },
+  { name: RiskFactorCatalog.KUND_FIELDS.PROFILE_STATUS, type: 'singleLineText', description: 'Tomt eller behöver_omprofilering när byråns riskfaktorkatalog ändrats efter senaste bedömning.' },
   { name: TjanstForutsattning.FIELD, type: 'multilineText', description: 'JSON: per tjänst, uppfylld-status för kundberoende förutsättningar och ev. residual-override (S×K).' },
   { name: 'Verksamhet', type: 'multilineText', description: 'Vad gör kunden (byråns beskrivning av verksamheten).' },
   { name: 'Kostnader', type: 'multilineText', description: 'Kundens kostnader, leverantörer och hur betalning sker.' },
@@ -6984,6 +6987,12 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       }
       if (!KundRiskprofil.residualAvvikerFranForeslagen(nextResidual, nextSuggested)) {
         payload[KundRiskprofil.FIELDS.AVVIKELSE] = '';
+      }
+      try {
+        const catalogVersion = await readRiskFactorCatalogVersionForRequest(req);
+        Object.assign(payload, RiskFactorCatalog.kundStampFields(catalogVersion));
+      } catch (stampErr) {
+        console.warn('Kunde inte stämpla riskfaktorkatalogversion på kund:', stampErr.message);
       }
     }
     const riskaptitTransition = Riskaptit.applyOnRiskChange({
@@ -13172,6 +13181,45 @@ async function ensureByraRiskaptitField(airtableToken, baseId) {
   }
 }
 
+
+/**
+ * Bumpa byråns riskfaktorkatalogversion + logga risk_event (regelmotor-embryo).
+ * Anropas efter create/update/delete av övriga riskfaktorer.
+ */
+async function bumpRiskFactorCatalogForRequest(req, { refId = '', namn = '' } = {}) {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return null;
+    const byra = await getByraerRecordForUser(req);
+    if (byra.error || !byra.record) return null;
+    await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
+    const raw = (byra.record.fields || {})[ByraResa.BYRA_RESA_STATE_FIELD];
+    let state = ByraResa.parseByraResaState(raw);
+    const actor = req.user?.email || req.user?.id || '';
+    const bumped = RiskFactorCatalog.bumpCatalogVersion(state, { refId, namn, by: actor });
+    state = ByraResa.appendRiskEvent(bumped.state, bumped.event);
+    await patchByraerRecordFields(airtableAccessToken, airtableBaseId, byra.record.id, {
+      [ByraResa.BYRA_RESA_STATE_FIELD]: ByraResa.serializeByraResaState(state)
+    });
+    return bumped.version;
+  } catch (err) {
+    console.warn('Kunde inte bumpa riskfaktorkatalog:', err.message);
+    return null;
+  }
+}
+
+async function readRiskFactorCatalogVersionForRequest(req) {
+  try {
+    const byra = await getByraerRecordForUser(req);
+    if (byra.error || !byra.record) return RiskFactorCatalog.DEFAULT_VERSION;
+    const raw = (byra.record.fields || {})[ByraResa.BYRA_RESA_STATE_FIELD];
+    return RiskFactorCatalog.readCatalogVersion(ByraResa.parseByraResaState(raw));
+  } catch (_) {
+    return RiskFactorCatalog.DEFAULT_VERSION;
+  }
+}
+
 async function ensureByraResaStateField(airtableToken, baseId) {
   const fieldName = ByraResa.BYRA_RESA_STATE_FIELD;
   const byraTable = await getByraerTableMeta(airtableToken, baseId);
@@ -15419,7 +15467,12 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
     if (!incoming || typeof incoming !== 'object') {
       return res.status(400).json({ error: 'Body måste innehålla { state: object }' });
     }
-    const state = ByraResa.buildByraResaState(incoming);
+    const existingState = ByraResa.parseByraResaState(record.fields?.[ByraResa.BYRA_RESA_STATE_FIELD]);
+    const state = ByraResa.buildByraResaState({
+      ...incoming,
+      // Katalogversion ägs av servern (bumpas vid riskfaktor-skrivning), inte av klienten.
+      riskFactorCatalogVersion: existingState.riskFactorCatalogVersion
+    });
     if (state.steps[8] && !ByraResa.kallaCatalogComplete(state.kalla, state.customKallor)) {
       return res.status(400).json({
         error: 'Källkatalogen måste vara ifylld innan steg 8 (godkännande) kan markeras klart.',
@@ -16414,6 +16467,9 @@ app.post('/api/risk-factors', authenticateToken, async (req, res) => {
       duration: duration
     });
     const createdFaktor = response.data;
+    const createdNamn = (createdFaktor.fields || {}).Riskfaktor || riskData.Riskfaktor || '';
+    bumpRiskFactorCatalogForRequest(req, { refId: createdFaktor.id, namn: createdNamn })
+      .catch((err) => console.warn('katalogbump efter create:', err.message));
     actorForRequest(req).then(async (actor) => {
       const f = createdFaktor.fields || {};
       await auditHooks.logSxkChange({
@@ -16519,6 +16575,9 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       duration: duration
     });
     const afterFaktor = response.data.fields || { ...beforeFaktor, ...airtableFields };
+    const updatedNamn = afterFaktor.Riskfaktor || beforeFaktor.Riskfaktor || '';
+    bumpRiskFactorCatalogForRequest(req, { refId: id, namn: updatedNamn })
+      .catch((err) => console.warn('katalogbump efter update:', err.message));
     actorForRequest(req).then(async (actor) => {
       await auditHooks.logSxkChange({
         write: writeAuditEvent,
@@ -16585,6 +16644,8 @@ app.delete('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       message: 'Riskfaktor borttagen',
       duration: duration
     });
+    bumpRiskFactorCatalogForRequest(req, { refId: id, namn: '' })
+      .catch((err) => console.warn('katalogbump efter delete:', err.message));
 
   } catch (error) {
     const duration = Date.now() - startTime;

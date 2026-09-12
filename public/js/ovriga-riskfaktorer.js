@@ -18,6 +18,7 @@ class RiskFactorsManager {
         this.pageScope = (document.body && document.body.dataset.riskPageScope) || 'ovriga';
         this.kundAntalMaps = { riskfaktorer: {}, tjanster: {}, varningsflaggor: {}, risksankande: {} };
         this.byraProfil = null;
+        this.riskFactorCatalogVersion = 1;
         this._profilForslagDismissed = this.readDismissedProfilSuggestions();
 
         this.init();
@@ -155,7 +156,10 @@ class RiskFactorsManager {
         await this.loadUserData();
         this.setupEventListeners();
         this.setupRoleBasedUI();
-        await this.loadByraProfilForKaskad();
+        await Promise.all([
+            this.loadByraProfilForKaskad(),
+            this.loadRiskFactorCatalogVersion()
+        ]);
         await this.loadRiskFactors();
         await this.loadKundantal();
         
@@ -202,6 +206,30 @@ class RiskFactorsManager {
         }
     }
 
+    async loadRiskFactorCatalogVersion() {
+        if (this.isKundriskerPage()) return;
+        try {
+            const res = await riskAuthFetch(`${window.apiConfig.baseUrl}/api/byra-resa`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const v = Number(data?.state?.riskFactorCatalogVersion);
+            this.riskFactorCatalogVersion = (Number.isFinite(v) && v >= 1) ? Math.floor(v) : 1;
+        } catch (err) {
+            console.warn('Kunde inte ladda riskfaktorkatalogversion:', err);
+        }
+    }
+
+    renderCatalogVersion() {
+        const wrap = document.getElementById('byra-profil-katalogversion');
+        const nr = document.getElementById('byra-profil-katalogversion-nr');
+        if (!wrap || !nr) return;
+        const v = (Number.isFinite(this.riskFactorCatalogVersion) && this.riskFactorCatalogVersion >= 1)
+            ? Math.floor(this.riskFactorCatalogVersion)
+            : 1;
+        nr.textContent = String(v);
+        wrap.hidden = false;
+    }
+
     renderByraProfilKaskad() {
         const root = document.getElementById('byra-profil-kaskad');
         if (!root || this.isKundriskerPage()) return;
@@ -211,6 +239,7 @@ class RiskFactorsManager {
             return;
         }
         root.hidden = false;
+        this.renderCatalogVersion();
         const chips = document.getElementById('byra-profil-kaskad-chips');
         const forslagHost = document.getElementById('byra-profil-kaskad-forslag');
         const forslagWrap = document.getElementById('byra-profil-kaskad-forslag-wrap');
@@ -1627,6 +1656,7 @@ class RiskFactorsManager {
             if (response.ok) {
                 this.closeModal('add-risk-modal');
                 await this.loadRiskFactors();
+                await this.loadRiskFactorCatalogVersion();
                 this.renderByraProfilKaskad();
                 this.showNotification('Riskfaktor tillagd framgångsrikt', 'success');
             } else {
@@ -1673,6 +1703,8 @@ class RiskFactorsManager {
             if (response.ok) {
                 this.closeModal('edit-risk-modal');
                 await this.loadRiskFactors();
+                await this.loadRiskFactorCatalogVersion();
+                this.renderByraProfilKaskad();
                 this.showNotification('Riskfaktor uppdaterad framgångsrikt', 'success');
             } else {
                 const err = await response.json().catch(() => ({}));
@@ -1755,6 +1787,8 @@ class RiskFactorsManager {
 
             if (response.ok) {
                 await this.loadRiskFactors();
+                await this.loadRiskFactorCatalogVersion();
+                this.renderByraProfilKaskad();
                 this.showNotification('Riskfaktor borttagen', 'success');
             } else {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
