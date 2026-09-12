@@ -177,13 +177,20 @@ class RiskAssessmentManager {
         if (mallId !== this._modalUtforandeMallId) this.renderModalUtforande(mallId);
     }
 
+    setUtforandeKatalogFooterVisible(visible) {
+        const footer = document.getElementById('tjanst-katalog-footer');
+        const addBtn = document.getElementById('tjanst-utforande-add-custom');
+        // Footer-knapparna ersätter header-knappen "+ Lägg till egen tjänst".
+        if (addBtn) addBtn.hidden = true;
+        if (footer) footer.hidden = !visible;
+    }
+
     renderUtforandeKatalog() {
         const host = document.getElementById('tjanst-utforande-katalog');
         const Mallar = window.TjanstUtforandeMallar;
         if (!host || !Mallar) return;
-        const addBtn = document.getElementById('tjanst-utforande-add-custom');
         if (Mallar.needsKatalogChoice && Mallar.needsKatalogChoice(this.utforandeState)) {
-            if (addBtn) addBtn.hidden = true;
+            this.setUtforandeKatalogFooterVisible(false);
             host.innerHTML = `
                 <div class="tjanst-katalog-val" role="group" aria-label="Välj hur ni vill bygga tjänstekatalogen">
                     <h4 class="tjanst-katalog-val-title">Hur vill ni börja?</h4>
@@ -214,21 +221,13 @@ class RiskAssessmentManager {
             });
             return;
         }
-        // Footer-knapparna ersätter toppranknappen.
-        if (addBtn) addBtn.hidden = true;
+        this.setUtforandeKatalogFooterVisible(true);
         const cards = Mallar.listCatalogCards(this.utforandeState);
-        const footer = `
-            <div class="tjanst-katalog-footer" role="group" aria-label="Lägg till tjänst">
-                <button type="button" class="btn btn-secondary" data-add-standard-tjanst>Lägg till standardtjänst</button>
-                <button type="button" class="btn btn-primary" data-add-custom-tjanst>Skapa egen tjänst</button>
-            </div>`;
         const emptyHtml = !cards.length
             ? `<div class="tjanst-katalog-empty"><p>Inga tjänster ännu. Lägg till en standardtjänst eller skapa en egen.</p></div>`
             : '';
         const cardsHtml = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
-        host.innerHTML = emptyHtml + cardsHtml + footer;
-        host.querySelector('[data-add-custom-tjanst]')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
-        host.querySelector('[data-add-standard-tjanst]')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
+        host.innerHTML = emptyHtml + cardsHtml;
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
@@ -264,7 +263,9 @@ class RiskAssessmentManager {
                 if (open) overview.removeAttribute('hidden');
                 else overview.setAttribute('hidden', '');
                 btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-                btn.textContent = open ? 'Dölj översikt' : 'Visa översikt';
+                btn.innerHTML = open
+                    ? '<i class="fas fa-chevron-up" aria-hidden="true"></i> Dölj översikt'
+                    : '<i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt';
             });
             cardEl.querySelector('[data-delete-tjanst]')?.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -398,7 +399,7 @@ class RiskAssessmentManager {
         const deleteLabel = lockedDelete
             ? `Kan inte raderas — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : 'Ta bort tjänsten från katalogen';
-        const overviewHtml = existing ? this.renderUtforandeOverview(existing, entry) : '';
+        const overviewHtml = existing ? this.renderUtforandeOverview(existing, entry, template) : '';
         const analysHtml = existing
             ? `<div class="tjanst-mall-overview" hidden>${overviewHtml}</div>`
             : `<div class="tjanst-mall-empty">
@@ -410,7 +411,7 @@ class RiskAssessmentManager {
                 </div>`;
         const deleteBtn = `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
-            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false">Visa översikt</button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
             : '';
         return `
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
@@ -445,7 +446,7 @@ class RiskAssessmentManager {
         `;
     }
 
-    renderUtforandeOverview(risk, entry) {
+    renderUtforandeOverview(risk, entry, template) {
         const f = (risk && risk.fields) || {};
         const scored = (window.RiskSkala && RiskSkala.readTjanstRisk(f)) || {};
         const riskLevel = scored.level || (window.RiskSkala && RiskSkala.riskLabelSv(f['Riskbedömning'])) || f['Riskbedömning'] || '';
@@ -458,15 +459,40 @@ class RiskAssessmentManager {
             if (Array.isArray(v)) return v.length > 0;
             return String(v || '').trim() !== '';
         });
+        const answerLines = this.renderUtforandeOverviewAnswers(template, answers);
         return `
             <div class="tjanst-mall-summary">
                 <p class="tjanst-mall-summary-line"><strong>Inneboende risk:</strong> ${this.esc(riskLevel || 'Ej satt')}</p>
                 ${residualLevel ? `<p class="tjanst-mall-summary-line"><strong>Residualrisk:</strong> ${this.esc(residualLevel)}</p>` : ''}
                 ${motIn ? `<p class="tjanst-mall-summary-text">${this.esc(motIn.slice(0, 280))}${motIn.length > 280 ? '…' : ''}</p>` : ''}
                 ${motRes ? `<p class="tjanst-mall-summary-text"><strong>Efter åtgärder:</strong> ${this.esc(motRes.slice(0, 220))}${motRes.length > 220 ? '…' : ''}</p>` : ''}
+                ${answerLines}
                 <p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>
             </div>
         `;
+    }
+
+    renderUtforandeOverviewAnswers(template, answers) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !template || !answers) return '';
+        const skip = new Set(['hamtaClientflowStatistik', 'antalKunderTjanst']);
+        const questions = Mallar.questionsForTemplate(template) || [];
+        const lines = [];
+        for (const q of questions) {
+            if (!q || skip.has(q.id)) continue;
+            const raw = answers[q.id];
+            let text = '';
+            if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
+            else text = String(raw || '').trim();
+            if (!text) continue;
+            const shortLabel = String(q.label || q.id).replace(/\?$/, '');
+            const clippedLabel = shortLabel.length > 72 ? shortLabel.slice(0, 71) + '…' : shortLabel;
+            const clippedVal = text.length > 120 ? text.slice(0, 119) + '…' : text;
+            lines.push(`<li><span class="tjanst-mall-summary-q">${this.esc(clippedLabel)}</span> <span class="tjanst-mall-summary-a">${this.esc(clippedVal)}</span></li>`);
+            if (lines.length >= 4) break;
+        }
+        if (!lines.length) return '';
+        return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
     }
 
     renderUtforandeQuestion(mallId, question, entry) {
@@ -961,6 +987,8 @@ class RiskAssessmentManager {
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
         document.getElementById('tjanst-name')?.addEventListener('input', () => this.syncModalUtforandeFromNamn());
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
+        document.getElementById('tjanst-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
+        document.getElementById('tjanst-add-standard')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });
