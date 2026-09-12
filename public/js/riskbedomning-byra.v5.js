@@ -263,9 +263,7 @@ class RiskAssessmentManager {
                 if (open) overview.removeAttribute('hidden');
                 else overview.setAttribute('hidden', '');
                 btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-                btn.innerHTML = open
-                    ? '<i class="fas fa-chevron-up" aria-hidden="true"></i> Dölj översikt'
-                    : '<i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt';
+                btn.textContent = open ? 'Dölj översikt' : 'Visa översikt';
             });
             cardEl.querySelector('[data-delete-tjanst]')?.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -399,7 +397,7 @@ class RiskAssessmentManager {
         const deleteLabel = lockedDelete
             ? `Kan inte raderas — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : 'Ta bort tjänsten från katalogen';
-        const overviewHtml = existing ? this.renderUtforandeOverview(existing, entry, template) : '';
+        const overviewHtml = existing ? this.renderUtforandeOverview(existing, entry) : '';
         const analysHtml = existing
             ? `<div class="tjanst-mall-overview" hidden>${overviewHtml}</div>`
             : `<div class="tjanst-mall-empty">
@@ -411,7 +409,7 @@ class RiskAssessmentManager {
                 </div>`;
         const deleteBtn = `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
-            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
+            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false">Visa översikt</button>`
             : '';
         return `
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
@@ -446,7 +444,7 @@ class RiskAssessmentManager {
         `;
     }
 
-    renderUtforandeOverview(risk, entry, template) {
+    renderUtforandeOverview(risk, entry) {
         const f = (risk && risk.fields) || {};
         const scored = (window.RiskSkala && RiskSkala.readTjanstRisk(f)) || {};
         const riskLevel = scored.level || (window.RiskSkala && RiskSkala.riskLabelSv(f['Riskbedömning'])) || f['Riskbedömning'] || '';
@@ -459,40 +457,15 @@ class RiskAssessmentManager {
             if (Array.isArray(v)) return v.length > 0;
             return String(v || '').trim() !== '';
         });
-        const answerLines = this.renderUtforandeOverviewAnswers(template, answers);
         return `
             <div class="tjanst-mall-summary">
                 <p class="tjanst-mall-summary-line"><strong>Inneboende risk:</strong> ${this.esc(riskLevel || 'Ej satt')}</p>
                 ${residualLevel ? `<p class="tjanst-mall-summary-line"><strong>Residualrisk:</strong> ${this.esc(residualLevel)}</p>` : ''}
                 ${motIn ? `<p class="tjanst-mall-summary-text">${this.esc(motIn.slice(0, 280))}${motIn.length > 280 ? '…' : ''}</p>` : ''}
                 ${motRes ? `<p class="tjanst-mall-summary-text"><strong>Efter åtgärder:</strong> ${this.esc(motRes.slice(0, 220))}${motRes.length > 220 ? '…' : ''}</p>` : ''}
-                ${answerLines}
                 <p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>
             </div>
         `;
-    }
-
-    renderUtforandeOverviewAnswers(template, answers) {
-        const Mallar = window.TjanstUtforandeMallar;
-        if (!Mallar || !template || !answers) return '';
-        const skip = new Set(['hamtaClientflowStatistik', 'antalKunderTjanst']);
-        const questions = Mallar.questionsForTemplate(template) || [];
-        const lines = [];
-        for (const q of questions) {
-            if (!q || skip.has(q.id)) continue;
-            const raw = answers[q.id];
-            let text = '';
-            if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
-            else text = String(raw || '').trim();
-            if (!text) continue;
-            const shortLabel = String(q.label || q.id).replace(/\?$/, '');
-            const clippedLabel = shortLabel.length > 72 ? shortLabel.slice(0, 71) + '…' : shortLabel;
-            const clippedVal = text.length > 120 ? text.slice(0, 119) + '…' : text;
-            lines.push(`<li><span class="tjanst-mall-summary-q">${this.esc(clippedLabel)}</span> <span class="tjanst-mall-summary-a">${this.esc(clippedVal)}</span></li>`);
-            if (lines.length >= 4) break;
-        }
-        if (!lines.length) return '';
-        return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
     }
 
     renderUtforandeQuestion(mallId, question, entry) {
