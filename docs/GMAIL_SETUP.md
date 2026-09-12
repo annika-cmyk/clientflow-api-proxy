@@ -44,3 +44,24 @@ Tokens lagras krypterade (AES-256-GCM).
 2. Klicka **Koppla Gmail** och godkänn behörigheter
 3. Se inkorg från etiketter under KUNDER
 4. Skicka nya mejl – de går ut från ditt Gmail och kan etiketteras med kundnamn
+
+---
+
+# Samarbete – BankID-skyddade frågor
+
+Frågor i *Begär underlag* kan vara **offentliga** (syns i mejlet) eller **BankID-skyddade** (bara teaser i mejlet; kunden ser/svarar efter legitimering på `samarbete-svar.html`).
+
+## Miljövariabler
+
+```
+# mock (default) | disabled | provider (när GrandID/Criipto finns)
+SAMARBETE_BANKID_MODE=mock
+# HMAC-hemlighet för sessionscookie (annars GMAIL_TOKEN_SECRET / JWT_SECRET)
+SAMARBETE_BANKID_SECRET=...
+
+# Senare, när riktig provider kopplas:
+# GRANDID_API_KEY=...
+# CRIIPTO_DOMAIN=...
+```
+
+I demoläge slutförs BankID automatiskt efter ~2,5 s och sätter en HttpOnly-cookie. Svar på BankID-frågor sparas med `verifiedByBankId` i svar-JSON.

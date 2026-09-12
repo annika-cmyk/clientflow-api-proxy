@@ -8140,6 +8140,61 @@ button.document-list-date--editable:focus-visible {
 .samarbete-file-req-icon { font-size: 1rem; }
 .samarbete-file-req-wrap.is-checked .samarbete-file-req-icon { color: var(--error); }
 .samarbete-file-req-wrap.is-checked:hover { color: #b91c1c; background: #fef2f2; }
+.samarbete-bankid-req-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-faint);
+  background: var(--panel);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.samarbete-bankid-req-wrap .samarbete-bankid-req-icon { display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.samarbete-bankid-req-wrap:hover { color: var(--text); background: var(--line); }
+.samarbete-bankid-req-wrap .samarbete-bankid-required-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.samarbete-bankid-req-wrap.is-checked {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+.samarbete-bankid-req-wrap.is-checked .samarbete-bankid-req-icon { color: #0f766e; }
+.samarbete-items-hint { font-size: 0.8rem; color: #64748b; margin: 0.35rem 0 0; }
+.samarbete-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.samarbete-nav-hint {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.samarbete-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  margin-left: 0.35rem;
+}
 .samarbete-item-remove { color: var(--ink-3); }
 .samarbete-item-remove:hover { color: var(--error); }
 .btn-outline-danger { color: var(--error); border: 1px solid #fecaca; }

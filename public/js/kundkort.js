@@ -14462,6 +14462,15 @@ class CustomerCardManager {
         return null;
     }
 
+    _stripSamarbeteMarkers(line) {
+        return String(line || '')
+            .replace(/^\d+\.\s*/, '')
+            .replace(/^\[bankid\]\s*/i, '')
+            .replace(/\s*\[bankid\]\s*$/i, '')
+            .replace(/\s*\[fil obligatorisk\]\s*$/gi, '')
+            .trim();
+    }
+
     buildSamarbeteQaTableHtml(titleLines, answersArray, attachments, opts = {}) {
         const escape = opts.escape || ((s) => this.escapeDocHtml(s));
         const linkFn = opts.attachmentLink;
@@ -14473,7 +14482,10 @@ class CustomerCardManager {
         const usedKeys = new Set();
         let html = '<div class="samarbete-qa-table"><div class="samarbete-qa-header"><span class="samarbete-qa-col-q">FRÅGA</span><span class="samarbete-qa-col-a">SVAR</span></div><ul class="samarbete-response-list samarbete-response-list--cols">';
         lines.forEach((line, idx) => {
-            const qShort = String(line || '').slice(0, qMaxLen);
+            const rawLine = String(line || '');
+            const requiresBankId = /\[bankid\]/i.test(rawLine);
+            const cleanLine = this._stripSamarbeteMarkers(rawLine);
+            const qShort = cleanLine.slice(0, qMaxLen);
             const a = (Array.isArray(answersArray) && answersArray[idx]) ? answersArray[idx] : {};
             const textRaw = (a && a.text) ? String(a.text).trim() : '';
             const att = this.matchSamarbeteAttachment(attachments, a, usedKeys);
@@ -14485,8 +14497,17 @@ class CustomerCardManager {
                 const fn = escape(String(a.filename || a.attachmentFilename));
                 parts.push('<span class="samarbete-missing-file" title="Filen saknas i Airtable">⚠ ' + fn + ' (saknas)</span>');
             }
+            if (a && a.verifiedByBankId) {
+                const who = a.verifiedName ? ` (${escape(a.verifiedName)})` : '';
+                parts.push(`<span class="samarbete-verified-badge" title="Svarat efter BankID-legitimering"><i class="fas fa-id-card"></i> Verifierat${who}</span>`);
+            } else if (requiresBankId && !parts.length) {
+                parts.push('<span class="samarbete-items-hint" style="margin:0">BankID-fråga</span>');
+            }
             const svar = parts.length ? parts.join(' · ') : '—';
-            html += `<li class="samarbete-response-row"><div class="samarbete-response-q">${escape(qShort)}${qShort.length >= qMaxLen ? '…' : ''}</div><div class="samarbete-response-a">${svar}</div></li>`;
+            const bankIdQ = requiresBankId
+                ? ' <span class="samarbete-verified-badge" style="opacity:.85" title="Kräver BankID"><i class="fas fa-lock"></i> BankID</span>'
+                : '';
+            html += `<li class="samarbete-response-row"><div class="samarbete-response-q">${escape(qShort)}${qShort.length >= qMaxLen ? '…' : ''}${bankIdQ}</div><div class="samarbete-response-a">${svar}</div></li>`;
         });
         html += '</ul>';
         const extra = (attachments || []).filter((att) => {
@@ -14569,7 +14590,13 @@ class CustomerCardManager {
         const pending = requests.filter(r => (r.status || 'Väntar') === 'Väntar' && !isArchived(r));
         const answered = requests.filter(r => (r.status || '') === 'Besvarad' && !isArchived(r));
 
-        const stripFileObligatorisk = (s) => (s || '').replace(/\s*\[fil obligatorisk\]\s*$/gi, '').trim();
+        const stripMarkers = (s) => this._stripSamarbeteMarkers(s);
+        const titleLinesFrom = (title) => String(title || '')
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => s.replace(/^\d+\.\s*/, '').trim())
+            .filter(Boolean);
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
         const fmtDeadline = (d) => d ? new Date(d).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const renderHiddenLinkInput = (req) => {
@@ -14608,8 +14635,7 @@ class CustomerCardManager {
         const pendingItems = pending.map(req => {
             const created = fmtDate(req.createdAt);
             const deadline = fmtDeadline(req.deadline);
-            const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
-            const titleLines = titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+            const titleLines = titleLinesFrom(req.title || 'Förfrågan');
             const n = titleLines.length;
             const answersArray = parseAnswersArray(req.responseText);
             const attachments = Array.isArray(req.responseAttachment) ? req.responseAttachment : [];
@@ -14663,9 +14689,8 @@ class CustomerCardManager {
             if (rawText && rawText.startsWith('[')) {
                 try { answersArray = JSON.parse(rawText); } catch (_) {}
             }
-            const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
-            const titleLines = titleFull.split('\n').map(s => s.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
-            const titleFirst = titleLines[0] || 'Förfrågan';
+            const titleLines = titleLinesFrom(req.title || 'Förfrågan');
+            const titleFirst = titleLines[0] ? stripMarkers(titleLines[0]) : 'Förfrågan';
             const numPoints = titleLines.length;
 
             if (numPoints > 0 || (Array.isArray(answersArray) && answersArray.length > 0)) {
@@ -14713,8 +14738,8 @@ class CustomerCardManager {
             const created = fmtDate(req.createdAt);
             const answeredAt = fmtDate(req.answeredAt);
             const deadline = fmtDeadline(req.deadline);
-            const titleFull = stripFileObligatorisk((req.title || 'Förfrågan').trim());
-            const n = titleFull.split('\n').filter(Boolean).length;
+            const titleLinesArch = titleLinesFrom(req.title || 'Förfrågan');
+            const n = titleLinesArch.length;
             const headerLine = `${req.recipientName || '—'} · Skickad den ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}${req.answeredAt ? ' · Besvarad: ' + answeredAt : ''}`;
             return `
                 <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
@@ -14753,8 +14778,9 @@ class CustomerCardManager {
         const draftItems = drafts.map(req => {
             const created = fmtDate(req.createdAt);
             const deadline = fmtDeadline(req.deadline);
-            const titleFull = stripFileObligatorisk((req.title || 'Utkast').trim());
-            const n = titleFull.split('\n').filter(Boolean).length;
+            const titleLinesDraft = titleLinesFrom(req.title || 'Utkast');
+            const n = titleLinesDraft.length;
+            const preview = titleLinesDraft.map((l) => stripMarkers(l)).join('\n');
             const headerLine = `${req.recipientName || '—'} · Utkast · Skapat ${created}${deadline ? ` · Deadline ${deadline}` : ''} · ${n} ${n === 1 ? 'punkt' : 'punkter'}`;
             return `
                 <div class="samarbete-list-item samarbete-list-item--collapsible collapsed">
@@ -14767,7 +14793,7 @@ class CustomerCardManager {
                     <div class="samarbete-item-collapse">
                         <div class="samarbete-item-body samarbete-response-block">
                             <div class="samarbete-block">
-                                <div style="white-space:pre-line; color:#334155;">${this.escapeDocHtml(titleFull)}</div>
+                                <div style="white-space:pre-line; color:#334155;">${this.escapeDocHtml(preview)}</div>
                             </div>
                         </div>
                         <div class="samarbete-item-actions">
@@ -14781,6 +14807,17 @@ class CustomerCardManager {
 
         content.innerHTML = `
             <div class="documentation-content documentation-cards">
+                <div class="samarbete-nav" role="navigation" aria-label="Samarbete">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.openBegarUnderlagModal()">
+                        <i class="fas fa-plus"></i> Nytt
+                    </button>
+                    <a class="btn btn-secondary btn-sm" href="#samarbete-olast">${answered.length ? `<strong>${answered.length}</strong> ` : ''}Oläst</a>
+                    <a class="btn btn-secondary btn-sm" href="#samarbete-skickat">Skickat${pending.length ? ` (${pending.length})` : ''}</a>
+                    <a class="btn btn-secondary btn-sm" href="#samarbete-hanterat">Hanterat${archived.length ? ` (${archived.length})` : ''}</a>
+                    <a class="btn btn-ghost btn-sm" href="mejl.html?customerId=${encodeURIComponent(this.customerId || '')}" title="Öppna kundmejl via Gmail">
+                        <i class="fas fa-envelope"></i> Mejl
+                    </a>
+                </div>
                 <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                     <div class="collapsible-header">
                         <div class="collapsible-title"><i class="fas fa-pen"></i> Utkast</div>
@@ -14789,37 +14826,29 @@ class CustomerCardManager {
                         ${drafts.length ? `<div class="samarbete-list">${draftItems}</div>` : '<p class="samarbete-empty">Inga utkast.</p>'}
                     </div>
                 </div>
-                <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
+                <div id="samarbete-olast" class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                     <div class="collapsible-header">
-                        <div class="collapsible-title"><i class="fas fa-clock"></i> Väntande förfrågningar</div>
+                        <div class="collapsible-title"><i class="fas fa-envelope-open"></i> Oläst <span class="samarbete-nav-hint">– nya svar från kund</span></div>
                     </div>
                     <div class="collapsible-body">
-                        ${pending.length ? `<div class="samarbete-list">${pendingItems}</div>` : '<p class="samarbete-empty">Inga väntande förfrågningar.</p>'}
+                        ${answered.length ? `<div class="samarbete-list">${answeredItems}</div>` : '<p class="samarbete-empty">Inga olästa svar.</p>'}
                     </div>
                 </div>
-                <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
+                <div id="samarbete-skickat" class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                     <div class="collapsible-header">
-                        <div class="collapsible-title"><i class="fas fa-check-circle"></i> Besvarade förfrågningar</div>
+                        <div class="collapsible-title"><i class="fas fa-paper-plane"></i> Skickat <span class="samarbete-nav-hint">– väntar på kund</span></div>
                     </div>
                     <div class="collapsible-body">
-                        ${answered.length ? `<div class="samarbete-list">${answeredItems}</div>` : '<p class="samarbete-empty">Inga besvarade förfrågningar ännu.</p>'}
+                        ${pending.length ? `<div class="samarbete-list">${pendingItems}</div>` : '<p class="samarbete-empty">Inga skickade förfrågningar.</p>'}
                     </div>
                 </div>
-                <div class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
+                <div id="samarbete-hanterat" class="documentation-card kyc-section collapsible-card collapsible-card--kyc">
                     <div class="collapsible-header">
-                        <div class="collapsible-title"><i class="fas fa-archive"></i> Arkiverade förfrågningar</div>
+                        <div class="collapsible-title"><i class="fas fa-check-double"></i> Hanterat</div>
                     </div>
                     <div class="collapsible-body">
-                        ${archived.length ? `<div class="samarbete-list">${archivedItems}</div>` : '<p class="samarbete-empty">Inga arkiverade förfrågningar.</p>'}
+                        ${archived.length ? `<div class="samarbete-list">${archivedItems}</div>` : '<p class="samarbete-empty">Inga hanterade förfrågningar.</p>'}
                     </div>
-                </div>
-                <div class="document-list-actions">
-                    <button class="btn btn-primary btn-sm" onclick="customerCardManager.openBegarUnderlagModal()">
-                        <i class="fas fa-paper-plane"></i> Begär underlag
-                    </button>
-                    <a class="btn btn-secondary btn-sm" href="mejl.html?customerId=${encodeURIComponent(this.customerId || '')}" title="Öppna kundmejl via Gmail">
-                        <i class="fas fa-envelope"></i> Mejl
-                    </a>
                 </div>
             </div>`;
         if (!content._samarbeteToggleBound) {
@@ -15046,9 +15075,14 @@ class CustomerCardManager {
                                         <input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="0">
                                         <span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span>
                                     </label>
+                                    <label class="samarbete-bankid-req-wrap" title="Kräv BankID – frågan syns inte i mejlet, bara efter legitimering">
+                                        <input type="checkbox" class="samarbete-bankid-required samarbete-bankid-required-input" data-item="0">
+                                        <span class="samarbete-bankid-req-icon"><i class="fas fa-id-card"></i></span>
+                                    </label>
                                     <button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>
                                 </div>
                             </div>
+                            <p class="samarbete-items-hint"><i class="fas fa-id-card"></i> BankID-ikon = frågan skickas inte i mejlet utan kräver legitimering. Fil-ikon = bilaga krävs.</p>
                             <button type="button" class="btn btn-ghost btn-sm" id="samarbete-add-item" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Lägg till fler frågor</button>
                         </div>
                         <div class="form-group">
@@ -15119,7 +15153,7 @@ class CustomerCardManager {
                 const n = wrapEl.querySelectorAll('.samarbete-item-row').length;
                 const row = document.createElement('div');
                 row.className = 'samarbete-item-row';
-                row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. ytterligare underlag eller fråga" data-item="${n}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${n}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
+                row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. ytterligare underlag eller fråga" data-item="${n}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${n}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><label class="samarbete-bankid-req-wrap" title="Kräv BankID – frågan syns inte i mejlet"><input type="checkbox" class="samarbete-bankid-required samarbete-bankid-required-input" data-item="${n}"><span class="samarbete-bankid-req-icon"><i class="fas fa-id-card"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
                 wrapEl.appendChild(row);
                 row.querySelector('.samarbete-item-remove').addEventListener('click', () => { row.remove(); });
             });
@@ -15134,6 +15168,14 @@ class CustomerCardManager {
                     if (wrap) {
                         wrap.classList.toggle('is-checked', chk.checked);
                         wrap.title = chk.checked ? 'Fil krävs – klicka för att ta bort kravet' : 'Klicka för att kräva fil från kunden';
+                    }
+                }
+                const bid = e.target.closest('.samarbete-bankid-required-input');
+                if (bid) {
+                    const wrap = bid.closest('.samarbete-bankid-req-wrap');
+                    if (wrap) {
+                        wrap.classList.toggle('is-checked', bid.checked);
+                        wrap.title = bid.checked ? 'BankID krävs – klicka för att ta bort' : 'Kräv BankID – frågan syns inte i mejlet';
                     }
                 }
             });
@@ -15156,9 +15198,23 @@ class CustomerCardManager {
                 if (lines.length) {
                     wrapEl.innerHTML = '';
                     lines.forEach((line, idx) => {
+                        let textLine = line;
+                        let fileRequired = false;
+                        let requiresBankId = false;
+                        if (/\s*\[fil obligatorisk\]\s*$/i.test(textLine)) {
+                            fileRequired = true;
+                            textLine = textLine.replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+                        }
+                        if (/^\[bankid\]\s*/i.test(textLine)) {
+                            requiresBankId = true;
+                            textLine = textLine.replace(/^\[bankid\]\s*/i, '').trim();
+                        } else if (/\s*\[bankid\]\s*$/i.test(textLine)) {
+                            requiresBankId = true;
+                            textLine = textLine.replace(/\s*\[bankid\]\s*$/i, '').trim();
+                        }
                         const row = document.createElement('div');
                         row.className = 'samarbete-item-row';
-                        row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. kontoutdrag 2025 eller en längre fråga" data-item="${idx}" value="${this.escapeDocHtml(line)}"><label class="samarbete-file-req-wrap" title="Klicka för att kräva fil från kunden"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${idx}"><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
+                        row.innerHTML = `<input type="text" class="form-control samarbete-item-input" placeholder="t.ex. kontoutdrag 2025 eller en längre fråga" data-item="${idx}" value="${this.escapeDocHtml(textLine)}"><label class="samarbete-file-req-wrap ${fileRequired ? 'is-checked' : ''}" title="${fileRequired ? 'Fil krävs – klicka för att ta bort kravet' : 'Klicka för att kräva fil från kunden'}"><input type="checkbox" class="samarbete-file-required samarbete-file-required-input" data-item="${idx}" ${fileRequired ? 'checked' : ''}><span class="samarbete-file-req-icon"><i class="fas fa-file-upload"></i></span></label><label class="samarbete-bankid-req-wrap ${requiresBankId ? 'is-checked' : ''}" title="${requiresBankId ? 'BankID krävs – klicka för att ta bort' : 'Kräv BankID – frågan syns inte i mejlet'}"><input type="checkbox" class="samarbete-bankid-required samarbete-bankid-required-input" data-item="${idx}" ${requiresBankId ? 'checked' : ''}><span class="samarbete-bankid-req-icon"><i class="fas fa-id-card"></i></span></label><button type="button" class="btn btn-ghost btn-sm samarbete-item-remove" title="Ta bort" style="flex-shrink:0;"><i class="fas fa-times"></i></button>`;
                         wrapEl.appendChild(row);
                     });
                 }
@@ -15191,16 +15247,17 @@ class CustomerCardManager {
         rows.forEach((row, i) => {
             const inp = row.querySelector('.samarbete-item-input');
             const chk = row.querySelector('.samarbete-file-required');
+            const bid = row.querySelector('.samarbete-bankid-required');
             const text = (inp && inp.value) ? inp.value.trim() : '';
-            if (text) items.push({ text, fileRequired: !!(chk && chk.checked) });
+            if (text) items.push({ text, fileRequired: !!(chk && chk.checked), requiresBankId: !!(bid && bid.checked) });
         });
         if (items.length === 0) {
             this.showNotification('Lägg till minst en fråga eller underlagsbegäran.', 'error');
             return;
         }
         const title = items.length === 1
-            ? (items[0].text + (items[0].fileRequired ? ' [fil obligatorisk]' : ''))
-            : items.map((it, i) => `${i + 1}. ${it.text}${it.fileRequired ? ' [fil obligatorisk]' : ''}`).join('\n');
+            ? ((items[0].requiresBankId ? '[bankid] ' : '') + items[0].text + (items[0].fileRequired ? ' [fil obligatorisk]' : ''))
+            : items.map((it, i) => `${i + 1}. ${it.requiresBankId ? '[bankid] ' : ''}${it.text}${it.fileRequired ? ' [fil obligatorisk]' : ''}`).join('\n');
         const recipientEmail = recipientSelect ? recipientSelect.value : '';
         const recipientName = recipientSelect && recipientSelect.selectedOptions[0] ? recipientSelect.selectedOptions[0].getAttribute('data-name') || '' : '';
         const messageEl = document.getElementById('samarbete-customer-message');

@@ -292,6 +292,49 @@
       .item.done .done-note{display:flex}
       .done-note svg{width:16px;height:16px;flex:none}
 
+      .bankid-tag{
+        font-size:11px;font-weight:600;color:#0f766e;
+        margin-left:6px;white-space:nowrap;
+      }
+      .item.locked{opacity:.95}
+      .item.locked .item-body{display:none}
+      .bankid-wall{
+        background:linear-gradient(135deg,#f0fdfa 0%,#ffffff 55%,#ecfeff 100%);
+        border:1px solid #99f6e4;
+        border-radius:var(--radius);
+        padding:22px 24px;
+        margin-bottom:18px;
+        box-shadow:var(--shadow-soft);
+      }
+      .bankid-wall h2{
+        font-family:var(--title-font);
+        font-size:1.1rem;color:#0f766e;margin:0 0 8px;
+      }
+      .bankid-wall p{margin:0 0 14px;color:var(--ink-soft);font-size:14px;line-height:1.5}
+      .bankid-wall .bankid-status{font-size:13px;color:#0f766e;margin:10px 0 0;min-height:1.2em}
+      .bankid-wall .bankid-ok{
+        display:flex;align-items:center;gap:8px;
+        color:#0f766e;font-weight:600;font-size:14px;
+      }
+      .bankid-btn{
+        font-family:inherit;font-weight:600;font-size:14px;
+        color:#fff;background:#0f766e;border:none;border-radius:10px;
+        padding:11px 20px;cursor:pointer;
+        display:inline-flex;align-items:center;gap:8px;
+      }
+      .bankid-btn:hover{background:#0d9488}
+      .bankid-btn:disabled{opacity:.6;cursor:not-allowed}
+      .verified-pill{
+        display:inline-flex;align-items:center;gap:4px;
+        font-size:11px;font-weight:600;color:#0f766e;
+        background:#f0fdfa;border:1px solid #99f6e4;
+        border-radius:999px;padding:2px 8px;margin-left:6px;
+      }
+      .section-label{
+        font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+        color:var(--ink-faint);margin:4px 0 10px;
+      }
+
       .byra-logo-wrap{
         margin-top:8px;
         padding:1.25rem;
@@ -373,7 +416,11 @@
       </div>
     </div>
 
+    <div id="bankid-wall" class="bankid-wall hidden"></div>
+    <div id="public-section-label" class="section-label hidden">Offentlig del</div>
     <div id="list"></div>
+    <div id="bankid-section-label" class="section-label hidden">BankID-skyddad del</div>
+    <div id="list-bankid"></div>
 
     <div id="byra-logo-wrap" class="byra-logo-wrap hidden"></div>
 
@@ -406,10 +453,14 @@
     const closedCard = document.getElementById('closed-card');
     const formWrap = document.getElementById('form-wrap');
     const listEl = document.getElementById('list');
+    const listBankIdEl = document.getElementById('list-bankid');
+    const bankIdWallEl = document.getElementById('bankid-wall');
+    const publicSectionLabel = document.getElementById('public-section-label');
+    const bankIdSectionLabel = document.getElementById('bankid-section-label');
     const byraLogoWrap = document.getElementById('byra-logo-wrap');
 
-    function show(el){ el.classList.remove('hidden'); }
-    function hide(el){ el.classList.add('hidden'); }
+    function show(el){ if (el) el.classList.remove('hidden'); }
+    function hide(el){ if (el) el.classList.add('hidden'); }
 
     function escapeHtml(s){
       if (s == null) return '';
@@ -424,6 +475,10 @@
     }
 
     const baseUrl = getBaseUrl();
+    let bankIdSessionToken = '';
+    let bankIdVerified = false;
+    let bankIdIdentity = null;
+    let requestData = null;
 
     const MAX_FILE_BYTES = 15 * 1024 * 1024;
     const ACCEPTED_EXT = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.heic', '.webp', '.tif', '.tiff', '.csv'];
@@ -462,6 +517,9 @@
         var msg = (data && data.error) ? data.error : null;
         if (r.status === 413) throw new Error('Filen är för stor (max 15 MB)');
         if (r.status === 502) throw new Error(msg || 'Kunde inte ladda upp filen – prova igen');
+        if (r.status === 403 && data && data.code === 'BANKID_REQUIRED') {
+          throw new Error(msg || 'Identifiera dig med BankID först');
+        }
         if (r.status === 400) throw new Error(msg || 'Ogiltig begäran');
         if (!r.ok) throw new Error(msg || 'Kunde inte spara. Försök igen.');
         if (!data) throw new Error('Nätverksfel – prova igen');
@@ -469,48 +527,381 @@
       });
     }
 
-    // per fråga: { done, text, files:[File], existingFilename }
+    function authHeaders(extra){
+      var h = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
+      if (bankIdSessionToken) h['X-Samarbete-Bankid'] = bankIdSessionToken;
+      return h;
+    }
+
+    function normalizeQuestions(data){
+      if (Array.isArray(data.questions) && data.questions.length) {
+        return data.questions.map(function(q, i){
+          return {
+            index: typeof q.index === 'number' ? q.index : i,
+            text: q.text || ('Punkt ' + (i + 1)),
+            fileRequired: !!q.fileRequired,
+            requiresBankId: !!q.requiresBankId,
+            locked: !!q.locked
+          };
+        });
+      }
+      var title = (data.title || 'Underlag').trim();
+      var rawLines = title.split('\n').map(function(s){ return s.replace(/^\d+\.\s*/, '').trim(); }).filter(Boolean);
+      if (!rawLines.length) rawLines.push(title || 'Underlag');
+      return rawLines.map(function(line, i){
+        var fileRequired = /\s*\[fil obligatorisk\]\s*$/i.test(line);
+        var text = line.replace(/\s*\[fil obligatorisk\]\s*$/i, '').trim();
+        var requiresBankId = false;
+        if (/^\[bankid\]\s*/i.test(text)) {
+          requiresBankId = true;
+          text = text.replace(/^\[bankid\]\s*/i, '').trim();
+        }
+        return { index: i, text: text, fileRequired: fileRequired, requiresBankId: requiresBankId, locked: false };
+      });
+    }
+
     let state = [];
-    let items = [];
-    let fileRequired = [];
+    let questions = [];
 
     function updateProgress(){
-      const done = state.filter(s => s.done).length;
-      const tot = state.length;
+      const answerable = state.filter(function(s){ return s && !s.locked; });
+      const done = answerable.filter(function(s){ return s.done; }).length;
+      const tot = answerable.length || state.length;
       document.getElementById('cnt').textContent = done;
       document.getElementById('tot').textContent = tot;
       document.getElementById('bar').style.width = tot ? (done / tot * 100) + '%' : '0%';
     }
 
-    function renderForm(data){
-      const title = (data.title || 'Underlag').trim();
-      const rawLines = title.split('\n').map(function(s){ return s.replace(/^\d+\.\s*/, '').trim(); }).filter(Boolean);
-      if (rawLines.length === 0) rawLines.push(title || 'Underlag');
+    function renderBankIdWall(data){
+      var needs = !!(data.bankIdRequired);
+      if (!needs) {
+        hide(bankIdWallEl);
+        return;
+      }
+      show(bankIdWallEl);
+      if (bankIdVerified) {
+        var name = (bankIdIdentity && bankIdIdentity.name) ? bankIdIdentity.name : 'Verifierad';
+        bankIdWallEl.innerHTML =
+          '<div class="bankid-ok">' + I.check + ' Identifierad med BankID' +
+          (name ? ': <b>' + escapeHtml(name) + '</b>' : '') + '</div>' +
+          '<p style="margin:8px 0 0">Skyddade frågor är upplåsta. Svaren markeras som verifierade hos byrån.</p>';
+        return;
+      }
+      var modeNote = (data.bankIdMode === 'mock')
+        ? ' (Demoläge – legitimering slutförs automatiskt efter några sekunder.)'
+        : '';
+      bankIdWallEl.innerHTML =
+        '<h2>BankID krävs för vissa frågor</h2>' +
+        '<p>Den offentliga delen kan du svara på direkt. Känsliga frågor visas först när du identifierat dig med BankID' + modeNote + '</p>' +
+        '<button type="button" class="bankid-btn" id="bankid-start-btn">Identifiera dig med BankID</button>' +
+        '<div class="bankid-status" id="bankid-status"></div>';
+      var btn = document.getElementById('bankid-start-btn');
+      var statusEl = document.getElementById('bankid-status');
+      if (btn) {
+        btn.addEventListener('click', function(){ startBankIdFlow(statusEl, btn); });
+      }
+    }
 
-      items = [];
-      fileRequired = [];
-      rawLines.forEach(function(line){
-        var req = line.indexOf(' [fil obligatorisk]') !== -1;
-        if (req) line = line.replace(/\s*\[fil obligatorisk\]\s*$/, '').trim();
-        items.push(line);
-        fileRequired.push(req);
+    function startBankIdFlow(statusEl, btn){
+      btn.disabled = true;
+      statusEl.textContent = 'Startar BankID…';
+      fetch(baseUrl + '/api/samarbete/bankid/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token })
+      })
+        .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'Kunde inte starta BankID'); return d; }); })
+        .then(function(started){
+          statusEl.textContent = started.message || 'Väntar på BankID…';
+          return pollBankId(started.orderRef, statusEl);
+        })
+        .then(function(result){
+          bankIdSessionToken = result.sessionToken || '';
+          bankIdVerified = true;
+          bankIdIdentity = { name: result.name || '', personalNumber: result.personalNumber || '' };
+          statusEl.textContent = 'Klart – laddar om frågor…';
+          return reloadRequest();
+        })
+        .catch(function(err){
+          statusEl.textContent = err.message || 'BankID misslyckades';
+          btn.disabled = false;
+        });
+    }
+
+    function pollBankId(orderRef, statusEl){
+      return new Promise(function(resolve, reject){
+        var tries = 0;
+        function tick(){
+          tries += 1;
+          fetch(baseUrl + '/api/samarbete/bankid/collect', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderRef: orderRef, token: token })
+          })
+            .then(function(r){ return r.json().then(function(d){ if (!r.ok) throw new Error(d.error || 'BankID-fel'); return d; }); })
+            .then(function(result){
+              if (result.status === 'complete' && result.sessionToken) {
+                resolve(result);
+                return;
+              }
+              if (result.status === 'failed') {
+                reject(new Error(result.message || 'BankID misslyckades'));
+                return;
+              }
+              if (tries > 40) {
+                reject(new Error('Timeout – försök igen'));
+                return;
+              }
+              statusEl.textContent = result.message || 'Väntar på BankID…';
+              setTimeout(tick, 500);
+            })
+            .catch(reject);
+        }
+        tick();
       });
+    }
+
+    function reloadRequest(){
+      return fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token), {
+        credentials: 'include',
+        headers: authHeaders()
+      })
+        .then(function(r){
+          if (!r.ok) return r.json().then(function(d){ throw new Error(d.error || 'Kunde inte ladda'); });
+          return r.json();
+        })
+        .then(function(data){
+          requestData = data;
+          bankIdVerified = !!data.bankIdVerified;
+          bankIdIdentity = data.bankIdIdentity || bankIdIdentity;
+          renderForm(data);
+        });
+    }
+
+    function mountQuestionCard(parentEl, q, displayNum, preferOpen){
+      var i = q.index;
+      var st = state[i];
+      if (!st) return;
+      if (st.locked) {
+        var locked = document.createElement('div');
+        locked.className = 'item locked';
+        locked.innerHTML =
+          '<div class="item-top">' +
+            '<div class="num">' + displayNum + '</div>' +
+            '<div class="item-title">' + escapeHtml(q.text) +
+              '<span class="bankid-tag">BankID</span></div>' +
+            '<div class="pill wait">Låst</div>' +
+          '</div>';
+        parentEl.appendChild(locked);
+        return;
+      }
+
+      var openThis = !!preferOpen && !st.done;
+      var el = document.createElement('div');
+      el.className = 'item' + (st.done ? ' done' : '') + (openThis ? ' open' : '');
+      var verifiedHtml = st.verifiedByBankId
+        ? '<span class="verified-pill">BankID-verifierat</span>'
+        : (q.requiresBankId ? '<span class="bankid-tag">BankID</span>' : '');
+      el.innerHTML =
+        '<div class="item-top" data-toggle>' +
+          '<div class="num">' + (st.done ? I.check : displayNum) + '</div>' +
+          '<div class="item-title">' + escapeHtml(q.text) +
+            (q.fileRequired ? '<span class="req-tag">Fil obligatorisk</span>' : '') +
+            verifiedHtml +
+          '</div>' +
+          '<div class="pill ' + (st.done ? 'done' : 'wait') + '" data-pill>' + (st.done ? (I.check + 'Inskickat') : 'Väntar') + '</div>' +
+          '<div class="chev">' + I.chev + '</div>' +
+        '</div>' +
+        '<div class="item-body">' +
+          '<div class="body-inner">' +
+            '<textarea placeholder="Din kommentar (valfritt)"></textarea>' +
+            '<div class="drop" data-drop>' +
+              I.up +
+              '<div>Dra hit en fil eller <b>bläddra</b> – PDF, bild, Excel eller CSV' + (q.fileRequired ? ' <b style="color:#dc2626">*</b>' : '') + '</div>' +
+              '<input type="file" multiple hidden data-file accept="' + ACCEPT_ATTR + '">' +
+            '</div>' +
+            '<div class="files" data-files></div>' +
+            '<div class="actions">' +
+              '<div class="row-error" data-error></div>' +
+              '<button class="submit' + (st.done ? ' again' : '') + '" data-submit>' + (st.done ? (I.send + 'Uppdatera svar') : (I.send + 'Skicka in')) + '</button>' +
+            '</div>' +
+            '<div class="done-note">' + I.check + ' Inskickat – tack! Du kan uppdatera det här tills deadline.</div>' +
+          '</div>' +
+        '</div>';
+      parentEl.appendChild(el);
+
+      var textarea = el.querySelector('textarea');
+      var filesBox = el.querySelector('[data-files]');
+      var drop = el.querySelector('[data-drop]');
+      var input = el.querySelector('[data-file]');
+      var pill = el.querySelector('[data-pill]');
+      var numEl = el.querySelector('.num');
+      var submit = el.querySelector('[data-submit]');
+      var errEl = el.querySelector('[data-error]');
+
+      textarea.value = st.text;
+      textarea.addEventListener('input', function(){ st.text = textarea.value; });
+
+      function renderFiles(){
+        filesBox.innerHTML = '';
+        if (st.existingFilename) {
+          var ce = document.createElement('div');
+          ce.className = 'chip existing';
+          ce.innerHTML = '<span>' + escapeHtml(st.existingFilename) + '</span>';
+          filesBox.appendChild(ce);
+        }
+        st.files.forEach(function(f, idx){
+          var c = document.createElement('div');
+          c.className = 'chip';
+          c.innerHTML = '<span>' + escapeHtml(f.name) + '</span><button data-rm="' + idx + '">' + I.x + '</button>';
+          filesBox.appendChild(c);
+        });
+      }
+      function addFiles(fl){
+        var rejected = [];
+        Array.prototype.slice.call(fl).forEach(function(f){
+          var err = validateFile(f);
+          if (err) rejected.push(f.name + ': ' + err);
+          else st.files.push(f);
+        });
+        renderFiles();
+        if (rejected.length) {
+          errEl.textContent = rejected.join(' ');
+          errEl.style.display = 'block';
+        }
+      }
+      renderFiles();
+
+      el.querySelector('[data-toggle]').addEventListener('click', function(){ el.classList.toggle('open'); });
+      drop.addEventListener('click', function(){ input.click(); });
+      input.addEventListener('change', function(e){ addFiles(e.target.files); input.value = ''; });
+      drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
+      drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
+      drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
+      filesBox.addEventListener('click', function(e){
+        var b = e.target.closest('[data-rm]');
+        if (b) { st.files.splice(+b.dataset.rm, 1); renderFiles(); }
+      });
+
+      var readFileAsBase64 = function(file){
+        return new Promise(function(resolve, reject){
+          var r = new FileReader();
+          r.onload = function(){ resolve({ filename: file.name, file: r.result.replace(/^data:[^;]+;base64,/, '') }); };
+          r.onerror = function(){ reject(new Error('Kunde inte läsa fil')); };
+          r.readAsDataURL(file);
+        });
+      };
+
+      submit.addEventListener('click', function(){
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+
+        var hasExistingFile = !!st.existingFilename;
+        if (!st.text && st.files.length === 0 && !hasExistingFile) {
+          errEl.textContent = 'Skriv en kommentar eller ladda upp en fil innan du skickar in.';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (q.fileRequired && st.files.length === 0 && !hasExistingFile) {
+          errEl.textContent = 'Den här punkten kräver att du laddar upp en fil.';
+          errEl.style.display = 'block';
+          return;
+        }
+        if (q.requiresBankId && !bankIdVerified) {
+          errEl.textContent = 'Identifiera dig med BankID först.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        var fileErrors = [];
+        st.files.forEach(function(f){
+          var fe = validateFile(f);
+          if (fe) fileErrors.push(f.name + ': ' + fe);
+        });
+        if (fileErrors.length) {
+          errEl.textContent = fileErrors.join(' ');
+          errEl.style.display = 'block';
+          return;
+        }
+
+        submit.disabled = true;
+        var origHtml = submit.innerHTML;
+        submit.innerHTML = I.spin + 'Skickar...';
+
+        var payload = {
+          token: token,
+          answerIndex: i,
+          text: (st.text || '').trim(),
+          files: []
+        };
+        if (bankIdSessionToken) payload.bankIdSession = bankIdSessionToken;
+        var filesForUpload = st.files.slice();
+        var hadNewFiles = filesForUpload.length > 0;
+
+        Promise.all(filesForUpload.map(readFileAsBase64))
+          .then(function(results){
+            payload.files = results;
+            return fetch(baseUrl + '/api/samarbete/respond', {
+              method: 'POST',
+              credentials: 'include',
+              headers: authHeaders(),
+              body: JSON.stringify(payload)
+            });
+          })
+          .then(parseRespondResponse)
+          .then(function(resp){
+            if (hadNewFiles && !resp.attachmentUrl) {
+              throw new Error('Filuppladdningen misslyckades – prova igen.');
+            }
+            st.done = true;
+            if (q.requiresBankId && bankIdVerified) st.verifiedByBankId = true;
+            if (hadNewFiles) {
+              st.existingFilename = resp.filename || filesForUpload[filesForUpload.length - 1].name;
+              st.files = [];
+              renderFiles();
+            }
+            el.classList.add('done');
+            numEl.innerHTML = I.check;
+            pill.className = 'pill done';
+            pill.innerHTML = I.check + 'Inskickat';
+            submit.className = 'submit again';
+            submit.innerHTML = I.send + 'Uppdatera svar';
+            el.classList.remove('open');
+            updateProgress();
+          })
+          .catch(function(err){
+            var msg = err.message || 'Kunde inte spara. Försök igen.';
+            if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = 'Nätverksfel – prova igen';
+            errEl.textContent = msg;
+            errEl.style.display = 'block';
+          })
+          .then(function(){ submit.disabled = false; if (!st.done) submit.innerHTML = origHtml; });
+      });
+    }
+
+    function renderForm(data){
+      questions = normalizeQuestions(data);
+      bankIdVerified = !!data.bankIdVerified;
+      bankIdIdentity = data.bankIdIdentity || bankIdIdentity;
 
       var existing = data.existingAnswers || [];
       var attachments = data.existingAttachments || [];
 
-      state = items.map(function(_, i){
-        var ea = existing[i];
+      state = questions.map(function(q){
+        var ea = existing[q.index];
         var verifiedFile = hasVerifiedExistingFile(ea, attachments);
         return {
+          locked: !!q.locked,
           done: !!(ea && ((ea.text && String(ea.text).trim()) || verifiedFile)),
           text: (ea && ea.text) ? ea.text : '',
           files: [],
-          existingFilename: verifiedFile ? ea.filename : ''
+          existingFilename: verifiedFile ? ea.filename : '',
+          verifiedByBankId: !!(ea && ea.verifiedByBankId)
         };
       });
 
-      // deadline
       var deadlineBox = document.getElementById('deadlineBox');
       if (data.deadline) {
         var ds = '';
@@ -533,181 +924,30 @@
         deadlineBox.style.display = 'none';
       }
 
-      document.getElementById('tot').textContent = items.length;
+      renderBankIdWall(data);
 
-      // build cards
+      var publicQs = questions.filter(function(q){ return !q.requiresBankId; });
+      var bankQs = questions.filter(function(q){ return q.requiresBankId; });
+      var split = publicQs.length > 0 && bankQs.length > 0;
+
+      if (split) show(publicSectionLabel); else hide(publicSectionLabel);
+      if (bankQs.length) show(bankIdSectionLabel); else hide(bankIdSectionLabel);
+
       listEl.innerHTML = '';
+      listBankIdEl.innerHTML = '';
+
       var firstOpenSet = false;
-      items.forEach(function(titleText, i){
-        var st = state[i];
-        var openThis = !st.done && !firstOpenSet;
-        if (openThis) firstOpenSet = true;
-
-        var el = document.createElement('div');
-        el.className = 'item' + (st.done ? ' done' : '') + (openThis ? ' open' : '');
-        el.innerHTML =
-          '<div class="item-top" data-toggle>' +
-            '<div class="num">' + (st.done ? I.check : (i + 1)) + '</div>' +
-            '<div class="item-title">' + escapeHtml(titleText) + (fileRequired[i] ? '<span class="req-tag">Fil obligatorisk</span>' : '') + '</div>' +
-            '<div class="pill ' + (st.done ? 'done' : 'wait') + '" data-pill>' + (st.done ? (I.check + 'Inskickat') : 'Väntar') + '</div>' +
-            '<div class="chev">' + I.chev + '</div>' +
-          '</div>' +
-          '<div class="item-body">' +
-            '<div class="body-inner">' +
-              '<textarea placeholder="Din kommentar (valfritt)"></textarea>' +
-              '<div class="drop" data-drop>' +
-                I.up +
-                '<div>Dra hit en fil eller <b>bläddra</b> – PDF, bild, Excel eller CSV' + (fileRequired[i] ? ' <b style="color:#dc2626">*</b>' : '') + '</div>' +
-                '<input type="file" multiple hidden data-file accept="' + ACCEPT_ATTR + '">' +
-              '</div>' +
-              '<div class="files" data-files></div>' +
-              '<div class="actions">' +
-                '<div class="row-error" data-error></div>' +
-                '<button class="submit' + (st.done ? ' again' : '') + '" data-submit>' + (st.done ? (I.send + 'Uppdatera svar') : (I.send + 'Skicka in')) + '</button>' +
-              '</div>' +
-              '<div class="done-note">' + I.check + ' Inskickat – tack! Du kan uppdatera det här tills deadline.</div>' +
-            '</div>' +
-          '</div>';
-        listEl.appendChild(el);
-
-        var textarea = el.querySelector('textarea');
-        var filesBox = el.querySelector('[data-files]');
-        var drop = el.querySelector('[data-drop]');
-        var input = el.querySelector('[data-file]');
-        var pill = el.querySelector('[data-pill]');
-        var numEl = el.querySelector('.num');
-        var submit = el.querySelector('[data-submit]');
-        var errEl = el.querySelector('[data-error]');
-
-        textarea.value = st.text;
-        textarea.addEventListener('input', function(){ st.text = textarea.value; });
-
-        function renderFiles(){
-          filesBox.innerHTML = '';
-          if (st.existingFilename) {
-            var ce = document.createElement('div');
-            ce.className = 'chip existing';
-            ce.innerHTML = '<span>' + escapeHtml(st.existingFilename) + '</span>';
-            filesBox.appendChild(ce);
-          }
-          st.files.forEach(function(f, idx){
-            var c = document.createElement('div');
-            c.className = 'chip';
-            c.innerHTML = '<span>' + escapeHtml(f.name) + '</span><button data-rm="' + idx + '">' + I.x + '</button>';
-            filesBox.appendChild(c);
-          });
-        }
-        function addFiles(fl){
-          var rejected = [];
-          Array.prototype.slice.call(fl).forEach(function(f){
-            var err = validateFile(f);
-            if (err) rejected.push(f.name + ': ' + err);
-            else st.files.push(f);
-          });
-          renderFiles();
-          if (rejected.length) {
-            errEl.textContent = rejected.join(' ');
-            errEl.style.display = 'block';
-          }
-        }
-        renderFiles();
-
-        el.querySelector('[data-toggle]').addEventListener('click', function(){ el.classList.toggle('open'); });
-
-        drop.addEventListener('click', function(){ input.click(); });
-        input.addEventListener('change', function(e){ addFiles(e.target.files); input.value = ''; });
-        drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
-        drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
-        drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
-        filesBox.addEventListener('click', function(e){
-          var b = e.target.closest('[data-rm]');
-          if (b) { st.files.splice(+b.dataset.rm, 1); renderFiles(); }
-        });
-
-        var readFileAsBase64 = function(file){
-          return new Promise(function(resolve, reject){
-            var r = new FileReader();
-            r.onload = function(){ resolve({ filename: file.name, file: r.result.replace(/^data:[^;]+;base64,/, '') }); };
-            r.onerror = function(){ reject(new Error('Kunde inte läsa fil')); };
-            r.readAsDataURL(file);
-          });
-        };
-
-        submit.addEventListener('click', function(){
-          errEl.style.display = 'none';
-          errEl.textContent = '';
-
-          var hasExistingFile = !!st.existingFilename;
-          if (!st.text && st.files.length === 0 && !hasExistingFile) {
-            errEl.textContent = 'Skriv en kommentar eller ladda upp en fil innan du skickar in.';
-            errEl.style.display = 'block';
-            return;
-          }
-          if (fileRequired[i] && st.files.length === 0 && !hasExistingFile) {
-            errEl.textContent = 'Den här punkten kräver att du laddar upp en fil.';
-            errEl.style.display = 'block';
-            return;
-          }
-
-          var fileErrors = [];
-          st.files.forEach(function(f){
-            var fe = validateFile(f);
-            if (fe) fileErrors.push(f.name + ': ' + fe);
-          });
-          if (fileErrors.length) {
-            errEl.textContent = fileErrors.join(' ');
-            errEl.style.display = 'block';
-            return;
-          }
-
-          submit.disabled = true;
-          var origHtml = submit.innerHTML;
-          submit.innerHTML = I.spin + 'Skickar...';
-
-          var payload = { token: token, answerIndex: i, text: (st.text || '').trim(), files: [] };
-          var filesForUpload = st.files.slice();
-          var hadNewFiles = filesForUpload.length > 0;
-
-          Promise.all(filesForUpload.map(readFileAsBase64))
-            .then(function(results){
-              payload.files = results;
-              return fetch(baseUrl + '/api/samarbete/respond', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-              });
-            })
-            .then(parseRespondResponse)
-            .then(function(data){
-              if (hadNewFiles && !data.attachmentUrl) {
-                throw new Error('Filuppladdningen misslyckades – prova igen.');
-              }
-              st.done = true;
-              if (hadNewFiles) {
-                st.existingFilename = data.filename || filesForUpload[filesForUpload.length - 1].name;
-                st.files = [];
-                renderFiles();
-              }
-              el.classList.add('done');
-              numEl.innerHTML = I.check;
-              pill.className = 'pill done';
-              pill.innerHTML = I.check + 'Inskickat';
-              submit.className = 'submit again';
-              submit.innerHTML = I.send + 'Uppdatera svar';
-              el.classList.remove('open');
-              updateProgress();
-            })
-            .catch(function(err){
-              var msg = err.message || 'Kunde inte spara. Försök igen.';
-              if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = 'Nätverksfel – prova igen';
-              errEl.textContent = msg;
-              errEl.style.display = 'block';
-            })
-            .then(function(){ submit.disabled = false; if (!st.done) submit.innerHTML = origHtml; });
-        });
+      publicQs.forEach(function(q, n){
+        var prefer = !state[q.index].done && !firstOpenSet;
+        if (prefer) firstOpenSet = true;
+        mountQuestionCard(listEl, q, n + 1, prefer);
+      });
+      bankQs.forEach(function(q, n){
+        var prefer = bankIdVerified && !state[q.index].done && !firstOpenSet;
+        if (prefer) firstOpenSet = true;
+        mountQuestionCard(listBankIdEl, q, publicQs.length + n + 1, prefer);
       });
 
-      // byrå logo
       if (data.byraLogoUrl && data.byraLogoUrl.indexOf('http') === 0) {
         byraLogoWrap.innerHTML = '<img src="' + escapeHtml(data.byraLogoUrl) + '" alt="" />';
         show(byraLogoWrap);
@@ -719,7 +959,7 @@
       updateProgress();
     }
 
-    fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token))
+    fetch(baseUrl + '/api/samarbete/request/' + encodeURIComponent(token), { credentials: 'include' })
       .then(function(r){
         if (r.status === 410) return r.json().then(function(d){ return { _closed: true, error: d.error }; });
         if (!r.ok) return r.json().then(function(d){ throw new Error(d.error || 'Förfrågan hittades inte'); });
@@ -728,6 +968,7 @@
       .then(function(data){
         hide(loadingEl);
         if (data._closed) { show(closedCard); return; }
+        requestData = data;
         show(formWrap);
         renderForm(data);
       })
