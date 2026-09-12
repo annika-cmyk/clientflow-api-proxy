@@ -615,6 +615,10 @@
       ], omTjanstenUtfor('lagerHanterar'))
     ]),
     spec('betalningsuppdrag', 'Betalningsuppdrag och betalningshantering', [
+      q('betKlientmedelskonto', 'Har byrån klientmedelskonto?', 'single', [
+        'Ja',
+        'Nej'
+      ]),
       q('betUtfor', 'Utför byrån betalningar för kundens räkning?', 'single', [
         'Ja',
         'Nej',
