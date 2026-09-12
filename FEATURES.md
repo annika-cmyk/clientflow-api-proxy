@@ -259,7 +259,11 @@ Uploaded files in several categories, KYC PDF, signed agreements, risk-assessmen
 
 ### 6.9 Collaboration (*Samarbete*)
 
-Requests to other parties (e.g. previous firm). Replies land on the dashboard (“New replies”). External reply page: `samarbete-svar.html`.
+Request files or comments from the customer. Invite email with a reply link. Customer answers on a public page. Dashboard shows new replies. External reply page: `samarbete-svar.html`.
+
+### 6.9b Customer email (*Mejl*)
+
+Optional Gmail connect per user (sidebar *Mejl*). Inbox shows messages under the Gmail label **KUNDER** (child labels matched to customer names). Compose/send uses the user’s Gmail so mail appears from their address. Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_REDIRECT_URI`.
 
 ---
 
