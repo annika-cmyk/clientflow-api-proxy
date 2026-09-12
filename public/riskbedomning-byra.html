@@ -448,13 +448,24 @@
                                     <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i tjänsten i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
                                 </div>
                                 <div id="tjanst-ai-inneboende" class="ai-review ai-review--inline" hidden></div>
-                                <div class="form-group risk-motivering-field">
-                                    <label for="tjanst-motivering-inneboende">Motivering av inneboende risk
-                                        <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                    </label>
-                                    <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
-                                    <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
-                                </div>
+                                        <div class="form-group risk-motivering-field risk-motivering-legacy" id="tjanst-motivering-inneboende-legacy-wrap" hidden>
+                                            <label for="tjanst-motivering-inneboende-legacy">Tidigare motivering (inneboende risk)</label>
+                                            <p class="tjanst-panel-hint">Sparad innan uppdelning i S och K. Kan användas som utgångspunkt.</p>
+                                            <textarea id="tjanst-motivering-inneboende-legacy" name="tjanst-motivering-inneboende-legacy" rows="2" readonly></textarea>
+                                            <button type="button" class="btn btn-ghost btn-sm risk-motivering-propose" data-propose-split="tjanst-motivering-inneboende">Föreslå uppdelning</button>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="tjanst-motivering-inneboende-s">Motivering av sannolikhet (inneboende risk)
+                                                <span id="tjanst-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                            </label>
+                                            <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet respektive konsekvens gäller. Minst 25 tecken vardera vid Förhöjd/Hög/Oacceptabel.</p>
+                                            <textarea id="tjanst-motivering-inneboende-s" name="tjanst-motivering-inneboende-s" rows="2" placeholder="Varför denna sannolikhet?"></textarea>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="tjanst-motivering-inneboende-k">Motivering av konsekvens (inneboende risk)</label>
+                                            <textarea id="tjanst-motivering-inneboende-k" name="tjanst-motivering-inneboende-k" rows="2" placeholder="Varför denna konsekvens?"></textarea>
+                                        </div>
+                                        <textarea id="tjanst-motivering-inneboende" name="motivering-inneboende" rows="1" hidden aria-hidden="true"></textarea>
                                 </div>
                             </section>
 
@@ -506,13 +517,24 @@
                                         <div id="tjanst-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
                                     </div>
                                     <div id="tjanst-ai-residual" class="ai-review ai-review--inline" hidden></div>
-                                    <div class="form-group risk-motivering-field">
-                                        <label for="tjanst-motivering-residual">Motivering av residualrisk
-                                            <span id="tjanst-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                        </label>
-                                        <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
-                                        <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
-                                    </div>
+                                        <div class="form-group risk-motivering-field risk-motivering-legacy" id="tjanst-motivering-residual-legacy-wrap" hidden>
+                                            <label for="tjanst-motivering-residual-legacy">Tidigare motivering (residualrisk)</label>
+                                            <p class="tjanst-panel-hint">Sparad innan uppdelning i S och K. Kan användas som utgångspunkt.</p>
+                                            <textarea id="tjanst-motivering-residual-legacy" name="tjanst-motivering-residual-legacy" rows="2" readonly></textarea>
+                                            <button type="button" class="btn btn-ghost btn-sm risk-motivering-propose" data-propose-split="tjanst-motivering-residual">Föreslå uppdelning</button>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="tjanst-motivering-residual-s">Motivering av sannolikhet (residualrisk)
+                                                <span id="tjanst-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                            </label>
+                                            <p class="tjanst-panel-hint">Förklara hur åtgärderna påverkat sannolikhet respektive konsekvens. Vid Hög/Oacceptabel: hänvisa till riskaptitbeslut.</p>
+                                            <textarea id="tjanst-motivering-residual-s" name="tjanst-motivering-residual-s" rows="2" placeholder="Varför denna sannolikhet?"></textarea>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="tjanst-motivering-residual-k">Motivering av konsekvens (residualrisk)</label>
+                                            <textarea id="tjanst-motivering-residual-k" name="tjanst-motivering-residual-k" rows="2" placeholder="Varför denna konsekvens?"></textarea>
+                                        </div>
+                                        <textarea id="tjanst-motivering-residual" name="motivering-residual" rows="1" hidden aria-hidden="true"></textarea>
                                 </div>
                                 </div>
                                 <div class="tjanst-residual-feedback" id="tjanst-residual-feedback">
@@ -561,12 +583,12 @@
     <script src="app.js?v=2.9" defer></script>
     <script src="js/aml-kalla.js?v=3" defer></script>
     <script src="js/risk-skala.js?v=10" defer></script>
-    <script src="js/risk-motivering.js?v=2" defer></script>
+    <script src="js/risk-motivering.js?v=3" defer></script>
     <script src="js/tjanst-tf-tackning.js?v=1" defer></script>
     <script src="js/hot-aml-tf.js?v=3" defer></script>
     <script src="js/tjanst-forutsattning.js?v=3" defer></script>
     <script src="js/tjanst-utforande-mallar.js?v=9" defer></script>
     <script src="js/ai-falt-granskning.js?v=13" defer></script>
-    <script src="js/riskbedomning-byra.v5.js?v=61" defer></script>
+    <script src="js/riskbedomning-byra.v5.js?v=62" defer></script>
 </body>
 </html>

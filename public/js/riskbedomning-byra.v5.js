@@ -1218,7 +1218,7 @@ class RiskAssessmentManager {
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });
-        ['tjanst-motivering-inneboende', 'tjanst-motivering-residual'].forEach((id) => {
+        ['tjanst-motivering-inneboende', 'tjanst-motivering-residual', 'tjanst-motivering-inneboende-s', 'tjanst-motivering-inneboende-k', 'tjanst-motivering-residual-s', 'tjanst-motivering-residual-k'].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', () => this.updateMotiveringWarnings());
         });
         document.getElementById('tjanst-residual-feedback-send')?.addEventListener('click', () => this.sendResidualFeedback());
@@ -2260,14 +2260,109 @@ class RiskAssessmentManager {
             || (status.residualNeedsDecision && !status.residualDecisionOk));
     }
 
+    /** Läs S/K-motivering från DOM och synka dold kombinerad textarea. */
+    readSplitMotiveringFromDom(prefix = '') {
+        const RM = window.RiskMotivering;
+        const baseIn = `${prefix}motivering-inneboende`;
+        const baseRes = `${prefix}motivering-residual`;
+        const val = (id) => document.getElementById(id)?.value.trim() || '';
+        let poang = {
+            motivering_sannolikhet_inneboende: val(`${baseIn}-s`),
+            motivering_konsekvens_inneboende: val(`${baseIn}-k`),
+            motivering_sannolikhet_residual: val(`${baseRes}-s`),
+            motivering_konsekvens_residual: val(`${baseRes}-k`),
+            legacy_motivering_inneboende: val(`${baseIn}-legacy`),
+            legacy_motivering_residual: val(`${baseRes}-legacy`),
+            motivering_inneboende_risk: val(baseIn),
+            motivering_residual_risk: val(baseRes)
+        };
+        if (RM && RM.applyLegacyMigration) poang = RM.applyLegacyMigration(poang);
+        if (RM && RM.syncCombinedFromSplit) poang = RM.syncCombinedFromSplit(poang);
+        const inEl = document.getElementById(baseIn);
+        const resEl = document.getElementById(baseRes);
+        if (inEl) inEl.value = poang.motivering_inneboende_risk || '';
+        if (resEl) resEl.value = poang.motivering_residual_risk || '';
+        return poang;
+    }
+
+    fillSplitMotiveringToDom(prefix, scored = {}) {
+        const RM = window.RiskMotivering;
+        const migrated = RM && RM.applyLegacyMigration ? RM.applyLegacyMigration(scored) : scored;
+        const baseIn = `${prefix}motivering-inneboende`;
+        const baseRes = `${prefix}motivering-residual`;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        const showLegacy = (base, text) => {
+            const wrap = document.getElementById(`${base}-legacy-wrap`);
+            const ta = document.getElementById(`${base}-legacy`);
+            if (ta) ta.value = text || '';
+            if (wrap) wrap.hidden = !text;
+        };
+        let sIn = migrated.motivering_sannolikhet_inneboende || '';
+        let kIn = migrated.motivering_konsekvens_inneboende || '';
+        let sRes = migrated.motivering_sannolikhet_residual || '';
+        let kRes = migrated.motivering_konsekvens_residual || '';
+        const legacyIn = migrated.legacy_motivering_inneboende || '';
+        const legacyRes = migrated.legacy_motivering_residual || '';
+        if (!sIn && !kIn && legacyIn && RM && RM.proposeSplitFromLegacy) {
+            const p = RM.proposeSplitFromLegacy(legacyIn);
+            sIn = p.sannolikhet || '';
+            kIn = p.konsekvens || '';
+        }
+        if (!sRes && !kRes && legacyRes && RM && RM.proposeSplitFromLegacy) {
+            const p = RM.proposeSplitFromLegacy(legacyRes);
+            sRes = p.sannolikhet || '';
+            kRes = p.konsekvens || '';
+        }
+        // Om bara kombinerad text finns (ännu ej migrerad i lagring), visa som legacy + förslag
+        if (!sIn && !kIn && !legacyIn && migrated.motivering_inneboende_risk && RM && RM.proposeSplitFromLegacy) {
+            showLegacy(baseIn, migrated.motivering_inneboende_risk);
+            const p = RM.proposeSplitFromLegacy(migrated.motivering_inneboende_risk);
+            sIn = p.sannolikhet || '';
+            kIn = p.konsekvens || '';
+        } else {
+            showLegacy(baseIn, legacyIn);
+        }
+        if (!sRes && !kRes && !legacyRes && migrated.motivering_residual_risk && RM && RM.proposeSplitFromLegacy) {
+            showLegacy(baseRes, migrated.motivering_residual_risk);
+            const p = RM.proposeSplitFromLegacy(migrated.motivering_residual_risk);
+            sRes = p.sannolikhet || '';
+            kRes = p.konsekvens || '';
+        } else {
+            showLegacy(baseRes, legacyRes);
+        }
+        set(`${baseIn}-s`, sIn);
+        set(`${baseIn}-k`, kIn);
+        set(`${baseRes}-s`, sRes);
+        set(`${baseRes}-k`, kRes);
+        set(baseIn, migrated.motivering_inneboende_risk || '');
+        set(baseRes, migrated.motivering_residual_risk || '');
+    }
+
+    bindMotiveringProposeButtons(root = document) {
+        root.querySelectorAll('[data-propose-split]').forEach((btn) => {
+            if (btn.dataset.boundPropose) return;
+            btn.dataset.boundPropose = '1';
+            btn.addEventListener('click', () => {
+                const base = btn.getAttribute('data-propose-split');
+                const RM = window.RiskMotivering;
+                const legacy = document.getElementById(`${base}-legacy`)?.value || '';
+                if (!RM || !legacy) return;
+                const p = RM.proposeSplitFromLegacy(legacy);
+                const sEl = document.getElementById(`${base}-s`);
+                const kEl = document.getElementById(`${base}-k`);
+                if (sEl && !sEl.value.trim()) sEl.value = p.sannolikhet || '';
+                if (kEl && !kEl.value.trim()) kEl.value = p.konsekvens || '';
+            });
+        });
+    }
+
     collectRiskPoang() {
         return {
             sannolikhet: document.getElementById('tjanst-sannolikhet')?.value,
             konsekvens: document.getElementById('tjanst-konsekvens')?.value,
             sannolikhetEfter: document.getElementById('tjanst-sannolikhet-efter')?.value,
             konsekvensEfter: document.getElementById('tjanst-konsekvens-efter')?.value,
-            motivering_inneboende_risk: document.getElementById('tjanst-motivering-inneboende')?.value.trim() || '',
-            motivering_residual_risk: document.getElementById('tjanst-motivering-residual')?.value.trim() || '',
+            ...this.readSplitMotiveringFromDom('tjanst-'),
             klarmarkeradeFlikar: [...this.klarmarkeradeFlikar]
         };
     }
@@ -2312,10 +2407,8 @@ class RiskAssessmentManager {
         this.setScoreSelect('tjanst-konsekvens', scored.konsekvens);
         this.setScoreSelect('tjanst-sannolikhet-efter', scored.sannolikhetEfter);
         this.setScoreSelect('tjanst-konsekvens-efter', scored.konsekvensEfter);
-        const motIn = document.getElementById('tjanst-motivering-inneboende');
-        const motRes = document.getElementById('tjanst-motivering-residual');
-        if (motIn) motIn.value = scored.motivering_inneboende_risk || '';
-        if (motRes) motRes.value = scored.motivering_residual_risk || '';
+        this.fillSplitMotiveringToDom('tjanst-', scored);
+        this.bindMotiveringProposeButtons();
         document.getElementById('tjanst-beskrivning').value = f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '';
 
         this.parseJsonField(f['Hot']).forEach(h => this.addHotRow(h));

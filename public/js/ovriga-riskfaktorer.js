@@ -165,6 +165,7 @@ class RiskFactorsManager {
         
         // Apply initial filtering based on user role
         this.applyFilters();
+        this.bindMotiveringProposeButtons();
         this.renderByraProfilKaskad();
         if (document.getElementById('riskhoj-katalog-list')) {
             this.setupRiskhojandeKatalog();
@@ -228,6 +229,103 @@ class RiskFactorsManager {
             : 1;
         nr.textContent = String(v);
         wrap.hidden = false;
+    }
+
+
+    /** Läs S/K-motivering från DOM och synka dold kombinerad textarea. */
+    readSplitMotiveringFromDom(prefix = '') {
+        const RM = window.RiskMotivering;
+        const baseIn = `${prefix}motivering-inneboende`;
+        const baseRes = `${prefix}motivering-residual`;
+        const val = (id) => document.getElementById(id)?.value.trim() || '';
+        let poang = {
+            motivering_sannolikhet_inneboende: val(`${baseIn}-s`),
+            motivering_konsekvens_inneboende: val(`${baseIn}-k`),
+            motivering_sannolikhet_residual: val(`${baseRes}-s`),
+            motivering_konsekvens_residual: val(`${baseRes}-k`),
+            legacy_motivering_inneboende: val(`${baseIn}-legacy`),
+            legacy_motivering_residual: val(`${baseRes}-legacy`),
+            motivering_inneboende_risk: val(baseIn),
+            motivering_residual_risk: val(baseRes)
+        };
+        if (RM && RM.applyLegacyMigration) poang = RM.applyLegacyMigration(poang);
+        if (RM && RM.syncCombinedFromSplit) poang = RM.syncCombinedFromSplit(poang);
+        const inEl = document.getElementById(baseIn);
+        const resEl = document.getElementById(baseRes);
+        if (inEl) inEl.value = poang.motivering_inneboende_risk || '';
+        if (resEl) resEl.value = poang.motivering_residual_risk || '';
+        return poang;
+    }
+
+    fillSplitMotiveringToDom(prefix, scored = {}) {
+        const RM = window.RiskMotivering;
+        const migrated = RM && RM.applyLegacyMigration ? RM.applyLegacyMigration(scored) : scored;
+        const baseIn = `${prefix}motivering-inneboende`;
+        const baseRes = `${prefix}motivering-residual`;
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        const showLegacy = (base, text) => {
+            const wrap = document.getElementById(`${base}-legacy-wrap`);
+            const ta = document.getElementById(`${base}-legacy`);
+            if (ta) ta.value = text || '';
+            if (wrap) wrap.hidden = !text;
+        };
+        let sIn = migrated.motivering_sannolikhet_inneboende || '';
+        let kIn = migrated.motivering_konsekvens_inneboende || '';
+        let sRes = migrated.motivering_sannolikhet_residual || '';
+        let kRes = migrated.motivering_konsekvens_residual || '';
+        const legacyIn = migrated.legacy_motivering_inneboende || '';
+        const legacyRes = migrated.legacy_motivering_residual || '';
+        if (!sIn && !kIn && legacyIn && RM && RM.proposeSplitFromLegacy) {
+            const p = RM.proposeSplitFromLegacy(legacyIn);
+            sIn = p.sannolikhet || '';
+            kIn = p.konsekvens || '';
+        }
+        if (!sRes && !kRes && legacyRes && RM && RM.proposeSplitFromLegacy) {
+            const p = RM.proposeSplitFromLegacy(legacyRes);
+            sRes = p.sannolikhet || '';
+            kRes = p.konsekvens || '';
+        }
+        // Om bara kombinerad text finns (ännu ej migrerad i lagring), visa som legacy + förslag
+        if (!sIn && !kIn && !legacyIn && migrated.motivering_inneboende_risk && RM && RM.proposeSplitFromLegacy) {
+            showLegacy(baseIn, migrated.motivering_inneboende_risk);
+            const p = RM.proposeSplitFromLegacy(migrated.motivering_inneboende_risk);
+            sIn = p.sannolikhet || '';
+            kIn = p.konsekvens || '';
+        } else {
+            showLegacy(baseIn, legacyIn);
+        }
+        if (!sRes && !kRes && !legacyRes && migrated.motivering_residual_risk && RM && RM.proposeSplitFromLegacy) {
+            showLegacy(baseRes, migrated.motivering_residual_risk);
+            const p = RM.proposeSplitFromLegacy(migrated.motivering_residual_risk);
+            sRes = p.sannolikhet || '';
+            kRes = p.konsekvens || '';
+        } else {
+            showLegacy(baseRes, legacyRes);
+        }
+        set(`${baseIn}-s`, sIn);
+        set(`${baseIn}-k`, kIn);
+        set(`${baseRes}-s`, sRes);
+        set(`${baseRes}-k`, kRes);
+        set(baseIn, migrated.motivering_inneboende_risk || '');
+        set(baseRes, migrated.motivering_residual_risk || '');
+    }
+
+    bindMotiveringProposeButtons(root = document) {
+        root.querySelectorAll('[data-propose-split]').forEach((btn) => {
+            if (btn.dataset.boundPropose) return;
+            btn.dataset.boundPropose = '1';
+            btn.addEventListener('click', () => {
+                const base = btn.getAttribute('data-propose-split');
+                const RM = window.RiskMotivering;
+                const legacy = document.getElementById(`${base}-legacy`)?.value || '';
+                if (!RM || !legacy) return;
+                const p = RM.proposeSplitFromLegacy(legacy);
+                const sEl = document.getElementById(`${base}-s`);
+                const kEl = document.getElementById(`${base}-k`);
+                if (sEl && !sEl.value.trim()) sEl.value = p.sannolikhet || '';
+                if (kEl && !kEl.value.trim()) kEl.value = p.konsekvens || '';
+            });
+        });
     }
 
     renderByraProfilKaskad() {
@@ -550,7 +648,7 @@ class RiskFactorsManager {
                 this.updateRiskBadges('edit');
             });
         });
-        ['motivering-inneboende', 'motivering-residual'].forEach((id) => {
+        ['motivering-inneboende', 'motivering-residual', 'motivering-inneboende-s', 'motivering-inneboende-k', 'motivering-residual-s', 'motivering-residual-k', 'edit-motivering-inneboende-s', 'edit-motivering-inneboende-k', 'edit-motivering-residual-s', 'edit-motivering-residual-k'].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', () => this.updateMotiveringWarnings('add'));
             document.getElementById(`edit-${id}`)?.addEventListener('input', () => this.updateMotiveringWarnings('edit'));
         });
@@ -849,8 +947,7 @@ class RiskFactorsManager {
             konsekvens: document.getElementById(`${prefix}konsekvens`)?.value,
             sannolikhetEfter: document.getElementById(`${prefix}sannolikhet-efter`)?.value,
             konsekvensEfter: document.getElementById(`${prefix}konsekvens-efter`)?.value,
-            motivering_inneboende_risk: document.getElementById(`${prefix}motivering-inneboende`)?.value.trim() || '',
-            motivering_residual_risk: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || ''
+            ...this.readSplitMotiveringFromDom(prefix)
         };
         const status = RM.assessMotivering(poang);
         const warnPrefix = mode === 'edit' ? 'edit-' : 'add-';
@@ -877,8 +974,7 @@ class RiskFactorsManager {
             konsekvens: formData.get('konsekvens'),
             sannolikhetEfter: formData.get('sannolikhet-efter'),
             konsekvensEfter: formData.get('konsekvens-efter'),
-            motivering_inneboende_risk: String(formData.get('motivering-inneboende') || '').trim(),
-            motivering_residual_risk: String(formData.get('motivering-residual') || '').trim(),
+            ...this.readSplitMotiveringFromDom(''),
             kraverManualOversyn: this.editNeedsReview === true
         };
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
@@ -1609,10 +1705,8 @@ class RiskFactorsManager {
         this.setScoreSelect('edit-konsekvens', scored.konsekvens);
         this.setScoreSelect('edit-sannolikhet-efter', scored.sannolikhetEfter);
         this.setScoreSelect('edit-konsekvens-efter', scored.konsekvensEfter);
-        const motIn = document.getElementById('edit-motivering-inneboende');
-        const motRes = document.getElementById('edit-motivering-residual');
-        if (motIn) motIn.value = scored.motivering_inneboende_risk || '';
-        if (motRes) motRes.value = scored.motivering_residual_risk || '';
+        this.fillSplitMotiveringToDom('edit-', scored);
+        this.bindMotiveringProposeButtons();
         this.editNeedsReview = scored.kraverManualOversyn === true;
         this.updateRiskBadges('edit');
 
