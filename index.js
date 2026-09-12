@@ -17925,6 +17925,75 @@ function kundformularHogrisksland(fields, kyc) {
   }
 }
 
+function resolveKundformularRecipientEmail(fields, overrideEmail) {
+  const override = String(overrideEmail || '').trim();
+  if (override && override.includes('@')) return override.toLowerCase();
+  const direct = String(
+    fields?.['e-post'] || fields?.['E-post'] || fields?.Email || fields?.email || ''
+  ).trim();
+  if (direct && direct.includes('@')) return direct.toLowerCase();
+  const raw = fields?.['Kontaktpersoner'] || fields?.['Befattningshavare'] || '';
+  let people = [];
+  if (Array.isArray(raw)) people = raw;
+  else if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) people = parsed;
+    } catch (_) { /* ignore */ }
+  }
+  for (const p of people) {
+    const e = String(p?.epost || p?.email || p?.['e-post'] || '').trim();
+    if (e && e.includes('@')) return e.toLowerCase();
+  }
+  return '';
+}
+
+async function sendKundformularInviteEmail({
+  toEmail,
+  toName,
+  companyName,
+  byraName,
+  inviteUrl,
+  isReminder
+}) {
+  const transporter = createSmtpTransportOrNull();
+  if (!transporter) {
+    return { sent: false, error: 'SMTP är inte konfigurerad på servern.' };
+  }
+  const from = process.env.MAIL_FROM || 'ClientFlow <noreply@clientflow.se>';
+  const esc = (s) => String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const who = esc(toName || 'Kund');
+  const firm = esc(companyName || 'ert företag');
+  const byra = esc(byraName || 'Er byrå');
+  const subject = isReminder
+    ? `Påminnelse: kundformulär för ${companyName || 'ert företag'}`
+    : `Kundformulär från ${byraName || 'er byrå'}`;
+  const intro = isReminder
+    ? `${byra} påminner om att fylla i kundformuläret för ${firm}.`
+    : `${byra} ber dig fylla i ett kundformulär för ${firm}.`;
+  const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;color:#0f172a;line-height:1.5;">
+<p>Hej ${who},</p>
+<p>${intro}</p>
+<p><a href="${esc(inviteUrl)}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;">Öppna kundformulär</a></p>
+<p style="font-size:0.9rem;color:#64748b;">Om knappen inte fungerar: ${esc(inviteUrl)}</p>
+</body></html>`;
+  try {
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject,
+      text: `${intro}\n\nÖppna länken: ${inviteUrl}\n`,
+      html
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error('sendKundformularInviteEmail:', err.message);
+    return { sent: false, error: err.message || 'Kunde inte skicka mejl' };
+  }
+}
+
 function buildKundformularResponse(form, fields, kyc, tjansterCtx, { baseUrl, includeInviteToken = false } = {}) {
   const riskFlags = kundformularRiskFlags(fields);
   const meta = Kundformular.buildUiMeta(form, {
@@ -18153,7 +18222,7 @@ app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
   }
 });
 
-// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat / skicka invite
+// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat / skicka invite / påminn
 app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -18164,6 +18233,7 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
     const ctx = await loadKundformularCustomerContext(customerId);
     let form = ctx.form;
+    let remindMeta = null;
 
     if (action === 'prefill') {
       form = Kundformular.applyPrefill(form, {
@@ -18171,6 +18241,39 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
         kyc: ctx.kyc,
         tjanster: ctx.tjansterCtx.linked
       });
+    } else if (action === 'remind') {
+      if (!Kundformular.canRemind(form)) {
+        return res.status(400).json({
+          error: 'Påminnelse går bara när formuläret är skickat och länken fortfarande är aktiv.'
+        });
+      }
+      const inviteUrl = Kundformular.buildInviteUrl(
+        form.inviteToken,
+        kundformularRequestBaseUrl(req)
+      );
+      const toEmail = resolveKundformularRecipientEmail(ctx.fields, req.body?.toEmail);
+      if (!toEmail) {
+        return res.status(400).json({
+          error: 'Ingen e-postadress hittades på kundkortet. Ange toEmail eller fyll i e-post under kontaktuppgifter.'
+        });
+      }
+      const mail = await sendKundformularInviteEmail({
+        toEmail,
+        toName: ctx.fields?.['Kontaktperson'] || ctx.fields?.Namn || 'Kund',
+        companyName: ctx.fields?.Namn || form.answers?.foretagsnamn || '',
+        byraName: req.user?.byraNamn || req.user?.byraName || '',
+        inviteUrl,
+        isReminder: true
+      });
+      if (!mail.sent) {
+        return res.status(502).json({ error: mail.error || 'Kunde inte skicka påminnelsemejl' });
+      }
+      form = Kundformular.applySave(form, {}, {
+        actor: 'byra',
+        action: 'remind',
+        customerId
+      });
+      remindMeta = { reminded: true, remindedTo: toEmail };
     } else {
       const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
       const actor = req.body?.actor === 'kund' ? 'kund' : 'byra';
@@ -18185,10 +18288,12 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     await persistKundformularForm(customerId, form, ctx);
 
     res.set('Cache-Control', 'no-store');
-    return res.json(buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
+    const payload = buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
       baseUrl: kundformularRequestBaseUrl(req),
       includeInviteToken: action === 'mark_sent'
-    }));
+    });
+    if (remindMeta) Object.assign(payload, remindMeta);
+    return res.json(payload);
   } catch (error) {
     console.error('❌ PUT /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
