@@ -956,7 +956,8 @@
     let next = parseState(state);
     if (!next.katalogVal) next.katalogVal = 'egna';
     return {
-      state: upsertEntry(next, id, { aktiv: true, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
+      // Egna tjänster startar som utkast — aktiveras först när mini-analysen är klar.
+      state: upsertEntry(next, id, { aktiv: false, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
       id: id
     };
   }
