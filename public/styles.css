@@ -17634,6 +17634,12 @@ h5.ar-subsection-title {
     flex-wrap: wrap;
     gap: 0.65rem;
 }
+.tjanst-katalog-val-note {
+    margin: 1rem 0 0;
+    font-size: 0.9rem;
+    color: #64748b;
+    line-height: 1.45;
+}
 
 .tjanst-mall-overview[hidden] { display: none; }
 .tjanst-mall-summary {
