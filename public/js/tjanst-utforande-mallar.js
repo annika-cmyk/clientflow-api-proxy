@@ -843,18 +843,26 @@
   }
 
   function emptyState() {
-    return { version: 1, tjanster: {} };
+    return { version: 1, tjanster: {}, katalogVal: null };
   }
 
   function parseState(raw) {
     if (!raw) return emptyState();
     if (typeof raw === 'object' && raw.tjanster && typeof raw.tjanster === 'object') {
-      return { version: Number(raw.version) || 1, tjanster: raw.tjanster };
+      return {
+        version: Number(raw.version) || 1,
+        tjanster: raw.tjanster,
+        katalogVal: raw.katalogVal === 'standard' || raw.katalogVal === 'egna' ? raw.katalogVal : null
+      };
     }
     try {
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       if (parsed && parsed.tjanster && typeof parsed.tjanster === 'object') {
-        return { version: Number(parsed.version) || 1, tjanster: parsed.tjanster };
+        return {
+          version: Number(parsed.version) || 1,
+          tjanster: parsed.tjanster,
+          katalogVal: parsed.katalogVal === 'standard' || parsed.katalogVal === 'egna' ? parsed.katalogVal : null
+        };
       }
     } catch (_) { /* ignore */ }
     return emptyState();
@@ -905,10 +913,45 @@
     return parsed;
   }
 
+  /**
+   * True when byrån ännu inte valt egna vs standardtjänster och saknar sparad katalogdata.
+   */
+  function needsKatalogChoice(state) {
+    const parsed = parseState(state);
+    if (parsed.katalogVal === 'standard' || parsed.katalogVal === 'egna') return false;
+    return Object.keys(parsed.tjanster || {}).length === 0;
+  }
+
+  /** Aktivera alla ClientFlow-standardmallar. */
+  function applyStandardKatalog(state) {
+    let next = parseState(state);
+    next.katalogVal = 'standard';
+    SERVICE_TEMPLATES.forEach((t) => {
+      next = upsertEntry(next, t.id, { aktiv: true });
+    });
+    next.katalogVal = 'standard';
+    return next;
+  }
+
+  /** Börja med egna tjänster (inga förvalda standardmallar). */
+  function applyEgnaKatalog(state) {
+    const next = parseState(state);
+    next.katalogVal = 'egna';
+    return next;
+  }
+
+  function setKatalogVal(state, val) {
+    const next = parseState(state);
+    if (val === 'standard' || val === 'egna') next.katalogVal = val;
+    return next;
+  }
+
   function addCustomService(state, namn) {
     const id = createCustomId();
+    let next = parseState(state);
+    if (!next.katalogVal) next.katalogVal = 'egna';
     return {
-      state: upsertEntry(state, id, { aktiv: true, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
+      state: upsertEntry(next, id, { aktiv: true, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
       id: id
     };
   }
@@ -928,10 +971,15 @@
 
   function listCatalogCards(state) {
     const parsed = parseState(state);
-    const cards = SERVICE_TEMPLATES.map((t) => {
-      const entry = normalizeEntryAnswers(parsed.tjanster[t.id] || emptyEntry(t.id));
-      return { template: t, entry: entry };
-    });
+    const cards = [];
+    const hasStandardEntries = Object.keys(parsed.tjanster || {}).some((id) => !isCustomId(id));
+    const showStandards = parsed.katalogVal !== 'egna' || hasStandardEntries;
+    if (showStandards) {
+      SERVICE_TEMPLATES.forEach((t) => {
+        const entry = normalizeEntryAnswers(parsed.tjanster[t.id] || emptyEntry(t.id));
+        cards.push({ template: t, entry: entry });
+      });
+    }
     Object.keys(parsed.tjanster).forEach((id) => {
       if (!isCustomId(id)) return;
       const entry = normalizeEntryAnswers(parsed.tjanster[id]);
@@ -1020,6 +1068,10 @@
     normalizeEntryAnswers: normalizeEntryAnswers,
     getEntry: getEntry,
     upsertEntry: upsertEntry,
+    needsKatalogChoice: needsKatalogChoice,
+    applyStandardKatalog: applyStandardKatalog,
+    applyEgnaKatalog: applyEgnaKatalog,
+    setKatalogVal: setKatalogVal,
     addCustomService: addCustomService,
     removeEntry: removeEntry,
     listCatalogCards: listCatalogCards,

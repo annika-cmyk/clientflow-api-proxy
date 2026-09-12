@@ -191,9 +191,25 @@
   }
 
   function companionFor(field) {
-    return (schema.fields || []).find(function (f) {
+    return companionsFor(field)[0] || null;
+  }
+
+  function companionsFor(field) {
+    return (schema.fields || []).filter(function (f) {
       return f.requiredWhen && f.requiredWhen.key === field.key;
     });
+  }
+
+  function goToFirstUnanswered() {
+    for (var i = 0; i < schema.sections.length; i++) {
+      if (unansweredInSection(schema.sections[i]).length) {
+        stepIdx = i;
+        renderStep();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return true;
+      }
+    }
+    return false;
   }
 
   function allUnanswered() {
@@ -244,6 +260,7 @@
 
   function updateNav() {
     var last = stepIdx >= schema.sections.length - 1;
+    var missing = allUnanswered();
     if (ui.back) {
       ui.back.hidden = stepIdx === 0;
       ui.back.disabled = stepIdx === 0;
@@ -252,8 +269,10 @@
     if (ui.skip) ui.skip.hidden = last;
     if (ui.finish) {
       ui.finish.hidden = !last;
-      var missing = allUnanswered();
-      ui.finish.disabled = missing.length > 0;
+      // Keep clickable so incomplete state can show feedback (disabled buttons swallow clicks).
+      ui.finish.disabled = false;
+      ui.finish.setAttribute('aria-disabled', missing.length > 0 ? 'true' : 'false');
+      ui.finish.classList.toggle('is-incomplete', missing.length > 0);
       ui.finish.title = missing.length > 0
         ? 'Besvara alla frågor innan du klarmarkerar (' + missing.length + ' kvar)'
         : 'Markera byråprofilen som klar i Kom igång';
@@ -290,10 +309,11 @@
       btn.addEventListener('click', function () {
         values[field.key] = value;
         skipped[field.key] = false;
-        var companion = companionFor(field);
-        if (companion && !valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
-          values[companion.key] = '';
-        }
+        companionsFor(field).forEach(function (companion) {
+          if (!valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
+            values[companion.key] = '';
+          }
+        });
         choices.querySelectorAll('.byra-enkate-choice').forEach(function (b) { b.classList.remove('is-selected'); });
         btn.classList.add('is-selected');
         syncCompanionUi(field, wrap);
@@ -309,24 +329,29 @@
   }
 
   function syncCompanionUi(field, wrap) {
-    var companion = companionFor(field);
-    if (!companion) return;
-    var existing = wrap.querySelector('.byra-enkate-annat');
-    var needed = valueIncludesChoice(values[field.key], (companion.requiredWhen || {}).equals);
-    if (!needed) {
-      if (existing) existing.remove();
-      return;
-    }
-    if (existing) return;
-    var box = document.createElement('div');
-    box.className = 'byra-enkate-annat';
-    var lab = document.createElement('label');
-    lab.className = 'byra-enkate-annat-label';
-    lab.setAttribute('for', 'enkate-' + companion.key);
-    lab.textContent = companion.question || companion.label;
-    box.appendChild(lab);
-    box.appendChild(renderInput(companion, values[companion.key]));
-    wrap.appendChild(box);
+    var companions = companionsFor(field);
+    wrap.querySelectorAll('.byra-enkate-annat').forEach(function (el) {
+      var key = el.getAttribute('data-companion-key');
+      var still = companions.some(function (c) {
+        return c.key === key && valueIncludesChoice(values[field.key], (c.requiredWhen || {}).equals);
+      });
+      if (!still) el.remove();
+    });
+    companions.forEach(function (companion) {
+      var needed = valueIncludesChoice(values[field.key], (companion.requiredWhen || {}).equals);
+      if (!needed) return;
+      if (wrap.querySelector('.byra-enkate-annat[data-companion-key="' + companion.key + '"]')) return;
+      var box = document.createElement('div');
+      box.className = 'byra-enkate-annat';
+      box.setAttribute('data-companion-key', companion.key);
+      var lab = document.createElement('label');
+      lab.className = 'byra-enkate-annat-label';
+      lab.setAttribute('for', 'enkate-' + companion.key);
+      lab.textContent = companion.question || companion.label;
+      box.appendChild(lab);
+      box.appendChild(renderInput(companion, values[companion.key]));
+      wrap.appendChild(box);
+    });
   }
 
   function renderInput(field, current) {
@@ -871,6 +896,7 @@
       var missing = allUnanswered();
       if (missing.length) {
         setStatus('Besvara alla frågor innan du klarmarkerar (' + missing.length + ' kvar).', true);
+        goToFirstUnanswered();
         return;
       }
       ui.finish.disabled = true;
@@ -882,6 +908,7 @@
         })
         .catch(function (e) {
           setStatus(e.message || 'Kunde inte klarmarkera', true);
+          ui.finish.disabled = false;
           updateNav();
         });
     });
