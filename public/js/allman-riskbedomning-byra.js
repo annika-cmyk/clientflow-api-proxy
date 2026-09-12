@@ -729,6 +729,10 @@
       if (distLive && window.IdentifieradeRiskerView) {
         IdentifieradeRiskerView.mount(distLive, source, { only: 'distribution' });
       }
+      var verksLive = getEl('ar-verksamhet-live');
+      if (verksLive && window.IdentifieradeRiskerView) {
+        IdentifieradeRiskerView.mount(verksLive, source, { only: 'verksamhet' });
+      }
       window._arIdentifieradeSource = source;
       initCollapsibleCards();
       initArLayoutEditor(canEdit);

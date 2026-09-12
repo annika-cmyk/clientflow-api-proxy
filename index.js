@@ -121,6 +121,7 @@ const kycDokumentSync = require('./lib/kyc-dokument-sync');
 const kycFormularMerge = require('./lib/kyc-formular-merge');
 const uppdragsavtalDokumentSync = require('./lib/uppdragsavtal-dokument-sync');
 const aktuellRiskbedomning = require('./lib/aktuell-riskbedomning');
+const amlKollen = require('./lib/aml-kollen');
 const documentPreview = require('./lib/document-preview');
 const dokumentZip = require('./lib/dokument-zip');
 const auditLog = require('./lib/audit-log');
@@ -9259,6 +9260,249 @@ app.post('/api/documents/upload', authenticateToken, async (req, res) => {
       });
     }
     res.status(500).json({ error: error.message, details: detail });
+  }
+});
+
+// ---------- AML-kollen (filuppladdning + engångsanalys) ----------
+
+const AML_KOLLEN_RUNS_FIELD = 'AML-kollen körningar (JSON)';
+
+function parseJsonField(raw, fallback) {
+  if (raw == null || raw === '') return fallback;
+  if (typeof raw === 'object') return raw;
+  try {
+    const v = JSON.parse(String(raw));
+    return v == null ? fallback : v;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function parseRelatedPartyNames(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((x) => String(x || '').trim()).filter(Boolean);
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  if (s.startsWith('[')) {
+    const parsed = parseJsonField(s, []);
+    if (Array.isArray(parsed)) return parseRelatedPartyNames(parsed);
+  }
+  return s.split(/\r?\n|,|;/).map((x) => String(x || '').trim()).filter(Boolean);
+}
+
+function deriveRelatedPartyNamesFromCustomer(customerRecord) {
+  try {
+    const fields = customerRecord?.fields || {};
+    const people = personRegister.extractPeopleFromFields(fields);
+    const related = (Array.isArray(people) ? people : [])
+      .filter((p) => Array.isArray(p?.kinds) && (p.kinds.includes('huvudman') || p.kinds.includes('foretradare')))
+      .map((p) => String(p?.namn || '').trim())
+      .filter((n) => n && n !== 'Namn saknas');
+    return [...new Set(related)];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function ensureAmlKollenRunsField({ airtableAccessToken, airtableBaseId, tableId }) {
+  const metaRes = await axios.get(`https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables`, {
+    headers: { Authorization: `Bearer ${airtableAccessToken}` },
+    timeout: 10000
+  });
+  const tables = (metaRes.data?.tables || []);
+  const table = tables.find((t) => (t.id || '') === tableId);
+  if (!table) return { ok: false, reason: `Tabell ${tableId} hittades inte i basen.` };
+  const fields = table.fields || [];
+  const exists = fields.some((f) => String(f.name || '').trim() === AML_KOLLEN_RUNS_FIELD);
+  if (exists) return { ok: true, created: false };
+
+  const createUrl = `https://api.airtable.com/v0/meta/bases/${airtableBaseId}/tables/${tableId}/fields`;
+  await axios.post(createUrl, {
+    name: AML_KOLLEN_RUNS_FIELD,
+    type: 'multilineText',
+    description: 'Engångskörningar av AML-kollen (JSON). Skapas och används av ClientFlow.'
+  }, {
+    headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' },
+    timeout: 10000
+  });
+  return { ok: true, created: true };
+}
+
+// POST /api/setup/airtable-aml-kollen-fields – Skapa fält för AML-kollen i KUNDDATA (auth)
+// Kräver Personal Access Token med schema.bases:write.
+app.post('/api/setup/airtable-aml-kollen-fields', authenticateToken, async (req, res) => {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const KUNDDATA_TABLE_ID = 'tblOIuLQS2DqmOQWe';
+  if (!airtableAccessToken) return res.status(500).json({ success: false, error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+  try {
+    const r = await ensureAmlKollenRunsField({ airtableAccessToken, airtableBaseId, tableId: KUNDDATA_TABLE_ID });
+    if (!r.ok) return res.status(400).json({ success: false, error: r.reason || 'Kunde inte skapa fält' });
+    return res.json({ success: true, created: !!r.created, fieldName: AML_KOLLEN_RUNS_FIELD, tableId: KUNDDATA_TABLE_ID });
+  } catch (e) {
+    const msg = e.response?.data?.error?.message || e.message;
+    return res.status(e.response?.status || 500).json({ success: false, error: msg });
+  }
+});
+
+// GET /api/aml-kollen/runs?customerId=recXXX – Lista AML-kollen-körningar för kund (auth)
+app.get('/api/aml-kollen/runs', authenticateToken, async (req, res) => {
+  try {
+    const customerId = String(req.query.customerId || req.query.customerid || '').trim();
+    const runId = String(req.query.runId || req.query.runid || '').trim();
+    if (!customerId) return res.status(400).json({ error: 'customerId saknas', runs: [] });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas', runs: [] });
+
+    const { customerRecord } = await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId: airtableBaseId });
+    const raw = customerRecord?.fields?.[AML_KOLLEN_RUNS_FIELD];
+    const runs = parseJsonField(raw, []);
+    const list = Array.isArray(runs) ? runs : [];
+    const sorted = list.slice().sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')));
+    if (runId) {
+      const hit = sorted.find((r) => String(r?.id || '') === runId) || null;
+      if (!hit) return res.status(404).json({ error: 'Körningen hittades inte', run: null });
+      res.set('Cache-Control', 'no-store');
+      return res.json({ success: true, run: hit });
+    }
+    const summaries = sorted.slice(0, 25).map((r) => ({
+      id: r?.id,
+      createdAt: r?.createdAt,
+      createdBy: r?.createdBy || null,
+      dateRange: r?.dateRange || null,
+      counts: r?.counts || null,
+      inputs: r?.inputs ? { bankFilename: r.inputs.bankFilename, sieFilename: r.inputs.sieFilename } : null,
+      signals: Array.isArray(r?.signals)
+        ? r.signals.map((s) => ({ id: s.id, title: s.title, severity: s.severity, why: s.why }))
+        : []
+    }));
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, runs: summaries });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.message || 'Kunde inte lista AML-kollen', runs: [] });
+  }
+});
+
+// POST /api/aml-kollen/analyze – Ladda upp kontoutdrag + SIE och kör AML-kollen (auth)
+// Body: { customerId, bankFileBase64, bankFilename, sieFileBase64, sieFilename, relatedPartyNames? }
+app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
+  const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
+  try {
+    const {
+      customerId,
+      bankFileBase64,
+      bankFilename,
+      sieFileBase64,
+      sieFilename,
+      relatedPartyNames,
+      createdDate
+    } = req.body || {};
+
+    if (!customerId) return res.status(400).json({ error: 'customerId krävs' });
+    if (!bankFileBase64 || !bankFilename) return res.status(400).json({ error: 'bankFileBase64 och bankFilename krävs' });
+    if (!sieFileBase64 || !sieFilename) return res.status(400).json({ error: 'sieFileBase64 och sieFilename krävs' });
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+
+    const { userData, customerRecord } = await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId: airtableBaseId });
+
+    let bankBuf;
+    let sieBuf;
+    try { bankBuf = Buffer.from(String(bankFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig bankFileBase64' }); }
+    try { sieBuf = Buffer.from(String(sieFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig sieFileBase64' }); }
+    if (bankBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'Kontoutdraget är för stort. Max 12 MB.' });
+    if (sieBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'SIE-filen är för stor. Max 12 MB.' });
+
+    const manualRel = parseRelatedPartyNames(relatedPartyNames);
+    const autoRel = deriveRelatedPartyNamesFromCustomer(customerRecord);
+    const rel = [...new Set([...(autoRel || []), ...(manualRel || [])])].slice(0, 60);
+    const analysis = await amlKollen.analyzeAmlKollenOnce({
+      customer: customerRecord,
+      bankStatement: { buffer: bankBuf, filename: String(bankFilename) },
+      sieFile: { buffer: sieBuf, filename: String(sieFilename) },
+      relatedPartyNames: rel
+    });
+    if (!analysis.ok) return res.status(400).json({ error: analysis.error || 'Kunde inte analysera underlaget' });
+
+    const run = analysis.run;
+    const dateIso = dokumentKategori.toDateOnly(createdDate) || run.dateRange?.end || new Date().toISOString().slice(0, 10);
+
+    // 1) Ladda upp underlag som bilagor (så de syns i Dokumentation i samma vy som riskdokumentationen)
+    const safeId = String(run.id).slice(0, 8);
+    const bankName = `aml-kollen_${dateIso}_${safeId}_kontoutdrag_${String(bankFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
+    const sieName = `aml-kollen_${dateIso}_${safeId}_sie_${String(sieFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
+
+    const bankAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+      airtableAccessToken, airtableBaseId, customerId, bankBuf, bankName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
+    );
+    const sieAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+      airtableAccessToken, airtableBaseId, customerId, sieBuf, sieName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
+    );
+
+    const metaUpdates = {
+      category: dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY,
+      subcategory: 'aml_kollen',
+      customCategory: 'AML-kollen underlag',
+      createdDate: dateIso,
+      systemCreated: true
+    };
+    if (bankAtt?.filename) {
+      await upsertCustomerDokumentMetadata(
+        airtableAccessToken, airtableBaseId, customerId,
+        { filename: bankAtt.filename, attachmentId: bankAtt.id },
+        { ...metaUpdates, filename: bankAtt.filename, attachmentId: bankAtt.id }
+      );
+    }
+    if (sieAtt?.filename) {
+      await upsertCustomerDokumentMetadata(
+        airtableAccessToken, airtableBaseId, customerId,
+        { filename: sieAtt.filename, attachmentId: sieAtt.id },
+        { ...metaUpdates, filename: sieAtt.filename, attachmentId: sieAtt.id }
+      );
+    }
+
+    // 2) Spara resultat på kunden (Airtable long text). Behåll senaste 25.
+    const existingRaw = customerRecord?.fields?.[AML_KOLLEN_RUNS_FIELD];
+    const existing = parseJsonField(existingRaw, []);
+    const list = Array.isArray(existing) ? existing.slice() : [];
+    const stored = {
+      ...run,
+      createdBy: { email: String(req.user?.email || userData?.email || '').trim(), name: String(userData?.name || '').trim() || undefined },
+      attachments: {
+        bank: bankAtt && (bankAtt.url || bankAtt.id) ? { id: bankAtt.id || null, url: bankAtt.url || null, filename: bankAtt.filename || bankName } : null,
+        sie: sieAtt && (sieAtt.url || sieAtt.id) ? { id: sieAtt.id || null, url: sieAtt.url || null, filename: sieAtt.filename || sieName } : null
+      }
+    };
+    list.unshift(stored);
+    const trimmed = list.slice(0, 25);
+
+    try {
+      await axios.patch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+        { fields: { [AML_KOLLEN_RUNS_FIELD]: JSON.stringify(trimmed) } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+      );
+    } catch (e) {
+      const msg = e.response?.data?.error?.message || e.message;
+      if (e.response?.status === 422 && /Unknown field name/i.test(String(msg))) {
+        return res.status(422).json({
+          error: `Fältet "${AML_KOLLEN_RUNS_FIELD}" saknas i Airtable. Skapa det som Long text i KUNDDATA (eller kör POST /api/setup/airtable-aml-kollen-fields).`,
+          run: stored
+        });
+      }
+      throw e;
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, run: stored });
+  } catch (error) {
+    const status = error.response?.status;
+    const msg = error.response?.data?.error?.message || error.message;
+    console.error('❌ POST /api/aml-kollen/analyze:', msg);
+    return res.status(status && status >= 400 && status < 600 ? status : 500).json({ error: msg || 'Serverfel' });
   }
 });
 

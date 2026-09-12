@@ -13762,6 +13762,7 @@ class CustomerCardManager {
                 const data = await response.json();
                 this._applyDocumentSyncFromResponse(data);
                 this.displayDocuments(data.documents || []);
+                this.loadAmlKollenRuns().catch(() => {});
                 if (data.uppdragsavtalUtanforSync && document.getElementById('uppdragsavtal-content')) {
                     this.loadUppdragsavtal();
                 }
@@ -13775,13 +13776,14 @@ class CustomerCardManager {
     }
 
     getRiskSubcategoryOrder() {
-        return ['kyc', 'kund_riskbedomning', 'pep_sanktion', 'ovrigt_risk'];
+        return ['kyc', 'kund_riskbedomning', 'aml_kollen', 'pep_sanktion', 'ovrigt_risk'];
     }
 
     getRiskSubcategoryLabel(sub) {
         const labels = {
             kyc: 'KYC-formulär',
             kund_riskbedomning: 'Kundens riskbedömning',
+            aml_kollen: 'AML-kollen (kontoutdrag + SIE)',
             pep_sanktion: 'PEP-sanktionssökningar',
             ovrigt_risk: 'Övrigt dokumentation riskbedömning'
         };
@@ -13900,6 +13902,343 @@ class CustomerCardManager {
             </div>`;
         this.bindDokumentationDrop(document.getElementById('dokumentation') || content);
         this.bindDocumentExportChecks(content);
+    }
+
+    async loadAmlKollenRuns() {
+        const content = document.getElementById('documents-content');
+        if (!content) return;
+        if (!this.customerId) return;
+        if (!isLoggedInKundkort()) return;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/aml-kollen/runs?customerId=${encodeURIComponent(this.customerId)}`, {
+                method: 'GET',
+                ...getAuthOptsKundkort()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this._amlKollenRuns = Array.isArray(data.runs) ? data.runs : [];
+            this.renderAmlKollenInDocuments();
+        } catch (e) {
+            console.warn('AML-kollen runs:', e);
+        }
+    }
+
+    renderAmlKollenInDocuments() {
+        const riskBody = document.querySelector('[data-doc-category="riskbedomning"] .collapsible-body');
+        if (!riskBody) return;
+        const existing = document.getElementById('aml-kollen-panel');
+        const runs = Array.isArray(this._amlKollenRuns) ? this._amlKollenRuns : [];
+        const esc = (s) => this.escapeDocHtml(String(s == null ? '' : s));
+        const fmtDate = (iso) => {
+            const d = String(iso || '').slice(0, 10);
+            return d || '—';
+        };
+        const sigHtml = (signals) => {
+            const list = Array.isArray(signals) ? signals : [];
+            if (!list.length) return '<span class="uppdrag-muted">Inga flaggade signaler.</span>';
+            return `<ul class="document-list" style="margin-top:0.4rem;">${list.slice(0, 6).map((s) => {
+                const sev = Number(s?.severity || 0) || 1;
+                const title = esc(s?.title || s?.id || 'Signal');
+                const why = esc(s?.why || '');
+                const badge = `<span class="sni-code-badge${sev >= 4 ? ' is-high-risk' : ''}" title="Allvar ${sev}/5">${sev}</span>`;
+                return `<li class="document-list-item" style="grid-template-columns: 18px 1fr auto; padding:0.45rem 0.55rem;">
+                    <span class="document-icon"><i class="fas fa-triangle-exclamation" style="color:${sev >= 4 ? '#ef4444' : (sev >= 3 ? '#f59e0b' : '#64748b')};"></i></span>
+                    <span class="document-name" style="min-width:0;">
+                        <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">${badge}<strong>${title}</strong></div>
+                        ${why ? `<div class="uppdrag-muted" style="margin-top:0.2rem;white-space:normal;">${why}</div>` : ''}
+                    </span>
+                    <span class="document-actions"></span>
+                </li>`;
+            }).join('')}</ul>`;
+        };
+        const listHtml = runs.length
+            ? `<div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.65rem;">
+                ${runs.slice(0, 6).map((r) => {
+                    const dr = r?.dateRange || {};
+                    const range = (dr.start || dr.end) ? `${esc(dr.start || '—')} → ${esc(dr.end || '—')}` : '—';
+                    const counts = r?.counts || {};
+                    const countStr = `${Number(counts.signals || 0)} signaler · ${Number(counts.matches || 0)} matchar · ${Number(counts.bankUnmatched || 0)} bank utan bokföring · ${Number(counts.ledgerUnmatched || 0)} bokföring utan bank`;
+                    return `<div class="statistik-section" style="margin:0;padding:0.85rem 0.9rem;border:1px solid rgba(148,163,184,0.28);">
+                        <div style="display:flex;gap:0.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;">
+                            <div style="min-width:240px;">
+                                <div style="font-weight:700;">AML-kollen · ${fmtDate(r?.createdAt)}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">Period: ${range}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">${esc(countStr)}</div>
+                            </div>
+                            <div style="display:flex;gap:0.5rem;align-items:center;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.openAmlKollenRunModal('${esc(r?.id || '')}')">
+                                    <i class="fas fa-eye"></i> Visa
+                                </button>
+                            </div>
+                        </div>
+                        ${sigHtml(r?.signals)}
+                    </div>`;
+                }).join('')}
+              </div>`
+            : `<p class="lead-empty" style="margin-top:0.5rem;">Ingen AML-kollen körning än.</p>`;
+
+        const html = `
+            <div class="statistik-section" id="aml-kollen-panel" style="margin-top:0.75rem;">
+                <div style="display:flex;gap:0.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+                    <div>
+                        <h4 style="margin:0;"><i class="fas fa-shield-halved" style="margin-right:0.45rem;"></i> AML-kollen (kontoutdrag + SIE)</h4>
+                        <p class="statistik-section-desc" style="margin-top:0.35rem;">Ladda upp kontoutdrag och SIE för en engångsanalys. Resultatet sparas på ärendet och används som input till er riskbedömning.</p>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.openAmlKollenUploadModal()">
+                            <i class="fas fa-upload"></i> Ny AML-kollen
+                        </button>
+                    </div>
+                </div>
+                ${listHtml}
+            </div>
+        `;
+
+        if (existing) {
+            existing.outerHTML = html;
+        } else {
+            riskBody.insertAdjacentHTML('afterbegin', html);
+        }
+    }
+
+    openAmlKollenUploadModal() {
+        const existing = document.getElementById('aml-kollen-upload-modal');
+        if (existing) existing.remove();
+        const esc = (s) => this.escapeDocHtml(String(s == null ? '' : s));
+        const modal = document.createElement('div');
+        modal.id = 'aml-kollen-upload-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:820px; width:96vw; max-height:90vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-shield-halved"></i> AML-kollen</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('aml-kollen-upload-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body" style="overflow:auto;">
+                    <div class="form-group" style="margin-top:0;">
+                        <label>Kontoutdrag (CSV eller PDF)</label>
+                        <input type="file" id="aml-kollen-bank-file" class="kunduppgifter-input" accept=".csv,.pdf,.txt">
+                    </div>
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label>SIE-fil (SIE4 rekommenderas)</label>
+                        <input type="file" id="aml-kollen-sie-file" class="kunduppgifter-input" accept=".se,.sie,.si,.txt">
+                    </div>
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label>Kända närstående (valfritt)</label>
+                        <textarea id="aml-kollen-related" class="kunduppgifter-input" rows="3" placeholder="En per rad, t.ex.\nAnna Andersson\nBolag AB"></textarea>
+                        <div class="uppdrag-muted" style="margin-top:0.35rem;">Tips: verklig huvudman och kontaktpersoner används redan i kundkortet, men här kan du lägga till fler.</div>
+                    </div>
+                    <div class="uppdrag-muted" id="aml-kollen-upload-status" style="margin-top:0.6rem;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('aml-kollen-upload-modal')?.remove()">Avbryt</button>
+                    <button class="btn btn-primary btn-sm" type="button" id="aml-kollen-upload-confirm"><i class="fas fa-play"></i> Kör analys</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const readBase64 = (file) => new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => {
+                const s = String(r.result || '');
+                const b64 = s.includes(',') ? s.split(',')[1] : s;
+                resolve(b64 || '');
+            };
+            r.onerror = () => reject(new Error('Kunde inte läsa fil'));
+            r.readAsDataURL(file);
+        });
+
+        document.getElementById('aml-kollen-upload-confirm')?.addEventListener('click', async () => {
+            const statusEl = document.getElementById('aml-kollen-upload-status');
+            const btn = document.getElementById('aml-kollen-upload-confirm');
+            if (btn?.dataset.busy === '1') return;
+            try {
+                const bankFile = document.getElementById('aml-kollen-bank-file')?.files?.[0] || null;
+                const sieFile = document.getElementById('aml-kollen-sie-file')?.files?.[0] || null;
+                const related = (document.getElementById('aml-kollen-related')?.value || '').trim();
+                if (!bankFile) throw new Error('Välj kontoutdrag.');
+                if (!sieFile) throw new Error('Välj SIE-fil.');
+                if (btn) {
+                    btn.dataset.busy = '1';
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kör...';
+                }
+                if (statusEl) statusEl.textContent = 'Läser filer...';
+                const [bankB64, sieB64] = await Promise.all([readBase64(bankFile), readBase64(sieFile)]);
+                if (!bankB64) throw new Error('Kontoutdraget kunde inte läsas.');
+                if (!sieB64) throw new Error('SIE-filen kunde inte läsas.');
+                if (statusEl) statusEl.textContent = 'Skickar till analys...';
+                const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const res = await fetch(`${baseUrl}/api/aml-kollen/analyze`, {
+                    method: 'POST',
+                    ...getAuthOptsKundkort(),
+                    body: JSON.stringify({
+                        customerId: this.customerId,
+                        bankFileBase64: bankB64,
+                        bankFilename: bankFile.name,
+                        sieFileBase64: sieB64,
+                        sieFilename: sieFile.name,
+                        relatedPartyNames: related,
+                        createdDate: new Date().toISOString().slice(0, 10)
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                document.getElementById('aml-kollen-upload-modal')?.remove();
+                this.showNotification('AML-kollen klar. Resultatet är sparat på kunden.', 'success');
+                // Uppdatera både dokument och körningslista (underlag + resultat)
+                this.loadDocuments();
+                this.loadAmlKollenRuns();
+            } catch (e) {
+                if (statusEl) statusEl.textContent = (e && e.message) ? e.message : 'Kunde inte köra analys.';
+                if (btn) {
+                    btn.dataset.busy = '0';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play"></i> Kör analys';
+                }
+            }
+        });
+    }
+
+    async openAmlKollenRunModal(runId) {
+        const id = String(runId || '').trim();
+        if (!id) return;
+        const existing = document.getElementById('aml-kollen-run-modal');
+        if (existing) existing.remove();
+        const esc = (s) => this.escapeDocHtml(String(s == null ? '' : s));
+
+        const modal = document.createElement('div');
+        modal.id = 'aml-kollen-run-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box" style="max-width:980px; width:96vw; max-height:90vh;">
+                <div class="modal-header">
+                    <h3><i class="fas fa-shield-halved"></i> AML-kollen · ${esc(id.slice(0, 8))}</h3>
+                    <button class="modal-close" type="button" onclick="document.getElementById('aml-kollen-run-modal')?.remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body" style="overflow:auto;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar...</p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/aml-kollen/runs?customerId=${encodeURIComponent(this.customerId)}&runId=${encodeURIComponent(id)}`, {
+                method: 'GET',
+                ...getAuthOptsKundkort()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            const run = data.run || {};
+            const counts = run.counts || {};
+            const dr = run.dateRange || {};
+            const gm = run.grossMargin || null;
+            const scb = run.scb || null;
+            const signals = Array.isArray(run.signals) ? run.signals : [];
+
+            const fmtAmt = (a) => {
+                const n = Number(a);
+                if (!Number.isFinite(n)) return esc(String(a == null ? '' : a));
+                return `${n.toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr`;
+            };
+            const txTable = (rows, kind) => {
+                const list = Array.isArray(rows) ? rows : [];
+                if (!list.length) return '';
+                const head = kind === 'ledger'
+                    ? '<tr><th>Datum</th><th style="text-align:right;">Belopp</th><th>Konto</th><th>Text</th></tr>'
+                    : '<tr><th>Datum</th><th style="text-align:right;">Belopp</th><th>Text</th></tr>';
+                const body = list.slice(0, 25).map((t) => {
+                    if (kind === 'ledger') {
+                        const konto = [t?.konto, t?.kontoNamn].filter(Boolean).join(' ');
+                        const ver = (t?.voucher && (t.voucher.serie || t.voucher.vernr)) ? ` (${esc(`${t.voucher.serie || ''}${t.voucher.vernr || ''}`)})` : '';
+                        return `<tr>
+                            <td style="white-space:nowrap;">${esc(String(t?.date || '').slice(0, 10))}</td>
+                            <td style="text-align:right;white-space:nowrap;">${esc(fmtAmt(t?.amount))}</td>
+                            <td style="white-space:nowrap;">${esc(konto)}${ver}</td>
+                            <td style="white-space:normal;">${esc(t?.text || '')}</td>
+                        </tr>`;
+                    }
+                    return `<tr>
+                        <td style="white-space:nowrap;">${esc(String(t?.date || '').slice(0, 10))}</td>
+                        <td style="text-align:right;white-space:nowrap;">${esc(fmtAmt(t?.amount))}</td>
+                        <td style="white-space:normal;">${esc(t?.text || '')}</td>
+                    </tr>`;
+                }).join('');
+                return `<div style="margin-top:0.45rem;">
+                    <div class="uppdrag-muted" style="margin:0 0 0.25rem;">Exempel (visar upp till ${Math.min(25, list.length)} av ${list.length})</div>
+                    <div style="overflow:auto;border:1px solid rgba(148,163,184,0.25);border-radius:10px;">
+                        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                            <thead style="background:rgba(148,163,184,0.12);text-align:left;">${head}</thead>
+                            <tbody>${body}</tbody>
+                        </table>
+                    </div>
+                </div>`;
+            };
+
+            const sigList = signals.length
+                ? `<ul class="document-list" style="margin-top:0.5rem;">${signals.map((s) => {
+                    const sev = Number(s?.severity || 0) || 1;
+                    const badge = `<span class="sni-code-badge${sev >= 4 ? ' is-high-risk' : ''}" title="Allvar ${sev}/5">${sev}</span>`;
+                    const ev = s?.evidence || {};
+                    const detailsHtml = [
+                        txTable(ev.bankTransactions, 'bank'),
+                        txTable(ev.ledgerTransactions, 'ledger'),
+                        txTable(ev.examples, 'bank'),
+                    ].filter(Boolean).join('');
+                    return `<li class="document-list-item" style="grid-template-columns: 18px 1fr auto;">
+                        <span class="document-icon"><i class="fas fa-triangle-exclamation" style="color:${sev >= 4 ? '#ef4444' : (sev >= 3 ? '#f59e0b' : '#64748b')};"></i></span>
+                        <span class="document-name" style="min-width:0;">
+                            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">${badge}<strong>${esc(s?.title || s?.id || '')}</strong></div>
+                            ${s?.why ? `<div class="uppdrag-muted" style="margin-top:0.2rem;white-space:normal;">${esc(s.why)}</div>` : ''}
+                            ${detailsHtml}
+                        </span>
+                        <span class="document-actions"></span>
+                    </li>`;
+                }).join('')}</ul>`
+                : `<p class="lead-empty">Inga signaler flaggades i denna körning.</p>`;
+
+            const gmHtml = gm
+                ? `<div class="statistik-section" style="margin:0.75rem 0 0;">
+                    <div style="font-weight:700;">Bruttovinstmarginal</div>
+                    <div class="uppdrag-muted" style="margin-top:0.15rem;">Beräknad: ${esc((gm.marginPercent ?? '').toString())}% (intäkter ${esc(gm.revenue)} · varukostnad ${esc(gm.cogs)})</div>
+                    ${scb ? `<div class="uppdrag-muted" style="margin-top:0.15rem;">SCB referens: ${esc(scb.sniGroup || '')} · ${esc(scb.year || '')}</div>` : `<div class="uppdrag-muted" style="margin-top:0.15rem;">SCB: saknas (SNI eller SCB-data saknas).</div>`}
+                </div>`
+                : '';
+
+            const body = modal.querySelector('.modal-body');
+            if (body) {
+                body.innerHTML = `
+                    <div class="statistik-section" style="margin-top:0;">
+                        <div style="display:flex;gap:0.75rem;justify-content:space-between;flex-wrap:wrap;">
+                            <div>
+                                <div style="font-weight:700;">Sammanställning</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">Skapad: ${esc(String(run.createdAt || '').slice(0, 10))}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">Period: ${esc(dr.start || '—')} → ${esc(dr.end || '—')}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">${esc(Number(counts.signals || 0))} signaler · ${esc(Number(counts.matches || 0))} matchar</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">${esc(Number(counts.bankUnmatched || 0))} bank utan bokföring · ${esc(Number(counts.ledgerUnmatched || 0))} bokföring utan bank</div>
+                            </div>
+                            <div style="min-width:240px;">
+                                <div class="uppdrag-muted">Kontoutdrag: ${esc(run?.inputs?.bankFilename || '')}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">SIE: ${esc(run?.inputs?.sieFilename || '')}</div>
+                            </div>
+                        </div>
+                    </div>
+                    ${gmHtml}
+                    <div class="statistik-section" style="margin-top:0.75rem;">
+                        <div style="font-weight:700;">Flaggade signaler</div>
+                        ${sigList}
+                        <div class="uppdrag-muted" style="margin-top:0.6rem;">Obs: detta är en engångsanalys baserad på uppladdat underlag och är avsedd som input till er riskbedömning.</div>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            const body = modal.querySelector('.modal-body');
+            if (body) body.innerHTML = `<p class="lead-empty">Kunde inte ladda körningen: ${esc(e.message || 'fel')}</p>`;
+        }
     }
 
     getCategoryLabel(cat) {
