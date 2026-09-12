@@ -18806,16 +18806,98 @@ h5.ar-subsection-title {
 .byra-resa-kalla-note { width: 100%; max-width: 36rem; font-size: 0.85rem; }
 .byra-resa-kalla-hint { margin: 0.75rem 0 0; font-size: 0.88rem; color: #64748b; }
 .byra-resa-kalla-hint.is-ok { color: #166534; }
-.byra-resa-steps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
-.byra-resa-step-card { display: flex; gap: 0.85rem; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; background: #fff; }
-.byra-resa-step-card.is-done { border-color: #86efac; background: #f0fdf4; }
+.byra-resa-steps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.85rem; margin-top: 1rem; }
+.byra-resa-step-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.95rem 1rem 0.9rem;
+  background: #fff;
+  min-height: 11.5rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.byra-resa-step-card::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: #cbd5e1;
+}
+.byra-resa-step-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.byra-resa-step-card-heading { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.byra-resa-step-icon {
+  width: 1.55rem; height: 1.55rem; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; flex: 0 0 auto; background: #f1f5f9; color: #64748b;
+}
+.byra-resa-step-status-label {
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.01em; color: #64748b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.byra-resa-step-trail { color: #94a3b8; font-size: 0.95rem; line-height: 1; margin-top: 0.15rem; }
+.byra-resa-step-title {
+  margin: 0.15rem 0 0; font-size: 1.02rem; font-weight: 700; color: #0f172a;
+  line-height: 1.25; text-transform: none; letter-spacing: -0.01em;
+}
+.byra-resa-step-desc { margin: 0; font-size: 0.84rem; color: #64748b; line-height: 1.4; flex: 1 1 auto; }
+.byra-resa-step-link {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.86rem; font-weight: 650; color: #0f766e; text-decoration: none; margin-top: 0.15rem;
+}
+.byra-resa-step-link:hover { text-decoration: underline; }
+.byra-resa-step-gate { margin: 0; color: #b45309; font-size: 0.8rem; font-weight: 600; }
+.byra-resa-step-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: #475569; margin-top: 0.25rem; }
+
+/* Klart */
+.byra-resa-step-card.is-done { border-color: #bbf7d0; background: #f8fffb; }
+.byra-resa-step-card.is-done::before { background: #22c55e; }
+.byra-resa-step-card.is-done .byra-resa-step-icon { background: #dcfce7; color: #15803d; }
+.byra-resa-step-card.is-done .byra-resa-step-status-label { color: #15803d; }
+.byra-resa-step-card.is-done .byra-resa-step-trail { color: #16a34a; }
+.byra-resa-step-card.is-done .byra-resa-step-title { color: #334155; font-weight: 650; }
+
+/* Nästa steg */
+.byra-resa-step-card.is-next {
+  border-color: #93c5fd;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.12), 0 8px 20px rgba(37, 99, 235, 0.08);
+}
+.byra-resa-step-card.is-next::before { background: #3b82f6; }
+.byra-resa-step-card.is-next .byra-resa-step-icon { background: #dbeafe; color: #1d4ed8; }
+.byra-resa-step-card.is-next .byra-resa-step-status-label { color: #1d4ed8; }
+.byra-resa-step-card.is-next .byra-resa-step-trail { color: #2563eb; }
+.byra-resa-step-card.is-next .byra-resa-step-title { color: #0f172a; font-weight: 750; }
+
+/* Kräver uppmärksamhet */
+.byra-resa-step-card.is-attention { border-color: #fca5a5; background: #fffafa; }
+.byra-resa-step-card.is-attention::before { background: #ef4444; }
+.byra-resa-step-card.is-attention .byra-resa-step-icon { background: #fee2e2; color: #b91c1c; }
+.byra-resa-step-card.is-attention .byra-resa-step-status-label { color: #b91c1c; }
+.byra-resa-step-card.is-attention .byra-resa-step-trail { color: #dc2626; }
+.byra-resa-step-card.is-attention .byra-resa-step-title { color: #334155; }
+
+/* Ej påbörjat */
+.byra-resa-step-card.is-pending { border-color: #e2e8f0; background: #fcfcfd; }
+.byra-resa-step-card.is-pending::before { background: #cbd5e1; }
+.byra-resa-step-card.is-pending .byra-resa-step-title { color: #64748b; font-weight: 600; }
+.byra-resa-step-card.is-pending .byra-resa-step-desc { color: #94a3b8; }
 .byra-resa-step-card.is-gated { opacity: 0.92; }
-.byra-resa-step-num { flex: 0 0 2rem; height: 2rem; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: #0f766e; color: #fff; font-weight: 700; font-size: 0.9rem; }
-.byra-resa-step-body h3 { margin: 0 0 0.35rem; font-size: 1rem; }
-.byra-resa-step-body p { margin: 0 0 0.55rem; font-size: 0.88rem; color: #475569; line-height: 1.4; }
-.byra-resa-step-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; font-weight: 650; color: #0f766e; text-decoration: none; margin-bottom: 0.55rem; }
-.byra-resa-step-gate { color: #b45309 !important; font-weight: 600; }
-.byra-resa-step-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #334155; }
+
+/* Sentence case page title */
+body.byra-resa-page .content-header.risk-header h1,
+body.byra-resa-page .risk-header h1 {
+  text-transform: none;
+  letter-spacing: -0.02em;
+  font-weight: 750;
+  font-size: clamp(1.45rem, 2.4vw, 1.85rem);
+}
 .kom-igang-header-actions { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
 .kom-igang-resa-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; font-weight: 650; color: #0f766e; text-decoration: none; padding: 0.35rem 0.7rem; border: 1px solid #99f6e4; border-radius: 999px; background: #f0fdfa; }
 .kom-igang-resa-link:hover { background: #ccfbf1; }
