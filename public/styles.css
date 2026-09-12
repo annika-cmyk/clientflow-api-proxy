@@ -18857,6 +18857,15 @@ h5.ar-subsection-title {
 .kundformular-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem 1rem; margin-bottom: 0.65rem; }
 .kundformular-grid--person { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .kundformular-section label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.86rem; font-weight: 600; color: #334155; margin-bottom: 0.65rem; }
+.kundformular-label-row { display: inline-flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+.kundformular-badge { display: inline-flex; align-items: center; padding: 0.12rem 0.45rem; border-radius: 4px; font-size: 0.68rem; font-weight: 650; letter-spacing: 0.01em; border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b; text-transform: none; }
+.kundformular-badge--hamtas { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.kundformular-badge--byra { border-color: #c4b5fd; background: #f5f3ff; color: #5b21b6; }
+.kundformular-badge--sjalvrapport { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+.kundformular-tjanster { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.kundformular-check--tjanst { margin-bottom: 0 !important; padding: 0.35rem 0.5rem; border-radius: 8px; background: #f8fafc; border: 1px solid #eef2f7; }
+.kundformular-villkorad { padding: 0.65rem 0.75rem; border: 1px solid #eef2f7; border-radius: 10px; background: #f8fafc; margin-bottom: 0.55rem; }
+.kundformular-villkorad-varfor { margin-top: 0.45rem; }
 .kundformular-person-list { display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 0.5rem; }
 .kundformular-person-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.65rem; border: 1px solid #eef2f7; border-radius: 10px; background: #f8fafc; }
 .kundformular-person-row .kundformular-grid { flex: 1; margin-bottom: 0; }

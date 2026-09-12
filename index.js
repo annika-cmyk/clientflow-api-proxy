@@ -17575,6 +17575,78 @@ app.get('/api/inleed/callback', async (req, res) => {
 });
 
 
+/** Byråns valbara tjänster + kundens länkade namn för kundformulär-prefill/meta. */
+async function resolveKundformularTjansterContext(airtableAccessToken, baseId, fields) {
+  const byraId = String(fields?.['Byrå ID'] || fields?.Byrå || '').trim();
+  const linkedRaw = Array.isArray(fields?.['Kundens utvalda tjänster'])
+    ? fields['Kundens utvalda tjänster']
+    : (fields?.['Kundens utvalda tjänster'] ? [fields['Kundens utvalda tjänster']] : []);
+  let options = [];
+  if (byraId) {
+    try {
+      const rows = await fetchByraTjansterRecordsForPdf(airtableAccessToken, baseId, byraId);
+      const deduped = typeof dedupeByraTjansterForPdf === 'function'
+        ? dedupeByraTjansterForPdf(rows)
+        : rows;
+      options = (deduped || [])
+        .map((t) => ({ id: t.id || '', namn: t.namn || '' }))
+        .filter((t) => t.namn);
+    } catch (e) {
+      console.warn('kundformular tjansterOptions:', e.message);
+    }
+  }
+  const idToName = new Map(options.map((t) => [t.id, t.namn]));
+  const linked = [];
+  const seen = new Set();
+  for (const raw of linkedRaw) {
+    const id = typeof raw === 'object' && raw ? String(raw.id || '').trim() : String(raw || '').trim();
+    if (!id) continue;
+    const namn = idToName.get(id) || (typeof raw === 'object' ? (raw.namn || raw.name || '') : (!/^rec[a-zA-Z0-9]{14}$/.test(id) ? id : ''));
+    const label = String(namn || id).trim();
+    if (!label || seen.has(label.toLowerCase())) continue;
+    seen.add(label.toLowerCase());
+    linked.push({ id: /^rec[a-zA-Z0-9]{14}$/.test(id) ? id : '', namn: label });
+  }
+  return { options, linked };
+}
+
+function kundformularRiskFlags(fields) {
+  const raw = fields?.['Riskhöjande faktorer övrigt'];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (raw) return [String(raw)];
+  return [];
+}
+
+function kundformularHogrisksland(fields, kyc) {
+  const lander = [
+    String(kyc?.internationellaLander || '').trim(),
+    String(fields?.['Internationella länder'] || '').trim()
+  ].filter(Boolean).join(', ');
+  if (!lander) return false;
+  try {
+    const assessed = EuHogriskLander.assess?.(lander);
+    return !!(assessed && assessed.hasHogrisk);
+  } catch (_) {
+    return false;
+  }
+}
+
+function buildKundformularResponse(form, fields, kyc, tjansterCtx) {
+  const riskFlags = kundformularRiskFlags(fields);
+  const meta = Kundformular.buildUiMeta(form, {
+    tjansterOptions: tjansterCtx?.options || [],
+    riskFlags,
+    kyc,
+    hogrisksland: kundformularHogrisksland(fields, kyc)
+  });
+  return {
+    success: true,
+    form,
+    summary: Kundformular.summaryForUi(form),
+    meta
+  };
+}
+
 // GET /api/kundformular/:customerId – Hämta kundformulär (samma som kunden ska besvara)
 app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
   try {
@@ -17591,14 +17663,16 @@ app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
     );
     const fields = custRes.data.fields || {};
+    let kyc = {};
+    try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+    const tjansterCtx = await resolveKundformularTjansterContext(airtableAccessToken, baseId, fields);
     let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
-    // Om tomt: föreslå identitet från kundkortet så byrån ser rätt företag direkt
+    // Om tomt: föreslå identitet + tjänster från kundkortet så byrån ser rätt företag direkt
     if (!form.answers.foretagsnamn && !form.answers.orgnr) {
       form = Kundformular.applyPrefill(form, {
         fields,
-        kyc: (() => {
-          try { return JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { return {}; }
-        })()
+        kyc,
+        tjanster: tjansterCtx.linked
       });
       // Prefill-preview i GET ska inte ändra status permanent – behåll utkast om inget sparats
       if (!(fields[Kundformular.FIELD] || '').trim()) {
@@ -17608,11 +17682,7 @@ app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
       }
     }
     res.set('Cache-Control', 'no-store');
-    return res.json({
-      success: true,
-      form,
-      summary: Kundformular.summaryForUi(form)
-    });
+    return res.json(buildKundformularResponse(form, fields, kyc, tjansterCtx));
   } catch (error) {
     console.error('❌ GET /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
@@ -17639,9 +17709,14 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
     let kyc = {};
     try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+    const tjansterCtx = await resolveKundformularTjansterContext(airtableAccessToken, baseId, fields);
 
     if (action === 'prefill') {
-      form = Kundformular.applyPrefill(form, { fields, kyc });
+      form = Kundformular.applyPrefill(form, {
+        fields,
+        kyc,
+        tjanster: tjansterCtx.linked
+      });
     } else {
       const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
       const actor = req.body?.actor === 'kund' ? 'kund' : 'byra';
@@ -17671,11 +17746,7 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     }
 
     res.set('Cache-Control', 'no-store');
-    return res.json({
-      success: true,
-      form,
-      summary: Kundformular.summaryForUi(form)
-    });
+    return res.json(buildKundformularResponse(form, fields, kyc, tjansterCtx));
   } catch (error) {
     console.error('❌ PUT /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
