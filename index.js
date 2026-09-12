@@ -24056,6 +24056,8 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
     ? AiTjanstAnalys.formatByraFactsBlock(byraProfil)
     : 'BEKRÄFTADE BYRÅUPPGIFTER:\n- Inga byråuppgifter är ifyllda.\n\nSAKNADE BYRÅUPPGIFTER:\n- Byråprofil saknas – skriv "uppgift saknas", kalibrera inte utifrån påhittade antaganden om personal eller kapacitet.';
   const utforandeBlock = AiTjanstAnalys.formatUtforandeBlock(namn, utforandeState);
+  const extraUnderlagText = AiTjanstAnalys.readExtraUnderlag(namn, utforandeState, req.body?.extraUnderlag);
+  const extraUnderlagBlock = AiTjanstAnalys.formatExtraUnderlagBlock(extraUnderlagText);
   const exponeringBlock = AiTjanstAnalys.formatExponeringBlock(exponering);
   const utforandeSignals = AiTjanstAnalys.analyzeUtforandeSignals(namn, utforandeState);
   const riskreglerBlock = AiTjanstAnalys.formatRiskreglerBlock(utforandeSignals);
@@ -24156,6 +24158,7 @@ ${riskniva && !inherentIn.level ? `Tidigare risknivå (fritt val): ${riskniva}` 
 ${byraProfilUserBlock}
 
 ${utforandeBlock}
+${extraUnderlagBlock ? `\n${extraUnderlagBlock}\n` : ''}
 ${riskreglerBlock ? `\n${riskreglerBlock}\n` : ''}
 ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? `\n\n${existingBlock}` : ''}`;
 

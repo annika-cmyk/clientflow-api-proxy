@@ -37,12 +37,14 @@
 - Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot). Antalet poster enligt ANTAL-regeln.
 - Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, skriv om vaga hot till konkret mekanism (felaktig uppgift/faktura/betalning/ansökan; hur pengar kommer in, flyttas eller legitimeras; byråns roll; PT, TF eller båda), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn. Kräv inte ett separat TF-hot per tjänst. Avfärda inte TF bara för att tjänsten inte avser ideell organisation eller utlandsbetalning.
 - Kopiera inte rakt av befintliga listor eller motiveringar. En lätt omskrivning räcker inte. Skriv om hot/sårbarheter/åtgärder med konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas — även när listorna redan har poster.
+- Poster markerade [Eget] är tillagda av byrån. Behåll dem i dina listor (samma eller likvärdig titel+innehåll), föreslå inte ta-bort för dem, och skapa inte nära dubbletter. Du får komplettera med andra poster.
+- Om EXTRA UNDERLAG FRÅN BYRÅN finns: inkludera det som konkreta hot/modus/sårbarheter/åtgärder när det är AML-relevant.
 - Tomma fält: skriv ditt förslag i huvudfälten.
 - Ifyllda fält som skiljer sig från din analys: lägg en post i granskning.poster med andra=true. forslag är valfritt (servern lyfter innehållet från huvudfälten) — prioritera kommentar och andringar[].
 - kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor). Skriv så att en kollega förstår utan att läsa hela listan.
 - För listfält (hot, sarbarheter, atgarder): lägg OCKSÅ andringar[] med EN post per tillägg, redigering eller borttagning:
   { "titel": "samma titel som raden gäller", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1–2 meningar: VARFÖR just denna ändring — koppla till tjänsten, TF, källor eller varför något ska bort." }
-- Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten).
+- Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten). Föreslå inte ta-bort för [Eget]-poster.
 - Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar.
 - Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
 - andra=false bara om ditt förslag är identiskt med nuvarande innehåll efter en genuin omprövning.`;
@@ -140,6 +142,7 @@
     const keys = filledTjanstKeys(o);
     if (!keys.length) return '';
     const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
+    const markUser = (item, line) => (isUserAddedItem(item) ? `[Eget] ${line}` : line);
     if (keys.includes('tjanstebeskrivning')) {
       parts.push(`Tjänsten:\n${trimStr(o.tjanstebeskrivning)}`);
     }
@@ -158,18 +161,24 @@
     if (keys.includes('hot')) {
       parts.push('Hot:\n' + formatList(o.hot, (h) => {
         const kalla = h.kalla ? ` (källa: ${h.kalla})` : '';
-        return `${h.titel || ''} — ${h.beskrivning || ''}${kalla}`;
+        return markUser(h, `${h.titel || ''} — ${h.beskrivning || ''}${kalla}`);
       }));
     }
     if (keys.includes('sarbarheter')) {
       parts.push('Sårbarheter:\n' + formatList(o.sarbarheter, (s) => (
-        `${s.titel || ''} — ${s.beskrivning || ''}`
+        markUser(s, `${s.titel || ''} — ${s.beskrivning || ''}`)
       )));
     }
     if (keys.includes('atgarder')) {
       parts.push('Åtgärder:\n' + formatList(o.atgarder, (a) => (
-        `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`
+        markUser(a, `${a.titel || a.namn || ''} — ${a.beskrivning || ''}`)
       )));
+    }
+    const hasUser = ['hot', 'sarbarheter', 'atgarder'].some((key) => (
+      asList(o[key]).some(isUserAddedItem)
+    ));
+    if (hasUser) {
+      parts.push('ANVÄNDARTILLAGDA POSTER: Poster markerade [Eget] är tillagda av byrån. Behåll dem, föreslå inte ta-bort, och skapa inte nära dubbletter.');
     }
     return parts.join('\n\n');
   }
@@ -357,6 +366,26 @@
 
   function itemKey(item) {
     return fold((item && (item.titel || item.namn || item.beskrivning)) || '');
+  }
+
+  function isUserAddedItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    if (item.userAdded === true || item.userAdded === 'true' || item.userAdded === 1) return true;
+    const origin = String(item.ursprung || item.source || '').trim().toLowerCase();
+    return origin === 'user' || origin === 'eget' || origin === 'egen';
+  }
+
+  /**
+   * Filtrera bort AI-förslag om borttagning av användartillagda rader.
+   * Behåll uppdateringsförslag (användaren kan avfärda).
+   */
+  function listDiffPreserveUserAdded(diff) {
+    const base = diff || { updated: [], added: [], removed: [] };
+    return {
+      updated: Array.isArray(base.updated) ? base.updated.slice() : [],
+      added: Array.isArray(base.added) ? base.added.slice() : [],
+      removed: (Array.isArray(base.removed) ? base.removed : []).filter((row) => !isUserAddedItem(row && row.item))
+    };
   }
 
   function addedListItems(current, forslag) {
@@ -1150,6 +1179,8 @@
     similarKeys,
     listDiff,
     listDiffHasChanges,
+    isUserAddedItem,
+    listDiffPreserveUserAdded,
     usefulComment,
     isGenericReviewComment,
     normalizeAndringTyp,

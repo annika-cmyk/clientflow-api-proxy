@@ -151,6 +151,7 @@ class RiskAssessmentManager {
         if (!id) {
             host.innerHTML = '';
             host.hidden = true;
+            this.syncAiExtraUnderlagField('', null);
             return;
         }
         const template = Mallar.templateById(id);
@@ -159,6 +160,7 @@ class RiskAssessmentManager {
         if (!questions.length) {
             host.innerHTML = '';
             host.hidden = true;
+            this.syncAiExtraUnderlagField(id, entry);
             return;
         }
         host.hidden = false;
@@ -169,6 +171,28 @@ class RiskAssessmentManager {
             </div>
             <div class="tjanst-modal-utforande-body">${this.renderUtforandeQuestionsHtml(id, entry)}</div>`;
         this.bindUtforandeQuestionEvents(host, id);
+        this.syncAiExtraUnderlagField(id, entry);
+    }
+
+    syncAiExtraUnderlagField(mallId, entry) {
+        const el = document.getElementById('tjanst-ai-extra-underlag');
+        if (!el) return;
+        const fromEntry = entry && (entry.aiExtraUnderlag || entry.extraUnderlag);
+        const textVal = fromEntry != null ? String(fromEntry) : '';
+        if (el.value !== textVal) el.value = textVal;
+        el.dataset.mallId = mallId || '';
+    }
+
+    readAiExtraUnderlag() {
+        return (document.getElementById('tjanst-ai-extra-underlag')?.value || '').trim();
+    }
+
+    persistAiExtraUnderlag() {
+        const el = document.getElementById('tjanst-ai-extra-underlag');
+        const mallId = el?.dataset.mallId || this._modalUtforandeMallId
+            || this.findUtforandeMallIdForNamn(document.getElementById('tjanst-name')?.value.trim());
+        if (!mallId) return;
+        this.patchUtforandeEntry(mallId, { aiExtraUnderlag: this.readAiExtraUnderlag() }, { rerender: false });
     }
 
     syncModalUtforandeFromNamn() {
@@ -1181,6 +1205,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-form')?.addEventListener('submit', (e) => this.handleSaveTjanst(e));
         document.getElementById('tjanst-save-draft-btn')?.addEventListener('click', (e) => this.handleSaveTjanst(e, { asDraft: true }));
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
+        document.getElementById('tjanst-ai-extra-underlag')?.addEventListener('input', () => this.persistAiExtraUnderlag());
         document.getElementById('tjanst-name')?.addEventListener('input', () => this.syncModalUtforandeFromNamn());
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
         document.getElementById('tjanst-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
@@ -1193,14 +1218,15 @@ class RiskAssessmentManager {
         });
         document.getElementById('tjanst-residual-feedback-send')?.addEventListener('click', () => this.sendResidualFeedback());
 
-        // Lägg till-rad-knappar i modalen
+        // Lägg till-rad-knappar i modalen (egna poster som behålls vid AI-regenerering)
         document.querySelectorAll('.btn-add-row').forEach(btn => {
             btn.addEventListener('click', () => {
                 const kind = btn.dataset.add;
                 this.setTjanstTab(kind);
-                if (kind === 'hot') this.addHotRow({}, { expand: true });
-                else if (kind === 'sarbarhet') this.addSarbarhetRow({}, { expand: true });
-                else if (kind === 'atgard') this.addAtgardRow({}, { expand: true });
+                const userOpts = { expand: true, userAdded: true };
+                if (kind === 'hot') this.addHotRow({}, userOpts);
+                else if (kind === 'sarbarhet') this.addSarbarhetRow({}, userOpts);
+                else if (kind === 'atgard') this.addAtgardRow({}, userOpts);
             });
         });
 
@@ -1840,14 +1866,19 @@ class RiskAssessmentManager {
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = data.beskrivning ?? data.description ?? '';
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
+        const userAdded = !!(opts.userAdded || this.isUserAddedItem(data));
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-hot dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        row.className = 'dyn-row dyn-row-hot dyn-card'
+            + (opts.aiAdd ? ' is-ai-add' : '')
+            + (userAdded ? ' is-user-added' : '');
         if (typ) row.dataset.hotTyp = typ;
+        if (userAdded) row.dataset.userAdded = '1';
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-hot" aria-hidden="true" title="${typ === 'tf' ? 'Terrorismfinansiering' : typ === 'pt' ? 'Penningtvätt' : 'Hot'}"><i class="fas ${typ === 'tf' ? 'fa-hand-holding-heart' : typ === 'pt' ? 'fa-coins' : 'fa-triangle-exclamation'}"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
+                ${userAdded && !opts.aiAdd ? '<span class="dyn-user-badge" title="Tillagt av er">eget</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
@@ -1869,6 +1900,15 @@ class RiskAssessmentManager {
         this.updateTjanstLists();
     }
 
+    isUserAddedItem(item) {
+        const Ai = window.AiFaltGranskning;
+        if (Ai && typeof Ai.isUserAddedItem === 'function') return Ai.isUserAddedItem(item);
+        if (!item || typeof item !== 'object') return false;
+        if (item.userAdded === true || item.userAdded === 'true' || item.userAdded === 1) return true;
+        const origin = String(item.ursprung || item.source || '').trim().toLowerCase();
+        return origin === 'user' || origin === 'eget' || origin === 'egen';
+    }
+
     // Källa räknas som länk endast om värdet börjar med http(s).
     isKallaUrl(value) {
         return /^https?:\/\//i.test((value || '').toString().trim());
@@ -1880,13 +1920,18 @@ class RiskAssessmentManager {
         const titel = data.titel ?? data.title ?? '';
         const beskrivning = this.stripEvidensLeakFromText(data.beskrivning ?? data.description ?? '');
         const kalla = data.kalla ?? data.källa ?? data.source ?? '';
+        const userAdded = !!(opts.userAdded || this.isUserAddedItem(data));
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-sarbarhet dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        row.className = 'dyn-row dyn-row-sarbarhet dyn-card'
+            + (opts.aiAdd ? ' is-ai-add' : '')
+            + (userAdded ? ' is-user-added' : '');
+        if (userAdded) row.dataset.userAdded = '1';
         row.innerHTML = `
             <div class="dyn-row-header">
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-sarbarhet" aria-hidden="true"><i class="fas fa-circle-exclamation"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
+                ${userAdded && !opts.aiAdd ? '<span class="dyn-user-badge" title="Tillagt av er">eget</span>' : ''}
                 <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
                 <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
@@ -1918,8 +1963,12 @@ class RiskAssessmentManager {
         const lagsUt = !!(TF && TF.readLagsUt ? TF.readLagsUt(data) : data.lagsUtSomUppdragsatgard);
         const seq = (this._atgardTypSeq = (this._atgardTypSeq || 0) + 1);
         const name = `atgard-typ-${seq}`;
+        const userAdded = !!(opts.userAdded || this.isUserAddedItem(data));
         const row = document.createElement('div');
-        row.className = 'dyn-row dyn-row-atgard dyn-card' + (opts.aiAdd ? ' is-ai-add' : '');
+        row.className = 'dyn-row dyn-row-atgard dyn-card'
+            + (opts.aiAdd ? ' is-ai-add' : '')
+            + (userAdded ? ' is-user-added' : '');
+        if (userAdded) row.dataset.userAdded = '1';
         if (typ === 'kundberoende_forutsattning' && lagsUt) row.dataset.lagsUt = '1';
         const forslag = (!typ && TF) ? TF.suggestAtgardTyp({ titel, beskrivning }) : { typ: '', reason: '' };
         const forslagHtml = (!typ && forslag.typ)
@@ -1930,6 +1979,7 @@ class RiskAssessmentManager {
                 <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
                 <span class="dyn-row-kind is-atgard" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>
                 ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
+                ${userAdded && !opts.aiAdd ? '<span class="dyn-user-badge" title="Tillagt av er">eget</span>' : ''}
                 <span class="dyn-header-label">Åtgärd</span>
                 <input type="text" class="dyn-titel" placeholder="Åtgärdens titel" value="${this.esc(titel)}">
                 <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
@@ -1965,6 +2015,7 @@ class RiskAssessmentManager {
             };
             const typ = (window.RiskSkala && RiskSkala.normalizePtTf(row.dataset.hotTyp)) || '';
             if (typ) item.typ = typ;
+            if (row.dataset.userAdded === '1') item.userAdded = true;
             return item;
         }).filter((h) => h.titel || h.beskrivning || h.kalla);
     }
@@ -2003,11 +2054,15 @@ class RiskAssessmentManager {
     }
 
     collectSarbarhet() {
-        return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map((row) => ({
-            titel: row.querySelector('.dyn-titel')?.value.trim() || '',
-            beskrivning: this.stripEvidensLeakFromText(row.querySelector('.dyn-besk')?.value || ''),
-            kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
-        })).filter((s) => s.titel || s.beskrivning || s.kalla);
+        return [...document.querySelectorAll('#sarbarhet-list .dyn-row')].map((row) => {
+            const item = {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: this.stripEvidensLeakFromText(row.querySelector('.dyn-besk')?.value || ''),
+                kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
+            };
+            if (row.dataset.userAdded === '1') item.userAdded = true;
+            return item;
+        }).filter((s) => s.titel || s.beskrivning || s.kalla);
     }
 
     collectAtgard() {
@@ -2023,6 +2078,7 @@ class RiskAssessmentManager {
             else if (typ === 'kundberoende_forutsattning' && row.dataset.lagsUt === '1') {
                 item.lagsUtSomUppdragsatgard = true;
             }
+            if (row.dataset.userAdded === '1') item.userAdded = true;
             return item;
         }).filter(a => a.titel || a.beskrivning);
     }
@@ -2228,6 +2284,7 @@ class RiskAssessmentManager {
             utforHost.innerHTML = '';
             utforHost.hidden = true;
         }
+        this.syncAiExtraUnderlagField('', null);
         const motIn = document.getElementById('tjanst-motivering-inneboende');
         const motRes = document.getElementById('tjanst-motivering-residual');
         if (motIn) motIn.value = '';
@@ -2368,13 +2425,32 @@ class RiskAssessmentManager {
         this.updateTjanstLists();
     }
 
+    /** Byt ut AI-lista men behåll användartillagda poster. */
+    replaceTjanstListPreservingUser(kind, incoming) {
+        const collect = kind === 'hot'
+            ? () => this.collectHot()
+            : kind === 'sarbarheter'
+                ? () => this.collectSarbarhet()
+                : () => this.collectAtgard();
+        const current = collect();
+        const userItems = current.filter((item) => this.isUserAddedItem(item)).map((item) => (
+            Object.assign({}, item, { userAdded: true })
+        ));
+        const keys = new Set(userItems.map((item) => String(item.titel || item.namn || '').trim().toLowerCase()).filter(Boolean));
+        const merged = userItems.concat((incoming || []).filter((item) => {
+            const key = String((item && (item.titel || item.namn)) || '').trim().toLowerCase();
+            return !key || !keys.has(key);
+        }));
+        this.replaceTjanstList(kind, merged);
+    }
+
     applyTjanstAiAll(data) {
         if (data.tjanstebeskrivning) document.getElementById('tjanst-beskrivning').value = data.tjanstebeskrivning;
         this.applyTjanstAiScores(data);
         this.applyTjanstAiMotivering(data);
-        this.replaceTjanstList('hot', data.hot);
-        this.replaceTjanstList('sarbarheter', data.sarbarheter);
-        this.replaceTjanstList('atgarder', data.atgarder);
+        this.replaceTjanstListPreservingUser('hot', data.hot);
+        this.replaceTjanstListPreservingUser('sarbarheter', data.sarbarheter);
+        this.replaceTjanstListPreservingUser('atgarder', data.atgarder);
     }
 
     applyTjanstAiIfEmpty(existing, data) {
@@ -2724,7 +2800,10 @@ class RiskAssessmentManager {
         const kind = item.falt;
         const current = item.nuvarande;
         const forslag = item.forslag;
-        const diff = Ai.listDiff(current, forslag);
+        let diff = Ai.listDiff(current, forslag);
+        if (typeof Ai.listDiffPreserveUserAdded === 'function') {
+            diff = Ai.listDiffPreserveUserAdded(diff);
+        }
         if (!Ai.listDiffHasChanges(diff)) return false;
         const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
         const list = document.getElementById(listId);
@@ -2905,6 +2984,7 @@ class RiskAssessmentManager {
         if (label) label.textContent = reviewMode ? 'Analyserar…' : 'Genererar…';
 
         try {
+            this.persistAiExtraUnderlag();
             const byraProfil = await this.fetchByraProfil();
 
             const opts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
@@ -2917,7 +2997,8 @@ class RiskAssessmentManager {
                     recordId: document.getElementById('tjanst-record-id')?.value || '',
                     befintligt,
                     byraProfil,
-                    utforande: this.utforandeState
+                    utforande: this.utforandeState,
+                    extraUnderlag: this.readAiExtraUnderlag()
                 })
             });
 

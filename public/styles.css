@@ -15421,10 +15421,58 @@ h5.ar-subsection-title {
     border-top: 1px solid var(--line, #e8eaee);
     flex-shrink: 0;
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
 }
 [data-tjanst-panel="utforande"] .tjanst-utforande-ai-bar {
     margin-top: 0;
+}
+.tjanst-ai-extra-underlag {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.tjanst-ai-extra-underlag > label {
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 650;
+    color: #0f172a;
+}
+.tjanst-ai-extra-underlag .tjanst-panel-hint {
+    margin: 0;
+}
+.tjanst-ai-extra-underlag textarea {
+    width: 100%;
+    min-height: 4.5rem;
+    resize: vertical;
+    border-radius: 10px;
+    border: 1px solid var(--line, #e8eaee);
+    background: var(--surface-1, #fff);
+    padding: 0.7rem 0.85rem;
+    font: inherit;
+    line-height: 1.45;
+    color: #0f172a;
+}
+.tjanst-ai-extra-underlag textarea:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent, #13505c) 35%, transparent);
+    outline-offset: 1px;
+    border-color: color-mix(in srgb, var(--accent, #13505c) 40%, var(--line, #e8eaee));
+}
+.tjanst-utforande-ai-bar #ai-suggest-btn {
+    align-self: flex-end;
+}
+.dyn-user-badge {
+    flex-shrink: 0;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent, #13505c) 12%, #fff);
+    color: var(--accent, #13505c);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 .tjanst-residual-title {
     margin: 0 0 0.2rem;
