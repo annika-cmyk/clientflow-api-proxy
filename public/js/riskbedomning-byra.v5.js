@@ -407,6 +407,8 @@ class RiskAssessmentManager {
                         <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
                     </div>
                 </div>`;
+        // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
+        // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
             ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false">Visa översikt</button>`
@@ -425,10 +427,13 @@ class RiskAssessmentManager {
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                         </div>
                     </div>
-                    <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
-                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
-                        <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
-                    </label>
+                    <div class="tjanst-mall-top-actions">
+                        ${deleteBtn}
+                        <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
+                            <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
+                            <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
+                        </label>
+                    </div>
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
@@ -436,7 +441,6 @@ class RiskAssessmentManager {
                     <div class="tjanst-mall-actions">
                         ${expandBtn}
                         <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
-                        ${deleteBtn}
                     </div>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
