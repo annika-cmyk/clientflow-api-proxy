@@ -1,5 +1,5 @@
 /**
- * Byråns resa – koordinator + källkatalog (metodnivå).
+ * Byråns AML-profil – koordinator + källkatalog (metodnivå).
  * Källor: kompakt radlayout, ingen förvald status, notering bara vid Inte relevant.
  * Egna källor kan läggas till och tas bort.
  */

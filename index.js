@@ -13045,7 +13045,7 @@ async function ensureByraResaStateField(airtableToken, baseId) {
       {
         name: fieldName,
         type: 'multilineText',
-        description: 'JSON: byråns resa (stegstatus + källkatalog tagit del/använder/inte relevant).'
+        description: 'JSON: byråns AML-profil / byra-resa (stegstatus + källkatalog tagit del/använder/inte relevant).'
       },
       { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
     );
@@ -15144,6 +15144,7 @@ app.get('/api/byra-resa', authenticateToken, async (req, res) => {
       state,
       catalog: ByraResa.mergeKallaState(state.kalla, state.customKallor),
       steps: ByraResa.RESA_STEPS,
+      progress: ByraResa.countCompletedSteps(state.steps),
       kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
       kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor)
     });
@@ -15158,7 +15159,7 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
   try {
     const { airtableAccessToken, airtableBaseId, userData, record } = await loadByraRecordForUser(req);
     if (!access.isLedareOrAdmin(userData.role)) {
-      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får uppdatera byråns resa' });
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får uppdatera byråns AML-profil' });
     }
     await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
     const incoming = req.body?.state;
