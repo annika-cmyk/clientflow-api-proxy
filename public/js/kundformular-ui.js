@@ -456,7 +456,9 @@
       root.querySelectorAll('[data-kf-villkorad]').forEach((wrap) => {
         const svar = (wrap.querySelector('[data-kf-villkorad-svar]')?.value || '').trim();
         const varfor = wrap.querySelector('.kundformular-villkorad-varfor');
-        if (varfor) varfor.hidden = !(svar === 'Ja');
+        if (!varfor) return;
+        const always = wrap.getAttribute('data-kf-villkorad-typ') === 'ja_nej_varfor';
+        varfor.hidden = !(always || svar === 'Ja');
       });
     }
 
