@@ -1270,6 +1270,7 @@ class CustomerCardManager {
                 const kfData = await kundformularRes.json().catch(() => ({}));
                 this._kundformular = kfData.form || null;
                 this._kundformularSummary = kfData.summary || null;
+                this._kundformularMeta = kfData.meta || null;
                 if (typeof this._updateKundformularTabStatus === 'function') {
                     this._updateKundformularTabStatus(kfData.summary);
                 }
@@ -10663,6 +10664,7 @@ class CustomerCardManager {
             const data = await res.json();
             this._kundformular = data.form || null;
             this._kundformularSummary = data.summary || null;
+            this._kundformularMeta = data.meta || null;
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
         } catch (e) {
@@ -10709,7 +10711,8 @@ class CustomerCardManager {
         }
         KundformularUi.render(container, payload || {
             form: this._kundformular,
-            summary: this._kundformularSummary
+            summary: this._kundformularSummary,
+            meta: this._kundformularMeta
         }, {
             onAction: (action, answers, btn) => this._onKundformularAction(action, answers, btn)
         });
@@ -10747,6 +10750,7 @@ class CustomerCardManager {
             const data = await res.json();
             this._kundformular = data.form || null;
             this._kundformularSummary = data.summary || null;
+            this._kundformularMeta = data.meta || null;
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
             const msg = action === 'prefill'

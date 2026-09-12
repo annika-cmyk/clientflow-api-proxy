@@ -17637,6 +17637,8 @@ function buildKundformularResponse(form, fields, kyc, tjansterCtx) {
     tjansterOptions: tjansterCtx?.options || [],
     riskFlags,
     kyc,
+    fields,
+    bolagsform: fields?.Bolagsform || kyc?.bolagsform || '',
     hogrisksland: kundformularHogrisksland(fields, kyc)
   });
   return {
