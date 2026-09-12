@@ -622,17 +622,17 @@ class RiskAssessmentManager {
         });
         const answerLines = this.renderUtforandeOverviewAnswers(template, answers, comments);
         const semanticPanels = [
-            ...this.renderOverviewSemanticPanels('hot', 'Hot och modus', 'fa-triangle-exclamation', hot, (h) => ({
+            this.renderOverviewSemanticPanels('hot', 'Hot och modus', 'fa-triangle-exclamation', hot, (h) => ({
                 title: h.titel || h.title || 'Hot',
                 body: h.beskrivning || h.description || '',
                 kalla: h.kalla ?? h.källa ?? h.source
             })),
-            ...this.renderOverviewSemanticPanels('sar', 'Sårbarheter', 'fa-shield-halved', sarbarheter, (s) => ({
+            this.renderOverviewSemanticPanels('sar', 'Sårbarheter', 'fa-shield-halved', sarbarheter, (s) => ({
                 title: s.titel || s.title || 'Sårbarhet',
                 body: this.stripEvidensLeakFromText(s.beskrivning || s.description || ''),
                 kalla: s.kalla ?? s.källa ?? s.source
             })),
-            ...this.renderOverviewSemanticPanels('atgard', 'Riskreducerande åtgärder', 'fa-comment-dots', atgarder, (a) => {
+            this.renderOverviewSemanticPanels('atgard', 'Riskreducerande åtgärder', 'fa-comment-dots', atgarder, (a) => {
                 const title = a.titel || a.title || a.namn || 'Åtgärd';
                 const bodyRaw = String(a.beskrivning || a.description || '').trim();
                 const isBefintlig = this.normalizeAtgardStatus(a.status) === 'befintlig';
@@ -641,7 +641,7 @@ class RiskAssessmentManager {
                     : (isBefintlig ? 'Befintlig' : bodyRaw);
                 return { title, body, kalla: null };
             })
-        ].join('');
+        ].filter(Boolean).join('');
         return `
             <div class="tjanst-mall-summary">
                 <section class="tjanst-mall-summary-block tjanst-ov-section">
@@ -666,9 +666,10 @@ class RiskAssessmentManager {
         `;
     }
 
+    /** Ett kort per kategori (hot / sårbarheter / åtgärder) med alla poster inuti. */
     renderOverviewSemanticPanels(kind, categoryLabel, iconClass, items, mapItem) {
-        if (!items || !items.length) return [];
-        return items.map((raw) => {
+        if (!items || !items.length) return '';
+        const rows = items.map((raw) => {
             const mapped = mapItem(raw) || {};
             const title = String(mapped.title || '').trim() || categoryLabel;
             const body = String(mapped.body || '').trim();
@@ -676,16 +677,20 @@ class RiskAssessmentManager {
                 ? this.renderDiscreteKalla(mapped.kalla)
                 : '';
             return `
-                <article class="tjanst-ov-panel tjanst-ov-panel--${kind}">
-                    <div class="tjanst-ov-panel-cat">
-                        <i class="fas ${iconClass}" aria-hidden="true"></i>
-                        <span class="tjanst-mall-summary-heading tjanst-ov-panel-cat-label">${this.esc(categoryLabel)}</span>
-                    </div>
+                <li class="tjanst-ov-panel-item">
                     <h6 class="tjanst-ov-panel-title">${this.esc(title)}</h6>
                     ${body ? `<p class="tjanst-ov-panel-body tjanst-mall-summary-a">${this.esc(body)}</p>` : ''}
                     ${kallaHtml ? `<div class="tjanst-ov-panel-footer">${kallaHtml}</div>` : ''}
-                </article>`;
-        });
+                </li>`;
+        }).join('');
+        return `
+            <article class="tjanst-ov-panel tjanst-ov-panel--${kind}">
+                <div class="tjanst-ov-panel-cat">
+                    <i class="fas ${iconClass}" aria-hidden="true"></i>
+                    <span class="tjanst-mall-summary-heading tjanst-ov-panel-cat-label">${this.esc(categoryLabel)}</span>
+                </div>
+                <ul class="tjanst-ov-panel-list">${rows}</ul>
+            </article>`;
     }
 
     renderUtforandeOverviewAnswers(template, answers, comments = {}) {
