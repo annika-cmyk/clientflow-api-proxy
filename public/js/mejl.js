@@ -37,6 +37,26 @@
     }
   }
 
+  function showToast(message, type) {
+    const existing = document.getElementById('mejl-toast');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'mejl-toast';
+    el.className = `notification notification-${type === 'error' ? 'error' : 'success'}`;
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `<i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'}"></i><span>${esc(message)}</span><button type="button" class="notification-close" aria-label="Stäng"><i class="fas fa-times"></i></button>`;
+    el.querySelector('.notification-close').addEventListener('click', () => el.remove());
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 8000);
+  }
+
+  function missingEnvMessage(data) {
+    const missing = (data && Array.isArray(data.missingEnv) && data.missingEnv.length)
+      ? data.missingEnv
+      : ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_GMAIL_REDIRECT_URI'];
+    return `Gmail är inte konfigurerad på servern. Saknas i Render: ${missing.join(', ')}. Se docs/GMAIL_SETUP.md.`;
+  }
+
   const els = {
     connectText: document.getElementById('mejl-connect-text'),
     statusPill: document.getElementById('mejl-status-pill'),
@@ -96,18 +116,29 @@
     els.customer.innerHTML = `<option value="">Ingen</option>${opts}`;
   }
 
+  function setConnectEnabled(enabled, title) {
+    // Använd inte native disabled när ej konfigurerad – då dör klick tyst.
+    // Visa disabled-stil + aria, och låt click-handlern visa toast.
+    els.connectBtn.disabled = false;
+    els.connectBtn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    els.connectBtn.title = title || (enabled ? 'Koppla din Gmail' : 'Gmail OAuth saknas på servern');
+    els.connectBtn.classList.toggle('is-disabled', !enabled);
+    els.connectBtn.dataset.connectReady = enabled ? '1' : '0';
+  }
+
   function renderStatus() {
     if (!status || !status.success) {
       els.connectText.textContent = 'Kunde inte hämta Gmail-status.';
+      setConnectEnabled(false, 'Kunde inte hämta Gmail-status');
       return;
     }
     if (!status.configured) {
       els.statusPill.textContent = 'Ej konfigurerad';
       els.statusPill.classList.add('is-off');
-      els.connectText.textContent =
-        status.redirectHint ||
-        'Administratören behöver sätta GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET och GOOGLE_GMAIL_REDIRECT_URI.';
-      els.connectBtn.disabled = true;
+      els.connectText.textContent = status.redirectHint || missingEnvMessage(status);
+      els.connectBtn.hidden = false;
+      // Knappen förblir klickbar så användaren får tydlig toast – men ser disabled ut.
+      setConnectEnabled(false, missingEnvMessage(status));
       els.disconnectBtn.hidden = true;
       els.refreshBtn.hidden = true;
       els.composeToggle.hidden = true;
@@ -132,7 +163,7 @@
       els.connectText.textContent =
         'Koppla din Gmail för att läsa kundmejl (etiketter under KUNDER) och skicka mejl som dig själv från ClientFlow.';
       els.connectBtn.hidden = false;
-      els.connectBtn.disabled = false;
+      setConnectEnabled(true);
       els.disconnectBtn.hidden = true;
       els.refreshBtn.hidden = true;
       els.composeToggle.hidden = true;
@@ -252,8 +283,39 @@
     await loadInbox();
   }
 
-  els.connectBtn.addEventListener('click', () => {
-    window.location.href = `${baseUrl}/api/gmail/connect`;
+  els.connectBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const ready = els.connectBtn.dataset.connectReady === '1' && status && status.configured;
+    if (!ready) {
+      const msg = missingEnvMessage(status);
+      showToast(msg, 'error');
+      els.connectText.textContent = msg;
+      return;
+    }
+    const prevHtml = els.connectBtn.innerHTML;
+    els.connectBtn.dataset.connectReady = '0';
+    els.connectBtn.classList.add('is-disabled');
+    els.connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Öppnar Google…';
+    try {
+      const res = await fetch(`${baseUrl}/api/gmail/connect?redirect=0`, {
+        ...authOpts(),
+        headers: { ...(authOpts().headers || {}), Accept: 'application/json' }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.url) {
+        const msg = data.error || missingEnvMessage(data);
+        showToast(msg, 'error');
+        els.connectText.textContent = msg;
+        els.connectBtn.innerHTML = prevHtml;
+        setConnectEnabled(!!(status && status.configured), msg);
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      showToast(err.message || 'Kunde inte starta Gmail-koppling', 'error');
+      els.connectBtn.innerHTML = prevHtml;
+      setConnectEnabled(true);
+    }
   });
 
   els.disconnectBtn.addEventListener('click', async () => {
@@ -286,10 +348,13 @@
     const params = new URLSearchParams(window.location.search);
     const presetCustomer = params.get('customerId') || '';
     if (params.get('gmail') === 'connected') {
+      showToast('Gmail är kopplad.', 'success');
       history.replaceState({}, '', 'mejl.html' + (presetCustomer ? `?customerId=${encodeURIComponent(presetCustomer)}` : ''));
     }
     if (params.get('gmail') === 'error') {
-      els.connectText.textContent = `Kunde inte koppla Gmail: ${params.get('reason') || 'okänt fel'}`;
+      const reason = params.get('reason') || 'okänt fel';
+      els.connectText.textContent = `Kunde inte koppla Gmail: ${reason}`;
+      showToast(`Kunde inte koppla Gmail: ${reason}`, 'error');
       history.replaceState({}, '', 'mejl.html');
     }
     await loadCustomers();

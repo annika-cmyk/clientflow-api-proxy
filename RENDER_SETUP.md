@@ -58,13 +58,14 @@ MAIL_FROM=ClientFlow Underlag <hej@clientflow.se>
 
 # Gmail-integration (Mejl-sidan: läs KUNDER-etiketter + skicka som användaren)
 # Skapa OAuth-klient i Google Cloud Console (Web application).
-# Authorized redirect URI måste matcha exakt:
+# Authorized redirect URI måste matcha GOOGLE_GMAIL_REDIRECT_URI exakt (använd www-hosten):
 GOOGLE_CLIENT_ID=din_google_client_id
 GOOGLE_CLIENT_SECRET=din_google_client_secret
-GOOGLE_GMAIL_REDIRECT_URI=https://app.clientflow.se/api/gmail/oauth/callback
+GOOGLE_GMAIL_REDIRECT_URI=https://www.app.clientflow.se/api/gmail/oauth/callback
 # Valfritt: GMAIL_TOKEN_SECRET=...  (annars används JWT_SECRET)
 # Valfritt: GMAIL_KUNDER_LABEL=KUNDER
-PUBLIC_BASE_URL=https://app.clientflow.se
+PUBLIC_BASE_URL=https://www.app.clientflow.se
+# Mer: docs/GMAIL_SETUP.md
 
 # Samarbete BankID (mock default – se docs/GMAIL_SETUP.md)
 # SAMARBETE_BANKID_MODE=mock
