@@ -883,7 +883,7 @@ class CustomerCardManager {
 
     _ensureTabStatusElements() {
         const tabIds = [
-            'foretagsinformation', 'ovrigkyc', 'kycformular', 'uppdragsavtal',
+            'foretagsinformation', 'kundformular', 'ovrigkyc', 'kycformular', 'uppdragsavtal',
             'uppdrag', 'avvikelser', 'samarbete'
         ];
         tabIds.forEach((tabId) => {
@@ -1250,12 +1250,13 @@ class CustomerCardManager {
         this._updateKlarTabIndicators(f);
 
         try {
-            const [kycRes, avtalRes, uppdragRes, avvikRes, samRes] = await Promise.all([
+            const [kycRes, avtalRes, uppdragRes, avvikRes, samRes, kundformularRes] = await Promise.all([
                 fetch(`${baseUrl}/api/kyc-formular/${this.customerId}`, { method: 'GET', ...opts }).catch(() => null),
                 fetch(`${baseUrl}/api/uppdragsavtal?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
                 fetch(`${baseUrl}/api/uppdrag?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
                 fetch(`${baseUrl}/api/avvikelser?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
-                fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null)
+                fetch(`${baseUrl}/api/samarbete/requests?customerId=${encodeURIComponent(this.customerId)}`, { method: 'GET', ...opts }).catch(() => null),
+                fetch(`${baseUrl}/api/kundformular/${this.customerId}`, { method: 'GET', ...opts }).catch(() => null)
             ]);
 
             if (kycRes?.ok) {
@@ -1263,6 +1264,15 @@ class CustomerCardManager {
                 this._savedKycFormular = kycData.kyc || {};
                 this._kycInleed = kycData.inleed || null;
                 this._kycFormularFetched = true;
+            }
+
+            if (kundformularRes?.ok) {
+                const kfData = await kundformularRes.json().catch(() => ({}));
+                this._kundformular = kfData.form || null;
+                this._kundformularSummary = kfData.summary || null;
+                if (typeof this._updateKundformularTabStatus === 'function') {
+                    this._updateKundformularTabStatus(kfData.summary);
+                }
             }
 
             if (avtalRes?.ok) {
@@ -1344,6 +1354,9 @@ class CustomerCardManager {
                 break;
             case 'ovrigkyc':
                 this.loadOvrigKYC();
+                break;
+            case 'kundformular':
+                this.loadKundformular();
                 break;
             case 'kycformular':
                 this.loadKYCFormular();
@@ -10623,6 +10636,131 @@ class CustomerCardManager {
     }
 
     // ─── KYC-FORMULÄR ─────────────────────────────────────────────────────────
+
+    async loadKundformular() {
+        const container = document.getElementById('kundformular-content');
+        if (!container) return;
+        if (!this.customerId) {
+            container.innerHTML = '<p class="lead-empty">Ingen kund vald.</p>';
+            return;
+        }
+        container.innerHTML = `
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Laddar kundformulär...</p>
+            </div>
+        `;
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
+                method: 'GET',
+                ...getAuthOptsKundkort()
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            this._kundformular = data.form || null;
+            this._kundformularSummary = data.summary || null;
+            this._renderKundformular(data);
+            this._updateKundformularTabStatus(data.summary);
+        } catch (e) {
+            console.error('loadKundformular:', e);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Kunde inte ladda kundformuläret.</p>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="customerCardManager.loadKundformular()">
+                        <i class="fas fa-redo"></i> Försök igen
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    _updateKundformularTabStatus(summary) {
+        const s = summary || this._kundformularSummary || {};
+        if (s.isAnswered || s.status === 'besvarat' || s.status === 'signerat') {
+            this._setTabStatus('kundformular',
+                '<i class="fas fa-check-circle tab-status--ok" aria-hidden="true"></i>',
+                s.answeredAt ? `Besvarat ${String(s.answeredAt).slice(0, 10)}` : 'Besvarat av kund');
+        } else if (s.status === 'skickat') {
+            this._setTabStatus('kundformular',
+                '<i class="fas fa-paper-plane tab-status--incomplete" aria-hidden="true"></i>',
+                'Skickat till kund');
+        } else if (s.status === 'prefillad') {
+            this._setTabStatus('kundformular',
+                '<i class="fas fa-pen tab-status--incomplete" aria-hidden="true"></i>',
+                'Prefillat – väntar på kundsvar');
+        } else {
+            this._setTabStatus('kundformular',
+                '<i class="fas fa-exclamation-circle tab-status--incomplete" aria-hidden="true"></i>',
+                'Kundformulär ej besvarat');
+        }
+    }
+
+    _renderKundformular(payload) {
+        const container = document.getElementById('kundformular-content');
+        if (!container) return;
+        if (!window.KundformularUi || typeof KundformularUi.render !== 'function') {
+            container.innerHTML = '<p class="lead-empty">Kundformulär-UI kunde inte laddas.</p>';
+            return;
+        }
+        KundformularUi.render(container, payload || {
+            form: this._kundformular,
+            summary: this._kundformularSummary
+        }, {
+            onAction: (action, answers, btn) => this._onKundformularAction(action, answers, btn)
+        });
+    }
+
+    async _onKundformularAction(action, answers, btn) {
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const map = {
+            save: { action: 'save', label: 'Sparar...' },
+            prefill: { action: 'prefill', label: 'Prefillar...' },
+            mark_answered: { action: 'mark_answered', label: 'Markerar...' },
+            mark_sent: { action: 'mark_sent', label: 'Skickar...' }
+        };
+        const cfg = map[action];
+        if (!cfg) return;
+        if (action === 'mark_sent') {
+            this.showNotification('BankID-utskick kommer i nästa steg.', 'info');
+            return;
+        }
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${cfg.label}`; }
+        try {
+            const body = action === 'prefill'
+                ? { action: 'prefill' }
+                : { action: cfg.action, answers, actor: 'byra' };
+            const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
+                method: 'PUT',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            this._kundformular = data.form || null;
+            this._kundformularSummary = data.summary || null;
+            this._renderKundformular(data);
+            this._updateKundformularTabStatus(data.summary);
+            const msg = action === 'prefill'
+                ? 'Prefillat från kundkort'
+                : (action === 'mark_answered' ? 'Markerat som besvarat' : 'Kundformulär sparat');
+            this.showNotification(msg, 'success');
+        } catch (e) {
+            console.error('_onKundformularAction:', e);
+            this.showNotification(`Kunde inte uppdatera kundformulär: ${e.message}`, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+        }
+    }
+
     async loadKYCFormular() {
         const container = document.getElementById('kycformular-content');
         if (!container) return;

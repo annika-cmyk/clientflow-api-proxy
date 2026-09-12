@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260828date2">
+    <link rel="stylesheet" href="styles.css?v=20260912kundformular">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="kundkort-page">
@@ -40,6 +40,10 @@
                             <button type="button" class="tab-button active" data-tab="foretagsinformation">
                                 <span class="tab-status" data-tab-status="foretagsinformation" aria-hidden="true"></span>
                                 <span class="tab-button-label">Företagsinformation</span>
+                            </button>
+                            <button type="button" class="tab-button" data-tab="kundformular">
+                                <span class="tab-status" data-tab-status="kundformular" aria-hidden="true"></span>
+                                <span class="tab-button-label">Kundformulär</span>
                             </button>
                             <button type="button" class="tab-button" data-tab="kycformular">
                                 <span class="tab-status" data-tab-status="kycformular" aria-hidden="true"></span>
@@ -81,6 +85,16 @@
                                     <div class="loading-spinner">
                                         <i class="fas fa-spinner fa-spin"></i>
                                         <p>Laddar företagsinformation...</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Kundformulär Tab -->
+                            <div id="kundformular" class="tab-pane">
+                                <div id="kundformular-content">
+                                    <div class="loading-spinner">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>Laddar kundformulär...</p>
                                     </div>
                                 </div>
                             </div>
@@ -212,6 +226,7 @@
     <script src="js/senaste-riskbedomning-datum.js?v=1" defer></script>
     <script src="js/html-plain-text.js?v=1" defer></script>
     <script src="js/identitet-kontroll.js?v=5" defer></script>
-    <script src="js/kundkort.js?v=16.62" defer></script>
+    <script src="js/kundformular-ui.js?v=1" defer></script>
+    <script src="js/kundkort.js?v=16.63" defer></script>
 </body>
 </html>

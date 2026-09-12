@@ -18102,3 +18102,35 @@ h5.ar-subsection-title {
   .byra-resa-kalla-row-main { flex-direction: column; align-items: flex-start; }
 }
 
+
+
+/* —— Kundformulär (kundkort) —— */
+.kundformular-panel { display: flex; flex-direction: column; gap: 1.25rem; }
+.kundformular-header { display: flex; justify-content: space-between; gap: 1.25rem; flex-wrap: wrap; align-items: flex-start; }
+.kundformular-title { margin: 0 0 0.35rem; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+.kundformular-lead { margin: 0; max-width: 42rem; font-size: 0.92rem; color: #475569; line-height: 1.45; }
+.kundformular-header-status { min-width: 12rem; }
+.kundformular-status { display: inline-flex; align-items: center; padding: 0.3rem 0.7rem; border-radius: 999px; font-size: 0.8rem; font-weight: 650; border: 1px solid #dbe3ee; background: #f8fafc; color: #334155; }
+.kundformular-status--ok { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.kundformular-status--sent { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+.kundformular-status--prefill { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.kundformular-status--draft { border-color: #dbe3ee; background: #f8fafc; color: #475569; }
+.kundformular-meta { margin-top: 0.45rem; font-size: 0.85rem; color: #64748b; }
+.kundformular-meta p { margin: 0.15rem 0; }
+.kundformular-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.kundformular-form { display: flex; flex-direction: column; gap: 1.1rem; }
+.kundformular-section { padding: 1rem 1.1rem; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.kundformular-section h4 { margin: 0 0 0.35rem; font-size: 1rem; color: #0f172a; }
+.kundformular-hint { margin: 0 0 0.75rem; font-size: 0.85rem; color: #64748b; }
+.kundformular-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem 1rem; margin-bottom: 0.65rem; }
+.kundformular-grid--person { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.kundformular-section label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.86rem; font-weight: 600; color: #334155; margin-bottom: 0.65rem; }
+.kundformular-person-list { display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 0.5rem; }
+.kundformular-person-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.65rem; border: 1px solid #eef2f7; border-radius: 10px; background: #f8fafc; }
+.kundformular-person-row .kundformular-grid { flex: 1; margin-bottom: 0; }
+.kundformular-check { display: flex !important; flex-direction: row !important; align-items: flex-start; gap: 0.55rem; font-weight: 500 !important; }
+.kundformular-check input { margin-top: 0.2rem; }
+@media (max-width: 720px) {
+  .kundformular-header { flex-direction: column; }
+  .kundformular-person-row { flex-direction: column; }
+}
