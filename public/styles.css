@@ -17699,6 +17699,59 @@ h5.ar-subsection-title {
 .tjanst-mall-summary-a {
     color: #0f172a;
 }
+
+.tjanst-mall-summary-block {
+    margin: 0 0 0.85rem;
+}
+.tjanst-mall-summary-block:last-child { margin-bottom: 0; }
+.tjanst-mall-summary-heading {
+    margin: 0 0 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.tjanst-mall-summary-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+}
+.tjanst-mall-summary-list li {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: #0f172a;
+}
+.tjanst-mall-summary-list .tjanst-mall-summary-q {
+    display: block;
+    margin-bottom: 0.15rem;
+}
+.tjanst-mall-summary-list .tjanst-mall-summary-a {
+    display: block;
+    white-space: pre-wrap;
+}
+.tjanst-mall-summary-comment {
+    display: block;
+    margin-top: 0.2rem;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-style: italic;
+}
+.tjanst-mall-summary-answers li {
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid #eef2f7;
+}
+.tjanst-mall-summary-answers li:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+.tjanst-mall-summary-text {
+    white-space: pre-wrap;
+}
+
 .tjanst-mall-overview-x {
     margin-top: 0.65rem;
     padding: 0.75rem 0.85rem;
