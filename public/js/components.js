@@ -86,6 +86,7 @@ class ComponentLoader {
 
         this.initMobileNav(element);
         this.initSidebarSearch(element);
+        this.initByraAmlProfilProgress(element);
         this.initMinibokBanner();
 
         // Fäll in/ut menyposter under rubriker
@@ -162,6 +163,48 @@ class ComponentLoader {
             script.onload = runInit;
             document.body.appendChild(script);
         }
+    }
+
+    initByraAmlProfilProgress(element) {
+        const card = element.querySelector('#sidebar-aml-profil-card');
+        const statusEl = element.querySelector('#sidebar-aml-profil-status');
+        const fillEl = element.querySelector('#sidebar-aml-profil-fill');
+        if (!card || !statusEl || !fillEl) return;
+
+        const apply = (done, total) => {
+            const safeTotal = total > 0 ? total : 8;
+            const safeDone = Math.max(0, Math.min(done || 0, safeTotal));
+            const pct = Math.round((safeDone / safeTotal) * 100);
+            statusEl.textContent = `${safeDone} av ${safeTotal} steg klara`;
+            fillEl.style.width = `${pct}%`;
+            card.setAttribute('aria-label', `Byråns AML-profil, ${safeDone} av ${safeTotal} steg klara`);
+        };
+
+        apply(0, 8);
+
+        const authOpts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        };
+        const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || '';
+
+        fetch(`${baseUrl}/api/byra-resa`, authOpts)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!data) return;
+                if (data.progress && typeof data.progress.done === 'number') {
+                    apply(data.progress.done, data.progress.total || 8);
+                    return;
+                }
+                const steps = (data.state && data.state.steps) || {};
+                const total = Array.isArray(data.steps) && data.steps.length ? data.steps.length : 8;
+                let done = 0;
+                Object.keys(steps).forEach((id) => {
+                    if (steps[id]) done += 1;
+                });
+                apply(done, total);
+            })
+            .catch(() => { /* leave default */ });
     }
 
     initMinibokBanner() {
