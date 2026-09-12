@@ -24,20 +24,17 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Övriga riskfaktorer</h1>
-                        <p class="risk-header-sub">Distribution, geografi, verksamhetsspecifika risker och hur ni möter kunden</p>
+                        <p class="risk-header-sub">Byråns arbetssätt: distribution, geografisk marknad och verksamhetsspecifika risker</p>
                         <div class="risk-header-body">
                             <p>
-                                En noggrann riskbedömning av övriga riskfaktorer är viktig för att identifiera och hantera risker som inte är kopplade till en specifik tjänst, utan till <strong>hur ni möter kunden</strong>, <strong>var byråns kunder finns</strong> och <strong>vad kunden gör</strong>. Detta omfattar distributionskanaler, geografiska riskfaktorer och verksamhetsspecifika riskfaktorer.
-                            </p>
-                            <p>
-                                Kundtyp, varningsflaggor och risksänkande omständigheter ligger på sidan
-                                <a href="kundrisker-mm.html">Kundrisker mm</a>. Geografiska riskfaktorer visas även där — samma byråspecifika poster, som ni kan redigera på båda sidorna.
+                                Här bedömer ni risker kopplade till <strong>byråns egen verksamhet och arbetssätt</strong>: hur ni möter kunden (distributionskanaler), var ni erbjuder era tjänster (geografisk marknad i byråprofilen) och verksamhetsspecifika omständigheter. Detta är inte samma sak som kundens riskprofil — den ligger på
+                                <a href="kundrisker-mm.html">Vilka är våra kunder</a>.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
                                 <li>Hur ni möter kunden — distanskund eller fysiskt möte påverkar hur väl ni kan verifiera identitet och avsikt.</li>
-                                <li>Geografiska faktorer — närområde, Europa, högriskländer och särskilt utsatta områden i Sverige.</li>
-                                <li>Verksamhetsspecifika omständigheter — bransch, transaktionsmönster och affärsmodell.</li>
+                                <li>Var byrån erbjuder sina tjänster — geografisk marknad styrs i byråprofilen och påverkar AR-sammanställningen.</li>
+                                <li>Verksamhetsspecifika omständigheter i byråns arbetssätt och affärsmodell.</li>
                                 <li>Vilka åtgärder ni faktiskt vidtar, i praktiken, för att hantera och minska riskerna.</li>
                             </ul>
                             <h3>Skriv risk och åtgärd i rätt ordning — blanda inte ihop dem</h3>
@@ -59,7 +56,8 @@
                             </p>
                             <h3>Kom ihåg finansiering av terrorism (TF) i varje dimension</h3>
                             <p>
-                                TF ska övervägas separat i geografi, kundtyp och distribution — inte bara i tjänsteanalysen. Exempel: internationella distanskunder är svårare att verifiera avsikten hos; ideella föreningar saknar ofta samma ägarstruktur som aktiebolag och kan utnyttjas för att kanalisera medel vidare. Ange TF-bedömningen uttryckligen för varje faktor, även när slutsatsen är att risken huvudsakligen sammanfaller med penningtvättsanalysen.
+                                TF ska övervägas separat i distribution och verksamhetsspecifika faktorer — inte bara i tjänsteanalysen. Exempel: internationella distanskunder är svårare att verifiera avsikten hos. Kundkategorier och kundens geografi bedöms på
+                                <a href="kundrisker-mm.html">Vilka är våra kunder</a>. Ange TF-bedömningen uttryckligen för varje faktor, även när slutsatsen är att risken huvudsakligen sammanfaller med penningtvättsanalysen.
                             </p>
                             <p class="risk-header-note">
                                 ClientFlow ger stöd och mallar för riskbedömningen, men det är alltid byråns ansvar att anpassa
@@ -163,7 +161,6 @@
                             <label for="risk-type">Typ av riskfaktor *</label>
                             <select id="risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
-                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer - här finns byråns kunder</option>
                                 <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
                                 <option value="Distrubutionskanaler">Distrubutionskanaler - såhär möter vi våra kunder</option>
                             </select>
@@ -302,7 +299,6 @@
                             <label for="edit-risk-type">Typ av riskfaktor *</label>
                             <select id="edit-risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
-                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer - här finns byråns kunder</option>
                                 <option value="Verksamhetsspecifika riskfaktorer">Verksamhetsspecifika riskfaktorer</option>
                                 <option value="Distrubutionskanaler">Distrubutionskanaler - såhär möter vi våra kunder</option>
                             </select>
@@ -449,6 +445,6 @@
     <script src="js/risksankande-katalog.js?v=2" defer></script>
     <script src="js/ai-falt-granskning.js?v=11" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
-    <script src="js/ovriga-riskfaktorer.js?v=33" defer></script>
+    <script src="js/ovriga-riskfaktorer.js?v=39" defer></script>
 </body>
 </html>
