@@ -18131,6 +18131,23 @@ h5.ar-subsection-title {
     margin: 0 !important;
     color: inherit !important;
 }
+.tjanst-ov-panel-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.tjanst-ov-panel-item {
+    margin: 0;
+    padding: 0.65rem 0 0;
+}
+.tjanst-ov-panel-item + .tjanst-ov-panel-item {
+    margin-top: 0.55rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
 .tjanst-ov-panel-title {
     margin: 0 0 0.35rem;
     font-size: 1rem;
