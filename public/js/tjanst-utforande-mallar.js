@@ -963,10 +963,6 @@
   }
 
   /**
-   * Ta bort en egen (custom:) tjänst från katalogen.
-   * Standardmallar lämnas orörda — de inaktiveras i stället.
-   */
-  /**
    * Ta bort tjänst från katalogen (egen eller standard).
    * Standardmallar sparas i excludedMallIds så de kan läggas till igen.
    */
