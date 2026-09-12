@@ -163,7 +163,12 @@
 
   function isAnswered(v, field) {
     if (isBolagsformerField(field)) return isBolagsformerAnswered(v);
-    if (field && field.key === 'branscherKundstock') return isHogriskAnswered(v);
+    if (field && (field.type === 'branscher' || field.key === 'kundernasBranscher')) {
+      return isBolagsformerAnswered(v);
+    }
+    if (field && (field.type === 'hogrisk-branscher' || field.key === 'branscherKundstock')) {
+      return isHogriskAnswered(v);
+    }
     if (v == null) return false;
     if (typeof v === 'number') return Number.isFinite(v);
     return String(v).trim() !== '';
@@ -398,126 +403,267 @@
     return input;
   }
 
-  function renderHogrisk(field) {
+  function renderBranschPicker(field, opts) {
+    opts = opts || {};
+    var allowNone = !!opts.allowNone;
+    var noneLabel = opts.noneLabel || HOGRISK_NONE;
+    var catalog = Array.isArray(opts.catalog) ? opts.catalog.slice() : [];
     var wrap = document.createElement('div');
-    wrap.className = 'byra-enkate-hogrisk';
+    wrap.className = 'byra-enkate-bransch-picker' + (allowNone ? ' byra-enkate-bransch-picker--hogrisk' : '');
 
-    var noneLabel = document.createElement('label');
-    noneLabel.className = 'byra-enkate-check byra-enkate-check--none';
-    var noneCb = document.createElement('input');
-    noneCb.type = 'checkbox';
-    noneCb.checked = String(values[field.key] || '').trim() === HOGRISK_NONE;
-    noneLabel.appendChild(noneCb);
-    var noneSpan = document.createElement('span');
-    noneSpan.textContent = HOGRISK_NONE;
-    noneLabel.appendChild(noneSpan);
-    wrap.appendChild(noneLabel);
+    var noneCb = null;
+    if (allowNone) {
+      var noneLabelEl = document.createElement('label');
+      noneLabelEl.className = 'byra-enkate-check byra-enkate-check--none';
+      noneCb = document.createElement('input');
+      noneCb.type = 'checkbox';
+      noneCb.checked = String(values[field.key] || '').trim() === noneLabel;
+      noneLabelEl.appendChild(noneCb);
+      var noneSpan = document.createElement('span');
+      noneSpan.textContent = noneLabel;
+      noneLabelEl.appendChild(noneSpan);
+      wrap.appendChild(noneLabelEl);
+    }
 
+    var selectedWrap = document.createElement('div');
+    selectedWrap.className = 'byra-enkate-bransch-selected';
+    wrap.appendChild(selectedWrap);
+
+    var addRow = document.createElement('div');
+    addRow.className = 'byra-enkate-bransch-add';
     var search = document.createElement('input');
     search.type = 'search';
     search.className = 'form-input byra-enkate-input';
-    search.placeholder = 'Sök bransch…';
-    wrap.appendChild(search);
+    search.placeholder = opts.searchPlaceholder || 'Sök och lägg till bransch…';
+    search.setAttribute('autocomplete', 'off');
+    addRow.appendChild(search);
+    var suggestions = document.createElement('div');
+    suggestions.className = 'byra-enkate-bransch-suggestions';
+    suggestions.hidden = true;
+    addRow.appendChild(suggestions);
+    wrap.appendChild(addRow);
 
-    var head = document.createElement('div');
-    head.className = 'byra-enkate-bolagsformer-head byra-enkate-hogrisk-head';
-    head.innerHTML = '<span>Bransch</span><span>Uppskattat antal</span>';
-    wrap.appendChild(head);
+    var customRow = document.createElement('div');
+    customRow.className = 'byra-enkate-bransch-custom';
+    var customInput = document.createElement('input');
+    customInput.type = 'text';
+    customInput.className = 'form-input byra-enkate-input';
+    customInput.placeholder = 'Eller skriv egen bransch och tryck Enter';
+    customRow.appendChild(customInput);
+    wrap.appendChild(customRow);
 
-    var list = document.createElement('div');
-    list.className = 'byra-enkate-hogrisk-list';
-    wrap.appendChild(list);
+    var hint = document.createElement('p');
+    hint.className = 'byra-enkate-hint';
+    wrap.appendChild(hint);
 
-    var summary = document.createElement('p');
-    summary.className = 'byra-enkate-hint';
-    wrap.appendChild(summary);
-
-    function collectRows() {
-      var kept = {};
-      parseBolagsformer(values[field.key] === HOGRISK_NONE ? '' : values[field.key]).forEach(function (r) {
-        if (r.form) kept[String(r.form).toLowerCase()] = { form: r.form, count: r.count || '' };
-      });
-      list.querySelectorAll('.byra-enkate-hogrisk-row').forEach(function (row) {
-        var cb = row.querySelector('input[type="checkbox"]');
-        var num = row.querySelector('input[type="number"]');
-        if (!cb) return;
-        if (num) {
-          num.disabled = !cb.checked;
-          row.classList.toggle('is-disabled', !cb.checked);
-          if (!cb.checked) num.value = '';
-        }
-        var key = String(cb.value || '').toLowerCase();
-        if (!cb.checked) {
-          delete kept[key];
-          return;
-        }
-        kept[key] = { form: cb.value, count: num ? num.value : '' };
-      });
-      return Object.keys(kept).map(function (k) { return kept[k]; });
+    function currentRows() {
+      if (allowNone && String(values[field.key] || '').trim() === noneLabel) return [];
+      return parseBolagsformer(values[field.key]);
     }
 
-    function syncSummary() {
-      if (noneCb.checked) {
-        values[field.key] = HOGRISK_NONE;
-        summary.textContent = HOGRISK_NONE + '.';
+    function selectedNames() {
+      return currentRows().map(function (r) { return String(r.form || '').trim(); }).filter(Boolean);
+    }
+
+    function writeRows(rows) {
+      if (allowNone && noneCb && noneCb.checked) {
+        values[field.key] = noneLabel;
       } else {
-        var rows = collectRows();
         values[field.key] = formatBolagsformer(rows);
-        summary.textContent = rows.length === 0
-          ? 'Välj branscher och ange ett uppskattat antal, eller markera att ni saknar högriskbranscher.'
-          : rows.length + ' valda: ' + formatBolagsformer(rows);
       }
       skipped[field.key] = false;
       updateProgress();
       updateNav();
     }
 
-    function paint(filter) {
-      list.innerHTML = '';
-      if (noneCb.checked) {
-        head.hidden = true;
-        list.innerHTML = '<p class="byra-enkate-hint">Avmarkera "' + HOGRISK_NONE + '" för att välja branscher.</p>';
-        return;
+    function setNone(on) {
+      if (!allowNone || !noneCb) return;
+      noneCb.checked = !!on;
+      if (on) {
+        values[field.key] = noneLabel;
+        selectedWrap.innerHTML = '';
+        addRow.hidden = true;
+        customRow.hidden = true;
+        suggestions.hidden = true;
+        hint.textContent = noneLabel + '.';
+      } else {
+        if (String(values[field.key] || '').trim() === noneLabel) values[field.key] = '';
+        addRow.hidden = false;
+        customRow.hidden = false;
+        paintSelected();
+        syncHint();
       }
-      head.hidden = false;
-      var q = (filter || '').toLowerCase();
-      var items = hogriskLabels.filter(function (label) {
-        return !q || String(label).toLowerCase().indexOf(q) >= 0;
-      });
-      if (!items.length) {
-        list.innerHTML = '<p class="byra-enkate-hint">Inga träffar.</p>';
-        return;
-      }
-      var selected = {};
-      selectedBranscher().forEach(function (label) {
-        selected[String(label).toLowerCase()] = hogriskCountFor(label);
-      });
-      items.forEach(function (label, idx) {
-        var id = 'enkate-hogrisk-' + idx;
-        var checked = Object.prototype.hasOwnProperty.call(selected, String(label).toLowerCase());
-        var count = checked ? (selected[String(label).toLowerCase()] || '') : '';
-        var row = document.createElement('div');
-        row.className = 'byra-enkate-hogrisk-row' + (checked ? '' : ' is-disabled');
-        row.innerHTML = '<label for="' + id + '"><input type="checkbox" id="' + id + '" value="' + String(label).replace(/"/g, '&quot;') + '"' + (checked ? ' checked' : '') + '><span>' + label + '</span></label>' +
-          '<input type="number" class="form-input" min="0" step="1" placeholder="Antal" value="' + count + '"' + (checked ? '' : ' disabled') + '>';
-        list.appendChild(row);
-      });
-      list.querySelectorAll('input').forEach(function (el) {
-        el.addEventListener('change', syncSummary);
-        el.addEventListener('input', syncSummary);
-      });
+      skipped[field.key] = false;
+      updateProgress();
+      updateNav();
     }
 
-    noneCb.addEventListener('change', function () {
-      if (noneCb.checked) values[field.key] = HOGRISK_NONE;
-      else if (String(values[field.key] || '').trim() === HOGRISK_NONE) values[field.key] = '';
-      paint(search.value);
-      syncSummary();
+    function syncHint() {
+      if (allowNone && noneCb && noneCb.checked) {
+        hint.textContent = noneLabel + '.';
+        return;
+      }
+      var rows = currentRows();
+      hint.textContent = rows.length
+        ? (rows.length + ' valda: ' + formatBolagsformer(rows))
+        : (opts.emptyHint || 'Sök och lägg till branscher. Antalet får vara ungefärligt.');
+    }
+
+    function paintSelected() {
+      selectedWrap.innerHTML = '';
+      var rows = currentRows();
+      if (!rows.length) {
+        selectedWrap.innerHTML = '<p class="byra-enkate-bransch-empty">Inga branscher tillagda ännu.</p>';
+        syncHint();
+        return;
+      }
+      rows.forEach(function (r) {
+        var chip = document.createElement('div');
+        chip.className = 'byra-enkate-bransch-chip';
+        var name = document.createElement('span');
+        name.className = 'byra-enkate-bransch-chip-name';
+        name.textContent = r.form;
+        chip.appendChild(name);
+        var num = document.createElement('input');
+        num.type = 'number';
+        num.className = 'form-input byra-enkate-bransch-chip-count';
+        num.min = '0';
+        num.step = '1';
+        num.placeholder = 'Antal';
+        num.value = r.count || '';
+        num.setAttribute('aria-label', 'Antal för ' + r.form);
+        num.addEventListener('input', function () {
+          var next = currentRows().map(function (row) {
+            if (String(row.form).toLowerCase() === String(r.form).toLowerCase()) {
+              return { form: row.form, count: num.value };
+            }
+            return row;
+          });
+          writeRows(next);
+          syncHint();
+        });
+        chip.appendChild(num);
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'byra-enkate-bransch-chip-remove';
+        remove.setAttribute('aria-label', 'Ta bort ' + r.form);
+        remove.innerHTML = '&times;';
+        remove.addEventListener('click', function () {
+          writeRows(currentRows().filter(function (row) {
+            return String(row.form).toLowerCase() !== String(r.form).toLowerCase();
+          }));
+          paintSelected();
+          paintSuggestions(search.value);
+        });
+        chip.appendChild(remove);
+        selectedWrap.appendChild(chip);
+      });
+      syncHint();
+    }
+
+    function addLabel(label) {
+      var name = String(label || '').trim();
+      if (!name) return;
+      if (allowNone && noneCb && noneCb.checked) setNone(false);
+      var rows = currentRows();
+      var key = name.toLowerCase();
+      var exists = rows.some(function (r) { return String(r.form).toLowerCase() === key; });
+      if (!exists) rows.push({ form: name, count: '' });
+      writeRows(rows);
+      paintSelected();
+      search.value = '';
+      suggestions.hidden = true;
+      var countInput = selectedWrap.querySelector('.byra-enkate-bransch-chip:last-child .byra-enkate-bransch-chip-count');
+      if (countInput) countInput.focus();
+    }
+
+    function paintSuggestions(filter) {
+      suggestions.innerHTML = '';
+      if (allowNone && noneCb && noneCb.checked) {
+        suggestions.hidden = true;
+        return;
+      }
+      var q = String(filter || '').trim().toLowerCase();
+      var taken = {};
+      selectedNames().forEach(function (n) { taken[n.toLowerCase()] = true; });
+      var items = catalog.filter(function (label) {
+        if (taken[String(label).toLowerCase()]) return false;
+        return !q || String(label).toLowerCase().indexOf(q) >= 0;
+      }).slice(0, 8);
+      if (!items.length) {
+        suggestions.hidden = true;
+        return;
+      }
+      items.forEach(function (label) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'byra-enkate-bransch-suggestion';
+        btn.textContent = label;
+        btn.addEventListener('click', function () { addLabel(label); });
+        suggestions.appendChild(btn);
+      });
+      suggestions.hidden = false;
+    }
+
+    if (noneCb) {
+      noneCb.addEventListener('change', function () { setNone(noneCb.checked); });
+    }
+    search.addEventListener('input', function () { paintSuggestions(search.value); });
+    search.addEventListener('focus', function () { paintSuggestions(search.value); });
+    search.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var first = suggestions.querySelector('.byra-enkate-bransch-suggestion');
+        if (first) first.click();
+        else if (search.value.trim()) addLabel(search.value.trim());
+      }
     });
-    search.addEventListener('input', function () { paint(search.value); });
-    paint('');
-    syncSummary();
+    customInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addLabel(customInput.value);
+        customInput.value = '';
+      }
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) suggestions.hidden = true;
+    });
+
+    if (allowNone && noneCb && noneCb.checked) setNone(true);
+    else {
+      paintSelected();
+      paintSuggestions('');
+    }
     return wrap;
+  }
+
+  function renderHogrisk(field) {
+    return renderBranschPicker(field, {
+      allowNone: true,
+      noneLabel: HOGRISK_NONE,
+      catalog: hogriskLabels,
+      searchPlaceholder: 'Sök högriskbransch…',
+      emptyHint: 'Sök och lägg till högriskbranscher, eller markera Inga högriskbranscher.'
+    });
+  }
+
+  function renderKundBranscher(field) {
+    var catalog = Array.isArray(schema && schema.commonKundBranscher) && schema.commonKundBranscher.length
+      ? schema.commonKundBranscher.slice()
+      : [
+        'Bygg och anläggning', 'Detaljhandel', 'Partihandel', 'Restaurang och café',
+        'Hotell och boende', 'Transport och logistik', 'IT och konsultverksamhet',
+        'Vård och omsorg', 'Fastighet', 'Tillverkning och industri', 'Jordbruk och skogsbruk',
+        'Utbildning', 'Kultur, media och underhållning', 'Finans och försäkring',
+        'Energi och miljö', 'Städ och facility', 'Bemanning', 'Ideell verksamhet',
+        'Offentlig sektor', 'Övrigt'
+      ];
+    return renderBranschPicker(field, {
+      allowNone: false,
+      catalog: catalog,
+      searchPlaceholder: 'Sök bransch…',
+      emptyHint: 'Lägg till de branscher ni har kunder i. Antalet får vara ungefärligt.'
+    });
   }
 
   var IT_SYSTEM_KEYS = ['bokforingssystem', 'bokslutssystem', 'kundhanteringssystem'];
@@ -770,8 +916,10 @@
     }
 
     var control;
-    if (field.key === 'branscherKundstock') {
+    if (field.key === 'branscherKundstock' || field.type === 'hogrisk-branscher') {
       control = renderHogrisk(field);
+    } else if (field.key === 'kundernasBranscher' || field.type === 'branscher') {
+      control = renderKundBranscher(field);
     } else if (field.type === 'multiselect') {
       control = renderItSystemSelect(field);
     } else if (isBolagsformerField(field)) {
@@ -956,11 +1104,19 @@
         }
       }
       if (f.key === 'branscherKundstock') {
-        if (!f.question || f.question.indexOf('antal') < 0) {
-          f.question = 'Vilka högriskbranscher finns bland era kunder? Ange ett uppskattat antal per bransch.';
+        f.type = 'hogrisk-branscher';
+        if (!f.question) {
+          f.question = 'Vilka högriskbranscher finns bland era kunder?';
         }
-        if (!f.hint || f.hint.indexOf('T.ex.') === 0) {
-          f.hint = 'Bocka de branscher som förekommer och ange ungefär hur många kunder. Välj Inga högriskbranscher om det inte finns några.';
+        if (!f.hint || f.hint.indexOf('T.ex.') === 0 || f.hint.indexOf('Bocka') === 0) {
+          f.hint = 'Sök och lägg till högriskbranscher, ange ungefärligt antal. Välj Inga högriskbranscher om det inte finns några.';
+        }
+      }
+      if (f.key === 'kundernasBranscher') {
+        f.type = 'branscher';
+        if (!f.question) f.question = 'Vilka branscher har ni era kunder i?';
+        if (!f.hint) {
+          f.hint = 'Lägg till de branscher som är vanligast i kundstocken och ange ungefär hur många kunder per bransch.';
         }
       }
     });
@@ -977,12 +1133,27 @@
       hogriskLabels.push(label);
     });
     stepIdx = 0;
-    for (var i = 0; i < schema.sections.length; i++) {
-      if (unansweredInSection(schema.sections[i]).length) {
-        stepIdx = i;
-        break;
+    var requestedSection = '';
+    try {
+      requestedSection = String(new URLSearchParams(window.location.search).get('section') || '').trim().toLowerCase();
+    } catch (_) {
+      requestedSection = '';
+    }
+    if (requestedSection) {
+      for (var ri = 0; ri < schema.sections.length; ri++) {
+        if (String((schema.sections[ri] && schema.sections[ri].id) || '').toLowerCase() === requestedSection) {
+          stepIdx = ri;
+          break;
+        }
       }
-      if (i === schema.sections.length - 1) stepIdx = i;
+    } else {
+      for (var i = 0; i < schema.sections.length; i++) {
+        if (unansweredInSection(schema.sections[i]).length) {
+          stepIdx = i;
+          break;
+        }
+        if (i === schema.sections.length - 1) stepIdx = i;
+      }
     }
     setStatus('');
     renderStep();
