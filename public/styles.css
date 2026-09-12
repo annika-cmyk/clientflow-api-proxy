@@ -19261,3 +19261,19 @@ body.byra-resa-page .risk-header h1 {
   }
 
 }
+
+
+/* Separata S/K-motiveringar + legacy-hint */
+.risk-motivering-legacy {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    border-left: 3px solid #94a3b8;
+    background: #f8fafc;
+}
+.risk-motivering-legacy textarea[readonly] {
+    opacity: 0.85;
+    background: #f1f5f9;
+}
+.risk-motivering-propose {
+    margin-top: 0.4rem;
+}
