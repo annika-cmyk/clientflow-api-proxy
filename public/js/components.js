@@ -87,6 +87,7 @@ class ComponentLoader {
         this.initMobileNav(element);
         this.initSidebarSearch(element);
         this.initByraAmlProfilProgress(element);
+        this.initNavStatus(element);
         this.initMinibokBanner();
 
         // Fäll in/ut menyposter under rubriker
@@ -203,6 +204,110 @@ class ComponentLoader {
                     if (steps[id]) done += 1;
                 });
                 apply(done, total);
+            })
+            .catch(() => { /* leave default */ });
+    }
+
+    initNavStatus(element) {
+        const applyProgress = (done, total) => {
+            const card = element.querySelector('#sidebar-aml-profil-card');
+            const statusEl = element.querySelector('#sidebar-aml-profil-status');
+            const fillEl = element.querySelector('#sidebar-aml-profil-fill');
+            if (!statusEl || !fillEl) return;
+            const safeTotal = total > 0 ? total : 8;
+            const safeDone = Math.max(0, Math.min(done || 0, safeTotal));
+            const pct = Math.round((safeDone / safeTotal) * 100);
+            statusEl.textContent = `${safeDone} av ${safeTotal} steg klara`;
+            fillEl.style.width = `${pct}%`;
+            if (card) {
+                card.setAttribute('aria-label', `Byråns AML-profil, ${safeDone} av ${safeTotal} steg klara`);
+            }
+        };
+
+        const clearIcons = () => {
+            element.querySelectorAll('.nav-status-icon').forEach((el) => el.remove());
+            element.querySelectorAll('[data-nav-status]').forEach((el) => {
+                el.removeAttribute('data-nav-status');
+            });
+        };
+
+        const iconFor = (status) => {
+            if (status === 'attention') {
+                return { cls: 'nav-status-icon is-attention', icon: 'fa-exclamation-circle', label: 'Kräver uppmärksamhet' };
+            }
+            if (status === 'complete') {
+                return { cls: 'nav-status-icon is-complete', icon: 'fa-check', label: 'Klar' };
+            }
+            return null;
+        };
+
+        const applyPages = (pages) => {
+            clearIcons();
+            if (!pages || typeof pages !== 'object') return;
+            Object.keys(pages).forEach((pageId) => {
+                const info = pages[pageId];
+                if (!info || !info.status || info.status === 'neutral') return;
+                const meta = iconFor(info.status);
+                if (!meta) return;
+                const targets = element.querySelectorAll(`[data-page="${pageId}"]`);
+                targets.forEach((target) => {
+                    target.setAttribute('data-nav-status', info.status);
+                    const anchor = target.tagName === 'A' ? target : target.querySelector('a');
+                    const host = anchor || target;
+                    if (host.querySelector('.nav-status-icon')) return;
+                    const span = document.createElement('span');
+                    span.className = meta.cls;
+                    span.title = meta.label;
+                    span.setAttribute('aria-label', meta.label);
+                    span.innerHTML = `<i class="fas ${meta.icon}" aria-hidden="true"></i>`;
+                    host.appendChild(span);
+                });
+            });
+        };
+
+        const renderPageAlert = (alerts) => {
+            const mount = document.getElementById('kundrisker-nav-alert');
+            if (!mount) return;
+            const relevant = (alerts || []).filter((a) => a && a.pageId === 'kundrisker-mm');
+            if (!relevant.length) {
+                mount.hidden = true;
+                mount.innerHTML = '';
+                return;
+            }
+            const a = relevant[0];
+            mount.hidden = false;
+            mount.innerHTML =
+                `<div class="nav-status-alert" role="status">` +
+                `<div class="nav-status-alert-icon" aria-hidden="true"><i class="fas fa-exclamation-circle"></i></div>` +
+                `<div class="nav-status-alert-body">` +
+                `<strong>${a.title || 'Behöver uppmärksamhet'}</strong>` +
+                `<p>${a.message || ''}</p>` +
+                `<p class="nav-status-alert-actions">` +
+                `<a href="byra-profil-enkate.html?section=kundstock">Uppdatera byråprofilen</a>` +
+                `<span aria-hidden="true"> · </span>` +
+                `<a href="#risk-list">Granska kundriskfaktorer</a>` +
+                `</p></div></div>`;
+        };
+
+        const authOpts = (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        };
+        const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || '';
+
+        fetch(`${baseUrl}/api/nav-status`, authOpts)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!data) return;
+                if (data.progress && typeof data.progress.done === 'number') {
+                    applyProgress(data.progress.done, data.progress.total || 8);
+                }
+                applyPages(data.pages);
+                renderPageAlert(data.alerts);
+                try {
+                    window.__clientflowNavStatus = data;
+                    window.dispatchEvent(new CustomEvent('clientflow:nav-status', { detail: data }));
+                } catch (e) { /* ignore */ }
             })
             .catch(() => { /* leave default */ });
     }

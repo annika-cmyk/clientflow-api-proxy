@@ -130,6 +130,7 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const ByraResa = require('./lib/byra-resa');
+const NavStatus = require('./lib/nav-status');
 const Kundformular = require('./lib/kundformular');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
@@ -600,21 +601,28 @@ async function listByraUsersByByraId(byraId, airtableAccessToken, baseId, option
     });
 }
 
-async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId) {
+async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId, opts = {}) {
   const formula = access.kunddataFilterFormula(userData);
   if (formula === null) return [];
   const bid = baseId || process.env.AIRTABLE_BASE_ID || airtableBaseId;
   const url = `https://api.airtable.com/v0/${bid}/${kunddataTableId()}`;
   const headers = { Authorization: `Bearer ${airtableAccessToken}` };
   const byId = new Map();
+  const fieldList = Array.isArray(opts.fields)
+    ? opts.fields.map((f) => String(f || '').trim()).filter(Boolean)
+    : null;
 
   const pull = async (filterByFormula) => {
     let offset = null;
     do {
-      const params = { pageSize: 100 };
-      if (filterByFormula) params.filterByFormula = filterByFormula;
-      if (offset) params.offset = offset;
-      const res = await axios.get(url, { headers, params, timeout: 15000 });
+      const params = new URLSearchParams();
+      params.set('pageSize', '100');
+      if (filterByFormula) params.set('filterByFormula', filterByFormula);
+      if (offset) params.set('offset', offset);
+      if (fieldList && fieldList.length) {
+        fieldList.forEach((f) => params.append('fields[]', f));
+      }
+      const res = await axios.get(`${url}?${params.toString()}`, { headers, timeout: 15000 });
       (res.data.records || []).forEach((r) => {
         if (r?.id) byId.set(r.id, r);
       });
@@ -15128,6 +15136,81 @@ async function loadByraRecordForUser(req) {
   };
 }
 
+const navStatusCache = new Map();
+const NAV_STATUS_TTL_MS = 60 * 1000;
+
+function invalidateNavStatusCache(byraId) {
+  const id = String(byraId || '').trim();
+  if (!id) return;
+  navStatusCache.delete(id);
+}
+
+// GET /api/nav-status – menyikoner (klar / attention) + mismatch-alerts
+app.get('/api/nav-status', authenticateToken, async (req, res) => {
+  try {
+    const { airtableAccessToken, airtableBaseId, userData, record, byraId } = await loadByraRecordForUser(req);
+    const cacheKey = String(byraId || record?.id || userData?.byraId || '').trim();
+    const cached = cacheKey ? navStatusCache.get(cacheKey) : null;
+    if (cached && (Date.now() - cached.at) < NAV_STATUS_TTL_MS) {
+      res.set('Cache-Control', 'private, max-age=30');
+      return res.json(cached.payload);
+    }
+
+    await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
+    const raw = record.fields?.[ByraResa.BYRA_RESA_STATE_FIELD];
+    const state = ByraResa.parseByraResaState(raw);
+    const ByraProfilFieldsMod = require('./lib/byra-profil-fields');
+    const profil = ByraProfilFieldsMod.mapProfilFromAirtable(record.fields || {});
+
+    const slimFields = [
+      'Namn',
+      'Byrå ID',
+      'Kundstatus',
+      'Dold',
+      'KYC-formular (JSON)',
+      'Skatterättslig hemvist'
+    ];
+    let kundRecords = [];
+    try {
+      kundRecords = kundDold.filterAktivaKunder(
+        await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId, { fields: slimFields })
+      );
+    } catch (kundErr) {
+      // Fallback utan fields[] om Airtable 422:ar på fältnamn
+      console.warn('nav-status kundfetch slim failed, retry full:', kundErr.message);
+      kundRecords = kundDold.filterAktivaKunder(
+        await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+      );
+    }
+
+    let riskRecords = [];
+    try {
+      riskRecords = await fetchAirtableByByraId(OVRIGA_RISKER_TABLE_ID, byraId, airtableAccessToken, airtableBaseId);
+    } catch (riskErr) {
+      console.warn('nav-status riskfetch:', riskErr.message);
+    }
+
+    const built = NavStatus.buildNavStatus({
+      steps: state.steps,
+      kundRecords,
+      riskRecords,
+      profil
+    });
+    const payload = {
+      success: true,
+      pages: built.pages,
+      alerts: built.alerts,
+      progress: built.progress
+    };
+    if (cacheKey) navStatusCache.set(cacheKey, { at: Date.now(), payload });
+    res.set('Cache-Control', 'private, max-age=30');
+    return res.json(payload);
+  } catch (error) {
+    console.error('❌ GET /api/nav-status:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
+  }
+});
+
 // GET /api/byra-resa – steg + källkatalog + sparad status
 app.get('/api/byra-resa', authenticateToken, async (req, res) => {
   try {
@@ -15179,6 +15262,7 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       { fields: { [ByraResa.BYRA_RESA_STATE_FIELD]: ByraResa.serializeByraResaState(state) } },
       { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
     );
+    invalidateNavStatusCache(userData.byraId);
     res.set('Cache-Control', 'no-store');
     return res.json({
       success: true,
