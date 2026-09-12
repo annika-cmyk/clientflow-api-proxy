@@ -181,7 +181,45 @@ class RiskAssessmentManager {
         const host = document.getElementById('tjanst-utforande-katalog');
         const Mallar = window.TjanstUtforandeMallar;
         if (!host || !Mallar) return;
+        const addBtn = document.getElementById('tjanst-utforande-add-custom');
+        if (Mallar.needsKatalogChoice && Mallar.needsKatalogChoice(this.utforandeState)) {
+            if (addBtn) addBtn.hidden = true;
+            host.innerHTML = `
+                <div class="tjanst-katalog-val" role="group" aria-label="Välj hur ni vill bygga tjänstekatalogen">
+                    <h4 class="tjanst-katalog-val-title">Hur vill ni börja?</h4>
+                    <p class="tjanst-katalog-val-lead">Välj om ni vill använda ClientFlows standardtjänster eller bara lägga till egna.</p>
+                    <div class="tjanst-katalog-val-actions">
+                        <button type="button" class="btn btn-primary" data-katalog-val="standard">
+                            Använd standardtjänster
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-katalog-val="egna">
+                            Lägg till egna tjänster
+                        </button>
+                    </div>
+                </div>`;
+            host.querySelectorAll('[data-katalog-val]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const val = btn.getAttribute('data-katalog-val');
+                    if (val === 'standard') {
+                        this.utforandeState = Mallar.applyStandardKatalog(this.utforandeState);
+                    } else {
+                        this.utforandeState = Mallar.applyEgnaKatalog(this.utforandeState);
+                    }
+                    this.renderUtforandeKatalog();
+                    this.scheduleUtforandeSave();
+                });
+            });
+            return;
+        }
+        if (addBtn) addBtn.hidden = false;
         const cards = Mallar.listCatalogCards(this.utforandeState);
+        if (!cards.length) {
+            host.innerHTML = `
+                <div class="tjanst-katalog-empty">
+                    <p>Inga tjänster ännu. Lägg till egna tjänster för att bygga katalogen.</p>
+                </div>`;
+            return;
+        }
         host.innerHTML = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
