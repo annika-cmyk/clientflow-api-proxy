@@ -17400,14 +17400,24 @@ h5.ar-subsection-title {
   font-weight: 700;
 }
 .byra-enkate-remaining.is-complete { background: #dcfce7; color: #166534; }
-.byra-enkate-q-list { display: grid; gap: 0.7rem; }
+.byra-enkate-q-list { display: grid; gap: 1.35rem; }
 .byra-enkate-q {
-  padding: 0.85rem 0.95rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
+  padding: 0 0 1.15rem;
+  border: 0;
+  border-bottom: 1px solid #e8eef2;
+  border-radius: 0;
+  background: transparent;
 }
-.byra-enkate-q.is-skipped { border-style: dashed; background: #fbfcfd; }
+.byra-enkate-q:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.byra-enkate-q.is-skipped {
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: transparent;
+  opacity: 0.92;
+}
 .byra-enkate-q-title { margin: 0 0 0.35rem; font-size: 1rem; color: #0f172a; }
 .byra-enkate-q-help, .byra-enkate-hint, .byra-enkate-skipped-note {
   margin: 0 0 0.75rem; color: #64748b; font-size: 0.88rem; line-height: 1.45;
@@ -17429,7 +17439,7 @@ h5.ar-subsection-title {
 .byra-enkate-hogrisk-list,
 .byra-hogrisk-count-list {
   max-height: 260px; overflow: auto; margin-top: 0.55rem;
-  border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.35rem; background: #fafbfc;
+  border: 0; border-radius: 0; padding: 0; background: transparent;
   display: grid;
   grid-template-columns: max-content 5rem;
   column-gap: 0.75rem;
@@ -17471,9 +17481,73 @@ h5.ar-subsection-title {
 }
 .byra-enkate-check:hover { background: #f1f5f9; }
 .byra-enkate-check--none {
-  margin-bottom: 0.55rem; padding: 0.65rem 0.75rem;
-  border: 1px dashed #cbd5e1; background: #f8fafc;
+  margin-bottom: 0.75rem; padding: 0.35rem 0;
+  border: 0; background: transparent;
 }
+
+.byra-enkate-bransch-picker { display: grid; gap: 0.75rem; max-width: 36rem; }
+.byra-enkate-bransch-selected { display: grid; gap: 0.45rem; }
+.byra-enkate-bransch-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+.byra-enkate-bransch-chip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0;
+}
+.byra-enkate-bransch-chip-name {
+  font-weight: 600;
+  color: #0f172a;
+  min-width: 0;
+}
+.byra-enkate-bransch-chip-count {
+  width: 5.5rem;
+  max-width: 5.5rem;
+  padding: 0.4rem 0.5rem;
+}
+.byra-enkate-bransch-chip-remove {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+}
+.byra-enkate-bransch-chip-remove:hover { color: #b91c1c; }
+.byra-enkate-bransch-add { position: relative; }
+.byra-enkate-bransch-suggestions {
+  position: absolute;
+  z-index: 5;
+  left: 0; right: 0;
+  top: calc(100% + 0.25rem);
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  background: #fff;
+  border: 1px solid #dbe3ea;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  max-height: 14rem;
+  overflow: auto;
+}
+.byra-enkate-bransch-suggestion {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: #0f172a;
+}
+.byra-enkate-bransch-suggestion:hover { background: #f1f5f9; }
+.byra-enkate-bransch-custom { max-width: 36rem; }
+
 .byra-enkate-actions {
   display: flex; justify-content: space-between; gap: 0.75rem;
   margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e8eef1;

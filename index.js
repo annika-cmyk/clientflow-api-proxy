@@ -13676,7 +13676,8 @@ app.get('/api/byra/profil-schema', authenticateToken, (req, res) => {
   res.json({
     success: true,
     sections: ByraProfilFields.BYRA_PROFIL_SECTIONS,
-    fields: ByraProfilFields.BYRA_PROFIL_FIELDS.map(({ airtable, existing, ...rest }) => rest)
+    fields: ByraProfilFields.BYRA_PROFIL_FIELDS.map(({ airtable, existing, ...rest }) => rest),
+    commonKundBranscher: ByraProfilFields.COMMON_KUND_BRANSCHER
   });
 });
 
