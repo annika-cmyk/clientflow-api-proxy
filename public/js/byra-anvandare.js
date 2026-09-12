@@ -693,6 +693,7 @@ class ByraAnvandareManager {
       setVal('byra-bankid-krav', f.bankIdKrav);
       setVal('byra-kund-gor-lopande', f.kundGorLopande);
       setVal('byra-betalningsuppdrag', f.betalningsuppdrag);
+      setVal('byra-betalningsuppdrag-antal', f.betalningsuppdragAntal);
       setVal('byra-bokforingsmetod', f.bokforingsmetod);
       setVal('byra-andel-utland', f.andelInternationellHandel);
       setVal('byra-geografi', f.geografiskMarknad);
@@ -1059,6 +1060,7 @@ class ByraAnvandareManager {
         bankIdKrav: document.getElementById('byra-bankid-krav')?.value ?? '',
         kundGorLopande: document.getElementById('byra-kund-gor-lopande')?.value ?? '',
         betalningsuppdrag: document.getElementById('byra-betalningsuppdrag')?.value ?? '',
+        betalningsuppdragAntal: document.getElementById('byra-betalningsuppdrag-antal')?.value ?? '',
         bokforingsmetod: document.getElementById('byra-bokforingsmetod')?.value ?? '',
         andelInternationellHandel: document.getElementById('byra-andel-utland')?.value ?? '',
         geografiskMarknad: document.getElementById('byra-geografi')?.value ?? '',
