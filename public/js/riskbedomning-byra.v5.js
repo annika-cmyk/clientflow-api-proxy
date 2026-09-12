@@ -457,30 +457,72 @@ class RiskAssessmentManager {
         const residualLevel = scored.residualLevel || '';
         const motIn = String(f['Motivering inneboende risk'] || f['Motivering'] || '').trim();
         const motRes = String(f['Motivering residualrisk'] || f['Motivering residual'] || '').trim();
+        const beskrivning = String(f['Tjänstebeskrivning'] || f['Beskrivning av riskfaktor'] || '').trim();
+        const hot = this.parseJsonField(f['Hot']);
+        const sarbarheter = this.parseJsonField(f['Sårbarheter']);
+        const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
         const answers = (entry && entry.answers) || {};
+        const comments = (entry && entry.kommentarer) || {};
         const answerKeys = Object.keys(answers).filter((k) => {
             const v = answers[k];
             if (Array.isArray(v)) return v.length > 0;
             return String(v || '').trim() !== '';
         });
-        const answerLines = this.renderUtforandeOverviewAnswers(template, answers);
+        const answerLines = this.renderUtforandeOverviewAnswers(template, answers, comments);
+        const listBlock = (title, items, mapFn) => {
+            if (!items || !items.length) return '';
+            return `
+                <div class="tjanst-mall-summary-block">
+                    <h5 class="tjanst-mall-summary-heading">${this.esc(title)}</h5>
+                    <ul class="tjanst-mall-summary-list">${items.map(mapFn).join('')}</ul>
+                </div>`;
+        };
         return `
             <div class="tjanst-mall-summary">
-                <p class="tjanst-mall-summary-line"><strong>Inneboende risk:</strong> ${this.esc(riskLevel || 'Ej satt')}</p>
-                ${residualLevel ? `<p class="tjanst-mall-summary-line"><strong>Residualrisk:</strong> ${this.esc(residualLevel)}</p>` : ''}
-                ${motIn ? `<p class="tjanst-mall-summary-text">${this.esc(motIn.slice(0, 280))}${motIn.length > 280 ? '…' : ''}</p>` : ''}
-                ${motRes ? `<p class="tjanst-mall-summary-text"><strong>Efter åtgärder:</strong> ${this.esc(motRes.slice(0, 220))}${motRes.length > 220 ? '…' : ''}</p>` : ''}
-                ${answerLines}
-                <p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>
+                <div class="tjanst-mall-summary-block">
+                    <h5 class="tjanst-mall-summary-heading">Risknivå</h5>
+                    <p class="tjanst-mall-summary-line"><strong>Inneboende risk:</strong> ${this.esc(riskLevel || 'Ej satt')}</p>
+                    ${residualLevel ? `<p class="tjanst-mall-summary-line"><strong>Residualrisk:</strong> ${this.esc(residualLevel)}</p>` : ''}
+                    ${motIn ? `<p class="tjanst-mall-summary-text"><strong>Motivering inneboende:</strong> ${this.esc(motIn)}</p>` : ''}
+                    ${motRes ? `<p class="tjanst-mall-summary-text"><strong>Motivering residual:</strong> ${this.esc(motRes)}</p>` : ''}
+                </div>
+                ${beskrivning ? `
+                <div class="tjanst-mall-summary-block">
+                    <h5 class="tjanst-mall-summary-heading">Tjänsten</h5>
+                    <p class="tjanst-mall-summary-text">${this.esc(beskrivning)}</p>
+                </div>` : ''}
+                ${listBlock('Hot och modus', hot, (h) => `
+                    <li>
+                        <span class="tjanst-mall-summary-q">${this.esc(h.titel || h.title || 'Hot')}</span>
+                        ${h.beskrivning || h.description ? `<span class="tjanst-mall-summary-a">${this.esc(h.beskrivning || h.description)}</span>` : ''}
+                        ${this.renderDiscreteKalla(h.kalla ?? h.källa ?? h.source)}
+                    </li>`)}
+                ${listBlock('Sårbarheter', sarbarheter, (s) => `
+                    <li>
+                        <span class="tjanst-mall-summary-q">${this.esc(s.titel || s.title || 'Sårbarhet')}</span>
+                        ${s.beskrivning || s.description ? `<span class="tjanst-mall-summary-a">${this.esc(this.stripEvidensLeakFromText(s.beskrivning || s.description || ''))}</span>` : ''}
+                        ${this.renderDiscreteKalla(s.kalla ?? s.källa ?? s.source)}
+                    </li>`)}
+                ${listBlock('Riskreducerande åtgärder', atgarder, (a) => `
+                    <li>
+                        <span class="tjanst-mall-summary-q">${this.esc(a.titel || a.title || a.namn || 'Åtgärd')}${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' · Befintlig' : ''}</span>
+                        ${a.beskrivning || a.description ? `<span class="tjanst-mall-summary-a">${this.esc(a.beskrivning || a.description)}</span>` : ''}
+                    </li>`)}
+                ${answerLines ? `
+                <div class="tjanst-mall-summary-block">
+                    <h5 class="tjanst-mall-summary-heading">Utförandesvar (${answerKeys.length})</h5>
+                    ${answerLines}
+                </div>` : (answerKeys.length ? `<p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>` : '')}
             </div>
         `;
     }
 
-    renderUtforandeOverviewAnswers(template, answers) {
+    renderUtforandeOverviewAnswers(template, answers, comments = {}) {
         const Mallar = window.TjanstUtforandeMallar;
         if (!Mallar || !template || !answers) return '';
-        const skip = new Set(['hamtaClientflowStatistik', 'antalKunderTjanst']);
-        const questions = Mallar.questionsForTemplate(template) || [];
+        const skip = new Set(['hamtaClientflowStatistik']);
+        const questionsFn = Mallar.questionsForTemplate || Mallar.questionsForTemplate;
+        const questions = (typeof questionsFn === 'function' ? questionsFn(template) : []) || [];
         const lines = [];
         for (const q of questions) {
             if (!q || skip.has(q.id)) continue;
@@ -488,12 +530,15 @@ class RiskAssessmentManager {
             let text = '';
             if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
             else text = String(raw || '').trim();
+            if (!text && q.id !== 'antalKunderTjanst') continue;
             if (!text) continue;
-            const shortLabel = String(q.label || q.id).replace(/\?$/, '');
-            const clippedLabel = shortLabel.length > 72 ? shortLabel.slice(0, 71) + '…' : shortLabel;
-            const clippedVal = text.length > 120 ? text.slice(0, 119) + '…' : text;
-            lines.push(`<li><span class="tjanst-mall-summary-q">${this.esc(clippedLabel)}</span> <span class="tjanst-mall-summary-a">${this.esc(clippedVal)}</span></li>`);
-            if (lines.length >= 4) break;
+            const label = String(q.label || q.id).replace(/\?$/, '');
+            const comment = String((comments && comments[q.id]) || '').trim();
+            lines.push(`<li>
+                <span class="tjanst-mall-summary-q">${this.esc(label)}</span>
+                <span class="tjanst-mall-summary-a">${this.esc(text)}</span>
+                ${comment ? `<span class="tjanst-mall-summary-comment">${this.esc(comment)}</span>` : ''}
+            </li>`);
         }
         if (!lines.length) return '';
         return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
