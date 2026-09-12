@@ -1558,7 +1558,9 @@ class RiskAssessmentManager {
         kallaToggle?.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            const wrap = row.querySelector('.dyn-kalla-wrap');
             if (kallaRow) kallaRow.hidden = false;
+            if (wrap) wrap.classList.remove('is-collapsed');
             kallaToggle.hidden = true;
             row.classList.remove('is-collapsed');
             row.querySelector('.dyn-kalla')?.focus();
@@ -1618,11 +1620,11 @@ class RiskAssessmentManager {
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="Hur tjänsten kan utnyttjas för penningtvätt eller finansiering av terrorism.">${this.esc(beskrivning)}</textarea>
             </div>
-            <div class="dyn-kalla-wrap${kalla ? '' : ' is-collapsed'}">
-                <button type="button" class="dyn-kalla-toggle"${kalla ? ' hidden' : ''}>Lägg till källa (valfritt)</button>
-                <div class="dyn-kalla-row"${kalla ? '' : ' hidden'}>
-                    <span class="dyn-kalla-label">Källa</span>
-                    <input type="text" class="dyn-kalla" placeholder="Utgivare — dokument, kap. — https://…" value="${this.esc(kalla)}" aria-label="Källa">
+            <div class="dyn-kalla-wrap is-collapsed">
+                <button type="button" class="dyn-kalla-toggle">${kalla ? 'Visa källa (valfritt)' : 'Lägg till källa (valfritt)'}</button>
+                <div class="dyn-kalla-row" hidden>
+                    <span class="dyn-kalla-label">Källa <span class="dyn-kalla-optional">(valfritt)</span></span>
+                    <input type="text" class="dyn-kalla" placeholder="Valfritt — utgivare eller länk" value="${this.esc(kalla)}" aria-label="Källa (valfritt)">
                     <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
                 </div>
             </div>
@@ -1657,11 +1659,11 @@ class RiskAssessmentManager {
             <div class="dyn-row-body">
                 <textarea class="dyn-besk" rows="3" placeholder="Beskrivning av sårbarheten">${this.esc(beskrivning)}</textarea>
             </div>
-            <div class="dyn-kalla-wrap${kalla ? '' : ' is-collapsed'}">
-                <button type="button" class="dyn-kalla-toggle"${kalla ? ' hidden' : ''}>Lägg till källa (valfritt)</button>
-                <div class="dyn-kalla-row"${kalla ? '' : ' hidden'}>
-                    <span class="dyn-kalla-label">Källa</span>
-                    <input type="text" class="dyn-kalla" placeholder="Utgivare — dokument, kap. — https://…" value="${this.esc(kalla)}" aria-label="Källa">
+            <div class="dyn-kalla-wrap is-collapsed">
+                <button type="button" class="dyn-kalla-toggle">${kalla ? 'Visa källa (valfritt)' : 'Lägg till källa (valfritt)'}</button>
+                <div class="dyn-kalla-row" hidden>
+                    <span class="dyn-kalla-label">Källa <span class="dyn-kalla-optional">(valfritt)</span></span>
+                    <input type="text" class="dyn-kalla" placeholder="Valfritt — utgivare eller länk" value="${this.esc(kalla)}" aria-label="Källa (valfritt)">
                     <a class="dyn-kalla-link" target="_blank" rel="noopener noreferrer" hidden></a>
                 </div>
             </div>
