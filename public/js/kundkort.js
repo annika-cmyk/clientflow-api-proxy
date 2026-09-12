@@ -10728,10 +10728,6 @@ class CustomerCardManager {
         };
         const cfg = map[action];
         if (!cfg) return;
-        if (action === 'mark_sent') {
-            this.showNotification('BankID-utskick kommer i nästa steg.', 'info');
-            return;
-        }
         const orig = btn?.innerHTML;
         if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${cfg.label}`; }
         try {
@@ -10753,10 +10749,18 @@ class CustomerCardManager {
             this._kundformularMeta = data.meta || null;
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
+            const inviteUrl = data.inviteUrl || data.summary?.inviteUrl || '';
             const msg = action === 'prefill'
                 ? 'Prefillat från kundkort'
-                : (action === 'mark_answered' ? 'Markerat som besvarat' : 'Kundformulär sparat');
+                : (action === 'mark_answered'
+                  ? 'Markerat som besvarat'
+                  : (action === 'mark_sent'
+                    ? (inviteUrl ? 'Kundlänk skapad — kopiera och dela med kunden' : 'Markerat som skickat')
+                    : 'Kundformulär sparat'));
             this.showNotification(msg, 'success');
+            if (action === 'mark_sent' && inviteUrl && navigator.clipboard?.writeText) {
+                try { await navigator.clipboard.writeText(inviteUrl); } catch (_) {}
+            }
         } catch (e) {
             console.error('_onKundformularAction:', e);
             this.showNotification(`Kunde inte uppdatera kundformulär: ${e.message}`, 'error');

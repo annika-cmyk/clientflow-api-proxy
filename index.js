@@ -17925,7 +17925,7 @@ function kundformularHogrisksland(fields, kyc) {
   }
 }
 
-function buildKundformularResponse(form, fields, kyc, tjansterCtx) {
+function buildKundformularResponse(form, fields, kyc, tjansterCtx, { baseUrl, includeInviteToken = false } = {}) {
   const riskFlags = kundformularRiskFlags(fields);
   const meta = Kundformular.buildUiMeta(form, {
     tjansterOptions: tjansterCtx?.options || [],
@@ -17935,13 +17935,189 @@ function buildKundformularResponse(form, fields, kyc, tjansterCtx) {
     bolagsform: fields?.Bolagsform || kyc?.bolagsform || '',
     hogrisksland: kundformularHogrisksland(fields, kyc)
   });
-  return {
+  const summary = Kundformular.summaryForUi(form, { baseUrl });
+  const out = {
     success: true,
-    form,
-    summary: Kundformular.summaryForUi(form),
+    form: includeInviteToken
+      ? form
+      : { ...form, inviteToken: form.inviteToken ? '[redacted]' : '' },
+    summary,
     meta
   };
+  if (summary.inviteUrl) out.inviteUrl = summary.inviteUrl;
+  return out;
 }
+
+function buildKundformularPublicResponse(form, fields, kyc, tjansterCtx) {
+  const riskFlags = kundformularRiskFlags(fields);
+  const meta = Kundformular.buildUiMeta(form, {
+    tjansterOptions: tjansterCtx?.options || [],
+    riskFlags,
+    kyc,
+    fields,
+    bolagsform: fields?.Bolagsform || kyc?.bolagsform || '',
+    hogrisksland: kundformularHogrisksland(fields, kyc)
+  });
+  // Publik kundvy: ingen riskflagga/högriskland synlig
+  delete meta.skarptKapital;
+  meta.skarptKapital = Kundformular.needsSkarptKapitalUrsprung(form.answers || {}, {
+    riskFlags: [],
+    hogrisksland: false
+  }) || form.answers?.pep === 'Ja' || form.answers?.pepFamilj === 'Ja';
+  const publicForm = {
+    ...form,
+    inviteToken: undefined,
+    answers: form.answers
+  };
+  delete publicForm.inviteToken;
+  return {
+    success: true,
+    form: publicForm,
+    summary: {
+      status: form.status,
+      statusLabel: Kundformular.statusLabel(form.status),
+      answeredAt: form.answeredAt,
+      sentAt: form.sentAt,
+      isAnswered: Kundformular.isAnswered(form),
+      inviteExpiresAt: form.inviteExpiresAt
+    },
+    meta: {
+      ...meta,
+      customerMode: true,
+      fieldSourceLabels: meta.fieldSourceLabels,
+      // Behåll skarpt om redan ifyllt / PEP i formuläret — utan byråns riskflaggor
+      customerParity: true
+    }
+  };
+}
+
+async function loadKundformularCustomerContext(customerId) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+  if (!airtableAccessToken) {
+    const err = new Error('Airtable token saknas');
+    err.status = 500;
+    throw err;
+  }
+  await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+  const custRes = await axios.get(
+    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+    { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+  );
+  const fields = custRes.data.fields || {};
+  let kyc = {};
+  try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+  const tjansterCtx = await resolveKundformularTjansterContext(airtableAccessToken, baseId, fields);
+  const form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
+  return { airtableAccessToken, baseId, tableName, fields, kyc, tjansterCtx, form };
+}
+
+async function persistKundformularForm(customerId, form, ctx) {
+  const payload = Kundformular.serializeForm(form);
+  const { airtableAccessToken, baseId, tableName } = ctx;
+  try {
+    await axios.patch(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { fields: { [Kundformular.FIELD]: payload } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+    );
+  } catch (patchErr) {
+    const msg = patchErr.response?.data?.error?.message || patchErr.message || '';
+    if (/Unknown field name/i.test(String(msg))) {
+      await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { fields: { [Kundformular.FIELD]: payload } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      throw patchErr;
+    }
+  }
+}
+
+function kundformularRequestBaseUrl(req) {
+  const fromEnv = String(process.env.PUBLIC_BASE_URL || '').trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  const host = req.get?.('host');
+  if (host) return `${req.protocol || 'https'}://${host}`;
+  return Kundformular.publicAppBaseUrl();
+}
+
+// GET /api/kundformular/public/:token – Kundvy (ingen auth)
+app.get('/api/kundformular/public/:token', async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token saknas' });
+    let verified;
+    try {
+      verified = Kundformular.verifyInviteToken(token);
+    } catch (e) {
+      if (e.code === 'INVITE_EXPIRED') return res.status(410).json({ error: e.message });
+      throw e;
+    }
+    if (!verified) return res.status(404).json({ error: 'Länken är ogiltig' });
+
+    const ctx = await loadKundformularCustomerContext(verified.customerId);
+    if (!Kundformular.inviteIsActive(ctx.form, token)) {
+      if (Kundformular.isAnswered(ctx.form)) {
+        res.set('Cache-Control', 'no-store');
+        return res.json(buildKundformularPublicResponse(ctx.form, ctx.fields, ctx.kyc, ctx.tjansterCtx));
+      }
+      return res.status(410).json({ error: 'Länken är inte längre aktiv. Be byrån skicka en ny.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json(buildKundformularPublicResponse(ctx.form, ctx.fields, ctx.kyc, ctx.tjansterCtx));
+  } catch (error) {
+    const status = error.response?.status === 404 ? 404 : (error.status || 500);
+    console.error('❌ GET /api/kundformular/public:', error.response?.data || error.message);
+    return res.status(status).json({ error: status === 404 ? 'Formuläret hittades inte' : (error.message || 'Serverfel') });
+  }
+});
+
+// PUT /api/kundformular/public/:token – Kund sparar / skickar in svar (ingen auth)
+app.put('/api/kundformular/public/:token', async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token saknas' });
+    let verified;
+    try {
+      verified = Kundformular.verifyInviteToken(token);
+    } catch (e) {
+      if (e.code === 'INVITE_EXPIRED') return res.status(410).json({ error: e.message });
+      throw e;
+    }
+    if (!verified) return res.status(404).json({ error: 'Länken är ogiltig' });
+
+    const ctx = await loadKundformularCustomerContext(verified.customerId);
+    if (!Kundformular.inviteIsActive(ctx.form, token)) {
+      return res.status(410).json({ error: 'Länken är inte längre aktiv. Be byrån skicka en ny.' });
+    }
+
+    const action = String(req.body?.action || 'save').trim();
+    const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
+    const saveAction = action === 'mark_answered' ? 'mark_answered' : 'save';
+    const form = Kundformular.applySave(ctx.form, answers, {
+      actor: 'kund',
+      action: saveAction,
+      customerId: verified.customerId
+    });
+    // Behåll samma invite tills besvarat (save ska inte rotera token)
+    if (saveAction === 'save') {
+      form.inviteToken = ctx.form.inviteToken;
+      form.inviteExpiresAt = ctx.form.inviteExpiresAt;
+      if (form.status === 'utkast' || form.status === 'prefillad') form.status = 'skickat';
+    }
+    await persistKundformularForm(verified.customerId, form, ctx);
+    res.set('Cache-Control', 'no-store');
+    return res.json(buildKundformularPublicResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx));
+  } catch (error) {
+    const status = error.response?.status === 404 ? 404 : (error.status || 500);
+    console.error('❌ PUT /api/kundformular/public:', error.response?.data || error.message);
+    return res.status(status).json({ error: status === 404 ? 'Formuläret hittades inte' : (error.message || 'Serverfel') });
+  }
+});
 
 // GET /api/kundformular/:customerId – Hämta kundformulär (samma som kunden ska besvara)
 app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
@@ -17949,100 +18125,70 @@ app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     const { customerId } = req.params;
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
 
     await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
-    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
-
-    const custRes = await axios.get(
-      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-    );
-    const fields = custRes.data.fields || {};
-    let kyc = {};
-    try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
-    const tjansterCtx = await resolveKundformularTjansterContext(airtableAccessToken, baseId, fields);
-    let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
+    const ctx = await loadKundformularCustomerContext(customerId);
+    let form = ctx.form;
     // Om tomt: föreslå identitet + tjänster från kundkortet så byrån ser rätt företag direkt
     if (!form.answers.foretagsnamn && !form.answers.orgnr) {
       form = Kundformular.applyPrefill(form, {
-        fields,
-        kyc,
-        tjanster: tjansterCtx.linked
+        fields: ctx.fields,
+        kyc: ctx.kyc,
+        tjanster: ctx.tjansterCtx.linked
       });
       // Prefill-preview i GET ska inte ändra status permanent – behåll utkast om inget sparats
-      if (!(fields[Kundformular.FIELD] || '').trim()) {
+      if (!(ctx.fields[Kundformular.FIELD] || '').trim()) {
         form.status = 'utkast';
         form.prefacedAt = null;
         form.prefillMeta = { fields: form.prefillMeta?.fields || [], at: null };
       }
     }
     res.set('Cache-Control', 'no-store');
-    return res.json(buildKundformularResponse(form, fields, kyc, tjansterCtx));
+    return res.json(buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
+      baseUrl: kundformularRequestBaseUrl(req)
+    }));
   } catch (error) {
     console.error('❌ GET /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
   }
 });
 
-// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat
+// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat / skicka invite
 app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.params;
     const action = String(req.body?.action || 'save').trim();
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
-    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
 
     await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
-    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
-
-    const custRes = await axios.get(
-      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-    );
-    const fields = custRes.data.fields || {};
-    let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
-    let kyc = {};
-    try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
-    const tjansterCtx = await resolveKundformularTjansterContext(airtableAccessToken, baseId, fields);
+    const ctx = await loadKundformularCustomerContext(customerId);
+    let form = ctx.form;
 
     if (action === 'prefill') {
       form = Kundformular.applyPrefill(form, {
-        fields,
-        kyc,
-        tjanster: tjansterCtx.linked
+        fields: ctx.fields,
+        kyc: ctx.kyc,
+        tjanster: ctx.tjansterCtx.linked
       });
     } else {
       const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
       const actor = req.body?.actor === 'kund' ? 'kund' : 'byra';
       const saveAction = ['mark_answered', 'mark_sent', 'mark_signed'].includes(action) ? action : 'save';
-      form = Kundformular.applySave(form, answers, { actor, action: saveAction });
+      form = Kundformular.applySave(form, answers, {
+        actor,
+        action: saveAction,
+        customerId
+      });
     }
 
-    const payload = Kundformular.serializeForm(form);
-    try {
-      await axios.patch(
-        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-        { fields: { [Kundformular.FIELD]: payload } },
-        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-      );
-    } catch (patchErr) {
-      const msg = patchErr.response?.data?.error?.message || patchErr.message || '';
-      if (/Unknown field name/i.test(String(msg))) {
-        await ensureKunddataOptionalFields(airtableAccessToken, baseId);
-        await axios.patch(
-          `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
-          { fields: { [Kundformular.FIELD]: payload } },
-          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        throw patchErr;
-      }
-    }
+    await persistKundformularForm(customerId, form, ctx);
 
     res.set('Cache-Control', 'no-store');
-    return res.json(buildKundformularResponse(form, fields, kyc, tjansterCtx));
+    return res.json(buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
+      baseUrl: kundformularRequestBaseUrl(req),
+      includeInviteToken: action === 'mark_sent'
+    }));
   } catch (error) {
     console.error('❌ PUT /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });

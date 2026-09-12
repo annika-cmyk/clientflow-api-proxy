@@ -238,21 +238,32 @@
     const summary = payload?.summary || {};
     const meta = payload?.meta || {};
     const onAction = typeof opts.onAction === 'function' ? opts.onAction : null;
-    const readOnly = !!meta.readOnly;
+    const customerMode = !!(opts.customerMode || meta.customerMode);
+    const readOnly = !!meta.readOnly || (!!opts.readOnly);
     const vhRelevant = meta.vhRelevant !== false;
     const liveMeta = computeLocalMeta(a, meta);
     const submitted = !!meta.submitted
       || summary.status === 'besvarat'
       || summary.status === 'signerat';
+    const inviteUrl = String(summary.inviteUrl || payload?.inviteUrl || '').trim();
 
     const metaBits = [];
-    if (summary.answeredAt || summary.isAnswered) {
+    if (customerMode) {
+      if (submitted) {
+        metaBits.push('Tack — era uppgifter är inskickade till byrån.');
+      } else {
+        metaBits.push('Fyll i uppgifterna nedan och skicka in till byrån. Inga riskbedömningar visas här.');
+      }
+    } else if (summary.answeredAt || summary.isAnswered) {
       metaBits.push(`Kunden svarade <strong>${esc(fmtDate(summary.answeredAt))}</strong>${summary.answeredBy ? ` (${esc(summary.answeredBy)})` : ''}.`);
     } else {
       metaBits.push('Inget kundsvar registrerat ännu.');
     }
-    if (summary.sentAt) metaBits.push(`Skickat ${esc(fmtDate(summary.sentAt))}.`);
-    if (summary.signedAt) metaBits.push(`Signerat ${esc(fmtDate(summary.signedAt))}.`);
+    if (!customerMode && summary.sentAt) metaBits.push(`Skickat ${esc(fmtDate(summary.sentAt))}.`);
+    if (!customerMode && summary.signedAt) metaBits.push(`Signerat ${esc(fmtDate(summary.signedAt))}.`);
+    if (customerMode && summary.inviteExpiresAt && !submitted) {
+      metaBits.push(`Länken gäller till ${esc(fmtDate(summary.inviteExpiresAt))}.`);
+    }
 
     const showAgarstruktur = liveMeta.vhKraverAgarstruktur;
     const showOmbud = a.ombud_annan === 'Ja';
@@ -287,7 +298,9 @@
         <div class="kundformular-header">
           <div>
             <h3 class="kundformular-title">Kundformulär</h3>
-            <p class="kundformular-lead">Exakt samma formulär som kunden ser och skickar in — neutral faktayta utan riskpoäng.</p>
+            <p class="kundformular-lead">${customerMode
+              ? 'Uppgifter till er redovisningsbyrå — neutral faktayta utan riskpoäng eller interna bedömningar.'
+              : 'Exakt samma formulär som kunden ser och skickar in — neutral faktayta utan riskpoäng.'}</p>
           </div>
           <div class="kundformular-header-status">
             <span class="kundformular-status kundformular-status--${esc(statusClass(summary.status))}">${esc(summary.statusLabel || summary.status || 'Utkast')}</span>
@@ -297,11 +310,25 @@
 
         ${submitted ? '<div class="kundformular-submitted-banner" role="status">Visar det kunden skickat in. Samma innehåll som kundvyn.</div>' : ''}
 
+        ${inviteUrl && !customerMode ? `<div class="kundformular-invite-box" role="status">
+          <p><strong>Kundlänk</strong> (giltig tills formuläret besvarats${summary.inviteExpiresAt ? ` eller till ${esc(fmtDate(summary.inviteExpiresAt))}` : ''}):</p>
+          <div class="kundformular-invite-row">
+            <input type="text" class="form-control" readonly value="${esc(inviteUrl)}" data-kf-invite-url>
+            <button type="button" class="btn btn-secondary btn-sm" data-kf-copy-invite title="Kopiera länk"><i class="fas fa-copy"></i> Kopiera</button>
+          </div>
+          <p class="kundformular-hint">Dela länken med kunden. BankID-signering kommer i nästa steg — tills dess räcker det att kunden fyller i och skickar in.</p>
+        </div>` : ''}
+
         <div class="kundformular-actions">
-          ${readOnly ? '' : `<button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort</button>
+          ${customerMode
+            ? (readOnly
+              ? ''
+              : `<button type="button" class="btn btn-secondary" data-kf-action="save"><i class="fas fa-save"></i> Spara utkast</button>
+                 <button type="button" class="btn btn-primary" data-kf-action="mark_answered"><i class="fas fa-paper-plane"></i> Skicka in svar</button>`)
+            : (readOnly ? '' : `<button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort</button>
           <button type="button" class="btn btn-primary" data-kf-action="save"><i class="fas fa-save"></i> Spara</button>
-          <button type="button" class="btn btn-secondary" data-kf-action="mark_answered" title="Tills kundportalen finns"><i class="fas fa-check"></i> Markera som besvarat</button>`}
-          <button type="button" class="btn btn-ghost" data-kf-action="mark_sent" disabled title="Kommer med BankID-utskick"><i class="fas fa-id-card"></i> Skicka med BankID</button>
+          <button type="button" class="btn btn-secondary" data-kf-action="mark_answered" title="Om kunden svarat utanför länken"><i class="fas fa-check"></i> Markera som besvarat</button>
+          <button type="button" class="btn btn-ghost" data-kf-action="mark_sent" title="Skapa delbar länk till kunden"><i class="fas fa-link"></i> Skapa kundlänk</button>`)}
         </div>
 
         <form class="kundformular-form${readOnly ? ' kundformular-form--readonly' : ''}" id="kundformular-form" autocomplete="off">
@@ -457,7 +484,8 @@
     `;
 
     const root = container.querySelector('#kundformular-root');
-    if (!root || !onAction) return;
+    if (!root) return;
+    // Attach listeners even without onAction so invite-copy works in read-only views.
 
     function syncConditionalUi() {
       const answers = collectAnswers(root);
@@ -499,6 +527,22 @@
     });
 
     root.addEventListener('click', (e) => {
+      const copyBtn = e.target.closest('[data-kf-copy-invite]');
+      if (copyBtn) {
+        e.preventDefault();
+        const input = root.querySelector('[data-kf-invite-url]');
+        const url = input?.value || '';
+        if (url && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(url).then(() => {
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> Kopierad';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-copy"></i> Kopiera'; }, 1500);
+          }).catch(() => {});
+        } else if (input) {
+          input.select();
+          try { document.execCommand('copy'); } catch (_) {}
+        }
+        return;
+      }
       if (readOnly) return;
       const addBtn = e.target.closest('[data-add-person]');
       if (addBtn) {
@@ -528,11 +572,13 @@
         return;
       }
       const actionBtn = e.target.closest('[data-kf-action]');
-      if (actionBtn && !actionBtn.disabled) {
+      if (actionBtn && !actionBtn.disabled && onAction) {
         e.preventDefault();
         onAction(actionBtn.getAttribute('data-kf-action'), collectAnswers(root), actionBtn);
       }
     });
+
+    syncConditionalUi();
   }
 
   global.KundformularUi = { render, collectAnswers, fmtDate };
