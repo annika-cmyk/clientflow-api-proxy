@@ -177,13 +177,20 @@ class RiskAssessmentManager {
         if (mallId !== this._modalUtforandeMallId) this.renderModalUtforande(mallId);
     }
 
+    setUtforandeKatalogFooterVisible(visible) {
+        const footer = document.getElementById('tjanst-katalog-footer');
+        const addBtn = document.getElementById('tjanst-utforande-add-custom');
+        // Footer-knapparna ersätter header-knappen "+ Lägg till egen tjänst".
+        if (addBtn) addBtn.hidden = true;
+        if (footer) footer.hidden = !visible;
+    }
+
     renderUtforandeKatalog() {
         const host = document.getElementById('tjanst-utforande-katalog');
         const Mallar = window.TjanstUtforandeMallar;
         if (!host || !Mallar) return;
-        const addBtn = document.getElementById('tjanst-utforande-add-custom');
         if (Mallar.needsKatalogChoice && Mallar.needsKatalogChoice(this.utforandeState)) {
-            if (addBtn) addBtn.hidden = true;
+            this.setUtforandeKatalogFooterVisible(false);
             host.innerHTML = `
                 <div class="tjanst-katalog-val" role="group" aria-label="Välj hur ni vill bygga tjänstekatalogen">
                     <h4 class="tjanst-katalog-val-title">Hur vill ni börja?</h4>
@@ -214,21 +221,13 @@ class RiskAssessmentManager {
             });
             return;
         }
-        // Footer-knapparna ersätter toppranknappen.
-        if (addBtn) addBtn.hidden = true;
+        this.setUtforandeKatalogFooterVisible(true);
         const cards = Mallar.listCatalogCards(this.utforandeState);
-        const footer = `
-            <div class="tjanst-katalog-footer" role="group" aria-label="Lägg till tjänst">
-                <button type="button" class="btn btn-secondary" data-add-standard-tjanst>Lägg till standardtjänst</button>
-                <button type="button" class="btn btn-primary" data-add-custom-tjanst>Skapa egen tjänst</button>
-            </div>`;
         const emptyHtml = !cards.length
             ? `<div class="tjanst-katalog-empty"><p>Inga tjänster ännu. Lägg till en standardtjänst eller skapa en egen.</p></div>`
             : '';
         const cardsHtml = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
-        host.innerHTML = emptyHtml + cardsHtml + footer;
-        host.querySelector('[data-add-custom-tjanst]')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
-        host.querySelector('[data-add-standard-tjanst]')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
+        host.innerHTML = emptyHtml + cardsHtml;
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
@@ -961,6 +960,8 @@ class RiskAssessmentManager {
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
         document.getElementById('tjanst-name')?.addEventListener('input', () => this.syncModalUtforandeFromNamn());
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
+        document.getElementById('tjanst-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
+        document.getElementById('tjanst-add-standard')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });

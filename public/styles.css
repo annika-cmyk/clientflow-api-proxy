@@ -17658,10 +17658,18 @@ h5.ar-subsection-title {
 .tjanst-katalog-footer {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.65rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    padding: 1.1rem 0 0.35rem;
     border-top: 1px solid #e2e8f0;
+}
+.tjanst-katalog-footer[hidden] {
+    display: none !important;
+}
+.tjanst-katalog-footer .btn {
+    min-height: 2.75rem;
+    padding: 0.7rem 1.15rem;
 }
 .tjanst-mall-overview {
     margin-top: 0.65rem;
