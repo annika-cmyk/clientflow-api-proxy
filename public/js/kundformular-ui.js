@@ -310,13 +310,23 @@
 
         ${submitted ? '<div class="kundformular-submitted-banner" role="status">Visar det kunden skickat in. Samma innehåll som kundvyn.</div>' : ''}
 
+        ${!customerMode && Array.isArray(summary.statusStrip) && summary.statusStrip.length ? `
+        <ol class="kundformular-status-strip" aria-label="Kundformulärstatus">
+          ${summary.statusStrip.map((step) => `
+            <li class="kundformular-status-step kundformular-status-step--${esc(step.state)}${step.comingSoon ? ' kundformular-status-step--soon' : ''}" title="${esc(step.comingSoon ? `${step.label} (kommer snart)` : step.label)}">
+              <span class="kundformular-status-step-dot" aria-hidden="true"></span>
+              <span class="kundformular-status-step-label">${esc(step.label)}${step.comingSoon ? ' <em>snart</em>' : ''}</span>
+            </li>`).join('')}
+        </ol>` : ''}
+
         ${inviteUrl && !customerMode ? `<div class="kundformular-invite-box" role="status">
           <p><strong>Kundlänk</strong> (giltig tills formuläret besvarats${summary.inviteExpiresAt ? ` eller till ${esc(fmtDate(summary.inviteExpiresAt))}` : ''}):</p>
           <div class="kundformular-invite-row">
             <input type="text" class="form-control" readonly value="${esc(inviteUrl)}" data-kf-invite-url>
             <button type="button" class="btn btn-secondary btn-sm" data-kf-copy-invite title="Kopiera länk"><i class="fas fa-copy"></i> Kopiera</button>
+            ${summary.canRemind ? `<button type="button" class="btn btn-ghost btn-sm" data-kf-action="remind" title="Skicka påminnelsemejl till kundens e-post"><i class="fas fa-envelope"></i> Skicka påminnelse</button>` : ''}
           </div>
-          <p class="kundformular-hint">Dela länken med kunden. BankID-signering kommer i nästa steg — tills dess räcker det att kunden fyller i och skickar in.</p>
+          <p class="kundformular-hint">Dela länken med kunden. BankID-signering kommer i nästa steg — tills dess räcker det att kunden fyller i och skickar in.${summary.reminderCount ? ` Senast påmind ${esc(fmtDate(summary.lastRemindedAt))} (${esc(String(summary.reminderCount))} ggr).` : ''}</p>
         </div>` : ''}
 
         <div class="kundformular-actions">

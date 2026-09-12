@@ -10724,7 +10724,8 @@ class CustomerCardManager {
             save: { action: 'save', label: 'Sparar...' },
             prefill: { action: 'prefill', label: 'Prefillar...' },
             mark_answered: { action: 'mark_answered', label: 'Markerar...' },
-            mark_sent: { action: 'mark_sent', label: 'Skickar...' }
+            mark_sent: { action: 'mark_sent', label: 'Skapar länk...' },
+            remind: { action: 'remind', label: 'Skickar påminnelse...' }
         };
         const cfg = map[action];
         if (!cfg) return;
@@ -10733,7 +10734,9 @@ class CustomerCardManager {
         try {
             const body = action === 'prefill'
                 ? { action: 'prefill' }
-                : { action: cfg.action, answers, actor: 'byra' };
+                : (action === 'remind'
+                  ? { action: 'remind' }
+                  : { action: cfg.action, answers, actor: 'byra' });
             const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
                 method: 'PUT',
                 ...getAuthOptsKundkort(),
@@ -10756,7 +10759,9 @@ class CustomerCardManager {
                   ? 'Markerat som besvarat'
                   : (action === 'mark_sent'
                     ? (inviteUrl ? 'Kundlänk skapad — kopiera och dela med kunden' : 'Markerat som skickat')
-                    : 'Kundformulär sparat'));
+                    : (action === 'remind'
+                      ? (data.remindedTo ? `Påminnelse skickad till ${data.remindedTo}` : 'Påminnelse skickad')
+                      : 'Kundformulär sparat')));
             this.showNotification(msg, 'success');
             if (action === 'mark_sent' && inviteUrl && navigator.clipboard?.writeText) {
                 try { await navigator.clipboard.writeText(inviteUrl); } catch (_) {}
