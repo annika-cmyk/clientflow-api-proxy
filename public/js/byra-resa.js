@@ -6,7 +6,8 @@
 (function () {
   if (!document.getElementById('byra-resa-steps')) return;
 
-  var state = { version: 1, steps: {}, kalla: {}, customKallor: [] };
+  var state = { version: 1, steps: {}, kalla: {}, customKallor: [], nraChecklist: {} };
+  var nraRequired = false;
   var catalog = [];
   var steps = [];
   var saveTimer = null;
@@ -93,7 +94,23 @@
       if (!Array.isArray(state.customKallor)) state.customKallor = [];
       if (Array.isArray(data.catalog)) catalog = data.catalog;
       setStatus('Sparat');
+      if (typeof data.nraChecklistRequired === 'boolean') nraRequired = data.nraChecklistRequired;
+      if (Array.isArray(data.nraChecklist)) {
+        state.nraChecklist = state.nraChecklist || {};
+        data.nraChecklist.forEach(function (row) {
+          if (!row || !row.id) return;
+          var prev = state.nraChecklist[row.id] || {};
+          state.nraChecklist[row.id] = {
+            id: row.id,
+            title: row.title || prev.title || '',
+            desc: row.desc || prev.desc || '',
+            answer: row.answer || prev.answer || 'unset',
+            why: row.why != null ? row.why : (prev.why || '')
+          };
+        });
+      }
       renderKalla();
+      renderNraChecklist();
       renderSteps();
     } catch (e) {
       setStatus(e.message || 'Kunde inte spara', true);
@@ -176,6 +193,128 @@
     scheduleSave();
   }
 
+
+  function nraAnswer(id) {
+    return (state.nraChecklist && state.nraChecklist[id] && state.nraChecklist[id].answer) || 'unset';
+  }
+
+  function nraWhy(id) {
+    return (state.nraChecklist && state.nraChecklist[id] && state.nraChecklist[id].why) || '';
+  }
+
+  function nraRows() {
+    var map = state.nraChecklist || {};
+    return Object.keys(map).map(function (id) {
+      return Object.assign({ id: id }, map[id]);
+    });
+  }
+
+  function nraCompleteLocal() {
+    if (!nraRequired) return true;
+    var rows = nraRows();
+    if (!rows.length) return false;
+    return rows.every(function (row) {
+      if (!row.answer || row.answer === 'unset') return false;
+      if (row.answer === 'nej' && String(row.why || '').trim().length < 3) return false;
+      return true;
+    });
+  }
+
+  function step8ReadyLocal() {
+    return kallaComplete() && nraCompleteLocal();
+  }
+
+  function updateNraProgress() {
+    var section = document.getElementById('byra-resa-nra-section');
+    var progress = document.getElementById('byra-resa-nra-progress');
+    var hint = document.getElementById('byra-resa-nra-hint');
+    if (!section) return;
+    section.hidden = !nraRequired;
+    if (!nraRequired) return;
+    var rows = nraRows();
+    var done = rows.filter(function (r) {
+      if (!r.answer || r.answer === 'unset') return false;
+      if (r.answer === 'nej' && String(r.why || '').trim().length < 3) return false;
+      return true;
+    }).length;
+    if (progress) progress.textContent = done + ' av ' + rows.length + ' scenarier besvarade';
+    if (!hint) return;
+    if (nraCompleteLocal()) {
+      hint.textContent = 'NRA-checklistan är komplett.';
+      hint.className = 'byra-resa-nra-hint is-ok';
+    } else {
+      hint.textContent = 'Svara ja eller nej på varje scenario. Vid nej: skriv en kort motivering.';
+      hint.className = 'byra-resa-nra-hint is-warn';
+    }
+  }
+
+  function nraChip(id, value, label, cur) {
+    var checked = cur === value ? ' checked' : '';
+    var disabled = canEdit ? '' : ' disabled';
+    var on = cur === value ? ' is-on' : '';
+    return (
+      '<label class="byra-resa-nra-state' + on + '" data-value="' + value + '">' +
+        '<input type="radio" name="nra-' + esc(id) + '" value="' + value + '" data-nra-id="' + esc(id) + '"' + checked + disabled + '>' +
+        '<span>' + esc(label) + '</span>' +
+      '</label>'
+    );
+  }
+
+  function renderNraChecklist() {
+    var root = document.getElementById('byra-resa-nra-list');
+    if (!root) return;
+    updateNraProgress();
+    if (!nraRequired) {
+      root.innerHTML = '';
+      return;
+    }
+    var rows = nraRows();
+    root.innerHTML = rows.map(function (row) {
+      var cur = row.answer || 'unset';
+      var showWhy = cur === 'nej';
+      return (
+        '<article class="byra-resa-nra-row" data-nra-id="' + esc(row.id) + '">' +
+          '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
+          '<p class="byra-resa-nra-desc">' + esc(row.desc || '') + '</p>' +
+          '<div class="byra-resa-nra-states" role="group" aria-label="' + esc(row.title || row.id) + '">' +
+            nraChip(row.id, 'ja', 'Ja', cur) +
+            nraChip(row.id, 'nej', 'Nej', cur) +
+          '</div>' +
+          (showWhy
+            ? '<div class="byra-resa-nra-why-wrap">' +
+                '<input type="text" class="form-input byra-resa-nra-why" data-nra-id="' + esc(row.id) + '" value="' + esc(row.why || '') + '" placeholder="Kort varför scenariot inte är relevant" ' + (canEdit ? '' : 'disabled') + '>' +
+              '</div>'
+            : '') +
+        '</article>'
+      );
+    }).join('');
+
+    root.querySelectorAll('input[type="radio"][data-nra-id]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var id = input.getAttribute('data-nra-id');
+        if (!state.nraChecklist) state.nraChecklist = {};
+        if (!state.nraChecklist[id]) state.nraChecklist[id] = { id: id, answer: 'unset', why: '' };
+        state.nraChecklist[id].answer = input.value;
+        if (input.value !== 'nej') state.nraChecklist[id].why = '';
+        // keep title/desc
+        renderNraChecklist();
+        renderSteps();
+        save();
+      });
+    });
+    root.querySelectorAll('.byra-resa-nra-why').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var id = input.getAttribute('data-nra-id');
+        if (!state.nraChecklist) state.nraChecklist = {};
+        if (!state.nraChecklist[id]) state.nraChecklist[id] = { id: id, answer: 'nej', why: '' };
+        state.nraChecklist[id].why = input.value;
+        updateNraProgress();
+        renderSteps();
+        save();
+      });
+    });
+  }
+
   function renderKalla() {
     var root = document.getElementById('byra-resa-kalla-list');
     if (!root) return;
@@ -222,7 +361,10 @@
         if (!state.kalla[id]) state.kalla[id] = { status: 'unset', note: '' };
         state.kalla[id].status = input.value;
         if (input.value !== 'inte_relevant') state.kalla[id].note = '';
+        if (id === 'nra-2024-2025') nraRequired = input.value === 'anvander';
         renderKalla();
+        renderNraChecklist();
+        renderSteps();
         renderSteps();
         scheduleSave();
       });
@@ -310,7 +452,7 @@
     var statuses = resolveStatusesLocal();
     root.innerHTML = steps.map(function (step) {
       var done = !!(state.steps && state.steps[step.id]);
-      var gate = step.id === 8 && !kallaComplete();
+      var gate = step.id === 8 && !step8ReadyLocal();
       var st = statuses[step.id] || { status: 'pending', label: 'Ej påbörjat' };
       var meta = statusMeta(st.status);
       var icon = step.icon || 'fa-circle';
@@ -326,7 +468,7 @@
           '<h3 class="byra-resa-step-title">' + esc(step.title) + '</h3>' +
           '<p class="byra-resa-step-desc">' + esc(step.desc) + '</p>' +
           '<a class="byra-resa-step-link" href="' + esc(step.href) + '">' + esc(step.linkLabel) + '</a>' +
-          (gate ? '<p class="byra-resa-step-gate">Fyll i källkatalogen innan slutgodkännande.</p>' : '') +
+          (gate ? '<p class="byra-resa-step-gate">' + (nraRequired && !nraCompleteLocal() ? 'Fyll i NRA-checklistan och källkatalogen innan slutgodkännande.' : 'Fyll i källkatalogen innan slutgodkännande.') + '</p>' : '') +
           '<label class="byra-resa-step-check">' +
             '<input type="checkbox" data-step-id="' + step.id + '"' + (done ? ' checked' : '') + (canEdit ? '' : ' disabled') + '>' +
             '<span>Steget klart</span>' +
@@ -339,7 +481,7 @@
       input.addEventListener('change', function () {
         var id = Number(input.getAttribute('data-step-id'));
         if (!state.steps) state.steps = {};
-        if (id === 8 && input.checked && !kallaComplete()) {
+        if (id === 8 && input.checked && !step8ReadyLocal()) {
           input.checked = false;
           setStatus('Fyll i alla källor innan ni markerar godkännande som klart.', true);
           return;
@@ -380,7 +522,22 @@
       canEdit = data.canEdit !== false;
       if (window.__clientflowNavStatus) syncAttentionFromNav(window.__clientflowNavStatus);
       syncAddFormVisibility();
+      nraRequired = !!data.nraChecklistRequired || ((state.kalla['nra-2024-2025'] || {}).status === 'anvander');
+      if (Array.isArray(data.nraChecklist) && data.nraChecklist.length) {
+        state.nraChecklist = {};
+        data.nraChecklist.forEach(function (row) {
+          if (!row || !row.id) return;
+          state.nraChecklist[row.id] = {
+            id: row.id,
+            title: row.title || '',
+            desc: row.desc || '',
+            answer: row.answer || 'unset',
+            why: row.why || ''
+          };
+        });
+      }
       renderKalla();
+      renderNraChecklist();
       renderSteps();
       setStatus('');
     } catch (e) {

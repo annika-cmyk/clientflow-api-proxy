@@ -15537,7 +15537,12 @@ app.get('/api/byra-resa', authenticateToken, async (req, res) => {
       steps: ByraResa.RESA_STEPS,
       progress: ByraResa.countCompletedSteps(state.steps),
       kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
-      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor)
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor),
+      nraScenarios: ByraResa.NRA_SCENARIOS,
+      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist),
+      nraChecklistRequired: ByraResa.nraChecklistRequired(state.kalla),
+      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist),
+      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)
     });
   } catch (error) {
     console.error('❌ GET /api/byra-resa:', error.response?.data || error.message);
@@ -15563,9 +15568,13 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       // Katalogversion ägs av servern (bumpas vid riskfaktor-skrivning), inte av klienten.
       riskFactorCatalogVersion: existingState.riskFactorCatalogVersion
     });
-    if (state.steps[8] && !ByraResa.kallaCatalogComplete(state.kalla, state.customKallor)) {
+    if (state.steps[8] && !ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)) {
+      const needsNra = ByraResa.nraChecklistRequired(state.kalla)
+        && !ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist);
       return res.status(400).json({
-        error: 'Källkatalogen måste vara ifylld innan steg 8 (godkännande) kan markeras klart.',
+        error: needsNra
+          ? 'När NRA är markerad som Använder måste NRA-checklistan vara ifylld innan steg 8 kan markeras klart.'
+          : 'Källkatalogen måste vara ifylld innan steg 8 (godkännande) kan markeras klart.',
         state
       });
     }
@@ -15582,7 +15591,11 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       state,
       catalog: ByraResa.mergeKallaState(state.kalla, state.customKallor),
       kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
-      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor)
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor),
+      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist),
+      nraChecklistRequired: ByraResa.nraChecklistRequired(state.kalla),
+      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist),
+      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)
     });
   } catch (error) {
     console.error('❌ PUT /api/byra-resa:', error.response?.data || error.message);
