@@ -265,7 +265,7 @@ Questions can be **public** (shown in the invite email) or **BankID-protected** 
 
 ### 6.9b Customer email (*Mejl*)
 
-Optional Gmail connect per user (sidebar *Mejl*). Inbox shows messages under the Gmail label **KUNDER** (child labels matched to customer names). Compose/send uses the user’s Gmail so mail appears from their address. Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_REDIRECT_URI`.
+Optional Gmail connect per user (sidebar *Mejl*). Inbox shows messages under the Gmail label **KUNDER** (child labels matched to customer names). Compose/send uses the user’s Gmail so mail appears from their address. Env (exact names): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_REDIRECT_URI` (prod redirect `https://www.app.clientflow.se/api/gmail/oauth/callback`). When unset, Mejl shows status *Ej konfigurerad* and the connect button toasts the missing variables.
 
 ---
 

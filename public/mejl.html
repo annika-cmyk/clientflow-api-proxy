@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260912gmail">
+    <link rel="stylesheet" href="styles.css?v=20260912gmail2">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
       .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1rem; }
@@ -68,6 +68,20 @@
         background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
       }
       .mejl-samarbete-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+      /* Global .btn { display:inline-flex } och .mejl-layout { display:grid } slår UA [hidden] */
+      #mejl-connect-btn[hidden],
+      #mejl-disconnect-btn[hidden],
+      #mejl-refresh-btn[hidden],
+      #mejl-compose-toggle[hidden],
+      #mejl-toolbar[hidden],
+      #mejl-main[hidden],
+      #mejl-compose[hidden] { display: none !important; }
+      #mejl-connect-btn.is-disabled,
+      #mejl-connect-btn[aria-disabled="true"] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        filter: grayscale(0.2);
+      }
     </style>
 </head>
 <body>
@@ -170,6 +184,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/mejl.js?v=1" defer></script>
+    <script src="js/mejl.js?v=20260912connect" defer></script>
 </body>
 </html>
