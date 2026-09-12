@@ -13863,7 +13863,11 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     const toNumberOrNull = ByraProfilFields.toNumberOrNull;
     const toTextOrNull = ByraProfilFields.toTextOrNull;
     const fields = {};
-    if (body.antalKundforetag !== undefined) fields['Antal kundföretag'] = toNumberOrNull(body.antalKundforetag);
+    // Antal kundföretag är singleLineText i Airtable (samma som Antal anställda / Omsättning).
+    if (body.antalKundforetag !== undefined) {
+      const n = toNumberOrNull(body.antalKundforetag);
+      fields['Antal kundföretag'] = n == null ? null : String(n);
+    }
     if (body.logga !== undefined) fields['Logga'] = body.logga;
     if (body.bransch !== undefined) fields['Typ av byrå'] = toTextOrNull(body.bransch);
     if (body.defaultUppsagningstid !== undefined) fields['Default uppsägningstid'] = toNumberOrNull(body.defaultUppsagningstid);
