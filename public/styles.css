@@ -17826,12 +17826,6 @@ h5.ar-subsection-title {
     justify-content: space-between;
     gap: 1rem;
 }
-.tjanst-mall-top-actions {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.55rem;
-}
 .tjanst-mall-identity {
     display: flex;
     align-items: flex-start;
@@ -17963,13 +17957,9 @@ h5.ar-subsection-title {
     margin-left: auto;
 }
 .tjanst-mall-delete.btn-ghost {
-    flex-shrink: 0;
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--error, #c0392b) 35%, var(--border, #dcdfe5));
     color: var(--error, #c0392b);
-    padding: 0.28rem 0.65rem;
-    font-size: 0.78rem;
-    white-space: nowrap;
 }
 .tjanst-mall-delete.btn-ghost:hover:not(:disabled) {
     background: color-mix(in srgb, var(--error, #c0392b) 10%, transparent);

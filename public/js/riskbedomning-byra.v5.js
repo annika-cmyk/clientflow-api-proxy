@@ -177,20 +177,13 @@ class RiskAssessmentManager {
         if (mallId !== this._modalUtforandeMallId) this.renderModalUtforande(mallId);
     }
 
-    setUtforandeKatalogFooterVisible(visible) {
-        const footer = document.getElementById('tjanst-katalog-footer');
-        const addBtn = document.getElementById('tjanst-utforande-add-custom');
-        // Footer-knapparna ersätter header-knappen "+ Lägg till egen tjänst".
-        if (addBtn) addBtn.hidden = true;
-        if (footer) footer.hidden = !visible;
-    }
-
     renderUtforandeKatalog() {
         const host = document.getElementById('tjanst-utforande-katalog');
         const Mallar = window.TjanstUtforandeMallar;
         if (!host || !Mallar) return;
+        const addBtn = document.getElementById('tjanst-utforande-add-custom');
         if (Mallar.needsKatalogChoice && Mallar.needsKatalogChoice(this.utforandeState)) {
-            this.setUtforandeKatalogFooterVisible(false);
+            if (addBtn) addBtn.hidden = true;
             host.innerHTML = `
                 <div class="tjanst-katalog-val" role="group" aria-label="Välj hur ni vill bygga tjänstekatalogen">
                     <h4 class="tjanst-katalog-val-title">Hur vill ni börja?</h4>
@@ -221,13 +214,21 @@ class RiskAssessmentManager {
             });
             return;
         }
-        this.setUtforandeKatalogFooterVisible(true);
+        // Footer-knapparna ersätter toppranknappen.
+        if (addBtn) addBtn.hidden = true;
         const cards = Mallar.listCatalogCards(this.utforandeState);
+        const footer = `
+            <div class="tjanst-katalog-footer" role="group" aria-label="Lägg till tjänst">
+                <button type="button" class="btn btn-secondary" data-add-standard-tjanst>Lägg till standardtjänst</button>
+                <button type="button" class="btn btn-primary" data-add-custom-tjanst>Skapa egen tjänst</button>
+            </div>`;
         const emptyHtml = !cards.length
             ? `<div class="tjanst-katalog-empty"><p>Inga tjänster ännu. Lägg till en standardtjänst eller skapa en egen.</p></div>`
             : '';
         const cardsHtml = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
-        host.innerHTML = emptyHtml + cardsHtml;
+        host.innerHTML = emptyHtml + cardsHtml + footer;
+        host.querySelector('[data-add-custom-tjanst]')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
+        host.querySelector('[data-add-standard-tjanst]')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
@@ -407,8 +408,6 @@ class RiskAssessmentManager {
                         <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
                     </div>
                 </div>`;
-        // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
-        // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
             ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false">Visa översikt</button>`
@@ -427,13 +426,10 @@ class RiskAssessmentManager {
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                         </div>
                     </div>
-                    <div class="tjanst-mall-top-actions">
-                        ${deleteBtn}
-                        <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
-                            <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
-                            <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
-                        </label>
-                    </div>
+                    <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
+                        <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
+                        <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
+                    </label>
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
@@ -441,6 +437,7 @@ class RiskAssessmentManager {
                     <div class="tjanst-mall-actions">
                         ${expandBtn}
                         <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
+                        ${deleteBtn}
                     </div>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
@@ -964,8 +961,6 @@ class RiskAssessmentManager {
         document.getElementById('ai-suggest-btn')?.addEventListener('click', () => this.generateAiSuggestion());
         document.getElementById('tjanst-name')?.addEventListener('input', () => this.syncModalUtforandeFromNamn());
         document.getElementById('tjanst-utforande-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
-        document.getElementById('tjanst-add-custom')?.addEventListener('click', () => this.addCustomUtforandeTjanst());
-        document.getElementById('tjanst-add-standard')?.addEventListener('click', () => this.addStandardUtforandeTjanst());
         ['tjanst-sannolikhet', 'tjanst-konsekvens', 'tjanst-sannolikhet-efter', 'tjanst-konsekvens-efter'].forEach((id) => {
             document.getElementById(id)?.addEventListener('change', () => this.updateRiskBadges());
         });
