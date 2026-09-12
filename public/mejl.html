@@ -62,6 +62,12 @@
       .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
       .mejl-filter { min-width: 220px; }
       .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
+      .mejl-samarbete-nav {
+        display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;
+        margin-top: 0.75rem; padding: 0.75rem 1rem;
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      }
+      .mejl-samarbete-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -72,9 +78,15 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Mejl</h1>
-                        <p class="risk-header-sub">Kundmejl från Gmail (etiketten KUNDER) – läs och skicka som dig själv</p>
+                        <p class="risk-header-sub">Kundmejl från Gmail (etiketten KUNDER) och Samarbete med kunden</p>
                     </div>
                 </header>
+
+                <nav class="mejl-samarbete-nav" aria-label="Samarbete">
+                    <span class="mejl-samarbete-label"><i class="fas fa-handshake"></i> Samarbete</span>
+                    <a class="btn btn-secondary btn-sm" href="dashboard.html#samarbete-nya">Oläst</a>
+                    <span class="mejl-hint" style="margin:0">Skapa nytt / hantera under kundkortets flik <strong>Samarbete</strong> (+ Nytt, Skickat, Hanterat).</span>
+                </nav>
 
                 <div id="mejl-connect" class="mejl-connect-banner">
                     <h2><i class="fas fa-envelope"></i> Koppla Gmail</h2>

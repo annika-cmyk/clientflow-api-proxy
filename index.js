@@ -170,6 +170,8 @@ const { createAiCostGuard } = require('./lib/aml-news/ai-cost-guard');
 const kundDold = require('./lib/kund-dold');
 const { getWhatsNewPayload } = require('./lib/whats-new');
 const feedback = require('./lib/feedback');
+const samarbeteFragor = require('./lib/samarbete-fragor');
+const samarbeteBankid = require('./lib/samarbete-bankid');
 const {
   DOKUMENTATION_PDF_LIST_FIELD,
   DOKUMENTATION_PDF_FILES_FIELD,
@@ -9879,8 +9881,8 @@ async function sendSamarbeteInviteEmail(options) {
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
 
   const escapeHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  const titleLines = String(title || '').split(/\n/).map(s => s.trim()).filter(Boolean);
-  const titleLinesHtml = titleLines.length ? titleLines.map(line => escapeHtml(line)).join('<br />') : '';
+  const questionBlocks = samarbeteFragor.buildEmailQuestionBlocks(title, escapeHtml);
+  const titleLinesHtml = questionBlocks.html || '';
   const customerMessageHtml = (customerMessage && String(customerMessage).trim())
     ? `<p style="margin:0 0 24px 0; font-size:1rem; line-height:1.5; color:#334155; font-style:italic;">${escapeHtml(String(customerMessage).trim()).replace(/\n/g, '<br />')}</p>`
     : '';
@@ -9896,6 +9898,9 @@ async function sendSamarbeteInviteEmail(options) {
   const logoImgInline = senderLogoUrl && senderLogoUrl.startsWith('http')
     ? `<img src="${escapeHtml(senderLogoUrl)}" alt="" style="max-height:73px; max-width:260px; object-fit:contain; display:inline-block;" />`
     : '';
+  const ctaLabel = questionBlocks.bankIdCount > 0
+    ? 'Öppna länk (BankID för vissa frågor)'
+    : 'Öppna länk och lämna underlag';
 
   const fmtDeadlineSv = (d) => {
     if (!d) return '';
@@ -9937,11 +9942,11 @@ async function sendSamarbeteInviteEmail(options) {
               <p style="margin:0 0 20px 0; font-size:1rem; line-height:1.5; color:#475569;">${senderLine}</p>
               ${customerMessageHtml}
               ${deadlineHtml}
-              ${titleLinesHtml ? `<p style="margin:0 0 24px 0; font-size:0.9rem; color:#64748b; background:#f8fafc; padding:12px 16px; border-radius:8px; line-height:1.6;">${titleLinesHtml}</p>` : ''}
+              ${titleLinesHtml}
               <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
                 <tr>
                   <td style="border-radius:8px; background:#6366f1;">
-                    <a href="${respondUrl}" style="display:inline-block; padding:14px 28px; font-size:1rem; font-weight:600; color:#fff; text-decoration:none;">Öppna länk och lämna underlag</a>
+                    <a href="${respondUrl}" style="display:inline-block; padding:14px 28px; font-size:1rem; font-weight:600; color:#fff; text-decoration:none;">${ctaLabel}</a>
                   </td>
                 </tr>
               </table>
@@ -10705,9 +10710,21 @@ app.get('/api/samarbete/request/:token', async (req, res) => {
       }
     }
 
+    const questions = samarbeteFragor.parseQuestions(fields['Titel'] || '');
+    const bankIdSession = samarbeteBankid.readSessionFromRequest(req);
+    const bankIdVerified = samarbeteBankid.sessionMatchesToken(bankIdSession, token);
+    const publicQuestions = samarbeteFragor.questionsForPublicApi(questions, bankIdVerified);
+
     res.json({
       token,
       title: fields['Titel'] || 'Underlag',
+      questions: publicQuestions,
+      bankIdRequired: questions.some((q) => q.requiresBankId),
+      bankIdVerified,
+      bankIdIdentity: bankIdVerified
+        ? { name: bankIdSession.name || '', personalNumber: bankIdSession.personalNumber || '' }
+        : null,
+      bankIdMode: samarbeteBankid.mode(),
       type: fields['Typ'] || 'Filer',
       recipientName: fields['Mottagare namn'],
       deadline: fields['Deadline'] || null,
@@ -10719,6 +10736,65 @@ app.get('/api/samarbete/request/:token', async (req, res) => {
     const msg = error.response?.data?.error?.message || error.message;
     console.error('GET /api/samarbete/request/:token:', msg);
     res.status(error.response?.status === 404 ? 404 : 500).json({ error: msg });
+  }
+});
+
+// BankID för Samarbete (offentlig) – starta legitimering
+app.post('/api/samarbete/bankid/start', async (req, res) => {
+  try {
+    const token = String(req.body?.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token saknas' });
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) return res.status(500).json({ error: 'Airtable token saknas' });
+    const tableId = await getSamarbeteTableId(airtableAccessToken, airtableBaseId);
+    if (!tableId) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const formula = encodeURIComponent(`{Token} = "${token.replace(/"/g, '\\"')}"`);
+    const listRes = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${tableId}?filterByFormula=${formula}&maxRecords=1`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const record = (listRes.data.records || [])[0];
+    if (!record) return res.status(404).json({ error: 'Förfrågan hittades inte' });
+    const questions = samarbeteFragor.parseQuestions((record.fields || {})['Titel'] || '');
+    if (!questions.some((q) => q.requiresBankId)) {
+      return res.status(400).json({ error: 'Denna förfrågan kräver inte BankID' });
+    }
+    const started = samarbeteBankid.startBankId({
+      samarbeteToken: token,
+      endUserIp: req.ip || req.headers['x-forwarded-for'] || ''
+    });
+    res.json({ success: true, ...started });
+  } catch (error) {
+    const status = error.code === 'BANKID_DISABLED' ? 503 : 500;
+    console.error('POST /api/samarbete/bankid/start:', error.message);
+    res.status(status).json({ error: error.message, code: error.code || null });
+  }
+});
+
+app.post('/api/samarbete/bankid/collect', async (req, res) => {
+  try {
+    const orderRef = String(req.body?.orderRef || '').trim();
+    const token = String(req.body?.token || '').trim();
+    if (!orderRef) return res.status(400).json({ error: 'orderRef saknas' });
+    const result = samarbeteBankid.pollBankId(orderRef);
+    if (result.status === 'complete' && result.sessionToken) {
+      if (token && !samarbeteBankid.sessionMatchesToken(samarbeteBankid.verifySession(result.sessionToken), token)) {
+        return res.status(400).json({ error: 'BankID-session matchar inte förfrågan' });
+      }
+      samarbeteBankid.setSessionCookie(res, result.sessionToken);
+      return res.json({
+        success: true,
+        status: 'complete',
+        sessionToken: result.sessionToken,
+        name: result.name,
+        personalNumber: result.personalNumber
+      });
+    }
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('POST /api/samarbete/bankid/collect:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -12040,6 +12116,19 @@ app.post('/api/samarbete/respond', async (req, res) => {
 
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const fields = record.fields || {};
+    const parsedQuestions = samarbeteFragor.parseQuestions(fields['Titel'] || '');
+    const bankIdSession = samarbeteBankid.readSessionFromRequest(req);
+    const bankIdVerified = samarbeteBankid.sessionMatchesToken(bankIdSession, tokenStr);
+    const answerIndexEarly = req.body.answerIndex;
+    if (typeof answerIndexEarly === 'number' && answerIndexEarly >= 0) {
+      const q = parsedQuestions[answerIndexEarly];
+      if (q && q.requiresBankId && !bankIdVerified) {
+        return res.status(403).json({
+          error: 'Denna fråga kräver BankID. Identifiera dig först.',
+          code: 'BANKID_REQUIRED'
+        });
+      }
+    }
     let svarText = '';
 
     // Hjälpfunktion: räkna ut om alla punkter är besvarade
@@ -12127,6 +12216,18 @@ app.post('/api/samarbete/respond', async (req, res) => {
         newAnswer.filename = uploadedFilename;
         newAnswer.attachmentId = primaryUploadMeta.id || null;
         newAnswer.attachmentUrl = primaryUploadMeta.url || null;
+      }
+      const qMeta = parsedQuestions[answerIndex];
+      if (qMeta && qMeta.requiresBankId && bankIdVerified) {
+        newAnswer.verifiedByBankId = true;
+        newAnswer.verifiedName = bankIdSession.name || '';
+        newAnswer.verifiedPersonalNumber = bankIdSession.personalNumber || '';
+        newAnswer.verifiedAt = now;
+      } else if (ex.verifiedByBankId) {
+        newAnswer.verifiedByBankId = ex.verifiedByBankId;
+        newAnswer.verifiedName = ex.verifiedName || '';
+        newAnswer.verifiedPersonalNumber = ex.verifiedPersonalNumber || '';
+        newAnswer.verifiedAt = ex.verifiedAt || '';
       }
       existingAnswers[answerIndex] = newAnswer;
 

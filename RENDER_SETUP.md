@@ -65,6 +65,10 @@ GOOGLE_GMAIL_REDIRECT_URI=https://app.clientflow.se/api/gmail/oauth/callback
 # Valfritt: GMAIL_TOKEN_SECRET=...  (annars används JWT_SECRET)
 # Valfritt: GMAIL_KUNDER_LABEL=KUNDER
 PUBLIC_BASE_URL=https://app.clientflow.se
+
+# Samarbete BankID (mock default – se docs/GMAIL_SETUP.md)
+# SAMARBETE_BANKID_MODE=mock
+# SAMARBETE_BANKID_SECRET=...
 ```
 
 ### Steg 3: Uppdatera Airtable Token

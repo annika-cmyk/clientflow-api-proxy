@@ -261,6 +261,8 @@ Uploaded files in several categories, KYC PDF, signed agreements, risk-assessmen
 
 Request files or comments from the customer. Invite email with a reply link. Customer answers on a public page. Dashboard shows new replies. External reply page: `samarbete-svar.html`.
 
+Questions can be **public** (shown in the invite email) or **BankID-protected** (teaser in email; unlocked after identification on the reply page). Verified answers are flagged in the customer card. Navigation: + Nytt, Oläst, Skickat, Hanterat. BankID: mock by default (`SAMARBETE_BANKID_MODE=mock`); real provider later via GrandID/Criipto.
+
 ### 6.9b Customer email (*Mejl*)
 
 Optional Gmail connect per user (sidebar *Mejl*). Inbox shows messages under the Gmail label **KUNDER** (child labels matched to customer names). Compose/send uses the user’s Gmail so mail appears from their address. Env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_GMAIL_REDIRECT_URI`.
