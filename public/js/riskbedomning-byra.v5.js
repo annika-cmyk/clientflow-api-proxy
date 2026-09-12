@@ -252,6 +252,14 @@ class RiskAssessmentManager {
                         this.showNotification(msg, 'error');
                         return;
                     }
+                } else if (String(mallId || '').indexOf('custom:') === 0) {
+                    const namn = cardEl.getAttribute('data-mall-namn') || '';
+                    const gate = this.assessCustomTjanstLiveReady(namn);
+                    if (!gate.ok) {
+                        e.target.checked = false;
+                        this.showNotification(gate.message, 'error');
+                        return;
+                    }
                 }
                 this.patchUtforandeEntry(mallId, { aktiv: wantAktiv });
             });
@@ -282,6 +290,45 @@ class RiskAssessmentManager {
                 this.deleteUtforandeTjanst(mallId, cardEl.getAttribute('data-mall-namn') || '');
             });
         });
+    }
+
+    assessCustomTjanstLiveReady(namn) {
+        const risk = this.findTjanstRiskByName(namn);
+        if (!risk || !risk.fields) {
+            return {
+                ok: false,
+                message: `Kan inte aktivera «${namn}»: slutför mini-analysen (inneboende risk, minst en åtgärd och residualrisk) och spara som aktuell först.`
+            };
+        }
+        const f = risk.fields;
+        if (f.Aktuell !== true) {
+            return {
+                ok: false,
+                message: `Kan inte aktivera «${namn}»: spara analysen som aktuell (inte bara utkast) innan tjänsten går live.`
+            };
+        }
+        const RS = window.RiskSkala;
+        const RM = window.RiskMotivering;
+        const poang = (RS && RS.readTjanstRisk(f)) || {};
+        const missing = [];
+        if (!(Number(poang.sannolikhet) >= 1)) missing.push('inneboende sannolikhet');
+        if (!(Number(poang.konsekvens) >= 1)) missing.push('inneboende konsekvens');
+        if (!(Number(poang.sannolikhetEfter) >= 1)) missing.push('residual sannolikhet');
+        if (!(Number(poang.konsekvensEfter) >= 1)) missing.push('residual konsekvens');
+        const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
+        const atgardOk = atgarder.some((a) => a && String(a.titel || a.title || a.namn || a.beskrivning || '').trim());
+        if (!atgardOk) missing.push('minst en åtgärd');
+        if (RM) {
+            const mot = RM.validatePoangMotivering(poang, { asDraft: false });
+            if (!mot.ok) missing.push('motivering');
+        }
+        if (missing.length) {
+            return {
+                ok: false,
+                message: `Kan inte aktivera «${namn}»: mini-analysen saknar ${missing.slice(0, 3).join(', ')}.`
+            };
+        }
+        return { ok: true, message: '' };
     }
 
     kundCountForUtforandeTjanst(mallId, namn) {
@@ -452,9 +499,13 @@ class RiskAssessmentManager {
         const kundCount = this.kundCountForUtforandeTjanst(template.id, analysNamn);
         const lockedInactive = aktiv && kundCount > 0;
         const lockedDelete = kundCount > 0;
+        const isCustom = String(template.id || '').indexOf('custom:') === 0;
+        const draftBadge = (isCustom && !aktiv)
+            ? '<span class="tjanst-mall-draft-badge">Utkast – slutför analys innan aktivering</span>'
+            : '';
         const toggleLabel = lockedInactive
             ? `Kan inte inaktiveras — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
-            : (aktiv ? 'Inaktivera tjänsten' : 'Aktivera tjänsten');
+            : (aktiv ? 'Inaktivera tjänsten' : (isCustom ? 'Aktivera när mini-analysen är klar' : 'Aktivera tjänsten'));
         const deleteLabel = lockedDelete
             ? `Kan inte raderas — ${kundCount === 1 ? '1 kund' : kundCount + ' kunder'} har tjänsten`
             : 'Ta bort tjänsten från katalogen';
@@ -462,7 +513,9 @@ class RiskAssessmentManager {
         const analysHtml = existing
             ? `<div class="tjanst-mall-overview" hidden>${overviewHtml}</div>`
             : `<div class="tjanst-mall-empty">
-                    <p>Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.</p>
+                    <p>${isCustom
+                        ? 'Egen tjänst sparas som utkast. Öppna redigeringen, fyll i mini-analysen och spara som aktuell innan du aktiverar.'
+                        : 'Ingen riskbedömning ännu. Öppna redigeringen för att svara på utförandefrågor och fylla i analysen.'}</p>
                     <div class="tjanst-mall-choice">
                         <button type="button" class="btn btn-primary" data-open-analys data-open-analys-ai>Låt AI skapa ett utkast</button>
                         <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
@@ -475,10 +528,7 @@ class RiskAssessmentManager {
         const rowRiskClass = existing && RiskSkalaApi && RiskSkalaApi.dominantRiskItemClass
             ? RiskSkalaApi.dominantRiskItemClass(scored.level, scored.residualLevel)
             : '';
-        const iconRiskClass = [
-            aktiv ? 'is-active' : '',
-            rowRiskClass || ''
-        ].filter(Boolean).join(' ');
+        const iconClass = aktiv ? 'is-active' : '';
         // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
         // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="risk-row-menu-item is-danger tjanst-mall-delete" data-delete-tjanst role="menuitem" ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
@@ -489,13 +539,14 @@ class RiskAssessmentManager {
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
-                        <span class="tjanst-mall-icon${iconRiskClass ? ' ' + iconRiskClass : ''}" aria-hidden="true">
+                        <span class="tjanst-mall-icon${iconClass ? ' ' + iconClass : ''}" aria-hidden="true">
                             <i class="fas ${icon}"></i>
                         </span>
                         <div class="tjanst-mall-copy">
                             <h4 class="tjanst-mall-title">
                                 <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>
                             </h4>
+                            ${draftBadge}
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
                         </div>
                     </div>
@@ -2934,6 +2985,8 @@ class RiskAssessmentManager {
         }
 
         const payload = this.buildPayload();
+        const isCustom = String(this._modalUtforandeMallId || '').indexOf('custom:') === 0
+            || String(document.getElementById('tjanst-record-id')?.dataset?.mallId || '').indexOf('custom:') === 0;
         const RM = window.RiskMotivering;
         if (RM && !asDraft) {
             const motCheck = RM.validatePoangMotivering(this.collectRiskPoang(), { asDraft: false });
@@ -2947,6 +3000,22 @@ class RiskAssessmentManager {
                 else this.setTjanstTab('inneboende');
                 document.getElementById(field)?.focus();
                 this.updateMotiveringWarnings();
+                return;
+            }
+        }
+        if (!asDraft && isCustom) {
+            const atgarder = this.collectAtgard();
+            const hasAtgard = atgarder.some((a) => a && String(a.titel || a.title || a.namn || a.beskrivning || '').trim());
+            if (!hasAtgard) {
+                this.showNotification('Egna tjänster kräver minst en åtgärd innan de kan sparas som aktuella.', 'error');
+                this.setTjanstTab('atgard');
+                return;
+            }
+            const poang = this.collectRiskPoang();
+            if (!(Number(poang.sannolikhet) >= 1) || !(Number(poang.konsekvens) >= 1)
+                || !(Number(poang.sannolikhetEfter) >= 1) || !(Number(poang.konsekvensEfter) >= 1)) {
+                this.showNotification('Egna tjänster kräver inneboende och residual S×K innan de kan sparas som aktuella.', 'error');
+                this.setTjanstTab('inneboende');
                 return;
             }
         }

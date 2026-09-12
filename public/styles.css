@@ -4834,22 +4834,14 @@ body.sidebar-collapsed .nav-status-icon {
     transform: translateY(-2px);
 }
 
+/* Risknivå visas via badges — ingen vänsterkant-accent på raderna */
 .risk-item.risk-high,
-.risk-item.risk-unacceptable {
-    border-left: 4px solid #e74c3c;
-}
-
+.risk-item.risk-unacceptable,
 .risk-item.risk-elevated,
-.risk-item.risk-medium {
-    border-left: 4px solid #d97706;
-}
-
-.risk-item.risk-normal {
-    border-left: 4px solid #cbd5e1;
-}
-
+.risk-item.risk-medium,
+.risk-item.risk-normal,
 .risk-item.risk-low {
-    border-left: 4px solid #27ae60;
+    border-left: 1px solid #e1e8ed;
 }
 
 .risk-item.inactive {
@@ -4930,14 +4922,14 @@ body.sidebar-collapsed .nav-status-icon {
     text-transform: uppercase;
 }
 
-.risk-level.risk-high {
-    background: #fdf2f2;
-    color: #e74c3c;
+.risk-level.risk-low {
+    background: #f0f9f0;
+    color: #27ae60;
 }
 
-.risk-level.risk-unacceptable {
-    background: #3b0764;
-    color: #f5d0fe;
+.risk-level.risk-normal {
+    background: #f1f5f9;
+    color: #64748b;
 }
 
 .risk-level.risk-elevated,
@@ -4946,14 +4938,15 @@ body.sidebar-collapsed .nav-status-icon {
     color: #c2410c;
 }
 
-.risk-level.risk-normal {
-    background: #f1f5f9;
-    color: #64748b;
+.risk-level.risk-high {
+    background: #fdf2f2;
+    color: #e74c3c;
 }
 
-.risk-level.risk-low {
-    background: #f0f9f0;
-    color: #27ae60;
+.risk-level.risk-unacceptable {
+    background: #3b0764;
+    color: #f5d0fe;
+    border: 1px solid #7e22ce;
 }
 
 .approval-date {
@@ -8528,23 +8521,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     box-shadow: 0 0px 0px rgba(0, 0, 0, 0.08);
 }
 
-/* Risk color bleed: left accent matches highest level on the row */
+/* Risknivå visas via badges — ingen vänsterkant-accent på raderna */
 .risk-item.risk-high,
-.risk-item.risk-unacceptable {
-    border-left: 4px solid #e74c3c;
-}
-
+.risk-item.risk-unacceptable,
 .risk-item.risk-elevated,
-.risk-item.risk-medium {
-    border-left: 4px solid #d97706;
-}
-
-.risk-item.risk-normal {
-    border-left: 4px solid #cbd5e1;
-}
-
+.risk-item.risk-medium,
+.risk-item.risk-normal,
 .risk-item.risk-low {
-    border-left: 4px solid #27ae60;
+    border-left: 1px solid #e8eef2;
 }
 
 .risk-item:hover {
@@ -8627,14 +8611,14 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     letter-spacing: 0.5px;
 }
 
-.risk-level-badge.risk-high {
-    background: #fdf2f2;
-    color: #e74c3c;
+.risk-level-badge.risk-low {
+    background: #f0f9f0;
+    color: #27ae60;
 }
 
-.risk-level-badge.risk-unacceptable {
-    background: #3b0764;
-    color: #f5d0fe;
+.risk-level-badge.risk-normal {
+    background: #f1f5f9;
+    color: #64748b;
 }
 
 .risk-level-badge.risk-elevated,
@@ -8643,14 +8627,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     color: #c2410c;
 }
 
-.risk-level-badge.risk-normal {
-    background: #f1f5f9;
-    color: #64748b;
+.risk-level-badge.risk-high {
+    background: #fdf2f2;
+    color: #e74c3c;
 }
 
-.risk-level-badge.risk-low {
-    background: #f0f9f0;
-    color: #27ae60;
+/* Oacceptabel: tydligt svårare än Hög (lila, inte samma röda som Hög) */
+.risk-level-badge.risk-unacceptable {
+    background: #3b0764;
+    color: #f5d0fe;
+    border: 1px solid #7e22ce;
 }
 
 /* Row overflow menu (… → Ta bort m.m.) */
@@ -18231,23 +18217,15 @@ h5.ar-subsection-title {
     border-radius: 12px;
     background: var(--surface-1, var(--card-bg));
     padding: 0.95rem 1.05rem;
-    border-left-width: 4px;
-    border-left-style: solid;
-    border-left-color: #cbd5e1;
 }
 .tjanst-mall-card.risk-high,
-.tjanst-mall-card.risk-unacceptable {
-    border-left-color: #e74c3c;
-}
+.tjanst-mall-card.risk-unacceptable,
 .tjanst-mall-card.risk-elevated,
-.tjanst-mall-card.risk-medium {
-    border-left-color: #d97706;
-}
-.tjanst-mall-card.risk-normal {
-    border-left-color: #cbd5e1;
-}
+.tjanst-mall-card.risk-medium,
+.tjanst-mall-card.risk-normal,
 .tjanst-mall-card.risk-low {
-    border-left-color: #27ae60;
+    /* Risknivå visas via badges — ingen vänsterkant-accent */
+    border-left: 1px solid var(--line);
 }
 .tjanst-mall-card.is-inactive {
     background: var(--surface-2, var(--panel-2));
@@ -18299,22 +18277,28 @@ h5.ar-subsection-title {
     text-transform: none;
     font-weight: 600;
 }
-.tjanst-mall-meta .risk-level-badge.risk-normal {
-    background: var(--surface-2, var(--panel-2));
-    color: var(--text-secondary, var(--text));
-}
+/* Full risk→färg-karta (låg / normal / förhöjd / hög / oacceptabel) — ingen nivå får falla igenom */
 .tjanst-mall-meta .risk-level-badge.risk-low {
     background: var(--success-tint);
     color: var(--success);
 }
-.tjanst-mall-meta .risk-level-badge.risk-high {
-    background: var(--error-tint);
-    color: var(--error);
+.tjanst-mall-meta .risk-level-badge.risk-normal {
+    background: var(--surface-2, var(--panel-2));
+    color: var(--text-secondary, var(--text));
 }
 .tjanst-mall-meta .risk-level-badge.risk-elevated,
 .tjanst-mall-meta .risk-level-badge.risk-medium {
     background: #fff7ed;
     color: #c2410c;
+}
+.tjanst-mall-meta .risk-level-badge.risk-high {
+    background: var(--error-tint);
+    color: var(--error);
+}
+.tjanst-mall-meta .risk-level-badge.risk-unacceptable {
+    background: #3b0764;
+    color: #f5d0fe;
+    border: 1px solid #7e22ce;
 }
 .tjanst-mall-empty {
     color: var(--text-secondary, var(--text));
@@ -18365,24 +18349,7 @@ h5.ar-subsection-title {
     background: var(--accent-muted, var(--accent-tint));
     color: var(--text-accent, var(--accent));
 }
-.tjanst-mall-icon.risk-high,
-.tjanst-mall-icon.risk-unacceptable {
-    background: #fdf2f2;
-    color: #e74c3c;
-}
-.tjanst-mall-icon.risk-elevated,
-.tjanst-mall-icon.risk-medium {
-    background: #fff7ed;
-    color: #c2410c;
-}
-.tjanst-mall-icon.risk-normal {
-    background: #f1f5f9;
-    color: #64748b;
-}
-.tjanst-mall-icon.risk-low {
-    background: #f0f9f0;
-    color: #27ae60;
-}
+/* Ikonruta är alltid neutral/teal — risknivå visas bara i badges */
 .tjanst-mall-copy {
     min-width: 0;
 }
@@ -18528,6 +18495,18 @@ h5.ar-subsection-title {
 .tjanst-mall-delete.btn-ghost:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+.tjanst-mall-draft-badge {
+    display: inline-block;
+    margin-top: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: #92400e;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
 }
 .tjanst-mall-status {
     font-size: 0.82rem;

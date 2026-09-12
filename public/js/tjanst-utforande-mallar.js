@@ -619,11 +619,6 @@
         'Ja',
         'Nej'
       ]),
-      q('betUtfor', 'Utför byrån betalningar för kundens räkning?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa uppdrag'
-      ]),
       q('betVad', 'Vilka betalningar hanteras normalt?', 'multi', [
         'Leverantörsbetalningar',
         'Löner',
@@ -632,23 +627,23 @@
         'Betalningar till ägare/närstående',
         'Utlandsbetalningar',
         'Annat'
-      ], omTjanstenUtfor('betUtfor')),
+      ]),
       q('betGodkannande', 'Krävs kundens godkännande innan betalning genomförs?', 'single', [
         'Ja, alltid',
         'Ja, vid större belopp',
         'Nej, normalt inte'
-      ], omTjanstenUtfor('betUtfor')),
+      ]),
       q('betNya', 'Kontrolleras nya mottagare eller ändrade kontonummer?', 'single', [
         'Ja, normalt',
         'Ja, vid avvikelser',
         'Nej, normalt inte'
-      ], omTjanstenUtfor('betUtfor')),
+      ]),
       q('betSarskild', 'Kontrolleras betalningar till ägare, närstående eller utlandet särskilt?', 'single', [
         'Ja, normalt',
         'Ja, vid större belopp eller avvikelser',
         'Nej, normalt inte',
         'Ej relevant'
-      ], omTjanstenUtfor('betUtfor')),
+      ]),
       q('betOklar', 'Hur hanteras betalningar som verkar oklara eller avvikande?', 'multi', [
         'Kunden får komplettera i efterhand',
         'Betalningen stoppas tills den är utredd',
@@ -656,7 +651,7 @@
         'Underlag dokumenteras',
         'Misstanke eskaleras',
         'Ingen särskild rutin'
-      ], omTjanstenUtfor('betUtfor'))
+      ])
     ]),
     spec('radgivning', 'Rådgivning', [
       q('radTyp', 'Vilken typ av rådgivning lämnar byrån normalt?', 'multi', [
@@ -961,7 +956,8 @@
     let next = parseState(state);
     if (!next.katalogVal) next.katalogVal = 'egna';
     return {
-      state: upsertEntry(next, id, { aktiv: true, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
+      // Egna tjänster startar som utkast — aktiveras först när mini-analysen är klar.
+      state: upsertEntry(next, id, { aktiv: false, namn: String(namn || 'Egen tjänst').trim(), answers: {}, kommentarer: {} }),
       id: id
     };
   }
