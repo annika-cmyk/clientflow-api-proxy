@@ -538,47 +538,106 @@ class RiskAssessmentManager {
         const hot = this.parseJsonField(f['Hot']);
         const sarbarheter = this.parseJsonField(f['Sårbarheter']);
         const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
-        const listBlock = (title, items, mapFn) => {
-            if (!items || !items.length) return '';
-            return `
-                <div class="tjanst-mall-summary-block">
-                    <h5 class="tjanst-mall-summary-heading">${this.esc(title)}</h5>
-                    <ul class="tjanst-mall-summary-list">${items.map(mapFn).join('')}</ul>
-                </div>`;
-        };
+        const answers = (entry && entry.answers) || {};
+        const comments = (entry && entry.kommentarer) || {};
+        const answerKeys = Object.keys(answers).filter((k) => {
+            const v = answers[k];
+            if (Array.isArray(v)) return v.length > 0;
+            return String(v || '').trim() !== '';
+        });
+        const answerLines = this.renderUtforandeOverviewAnswers(template, answers, comments);
+        const semanticPanels = [
+            ...this.renderOverviewSemanticPanels('hot', 'Hot och modus', 'fa-triangle-exclamation', hot, (h) => ({
+                title: h.titel || h.title || 'Hot',
+                body: h.beskrivning || h.description || '',
+                kalla: h.kalla ?? h.källa ?? h.source
+            })),
+            ...this.renderOverviewSemanticPanels('sar', 'Sårbarheter', 'fa-shield-halved', sarbarheter, (s) => ({
+                title: s.titel || s.title || 'Sårbarhet',
+                body: this.stripEvidensLeakFromText(s.beskrivning || s.description || ''),
+                kalla: s.kalla ?? s.källa ?? s.source
+            })),
+            ...this.renderOverviewSemanticPanels('atgard', 'Riskreducerande åtgärder', 'fa-comment-dots', atgarder, (a) => {
+                const title = a.titel || a.title || a.namn || 'Åtgärd';
+                const bodyRaw = String(a.beskrivning || a.description || '').trim();
+                const isBefintlig = this.normalizeAtgardStatus(a.status) === 'befintlig';
+                const body = isBefintlig && bodyRaw
+                    ? `Befintlig — ${bodyRaw}`
+                    : (isBefintlig ? 'Befintlig' : bodyRaw);
+                return { title, body, kalla: null };
+            })
+        ].join('');
         return `
             <div class="tjanst-mall-summary">
-                <div class="tjanst-mall-summary-block">
+                <section class="tjanst-mall-summary-block tjanst-ov-section">
                     <h5 class="tjanst-mall-summary-heading">Risknivå</h5>
                     <p class="tjanst-mall-summary-line"><strong>Inneboende risk:</strong> ${this.esc(riskLevel || 'Ej satt')}</p>
                     ${residualLevel ? `<p class="tjanst-mall-summary-line"><strong>Residualrisk:</strong> ${this.esc(residualLevel)}</p>` : ''}
                     ${motIn ? `<p class="tjanst-mall-summary-text"><strong>Motivering inneboende:</strong> ${this.esc(motIn)}</p>` : ''}
                     ${motRes ? `<p class="tjanst-mall-summary-text"><strong>Motivering residual:</strong> ${this.esc(motRes)}</p>` : ''}
-                </div>
+                </section>
                 ${beskrivning ? `
-                <div class="tjanst-mall-summary-block">
+                <section class="tjanst-mall-summary-block tjanst-ov-section">
                     <h5 class="tjanst-mall-summary-heading">Tjänsten</h5>
                     <p class="tjanst-mall-summary-text">${this.esc(beskrivning)}</p>
-                </div>` : ''}
-                ${listBlock('Hot och modus', hot, (h) => `
-                    <li>
-                        <span class="tjanst-mall-summary-q">${this.esc(h.titel || h.title || 'Hot')}</span>
-                        ${h.beskrivning || h.description ? `<span class="tjanst-mall-summary-a">${this.esc(h.beskrivning || h.description)}</span>` : ''}
-                        ${this.renderDiscreteKalla(h.kalla ?? h.källa ?? h.source)}
-                    </li>`)}
-                ${listBlock('Sårbarheter', sarbarheter, (s) => `
-                    <li>
-                        <span class="tjanst-mall-summary-q">${this.esc(s.titel || s.title || 'Sårbarhet')}</span>
-                        ${s.beskrivning || s.description ? `<span class="tjanst-mall-summary-a">${this.esc(this.stripEvidensLeakFromText(s.beskrivning || s.description || ''))}</span>` : ''}
-                        ${this.renderDiscreteKalla(s.kalla ?? s.källa ?? s.source)}
-                    </li>`)}
-                ${listBlock('Riskreducerande åtgärder', atgarder, (a) => `
-                    <li>
-                        <span class="tjanst-mall-summary-q">${this.esc(a.titel || a.title || a.namn || 'Åtgärd')}${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' · Befintlig' : ''}</span>
-                        ${a.beskrivning || a.description ? `<span class="tjanst-mall-summary-a">${this.esc(a.beskrivning || a.description)}</span>` : ''}
-                    </li>`)}
+                </section>` : ''}
+                ${semanticPanels}
+                ${answerLines ? `
+                <section class="tjanst-mall-summary-block tjanst-ov-section tjanst-ov-section--answers">
+                    <h5 class="tjanst-mall-summary-heading">Utförandesvar (${answerKeys.length})</h5>
+                    ${answerLines}
+                </section>` : (answerKeys.length ? `<p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>` : '')}
             </div>
         `;
+    }
+
+    renderOverviewSemanticPanels(kind, categoryLabel, iconClass, items, mapItem) {
+        if (!items || !items.length) return [];
+        return items.map((raw) => {
+            const mapped = mapItem(raw) || {};
+            const title = String(mapped.title || '').trim() || categoryLabel;
+            const body = String(mapped.body || '').trim();
+            const kallaHtml = mapped.kalla != null && mapped.kalla !== ''
+                ? this.renderDiscreteKalla(mapped.kalla)
+                : '';
+            return `
+                <article class="tjanst-ov-panel tjanst-ov-panel--${kind}">
+                    <div class="tjanst-ov-panel-cat">
+                        <i class="fas ${iconClass}" aria-hidden="true"></i>
+                        <span class="tjanst-mall-summary-heading tjanst-ov-panel-cat-label">${this.esc(categoryLabel)}</span>
+                    </div>
+                    <h6 class="tjanst-ov-panel-title">${this.esc(title)}</h6>
+                    ${body ? `<p class="tjanst-ov-panel-body tjanst-mall-summary-a">${this.esc(body)}</p>` : ''}
+                    ${kallaHtml ? `<div class="tjanst-ov-panel-footer">${kallaHtml}</div>` : ''}
+                </article>`;
+        });
+    }
+
+    renderUtforandeOverviewAnswers(template, answers, comments = {}) {
+        const Mallar = window.TjanstUtforandeMallar;
+        if (!Mallar || !template || !answers) return '';
+        const skip = new Set(['hamtaClientflowStatistik']);
+        const questionsFn = Mallar.questionsForTemplate || Mallar.questionsForTemplate;
+        const questions = (typeof questionsFn === 'function' ? questionsFn(template) : []) || [];
+        const lines = [];
+        for (const q of questions) {
+            if (!q || skip.has(q.id)) continue;
+            const raw = answers[q.id];
+            let text = '';
+            if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
+            else text = String(raw || '').trim();
+            if (!text && q.id !== 'antalKunderTjanst') continue;
+            if (!text) continue;
+            const label = String(q.label || q.id).replace(/\?$/, '');
+            const comment = String((comments && comments[q.id]) || '').trim();
+            lines.push(`<li>
+                <span class="tjanst-mall-summary-q">${this.esc(label)}</span>
+                <span class="tjanst-mall-summary-a">${this.esc(text)}</span>
+                ${comment ? `<span class="tjanst-mall-summary-comment">${this.esc(comment)}</span>` : ''}
+            </li>`);
+        }
+        if (!lines.length) return '';
+        return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
     }
 
     renderUtforandeQuestion(mallId, question, entry) {
