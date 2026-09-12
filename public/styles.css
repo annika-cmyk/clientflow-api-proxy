@@ -18063,31 +18063,25 @@ h5.ar-subsection-title {
 }
 
 /* Byråns resa */
-.byra-resa-status-line{min-height:1.25rem;font-size:.9rem;color:#64748b;margin:.35rem 0 0}
-.byra-resa-kalla-list{display:grid;gap:1rem;margin-top:1rem}
-.byra-resa-kalla-card{border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.1rem;background:#fff}
-.byra-resa-kalla-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;margin-bottom:.65rem}
-.byra-resa-kalla-head h3{margin:0;font-size:1rem;font-weight:650;color:#0f172a}
-.byra-resa-kalla-link{font-size:.85rem;font-weight:600;color:#0f766e;text-decoration:none}
-.byra-resa-kalla-link:hover{text-decoration:underline}
-.byra-resa-kalla-states{display:flex;flex-wrap:wrap;gap:.5rem .75rem;margin-bottom:.65rem}
-.byra-resa-kalla-state{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .7rem;border:1px solid #dbe3ee;border-radius:999px;font-size:.82rem;cursor:pointer;background:#f8fafc}
-.byra-resa-kalla-state:has(input:checked){border-color:#0f766e;background:#ecfdf5;color:#115e59;font-weight:600}
-.byra-resa-kalla-note-label{display:block;font-size:.8rem;color:#64748b}
-.byra-resa-kalla-note-label input{display:block;width:100
-/* Byråns resa */
 .byra-resa-status-line { min-height: 1.25rem; font-size: 0.9rem; color: #64748b; margin: 0.35rem 0 0; }
-.byra-resa-kalla-list { display: grid; gap: 1rem; margin-top: 1rem; }
-.byra-resa-kalla-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.1rem; background: #fff; }
-.byra-resa-kalla-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.65rem; }
-.byra-resa-kalla-head h3 { margin: 0; font-size: 1rem; font-weight: 650; color: #0f172a; }
-.byra-resa-kalla-link { font-size: 0.85rem; font-weight: 600; color: #0f766e; text-decoration: none; }
-.byra-resa-kalla-link:hover { text-decoration: underline; }
-.byra-resa-kalla-states { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; margin-bottom: 0.65rem; }
-.byra-resa-kalla-state { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid #dbe3ee; border-radius: 999px; font-size: 0.82rem; cursor: pointer; background: #f8fafc; }
-.byra-resa-kalla-state:has(input:checked) { border-color: #0f766e; background: #ecfdf5; color: #115e59; font-weight: 600; }
-.byra-resa-kalla-note-label { display: block; font-size: 0.8rem; color: #64748b; }
-.byra-resa-kalla-note-label input { display: block; width: 100%; margin-top: 0.3rem; }
+.byra-resa-kalla-progress { margin: 0.75rem 0 0; font-size: 0.88rem; font-weight: 600; color: #475569; }
+.byra-resa-kalla-list { display: flex; flex-direction: column; gap: 0; margin-top: 0.75rem; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; }
+.byra-resa-kalla-row { border-bottom: 1px solid #eef2f7; padding: 0.7rem 0.9rem; }
+.byra-resa-kalla-row:last-child { border-bottom: 0; }
+.byra-resa-kalla-row-main { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; flex-wrap: wrap; }
+.byra-resa-kalla-name { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; font-size: 0.92rem; font-weight: 600; color: #0f172a; }
+.byra-resa-kalla-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.byra-resa-kalla-link-icon { color: #0f766e; text-decoration: none; flex: 0 0 auto; opacity: 0.85; }
+.byra-resa-kalla-link-icon:hover { opacity: 1; }
+.byra-resa-kalla-states { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
+.byra-resa-kalla-state { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.28rem 0.65rem; border: 1px solid #dbe3ee; border-radius: 999px; font-size: 0.78rem; cursor: pointer; background: #f8fafc; color: #334155; user-select: none; }
+.byra-resa-kalla-state input { position: absolute; opacity: 0; pointer-events: none; }
+.byra-resa-kalla-state:has(input:checked) { font-weight: 650; }
+.byra-resa-kalla-state[data-value="tagit_del"]:has(input:checked) { border-color: #94a3b8; background: #f1f5f9; color: #334155; }
+.byra-resa-kalla-state[data-value="anvander"]:has(input:checked) { border-color: #6ee7b7; background: #ecfdf5; color: #065f46; }
+.byra-resa-kalla-state[data-value="inte_relevant"]:has(input:checked) { border-color: #fdba74; background: #fff7ed; color: #9a3412; }
+.byra-resa-kalla-note-wrap { margin-top: 0.45rem; padding-left: 0.1rem; }
+.byra-resa-kalla-note { width: 100%; max-width: 36rem; font-size: 0.85rem; }
 .byra-resa-kalla-hint { margin: 0.75rem 0 0; font-size: 0.88rem; color: #64748b; }
 .byra-resa-kalla-hint.is-ok { color: #166534; }
 .byra-resa-steps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
@@ -18105,4 +18099,6 @@ h5.ar-subsection-title {
 .kom-igang-resa-link:hover { background: #ccfbf1; }
 @media (max-width: 720px) {
   .byra-resa-steps-grid { grid-template-columns: 1fr; }
+  .byra-resa-kalla-row-main { flex-direction: column; align-items: flex-start; }
 }
+

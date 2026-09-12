@@ -1,5 +1,6 @@
 /**
  * Byråns resa – koordinator + källkatalog (metodnivå).
+ * Källor: kompakt radlayout, ingen förvald status, notering bara vid Inte relevant.
  */
 (function () {
   if (!document.getElementById('byra-resa-steps')) return;
@@ -31,22 +32,34 @@
     el.style.color = isError ? '#b91c1c' : '';
   }
 
-  function kallaComplete() {
-    if (!catalog.length) return false;
-    return catalog.every(function (row) {
-      var st = (state.kalla[row.id] && state.kalla[row.id].status) || 'unset';
-      return st !== 'unset';
-    });
+  function rowStatus(id) {
+    return (state.kalla[id] && state.kalla[id].status) || 'unset';
   }
 
-  function updateKallaHint() {
+  function kallaReviewedCount() {
+    var n = 0;
+    catalog.forEach(function (row) {
+      if (rowStatus(row.id) !== 'unset') n += 1;
+    });
+    return n;
+  }
+
+  function kallaComplete() {
+    return catalog.length > 0 && kallaReviewedCount() === catalog.length;
+  }
+
+  function updateKallaProgress() {
+    var el = document.getElementById('byra-resa-kalla-progress');
+    if (el) {
+      el.textContent = kallaReviewedCount() + ' av ' + catalog.length + ' källor granskade';
+    }
     var hint = document.getElementById('byra-resa-kalla-hint');
     if (!hint) return;
     if (kallaComplete()) {
       hint.textContent = 'Källkatalogen är ifylld. AI-förslag på hot begränsas till källor ni markerat som Använder.';
       hint.className = 'byra-resa-kalla-hint is-ok';
     } else {
-      hint.textContent = 'Markera varje källa som Tagit del, Använder eller Inte relevant innan slutgodkännande (steg 8).';
+      hint.textContent = 'Gör ett aktivt val per källa. Ingen är förkryssad – det är meningen.';
       hint.className = 'byra-resa-kalla-hint';
     }
   }
@@ -69,17 +82,17 @@
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
       if (data.state) state = data.state;
       setStatus('Sparat');
-      updateKallaHint();
+      updateKallaProgress();
     } catch (e) {
       setStatus(e.message || 'Kunde inte spara', true);
     }
   }
 
-  function radio(id, value, label, cur) {
+  function chip(id, value, label, cur) {
     var checked = cur === value ? ' checked' : '';
     var disabled = canEdit ? '' : ' disabled';
     return (
-      '<label class="byra-resa-kalla-state">' +
+      '<label class="byra-resa-kalla-state" data-value="' + value + '">' +
         '<input type="radio" name="kalla-' + esc(id) + '" value="' + value + '" data-kalla-id="' + esc(id) + '"' + checked + disabled + '>' +
         '<span>' + esc(label) + '</span>' +
       '</label>'
@@ -90,24 +103,29 @@
     var root = document.getElementById('byra-resa-kalla-list');
     if (!root) return;
     root.innerHTML = catalog.map(function (row) {
-      var cur = (state.kalla[row.id] && state.kalla[row.id].status) || 'unset';
+      var cur = rowStatus(row.id);
       var note = (state.kalla[row.id] && state.kalla[row.id].note) || '';
+      var showNote = cur === 'inte_relevant';
       return (
-        '<article class="byra-resa-kalla-card" data-kalla-id="' + esc(row.id) + '">' +
-          '<div class="byra-resa-kalla-head">' +
-            '<h3>' + esc(row.label) + '</h3>' +
-            (row.url
-              ? '<a class="byra-resa-kalla-link" href="' + esc(row.url) + '" target="_blank" rel="noopener noreferrer">Öppna källa <i class="fas fa-external-link-alt"></i></a>'
-              : '') +
+        '<article class="byra-resa-kalla-row" data-kalla-id="' + esc(row.id) + '">' +
+          '<div class="byra-resa-kalla-row-main">' +
+            '<div class="byra-resa-kalla-name">' +
+              '<span class="byra-resa-kalla-name-text">' + esc(row.label) + '</span>' +
+              (row.url
+                ? '<a class="byra-resa-kalla-link-icon" href="' + esc(row.url) + '" target="_blank" rel="noopener noreferrer" title="Öppna källa" aria-label="Öppna källa"><i class="fas fa-external-link-alt"></i></a>'
+                : '') +
+            '</div>' +
+            '<div class="byra-resa-kalla-states" role="group" aria-label="Status för ' + esc(row.label) + '">' +
+              chip(row.id, 'tagit_del', 'Tagit del', cur) +
+              chip(row.id, 'anvander', 'Använder', cur) +
+              chip(row.id, 'inte_relevant', 'Inte relevant', cur) +
+            '</div>' +
           '</div>' +
-          '<div class="byra-resa-kalla-states" role="group" aria-label="Status för ' + esc(row.label) + '">' +
-            radio(row.id, 'tagit_del', 'Tagit del', cur) +
-            radio(row.id, 'anvander', 'Använder', cur) +
-            radio(row.id, 'inte_relevant', 'Inte relevant', cur) +
-          '</div>' +
-          '<label class="byra-resa-kalla-note-label">Valfri notering' +
-            '<input type="text" class="form-input byra-resa-kalla-note" data-kalla-id="' + esc(row.id) + '" value="' + esc(note) + '" placeholder="T.ex. kap. 7 / inte tillämpligt för våra tjänster" ' + (canEdit ? '' : 'disabled') + '>' +
-          '</label>' +
+          (showNote
+            ? '<div class="byra-resa-kalla-note-wrap">' +
+                '<input type="text" class="form-input byra-resa-kalla-note" data-kalla-id="' + esc(row.id) + '" value="' + esc(note) + '" placeholder="Kort motivering till varför den inte används" ' + (canEdit ? '' : 'disabled') + '>' +
+              '</div>'
+            : '') +
         '</article>'
       );
     }).join('');
@@ -118,7 +136,8 @@
         if (!id) return;
         if (!state.kalla[id]) state.kalla[id] = { status: 'unset', note: '' };
         state.kalla[id].status = input.value;
-        updateKallaHint();
+        if (input.value !== 'inte_relevant') state.kalla[id].note = '';
+        renderKalla();
         renderSteps();
         scheduleSave();
       });
@@ -127,12 +146,12 @@
       input.addEventListener('input', function () {
         var id = input.getAttribute('data-kalla-id');
         if (!id) return;
-        if (!state.kalla[id]) state.kalla[id] = { status: 'unset', note: '' };
+        if (!state.kalla[id]) state.kalla[id] = { status: 'inte_relevant', note: '' };
         state.kalla[id].note = input.value;
         scheduleSave();
       });
     });
-    updateKallaHint();
+    updateKallaProgress();
   }
 
   function renderSteps() {
@@ -181,6 +200,7 @@
       var data = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
       state = data.state || state;
+      if (!state.kalla) state.kalla = {};
       catalog = data.catalog || [];
       steps = data.steps || [];
       canEdit = data.canEdit !== false;
