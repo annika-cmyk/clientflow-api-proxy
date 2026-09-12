@@ -187,7 +187,7 @@ class RiskAssessmentManager {
             host.innerHTML = `
                 <div class="tjanst-katalog-val" role="group" aria-label="Välj hur ni vill bygga tjänstekatalogen">
                     <h4 class="tjanst-katalog-val-title">Hur vill ni börja?</h4>
-                    <p class="tjanst-katalog-val-lead">Välj om ni vill använda ClientFlows standardtjänster eller bara lägga till egna.</p>
+                    <p class="tjanst-katalog-val-lead">Välj om ni vill använda ClientFlows förvalda standardtjänster, eller börja tomt och bara lägga till egna tjänster.</p>
                     <div class="tjanst-katalog-val-actions">
                         <button type="button" class="btn btn-primary" data-katalog-val="standard">
                             Använd standardtjänster
@@ -196,14 +196,17 @@ class RiskAssessmentManager {
                             Lägg till egna tjänster
                         </button>
                     </div>
+                    <p class="tjanst-katalog-val-note">Standardtjänsterna är samma förvalda mallar som i ClientFlow (bokföring, bokslut, deklaration m.fl.). Ni kan alltid justera listan efteråt.</p>
                 </div>`;
             host.querySelectorAll('[data-katalog-val]').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     const val = btn.getAttribute('data-katalog-val');
                     if (val === 'standard') {
                         this.utforandeState = Mallar.applyStandardKatalog(this.utforandeState);
+                        this.showNotification('Standardtjänsterna från ClientFlow är tillagda.', 'success');
                     } else {
                         this.utforandeState = Mallar.applyEgnaKatalog(this.utforandeState);
+                        this.showNotification('Tom katalog — skapa egna tjänster när ni vill.', 'success');
                     }
                     this.renderUtforandeKatalog();
                     this.scheduleUtforandeSave();

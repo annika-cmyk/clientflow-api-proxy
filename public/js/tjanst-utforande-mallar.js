@@ -1005,13 +1005,25 @@
     const parsed = parseState(state);
     const cards = [];
     const excluded = new Set(parsed.excludedMallIds || []);
-    const hasStandardEntries = Object.keys(parsed.tjanster || {}).some((id) => !isCustomId(id) && !excluded.has(id));
-    const showStandards = parsed.katalogVal !== 'egna' || hasStandardEntries;
-    if (showStandards) {
+    const hasStandardEntries = Object.keys(parsed.tjanster || {}).some(
+      (id) => !isCustomId(id) && !excluded.has(id) && Object.prototype.hasOwnProperty.call(parsed.tjanster, id)
+    );
+    // Visa hela ClientFlow-standardlistan bara efter explicit val (eller legacy med sparade poster).
+    // Tom katalog utan val → inga kort (UI visar förstavalet egna vs standard).
+    const showAllStandards =
+      parsed.katalogVal === 'standard' ||
+      (parsed.katalogVal == null && hasStandardEntries);
+    if (showAllStandards) {
       SERVICE_TEMPLATES.forEach((t) => {
         if (excluded.has(t.id)) return;
         const entry = normalizeEntryAnswers(parsed.tjanster[t.id] || emptyEntry(t.id));
         cards.push({ template: t, entry: entry });
+      });
+    } else if (parsed.katalogVal === 'egna') {
+      SERVICE_TEMPLATES.forEach((t) => {
+        if (excluded.has(t.id)) return;
+        if (!Object.prototype.hasOwnProperty.call(parsed.tjanster, t.id)) return;
+        cards.push({ template: t, entry: normalizeEntryAnswers(parsed.tjanster[t.id]) });
       });
     }
     Object.keys(parsed.tjanster).forEach((id) => {
