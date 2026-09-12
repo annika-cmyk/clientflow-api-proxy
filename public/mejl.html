@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Mejl</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260912gmail">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+      .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1rem; }
+      @media (min-width: 960px) {
+        .mejl-layout { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; }
+      }
+      .mejl-connect-banner {
+        background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 55%, #eef2ff 100%);
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        margin-top: 1rem;
+      }
+      .mejl-connect-banner h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
+      .mejl-connect-banner p { margin: 0 0 0.9rem; color: #475569; line-height: 1.5; }
+      .mejl-connect-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+      .mejl-status-pill {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        font-size: 0.8rem; font-weight: 600; color: #166534;
+        background: #dcfce7; border-radius: 999px; padding: 0.25rem 0.7rem;
+      }
+      .mejl-status-pill.is-off { color: #9a3412; background: #ffedd5; }
+      .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; }
+      .mejl-item {
+        text-align: left; width: 100%; border: 1px solid #e2e8f0; background: #fff;
+        border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer;
+        transition: border-color .15s, box-shadow .15s;
+      }
+      .mejl-item:hover, .mejl-item.is-active {
+        border-color: #94a3b8; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+      }
+      .mejl-item-top { display: flex; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.25rem; }
+      .mejl-item-from { font-weight: 600; color: #0f172a; font-size: 0.92rem; }
+      .mejl-item-date { color: #94a3b8; font-size: 0.78rem; white-space: nowrap; }
+      .mejl-item-subject { font-size: 0.9rem; color: #334155; margin-bottom: 0.2rem; }
+      .mejl-item-meta { font-size: 0.78rem; color: #64748b; }
+      .mejl-item-snippet { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }
+      .mejl-detail {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; min-height: 320px;
+        padding: 1.25rem 1.4rem;
+      }
+      .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
+      .mejl-detail-body { white-space: pre-wrap; line-height: 1.55; color: #334155; margin-top: 1rem; }
+      .mejl-detail-body.html-body { white-space: normal; }
+      .mejl-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 1rem; }
+      .mejl-compose {
+        border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+        padding: 1.25rem 1.4rem; margin-top: 1rem;
+      }
+      .mejl-compose[hidden] { display: none !important; }
+      .mejl-compose .form-grid { display: grid; gap: 0.75rem; }
+      .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
+      .mejl-filter { min-width: 220px; }
+      .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <h1>Mejl</h1>
+                        <p class="risk-header-sub">Kundmejl från Gmail (etiketten KUNDER) – läs och skicka som dig själv</p>
+                    </div>
+                </header>
+
+                <div id="mejl-connect" class="mejl-connect-banner">
+                    <h2><i class="fas fa-envelope"></i> Koppla Gmail</h2>
+                    <p id="mejl-connect-text">Laddar status…</p>
+                    <div class="mejl-connect-actions">
+                        <span id="mejl-status-pill" class="mejl-status-pill is-off">Ej kopplad</span>
+                        <button type="button" class="btn btn-primary" id="mejl-connect-btn">
+                            <i class="fab fa-google"></i> Koppla Gmail
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="mejl-disconnect-btn" hidden>
+                            Koppla från
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="mejl-refresh-btn" hidden>
+                            <i class="fas fa-sync"></i> Uppdatera
+                        </button>
+                        <button type="button" class="btn btn-primary" id="mejl-compose-toggle" hidden>
+                            <i class="fas fa-pen"></i> Nytt mejl
+                        </button>
+                    </div>
+                    <p class="mejl-hint">Mejl under etiketten <strong>KUNDER</strong> i Gmail matchas mot kundnamn (t.ex. <code>KUNDER/Acme AB</code>).</p>
+                </div>
+
+                <div class="mejl-toolbar" id="mejl-toolbar" hidden>
+                    <label class="mejl-filter">
+                        <span class="sr-only">Filtrera kund</span>
+                        <select id="mejl-customer-filter" class="form-select form-input">
+                            <option value="">Alla matchade kunder</option>
+                        </select>
+                    </label>
+                </div>
+
+                <section class="mejl-compose" id="mejl-compose" hidden>
+                    <h2 style="margin:0 0 0.75rem; font-size:1.05rem;">Nytt mejl</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="mejl-to">Till</label>
+                            <input type="email" id="mejl-to" class="form-input" placeholder="kund@foretag.se">
+                        </div>
+                        <div class="form-group">
+                            <label for="mejl-customer">Koppla till kund (etikett)</label>
+                            <select id="mejl-customer" class="form-select form-input">
+                                <option value="">Ingen</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mejl-subject">Ämne</label>
+                            <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
+                        </div>
+                        <div class="form-group">
+                            <label for="mejl-body">Meddelande</label>
+                            <textarea id="mejl-body" class="form-input" placeholder="Skriv ditt mejl…"></textarea>
+                        </div>
+                    </div>
+                    <div class="mejl-connect-actions" style="margin-top:0.9rem;">
+                        <button type="button" class="btn btn-primary" id="mejl-send-btn">
+                            <i class="fas fa-paper-plane"></i> Skicka via Gmail
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="mejl-compose-cancel">Avbryt</button>
+                        <span id="mejl-send-status" class="mejl-hint"></span>
+                    </div>
+                </section>
+
+                <div class="mejl-layout" id="mejl-main" hidden>
+                    <section>
+                        <h2 style="font-size:1rem; margin:0 0 0.75rem;">Inkorg</h2>
+                        <div id="mejl-list" class="mejl-list">
+                            <p class="mejl-hint">Laddar mejl…</p>
+                        </div>
+                    </section>
+                    <section>
+                        <div id="mejl-detail" class="mejl-detail">
+                            <p class="mejl-detail-empty">Välj ett mejl till vänster.</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/navigation.js" defer></script>
+    <script src="js/components.js?v=2.2" defer></script>
+    <script src="js/mejl.js?v=1" defer></script>
+</body>
+</html>

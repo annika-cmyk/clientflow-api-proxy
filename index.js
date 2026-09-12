@@ -49,6 +49,7 @@ require('dotenv').config();
 const { createMinibokSync } = require('./lib/minibok-sync');
 const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 const { createMinibokAml } = require('./lib/minibok-aml');
+const { createGmailIntegration } = require('./lib/gmail');
 const {
   normalizeUppdragRiskAtgarderDone,
   requiredRiskAtgarderFromUppdrag,
@@ -2819,6 +2820,34 @@ const minibokAml = createMinibokAml({
   resolveMinibokUser: minibokSync.resolveMinibokUser,
   findCompanyForUser: minibokSync.findCompanyForUser,
   getAirtableUser
+});
+
+async function listAccessibleCustomersForGmail(user) {
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  if (!token || !user) return [];
+  try {
+    const records = await fetchKunddataRecordsForUser(user, token, baseId, {
+      fields: ['Namn', 'Företagsnamn', 'Orgnr', 'Byrå ID', 'Användare', 'e-post', 'Email', 'E-post']
+    });
+    return (records || []).map((r) => ({
+      id: r.id,
+      namn: String((r.fields && (r.fields.Namn || r.fields.Företagsnamn)) || '').trim() || 'Namnlös kund',
+      orgnr: String((r.fields && (r.fields.Orgnr || r.fields.Organisationsnummer)) || '').trim(),
+      email: String(
+        (r.fields && (r.fields['e-post'] || r.fields.Email || r.fields['E-post'] || r.fields.mailaddress)) || ''
+      ).trim()
+    })).filter((c) => c.id);
+  } catch (err) {
+    console.warn('listAccessibleCustomersForGmail:', err.message);
+    return [];
+  }
+}
+
+const gmailIntegration = createGmailIntegration({
+  authenticateToken,
+  getAirtableUser,
+  listAccessibleCustomers: listAccessibleCustomersForGmail
 });
 
 // Bolagsverket isalive endpoint (health check)
@@ -25231,6 +25260,8 @@ minibokSync.registerRoutes(app);
 minibokUppdrag.registerRoutes(app);
 // Minibok ↔ Clientflow AML (kundrisk, byrå risk, policy)
 minibokAml.registerRoutes(app);
+// Gmail ↔ Clientflow (inkorg under KUNDER + skicka som användaren)
+gmailIntegration.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);

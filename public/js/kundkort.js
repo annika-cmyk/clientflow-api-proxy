@@ -14817,6 +14817,9 @@ class CustomerCardManager {
                     <button class="btn btn-primary btn-sm" onclick="customerCardManager.openBegarUnderlagModal()">
                         <i class="fas fa-paper-plane"></i> Begär underlag
                     </button>
+                    <a class="btn btn-secondary btn-sm" href="mejl.html?customerId=${encodeURIComponent(this.customerId || '')}" title="Öppna kundmejl via Gmail">
+                        <i class="fas fa-envelope"></i> Mejl
+                    </a>
                 </div>
             </div>`;
         if (!content._samarbeteToggleBound) {

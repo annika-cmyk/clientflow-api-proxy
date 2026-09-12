@@ -55,6 +55,16 @@ SMTP_USER=hej@clientflow.se
 SMTP_PASS=ditt_smtp_lösenord
 MAIL_FROM=ClientFlow Underlag <hej@clientflow.se>
 # Vid SSL (port 465): SMTP_PORT=465 och SMTP_SECURE=true
+
+# Gmail-integration (Mejl-sidan: läs KUNDER-etiketter + skicka som användaren)
+# Skapa OAuth-klient i Google Cloud Console (Web application).
+# Authorized redirect URI måste matcha exakt:
+GOOGLE_CLIENT_ID=din_google_client_id
+GOOGLE_CLIENT_SECRET=din_google_client_secret
+GOOGLE_GMAIL_REDIRECT_URI=https://app.clientflow.se/api/gmail/oauth/callback
+# Valfritt: GMAIL_TOKEN_SECRET=...  (annars används JWT_SECRET)
+# Valfritt: GMAIL_KUNDER_LABEL=KUNDER
+PUBLIC_BASE_URL=https://app.clientflow.se
 ```
 
 ### Steg 3: Uppdatera Airtable Token
