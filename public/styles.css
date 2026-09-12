@@ -17540,7 +17540,7 @@ h5.ar-subsection-title {
 .byra-bolagsformer-list,
 .byra-enkate-bolagsformer-list {
     display: grid;
-    grid-template-columns: max-content 5rem 2.25rem;
+    grid-template-columns: max-content 5rem;
     column-gap: 0.75rem;
     row-gap: 0.35rem;
     align-items: center;
@@ -17550,6 +17550,13 @@ h5.ar-subsection-title {
 .byra-bolagsformer-row,
 .byra-enkate-bolagsformer-row {
     display: contents;
+}
+.byra-bolagsformer-row.is-custom,
+.byra-enkate-bolagsformer-row.is-custom {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 0.75rem;
 }
 .byra-bolagsformer-row label,
 .byra-enkate-bolagsformer-row label {
