@@ -11,6 +11,8 @@
   var steps = [];
   var saveTimer = null;
   var canEdit = true;
+  var attentionStepIds = [];
+  var stepStatusById = {};
 
   function authOpts() {
     return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || {
@@ -242,25 +244,93 @@
     updateKallaProgress();
   }
 
+
+  function pageIdFromHref(href) {
+    return String(href || '').replace(/\.html$/i, '').replace(/^\//, '');
+  }
+
+  function syncAttentionFromNav(detail) {
+    var pages = (detail && detail.pages) || {};
+    var map = {};
+    steps.forEach(function (step) {
+      map[pageIdFromHref(step.href)] = step.id;
+    });
+    var ids = [];
+    Object.keys(pages).forEach(function (pageId) {
+      var page = pages[pageId];
+      if (page && page.status === 'attention') {
+        var sid = page.stepId || map[pageId];
+        if (sid) ids.push(Number(sid));
+      }
+    });
+    attentionStepIds = ids;
+  }
+
+  function resolveStatusesLocal() {
+    var attention = {};
+    attentionStepIds.forEach(function (id) { attention[id] = true; });
+    var nextAssigned = false;
+    var out = {};
+    steps.forEach(function (step) {
+      var id = step.id;
+      var done = !!(state.steps && state.steps[id]);
+      var status;
+      if (attention[id]) status = 'attention';
+      else if (done) status = 'done';
+      else if (!nextAssigned) { status = 'next'; nextAssigned = true; }
+      else status = 'pending';
+      var labels = {
+        done: 'Klart',
+        next: 'Nästa steg',
+        attention: 'Kräver uppmärksamhet',
+        pending: 'Ej påbörjat'
+      };
+      out[id] = { status: status, label: labels[status] };
+    });
+    stepStatusById = out;
+    return out;
+  }
+
+  function statusMeta(status) {
+    if (status === 'done') {
+      return { cls: 'is-done', trail: 'fa-check', aria: 'Klart' };
+    }
+    if (status === 'next') {
+      return { cls: 'is-next', trail: 'fa-dot-circle', aria: 'Nästa steg' };
+    }
+    if (status === 'attention') {
+      return { cls: 'is-attention', trail: 'fa-exclamation-triangle', aria: 'Kräver uppmärksamhet' };
+    }
+    return { cls: 'is-pending', trail: 'fa-circle', aria: 'Ej påbörjat' };
+  }
+
   function renderSteps() {
     var root = document.getElementById('byra-resa-steps');
     if (!root) return;
+    var statuses = resolveStatusesLocal();
     root.innerHTML = steps.map(function (step) {
       var done = !!(state.steps && state.steps[step.id]);
       var gate = step.id === 8 && !kallaComplete();
+      var st = statuses[step.id] || { status: 'pending', label: 'Ej påbörjat' };
+      var meta = statusMeta(st.status);
+      var icon = step.icon || 'fa-circle';
       return (
-        '<article class="byra-resa-step-card' + (done ? ' is-done' : '') + (gate ? ' is-gated' : '') + '" data-step="' + step.id + '">' +
-          '<div class="byra-resa-step-num">' + step.id + '</div>' +
-          '<div class="byra-resa-step-body">' +
-            '<h3>' + esc(step.title) + '</h3>' +
-            '<p>' + esc(step.desc) + '</p>' +
-            '<a class="byra-resa-step-link" href="' + esc(step.href) + '">' + esc(step.linkLabel) + '</a>' +
-            (gate ? '<p class="byra-resa-step-gate">Fyll i källkatalogen innan slutgodkännande.</p>' : '') +
-            '<label class="byra-resa-step-check">' +
-              '<input type="checkbox" data-step-id="' + step.id + '"' + (done ? ' checked' : '') + (canEdit ? '' : ' disabled') + '>' +
-              '<span>Steget klart</span>' +
-            '</label>' +
+        '<article class="byra-resa-step-card ' + meta.cls + (gate ? ' is-gated' : '') + '" data-step="' + step.id + '" data-status="' + st.status + '">' +
+          '<div class="byra-resa-step-card-top">' +
+            '<div class="byra-resa-step-card-heading">' +
+              '<span class="byra-resa-step-icon" aria-hidden="true"><i class="fas ' + esc(icon) + '"></i></span>' +
+              '<span class="byra-resa-step-status-label">' + step.id + ' · ' + esc(st.label) + '</span>' +
+            '</div>' +
+            '<span class="byra-resa-step-trail" aria-hidden="true"><i class="fas ' + meta.trail + '"></i></span>' +
           '</div>' +
+          '<h3 class="byra-resa-step-title">' + esc(step.title) + '</h3>' +
+          '<p class="byra-resa-step-desc">' + esc(step.desc) + '</p>' +
+          '<a class="byra-resa-step-link" href="' + esc(step.href) + '">' + esc(step.linkLabel) + '</a>' +
+          (gate ? '<p class="byra-resa-step-gate">Fyll i källkatalogen innan slutgodkännande.</p>' : '') +
+          '<label class="byra-resa-step-check">' +
+            '<input type="checkbox" data-step-id="' + step.id + '"' + (done ? ' checked' : '') + (canEdit ? '' : ' disabled') + '>' +
+            '<span>Steget klart</span>' +
+          '</label>' +
         '</article>'
       );
     }).join('');
@@ -308,6 +378,7 @@
       catalog = data.catalog || [];
       steps = data.steps || [];
       canEdit = data.canEdit !== false;
+      if (window.__clientflowNavStatus) syncAttentionFromNav(window.__clientflowNavStatus);
       syncAddFormVisibility();
       renderKalla();
       renderSteps();
@@ -318,6 +389,10 @@
   }
 
   bindAddForm();
+  window.addEventListener('clientflow:nav-status', function (ev) {
+    syncAttentionFromNav(ev.detail || {});
+    renderSteps();
+  });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', load);
   } else {
