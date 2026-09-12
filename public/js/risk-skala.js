@@ -105,6 +105,29 @@
         return 'risk-' + riskCss(raw);
     }
 
+    /** Högsta nivån av flera (t.ex. inneboende + residual) — styr listkant och ikonfärg. */
+    function dominantRiskKey() {
+        var best = null;
+        var bestRank = -1;
+        for (var i = 0; i < arguments.length; i++) {
+            var key = normalizeRiskKey(arguments[i]);
+            var rank = key && BY_KEY[key] ? BY_KEY[key].rank : 0;
+            if (rank > bestRank) {
+                bestRank = rank;
+                best = key;
+            }
+        }
+        return best || 'normal';
+    }
+
+    function dominantRiskCss() {
+        return riskCss(dominantRiskKey.apply(null, arguments));
+    }
+
+    function dominantRiskItemClass() {
+        return 'risk-' + dominantRiskCss.apply(null, arguments);
+    }
+
     function riskPillClass(raw) {
         return 'risk-pill--' + riskCss(raw);
     }
@@ -614,6 +637,9 @@
         riskRank: riskRank,
         riskCss: riskCss,
         riskItemClass: riskItemClass,
+        dominantRiskKey: dominantRiskKey,
+        dominantRiskCss: dominantRiskCss,
+        dominantRiskItemClass: dominantRiskItemClass,
         riskPillClass: riskPillClass,
         riskBtnClass: riskBtnClass,
         extractPrefixedLevel: extractPrefixedLevel,

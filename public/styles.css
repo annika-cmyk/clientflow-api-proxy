@@ -4758,17 +4758,20 @@ body.sidebar-collapsed .sidebar-aml-profil-card-top {
 
 .risk-item.risk-high,
 .risk-item.risk-unacceptable {
-    border-left: 0px solid #e74c3c;
+    border-left: 4px solid #e74c3c;
 }
 
 .risk-item.risk-elevated,
 .risk-item.risk-medium {
-    border-left: 0px solid var(--accent);
+    border-left: 4px solid #d97706;
 }
 
-.risk-item.risk-normal,
+.risk-item.risk-normal {
+    border-left: 4px solid #cbd5e1;
+}
+
 .risk-item.risk-low {
-    border-left: 0px solid #27ae60;
+    border-left: 4px solid #27ae60;
 }
 
 .risk-item.inactive {
@@ -4861,13 +4864,13 @@ body.sidebar-collapsed .sidebar-aml-profil-card-top {
 
 .risk-level.risk-elevated,
 .risk-level.risk-medium {
-    background: var(--accent-tint);
-    color: var(--accent);
+    background: #fff7ed;
+    color: #c2410c;
 }
 
 .risk-level.risk-normal {
-    background: #e0f2fe;
-    color: #075985;
+    background: #f1f5f9;
+    color: #64748b;
 }
 
 .risk-level.risk-low {
@@ -6489,7 +6492,7 @@ body.kundkort-page #foretagsinformation-content {
 .risk-pill--unacceptable { background: #3b0764; color: #f5d0fe; border: 1px solid #c084fc; }
 .risk-pill--elevated,
 .risk-pill--medium { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-.risk-pill--normal { background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc; }
+.risk-pill--normal { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
 .risk-pill--low { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 
 /* ?? Riskbed?mning ????????????????????????????????????? */
@@ -8437,7 +8440,7 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 /* Enhanced Risk Items */
 .risk-item {
-    border: none;
+    border: 1px solid #e8eef2;
     border-radius: 12px;
     padding: 0;
     background: #ffffff;
@@ -8447,7 +8450,24 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     box-shadow: 0 0px 0px rgba(0, 0, 0, 0.08);
 }
 
-/* Removed the colored left border from risk items */
+/* Risk color bleed: left accent matches highest level on the row */
+.risk-item.risk-high,
+.risk-item.risk-unacceptable {
+    border-left: 4px solid #e74c3c;
+}
+
+.risk-item.risk-elevated,
+.risk-item.risk-medium {
+    border-left: 4px solid #d97706;
+}
+
+.risk-item.risk-normal {
+    border-left: 4px solid #cbd5e1;
+}
+
+.risk-item.risk-low {
+    border-left: 4px solid #27ae60;
+}
 
 .risk-item:hover {
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
@@ -8541,18 +8561,87 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 
 .risk-level-badge.risk-elevated,
 .risk-level-badge.risk-medium {
-    background: var(--accent-tint);
-    color: var(--accent);
+    background: #fff7ed;
+    color: #c2410c;
 }
 
 .risk-level-badge.risk-normal {
-    background: #e0f2fe;
-    color: #075985;
+    background: #f1f5f9;
+    color: #64748b;
 }
 
 .risk-level-badge.risk-low {
     background: #f0f9f0;
     color: #27ae60;
+}
+
+/* Row overflow menu (… → Ta bort m.m.) */
+.risk-row-menu {
+    position: relative;
+    flex-shrink: 0;
+}
+.risk-row-menu-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.risk-row-menu-btn:hover,
+.risk-row-menu.is-open .risk-row-menu-btn {
+    background: #f1f5f9;
+    color: #475569;
+}
+.risk-row-menu-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 10.5rem;
+    padding: 0.35rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    z-index: 20;
+}
+.risk-row-menu-panel[hidden] {
+    display: none !important;
+}
+.risk-row-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    background: transparent;
+    border-radius: 7px;
+    padding: 0.5rem 0.65rem;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #334155;
+    text-align: left;
+    cursor: pointer;
+}
+.risk-row-menu-item:hover:not(:disabled) {
+    background: #f8fafc;
+}
+.risk-row-menu-item.is-danger {
+    color: #b91c1c;
+}
+.risk-row-menu-item.is-danger:hover:not(:disabled) {
+    background: #fef2f2;
+}
+.risk-row-menu-item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .risk-item-actions {
@@ -17965,6 +18054,23 @@ h5.ar-subsection-title {
     border-radius: 12px;
     background: var(--surface-1, var(--card-bg));
     padding: 0.95rem 1.05rem;
+    border-left-width: 4px;
+    border-left-style: solid;
+    border-left-color: #cbd5e1;
+}
+.tjanst-mall-card.risk-high,
+.tjanst-mall-card.risk-unacceptable {
+    border-left-color: #e74c3c;
+}
+.tjanst-mall-card.risk-elevated,
+.tjanst-mall-card.risk-medium {
+    border-left-color: #d97706;
+}
+.tjanst-mall-card.risk-normal {
+    border-left-color: #cbd5e1;
+}
+.tjanst-mall-card.risk-low {
+    border-left-color: #27ae60;
 }
 .tjanst-mall-card.is-inactive {
     background: var(--surface-2, var(--panel-2));
@@ -18030,8 +18136,8 @@ h5.ar-subsection-title {
 }
 .tjanst-mall-meta .risk-level-badge.risk-elevated,
 .tjanst-mall-meta .risk-level-badge.risk-medium {
-    background: var(--accent-muted, var(--accent-tint));
-    color: var(--text-accent, var(--accent));
+    background: #fff7ed;
+    color: #c2410c;
 }
 .tjanst-mall-empty {
     color: var(--text-secondary, var(--text));
@@ -18081,6 +18187,24 @@ h5.ar-subsection-title {
 .tjanst-mall-icon.is-active {
     background: var(--accent-muted, var(--accent-tint));
     color: var(--text-accent, var(--accent));
+}
+.tjanst-mall-icon.risk-high,
+.tjanst-mall-icon.risk-unacceptable {
+    background: #fdf2f2;
+    color: #e74c3c;
+}
+.tjanst-mall-icon.risk-elevated,
+.tjanst-mall-icon.risk-medium {
+    background: #fff7ed;
+    color: #c2410c;
+}
+.tjanst-mall-icon.risk-normal {
+    background: #f1f5f9;
+    color: #64748b;
+}
+.tjanst-mall-icon.risk-low {
+    background: #f0f9f0;
+    color: #27ae60;
 }
 .tjanst-mall-copy {
     min-width: 0;

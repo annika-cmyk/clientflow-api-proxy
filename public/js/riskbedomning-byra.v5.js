@@ -222,12 +222,21 @@ class RiskAssessmentManager {
             return;
         }
         this.setUtforandeKatalogFooterVisible(true);
-        const cards = Mallar.listCatalogCards(this.utforandeState);
+        let cards = Mallar.listCatalogCards(this.utforandeState);
+        const S = window.RiskSkala;
+        if (S && S.riskRank) {
+            cards = cards.slice().sort((a, b) => {
+                const ra = this.utforandeCardRiskRank(a);
+                const rb = this.utforandeCardRiskRank(b);
+                return rb - ra;
+            });
+        }
         const emptyHtml = !cards.length
             ? `<div class="tjanst-katalog-empty"><p>Inga tjänster ännu. Lägg till en standardtjänst eller skapa en egen.</p></div>`
             : '';
         const cardsHtml = cards.map((card) => this.renderUtforandeCard(card.template, card.entry)).join('');
         host.innerHTML = emptyHtml + cardsHtml;
+        this.setupRiskRowMenus(host);
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
             cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
@@ -321,15 +330,65 @@ class RiskAssessmentManager {
         if (opts.ai) this.generateAiSuggestion();
     }
 
+    utforandeCardRiskRank(card) {
+        const S = window.RiskSkala;
+        if (!S || !card) return 0;
+        const namn = (card.entry && card.entry.namn) || (card.template && card.template.name) || '';
+        const risk = this.findTjanstRiskByName(namn);
+        if (!risk) return 0;
+        const scored = S.readTjanstRisk(risk.fields || {}) || {};
+        return Math.max(S.riskRank(scored.level), S.riskRank(scored.residualLevel));
+    }
+
+    setupRiskRowMenus(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-risk-menu-toggle]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const menu = btn.closest('.risk-row-menu');
+                if (!menu) return;
+                const open = !menu.classList.contains('is-open');
+                this.closeAllRiskRowMenus();
+                if (open) {
+                    menu.classList.add('is-open');
+                    const panel = menu.querySelector('.risk-row-menu-panel');
+                    if (panel) panel.hidden = false;
+                    btn.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+        if (!this._riskRowMenuDocBound) {
+            this._riskRowMenuDocBound = true;
+            document.addEventListener('click', (e) => {
+                if (e.target.closest && e.target.closest('.risk-row-menu')) return;
+                this.closeAllRiskRowMenus();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closeAllRiskRowMenus();
+            });
+        }
+    }
+
+    closeAllRiskRowMenus() {
+        document.querySelectorAll('.risk-row-menu.is-open').forEach((menu) => {
+            menu.classList.remove('is-open');
+            const panel = menu.querySelector('.risk-row-menu-panel');
+            if (panel) panel.hidden = true;
+            const btn = menu.querySelector('[data-risk-menu-toggle]');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
+    }
+
     utforandeServiceIcon(mallId) {
         const map = {
             'rot-rut': 'fa-receipt',
             'lopande-bokforing': 'fa-book',
             'anlaggningsregister': 'fa-screwdriver-wrench',
             'kontoavstamningar': 'fa-scale-balanced',
-            'kontrollbalansrakning': 'fa-scale-balanced',
+            'kontrollbalansrakning': 'fa-calculator',
             'kundfakturering': 'fa-file-invoice',
-            'bokslut': 'fa-scale-balanced',
+            'bokslut': 'fa-calendar-check',
             'momsredovisning': 'fa-percent',
             'deklarationer': 'fa-file-lines',
             'kapitalvinstberakningar': 'fa-chart-line',
@@ -409,17 +468,28 @@ class RiskAssessmentManager {
                         <button type="button" class="btn btn-secondary" data-open-analys>Redigera manuellt</button>
                     </div>
                 </div>`;
+        const RiskSkalaApi = (typeof window !== 'undefined' && window.RiskSkala) ? window.RiskSkala : null;
+        const scored = existing && RiskSkalaApi && RiskSkalaApi.readTjanstRisk
+            ? (RiskSkalaApi.readTjanstRisk(existing.fields || {}) || {})
+            : {};
+        const rowRiskClass = existing && RiskSkalaApi && RiskSkalaApi.dominantRiskItemClass
+            ? RiskSkalaApi.dominantRiskItemClass(scored.level, scored.residualLevel)
+            : '';
+        const iconRiskClass = [
+            aktiv ? 'is-active' : '',
+            rowRiskClass || ''
+        ].filter(Boolean).join(' ');
         // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
         // och kan läggas till igen via "Lägg till standardtjänst".
-        const deleteBtn = `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-delete" data-delete-tjanst ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}" aria-label="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
+        const deleteBtn = `<button type="button" class="risk-row-menu-item is-danger tjanst-mall-delete" data-delete-tjanst role="menuitem" ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
             ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
             : '';
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
-                        <span class="tjanst-mall-icon${aktiv ? ' is-active' : ''}" aria-hidden="true">
+                        <span class="tjanst-mall-icon${iconRiskClass ? ' ' + iconRiskClass : ''}" aria-hidden="true">
                             <i class="fas ${icon}"></i>
                         </span>
                         <div class="tjanst-mall-copy">
@@ -430,7 +500,14 @@ class RiskAssessmentManager {
                         </div>
                     </div>
                     <div class="tjanst-mall-top-actions">
-                        ${deleteBtn}
+                        <div class="risk-row-menu">
+                            <button type="button" class="risk-row-menu-btn" data-risk-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Fler åtgärder">
+                                <i class="fas fa-ellipsis" aria-hidden="true"></i>
+                            </button>
+                            <div class="risk-row-menu-panel" hidden role="menu">
+                                ${deleteBtn}
+                            </div>
+                        </div>
                         <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
                             <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
                             <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
@@ -461,14 +538,6 @@ class RiskAssessmentManager {
         const hot = this.parseJsonField(f['Hot']);
         const sarbarheter = this.parseJsonField(f['Sårbarheter']);
         const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
-        const answers = (entry && entry.answers) || {};
-        const comments = (entry && entry.kommentarer) || {};
-        const answerKeys = Object.keys(answers).filter((k) => {
-            const v = answers[k];
-            if (Array.isArray(v)) return v.length > 0;
-            return String(v || '').trim() !== '';
-        });
-        const answerLines = this.renderUtforandeOverviewAnswers(template, answers, comments);
         const listBlock = (title, items, mapFn) => {
             if (!items || !items.length) return '';
             return `
@@ -508,40 +577,8 @@ class RiskAssessmentManager {
                         <span class="tjanst-mall-summary-q">${this.esc(a.titel || a.title || a.namn || 'Åtgärd')}${this.normalizeAtgardStatus(a.status) === 'befintlig' ? ' · Befintlig' : ''}</span>
                         ${a.beskrivning || a.description ? `<span class="tjanst-mall-summary-a">${this.esc(a.beskrivning || a.description)}</span>` : ''}
                     </li>`)}
-                ${answerLines ? `
-                <div class="tjanst-mall-summary-block">
-                    <h5 class="tjanst-mall-summary-heading">Utförandesvar (${answerKeys.length})</h5>
-                    ${answerLines}
-                </div>` : (answerKeys.length ? `<p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>` : '')}
             </div>
         `;
-    }
-
-    renderUtforandeOverviewAnswers(template, answers, comments = {}) {
-        const Mallar = window.TjanstUtforandeMallar;
-        if (!Mallar || !template || !answers) return '';
-        const skip = new Set(['hamtaClientflowStatistik']);
-        const questionsFn = Mallar.questionsForTemplate || Mallar.questionsForTemplate;
-        const questions = (typeof questionsFn === 'function' ? questionsFn(template) : []) || [];
-        const lines = [];
-        for (const q of questions) {
-            if (!q || skip.has(q.id)) continue;
-            const raw = answers[q.id];
-            let text = '';
-            if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
-            else text = String(raw || '').trim();
-            if (!text && q.id !== 'antalKunderTjanst') continue;
-            if (!text) continue;
-            const label = String(q.label || q.id).replace(/\?$/, '');
-            const comment = String((comments && comments[q.id]) || '').trim();
-            lines.push(`<li>
-                <span class="tjanst-mall-summary-q">${this.esc(label)}</span>
-                <span class="tjanst-mall-summary-a">${this.esc(text)}</span>
-                ${comment ? `<span class="tjanst-mall-summary-comment">${this.esc(comment)}</span>` : ''}
-            </li>`);
-        }
-        if (!lines.length) return '';
-        return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
     }
 
     renderUtforandeQuestion(mallId, question, entry) {
@@ -1309,6 +1346,9 @@ class RiskAssessmentManager {
         const riskLevelClass = this.getRiskLevelClass(riskLevel);
         const residualLevel = scored.residualLevel || '';
         const residualClass = residualLevel ? this.getRiskLevelClass(residualLevel) : '';
+        const rowRiskClass = (window.RiskSkala && RiskSkala.dominantRiskItemClass)
+            ? RiskSkala.dominantRiskItemClass(riskLevel, residualLevel)
+            : riskLevelClass;
         const badges = (window.RiskSkala && RiskSkala.listBadgeLabels(scored)) || {
             inneboende: scored.badge || riskLevel,
             residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : '',
@@ -1325,7 +1365,7 @@ class RiskAssessmentManager {
                 : '');
 
         return `
-            <div class="risk-item ${riskLevelClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
+            <div class="risk-item ${rowRiskClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
                     <div class="risk-item-title">
                         <div class="risk-status-indicator ${isChecked ? 'checked' : 'unchecked'}">
@@ -1341,6 +1381,17 @@ class RiskAssessmentManager {
                         </div>
                     </div>
                     <div class="risk-item-actions">
+                        <div class="risk-row-menu">
+                            <button type="button" class="risk-row-menu-btn" data-risk-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Fler åtgärder" onclick="event.stopPropagation()">
+                                <i class="fas fa-ellipsis" aria-hidden="true"></i>
+                            </button>
+                            <div class="risk-row-menu-panel" hidden role="menu">
+                                <button type="button" class="risk-row-menu-item is-danger delete-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
+                                    <i class="fas fa-trash" aria-hidden="true"></i>
+                                    Ta bort
+                                </button>
+                            </div>
+                        </div>
                         <button class="expand-toggle" onclick="event.stopPropagation(); riskManager.toggleRiskItem(this.closest('.risk-item-header'))">
                             <i class="fas fa-chevron-down"></i>
                         </button>
@@ -1358,10 +1409,6 @@ class RiskAssessmentManager {
                         <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
                             <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
                             ${isChecked ? 'Inaktivera' : 'Aktivera'}
-                        </button>
-                        <button class="btn btn-danger btn-sm delete-risk" data-record-id="${risk.id}">
-                            <i class="fas fa-trash"></i>
-                            Ta bort
                         </button>
                     </div>
                 </div>
@@ -1406,6 +1453,7 @@ class RiskAssessmentManager {
                 this.deleteRisk(recordId);
             });
         });
+        this.setupRiskRowMenus(document.getElementById('risk-list'));
     }
 
     applyFilters() {
