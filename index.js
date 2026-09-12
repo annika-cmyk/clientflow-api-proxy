@@ -129,6 +129,7 @@ const auditLogAirtable = require('./lib/audit-log-airtable');
 const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
+const ByraResa = require('./lib/byra-resa');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
@@ -12760,6 +12761,7 @@ app.get('/api/byra-rutiner', authenticateToken, async (req, res) => {
 
     ensureByraRiskaptitField(airtableAccessToken, airtableBaseId).catch(() => {});
     ensureArKartlaggningField(airtableAccessToken, airtableBaseId).catch(() => {});
+    ensurePersonuppgifterField(airtableAccessToken, airtableBaseId).catch(() => {});
 
     const userData = await getAirtableUser(req.user.email);
     if (!userData) {
@@ -13021,6 +13023,52 @@ async function ensureByraRiskaptitField(airtableToken, baseId) {
     return { ok: true, created: true };
   } catch (err) {
     console.warn('ensureByraRiskaptitField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function ensureByraResaStateField(airtableToken, baseId) {
+  const fieldName = ByraResa.BYRA_RESA_STATE_FIELD;
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(fieldName)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: fieldName,
+        type: 'multilineText',
+        description: 'JSON: byråns resa (stegstatus + källkatalog tagit del/använder/inte relevant).'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensureByraResaStateField:', err.response?.data?.error?.message || err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+async function ensurePersonuppgifterField(airtableToken, baseId) {
+  const fieldName = ByraResa.PERSONUPPGIFTER_FIELD;
+  const byraTable = await getByraerTableMeta(airtableToken, baseId);
+  if (!byraTable?.id) return { ok: false, error: 'Byråer-tabellen hittades inte' };
+  const existing = new Set((byraTable.fields || []).map((f) => (f.name || '').trim()));
+  if (existing.has(fieldName)) return { ok: true, created: false };
+  try {
+    await axios.post(
+      `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${byraTable.id}/fields`,
+      {
+        name: fieldName,
+        type: 'multilineText',
+        description: 'Byrårutin: behandling av personuppgifter (2 kap. 8 § PTL) – egen rubrik vid sidan av kundkännedom, övervakning och rapportering.'
+      },
+      { headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return { ok: true, created: true };
+  } catch (err) {
+    console.warn('ensurePersonuppgifterField:', err.response?.data?.error?.message || err.message);
     return { ok: false, error: err.message };
   }
 }
@@ -15030,6 +15078,111 @@ app.put('/api/settings/kom-igang', authenticateToken, async (req, res) => {
   }
 });
 
+async function loadByraRecordForUser(req) {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const BYRAER_TABLE = 'Byråer';
+  if (!airtableAccessToken) {
+    const err = new Error('Airtable token saknas');
+    err.status = 500;
+    throw err;
+  }
+  const userData = await getAirtableUser(req.user.email);
+  if (!userData) {
+    const err = new Error('Användare hittades inte');
+    err.status = 404;
+    throw err;
+  }
+  const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+  if (!byraId) {
+    const err = new Error('Ingen byrå kopplad');
+    err.status = 400;
+    throw err;
+  }
+  const num = parseInt(byraId, 10);
+  const filterFormula = isNaN(num) ? `{Byrå ID}="${byraId}"` : `OR({Byrå ID}="${byraId}",{Byrå ID}=${byraId})`;
+  const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(BYRAER_TABLE)}?filterByFormula=${encodeURIComponent(filterFormula)}&maxRecords=1`;
+  const airtableRes = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+  if (!airtableRes.data.records?.length) {
+    const err = new Error('Ingen Byråer-post hittades för er byrå');
+    err.status = 404;
+    throw err;
+  }
+  return {
+    airtableAccessToken,
+    airtableBaseId,
+    userData,
+    record: airtableRes.data.records[0],
+    byraId
+  };
+}
+
+// GET /api/byra-resa – steg + källkatalog + sparad status
+app.get('/api/byra-resa', authenticateToken, async (req, res) => {
+  try {
+    const { airtableAccessToken, airtableBaseId, userData, record } = await loadByraRecordForUser(req);
+    await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
+    const raw = record.fields?.[ByraResa.BYRA_RESA_STATE_FIELD];
+    const state = ByraResa.parseByraResaState(raw);
+    const canEdit = access.isLedareOrAdmin(userData.role);
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      recordId: record.id,
+      canEdit,
+      state,
+      catalog: ByraResa.mergeKallaState(state.kalla),
+      steps: ByraResa.RESA_STEPS,
+      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla),
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla)
+    });
+  } catch (error) {
+    console.error('❌ GET /api/byra-resa:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
+  }
+});
+
+// PUT /api/byra-resa – spara stegstatus + källkatalog
+app.put('/api/byra-resa', authenticateToken, async (req, res) => {
+  try {
+    const { airtableAccessToken, airtableBaseId, userData, record } = await loadByraRecordForUser(req);
+    if (!access.isLedareOrAdmin(userData.role)) {
+      return res.status(403).json({ error: 'Endast Ledare och ClientFlowAdmin får uppdatera byråns resa' });
+    }
+    await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
+    const incoming = req.body?.state;
+    if (!incoming || typeof incoming !== 'object') {
+      return res.status(400).json({ error: 'Body måste innehålla { state: object }' });
+    }
+    const state = ByraResa.buildByraResaState(incoming);
+    if (state.steps[8] && !ByraResa.kallaCatalogComplete(state.kalla)) {
+      return res.status(400).json({
+        error: 'Källkatalogen måste vara ifylld innan steg 8 (godkännande) kan markeras klart.',
+        state
+      });
+    }
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('Byråer')}/${record.id}`;
+    await axios.patch(
+      patchUrl,
+      { fields: { [ByraResa.BYRA_RESA_STATE_FIELD]: ByraResa.serializeByraResaState(state) } },
+      { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      state,
+      catalog: ByraResa.mergeKallaState(state.kalla),
+      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla),
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla)
+    });
+  } catch (error) {
+    console.error('❌ PUT /api/byra-resa:', error.response?.data || error.message);
+    const status = error.response?.status || error.status || 500;
+    const message = error.response?.data?.error?.message || error.message || 'Serverfel';
+    return res.status(status).json({ error: message });
+  }
+});
+
 // GET /api/byra-rutiner/:id - Hämta specifik Byråer-post (för deep-linking / direktåtkomst)
 app.get('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
   try {
@@ -15165,6 +15318,9 @@ app.patch('/api/byra-rutiner/:id', authenticateToken, async (req, res) => {
     }
     if (Object.prototype.hasOwnProperty.call(cleanedFields, arKartlaggning.KARTLAGGNING_FIELD)) {
       await ensureArKartlaggningField(airtableAccessToken, airtableBaseId);
+    }
+    if (Object.prototype.hasOwnProperty.call(cleanedFields, ByraResa.PERSONUPPGIFTER_FIELD)) {
+      await ensurePersonuppgifterField(airtableAccessToken, airtableBaseId);
     }
 
     let updated = null;
