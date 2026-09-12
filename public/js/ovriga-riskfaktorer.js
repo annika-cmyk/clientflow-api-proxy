@@ -507,6 +507,8 @@ class RiskFactorsManager {
         document.getElementById('add-risk-form').addEventListener('submit', (e) => this.handleAddRisk(e));
         document.getElementById('edit-risk-form').addEventListener('submit', (e) => this.handleEditRisk(e));
 
+        this.bindRiskTabs();
+
         const addAiBtn = document.getElementById('add-ai-suggest-btn');
         if (addAiBtn) addAiBtn.addEventListener('click', () => this.generateAiSuggestion('add'));
         const editAiBtn = document.getElementById('edit-ai-suggest-btn');
@@ -945,7 +947,7 @@ class RiskFactorsManager {
                     </div>
                     
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-info-circle"></i> Beskrivning</h5>
+                        <h5><i class="fas fa-file-lines"></i> Riskfaktorn</h5>
                         <p class="risk-content-text">
                             ${this.formatDescription(risk.fields['Beskrivning'] || '')}
                         </p>
@@ -954,7 +956,7 @@ class RiskFactorsManager {
                     ${this.renderMotiveringSections(scored, { keys: ['inneboende'] })}
                     
                     <div class="risk-content-section">
-                        <h5><i class="fas fa-tools"></i> Åtgärd</h5>
+                        <h5><i class="fas fa-list-check"></i> Hur hanteras risken?</h5>
                         <p class="risk-content-text">
                             ${this.formatDescription(risk.fields['Åtgjärd'] || risk.fields['Åtgärd'] || '')}
                         </p>
@@ -1483,10 +1485,40 @@ class RiskFactorsManager {
             if (btn) {
                 btn.disabled = false;
                 btn.classList.remove('loading');
-                if (label) label.textContent = originalLabel || 'Generera AI-förslag';
+                if (label) label.textContent = originalLabel || 'Generera AI-analys';
             }
         }
     }
+
+    setRiskTab(modalId, tabId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        const id = tabId || 'oversikt';
+        modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
+            const on = tab.getAttribute('data-risk-tab') === id;
+            tab.classList.toggle('is-active', on);
+            tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        modal.querySelectorAll('.tjanst-panel[data-risk-panel]').forEach((panel) => {
+            const on = panel.getAttribute('data-risk-panel') === id;
+            panel.classList.toggle('is-active', on);
+            panel.hidden = !on;
+        });
+    }
+
+    bindRiskTabs() {
+        ['add-risk-modal', 'edit-risk-modal'].forEach((modalId) => {
+            const modal = document.getElementById(modalId);
+            if (!modal || modal.dataset.riskTabsBound === '1') return;
+            modal.dataset.riskTabsBound = '1';
+            modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    this.setRiskTab(modalId, tab.getAttribute('data-risk-tab'));
+                });
+            });
+        });
+    }
+
 
     openAddModal(prefill) {
         document.getElementById('add-risk-form')?.reset();
@@ -1509,6 +1541,7 @@ class RiskFactorsManager {
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
         this.updateMotiveringWarnings('add');
+        this.setRiskTab('add-risk-modal', 'oversikt');
         document.getElementById('add-risk-modal').style.display = 'flex';
     }
 
@@ -1554,6 +1587,7 @@ class RiskFactorsManager {
         this.editNeedsReview = scored.kraverManualOversyn === true;
         this.updateRiskBadges('edit');
 
+        this.setRiskTab('edit-risk-modal', 'oversikt');
         document.getElementById('edit-risk-modal').style.display = 'flex';
     }
 
@@ -1582,7 +1616,9 @@ class RiskFactorsManager {
             const motCheck = this.validateMotiveringBeforeSave(poang || {});
             if (!motCheck.ok) {
                 const first = motCheck.errors[0] || {};
-                const prefix = first.field === 'motivering_residual_risk' ? 'motivering-residual' : 'motivering-inneboende';
+                const isResidual = first.field === 'motivering_residual_risk';
+                this.setRiskTab('add-risk-modal', isResidual ? 'residual' : 'inneboende');
+                const prefix = isResidual ? 'motivering-residual' : 'motivering-inneboende';
                 document.getElementById(prefix)?.focus();
                 this.updateMotiveringWarnings('add');
                 return;
@@ -1626,7 +1662,9 @@ class RiskFactorsManager {
             const motCheck = this.validateMotiveringBeforeSave(poang || {});
             if (!motCheck.ok) {
                 const first = motCheck.errors[0] || {};
-                const prefix = first.field === 'motivering_residual_risk' ? 'edit-motivering-residual' : 'edit-motivering-inneboende';
+                const isResidual = first.field === 'motivering_residual_risk';
+                this.setRiskTab('edit-risk-modal', isResidual ? 'residual' : 'inneboende');
+                const prefix = isResidual ? 'edit-motivering-residual' : 'edit-motivering-inneboende';
                 document.getElementById(prefix)?.focus();
                 this.updateMotiveringWarnings('edit');
                 return;

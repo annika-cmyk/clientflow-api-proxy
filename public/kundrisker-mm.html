@@ -172,128 +172,173 @@
             </section>
 
             <div id="add-risk-modal" class="modal" style="display: none;">
-                <div class="modal-content">
+                <div class="modal-content tjanst-modal-content">
                     <div class="modal-header">
-                        <div>
-                            <h3>Lägg till ny riskfaktor</h3>
-                            <p class="tjanst-modal-kicker">Kund- och geografiska riskfaktorer bedöms med S×K före och efter åtgärd.</p>
+                        <div class="tjanst-modal-head">
+                            <div class="form-group tjanst-name-field tjanst-name-field--top">
+                                <label for="risk-factor">Riskfaktor *</label>
+                                <input type="text" id="risk-factor" name="risk-factor" class="tjanst-modal-name" placeholder="t.ex. Distansmöte utan BankID" required>
+                            </div>
+                            <button class="modal-close" type="button" onclick="closeModal('add-risk-modal')">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
-                        <button class="modal-close" onclick="closeModal('add-risk-modal')">
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <div id="add-ai-summary" class="ai-review-summary tjanst-ai-summary" hidden></div>
+                        <h3 id="add-risk-modal-title" class="visually-hidden">Lägg till ny riskfaktor</h3>
                     </div>
-                    <form id="add-risk-form" class="modal-form">
-                        <div class="form-group">
-                            <label for="risk-type">Typ av riskfaktor *</label>
-                            <select id="risk-type" name="risk-type" required>
+                    <form id="add-risk-form" class="modal-form tjanst-form">
+                        <div class="tjanst-modal-layout">
+                            <nav class="tjanst-tabs" role="tablist" aria-label="Riskfaktoranalys">
+                                <p class="tjanst-tabs-kicker">Din resa</p>
+                                <div class="tjanst-tabs-steps">
+                                    <button type="button" class="tjanst-tab is-active" data-risk-tab="oversikt" role="tab" aria-selected="true">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Översikt</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="inneboende" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Inneboende risk</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="atgard" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Riskreducerande åtgärder</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="residual" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Residualrisk</span>
+                                    </button>
+                                </div>
+                            </nav>
+
+                            <div class="tjanst-modal-body">
+                                <section class="tjanst-panel is-active" data-risk-panel="oversikt">
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="form-group">
+                                            <label for="risk-type">Typ av riskfaktor *</label>
+                                            <select id="risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
                                 <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
                                 <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer – egen hemvist</option>
                                 <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer – motparters geografi</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="risk-factor">Riskfaktor *</label>
-                            <input type="text" id="risk-factor" name="risk-factor" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="pt-tf">PT/TF-relevans *</label>
-                            <select id="pt-tf" name="pt-tf" required>
-                                <option value="">Välj PT eller TF</option>
-                                <option value="PT">PT</option>
-                                <option value="TF">TF</option>
-                                <option value="Båda">Båda</option>
-                            </select>
-                        </div>
-                        <section class="risk-sxk-section">
-                            <h4>Inneboende risk</h4>
-                            <div class="form-group">
-                                <label for="description">Beskrivning *</label>
-                                <p class="tjanst-panel-hint">Beskriv riskfaktorn — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma under Åtgärd.</p>
-                                <textarea id="description" name="description" rows="4" required placeholder="Vad riskfaktorn innebär — inte byrån, personal eller era kontroller."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <button type="button" class="btn btn-ai" id="add-ai-suggest-btn">
-                                    <i class="fas fa-robot"></i> <span class="ai-btn-label">Generera AI-förslag</span>
-                                </button>
-                                <div id="add-ai-review" class="ai-review" hidden></div>
-                            </div>
-                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
-                            <div class="tjanst-risk-scores">
-                                <div class="form-group">
-                                    <label for="sannolikhet">Sannolikhet (1–5)</label>
-                                    <select id="sannolikhet" name="sannolikhet">
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pt-tf">PT/TF-relevans *</label>
+                                            <select id="pt-tf" name="pt-tf" required>
+                                                <option value="">Välj PT eller TF</option>
+                                                <option value="PT">PT</option>
+                                                <option value="TF">TF</option>
+                                                <option value="Båda">Båda</option>
+                                            </select>
+                                        </div>
+                                        <label for="description">Beskrivning *</label>
+                                        <p class="tjanst-panel-hint">Beskriv riskfaktorn — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma under Riskreducerande åtgärder.</p>
+                                        <textarea id="description" name="description" rows="8" required placeholder="Vad riskfaktorn innebär — inte byrån, personal eller era kontroller."></textarea>
+                                        <div id="add-ai-review" class="ai-review ai-review--inline" hidden></div>
+                                    </div>
+                                    <div class="tjanst-utforande-ai-bar">
+                                        <button type="button" class="btn btn-ai" id="add-ai-suggest-btn">
+                                            <i class="fas fa-wand-magic-sparkles"></i>
+                                            <span class="ai-btn-label">Generera AI-analys</span>
+                                        </button>
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="inneboende" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="tjanst-modal-identity">
+                                            <div class="tjanst-risk-scores">
+                                                <div class="form-group">
+                                                    <label for="sannolikhet">Sannolikhet (1–5)</label>
+                                                    <select id="sannolikhet" name="sannolikhet">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Mycket låg</option>
                                         <option value="2">2 — Låg</option>
                                         <option value="3">3 — Medel</option>
                                         <option value="4">4 — Hög</option>
                                         <option value="5">5 — Mycket hög</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="konsekvens">Konsekvens (1–5)</label>
-                                    <select id="konsekvens" name="konsekvens">
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="konsekvens">Konsekvens (1–5)</label>
+                                                    <select id="konsekvens" name="konsekvens">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Obetydlig</option>
                                         <option value="2">2 — Lindrig</option>
                                         <option value="3">3 — Kännbar</option>
                                         <option value="4">4 — Allvarlig</option>
                                         <option value="5">5 — Katastrofal</option>
-                                    </select>
-                                </div>
-                                <div id="add-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
-                            </div>
-                            <div class="form-group risk-motivering-field">
-                                <label for="motivering-inneboende">Motivering av inneboende risk
-                                    <span id="add-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                </label>
-                                <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
-                                <textarea id="motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
-                            </div>
-                        </section>
-                        <section class="risk-sxk-section">
-                            <h4>Residualrisk (efter åtgärd)</h4>
-                            <p class="tjanst-panel-hint">Residualrisk är risken som är kvar när åtgärden är på plats. Sätt sannolikhet och konsekvens efter åtgärd — det är också S×K.</p>
-                            <div class="form-group">
-                                <label for="action">Åtgärd *</label>
-                                <p class="tjanst-panel-hint">Vad ni gör för att hantera risken.</p>
-                                <textarea id="action" name="action" rows="4" required placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet."></textarea>
-                            </div>
-                            <div class="tjanst-risk-scores">
-                                <div class="form-group">
-                                    <label for="sannolikhet-efter">Sannolikhet efter åtgärd (1–5)</label>
-                                    <select id="sannolikhet-efter" name="sannolikhet-efter">
+                                                    </select>
+                                                </div>
+                                                <div id="add-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
+                                            </div>
+                                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="motivering-inneboende">Motivering av inneboende risk
+                                                <span id="add-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                            </label>
+                                            <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                            <textarea id="motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                                        </div>
+                                        
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="atgard" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <label for="action">Hur hanteras risken? *</label>
+                                        <p class="tjanst-panel-hint">Riskreducerande åtgärder — vad ni gör för att hantera risken. Kontroller och rutiner hör hit, inte i översikten.</p>
+                                        <textarea id="action" name="action" rows="8" required placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet."></textarea>
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="residual" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="tjanst-residual-bar">
+                                            <div>
+                                                <p class="tjanst-residual-title">Vilken risk återstår?</p>
+                                                <p class="tjanst-panel-hint">Residualrisk efter åtgärder. Sätt sannolikhet och konsekvens när riskreducerande åtgärder är på plats — det är också S×K.</p>
+                                            </div>
+                                            <div class="tjanst-risk-scores tjanst-residual-scores">
+                                                <div class="form-group">
+                                                    <label for="sannolikhet-efter">Sannolikhet efter åtgärder (1–5)</label>
+                                                    <select id="sannolikhet-efter" name="sannolikhet-efter">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Mycket låg</option>
                                         <option value="2">2 — Låg</option>
                                         <option value="3">3 — Medel</option>
                                         <option value="4">4 — Hög</option>
                                         <option value="5">5 — Mycket hög</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="konsekvens-efter">Konsekvens efter åtgärd (1–5)</label>
-                                    <select id="konsekvens-efter" name="konsekvens-efter">
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="konsekvens-efter">Konsekvens efter åtgärder (1–5)</label>
+                                                    <select id="konsekvens-efter" name="konsekvens-efter">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Obetydlig</option>
                                         <option value="2">2 — Lindrig</option>
                                         <option value="3">3 — Kännbar</option>
                                         <option value="4">4 — Allvarlig</option>
                                         <option value="5">5 — Katastrofal</option>
-                                    </select>
-                                </div>
-                                <div id="add-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                                                    </select>
+                                                </div>
+                                                <div id="add-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                                            </div>
+                                            <div class="form-group risk-motivering-field">
+                                                <label for="motivering-residual">Motivering av residualrisk
+                                                    <span id="add-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                                </label>
+                                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
+                                                <textarea id="motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
-                            <div class="form-group risk-motivering-field">
-                                <label for="motivering-residual">Motivering av residualrisk
-                                    <span id="add-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                </label>
-                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
-                                <textarea id="motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärd…"></textarea>
-                            </div>
-                        </section>
-                        <div class="form-actions">
+                        </div>
+
+                        <div class="form-actions tjanst-modal-footer">
                             <button type="button" class="btn btn-secondary" onclick="closeModal('add-risk-modal')">
                                 Avbryt
                             </button>
@@ -307,130 +352,174 @@
             </div>
 
             <div id="edit-risk-modal" class="modal" style="display: none;">
-                <div class="modal-content">
+                <div class="modal-content tjanst-modal-content">
                     <div class="modal-header">
-                        <div>
-                            <h3>Redigera riskfaktor</h3>
-                            <p class="tjanst-modal-kicker">Kund- och geografiska riskfaktorer bedöms med S×K före och efter åtgärd.</p>
+                        <div class="tjanst-modal-head">
+                            <div class="form-group tjanst-name-field tjanst-name-field--top">
+                                <label for="edit-risk-factor">Riskfaktor *</label>
+                                <input type="text" id="edit-risk-factor" name="risk-factor" class="tjanst-modal-name" placeholder="t.ex. Distansmöte utan BankID" required>
+                            </div>
+                            <button class="modal-close" type="button" onclick="closeModal('edit-risk-modal')">
+                                <i class="fas fa-times"></i>
+                            </button>
                         </div>
-                        <button class="modal-close" onclick="closeModal('edit-risk-modal')">
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <div id="edit-ai-summary" class="ai-review-summary tjanst-ai-summary" hidden></div>
+                        <h3 id="edit-risk-modal-title" class="visually-hidden">Redigera riskfaktor</h3>
                     </div>
-                    <form id="edit-risk-form" class="modal-form">
+                    <form id="edit-risk-form" class="modal-form tjanst-form">
                         <input type="hidden" id="edit-record-id" name="record-id">
-                        <div class="form-group">
-                            <label for="edit-risk-type">Typ av riskfaktor *</label>
-                            <select id="edit-risk-type" name="risk-type" required>
+                        <div class="tjanst-modal-layout">
+                            <nav class="tjanst-tabs" role="tablist" aria-label="Riskfaktoranalys">
+                                <p class="tjanst-tabs-kicker">Din resa</p>
+                                <div class="tjanst-tabs-steps">
+                                    <button type="button" class="tjanst-tab is-active" data-risk-tab="oversikt" role="tab" aria-selected="true">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Översikt</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="inneboende" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Inneboende risk</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="atgard" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Riskreducerande åtgärder</span>
+                                    </button>
+                                    <button type="button" class="tjanst-tab" data-risk-tab="residual" role="tab" aria-selected="false">
+                                        <span class="tjanst-tab-dot" aria-hidden="true"></span>
+                                        <span class="tjanst-tab-label">Residualrisk</span>
+                                    </button>
+                                </div>
+                            </nav>
+
+                            <div class="tjanst-modal-body">
+                                <section class="tjanst-panel is-active" data-risk-panel="oversikt">
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="form-group">
+                                            <label for="edit-risk-type">Typ av riskfaktor *</label>
+                                            <select id="edit-risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
                                 <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
                                 <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer – egen hemvist</option>
                                 <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer – motparters geografi</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="edit-risk-factor">Riskfaktor *</label>
-                            <input type="text" id="edit-risk-factor" name="risk-factor" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="edit-pt-tf">PT/TF-relevans *</label>
-                            <select id="edit-pt-tf" name="pt-tf" required>
-                                <option value="">Välj PT eller TF</option>
-                                <option value="PT">PT</option>
-                                <option value="TF">TF</option>
-                                <option value="Båda">Båda</option>
-                            </select>
-                        </div>
-                        <section class="risk-sxk-section">
-                            <h4>Inneboende risk</h4>
-                            <div class="form-group">
-                                <label for="edit-description">Beskrivning *</label>
-                                <p class="tjanst-panel-hint">Beskriv riskfaktorn — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma under Åtgärd.</p>
-                                <textarea id="edit-description" name="description" rows="4" required placeholder="Vad riskfaktorn innebär — inte byrån, personal eller era kontroller."></textarea>
-                            </div>
-                            <div class="form-group">
-                                <button type="button" class="btn btn-ai" id="edit-ai-suggest-btn">
-                                    <i class="fas fa-robot"></i> <span class="ai-btn-label">Generera AI-förslag</span>
-                                </button>
-                                <div id="edit-ai-review" class="ai-review" hidden></div>
-                            </div>
-                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
-                            <div class="tjanst-risk-scores">
-                                <div class="form-group">
-                                    <label for="edit-sannolikhet">Sannolikhet (1–5)</label>
-                                    <select id="edit-sannolikhet" name="sannolikhet">
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="edit-pt-tf">PT/TF-relevans *</label>
+                                            <select id="edit-pt-tf" name="pt-tf" required>
+                                                <option value="">Välj PT eller TF</option>
+                                                <option value="PT">PT</option>
+                                                <option value="TF">TF</option>
+                                                <option value="Båda">Båda</option>
+                                            </select>
+                                        </div>
+                                        <label for="edit-description">Beskrivning *</label>
+                                        <p class="tjanst-panel-hint">Beskriv riskfaktorn — nämn INTE byrån, personal, kapacitet, kontroller, rutiner eller åtgärder här; de hör hemma under Riskreducerande åtgärder.</p>
+                                        <textarea id="edit-description" name="description" rows="8" required placeholder="Vad riskfaktorn innebär — inte byrån, personal eller era kontroller."></textarea>
+                                        <div id="edit-ai-review" class="ai-review ai-review--inline" hidden></div>
+                                    </div>
+                                    <div class="tjanst-utforande-ai-bar">
+                                        <button type="button" class="btn btn-ai" id="edit-ai-suggest-btn">
+                                            <i class="fas fa-wand-magic-sparkles"></i>
+                                            <span class="ai-btn-label">Generera AI-analys</span>
+                                        </button>
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="inneboende" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="tjanst-modal-identity">
+                                            <div class="tjanst-risk-scores">
+                                                <div class="form-group">
+                                                    <label for="edit-sannolikhet">Sannolikhet (1–5)</label>
+                                                    <select id="edit-sannolikhet" name="sannolikhet">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Mycket låg</option>
                                         <option value="2">2 — Låg</option>
                                         <option value="3">3 — Medel</option>
                                         <option value="4">4 — Hög</option>
                                         <option value="5">5 — Mycket hög</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="edit-konsekvens">Konsekvens (1–5)</label>
-                                    <select id="edit-konsekvens" name="konsekvens">
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="edit-konsekvens">Konsekvens (1–5)</label>
+                                                    <select id="edit-konsekvens" name="konsekvens">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Obetydlig</option>
                                         <option value="2">2 — Lindrig</option>
                                         <option value="3">3 — Kännbar</option>
                                         <option value="4">4 — Allvarlig</option>
                                         <option value="5">5 — Katastrofal</option>
-                                    </select>
-                                </div>
-                                <div id="edit-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
-                            </div>
-                            <div class="form-group risk-motivering-field">
-                                <label for="edit-motivering-inneboende">Motivering av inneboende risk
-                                    <span id="edit-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                </label>
-                                <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
-                                <textarea id="edit-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
-                            </div>
-                            <p id="edit-review-flag" class="tjanst-panel-hint" hidden>Migrerad från gammal risknivå — gå igenom och justera S×K.</p>
-                        </section>
-                        <section class="risk-sxk-section">
-                            <h4>Residualrisk (efter åtgärd)</h4>
-                            <p class="tjanst-panel-hint">Residualrisk är risken som är kvar när åtgärden är på plats. Sätt sannolikhet och konsekvens efter åtgärd — det är också S×K.</p>
-                            <div class="form-group">
-                                <label for="edit-action">Åtgärd *</label>
-                                <p class="tjanst-panel-hint">Vad ni gör för att hantera risken.</p>
-                                <textarea id="edit-action" name="action" rows="4" required placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet."></textarea>
-                            </div>
-                            <div class="tjanst-risk-scores">
-                                <div class="form-group">
-                                    <label for="edit-sannolikhet-efter">Sannolikhet efter åtgärd (1–5)</label>
-                                    <select id="edit-sannolikhet-efter" name="sannolikhet-efter">
+                                                    </select>
+                                                </div>
+                                                <div id="edit-inneboende-badge" class="tjanst-risk-badge is-empty" role="status">Inneboende risk: Ej satt</div>
+                                            </div>
+                                            <p class="tjanst-panel-hint tjanst-sxk-hint">Inneboende risk är risken i faktorn i sig, innan era kontroller och åtgärder. Den räknas som sannolikhet × konsekvens (S×K).</p>
+                                        </div>
+                                        <div class="form-group risk-motivering-field">
+                                            <label for="edit-motivering-inneboende">Motivering av inneboende risk
+                                                <span id="edit-motivering-inneboende-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                            </label>
+                                            <p class="tjanst-panel-hint">Förklara varför just denna sannolikhet och konsekvens gäller. Minst 50 tecken krävs vid Förhöjd, Hög eller Oacceptabel risk.</p>
+                                            <textarea id="edit-motivering-inneboende" name="motivering-inneboende" rows="3" placeholder="Motivera bedömningen av sannolikhet och konsekvens var för sig…"></textarea>
+                                        </div>
+                                        <p id="edit-review-flag" class="tjanst-panel-hint" hidden>Migrerad från gammal risknivå — gå igenom och justera S×K.</p>
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="atgard" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <label for="edit-action">Hur hanteras risken? *</label>
+                                        <p class="tjanst-panel-hint">Riskreducerande åtgärder — vad ni gör för att hantera risken. Kontroller och rutiner hör hit, inte i översikten.</p>
+                                        <textarea id="edit-action" name="action" rows="8" required placeholder="T.ex. Underlag för alla transaktioner dokumenteras i bokslutsprogrammet."></textarea>
+                                    </div>
+                                </section>
+
+                                <section class="tjanst-panel" data-risk-panel="residual" hidden>
+                                    <div class="tjanst-panel-scroll">
+                                        <div class="tjanst-residual-bar">
+                                            <div>
+                                                <p class="tjanst-residual-title">Vilken risk återstår?</p>
+                                                <p class="tjanst-panel-hint">Residualrisk efter åtgärder. Sätt sannolikhet och konsekvens när riskreducerande åtgärder är på plats — det är också S×K.</p>
+                                            </div>
+                                            <div class="tjanst-risk-scores tjanst-residual-scores">
+                                                <div class="form-group">
+                                                    <label for="edit-sannolikhet-efter">Sannolikhet efter åtgärder (1–5)</label>
+                                                    <select id="edit-sannolikhet-efter" name="sannolikhet-efter">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Mycket låg</option>
                                         <option value="2">2 — Låg</option>
                                         <option value="3">3 — Medel</option>
                                         <option value="4">4 — Hög</option>
                                         <option value="5">5 — Mycket hög</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="edit-konsekvens-efter">Konsekvens efter åtgärd (1–5)</label>
-                                    <select id="edit-konsekvens-efter" name="konsekvens-efter">
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label for="edit-konsekvens-efter">Konsekvens efter åtgärder (1–5)</label>
+                                                    <select id="edit-konsekvens-efter" name="konsekvens-efter">
                                         <option value="">Ej satt</option>
                                         <option value="1">1 — Obetydlig</option>
                                         <option value="2">2 — Lindrig</option>
                                         <option value="3">3 — Kännbar</option>
                                         <option value="4">4 — Allvarlig</option>
                                         <option value="5">5 — Katastrofal</option>
-                                    </select>
-                                </div>
-                                <div id="edit-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                                                    </select>
+                                                </div>
+                                                <div id="edit-residual-badge" class="tjanst-risk-badge is-empty" role="status">Residualrisk: Ej satt</div>
+                                            </div>
+                                            <div class="form-group risk-motivering-field">
+                                                <label for="edit-motivering-residual">Motivering av residualrisk
+                                                    <span id="edit-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
+                                                </label>
+                                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
+                                                <textarea id="edit-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärder…"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
-                            <div class="form-group risk-motivering-field">
-                                <label for="edit-motivering-residual">Motivering av residualrisk
-                                    <span id="edit-motivering-residual-warn" class="risk-motivering-warn" hidden title="Obligatorisk vid Förhöjd/Hög/Oacceptabel">✗</span>
-                                </label>
-                                <p class="tjanst-panel-hint">Förklara hur åtgärderna sänkt sannolikhet och/eller konsekvens. Vid Hög/Oacceptabel residual: hänvisa till riskaptitbeslut.</p>
-                                <textarea id="edit-motivering-residual" name="motivering-residual" rows="3" placeholder="Motivera residualriskens S och K efter åtgärd…"></textarea>
-                            </div>
-                        </section>
-                        <div class="form-actions">
+                        </div>
+
+                        <div class="form-actions tjanst-modal-footer">
                             <button type="button" class="btn btn-secondary" onclick="closeModal('edit-risk-modal')">
                                 Avbryt
                             </button>
@@ -466,7 +555,7 @@
     <script src="js/risksankande-katalog.js?v=2" defer></script>
     <script src="js/ai-falt-granskning.js?v=11" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
-    <script src="js/ovriga-riskfaktorer.js?v=40" defer></script>
+    <script src="js/ovriga-riskfaktorer.js?v=41" defer></script>
     <script src="js/kundrisker-enkat-sammanfattning.js?v=1" defer></script>
 </body>
 </html>
