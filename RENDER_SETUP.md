@@ -62,6 +62,7 @@ MAIL_FROM=ClientFlow Underlag <hej@clientflow.se>
 GOOGLE_CLIENT_ID=din_google_client_id
 GOOGLE_CLIENT_SECRET=din_google_client_secret
 GOOGLE_GMAIL_REDIRECT_URI=https://www.app.clientflow.se/api/gmail/oauth/callback
+# Alias accepteras också (t.ex. GOOGLE_GMAIL_CLIENT_ID) – se docs/GMAIL_SETUP.md
 # Valfritt: GMAIL_TOKEN_SECRET=...  (annars används JWT_SECRET)
 # Valfritt: GMAIL_KUNDER_LABEL=KUNDER
 PUBLIC_BASE_URL=https://www.app.clientflow.se
