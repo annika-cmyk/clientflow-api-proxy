@@ -1,6 +1,7 @@
 /**
- * Kundformulär-UI (kundkort). Byråvy av samma formulär kunden ska besvara.
- * Fältnamn följer lib/kundformular.js answers-schema.
+ * Kundformulär-UI (kundkort).
+ * Byråvyn = kundvyn: samma fält, samma synlighet, samma inskickade svar.
+ * Fältnamn följer lib/kundformular.js. Neutral faktayta — ingen riskpoäng.
  */
 (function (global) {
   function esc(s) {
@@ -24,7 +25,19 @@
     });
   }
 
-  function jaNejSelect(name, selected) {
+  function statusClass(status) {
+    const s = String(status || 'utkast');
+    if (s === 'besvarat' || s === 'signerat') return 'ok';
+    if (s === 'skickat') return 'sent';
+    if (s === 'prefillad') return 'prefill';
+    return 'draft';
+  }
+
+  function fieldLabel(text) {
+    return `<span class="kundformular-label-row"><span>${esc(text)}</span></span>`;
+  }
+
+  function jaNejSelect(name, selected, readOnly) {
     const v = String(selected || '');
     const opts = ['', 'Ja', 'Nej']
       .map((opt) => {
@@ -32,37 +45,51 @@
         return `<option value="${esc(opt)}"${opt === v ? ' selected' : ''}>${esc(label)}</option>`;
       })
       .join('');
-    return `<select class="form-control" data-kf="${esc(name)}">${opts}</select>`;
+    return `<select class="form-control" data-kf="${esc(name)}"${readOnly ? ' disabled' : ''}>${opts}</select>`;
   }
 
-  function personRows(list, prefix) {
+  function vhBekraftelseSelect(selected, readOnly) {
+    const v = String(selected || '');
+    const opts = [
+      { value: '', label: '—' },
+      { value: 'Ja', label: 'Ja, stämmer' },
+      { value: 'Osaker', label: 'Osäker' },
+      { value: 'Nej', label: 'Nej' }
+    ].map((opt) =>
+      `<option value="${esc(opt.value)}"${opt.value === v ? ' selected' : ''}>${esc(opt.label)}</option>`
+    ).join('');
+    return `<select class="form-control" data-kf="vh_bekraftelse"${readOnly ? ' disabled' : ''}>${opts}</select>`;
+  }
+
+  function personRows(list, prefix, readOnly) {
     const rows = Array.isArray(list) && list.length
       ? list
       : [{ namn: '', personnr: '', hemvist: 'Sverige', tin: '', agarandel: '', roll: '' }];
+    const ro = readOnly ? ' readonly' : '';
     return rows.map((p, idx) => `
       <div class="kundformular-person-row" data-kf-person-row="${esc(prefix)}" data-idx="${idx}">
         <div class="kundformular-grid kundformular-grid--person">
           <label>Namn
-            <input type="text" class="form-control" data-kf-field="namn" value="${esc(p.namn || '')}" autocomplete="off">
+            <input type="text" class="form-control" data-kf-field="namn" value="${esc(p.namn || '')}" autocomplete="off"${ro}>
           </label>
           <label>Personnummer
-            <input type="text" class="form-control" data-kf-field="personnr" value="${esc(p.personnr || '')}" autocomplete="off">
+            <input type="text" class="form-control" data-kf-field="personnr" value="${esc(p.personnr || '')}" autocomplete="off"${ro}>
           </label>
           <label>Skatterättslig hemvist
-            <input type="text" class="form-control" data-kf-field="hemvist" value="${esc(p.hemvist || 'Sverige')}" autocomplete="off">
+            <input type="text" class="form-control" data-kf-field="hemvist" value="${esc(p.hemvist || 'Sverige')}" autocomplete="off"${ro}>
           </label>
           <label>TIN (om ej Sverige)
-            <input type="text" class="form-control" data-kf-field="tin" value="${esc(p.tin || '')}" autocomplete="off">
+            <input type="text" class="form-control" data-kf-field="tin" value="${esc(p.tin || '')}" autocomplete="off"${ro}>
           </label>
           ${prefix === 'huvudman'
             ? `<label>Ägarandel %
-                <input type="text" class="form-control" data-kf-field="agarandel" value="${esc(p.agarandel || '')}" autocomplete="off">
+                <input type="text" class="form-control" data-kf-field="agarandel" value="${esc(p.agarandel || '')}" autocomplete="off"${ro}>
               </label>`
             : `<label>Roll
-                <input type="text" class="form-control" data-kf-field="roll" value="${esc(p.roll || '')}" autocomplete="off">
+                <input type="text" class="form-control" data-kf-field="roll" value="${esc(p.roll || '')}" autocomplete="off"${ro}>
               </label>`}
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" data-remove-person title="Ta bort rad"><i class="fas fa-times"></i></button>
+        ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-remove-person title="Ta bort rad"><i class="fas fa-times"></i></button>'}
       </div>`).join('');
   }
 
@@ -79,18 +106,46 @@
       .filter((p) => p.namn || p.personnr || p.tin);
   }
 
+  function collectTjanster(root) {
+    return Array.from(root.querySelectorAll('[data-kf-tjanst]:checked'))
+      .map((el) => ({
+        id: (el.getAttribute('data-kf-tjanst-id') || '').trim(),
+        namn: (el.getAttribute('data-kf-tjanst-namn') || el.value || '').trim()
+      }))
+      .filter((t) => t.namn || t.id);
+  }
+
+  function collectVillkorade(root) {
+    const out = {};
+    root.querySelectorAll('[data-kf-villkorad]').forEach((wrap) => {
+      const id = wrap.getAttribute('data-kf-villkorad');
+      if (!id) return;
+      const svar = (wrap.querySelector('[data-kf-villkorad-svar]')?.value || '').trim();
+      const varfor = (wrap.querySelector('[data-kf-villkorad-varfor]')?.value || '').trim();
+      if (svar || varfor) out[id] = { svar, varfor };
+    });
+    return out;
+  }
+
   function collectAnswers(root) {
     const g = (key) => (root.querySelector(`[data-kf="${key}"]`)?.value || '').trim();
     return {
       foretagsnamn: g('foretagsnamn'),
       orgnr: g('orgnr'),
+      tjanster: collectTjanster(root),
       syfte_affarsrelation: g('syfte_affarsrelation'),
       verksamhet: g('verksamhet'),
+      forvantad_omfattning: g('forvantad_omfattning'),
       kapitalUrsprung: g('kapitalUrsprung'),
+      kapitalUrsprungSkarpt: g('kapitalUrsprungSkarpt'),
       anstallda: g('anstallda'),
       omsattning: g('omsattning'),
       foretradare: collectPeople(root, 'foretradare'),
       huvudman: collectPeople(root, 'huvudman'),
+      vh_bekraftelse: g('vh_bekraftelse'),
+      vh_agarstruktur: g('vh_agarstruktur'),
+      ombud_annan: g('ombud_annan'),
+      ombud: collectPeople(root, 'ombud'),
       pep: g('pep'),
       pepDetaljer: g('pepDetaljer'),
       pepFamilj: g('pepFamilj'),
@@ -100,16 +155,80 @@
       kontanter: g('kontanter'),
       kontanterAndel: g('kontanterAndel'),
       kryptovaluta: g('kryptovaluta'),
+      villkorade_svar: collectVillkorade(root),
       bekraftelse: !!root.querySelector('[data-kf="bekraftelse"]')?.checked
     };
   }
 
-  function statusClass(status) {
-    const s = String(status || 'utkast');
-    if (s === 'besvarat' || s === 'signerat') return 'ok';
-    if (s === 'skickat') return 'sent';
-    if (s === 'prefillad') return 'prefill';
-    return 'draft';
+  function tjansterHtml(selected, options, readOnly) {
+    const sel = Array.isArray(selected) ? selected : [];
+    const opts = Array.isArray(options) && options.length
+      ? options
+      : sel.map((t) => ({ id: t.id || '', namn: t.namn || '' }));
+    if (!opts.length) {
+      return '<p class="kundformular-hint">Inga tjänster i byråns katalog ännu. Koppla tjänster på kundkortet först.</p>';
+    }
+    return `<div class="kundformular-tjanster" data-kf-tjanster>${opts.map((t) => {
+      const id = t.id || '';
+      const namn = t.namn || id;
+      const checked = sel.some((s) => (id && s.id && s.id === id)
+        || ((s.namn || '').toLowerCase() === namn.toLowerCase()));
+      return `<label class="kundformular-check kundformular-check--tjanst">
+        <input type="checkbox" data-kf-tjanst data-kf-tjanst-id="${esc(id)}" data-kf-tjanst-namn="${esc(namn)}" value="${esc(namn)}"${checked ? ' checked' : ''}${readOnly ? ' disabled' : ''}>
+        <span>${esc(namn)}</span>
+      </label>`;
+    }).join('')}</div>`;
+  }
+
+  function matchVillkorade(katalog, tjanster) {
+    const names = (Array.isArray(tjanster) ? tjanster : []).map((t) => t.namn || t.id).filter(Boolean);
+    const list = Array.isArray(katalog) ? katalog : [];
+    if (!names.length) return [];
+    return list.filter((c) => {
+      let re = null;
+      try {
+        const src = c.tjanstMatchSource || '';
+        const m = String(src).match(/^\/(.*)\/([a-z]*)$/i);
+        re = m ? new RegExp(m[1], m[2]) : null;
+      } catch (_) { re = null; }
+      if (!re) return false;
+      return names.some((n) => re.test(String(n)));
+    }).map((c) => ({ id: c.id, frage: c.frage, typ: c.typ }));
+  }
+
+  function villkoradeHtml(kontroller, svarMap, readOnly) {
+    const list = Array.isArray(kontroller) ? kontroller : [];
+    if (!list.length) {
+      return '<p class="kundformular-hint">Inga villkorade frågor för valda tjänster just nu.</p>';
+    }
+    const svar = svarMap && typeof svarMap === 'object' ? svarMap : {};
+    return list.map((c) => {
+      const row = svar[c.id] || {};
+      const needsVarfor = c.typ === 'ja_nej_varfor';
+      return `<div class="kundformular-villkorad" data-kf-villkorad="${esc(c.id)}" data-kf-villkorad-typ="${esc(c.typ || 'ja_nej')}">
+        <label>${esc(c.frage)}
+          <select class="form-control" data-kf-villkorad-svar${readOnly ? ' disabled' : ''}>
+            <option value="">—</option>
+            <option value="Ja"${row.svar === 'Ja' ? ' selected' : ''}>Ja</option>
+            <option value="Nej"${row.svar === 'Nej' ? ' selected' : ''}>Nej</option>
+          </select>
+        </label>
+        <label class="kundformular-villkorad-varfor"${row.svar === 'Ja' || needsVarfor ? '' : ' hidden'}>Kort förklaring
+          <input type="text" class="form-control" data-kf-villkorad-varfor value="${esc(row.varfor || '')}" placeholder="Valfritt vid Nej"${readOnly ? ' readonly' : ''}>
+        </label>
+      </div>`;
+    }).join('');
+  }
+
+  function computeLocalMeta(answers, meta) {
+    const next = { ...(meta || {}) };
+    const vhRelevant = meta?.vhRelevant !== false;
+    const vh = String(answers.vh_bekraftelse || '');
+    next.vhKraverAgarstruktur = vhRelevant
+      && (vh === 'Osaker' || vh === 'Nej' || !!meta?.vhKomplex);
+    const pep = answers.pep === 'Ja' || answers.pepFamilj === 'Ja';
+    next.skarptKapital = pep || !!meta?.skarptKapital;
+    return next;
   }
 
   function render(container, payload, opts = {}) {
@@ -117,24 +236,58 @@
     const form = payload?.form || {};
     const a = form.answers || {};
     const summary = payload?.summary || {};
+    const meta = payload?.meta || {};
     const onAction = typeof opts.onAction === 'function' ? opts.onAction : null;
+    const readOnly = !!meta.readOnly;
+    const vhRelevant = meta.vhRelevant !== false;
+    const liveMeta = computeLocalMeta(a, meta);
+    const submitted = !!meta.submitted
+      || summary.status === 'besvarat'
+      || summary.status === 'signerat';
 
     const metaBits = [];
-    if (summary.answeredAt) {
+    if (summary.answeredAt || summary.isAnswered) {
       metaBits.push(`Kunden svarade <strong>${esc(fmtDate(summary.answeredAt))}</strong>${summary.answeredBy ? ` (${esc(summary.answeredBy)})` : ''}.`);
     } else {
       metaBits.push('Inget kundsvar registrerat ännu.');
     }
     if (summary.sentAt) metaBits.push(`Skickat ${esc(fmtDate(summary.sentAt))}.`);
     if (summary.signedAt) metaBits.push(`Signerat ${esc(fmtDate(summary.signedAt))}.`);
-    if (summary.prefacedAt) metaBits.push(`Senast prefillat ${esc(fmtDate(summary.prefacedAt))}.`);
+
+    const showAgarstruktur = liveMeta.vhKraverAgarstruktur;
+    const showOmbud = a.ombud_annan === 'Ja';
+    const showSkarpt = liveMeta.skarptKapital;
+
+    let n = 1;
+    const nextSec = () => n++;
+    const sForetag = nextSec();
+    const sTjanster = nextSec();
+    const sSyfte = nextSec();
+    const sVh = vhRelevant ? nextSec() : null;
+    const sOmbud = nextSec();
+    const sForetradare = nextSec();
+    const sVillkorade = nextSec();
+    const sOvrigt = nextSec();
+    const sIntyg = nextSec();
+
+    const ombudLabel = vhRelevant
+      ? 'Ombud annan än verklig huvudman?'
+      : 'Ombud annan än ägaren/företrädaren?';
+    const ombudHint = vhRelevant
+      ? 'Den som faktiskt för dialogen, om annan än verklig huvudman — identifieras separat.'
+      : 'Den som faktiskt för dialogen, om annan än ägaren — identifieras separat. Verklig huvudman är inte aktuell för enskild firma / fysisk person.';
+
+    const ro = readOnly ? ' readonly' : '';
+    const tjansterOptions = meta.tjansterOptions || meta.tjansterOptions || [];
+    const villkorade = meta.villkoradeKontroller
+      || matchVillkorade(meta.villkoradeKatalog, a.tjanster);
 
     container.innerHTML = `
       <div class="kundformular-panel" id="kundformular-root">
         <div class="kundformular-header">
           <div>
             <h3 class="kundformular-title">Kundformulär</h3>
-            <p class="kundformular-lead">Samma formulär som kunden ska fylla i. Byrån kan prefilla uppgifter ni redan har – kunden bekräftar och kompletterar det som enligt lag ska komma från kunden själv. BankID-signering byggs ut härnäst.</p>
+            <p class="kundformular-lead">Exakt samma formulär som kunden ser och skickar in — neutral faktayta utan riskpoäng.</p>
           </div>
           <div class="kundformular-header-status">
             <span class="kundformular-status kundformular-status--${esc(statusClass(summary.status))}">${esc(summary.statusLabel || summary.status || 'Utkast')}</span>
@@ -142,108 +295,160 @@
           </div>
         </div>
 
+        ${submitted ? '<div class="kundformular-submitted-banner" role="status">Visar det kunden skickat in. Samma innehåll som kundvyn.</div>' : ''}
+
         <div class="kundformular-actions">
-          <button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort</button>
+          ${readOnly ? '' : `<button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort</button>
           <button type="button" class="btn btn-primary" data-kf-action="save"><i class="fas fa-save"></i> Spara</button>
-          <button type="button" class="btn btn-secondary" data-kf-action="mark_answered" title="Tills kundportalen finns"><i class="fas fa-check"></i> Markera som besvarat</button>
+          <button type="button" class="btn btn-secondary" data-kf-action="mark_answered" title="Tills kundportalen finns"><i class="fas fa-check"></i> Markera som besvarat</button>`}
           <button type="button" class="btn btn-ghost" data-kf-action="mark_sent" disabled title="Kommer med BankID-utskick"><i class="fas fa-id-card"></i> Skicka med BankID</button>
         </div>
 
-        <form class="kundformular-form" id="kundformular-form" autocomplete="off">
+        <form class="kundformular-form${readOnly ? ' kundformular-form--readonly' : ''}" id="kundformular-form" autocomplete="off">
           <section class="kundformular-section">
-            <h4>1. Företag</h4>
-            <p class="kundformular-hint">Hämtas från kundkortet. Kunden ser men behöver normalt inte ändra.</p>
+            <h4>${sForetag}. Företag</h4>
             <div class="kundformular-grid">
-              <label>Företagsnamn
+              <label>${fieldLabel('Företagsnamn')}
                 <input type="text" class="form-control" data-kf="foretagsnamn" value="${esc(a.foretagsnamn || '')}" readonly>
               </label>
-              <label>Organisationsnummer
+              <label>${fieldLabel('Organisationsnummer')}
                 <input type="text" class="form-control" data-kf="orgnr" value="${esc(a.orgnr || '')}" readonly>
               </label>
             </div>
           </section>
 
           <section class="kundformular-section">
-            <h4>2. Syfte och verksamhet</h4>
-            <p class="kundformular-hint">Uppgifter som enligt penningtvättsregelverket ska komma från / bekräftas av kunden.</p>
-            <label>Syfte med affärsförbindelsen
-              <textarea class="form-control" rows="2" data-kf="syfte_affarsrelation" placeholder="t.ex. sedvanliga redovisningstjänster">${esc(a.syfte_affarsrelation || '')}</textarea>
+            <h4>${sTjanster}. Tjänster</h4>
+            <p class="kundformular-hint">Vilka av byråns tjänster omfattas av uppdraget.</p>
+            <div class="kundformular-label-row" style="margin-bottom:0.5rem">${fieldLabel('Uppdrag / tjänster')}</div>
+            ${tjansterHtml(a.tjanster, tjansterOptions, readOnly)}
+          </section>
+
+          <section class="kundformular-section">
+            <h4>${sSyfte}. Syfte, verksamhet och omfattning</h4>
+            <label>${fieldLabel('Syfte med affärsförbindelsen')}
+              <textarea class="form-control" rows="2" data-kf="syfte_affarsrelation" placeholder="t.ex. sedvanliga redovisningstjänster"${ro}>${esc(a.syfte_affarsrelation || '')}</textarea>
             </label>
-            <label>Beskrivning av verksamheten
-              <textarea class="form-control" rows="3" data-kf="verksamhet" placeholder="Vad gör företaget?">${esc(a.verksamhet || '')}</textarea>
+            <label>${fieldLabel('Verksamhetens art i praktiken')}
+              <textarea class="form-control" rows="3" data-kf="verksamhet" placeholder="Vad gör företaget konkret — inte bara SNI-kod"${ro}>${esc(a.verksamhet || '')}</textarea>
             </label>
-            <label>Kapitalets / medlens ursprung
-              <textarea class="form-control" rows="2" data-kf="kapitalUrsprung" placeholder="t.ex. vinst från verksamheten, ägartillskott">${esc(a.kapitalUrsprung || '')}</textarea>
+            <label>${fieldLabel('Förväntad omfattning och art av transaktioner')}
+              <textarea class="form-control" rows="2" data-kf="forvantad_omfattning" placeholder="Volym, frekvens, typiska motparter"${ro}>${esc(a.forvantad_omfattning || '')}</textarea>
             </label>
+            <label>${fieldLabel('Källa till kapital / medlens ursprung')}
+              <textarea class="form-control" rows="2" data-kf="kapitalUrsprung" placeholder="t.ex. vinst från verksamheten, ägartillskott"${ro}>${esc(a.kapitalUrsprung || '')}</textarea>
+            </label>
+            <div class="kundformular-skarpt"${showSkarpt ? '' : ' hidden'} data-kf-skarpt>
+              <label>${fieldLabel('Källa till de specifika tillgångarna (skärpta åtgärder)')}
+                <textarea class="form-control" rows="2" data-kf="kapitalUrsprungSkarpt" placeholder="Ursprung till de aktuella medlen"${ro}>${esc(a.kapitalUrsprungSkarpt || '')}</textarea>
+              </label>
+            </div>
             <div class="kundformular-grid">
-              <label>Ungefärlig omsättning
-                <input type="text" class="form-control" data-kf="omsattning" value="${esc(a.omsattning || '')}">
+              <label>${fieldLabel('Internationell koppling / utlandstransaktioner?')}
+                ${jaNejSelect('internationellHandel', a.internationellHandel, readOnly)}
               </label>
-              <label>Antal anställda
-                <input type="text" class="form-control" data-kf="anstallda" value="${esc(a.anstallda || '')}">
+              <label>${fieldLabel('Kundens nätverksgeografi (länder)')}
+                <input type="text" class="form-control" data-kf="internationellaLander" value="${esc(a.internationellaLander || '')}" placeholder="t.ex. Norge, Tyskland"${ro}>
               </label>
             </div>
           </section>
 
-          <section class="kundformular-section">
-            <h4>3. Företrädare / ombud</h4>
-            <div class="kundformular-person-list" data-kf-person-list="foretradare">
-              ${personRows(a.foretradare, 'foretradare')}
-            </div>
-            <button type="button" class="btn btn-ghost btn-sm" data-add-person="foretradare"><i class="fas fa-plus"></i> Lägg till företrädare</button>
-          </section>
-
-          <section class="kundformular-section">
-            <h4>4. Verklig huvudman</h4>
+          ${vhRelevant ? `
+          <section class="kundformular-section" data-kf-vh-section>
+            <h4>${sVh}. Verklig huvudman</h4>
+            <p class="kundformular-hint">Prefyllt från register. Bekräfta aktivt. Vid komplex ägarstruktur beskrivs kedjan.</p>
+            <div class="kundformular-label-row" style="margin-bottom:0.5rem">${fieldLabel('Registrerade verkliga huvudmän')}</div>
             <div class="kundformular-person-list" data-kf-person-list="huvudman">
-              ${personRows(a.huvudman, 'huvudman')}
+              ${personRows(a.huvudman, 'huvudman', readOnly)}
             </div>
-            <button type="button" class="btn btn-ghost btn-sm" data-add-person="huvudman"><i class="fas fa-plus"></i> Lägg till verklig huvudman</button>
-          </section>
+            ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-add-person="huvudman"><i class="fas fa-plus"></i> Lägg till verklig huvudman</button>'}
+            <div class="kundformular-grid" style="margin-top:0.75rem">
+              <label>${fieldLabel('Stämmer detta?')}
+                ${vhBekraftelseSelect(a.vh_bekraftelse, readOnly)}
+              </label>
+            </div>
+            <div class="kundformular-agarstruktur"${showAgarstruktur ? '' : ' hidden'} data-kf-agarstruktur>
+              <label>${fieldLabel('Beskriv ägarstrukturen / kedjan')}
+                <textarea class="form-control" rows="3" data-kf="vh_agarstruktur" placeholder="Ägarled, utländska bolag, andelar under 25 % …"${ro}>${esc(a.vh_agarstruktur || '')}</textarea>
+              </label>
+            </div>
+          </section>` : `
+          <input type="hidden" data-kf="vh_bekraftelse" value="">
+          <input type="hidden" data-kf="vh_agarstruktur" value="">
+          `}
 
           <section class="kundformular-section">
-            <h4>5. PEP</h4>
+            <h4>${sOmbud}. Ombud</h4>
+            <p class="kundformular-hint">${esc(ombudHint)}</p>
             <div class="kundformular-grid">
-              <label>Är någon företrädare eller verklig huvudman en PEP?
-                ${jaNejSelect('pep', a.pep)}
+              <label>${fieldLabel(ombudLabel)}
+                ${jaNejSelect('ombud_annan', a.ombud_annan, readOnly)}
               </label>
-              <label>Detaljer
-                <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll">
-              </label>
-              <label>Närstående till PEP?
-                ${jaNejSelect('pepFamilj', a.pepFamilj)}
-              </label>
-              <label>Detaljer närstående
-                <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}">
-              </label>
+            </div>
+            <div class="kundformular-ombud"${showOmbud ? '' : ' hidden'} data-kf-ombud>
+              <div class="kundformular-label-row" style="margin-bottom:0.5rem">${fieldLabel('Ombud')}</div>
+              <div class="kundformular-person-list" data-kf-person-list="ombud">
+                ${personRows(a.ombud, 'ombud', readOnly)}
+              </div>
+              ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-add-person="ombud"><i class="fas fa-plus"></i> Lägg till ombud</button>'}
             </div>
           </section>
 
           <section class="kundformular-section">
-            <h4>6. Internationellt, kontanter och krypto</h4>
+            <h4>${sForetradare}. Företrädare</h4>
+            <p class="kundformular-hint">Firmatecknare / styrelse / ägare.</p>
+            <div class="kundformular-label-row" style="margin-bottom:0.5rem">${fieldLabel('Företrädare')}</div>
+            <div class="kundformular-person-list" data-kf-person-list="foretradare">
+              ${personRows(a.foretradare, 'foretradare', readOnly)}
+            </div>
+            ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-add-person="foretradare"><i class="fas fa-plus"></i> Lägg till företrädare</button>'}
+          </section>
+
+          <section class="kundformular-section">
+            <h4>${sVillkorade}. Villkorade kontrollfrågor</h4>
+            <p class="kundformular-hint">Kopplade till valda tjänster.</p>
+            <div data-kf-villkorade-root>
+              ${villkoradeHtml(villkorade, a.villkorade_svar, readOnly)}
+            </div>
+          </section>
+
+          <section class="kundformular-section">
+            <h4>${sOvrigt}. Övriga fakta</h4>
             <div class="kundformular-grid">
-              <label>Internationell handel / utlandstransaktioner?
-                ${jaNejSelect('internationellHandel', a.internationellHandel)}
+              <label>${fieldLabel('PEP (politiskt exponerad person)?')}
+                ${jaNejSelect('pep', a.pep, readOnly)}
               </label>
-              <label>Länder
-                <input type="text" class="form-control" data-kf="internationellaLander" value="${esc(a.internationellaLander || '')}" placeholder="t.ex. Norge, Tyskland">
+              <label>${fieldLabel('Detaljer PEP')}
+                <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
               </label>
-              <label>Kontanthantering?
-                ${jaNejSelect('kontanter', a.kontanter)}
+              <label>${fieldLabel('Närstående till PEP?')}
+                ${jaNejSelect('pepFamilj', a.pepFamilj, readOnly)}
               </label>
-              <label>Andel kontanter (om ja)
-                <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}">
+              <label>${fieldLabel('Detaljer närstående')}
+                <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
               </label>
-              <label>Kryptovaluta?
-                ${jaNejSelect('kryptovaluta', a.kryptovaluta)}
+              <label>${fieldLabel('Kontanthantering?')}
+                ${jaNejSelect('kontanter', a.kontanter, readOnly)}
+              </label>
+              <label>${fieldLabel('Andel kontanter (om ja)')}
+                <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}"${ro}>
+              </label>
+              <label>${fieldLabel('Kryptovaluta?')}
+                ${jaNejSelect('kryptovaluta', a.kryptovaluta, readOnly)}
+              </label>
+              <label>${fieldLabel('Ungefärlig omsättning')}
+                <input type="text" class="form-control" data-kf="omsattning" value="${esc(a.omsattning || '')}"${ro}>
+              </label>
+              <label>${fieldLabel('Antal anställda')}
+                <input type="text" class="form-control" data-kf="anstallda" value="${esc(a.anstallda || '')}"${ro}>
               </label>
             </div>
           </section>
 
           <section class="kundformular-section">
-            <h4>7. Intygande</h4>
+            <h4>${sIntyg}. Intygande</h4>
             <label class="kundformular-check">
-              <input type="checkbox" data-kf="bekraftelse" ${a.bekraftelse ? 'checked' : ''}>
+              <input type="checkbox" data-kf="bekraftelse" ${a.bekraftelse ? 'checked' : ''}${readOnly ? ' disabled' : ''}>
               <span>Jag intygar att uppgifterna är korrekta och fullständiga såvitt jag känner till.</span>
             </label>
           </section>
@@ -254,7 +459,47 @@
     const root = container.querySelector('#kundformular-root');
     if (!root || !onAction) return;
 
+    function syncConditionalUi() {
+      const answers = collectAnswers(root);
+      const local = computeLocalMeta(answers, meta);
+      const agar = root.querySelector('[data-kf-agarstruktur]');
+      if (agar) agar.hidden = !local.vhKraverAgarstruktur;
+      const ombud = root.querySelector('[data-kf-ombud]');
+      if (ombud) ombud.hidden = answers.ombud_annan !== 'Ja';
+      const skarpt = root.querySelector('[data-kf-skarpt]');
+      if (skarpt) skarpt.hidden = !local.skarptKapital;
+      root.querySelectorAll('[data-kf-villkorad]').forEach((wrap) => {
+        const svar = (wrap.querySelector('[data-kf-villkorad-svar]')?.value || '').trim();
+        const varfor = wrap.querySelector('.kundformular-villkorad-varfor');
+        if (!varfor) return;
+        const always = wrap.getAttribute('data-kf-villkorad-typ') === 'ja_nej_varfor';
+        varfor.hidden = !(always || svar === 'Ja');
+      });
+    }
+
+    function refreshVillkoradeFromTjanster() {
+      if (readOnly) return;
+      const holder = root.querySelector('[data-kf-villkorade-root]');
+      if (!holder) return;
+      const answers = collectAnswers(root);
+      const matched = matchVillkorade(meta.villkoradeKatalog || meta.villkoradeKontroller, answers.tjanster);
+      holder.innerHTML = villkoradeHtml(matched, answers.villkorade_svar || {}, readOnly);
+    }
+
+    root.addEventListener('change', (e) => {
+      if (readOnly) return;
+      if (e.target.matches('[data-kf-tjanst]')) {
+        refreshVillkoradeFromTjanster();
+        syncConditionalUi();
+        return;
+      }
+      if (e.target.matches('[data-kf="vh_bekraftelse"], [data-kf="ombud_annan"], [data-kf="pep"], [data-kf="pepFamilj"], [data-kf-villkorad-svar]')) {
+        syncConditionalUi();
+      }
+    });
+
     root.addEventListener('click', (e) => {
+      if (readOnly) return;
       const addBtn = e.target.closest('[data-add-person]');
       if (addBtn) {
         e.preventDefault();
@@ -262,7 +507,7 @@
         const list = root.querySelector(`[data-kf-person-list="${prefix}"]`);
         if (!list) return;
         const wrap = document.createElement('div');
-        wrap.innerHTML = personRows([{}], prefix);
+        wrap.innerHTML = personRows([{}], prefix, false);
         list.appendChild(wrap.firstElementChild);
         return;
       }
@@ -276,7 +521,7 @@
           if (!list.querySelector('[data-kf-person-row]')) {
             const prefix = list.getAttribute('data-kf-person-list');
             const wrap = document.createElement('div');
-            wrap.innerHTML = personRows([{}], prefix);
+            wrap.innerHTML = personRows([{}], prefix, false);
             list.appendChild(wrap.firstElementChild);
           }
         }
@@ -291,4 +536,4 @@
   }
 
   global.KundformularUi = { render, collectAnswers, fmtDate };
-})(typeof window !== 'undefined' ? window : global);
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));
