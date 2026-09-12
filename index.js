@@ -86,6 +86,7 @@ const { INHERENT_DESCRIPTION_AI_RULES, TJANST_BESKRIVNING_LABEL } = require('./l
 const AiTjanstAnalys = require('./lib/ai-tjanst-analys');
 const TjanstUtforandeMallar = require('./public/js/tjanst-utforande-mallar');
 const TjanstAktivKundkoppling = require('./lib/tjanst-aktiv-kundkoppling');
+const TjanstLiveGate = require('./lib/tjanst-live-gate');
 const {
   withAirtableRetry,
   isRetryableAirtableError,
@@ -13763,9 +13764,10 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
 
     const deactivations = TjanstAktivKundkoppling.findDeactivations(previous, incoming);
     const removals = TjanstAktivKundkoppling.findRemovals(previous, incoming);
-    if (deactivations.length || removals.length) {
-      let kundAntalTjanster = {};
-      let riskRecords = [];
+    const customActivations = TjanstLiveGate.findCustomActivations(previous, incoming);
+    let kundAntalTjanster = {};
+    let riskRecords = [];
+    if (deactivations.length || removals.length || customActivations.length) {
       try {
         const userData = result.userData || await getAirtableUser(req.user.email);
         if (userData && statistikRiskbedomning.canBuildForUser(userData)) {
@@ -13780,8 +13782,22 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
           result.byraId
         );
       } catch (countErr) {
-        console.warn('Kunde inte kontrollera kundkoppling vid inaktivering/radering:', countErr.message);
+        console.warn('Kunde inte kontrollera kundkoppling/live-gate:', countErr.message);
       }
+    }
+    if (customActivations.length) {
+      const blockedLive = TjanstLiveGate.findBlockedCustomActivation(previous, incoming, riskRecords);
+      if (blockedLive) {
+        return res.status(409).json({
+          error: blockedLive.message,
+          code: blockedLive.code || 'tjanst_mini_analys_saknas',
+          mallId: blockedLive.mallId,
+          namn: blockedLive.namn,
+          missing: blockedLive.missing || []
+        });
+      }
+    }
+    if (deactivations.length || removals.length) {
       const blockedDeletion = TjanstAktivKundkoppling.findBlockedDeletion(
         previous,
         incoming,
@@ -13832,6 +13848,30 @@ app.put('/api/byra/tjanst-utforande', authenticateToken, async (req, res) => {
       }
       throw e;
     }
+    // Logga aktivering av egen tjänst → risk_events + AR delta-pending
+    if (customActivations.length) {
+      try {
+        await ensureByraResaStateField(airtableAccessToken, airtableBaseId);
+        const rawResa = (result.record.fields || {})[ByraResa.BYRA_RESA_STATE_FIELD];
+        let resaState = ByraResa.parseByraResaState(rawResa);
+        const actor = req.user?.email || req.user?.id || '';
+        for (const item of customActivations) {
+          resaState = ByraResa.appendRiskEvent(resaState, TjanstLiveGate.buildRiskEvent({
+            type: 'tjanst_aktiverad',
+            refId: item.mallId,
+            namn: item.namn,
+            by: actor,
+            arInvalidated: true
+          }));
+        }
+        await patchByraerRecordFields(airtableAccessToken, airtableBaseId, result.record.id, {
+          [ByraResa.BYRA_RESA_STATE_FIELD]: ByraResa.serializeByraResaState(resaState)
+        });
+      } catch (logErr) {
+        console.warn('Kunde inte logga tjanst_aktiverad i byråresa:', logErr.message);
+      }
+    }
+
     res.json({
       success: true,
       state: incoming,

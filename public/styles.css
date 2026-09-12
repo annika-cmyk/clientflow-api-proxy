@@ -18529,6 +18529,18 @@ h5.ar-subsection-title {
     opacity: 0.55;
     cursor: not-allowed;
 }
+.tjanst-mall-draft-badge {
+    display: inline-block;
+    margin-top: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    color: #92400e;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+}
 .tjanst-mall-status {
     font-size: 0.82rem;
     color: var(--text-secondary, var(--text));
