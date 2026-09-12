@@ -18097,6 +18097,16 @@ h5.ar-subsection-title {
 .kom-igang-header-actions { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
 .kom-igang-resa-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; font-weight: 650; color: #0f766e; text-decoration: none; padding: 0.35rem 0.7rem; border: 1px solid #99f6e4; border-radius: 999px; background: #f0fdfa; }
 .kom-igang-resa-link:hover { background: #ccfbf1; }
+
+.byra-resa-kalla-row-right { display: inline-flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
+.byra-resa-kalla-badge { display: inline-block; margin-left: 0.35rem; padding: 0.08rem 0.4rem; border-radius: 999px; font-size: 0.68rem; font-weight: 650; letter-spacing: 0.01em; color: #334155; background: #e2e8f0; vertical-align: middle; }
+.byra-resa-kalla-remove { border: 0; background: transparent; color: #64748b; font-size: 0.78rem; font-weight: 600; cursor: pointer; padding: 0.2rem 0.35rem; }
+.byra-resa-kalla-remove:hover { color: #b91c1c; }
+.byra-resa-kalla-add { margin-top: 0.9rem; padding: 0.9rem 1rem; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; }
+.byra-resa-kalla-add-title { margin: 0 0 0.55rem; font-size: 0.92rem; font-weight: 650; color: #0f172a; }
+.byra-resa-kalla-add-row { display: flex; flex-wrap: wrap; gap: 0.65rem 0.75rem; align-items: flex-end; }
+.byra-resa-kalla-add-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 12rem; flex: 1 1 14rem; font-size: 0.82rem; font-weight: 600; color: #475569; }
+.byra-resa-kalla-add-field .form-input { font-weight: 500; }
 @media (max-width: 720px) {
   .byra-resa-steps-grid { grid-template-columns: 1fr; }
   .byra-resa-kalla-row-main { flex-direction: column; align-items: flex-start; }

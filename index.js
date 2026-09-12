@@ -15141,10 +15141,10 @@ app.get('/api/byra-resa', authenticateToken, async (req, res) => {
       recordId: record.id,
       canEdit,
       state,
-      catalog: ByraResa.mergeKallaState(state.kalla),
+      catalog: ByraResa.mergeKallaState(state.kalla, state.customKallor),
       steps: ByraResa.RESA_STEPS,
-      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla),
-      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla)
+      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor)
     });
   } catch (error) {
     console.error('❌ GET /api/byra-resa:', error.response?.data || error.message);
@@ -15165,7 +15165,7 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Body måste innehålla { state: object }' });
     }
     const state = ByraResa.buildByraResaState(incoming);
-    if (state.steps[8] && !ByraResa.kallaCatalogComplete(state.kalla)) {
+    if (state.steps[8] && !ByraResa.kallaCatalogComplete(state.kalla, state.customKallor)) {
       return res.status(400).json({
         error: 'Källkatalogen måste vara ifylld innan steg 8 (godkännande) kan markeras klart.',
         state
@@ -15181,9 +15181,9 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
     return res.json({
       success: true,
       state,
-      catalog: ByraResa.mergeKallaState(state.kalla),
-      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla),
-      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla)
+      catalog: ByraResa.mergeKallaState(state.kalla, state.customKallor),
+      kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
+      kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor)
     });
   } catch (error) {
     console.error('❌ PUT /api/byra-resa:', error.response?.data || error.message);

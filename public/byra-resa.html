@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260912resa2">
+    <link rel="stylesheet" href="styles.css?v=20260912resa3">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -24,15 +24,29 @@
                 </header>
 
                 <section class="byra-resa-kalla statistik-section" id="byra-resa-kalla-section">
-                    <h2><i class="fas fa-book-open"></i> Källor till hotbedömningen</h2>
-                    <p class="statistik-section-desc">Ange vilka källor ni tagit del av och vilka som ligger till grund för er bedömning. Obligatoriskt innan slutgodkännande – varje val är aktivt (inga förval).</p>
+                    <h2>Källor till hotbedömningen</h2>
+                    <p class="statistik-section-desc">Ange vilka källor ni tagit del av och vilka som ligger till grund för er bedömning. Obligatoriskt innan slutgodkännande – varje val är aktivt (inga förval). Ni kan också lägga till egna källor.</p>
                     <p class="byra-resa-kalla-progress" id="byra-resa-kalla-progress" aria-live="polite">0 av 0 källor granskade</p>
                     <div id="byra-resa-kalla-list" class="byra-resa-kalla-list"></div>
+                    <div class="byra-resa-kalla-add" id="byra-resa-kalla-add">
+                        <h3 class="byra-resa-kalla-add-title">Lägg till egen källa</h3>
+                        <div class="byra-resa-kalla-add-row">
+                            <label class="byra-resa-kalla-add-field">
+                                <span>Namn</span>
+                                <input type="text" id="byra-resa-kalla-new-label" class="form-input" placeholder="t.ex. Branschvägledning eller intern policy" maxlength="160" autocomplete="off">
+                            </label>
+                            <label class="byra-resa-kalla-add-field">
+                                <span>Länk (valfritt)</span>
+                                <input type="url" id="byra-resa-kalla-new-url" class="form-input" placeholder="https://…" maxlength="500" autocomplete="off">
+                            </label>
+                            <button type="button" class="btn btn-secondary" id="byra-resa-kalla-add-btn">Lägg till</button>
+                        </div>
+                    </div>
                     <p class="byra-resa-kalla-hint" id="byra-resa-kalla-hint"></p>
                 </section>
 
                 <section class="byra-resa-steps statistik-section">
-                    <h2><i class="fas fa-route"></i> Steg i resan</h2>
+                    <h2>Steg i resan</h2>
                     <p class="statistik-section-desc">Varje steg öppnar den befintliga sidan. Bocka av när steget är klart för er byrå.</p>
                     <div id="byra-resa-steps" class="byra-resa-steps-grid"></div>
                 </section>
@@ -50,7 +64,7 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/byra-resa.js?v=2" defer></script>
+    <script src="js/byra-resa.js?v=3" defer></script>
     <script src="app.js" defer></script>
 </body>
 </html>
