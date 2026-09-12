@@ -105,7 +105,7 @@
         return 'risk-' + riskCss(raw);
     }
 
-    /** Högsta nivån av flera (t.ex. inneboende + residual) — styr listkant och ikonfärg. */
+    /** Högsta nivån av flera (t.ex. inneboende + residual) — används för sortering/klass på listkort. */
     function dominantRiskKey() {
         var best = null;
         var bestRank = -1;

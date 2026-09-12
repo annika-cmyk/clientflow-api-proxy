@@ -528,10 +528,7 @@ class RiskAssessmentManager {
         const rowRiskClass = existing && RiskSkalaApi && RiskSkalaApi.dominantRiskItemClass
             ? RiskSkalaApi.dominantRiskItemClass(scored.level, scored.residualLevel)
             : '';
-        const iconRiskClass = [
-            aktiv ? 'is-active' : '',
-            rowRiskClass || ''
-        ].filter(Boolean).join(' ');
+        const iconClass = aktiv ? 'is-active' : '';
         // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
         // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="risk-row-menu-item is-danger tjanst-mall-delete" data-delete-tjanst role="menuitem" ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
@@ -542,7 +539,7 @@ class RiskAssessmentManager {
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
-                        <span class="tjanst-mall-icon${iconRiskClass ? ' ' + iconRiskClass : ''}" aria-hidden="true">
+                        <span class="tjanst-mall-icon${iconClass ? ' ' + iconClass : ''}" aria-hidden="true">
                             <i class="fas ${icon}"></i>
                         </span>
                         <div class="tjanst-mall-copy">
