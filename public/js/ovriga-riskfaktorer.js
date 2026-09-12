@@ -1363,6 +1363,31 @@ class RiskFactorsManager {
         if (emptyRes && motRes && resEl) resEl.value = motRes;
     }
 
+
+    currentModalRiskLevel(prefix = '') {
+        const RS = window.RiskSkala;
+        if (!RS || !RS.assessRisk) return '';
+        const s = Number(document.getElementById(`${prefix}sannolikhet-efter`)?.value
+            || document.getElementById(`${prefix}sannolikhet`)?.value);
+        const k = Number(document.getElementById(`${prefix}konsekvens-efter`)?.value
+            || document.getElementById(`${prefix}konsekvens`)?.value);
+        return (RS.assessRisk(s, k) || {}).level || '';
+    }
+
+    gateAiAccept(aiOriginalText, currentText, tillagg = '', prefix = '') {
+        const API = window.AiGodkannandeFriktion;
+        if (!API || !API.assessAiAcceptFriction) return true;
+        const result = API.assessAiAcceptFriction({
+            riskLevel: this.currentModalRiskLevel(prefix),
+            aiOriginalText,
+            currentText,
+            tillagg
+        });
+        if (result.allowed) return true;
+        this.showNotification(result.reason || 'AI-förslaget måste redigeras vid hög risk.', 'error');
+        return false;
+    }
+
     applyOvrigAiAll(prefix, data) {
         if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
         if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
