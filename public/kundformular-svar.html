@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="sv" class="cf-warm" style="color-scheme: light only;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f4efe6">
+  <title>ClientFlow – Kundformulär</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles.css?v=20260912kundformular-invite">
+  <style>
+    :root { color-scheme: light only; }
+    html { color-scheme: light only; background: var(--app-bg, #f4efe6); }
+    body {
+      margin: 0;
+      font-family: var(--body-font), Schibsted Grotesk, sans-serif;
+      color: var(--title-text, #0f172a);
+      background: linear-gradient(135deg, var(--app-bg, #f4efe6) 0%, var(--panel-2, #ebe4d8) 100%);
+      min-height: 100vh;
+      padding: 2rem 1.25rem 4rem;
+      -webkit-font-smoothing: antialiased;
+    }
+    .kf-wrap { max-width: 760px; margin: 0 auto; }
+    .kf-brand { text-align: center; margin-bottom: 1.25rem; }
+    .kf-brand img { max-width: 150px; height: auto; }
+    .kf-state {
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 14px;
+      padding: 1.75rem 1.5rem;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    .kf-state h1 { font-family: var(--title-font), Fraunces, serif; font-size: 1.25rem; margin: 0 0 .5rem; }
+    .kf-state p { margin: 0; color: var(--text, #475569); }
+    .kf-spin {
+      width: 26px; height: 26px; margin: 0 auto 1rem;
+      border-radius: 50%;
+      border: 3px solid #c7d2fe;
+      border-top-color: var(--accent, #4f46e5);
+      animation: kf-spin .7s linear infinite;
+    }
+    @keyframes kf-spin { to { transform: rotate(360deg); } }
+    .kf-form-shell {
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 14px;
+      padding: 1rem 1rem 1.5rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,.06);
+    }
+    .hidden { display: none !important; }
+    .kf-flash {
+      margin: 0 0 1rem;
+      padding: .75rem 1rem;
+      border-radius: 10px;
+      font-size: .92rem;
+    }
+    .kf-flash--ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+    .kf-flash--err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="kf-wrap">
+    <header class="kf-brand">
+      <strong style="font-family:var(--title-font),Fraunces,serif;font-size:1.35rem;letter-spacing:-0.02em;">ClientFlow</strong>
+    </header>
+
+    <div id="kf-loading" class="kf-state">
+      <div class="kf-spin" aria-hidden="true"></div>
+      <h1>Hämtar formulär…</h1>
+      <p>Ett ögonblick.</p>
+    </div>
+
+    <div id="kf-error" class="kf-state hidden">
+      <h1 id="kf-error-title">Länken fungerar inte</h1>
+      <p id="kf-error-text">Be byrån skicka en ny länk.</p>
+    </div>
+
+    <div id="kf-done" class="kf-state hidden">
+      <h1>Tack!</h1>
+      <p>Era uppgifter är inskickade till byrån.</p>
+    </div>
+
+    <div id="kf-form-wrap" class="kf-form-shell hidden">
+      <div id="kf-flash" class="kf-flash hidden" role="status"></div>
+      <div id="kf-form-root"></div>
+    </div>
+  </div>
+
+  <script src="js/kundformular-ui.js?v=4"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const token = String(params.get('token') || '').trim();
+      const loadingEl = document.getElementById('kf-loading');
+      const errorEl = document.getElementById('kf-error');
+      const errorTitle = document.getElementById('kf-error-title');
+      const errorText = document.getElementById('kf-error-text');
+      const doneEl = document.getElementById('kf-done');
+      const formWrap = document.getElementById('kf-form-wrap');
+      const formRoot = document.getElementById('kf-form-root');
+      const flashEl = document.getElementById('kf-flash');
+
+      function show(el) { el.classList.remove('hidden'); }
+      function hide(el) { el.classList.add('hidden'); }
+
+      function showError(title, text) {
+        hide(loadingEl);
+        hide(formWrap);
+        hide(doneEl);
+        errorTitle.textContent = title || 'Länken fungerar inte';
+        errorText.textContent = text || 'Be byrån skicka en ny länk.';
+        show(errorEl);
+      }
+
+      function flash(msg, ok) {
+        flashEl.textContent = msg;
+        flashEl.className = 'kf-flash ' + (ok ? 'kf-flash--ok' : 'kf-flash--err');
+        show(flashEl);
+      }
+
+      if (!token) {
+        showError('Länk saknas', 'Öppna länken ni fick från byrån.');
+        return;
+      }
+
+      async function loadForm() {
+        const res = await fetch('/api/kundformular/public/' + encodeURIComponent(token), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 410) {
+          showError('Länken har gått ut', data.error || 'Be byrån skicka en ny länk.');
+          return null;
+        }
+        if (!res.ok) {
+          showError('Kunde inte öppna formuläret', data.error || ('HTTP ' + res.status));
+          return null;
+        }
+        return data;
+      }
+
+      async function save(action, answers, btn) {
+        const orig = btn?.innerHTML;
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (action === 'mark_answered' ? 'Skickar…' : 'Sparar…');
+        }
+        try {
+          const res = await fetch('/api/kundformular/public/' + encodeURIComponent(token), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ action, answers })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+          if (action === 'mark_answered' || data.summary?.isAnswered || data.summary?.status === 'besvarat') {
+            hide(formWrap);
+            show(doneEl);
+            return;
+          }
+          render(data);
+          flash('Utkast sparat.', true);
+        } catch (e) {
+          flash(e.message || 'Kunde inte spara', false);
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+          }
+        }
+      }
+
+      function render(payload) {
+        hide(loadingEl);
+        hide(errorEl);
+        if (payload?.summary?.isAnswered || payload?.summary?.status === 'besvarat' || payload?.summary?.status === 'signerat') {
+          hide(formWrap);
+          show(doneEl);
+          return;
+        }
+        show(formWrap);
+        if (!window.KundformularUi || typeof KundformularUi.render !== 'function') {
+          showError('Tekniskt fel', 'Formulärkomponenten kunde inte laddas.');
+          return;
+        }
+        KundformularUi.render(formRoot, payload, {
+          customerMode: true,
+          onAction: (action, answers, btn) => {
+            if (action === 'save' || action === 'mark_answered') {
+              save(action, answers, btn);
+            }
+          }
+        });
+      }
+
+      loadForm()
+        .then((data) => { if (data) render(data); })
+        .catch((e) => showError('Tekniskt fel', e.message || 'Försök igen senare.'));
+    })();
+  </script>
+</body>
+</html>
