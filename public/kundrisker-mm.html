@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClientFlow • Kundrisker mm</title>
+    <title>ClientFlow • Vilka är våra kunder</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
@@ -19,21 +19,21 @@
             <div class="container">
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
-                        <h1>Kundrisker mm</h1>
-                        <p class="risk-header-sub">Kundtyp, geografi, varningsflaggor och risksänkande omständigheter</p>
+                        <h1>Vilka är våra kunder</h1>
+                        <p class="risk-header-sub">Kundkategorier, egen hemvist, motparters geografi, varningsflaggor och risksänkande omständigheter</p>
                         <div class="risk-header-body">
                             <p>
-                                Här bedömer ni risker kopplade till <strong>vem kunden är</strong> och <strong>var byråns kunder finns</strong>: PEP, import/export, högriskbransch, utländska huvudmän, geografisk närvaro med mera. Geografiska riskfaktorer visas i ett eget block nedan — samma byråspecifika poster som på sidan <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>, där ni också kan lägga till och redigera dem. Under listan styr ni även byråns <strong>varningsflaggor</strong> (kort A–C på kundkortet) och <strong>risksänkande faktorer</strong>.
+                                Här samlar ni allt om <strong>kunden och deras verksamhet</strong>: kundkategorier (bransch, PEP, kontanter, import/export med mera) och kundens geografi i två skilda underrubriker — <strong>egen hemvist</strong> respektive <strong>motparters geografi</strong>. Under listan styr ni även byråns <strong>varningsflaggor</strong> (kort A–C på kundkortet) och <strong>risksänkande faktorer</strong>.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
                                 <li>Kundtyper som i sig innebär förhöjd risk — till exempel PEP, kontanthantering, utländska huvudmän eller ideella föreningar.</li>
-                                <li>Geografiska faktorer — närområde, Europa, högriskländer och särskilt utsatta områden i Sverige.</li>
-                                <li>Varningsflaggor som höjer residualen ensamt eller i kombination.</li>
-                                <li>Risksänkande omständigheter som dokumenterar varför kvarvarande risk är lägre.</li>
+                                <li>Egen hemvist — var kunden själv finns (närområde, Europa, högriskländer, särskilt utsatta områden).</li>
+                                <li>Motparters geografi — var kundens kunder och leverantörer finns.</li>
+                                <li>Varningsflaggor som höjer residualen ensamt eller i kombination, och risksänkande omständigheter som dokumenterar varför kvarvarande risk är lägre.</li>
                             </ul>
                             <p class="risk-header-note">
-                                Distribution och verksamhetsspecifika riskfaktorer ligger på sidan
+                                Byråns eget arbetssätt — distributionskanaler och verksamhetsspecifika riskfaktorer — ligger på sidan
                                 <a href="ovriga-riskfaktorer.html">Övriga riskfaktorer</a>.
                             </p>
                         </div>
@@ -43,7 +43,7 @@
             <section class="risk-assessment-section">
                 <div class="container">
                     <div class="risk-list-header">
-                        <h3>Kund- och geografiska riskfaktorer</h3>
+                        <h3>Kundkategorier och geografi</h3>
                         <div class="risk-header-actions">
                             <div class="filter-controls">
                                 <div class="filter-group">
@@ -176,7 +176,8 @@
                             <select id="risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
                                 <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
-                                <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer - här finns kundens kunder & leverantörer</option>
+                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer – egen hemvist</option>
+                                <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer – motparters geografi</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -311,7 +312,8 @@
                             <select id="edit-risk-type" name="risk-type" required>
                                 <option value="">Välj typ av riskfaktor</option>
                                 <option value="Riskfaktorer kopplat till kund">Riskfaktorer kopplat till kund</option>
-                                <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer - här finns kundens kunder & leverantörer</option>
+                                <option value="Geografisk riskfaktorer - här finns byråns kunder">Geografisk riskfaktorer – egen hemvist</option>
+                                <option value="Geografisk riskfaktorer - här finns kundens kunder & leverantörer">Geografisk riskfaktorer – motparters geografi</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -452,6 +454,6 @@
     <script src="js/risksankande-katalog.js?v=2" defer></script>
     <script src="js/ai-falt-granskning.js?v=11" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
-    <script src="js/ovriga-riskfaktorer.js?v=38" defer></script>
+    <script src="js/ovriga-riskfaktorer.js?v=39" defer></script>
 </body>
 </html>

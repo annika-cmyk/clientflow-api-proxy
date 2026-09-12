@@ -908,7 +908,7 @@ class ClientFlowApp {
                             </div>
                             <div class="dashboard-row-details">
                                 <div class="dashboard-missing-hint">
-                                    ${row.antalKunder} kund${row.antalKunder === 1 ? '' : 'er'} har svarat Ja i KYC, men riskfaktorn saknas på sidan Kundrisker mm.
+                                    ${row.antalKunder} kund${row.antalKunder === 1 ? '' : 'er'} har svarat Ja i KYC, men riskfaktorn saknas på sidan Vilka är våra kunder.
                                 </div>
                             </div>
                             <div class="dashboard-row-actions">
@@ -916,7 +916,7 @@ class ClientFlowApp {
                                     <i class="fas fa-plus"></i> Skapa utkast
                                 </button>
                                 <a href="kundrisker-mm.html" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-external-link-alt"></i> Kundrisker mm
+                                    <i class="fas fa-external-link-alt"></i> Vilka är våra kunder
                                 </a>
                             </div>
                         </div>
@@ -949,9 +949,9 @@ class ClientFlowApp {
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
             if (data.alreadyExists) {
-                alert('Riskfaktorn finns redan. Öppna sidan Kundrisker mm för att fylla i den.');
+                alert('Riskfaktorn finns redan. Öppna sidan Vilka är våra kunder för att fylla i den.');
             } else {
-                alert(data.message || 'Utkast skapat. Fyll i resterande fält under Kundrisker mm.');
+                alert(data.message || 'Utkast skapat. Fyll i resterande fält under Vilka är våra kunder.');
             }
             await this.loadSaknadeKycRiskfaktorerList();
         } catch (error) {

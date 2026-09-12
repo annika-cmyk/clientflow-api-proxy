@@ -35,19 +35,18 @@ class RiskFactorsManager {
         const Geo = window.GeoRiskTyper;
         const byraGeo = (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder';
         const motpartGeo = (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
+        const isCustomerGeo = typ === byraGeo || typ === motpartGeo
+            || (Geo && Geo.isGeoTyp && Geo.isGeoTyp(typ));
         if (this.isKundriskerPage()) {
-            // Kundrisker: kundresidual + motparts-geo (inte byråns hemvist)
-            return typ === kundTyp || typ === motpartGeo;
+            // Vilka är våra kunder: kundkategorier + egen hemvist + motparters geografi
+            return typ === kundTyp || isCustomerGeo;
         }
-        // Övriga: distribution, verksamhet + byråns geografiska hemvist (inte motparts-geo)
-        return typ !== kundTyp && typ !== motpartGeo;
+        // Övriga: byråns arbetssätt — distribution och verksamhetsspecifikt (inte kundgeo)
+        return typ !== kundTyp && !isCustomerGeo;
     }
 
     geoRiskGroupLabel() {
-        if (this.isKundriskerPage()) {
-            return (window.GeoRiskTyper && GeoRiskTyper.TYP_MOTPART)
-                || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
-        }
+        // Båda geo-typerna hör till kundsidan; etiketten används bara som fallback.
         return (window.GeoRiskTyper && GeoRiskTyper.TYP_BYRA)
             || 'Geografisk riskfaktorer - här finns byråns kunder';
     }
@@ -57,6 +56,11 @@ class RiskFactorsManager {
     }
 
     displayGroupLabel(riskType) {
+        const Geo = window.GeoRiskTyper;
+        const byraGeo = (Geo && Geo.TYP_BYRA) || 'Geografisk riskfaktorer - här finns byråns kunder';
+        const motpartGeo = (Geo && Geo.TYP_MOTPART) || 'Geografisk riskfaktorer - här finns kundens kunder & leverantörer';
+        if (riskType === byraGeo) return 'Geografisk riskfaktorer – egen hemvist';
+        if (riskType === motpartGeo) return 'Geografisk riskfaktorer – motparters geografi';
         return riskType;
     }
 
@@ -596,13 +600,11 @@ class RiskFactorsManager {
 
         const buildRiskItems = (risksInGroup) => risksInGroup.map(risk => this.createRiskItem(risk)).join('');
 
-        const geoLabel = this.geoRiskGroupLabel();
         const Geo = window.GeoRiskTyper;
         const groupHTML = groupKeys.map(riskType => {
             const risksInGroup = groupedRisks[riskType];
             const riskItems = buildRiskItems(risksInGroup);
-            const isGeo = riskType === geoLabel
-                || (Geo && Geo.isGeoTyp && Geo.isGeoTyp(riskType));
+            const isGeo = !!(Geo && Geo.isGeoTyp && Geo.isGeoTyp(riskType));
 
             return `
                 <div class="risk-group${isGeo ? ' risk-group--geografiska' : ''}">
