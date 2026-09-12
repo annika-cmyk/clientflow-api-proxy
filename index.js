@@ -130,6 +130,7 @@ const auditRuntime = require('./lib/audit-log-runtime');
 const auditHooks = require('./lib/audit-log-hooks');
 const Riskaptit = require('./lib/riskaptit');
 const ByraResa = require('./lib/byra-resa');
+const Kundformular = require('./lib/kundformular');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
@@ -2530,6 +2531,11 @@ const KUNDDATA_OPTIONAL_FIELDS = [
     type: 'date',
     description: 'Datum då Bolagsverket-uppgifterna senast hämtades eller sparades på kundkortet.',
     options: { dateFormat: { name: 'iso' } }
+  },
+  {
+    name: Kundformular.FIELD,
+    type: 'multilineText',
+    description: 'JSON: kundformulär som kunden ska besvara (byråprefill + kundsvar + status/datum).'
   }
 ];
 const KUNDDATA_OPTIONAL_FIELD_BY_NAME = Object.fromEntries(KUNDDATA_OPTIONAL_FIELDS.map((f) => [f.name, f]));
@@ -17440,6 +17446,114 @@ app.get('/api/inleed/callback', async (req, res) => {
     console.warn('inleed callback:', e.message);
   });
   res.json({ ok: true });
+});
+
+
+// GET /api/kundformular/:customerId – Hämta kundformulär (samma som kunden ska besvara)
+app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
+    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const fields = custRes.data.fields || {};
+    let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
+    // Om tomt: föreslå identitet från kundkortet så byrån ser rätt företag direkt
+    if (!form.answers.foretagsnamn && !form.answers.orgnr) {
+      form = Kundformular.applyPrefill(form, {
+        fields,
+        kyc: (() => {
+          try { return JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { return {}; }
+        })()
+      });
+      // Prefill-preview i GET ska inte ändra status permanent – behåll utkast om inget sparats
+      if (!(fields[Kundformular.FIELD] || '').trim()) {
+        form.status = 'utkast';
+        form.prefacedAt = null;
+        form.prefillMeta = { fields: form.prefillMeta?.fields || [], at: null };
+      }
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      form,
+      summary: Kundformular.summaryForUi(form)
+    });
+  } catch (error) {
+    console.error('❌ GET /api/kundformular:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
+  }
+});
+
+// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat
+app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const action = String(req.body?.action || 'save').trim();
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
+    await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+
+    const custRes = await axios.get(
+      `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+    );
+    const fields = custRes.data.fields || {};
+    let form = Kundformular.parseForm(fields[Kundformular.FIELD] || '');
+    let kyc = {};
+    try { kyc = JSON.parse(fields['KYC-formular (JSON)'] || '{}') || {}; } catch (_) { kyc = {}; }
+
+    if (action === 'prefill') {
+      form = Kundformular.applyPrefill(form, { fields, kyc });
+    } else {
+      const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
+      const actor = req.body?.actor === 'kund' ? 'kund' : 'byra';
+      const saveAction = ['mark_answered', 'mark_sent', 'mark_signed'].includes(action) ? action : 'save';
+      form = Kundformular.applySave(form, answers, { actor, action: saveAction });
+    }
+
+    const payload = Kundformular.serializeForm(form);
+    try {
+      await axios.patch(
+        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+        { fields: { [Kundformular.FIELD]: payload } },
+        { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+      );
+    } catch (patchErr) {
+      const msg = patchErr.response?.data?.error?.message || patchErr.message || '';
+      if (/Unknown field name/i.test(String(msg))) {
+        await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+        await axios.patch(
+          `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
+          { fields: { [Kundformular.FIELD]: payload } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        throw patchErr;
+      }
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      form,
+      summary: Kundformular.summaryForUi(form)
+    });
+  } catch (error) {
+    console.error('❌ PUT /api/kundformular:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
+  }
 });
 
 // GET /api/kyc-formular/:customerId – Hämta sparat KYC-formulär
