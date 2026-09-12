@@ -54,7 +54,11 @@
     const missing = (data && Array.isArray(data.missingEnv) && data.missingEnv.length)
       ? data.missingEnv
       : ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_GMAIL_REDIRECT_URI'];
-    return `Gmail är inte konfigurerad på servern. Saknas i Render: ${missing.join(', ')}. Se docs/GMAIL_SETUP.md.`;
+    const present = data && data.envPresent && typeof data.envPresent === 'object'
+      ? Object.entries(data.envPresent).filter(([, set]) => set).map(([k]) => k)
+      : [];
+    const setPart = present.length ? ` Satta: ${present.join(', ')}.` : '';
+    return `Gmail är inte konfigurerad på servern. Saknas i Render: ${missing.join(', ')}.${setPart} Se docs/GMAIL_SETUP.md.`;
   }
 
   const els = {

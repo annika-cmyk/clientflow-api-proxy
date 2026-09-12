@@ -19,7 +19,7 @@ Koppla användarens Gmail till ClientFlow för att:
 
 ## Render-miljövariabler
 
-Sätt dessa på Render-tjänsten (Environment → Environment Variables), spara och låt tjänsten redeploya:
+Sätt dessa på **web service** som kör `app.clientflow.se` (Environment → Environment Variables → **Save Changes**). Om auto-deploy inte startar: **Manual Deploy → Deploy latest commit**.
 
 ```
 GOOGLE_CLIENT_ID=...          # från Google Cloud OAuth-klienten
@@ -32,9 +32,17 @@ GMAIL_TOKEN_SECRET=...
 GMAIL_KUNDER_LABEL=KUNDER
 ```
 
-**Obs:** Kod och UI använder exakt namnen `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` och `GOOGLE_GMAIL_REDIRECT_URI` (inte t.ex. `GOOGLE_GMAIL_CLIENT_ID`). Fallback `GOOGLE_REDIRECT_URI` accepteras endast för redirect-URI.
+### Accepterade alias (första icke-tomma vinner)
 
-När variablerna saknas visar Mejl-sidan status **Ej konfigurerad** och knappen **Koppla Gmail** ger en tydlig toast med vilka env som saknas.
+| Fält | Kanoniskt namn (rekommenderat) | Alias |
+|------|-------------------------------|-------|
+| Client ID | `GOOGLE_CLIENT_ID` | `GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_ID`, `GMAIL_CLIENT_ID` |
+| Client Secret | `GOOGLE_CLIENT_SECRET` | `GOOGLE_GMAIL_CLIENT_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GMAIL_CLIENT_SECRET` |
+| Redirect URI | `GOOGLE_GMAIL_REDIRECT_URI` | `GOOGLE_REDIRECT_URI`, `GOOGLE_OAUTH_REDIRECT_URI`, `GMAIL_REDIRECT_URI` |
+
+Tomma eller bara whitespace räknas som saknade. Använd gärna de kanoniska namnen.
+
+När variablerna saknas visar Mejl-sidan status **Ej konfigurerad**. `/api/gmail/status` returnerar `missingEnv`, `envPresent` (boolean per kanonisk nyckel) och `envResolvedFrom` (vilket alias som gav värde) – utan att läcka secret-värden.
 
 ## Airtable
 
@@ -57,10 +65,14 @@ Tokens lagras krypterade (AES-256-GCM).
 
 | Symptom | Åtgärd |
 |--------|--------|
-| Status "Ej konfigurerad" | Kontrollera att alla tre `GOOGLE_*`-variabler finns på Render och att tjänsten startat om |
-| Knappen visar toast med saknade env | Lägg in dem i Render (värden från Google Cloud) |
+| Status "Ej konfigurerad" | Kontrollera att alla tre OAuth-fält finns (kanoniskt eller alias) på **rätt** Render-service och att tjänsten startat om efter Save |
+| `envPresent` visar false trots att du lagt in vars | Fel variabelnamn, tomt värde, fel service, eller saknad redeploy efter Save |
+| Knappen visar toast med saknade env | Lägg in dem i Render (värden från Google Cloud); alias fungerar också |
 | `redirect_uri_mismatch` efter Google-login | Redirect URI i Google Cloud måste vara **exakt** samma som `GOOGLE_GMAIL_REDIRECT_URI` (inkl. `www`) |
 | Koppling lyckas men inkorg tom | Skapa Gmail-etikett `KUNDER` och underetiketter med kundnamn |
+
+**Exakt prod-redirect:** `https://www.app.clientflow.se/api/gmail/oauth/callback`  
+(Måste finnas både i Google Cloud → Authorized redirect URIs och i Render-env.)
 
 ---
 
