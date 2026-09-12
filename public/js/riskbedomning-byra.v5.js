@@ -2696,8 +2696,47 @@ class RiskAssessmentManager {
         return pencil;
     }
 
+
+    currentModalRiskLevel() {
+        const RS = window.RiskSkala;
+        if (!RS || !RS.assessRisk) return '';
+        const s = Number(document.getElementById('tjanst-sannolikhet-efter')?.value
+            || document.getElementById('tjanst-sannolikhet')?.value);
+        const k = Number(document.getElementById('tjanst-konsekvens-efter')?.value
+            || document.getElementById('tjanst-konsekvens')?.value);
+        const assessed = RS.assessRisk(s, k) || {};
+        return assessed.level || '';
+    }
+
+    assessAiFrictionForText(aiOriginalText, currentText, tillagg = '') {
+        const API = window.AiGodkannandeFriktion;
+        if (!API || !API.assessAiAcceptFriction) {
+            return { allowed: true, friction: 'none', highRisk: false, reason: '' };
+        }
+        return API.assessAiAcceptFriction({
+            riskLevel: this.currentModalRiskLevel(),
+            aiOriginalText,
+            currentText,
+            tillagg
+        });
+    }
+
+    gateAiAccept({ aiOriginalText, currentText, tillagg = '' } = {}) {
+        const result = this.assessAiFrictionForText(aiOriginalText, currentText, tillagg);
+        if (result.allowed) return true;
+        this.showNotification(result.reason || 'AI-förslaget måste redigeras vid hög risk.', 'error');
+        return false;
+    }
+
     acceptAiAddRow(row) {
         if (!row) return;
+        const title = row.querySelector('.dyn-titel')?.value || '';
+        const body = row.querySelector('.dyn-text')?.value || row.querySelector('textarea')?.value || '';
+        const original = row.dataset.aiOriginal || [title, body].filter(Boolean).join('\n');
+        const tillagg = row.querySelector('.dyn-ai-tillagg')?.value || '';
+        if (!this.gateAiAccept({ aiOriginalText: original, currentText: [title, body].filter(Boolean).join('\n'), tillagg })) {
+            return;
+        }
         row.classList.remove('is-ai-add');
         row.querySelector('.dyn-ai-badge')?.remove();
         row.querySelector('.dyn-ai-bar')?.remove();
@@ -2748,8 +2787,22 @@ class RiskAssessmentManager {
             </div>
         `;
         afterEl.insertAdjacentElement('afterend', box);
+        const applyBtn = box.querySelector('[data-ai-apply]');
+        const friction = this.assessAiFrictionForText(String(html || '').replace(/<[^>]+>/g, ' '), String(html || '').replace(/<[^>]+>/g, ' '));
+        if (applyBtn && friction.highRisk) {
+            applyBtn.textContent = 'Godta efter redigering';
+            applyBtn.title = friction.reason || 'Högrisk kräver att ni ändrar förslaget innan det godtas.';
+        }
         box.addEventListener('click', (ev) => {
-            if (ev.target.closest('[data-ai-apply]') && onApply) onApply(box);
+            if (ev.target.closest('[data-ai-apply]') && onApply) {
+                const plain = String(html || '').replace(/<[^>]+>/g, ' ').trim();
+                // Vid högrisk: tillåt kopiera in, men flagga att sparande kräver redigering.
+                if (friction.highRisk) {
+                    box.dataset.aiHighRisk = '1';
+                    box.dataset.aiOriginal = plain;
+                }
+                onApply(box);
+            }
             if (ev.target.closest('[data-ai-apply]') || ev.target.closest('[data-ai-dismiss]')) box.remove();
         });
     }
