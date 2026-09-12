@@ -19277,3 +19277,7 @@ body.byra-resa-page .risk-header h1 {
 .risk-motivering-propose {
     margin-top: 0.4rem;
 }
+
+.user-cfa-badge{margin-left:.4rem;background:#e8f5e9;color:#1b5e20;border-radius:4px;padding:.1rem .45rem;font-size:.75rem;}
+#cfa-status-banner{margin:0 0 1rem;padding:.85rem 1rem;background:#fff8e1;border-left:3px solid #f9a825;}
+#cfa-status-banner .btn-primary{margin-top:.5rem;}

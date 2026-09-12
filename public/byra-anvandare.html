@@ -857,6 +857,13 @@
                     <label>Lösenord</label>
                     <input type="password" id="anvandare-password" class="form-input" placeholder="Lämna tomt för att behålla">
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="anvandare-is-cfa">
+                        Centralt funktionsansvarig (CFA)
+                    </label>
+                    <p class="form-hint">CFA signerar allmän riskbedömning och rutiner med BankID. Utnämning räknas som bekräftelse.</p>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" id="anvandare-modal-avbryt">Avbryt</button>
                     <button type="submit" class="btn-primary">Spara</button>
@@ -872,7 +879,7 @@
     <script src="js/components.js?v=2.4" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260902villkor10" defer></script>
+    <script src="js/byra-anvandare.js?v=20260912cfa" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>

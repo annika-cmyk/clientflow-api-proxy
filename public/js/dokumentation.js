@@ -619,20 +619,21 @@
       const res = await fetch(getBaseUrl() + '/api/byra/anvandare', getAuthOpts());
       const data = await res.json().catch(function () { return {}; });
       if (!res.ok) throw new Error(data.error || 'Kunde inte hämta användare');
-      const users = (data.users || []).filter(function (u) { return u && u.id && u.email && (u.name || u.fullName); });
+      const allUsers = (data.users || []).filter(function (u) { return u && u.id && u.email && (u.name || u.fullName); });
+      const users = allUsers.filter(function (u) { return !!u.isCfa && !!String(u.cfaConfirmedAt || '').trim(); });
       const body = modal.querySelector('.modal-body');
       if (!users.length) {
-        body.innerHTML = '<p class="section-desc">Inga användare med e-post hittades på byrån.</p>';
+        body.innerHTML = '<p class="section-desc">Ingen bekräftad CFA finns på byrån. Utse och bekräfta CFA under Byrå → Användare innan ni skickar för BankID-signering.</p>';
         return;
       }
-      body.innerHTML = '<p class="section-desc">Välj vem på byrån som ska signera riskbedömningen och rutinerna med BankID. När dokumentet är signerat sparas det här och godkännandedatumet sätts till signeringsdagen.</p>' +
+      body.innerHTML = '<p class="section-desc">Välj CFA som ska signera riskbedömningen och rutinerna med BankID. När dokumentet är signerat sparas det här och godkännandedatumet sätts till signeringsdagen.</p>' +
         '<div class="dokumentation-signer-list">' +
         users.map(function (u, idx) {
           return '<label class="inleed-person-option">' +
             '<input type="radio" name="dokumentation-signer" value="' + escapeHtml(u.id) + '"' + (idx === 0 ? ' checked' : '') + '>' +
             '<div class="inleed-person-info">' +
             '<span class="inleed-person-name">' + escapeHtml(u.name || u.fullName) + '</span>' +
-            (u.role ? '<span class="inleed-person-roll">' + escapeHtml(u.role) + '</span>' : '') +
+            (u.role || u.isCfa ? '<span class="inleed-person-roll">' + escapeHtml((u.isCfa ? 'CFA' : '') + (u.role && u.isCfa ? ' · ' : '') + (u.role || '')) + '</span>' : '') +
             '<span class="inleed-person-contact"><i class="fas fa-envelope"></i> ' + escapeHtml(u.email) + '</span>' +
             '</div></label>';
         }).join('') +
