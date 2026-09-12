@@ -18,6 +18,7 @@ class ByraAnvandareManager {
     this.filteredLogs = [];
     this.canManage = false;
     this.viewerRole = '';
+    this.cfaStatus = null;
     this.customers = [];
     this.selectedUserIds = new Set();
     this.selectedCustomerIds = new Set();
@@ -1411,6 +1412,7 @@ class ByraAnvandareManager {
       const data = await res.json();
       this.canManage = !!data.canManage;
       this.viewerRole = data.viewerRole || '';
+      this.cfaStatus = data.cfaStatus || null;
       this.users = (data.users || []).map(u => ({
         id: u.id,
         name: u.name || u.email,
@@ -1418,10 +1420,13 @@ class ByraAnvandareManager {
         role: this.displayRole(u.role),
         status: 'Aktiv',
         lastLogin: '—',
-        byra: u.byra || ''
+        byra: u.byra || '',
+        isCfa: !!u.isCfa,
+        cfaConfirmedAt: u.cfaConfirmedAt || ''
       }));
       this.filteredUsers = [...this.users];
       this.updateManageUi();
+      this.renderCfaBanner();
       this.renderUsers();
       this.populateUserFilters();
       this.populateUtbildningAnstalldList();
@@ -1442,6 +1447,7 @@ class ByraAnvandareManager {
     const rollEl = document.getElementById('anvandare-roll');
     const passwordWrap = document.getElementById('anvandare-password-wrap');
     const passwordEl = document.getElementById('anvandare-password');
+    const cfaEl = document.getElementById('anvandare-is-cfa');
     if (!modal) return;
     if (user) {
       title.textContent = 'Redigera användare';
@@ -1452,6 +1458,7 @@ class ByraAnvandareManager {
       rollEl.value = user.role === 'Användare' ? 'Anställd' : (user.role || 'Anställd');
       passwordEl.value = '';
       if (passwordWrap) passwordWrap.style.display = 'block';
+      if (cfaEl) cfaEl.checked = !!user.isCfa;
     } else {
       title.textContent = 'Lägg till användare';
       idEl.value = '';
@@ -1461,6 +1468,7 @@ class ByraAnvandareManager {
       rollEl.value = 'Anställd';
       passwordEl.value = '';
       if (passwordWrap) passwordWrap.style.display = 'block';
+      if (cfaEl) cfaEl.checked = false;
     }
     modal.style.display = 'flex';
   }
@@ -1476,10 +1484,11 @@ class ByraAnvandareManager {
     const name = document.getElementById('anvandare-namn')?.value?.trim();
     const role = document.getElementById('anvandare-roll')?.value?.trim();
     const password = document.getElementById('anvandare-password')?.value;
+    const isCfa = !!document.getElementById('anvandare-is-cfa')?.checked;
     if (!email) return;
     try {
       if (id) {
-        const body = { email, name, role };
+        const body = { email, name, role, isCfa };
         if (password) body.password = password;
         const res = await fetch(getBaseUrl() + '/api/byra/anvandare/' + encodeURIComponent(id), getAuthOpts('PUT', body));
         if (!res.ok) {
@@ -1487,7 +1496,7 @@ class ByraAnvandareManager {
           throw new Error(j.error || res.statusText);
         }
       } else {
-        const body = { email, name, role };
+        const body = { email, name, role, isCfa };
         if (password) body.password = password;
         const res = await fetch(getBaseUrl() + '/api/byra/anvandare', getAuthOpts('POST', body));
         if (!res.ok) {
@@ -1720,6 +1729,45 @@ class ByraAnvandareManager {
     this.renderLogs();
   }
 
+
+  renderCfaBanner() {
+    let el = document.getElementById('cfa-status-banner');
+    const status = this.cfaStatus;
+    if (!status || !status.needsSoloConfirm) {
+      if (el) el.remove();
+      return;
+    }
+    const list = document.querySelector('.users-list');
+    if (!list) return;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cfa-status-banner';
+      el.className = 'info-banner';
+      list.parentNode.insertBefore(el, list);
+    }
+    const name = escapeHtml(status.suggestedName || 'dig');
+    el.innerHTML = `<p><strong>Bekräfta CFA:</strong> Som ensam användare på byrån behöver ${name} bekräfta rollen som centralt funktionsansvarig innan AR/rutiner kan signeras med BankID.</p>
+      <button type="button" class="btn-primary" id="cfa-confirm-btn">Bekräfta CFA-roll</button>`;
+    const btn = document.getElementById('cfa-confirm-btn');
+    if (btn) {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          const res = await fetch(getBaseUrl() + '/api/byra/cfa/confirm', getAuthOpts('POST', {
+            acknowledged: true,
+            userId: status.suggestedUserId || undefined
+          }));
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || res.statusText);
+          await this.loadUsers();
+        } catch (err) {
+          alert('Kunde inte bekräfta CFA: ' + (err.message || ''));
+          btn.disabled = false;
+        }
+      };
+    }
+  }
+
   renderUsers() {
     const usersList = document.querySelector('.users-list');
     if (!usersList) return;
@@ -1740,6 +1788,7 @@ class ByraAnvandareManager {
           <h4>${escapeHtml(user.name)}</h4>
           <p>${escapeHtml(user.email)}</p>
           <span class="user-role">${escapeHtml(this.displayRole(user.role))}</span>
+          ${user.isCfa ? `<span class="user-role user-cfa-badge">${user.cfaConfirmedAt ? 'CFA' : 'CFA (ej bekräftad)'}</span>` : ''}
         </div>
         <div class="user-status">
           <span class="status aktiv">${escapeHtml(user.status)}</span>

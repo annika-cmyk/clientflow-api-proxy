@@ -56,6 +56,7 @@ const {
   riskAtgarderAllChecked
 } = require('./lib/uppdrag-risk');
 const access = require('./lib/access');
+const cfa = require('./lib/cfa');
 const koringAnsvarig = require('./public/js/koring-ansvarig');
 const hogriskSni = require('./public/js/hogrisk-sni');
 const EuHogriskLander = require('./public/js/eu-hogrisk-lander');
@@ -379,7 +380,9 @@ async function getAirtableUser(email) {
         orgnr: findField(['Orgnr Byrå', 'Orgnr Byra', 'OrgnrByra']),
         byraId: findField(['Byrå ID i text 2', 'Byra ID i text 2']),
         byraIds: fields['Byråer'] || fields['Byraer'] || [],
-        logo: fields['Logga'] || ''
+        logo: fields['Logga'] || '',
+        isCfa: cfa.readIsCfa(fields),
+        cfaConfirmedAt: cfa.readConfirmedAt(fields)
       };
       
       console.log(`🔍 User fields keys: ${Object.keys(fields).join(', ')}`);
@@ -530,8 +533,14 @@ function mapApplicationUserRecord(r) {
     name: f['Full Name'] || f.Namn || '',
     role: access.normalizeRole(f.Role || '') || f.Role || '',
     byra: f['Byrå'] || f.fldcZZOiC9y5BKFWf || '',
-    byraId: f['Byrå ID i text 2'] || f['Byra ID i text 2'] || ''
+    byraId: f['Byrå ID i text 2'] || f['Byra ID i text 2'] || '',
+    isCfa: cfa.readIsCfa(f),
+    cfaConfirmedAt: cfa.readConfirmedAt(f)
   };
+}
+
+async function ensureCfaUserFields(airtableToken, baseId) {
+  return ensureAirtableTableFields(airtableToken, baseId, USERS_TABLE, cfa.SCHEMA_FIELDS);
 }
 
 async function airtableListAllRecords(url, headers, extraParams = {}) {
@@ -1588,7 +1597,9 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         orgnr: user.orgnr,
         byraId: user.byraId,
         byraIds: user.byraIds,
-        logo: user.logo
+        logo: user.logo,
+        isCfa: !!user.isCfa,
+        cfaConfirmedAt: user.cfaConfirmedAt || ''
       }, 
       JWT_SECRET, 
       { expiresIn: '24h' }
@@ -1604,7 +1615,9 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
       orgnr: user.orgnr,
       byraId: user.byraId,
       byraIds: user.byraIds,
-      logo: user.logo
+      logo: user.logo,
+      isCfa: !!user.isCfa,
+      cfaConfirmedAt: user.cfaConfirmedAt || ''
     };
 
     console.log(`🔐 Login successful: ${user.email} (${user.role}) from ${user.byra}`);
@@ -14633,14 +14646,20 @@ app.get('/api/byra/anvandare', authenticateToken, async (req, res) => {
     if (result.error) return res.status(result.status || 500).json({ error: result.error });
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    try { await ensureCfaUserFields(airtableAccessToken, airtableBaseId); } catch (_) {}
     const users = await listByraUsersByByraId(result.byraId, airtableAccessToken, airtableBaseId, {
       byraRecord: result.record
     });
+    const centraltPerson = String(
+      (result.record && result.record.fields && result.record.fields[cfa.BYRA_FIELDS.CENTRALT_PERSON]) || ''
+    ).trim();
+    const cfaStatus = cfa.buildCfaStatus(users, { centraltPerson });
     res.json({
       success: true,
       users,
       viewerRole: result.userData?.role || '',
-      canManage: access.isLedareOrAdmin(result.userData?.role)
+      canManage: access.isLedareOrAdmin(result.userData?.role),
+      cfaStatus
     });
   } catch (error) {
     console.error('❌ GET /api/byra/anvandare:', error.response?.data || error.message);
@@ -14674,6 +14693,8 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
       'Byrå ID i text 2': byraId
     };
     if (password) fields['password'] = password;
+    try { await ensureCfaUserFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+    Object.assign(fields, cfa.cfaFieldsFromBody(body, { assignNow: true }));
     const linkField = 'Byråer';
     try {
       const existing = await axios.get(
@@ -14698,7 +14719,9 @@ app.post('/api/byra/anvandare', authenticateToken, async (req, res) => {
         email: fields['Email'],
         name: fields['Full Name'],
         role: fields['Role'],
-        byraId
+        byraId,
+        isCfa: cfa.readIsCfa(fields),
+        cfaConfirmedAt: cfa.readConfirmedAt(fields)
       }
     });
   } catch (error) {
@@ -14721,6 +14744,7 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     const byraId = result.byraId;
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    try { await ensureCfaUserFields(airtableAccessToken, airtableBaseId); } catch (_) {}
     const getUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${id}`;
     const getRes = await axios.get(getUrl, { headers: { 'Authorization': `Bearer ${airtableAccessToken}` } });
     const existing = getRes.data;
@@ -14733,6 +14757,17 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     if (body.fullName !== undefined) fields['Full Name'] = String(body.fullName).trim();
     if (body.role !== undefined) fields['Role'] = String(body.role).trim();
     if (body.password !== undefined && body.password !== '') fields['password'] = String(body.password);
+    Object.assign(fields, cfa.cfaFieldsFromBody(body, { assignNow: true }));
+    if (body.isCfa !== undefined && !cfa.truthyFlag(body.isCfa)) {
+      const peers = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, {
+        byraRecord: result.record
+      });
+      if (cfa.wouldLeaveZeroCfa(peers, id, false)) {
+        return res.status(400).json({
+          error: 'Byrån måste ha minst en CFA. Utse en annan innan du tar bort rollen.'
+        });
+      }
+    }
     if (Object.keys(fields).length === 0) {
       return res.status(400).json({ error: 'Inga fält att uppdatera' });
     }
@@ -14740,7 +14775,12 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     const patchRes = await axios.patch(patchUrl, { fields }, {
       headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
     });
-    res.json({ success: true, id: patchRes.data.id, record: patchRes.data });
+    res.json({
+      success: true,
+      id: patchRes.data.id,
+      record: patchRes.data,
+      user: mapApplicationUserRecord(patchRes.data)
+    });
   } catch (error) {
     if (error.response && error.response.status === 404) {
       return res.status(404).json({ error: 'Användaren hittades inte' });
@@ -14748,6 +14788,56 @@ app.put('/api/byra/anvandare/:id', authenticateToken, async (req, res) => {
     console.error('❌ PUT /api/byra/anvandare:', error.response?.data || error.message);
     const status = error.response?.status || 500;
     res.status(status).json({ error: error.response?.data?.error?.message || error.message });
+  }
+});
+
+
+// POST /api/byra/cfa/confirm – Ensam firma / explicit engångsbekräftelse av CFA
+app.post('/api/byra/cfa/confirm', authenticateToken, async (req, res) => {
+  try {
+    const result = await getByraerRecordForUser(req);
+    if (result.error) return res.status(result.status || 500).json({ error: result.error });
+    const body = req.body || {};
+    if (!body.acknowledged) {
+      return res.status(400).json({
+        error: 'Bekräfta att du tar på dig rollen som centralt funktionsansvarig (acknowledged: true).'
+      });
+    }
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    try { await ensureCfaUserFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+    const users = await listByraUsersByByraId(result.byraId, airtableAccessToken, airtableBaseId, {
+      byraRecord: result.record
+    });
+    const centraltPerson = String(
+      (result.record && result.record.fields && result.record.fields[cfa.BYRA_FIELDS.CENTRALT_PERSON]) || ''
+    ).trim();
+    const status = cfa.buildCfaStatus(users, { centraltPerson });
+    const wantedId = String(body.userId || status.suggestedUserId || result.userData?.id || '').trim();
+    const target = users.find((u) => u && String(u.id) === wantedId);
+    if (!target) {
+      return res.status(400).json({ error: 'Kunde inte hitta användaren som ska bli CFA.' });
+    }
+    const canSelfConfirm = String(result.userData?.id || '') === String(target.id);
+    if (!canSelfConfirm && !access.isLedareOrAdmin(result.userData?.role)) {
+      return res.status(403).json({ error: 'Endast användaren själv eller Ledare får bekräfta CFA.' });
+    }
+    const patch = cfa.confirmCfaPatch(new Date().toISOString());
+    const patchUrl = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(USERS_TABLE)}/${target.id}`;
+    const patchRes = await axios.patch(patchUrl, { fields: patch }, {
+      headers: { 'Authorization': `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }
+    });
+    const updated = mapApplicationUserRecord(patchRes.data);
+    const nextUsers = users.map((u) => (String(u.id) === String(updated.id) ? { ...u, ...updated } : u));
+    res.json({
+      success: true,
+      user: updated,
+      cfaStatus: cfa.buildCfaStatus(nextUsers, { centraltPerson })
+    });
+  } catch (error) {
+    console.error('❌ POST /api/byra/cfa/confirm:', error.response?.data || error.message);
+    const statusCode = error.response?.status || 500;
+    res.status(statusCode).json({ error: error.response?.data?.error?.message || error.message });
   }
 });
 
@@ -22368,9 +22458,11 @@ app.post('/api/byra/dokumentation/skicka-for-signering', authenticateToken, asyn
     const users = await listByraUsersByByraId(byraId, airtableAccessToken, airtableBaseId, {
       byraRecord: record
     });
-    const signer = dokumentationSignering.pickSignerFromUsers(users, req.body && req.body.signerUserId);
+    const signer = cfa.pickCfaSignerFromUsers(users, req.body && req.body.signerUserId);
     if (!signer) {
-      return res.status(400).json({ error: 'Välj en användare på byrån med namn och e-post.' });
+      return res.status(400).json({
+        error: 'Välj en bekräftad CFA på byrån med namn och e-post. Utse CFA under Byrå → Användare.'
+      });
     }
 
     const byraNamn = record.fields?.['Byrå'] || record.fields?.['Namn'] || userData?.byra || 'Byrån';
