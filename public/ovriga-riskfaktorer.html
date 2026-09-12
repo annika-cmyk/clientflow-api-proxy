@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260825k">
+    <link rel="stylesheet" href="styles.css?v=20260912kaskad">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body data-risk-page-scope="ovriga">
@@ -24,17 +24,17 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Övriga riskfaktorer</h1>
-                        <p class="risk-header-sub">Byråns arbetssätt: distribution, geografisk marknad och verksamhetsspecifika risker</p>
+                        <p class="risk-header-sub">Byråns arbetssätt: distribution, byråns geografiska marknad och verksamhetsspecifika risker</p>
                         <div class="risk-header-body">
                             <p>
-                                Här bedömer ni risker kopplade till <strong>byråns egen verksamhet och arbetssätt</strong>: hur ni möter kunden (distributionskanaler), var ni erbjuder era tjänster (geografisk marknad i byråprofilen) och verksamhetsspecifika omständigheter. Detta är inte samma sak som kundens riskprofil — den ligger på
+                                Här bedömer ni risker kopplade till <strong>byråns egen verksamhet och arbetssätt</strong>: hur ni möter kunden (distributionskanaler), <strong>byråns geografiska marknad</strong> (var ni erbjuder tjänster — fakta i byråprofilen) och verksamhetsspecifika omständigheter. Detta är inte samma sak som kundens hemvist eller motparters geografi — den ligger på
                                 <a href="kundrisker-mm.html">Vilka är våra kunder</a>.
                             </p>
                             <h3>Tänk särskilt på:</h3>
                             <ul>
                                 <li>Hur ni möter kunden — distanskund eller fysiskt möte påverkar hur väl ni kan verifiera identitet och avsikt.</li>
-                                <li>Var byrån erbjuder sina tjänster — geografisk marknad styrs i byråprofilen och påverkar AR-sammanställningen.</li>
-                                <li>Verksamhetsspecifika omständigheter i byråns arbetssätt och affärsmodell.</li>
+                                <li>Byråns geografiska marknad — fakta styrs i byråprofilen; här bedömer ni vad marknaden betyder som risk.</li>
+                                <li>Verksamhetsspecifika omständigheter i byråns arbetssätt och affärsmodell (storlek, outsourcing, utbildning m.m.).</li>
                                 <li>Vilka åtgärder ni faktiskt vidtar, i praktiken, för att hantera och minska riskerna.</li>
                             </ul>
                             <h3>Skriv risk och åtgärd i rätt ordning — blanda inte ihop dem</h3>
@@ -67,6 +67,32 @@
                         </div>
                     </div>
                 </header>
+
+            <section class="byra-profil-kaskad" id="byra-profil-kaskad" hidden>
+                <div class="container">
+                    <div class="byra-profil-kaskad-card">
+                        <div class="byra-profil-kaskad-head">
+                            <div>
+                                <h2>Driven av byråprofil</h2>
+                                <p class="byra-profil-kaskad-lead">
+                                    Fakta från profilen. Här bedömer ni vad det betyder som risk — inte en andra enkät.
+                                    <strong>Byråns geografiska marknad</strong> är skild från kundens hemvist.
+                                </p>
+                            </div>
+                            <a class="btn btn-secondary btn-sm" href="byra-profil-enkate.html">Öppna byråprofil</a>
+                        </div>
+                        <div id="byra-profil-kaskad-chips" class="byra-profil-kaskad-chips" aria-live="polite"></div>
+                        <div id="byra-profil-kaskad-forslag-wrap" class="byra-profil-kaskad-forslag-wrap" hidden>
+                            <h3>Föreslagna riskfaktorer utifrån profilen</h3>
+                            <p class="byra-profil-kaskad-hint">Acceptera öppnar formuläret förifylld. Avfärda döljer förslaget för den här sessionen.</p>
+                            <div id="byra-profil-kaskad-forslag" class="byra-profil-kaskad-forslag"></div>
+                        </div>
+                        <p id="byra-profil-kaskad-empty" class="byra-profil-kaskad-empty" hidden>
+                            Fyll i byråprofilen så kan vi föreslå verksamhetsspecifika och distributionsrelaterade risker att bedöma.
+                        </p>
+                    </div>
+                </div>
+            </section>
 
             <!-- Risk Assessment List -->
             <section class="risk-assessment-section">
@@ -445,6 +471,7 @@
     <script src="js/risksankande-katalog.js?v=2" defer></script>
     <script src="js/ai-falt-granskning.js?v=11" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
-    <script src="js/ovriga-riskfaktorer.js?v=39" defer></script>
+    <script src="js/byra-profil-risk-forslag.js?v=1" defer></script>
+    <script src="js/ovriga-riskfaktorer.js?v=40" defer></script>
 </body>
 </html>
