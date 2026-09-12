@@ -17700,6 +17700,12 @@ h5.ar-subsection-title {
 }
 .dyn-kalla-toggle:hover { text-decoration: underline; }
 .dyn-kalla-wrap.is-collapsed .dyn-kalla-row { display: none; }
+.dyn-kalla-optional {
+    font-weight: 500;
+    color: #64748b;
+    text-transform: none;
+    letter-spacing: 0;
+}
 
 .tjanst-katalog-empty {
     padding: 1rem 0;
