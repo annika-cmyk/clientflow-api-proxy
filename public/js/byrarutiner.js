@@ -10,6 +10,7 @@
     { id: 'fld-centralt-person', airtable: 'Centralt funktionsansvarig' },
     { id: 'fld-kundkannedom', airtable: '3. Kundkännedomsåtgärder ' },
     { id: 'fld-overvakning', airtable: '4. Övervakning och Rapportering ' },
+    { id: 'fld-personuppgifter', airtable: 'Behandling av personuppgifter' },
     { id: 'fld-intern-kontroll', airtable: '5. Intern Kontroll ' },
     { id: 'fld-anstallda-utbildning', airtable: '6. Anställda och Utbildning' },
     { id: 'fld-arkiv', airtable: '7. Arkivering av dokumentation' },

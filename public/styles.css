@@ -18061,3 +18061,48 @@ h5.ar-subsection-title {
     font-size: 0.8rem;
     max-width: 13rem;
 }
+
+/* Byråns resa */
+.byra-resa-status-line{min-height:1.25rem;font-size:.9rem;color:#64748b;margin:.35rem 0 0}
+.byra-resa-kalla-list{display:grid;gap:1rem;margin-top:1rem}
+.byra-resa-kalla-card{border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.1rem;background:#fff}
+.byra-resa-kalla-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:.5rem 1rem;margin-bottom:.65rem}
+.byra-resa-kalla-head h3{margin:0;font-size:1rem;font-weight:650;color:#0f172a}
+.byra-resa-kalla-link{font-size:.85rem;font-weight:600;color:#0f766e;text-decoration:none}
+.byra-resa-kalla-link:hover{text-decoration:underline}
+.byra-resa-kalla-states{display:flex;flex-wrap:wrap;gap:.5rem .75rem;margin-bottom:.65rem}
+.byra-resa-kalla-state{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .7rem;border:1px solid #dbe3ee;border-radius:999px;font-size:.82rem;cursor:pointer;background:#f8fafc}
+.byra-resa-kalla-state:has(input:checked){border-color:#0f766e;background:#ecfdf5;color:#115e59;font-weight:600}
+.byra-resa-kalla-note-label{display:block;font-size:.8rem;color:#64748b}
+.byra-resa-kalla-note-label input{display:block;width:100
+/* Byråns resa */
+.byra-resa-status-line { min-height: 1.25rem; font-size: 0.9rem; color: #64748b; margin: 0.35rem 0 0; }
+.byra-resa-kalla-list { display: grid; gap: 1rem; margin-top: 1rem; }
+.byra-resa-kalla-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem 1.1rem; background: #fff; }
+.byra-resa-kalla-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.65rem; }
+.byra-resa-kalla-head h3 { margin: 0; font-size: 1rem; font-weight: 650; color: #0f172a; }
+.byra-resa-kalla-link { font-size: 0.85rem; font-weight: 600; color: #0f766e; text-decoration: none; }
+.byra-resa-kalla-link:hover { text-decoration: underline; }
+.byra-resa-kalla-states { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; margin-bottom: 0.65rem; }
+.byra-resa-kalla-state { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid #dbe3ee; border-radius: 999px; font-size: 0.82rem; cursor: pointer; background: #f8fafc; }
+.byra-resa-kalla-state:has(input:checked) { border-color: #0f766e; background: #ecfdf5; color: #115e59; font-weight: 600; }
+.byra-resa-kalla-note-label { display: block; font-size: 0.8rem; color: #64748b; }
+.byra-resa-kalla-note-label input { display: block; width: 100%; margin-top: 0.3rem; }
+.byra-resa-kalla-hint { margin: 0.75rem 0 0; font-size: 0.88rem; color: #64748b; }
+.byra-resa-kalla-hint.is-ok { color: #166534; }
+.byra-resa-steps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.byra-resa-step-card { display: flex; gap: 0.85rem; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; background: #fff; }
+.byra-resa-step-card.is-done { border-color: #86efac; background: #f0fdf4; }
+.byra-resa-step-card.is-gated { opacity: 0.92; }
+.byra-resa-step-num { flex: 0 0 2rem; height: 2rem; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: #0f766e; color: #fff; font-weight: 700; font-size: 0.9rem; }
+.byra-resa-step-body h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+.byra-resa-step-body p { margin: 0 0 0.55rem; font-size: 0.88rem; color: #475569; line-height: 1.4; }
+.byra-resa-step-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; font-weight: 650; color: #0f766e; text-decoration: none; margin-bottom: 0.55rem; }
+.byra-resa-step-gate { color: #b45309 !important; font-weight: 600; }
+.byra-resa-step-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #334155; }
+.kom-igang-header-actions { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
+.kom-igang-resa-link { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; font-weight: 650; color: #0f766e; text-decoration: none; padding: 0.35rem 0.7rem; border: 1px solid #99f6e4; border-radius: 999px; background: #f0fdfa; }
+.kom-igang-resa-link:hover { background: #ccfbf1; }
+@media (max-width: 720px) {
+  .byra-resa-steps-grid { grid-template-columns: 1fr; }
+}
