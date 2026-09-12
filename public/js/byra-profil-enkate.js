@@ -48,10 +48,13 @@
   var hogriskLabels = [];
   var skipped = {};
 
-  function setStatus(msg, isError) {
+  function setStatus(msg, isError, scrollTo) {
     if (!ui.status) return;
     ui.status.textContent = msg || '';
     ui.status.className = 'byra-enkate-status' + (isError ? ' is-error' : msg ? ' is-ok' : '');
+    if (scrollTo && msg && ui.status.scrollIntoView) {
+      ui.status.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   var DEFAULT_BOLAGSFORMER = [
@@ -895,19 +898,20 @@
     ui.finish.addEventListener('click', function () {
       var missing = allUnanswered();
       if (missing.length) {
-        setStatus('Besvara alla frågor innan du klarmarkerar (' + missing.length + ' kvar).', true);
+        setStatus('Besvara alla frågor innan du klarmarkerar (' + missing.length + ' kvar).', true, true);
         goToFirstUnanswered();
         return;
       }
       ui.finish.disabled = true;
+      setStatus('Sparar och klarmarkerar…');
       saveProfil()
         .then(function () { return markKomIgangComplete(); })
         .then(function () {
-          setStatus('Klart! Byråprofilen är sparad och steget är ikryssat.');
+          setStatus('Klart! Byråprofilen är sparad och steget är ikryssat.', false, true);
           setTimeout(function () { window.location.href = 'index.html#kom-igang'; }, 700);
         })
         .catch(function (e) {
-          setStatus(e.message || 'Kunde inte klarmarkera', true);
+          setStatus(e.message || 'Kunde inte klarmarkera', true, true);
           ui.finish.disabled = false;
           updateNav();
         });

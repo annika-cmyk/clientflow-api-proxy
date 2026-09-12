@@ -843,7 +843,7 @@
   }
 
   function emptyState() {
-    return { version: 1, tjanster: {}, katalogVal: null };
+    return { version: 1, tjanster: {}, katalogVal: null, excludedMallIds: [] };
   }
 
   function parseState(raw) {
@@ -852,7 +852,10 @@
       return {
         version: Number(raw.version) || 1,
         tjanster: raw.tjanster,
-        katalogVal: raw.katalogVal === 'standard' || raw.katalogVal === 'egna' ? raw.katalogVal : null
+        katalogVal: raw.katalogVal === 'standard' || raw.katalogVal === 'egna' ? raw.katalogVal : null,
+        excludedMallIds: Array.isArray(raw.excludedMallIds)
+          ? Array.from(new Set(raw.excludedMallIds.map((id) => String(id || '').trim()).filter(Boolean)))
+          : []
       };
     }
     try {
@@ -861,7 +864,10 @@
         return {
           version: Number(parsed.version) || 1,
           tjanster: parsed.tjanster,
-          katalogVal: parsed.katalogVal === 'standard' || parsed.katalogVal === 'egna' ? parsed.katalogVal : null
+          katalogVal: parsed.katalogVal === 'standard' || parsed.katalogVal === 'egna' ? parsed.katalogVal : null,
+          excludedMallIds: Array.isArray(parsed.excludedMallIds)
+            ? Array.from(new Set(parsed.excludedMallIds.map((id) => String(id || '').trim()).filter(Boolean)))
+            : []
         };
       }
     } catch (_) { /* ignore */ }
@@ -960,22 +966,50 @@
    * Ta bort en egen (custom:) tjänst från katalogen.
    * Standardmallar lämnas orörda — de inaktiveras i stället.
    */
+  /**
+   * Ta bort tjänst från katalogen (egen eller standard).
+   * Standardmallar sparas i excludedMallIds så de kan läggas till igen.
+   */
   function removeEntry(state, mallId) {
     const parsed = parseState(state);
-    if (!isCustomId(mallId)) return parsed;
-    if (parsed.tjanster && Object.prototype.hasOwnProperty.call(parsed.tjanster, mallId)) {
-      delete parsed.tjanster[mallId];
+    const id = String(mallId || '').trim();
+    if (!id) return parsed;
+    if (parsed.tjanster && Object.prototype.hasOwnProperty.call(parsed.tjanster, id)) {
+      delete parsed.tjanster[id];
+    }
+    if (!isCustomId(id) && !parsed.excludedMallIds.includes(id)) {
+      parsed.excludedMallIds.push(id);
     }
     return parsed;
+  }
+
+  /** Lägg till / återställ en standardmall i katalogen. */
+  function addStandardService(state, mallId) {
+    const id = String(mallId || '').trim();
+    if (!id || isCustomId(id) || !templateById(id)) return parseState(state);
+    let next = parseState(state);
+    next.excludedMallIds = (next.excludedMallIds || []).filter((x) => x !== id);
+    if (!next.katalogVal) next.katalogVal = 'standard';
+    next = upsertEntry(next, id, { aktiv: true });
+    next.excludedMallIds = (next.excludedMallIds || []).filter((x) => x !== id);
+    return next;
+  }
+
+  /** Standardmallar som saknas i katalogen just nu. */
+  function availableStandardTemplates(state) {
+    const shown = new Set(listCatalogCards(state).map((c) => c.template.id));
+    return SERVICE_TEMPLATES.filter((t) => !shown.has(t.id));
   }
 
   function listCatalogCards(state) {
     const parsed = parseState(state);
     const cards = [];
-    const hasStandardEntries = Object.keys(parsed.tjanster || {}).some((id) => !isCustomId(id));
+    const excluded = new Set(parsed.excludedMallIds || []);
+    const hasStandardEntries = Object.keys(parsed.tjanster || {}).some((id) => !isCustomId(id) && !excluded.has(id));
     const showStandards = parsed.katalogVal !== 'egna' || hasStandardEntries;
     if (showStandards) {
       SERVICE_TEMPLATES.forEach((t) => {
+        if (excluded.has(t.id)) return;
         const entry = normalizeEntryAnswers(parsed.tjanster[t.id] || emptyEntry(t.id));
         cards.push({ template: t, entry: entry });
       });
@@ -1074,6 +1108,8 @@
     setKatalogVal: setKatalogVal,
     addCustomService: addCustomService,
     removeEntry: removeEntry,
+    addStandardService: addStandardService,
+    availableStandardTemplates: availableStandardTemplates,
     listCatalogCards: listCatalogCards,
     formatAnswersForAi: formatAnswersForAi,
     findEntryForNamn: findEntryForNamn

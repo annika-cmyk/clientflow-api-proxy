@@ -699,6 +699,7 @@ class ByraAnvandareManager {
       setVal('byra-geografi', f.geografiskMarknad);
       setVal('byra-sanktionslander', f.sanktionslander);
       setVal('byra-kunder-utsatta-omraden', f.kunderIUtsattaOmraden);
+      setVal('byra-kunder-utsatta-omraden-antal', f.kunderIUtsattaOmradenAntal);
       setVal('byra-finanspolisen-antal', f.finanspolisenAvvikelserAntal);
       setVal('byra-finanspolisen-typ', f.finanspolisenAvvikelserTyp);
       setVal('byra-lanstyrelsen-anmarkningar', f.lanstyrelsenAnmarkningar);
@@ -1066,6 +1067,7 @@ class ByraAnvandareManager {
         geografiskMarknad: document.getElementById('byra-geografi')?.value ?? '',
         sanktionslander: document.getElementById('byra-sanktionslander')?.value ?? '',
         kunderIUtsattaOmraden: document.getElementById('byra-kunder-utsatta-omraden')?.value ?? '',
+        kunderIUtsattaOmradenAntal: document.getElementById('byra-kunder-utsatta-omraden-antal')?.value ?? '',
         finanspolisenAvvikelserAntal: document.getElementById('byra-finanspolisen-antal')?.value ?? '',
         finanspolisenAvvikelserTyp: document.getElementById('byra-finanspolisen-typ')?.value ?? '',
         lanstyrelsenAnmarkningar: document.getElementById('byra-lanstyrelsen-anmarkningar')?.value ?? '',
