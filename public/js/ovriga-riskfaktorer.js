@@ -598,7 +598,18 @@ class RiskFactorsManager {
             return ai - bi || a.localeCompare(b, 'sv');
         });
 
-        const buildRiskItems = (risksInGroup) => risksInGroup.map(risk => this.createRiskItem(risk)).join('');
+        const buildRiskItems = (risksInGroup) => {
+            const sorted = risksInGroup.slice().sort((a, b) => {
+                const sa = this.scoredRisk(a.fields);
+                const sb = this.scoredRisk(b.fields);
+                const S = window.RiskSkala;
+                if (!S) return 0;
+                const ra = Math.max(S.riskRank(sa.level), S.riskRank(sa.residualLevel));
+                const rb = Math.max(S.riskRank(sb.level), S.riskRank(sb.residualLevel));
+                return rb - ra;
+            });
+            return sorted.map(risk => this.createRiskItem(risk)).join('');
+        };
 
         const Geo = window.GeoRiskTyper;
         const groupHTML = groupKeys.map(riskType => {
@@ -742,6 +753,9 @@ class RiskFactorsManager {
         const riskLevelClass = this.getRiskLevelClass(riskLevel);
         const residualLevel = scored.residualLevel || '';
         const residualClass = residualLevel ? this.getRiskLevelClass(residualLevel) : '';
+        const rowRiskClass = (window.RiskSkala && RiskSkala.dominantRiskItemClass)
+            ? RiskSkala.dominantRiskItemClass(riskLevel, residualLevel)
+            : riskLevelClass;
         const badges = (window.RiskSkala && RiskSkala.listBadgeLabels(scored)) || {
             inneboende: scored.badge || riskLevel,
             residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : '',
@@ -763,7 +777,7 @@ class RiskFactorsManager {
             : '';
         
         return `
-            <div class="risk-item ${riskLevelClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
+            <div class="risk-item ${rowRiskClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
                     <div class="risk-item-title">
                         <div class="risk-status-indicator ${isChecked ? 'checked' : 'unchecked'}">
@@ -780,6 +794,17 @@ class RiskFactorsManager {
                         </div>
                     </div>
                     <div class="risk-item-actions">
+                        <div class="risk-row-menu">
+                            <button type="button" class="risk-row-menu-btn" data-risk-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Fler åtgärder" onclick="event.stopPropagation()">
+                                <i class="fas fa-ellipsis" aria-hidden="true"></i>
+                            </button>
+                            <div class="risk-row-menu-panel" hidden role="menu">
+                                <button type="button" class="risk-row-menu-item is-danger delete-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
+                                    <i class="fas fa-trash" aria-hidden="true"></i>
+                                    Ta bort
+                                </button>
+                            </div>
+                        </div>
                         <button class="expand-toggle" onclick="event.stopPropagation(); riskManager.toggleRiskItem(this.closest('.risk-item-header'))">
                             <i class="fas fa-chevron-down"></i>
                         </button>
@@ -820,10 +845,6 @@ class RiskFactorsManager {
                         <button class="btn ${isChecked ? 'btn-secondary' : 'btn-success'} btn-sm mark-complete" data-record-id="${risk.id}">
                             <i class="fas fa-${isChecked ? 'eye-slash' : 'check'}"></i>
                             ${isChecked ? 'Inaktivera' : 'Aktivera'}
-                        </button>
-                        <button class="btn btn-danger btn-sm delete-risk" data-record-id="${risk.id}">
-                            <i class="fas fa-trash"></i>
-                            Ta bort
                         </button>
                     </div>
                 </div>
@@ -916,6 +937,48 @@ class RiskFactorsManager {
                 const recordId = e.target.closest('.delete-risk').dataset.recordId;
                 this.deleteRisk(recordId);
             });
+        });
+
+        this.setupRiskRowMenus(document.getElementById('risk-list'));
+    }
+
+    setupRiskRowMenus(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-risk-menu-toggle]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const menu = btn.closest('.risk-row-menu');
+                if (!menu) return;
+                const open = !menu.classList.contains('is-open');
+                this.closeAllRiskRowMenus();
+                if (open) {
+                    menu.classList.add('is-open');
+                    const panel = menu.querySelector('.risk-row-menu-panel');
+                    if (panel) panel.hidden = false;
+                    btn.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+        if (!this._riskRowMenuDocBound) {
+            this._riskRowMenuDocBound = true;
+            document.addEventListener('click', (e) => {
+                if (e.target.closest && e.target.closest('.risk-row-menu')) return;
+                this.closeAllRiskRowMenus();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closeAllRiskRowMenus();
+            });
+        }
+    }
+
+    closeAllRiskRowMenus() {
+        document.querySelectorAll('.risk-row-menu.is-open').forEach((menu) => {
+            menu.classList.remove('is-open');
+            const panel = menu.querySelector('.risk-row-menu-panel');
+            if (panel) panel.hidden = true;
+            const btn = menu.querySelector('[data-risk-menu-toggle]');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
         });
     }
 
