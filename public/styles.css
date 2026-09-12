@@ -17423,23 +17423,28 @@ h5.ar-subsection-title {
 .byra-enkate-suffix-wrap { display: flex; align-items: stretch; }
 .byra-enkate-bolagsformer,
 .byra-enkate-hogrisk {
-  max-width: 38rem;
+  width: max-content;
+  max-width: 100%;
 }
 .byra-enkate-hogrisk-list,
 .byra-hogrisk-count-list {
   max-height: 260px; overflow: auto; margin-top: 0.55rem;
   border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.35rem; background: #fafbfc;
+  display: grid;
+  grid-template-columns: max-content 5rem;
+  column-gap: 0.75rem;
+  row-gap: 0.15rem;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .byra-enkate-hogrisk-head {
   margin-top: 0.65rem;
 }
 .byra-enkate-hogrisk-row,
 .byra-hogrisk-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 5rem;
-    gap: 0.65rem;
-    align-items: center;
-    padding: 0.3rem 0.4rem;
+    display: contents;
 }
 .byra-enkate-hogrisk-row label,
 .byra-hogrisk-row label {
@@ -17447,6 +17452,7 @@ h5.ar-subsection-title {
     align-items: center;
     gap: 0.45rem;
     margin: 0;
+    padding: 0.3rem 0.15rem;
     font-weight: 500;
     cursor: pointer;
 }
@@ -17454,7 +17460,6 @@ h5.ar-subsection-title {
 .byra-hogrisk-row input[type="number"] {
     width: 5rem;
     max-width: 5rem;
-    justify-self: end;
 }
 .byra-enkate-hogrisk-row.is-disabled input[type="number"],
 .byra-hogrisk-row.is-disabled input[type="number"] {
@@ -17515,9 +17520,12 @@ h5.ar-subsection-title {
 .byra-enkate-bolagsformer-head,
 .byra-enkate-hogrisk-head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 5rem;
-    gap: 0.65rem;
+    grid-template-columns: max-content 5rem;
+    column-gap: 0.75rem;
+    align-items: end;
     margin: 0 0 0.35rem;
+    width: max-content;
+    max-width: 100%;
     color: #64748b;
     font-size: 0.78rem;
     font-weight: 600;
@@ -17531,20 +17539,17 @@ h5.ar-subsection-title {
 }
 .byra-bolagsformer-list,
 .byra-enkate-bolagsformer-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
+    display: grid;
+    grid-template-columns: max-content 5rem 2.25rem;
+    column-gap: 0.75rem;
+    row-gap: 0.35rem;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
 }
 .byra-bolagsformer-row,
 .byra-enkate-bolagsformer-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 5rem;
-    gap: 0.65rem;
-    align-items: center;
-}
-.byra-bolagsformer-row.is-custom,
-.byra-enkate-bolagsformer-row.is-custom {
-    grid-template-columns: minmax(0, 1fr) 5rem 2.25rem;
+    display: contents;
 }
 .byra-bolagsformer-row label,
 .byra-enkate-bolagsformer-row label {
@@ -17559,11 +17564,12 @@ h5.ar-subsection-title {
 .byra-enkate-bolagsformer-row input[type="number"] {
     width: 5rem;
     max-width: 5rem;
-    justify-self: end;
 }
 .byra-bolagsformer-row.is-custom input[type="text"],
 .byra-enkate-bolagsformer-row.is-custom input[type="text"] {
-    width: 100%;
+    width: 13rem;
+    min-width: 8rem;
+    max-width: 18rem;
 }
 .byra-bolagsformer-row.is-disabled input[type="number"],
 .byra-enkate-bolagsformer-row.is-disabled input[type="number"] {
