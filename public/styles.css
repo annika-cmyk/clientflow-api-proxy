@@ -18471,3 +18471,96 @@ h5.ar-subsection-title {
   .kundformular-header { flex-direction: column; }
   .kundformular-person-row { flex-direction: column; }
 }
+
+
+/* Enkätsvar på Vilka är våra kunder */
+.kundrisker-enkat-section {
+  margin: 0 0 1.25rem;
+}
+.kundrisker-enkat {
+  padding: 1rem 0 0.25rem;
+  border-top: 1px solid #e2e8f0;
+}
+.kundrisker-enkat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+.kundrisker-enkat-head h3 {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--title-text);
+}
+.kundrisker-enkat-edit {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #0f766e;
+  text-decoration: none;
+}
+.kundrisker-enkat-edit:hover { text-decoration: underline; }
+.kundrisker-enkat-lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.92rem;
+  color: #64748b;
+  max-width: 46rem;
+}
+.kundrisker-enkat-groups {
+  display: grid;
+  gap: 1rem;
+}
+.kundrisker-enkat-group-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.kundrisker-enkat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+.kundrisker-enkat-list li {
+  margin: 0;
+  padding: 0 0 0.5rem;
+  border-bottom: 1px solid #eef2f7;
+}
+.kundrisker-enkat-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.kundrisker-enkat-q {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #475569;
+  margin-bottom: 0.12rem;
+}
+.kundrisker-enkat-a {
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #0f172a;
+  white-space: pre-wrap;
+}
+.kundrisker-enkat-empty {
+  margin: 0 0 0.85rem;
+  font-size: 0.95rem;
+  color: #334155;
+}
+.kundrisker-enkat-cta {
+  display: inline-flex;
+  align-items: center;
+}
+.kundrisker-enkat.is-loading .kundrisker-enkat-lead { margin-bottom: 0; }
+@media (max-width: 720px) {
+  .kundrisker-enkat-head { flex-direction: column; align-items: flex-start; }
+}
