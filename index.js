@@ -15705,7 +15705,8 @@ app.get('/api/nav-status', authenticateToken, async (req, res) => {
       'Kundstatus',
       'Dold',
       'KYC-formular (JSON)',
-      'Skatterättslig hemvist'
+      'Skatterättslig hemvist',
+      'Kontaktpersoner'
     ];
     let kundRecords = [];
     try {
