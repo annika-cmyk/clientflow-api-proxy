@@ -215,7 +215,9 @@
         'Ja',
         'Nej',
         'I vissa uppdrag'
-      ], omTjanstenUtfor('anlUpprattar'))
+      ], omTjanstenUtfor('anlUpprattar', {
+        helpText: 'Avser om anläggningstillgångar i praktiken köps, säljs eller överlåts till/från ägare, närstående eller koncernbolag — t.ex. bil, maskin eller fastighet där ägaren eller ett närstående bolag är involverad. Sådana poster ökar risken för felaktig värdering och att värde flyttas utan tydligt underlag. Svara utifrån hur det brukar se ut i era uppdrag, inte om ni alltid kontrollerar det särskilt.'
+      }))
     ]),
     spec('kontoavstamningar', 'Kontoavstämningar och periodavstämningar', [
       q('avstVilka', 'Vilka konton/poster stämmer byrån normalt av?', 'multi', [
