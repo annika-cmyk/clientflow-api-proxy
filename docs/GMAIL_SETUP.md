@@ -89,7 +89,9 @@ node scripts/setup-mejlarkiv.js
 
 Valfri env: `AIRTABLE_TABLE_MEJLARKIV_ID` (om satt fel → 403 “Invalid permissions…”; ta bort eller sätt till rätt table id).
 
-Spara till **Uppdragskörning** skriver bilagan till tabellen `Uppdragskörningar` (fält `Dokumentation`). Env `AIRTABLE_TABLE_UPPDRAG_RUNS_ID` är valfri — saknas den resolvas tabellen via namn.
+Spara till **Uppdragskörning** skriver filen primärt till **Uppdrag**-postens `Dokumentation`/`Attachments` med filnamn `YYYY-MM-DD - …` (samma modell som kundkortets körningsdokumentation / `POST /api/uppdrag/run-docs`), och dual-write:ar även till körningsradens `Dokumentation` i tabellen `Uppdragskörningar`. Env `AIRTABLE_TABLE_UPPDRAG_RUNS_ID` / `AIRTABLE_TABLE_UPPDRAG_ID` är valfria — saknas de resolvas tabellerna via namn.
+
+Spara till **Dokumentation** skriver till KUNDDATA (`Dokumentation`/`Attachments`). Spara till **Uppdrag** skriver direkt till Uppdrag-postens bilagefält.
 
 ## Felsökning
 
