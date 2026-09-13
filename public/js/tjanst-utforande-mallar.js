@@ -1084,18 +1084,20 @@
       const raw = answers[question.id];
       const text = formatAnswerValue(raw);
       const comment = formatAnswerValue(comments[question.id]);
-      if (!text && question.type !== 'text' && question.type !== 'number') {
+      const isFreeText = question.type === 'text' || question.type === 'number';
+      if (!text && !comment) {
         unanswered.push(question.label);
         return;
       }
-      if ((question.type === 'text' || question.type === 'number') && !text) {
+      if (isFreeText && !text) {
         unanswered.push(question.label);
         return;
       }
+      // Chip-frågor: eget svar kompletterar valda alternativ (eller ersätter om inget chip valts).
       rows.push({
         id: question.id,
         label: question.label,
-        svar: text || 'uppgift saknas',
+        svar: text || (comment ? '(eget svar)' : 'uppgift saknas'),
         kommentar: comment
       });
     });

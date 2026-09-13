@@ -105,22 +105,27 @@ class RiskAssessmentManager {
         root.querySelectorAll('[data-q-id]').forEach((qEl) => {
             const qid = qEl.getAttribute('data-q-id');
             qEl.querySelectorAll('input, textarea, select').forEach((input) => {
+                if (input.classList.contains('tjanst-mall-comment')) return;
                 input.addEventListener('change', () => this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' }));
                 if (input.classList.contains('tjanst-mall-text') || input.classList.contains('tjanst-mall-number')) {
                     input.addEventListener('input', () => this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' }));
                 }
             });
+            // Spara eget svar utan modal-rerender så fokus/caret behålls.
             qEl.querySelector('.tjanst-mall-comment')?.addEventListener('input', () => {
-                this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: 'modal' });
+                this.collectUtforandeQuestion(mallId, qid, qEl, { rerender: false });
             });
-            qEl.querySelector('[data-comment-add]')?.addEventListener('click', () => {
+            qEl.querySelector('[data-note-pen]')?.addEventListener('click', () => {
                 const commentEl = qEl.querySelector('.tjanst-mall-comment');
-                const addEl = qEl.querySelector('[data-comment-add]');
-                if (addEl) addEl.hidden = true;
-                if (commentEl) {
-                    commentEl.hidden = false;
-                    commentEl.focus();
+                const penEl = qEl.querySelector('[data-note-pen]');
+                if (!commentEl) return;
+                const opening = commentEl.hidden;
+                commentEl.hidden = !opening;
+                if (penEl) {
+                    penEl.classList.toggle('is-open', opening);
+                    penEl.setAttribute('aria-expanded', opening ? 'true' : 'false');
                 }
+                if (opening) commentEl.focus();
             });
         });
         this.applyUtforandeQuestionVisibility(mallId, root);
@@ -690,9 +695,8 @@ class RiskAssessmentManager {
         const comments = (entry && entry.kommentarer) || {};
         const value = answers[question.id];
         const selected = new Set(Array.isArray(value) ? value : (value ? [value] : []));
-        const showComment = (question.showCommentWhen || []).some((opt) => selected.has(opt));
-        const commentValue = comments[question.id] || '';
-        const hasCommentField = !!(question.showCommentWhen && question.showCommentWhen.length);
+        const commentValue = String(comments[question.id] || '').trim();
+        const isChip = question.type === 'single' || question.type === 'multi';
         let control = '';
         if (question.type === 'text') {
             control = `<textarea class="tjanst-mall-text" rows="3">${this.esc(value || '')}</textarea>`;
@@ -711,15 +715,24 @@ class RiskAssessmentManager {
         const visible = !window.TjanstUtforandeMallar || !window.TjanstUtforandeMallar.questionIsVisible
             ? true
             : window.TjanstUtforandeMallar.questionIsVisible(question, answers);
+        const penClass = `tjanst-mall-note-pen${commentValue ? ' is-filled' : ''}${commentValue ? ' is-open' : ''}`;
+        const head = isChip
+            ? `<div class="tjanst-mall-q-head">
+                <p class="tjanst-mall-q-label">${this.esc(question.label)}</p>
+                <button type="button" class="${penClass}" data-note-pen title="Eget svar eller komplettering" aria-label="Eget svar eller komplettering" aria-expanded="${commentValue ? 'true' : 'false'}">
+                    <i class="fas fa-pen" aria-hidden="true"></i>
+                </button>
+            </div>`
+            : `<p class="tjanst-mall-q-label">${this.esc(question.label)}</p>`;
+        const noteField = isChip
+            ? `<textarea class="tjanst-mall-comment" rows="2" placeholder="Eget svar eller komplettering (valfritt) — sparas med tjänsten"${commentValue ? '' : ' hidden'}>${this.esc(commentValue)}</textarea>`
+            : '';
         return `
             <div class="tjanst-mall-q" data-q-id="${this.esc(question.id)}" data-q-type="${this.esc(question.type)}"${visible ? '' : ' hidden'}>
-                <p class="tjanst-mall-q-label">${this.esc(question.label)}</p>
+                ${head}
                 ${question.helpText ? `<p class="tjanst-mall-q-help">${this.esc(question.helpText)}</p>` : ''}
                 ${control}
-                ${hasCommentField
-                    ? `<button type="button" class="tjanst-mall-comment-add" data-comment-add${showComment && !commentValue ? '' : ' hidden'}>Lägg till kommentar</button>
-                    <textarea class="tjanst-mall-comment" rows="2" placeholder="Valfri kommentar"${showComment && commentValue ? '' : ' hidden'}>${this.esc(commentValue)}</textarea>`
-                    : ''}
+                ${noteField}
             </div>
         `;
     }
@@ -740,17 +753,15 @@ class RiskAssessmentManager {
             answers[qid] = qEl.querySelector('input:checked')?.value || '';
         }
         const commentEl = qEl.querySelector('.tjanst-mall-comment');
-        const addEl = qEl.querySelector('[data-comment-add]');
-        if (commentEl || addEl) {
-            const template = Mallar.templateById(mallId);
-            const question = Mallar.questionsForTemplate(template).find((q) => q.id === qid);
-            const selected = Array.isArray(answers[qid]) ? answers[qid] : (answers[qid] ? [answers[qid]] : []);
-            const show = (question && question.showCommentWhen || []).some((opt) => selected.includes(opt));
-            const commentValue = show && commentEl ? commentEl.value.trim() : '';
-            const commentOpen = !!(commentEl && !commentEl.hidden);
-            if (commentEl) commentEl.hidden = !(show && (commentOpen || commentValue));
-            if (addEl) addEl.hidden = !(show && commentEl && commentEl.hidden);
+        const penEl = qEl.querySelector('[data-note-pen]');
+        if (commentEl) {
+            const commentValue = commentEl.value.trim();
             kommentarer[qid] = commentValue;
+            if (penEl) {
+                penEl.classList.toggle('is-filled', !!commentValue);
+                penEl.classList.toggle('is-open', !commentEl.hidden || !!commentValue);
+                penEl.setAttribute('aria-expanded', (!commentEl.hidden || !!commentValue) ? 'true' : 'false');
+            }
         }
         qEl.querySelectorAll('.tjanst-mall-chip').forEach((chip) => {
             const input = chip.querySelector('input');

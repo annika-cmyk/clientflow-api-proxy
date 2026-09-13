@@ -18918,11 +18918,59 @@ h5.ar-subsection-title {
     margin: 0 0 0.55rem;
     line-height: 1.35;
 }
+.tjanst-mall-q-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0 0 0.55rem;
+}
+.tjanst-mall-q-head .tjanst-mall-q-label {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+.tjanst-mall-note-pen {
+    flex-shrink: 0;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin: 0.05rem 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #b0b7c0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.62rem;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+.tjanst-mall-note-pen:hover,
+.tjanst-mall-note-pen:focus-visible {
+    opacity: 0.85;
+    color: #7a8490;
+    background: rgba(15, 23, 42, 0.04);
+    outline: none;
+}
+.tjanst-mall-note-pen.is-open {
+    opacity: 0.75;
+    color: #7a8490;
+}
+.tjanst-mall-note-pen.is-filled {
+    opacity: 0.9;
+    color: var(--accent, #13505c);
+}
 .tjanst-mall-q-help {
     margin: -0.2rem 0 0.55rem;
     color: var(--text, #5a626d);
     font-size: 0.78rem;
     line-height: 1.4;
+}
+.tjanst-mall-q-head + .tjanst-mall-q-help {
+    margin-top: -0.35rem;
 }
 .tjanst-mall-options {
     display: flex;
@@ -19058,6 +19106,12 @@ h5.ar-subsection-title {
     margin-top: 0.55rem;
     font: inherit;
     background: #fff;
+}
+.tjanst-mall-comment {
+    font-size: 0.84rem;
+    line-height: 1.4;
+    min-height: 2.2rem;
+    color: var(--title-text, #15181d);
 }
 .tjanst-mall-status {
     font-size: 0.78rem;
