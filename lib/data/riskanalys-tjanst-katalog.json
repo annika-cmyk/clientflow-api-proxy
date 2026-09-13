@@ -29,6 +29,11 @@
     "skatteradgivning": "Skatterådgivning",
     "rådgivning": "Rådgivning",
     "radgivning": "Rådgivning",
+    "formella intyg": "Formella intyg",
+    "formella-intyg": "Formella intyg",
+    "kreditintyg": "Formella intyg",
+    "revisionsberättelse": "Formella intyg",
+    "revisionsberattelse": "Formella intyg",
     "bokföring": "Bokföring",
     "bokforing": "Bokföring"
   },
@@ -240,6 +245,26 @@
         "atgarder": "",
         "kalla": "Brainstorm/AI-förslag",
         "lank": ""
+      }
+    ],
+    "Formella intyg": [
+      {
+        "hotkategori": "PT",
+        "hot": "Formella intyg (revisionsberättelse, kreditintyg till bank eller intyg för myndighetsansökan) ger en uppgift eller transaktion skenbar legitimitet och kan missbrukas för att dölja penningtvätt.",
+        "sarbarhet": "Intyget bygger ofta på uppgifter som kunden lämnar; byrån har begränsad möjlighet att verifiera den underliggande verkligheten bakom varje påstående.",
+        "riskindikatorer": "Kunden begär intyg med brådska utan fullständigt underlag, intyget ska användas i ett sammanhang som saknar tydlig affärsmässig koppling till kundens verksamhet, eller underlaget stämmer inte med tidigare redovisning.",
+        "atgarder": "Utfärda inte intyg utan verifierbart underlag; dokumentera syfte och mottagare; eskalera när underlaget eller syftet är oklart.",
+        "kalla": "Samordningsfunktionen — Nationell riskbedömning 2024/2025, kap. 7.18 Revisorer / formella intyg",
+        "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
+      },
+      {
+        "hotkategori": "TF",
+        "hot": "Intyg om ekonomisk ställning eller verksamhet kan användas för att ge sken av legitim verksamhet åt aktörer som kanaliserar medel till terrorfinansiering.",
+        "sarbarhet": "När intyget används externt (bank, myndighet) får mottagaren förtroende för uppgifter som byrån kanske inte kunnat verifiera oberoende.",
+        "riskindikatorer": "Intyg begärs för ideell förening, insamlingsorganisation eller verksamhet med internationella överföringar utan tydlig motprestation; mottagaren finns i eller nära högriskland.",
+        "atgarder": "",
+        "kalla": "Samordningsfunktionen — Nationell riskbedömning 2024/2025, kap. 4 Finansiering av terrorism / kap. 7.18",
+        "lank": "https://polisen.se/siteassets/dokument/om-polisen/penningtvatt/nationell-riskbedomning-av-penningtvatt-och-finansiering-av-terrorism-i-sverige-2024_2025.pdf"
       }
     ],
     "Betalningsuppdrag": [

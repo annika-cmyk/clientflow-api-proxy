@@ -689,6 +689,35 @@
       ])
     ], {
       helpText: 'Aktivera Rådgivning om byrån erbjuder fristående eller särskilt debiterad rådgivning som går utöver normal återkoppling inom bokföring, bokslut, moms, deklaration eller årsredovisning. Normal förklaring av rapporter, bokslut eller deklaration behöver inte anges som separat rådgivning.'
+    }),
+    spec('formella-intyg', 'Formella intyg', [
+      q('intygUtfardar', 'Utfärdar byrån formella intyg som ger en transaktion eller uppgift skenbar legitimitet?', 'single', [
+        'Ja',
+        'Nej',
+        'I vissa uppdrag'
+      ]),
+      q('intygTyp', 'Vilka typer av intyg utfärdar byrån?', 'multi', [
+        'Revisionsberättelse',
+        'Kreditintyg till bank',
+        'Intyg för myndighetsansökan',
+        'Intyg om ekonomisk ställning',
+        'Annat formellt intyg'
+      ], omTjanstenUtfor('intygUtfardar')),
+      q('intygUnderlag', 'Kontrolleras underlaget innan intyget utfärdas?', 'single', [
+        'Ja, normalt',
+        'Ja, vid större/ovanliga fall',
+        'Nej, normalt inte'
+      ], omTjanstenUtfor('intygUtfardar')),
+      q('intygOklar', 'Hur hanteras fall där underlaget eller syftet med intyget verkar oklart?', 'multi', [
+        'Kunden får komplettera i efterhand',
+        'Ansvarig granskar',
+        'Intyget utfärdas inte',
+        'Misstanke eskaleras',
+        'Ingen särskild rutin'
+      ], omTjanstenUtfor('intygUtfardar'))
+    ], {
+      description: 'Formella intyg (t.ex. revisionsberättelse, kreditintyg, myndighetsintyg) enligt NRA 7.18 — aktivera bara om byrån faktiskt utfärdar sådana.',
+      helpText: 'Aktivera Formella intyg om byrån utfärdar revisionsberättelser, kreditintyg till banker eller liknande handlingar som ger uppgifter skenbar legitimitet. Normal bokföring eller årsredovisning räknas inte hit.'
     })
   ];
 
@@ -738,7 +767,12 @@
     'betalningsuppdrag': 'betalningsuppdrag',
     'betalningsuppdrag och betalningshantering': 'betalningsuppdrag',
     'betalningshantering': 'betalningsuppdrag',
-    'radgivning': 'radgivning'
+    'radgivning': 'radgivning',
+    'formella intyg': 'formella-intyg',
+    'formella-intyg': 'formella-intyg',
+    'kreditintyg': 'formella-intyg',
+    'revisionsberattelse': 'formella-intyg',
+    'revisionsberättelse': 'formella-intyg'
   };
 
   function isCustomId(id) {
@@ -1117,7 +1151,6 @@
 
   /**
    * Aktiv tjänst som motsvarar betalningsuppdrag/klientmedelshantering.
-   * Används bl.a. för NRA-härledning (skrivskyddat ja/nej).
    */
   function findActiveBetalningsuppdrag(state) {
     const cards = listCatalogCards(state);

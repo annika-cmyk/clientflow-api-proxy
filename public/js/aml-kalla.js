@@ -202,8 +202,8 @@
             sections: [
                 { keys: ['finansiering av terrorism', 'terrorfinans', 'terror'], label: 'kap. 4 Finansiering av terrorism' },
                 { keys: ['bokforing', 'redovisning', 'bokslut'], label: 'kap. 7.19 Bokförings- och revisionstjänster' },
-                { keys: ['skatteradgiv', 'deklaration', 'rot', 'rut'], label: 'kap. 7.20 Skatterådgivare' },
-                { keys: ['revisor'], label: 'kap. 7.18 Revisorer' },
+                { keys: ['skatteradgiv', 'deklaration', 'rot', 'rut', 'slussbolag'], label: 'kap. 7.20 Skatterådgivare' },
+                { keys: ['revisor', 'formella intyg', 'kreditintyg', 'revisionsberattelse', 'intyg'], label: 'kap. 7.18 Revisorer / formella intyg' },
                 { keys: ['mojliggorare'], label: 'kap. 5 Tvärgående risker' }
             ]
         },

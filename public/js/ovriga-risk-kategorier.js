@@ -398,6 +398,22 @@
       ]
     },
     {
+      id: 'terrorfinansiering',
+      category: 'kunden',
+      label: 'Kunder med terrorfinansieringsrisk (ideell/insamling/internationell överföring)',
+      hint: 'Ideella föreningar, insamlingsorganisationer, trossamfund med internationell verksamhet, eller upprepade internationella överföringar utan tydlig affärsmässig motprestation. NRA kap. 4 — analyseras här, inte som separat NRA-checklista.',
+      klass: KLASS.GOLV_HOG,
+      badge: 'Hög-aktiv',
+      linkedKundResidual: true,
+      aliases: [
+        'terrorfinansiering',
+        'finansiering av terrorism',
+        'ideell förening terror',
+        'insamlingsorganisation',
+        'kunder med terrorfinansieringsrisk'
+      ]
+    },
+    {
       id: 'transaktioner',
       category: 'verksamheten',
       label: 'Transaktioner utan tydligt syfte',
