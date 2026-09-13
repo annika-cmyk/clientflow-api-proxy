@@ -447,10 +447,24 @@
             body: JSON.stringify({ customerId, includeEmail: false, saveAttachments: false, targets })
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.success) { showToast(data.error || 'Kunde inte spara', 'error'); return; }
           const nOk = (data.results || []).filter((r) => !r.error).length;
-          const nErr = (data.results || []).filter((r) => r.error).length;
-          showToast(nErr ? 'Sparat ' + nOk + ', ' + nErr + ' fel.' : 'Sparat (' + nOk + ' objekt).', nErr ? 'error' : 'success');
+          const errResults = (data.results || []).filter((r) => r.error);
+          const nErr = errResults.length;
+          const firstResultErr = errResults[0] && errResults[0].error;
+          if (!res.ok || data.success === false) {
+            showToast(data.error || firstResultErr || 'Kunde inte spara', 'error');
+            return;
+          }
+          if (nErr && !nOk) {
+            showToast(firstResultErr || 'Kunde inte spara', 'error');
+            return;
+          }
+          showToast(
+            nErr
+              ? 'Sparat ' + nOk + ', ' + nErr + ' fel' + (firstResultErr ? ': ' + firstResultErr : '.')
+              : 'Sparat (' + nOk + ' objekt).',
+            nErr ? 'error' : 'success'
+          );
           closeModal();
           archiveState = data.archive || archiveState;
           if (onDone) await onDone();

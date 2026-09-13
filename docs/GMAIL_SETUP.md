@@ -80,14 +80,16 @@ På mejldetaljen:
 3. **Markera privat** – syns bara för dig, dem du delat med, och ClientFlow-admin (inte vid omfördelning till andra).
 4. **Maska markering** – maskerad text syns bara för ägare och ClientFlow-admin.
 
-Airtable-tabell **Mejlarkiv**:
+Airtable-tabell **Mejlarkiv** (krävs för arkivmetadata; skapas automatiskt vid sparning om token har schema-behörighet):
 
 ```
 node scripts/setup-mejlarkiv.js
 # eller POST /api/setup/airtable-mejlarkiv (Ledare/Admin)
 ```
 
-Valfri env: `AIRTABLE_TABLE_MEJLARKIV_ID`.
+Valfri env: `AIRTABLE_TABLE_MEJLARKIV_ID` (om satt fel → 403 “Invalid permissions…”; ta bort eller sätt till rätt table id).
+
+Spara till **Uppdragskörning** skriver bilagan till tabellen `Uppdragskörningar` (fält `Dokumentation`). Env `AIRTABLE_TABLE_UPPDRAG_RUNS_ID` är valfri — saknas den resolvas tabellen via namn.
 
 ## Felsökning
 
