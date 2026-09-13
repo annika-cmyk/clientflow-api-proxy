@@ -13959,6 +13959,9 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
           timeout: 10000
         }
       );
+      // Håll lokal meta i synk så adaptSelectWrites inte skriver ner till legacy i onödan.
+      field.options = field.options || {};
+      field.options.choices = ByraProfilFields.mergedSelectChoiceOptions(field, needed);
       choiceSynced.push(name);
     } catch (err) {
       const msg = err.response?.data?.error?.message || err.message || 'okänt fel';
@@ -13983,22 +13986,28 @@ async function patchByraerRecordFields(airtableToken, baseId, recordId, fields) 
       return { skippedProfilFields };
     } catch (e) {
       const msg = e.response?.data?.error?.message || e.message || '';
-      if (/insufficient permissions to create new select option|INVALID_MULTIPLE_CHOICE|cannot create new select/i.test(String(msg))) {
+      if (/insufficient permissions to create new select option|INVALID_MULTIPLE_CHOICE|cannot create new select|create new select option/i.test(String(msg))) {
         let dropped = false;
-        const quoted = String(msg).match(/select option[:\s]*["“”']([^"“”']*)["“”']/i);
-        const badOption = quoted ? quoted[1] : null;
+        const badOption = ByraProfilFields.extractRejectedSelectOption(msg);
         Object.keys(remaining).forEach((k) => {
           const v = remaining[k];
           // Flerval (kommaseparerat), tomt val eller just det val Airtable nekade.
           const isBlank = v == null || (typeof v === 'string' && ByraProfilFields.isBlankWriteValue(v));
           const isMulti = typeof v === 'string' && v.includes(',');
           const isQuoted = badOption != null && String(v) === badOption;
-          if (isBlank || isMulti || isQuoted) {
+          const isEmbedded = badOption != null && typeof v === 'string' && v.includes(badOption);
+          if (isBlank || isMulti || isQuoted || isEmbedded) {
             skippedProfilFields.push(k);
             delete remaining[k];
             dropped = true;
           }
         });
+        // Om vi inte kunde matcha citattecknen: hoppa över Leveranssätt hellre än att blockera hela sparningen.
+        if (!dropped && Object.prototype.hasOwnProperty.call(remaining, 'Leveranssätt')) {
+          skippedProfilFields.push('Leveranssätt');
+          delete remaining['Leveranssätt'];
+          dropped = true;
+        }
         if (dropped) continue;
       }
       if (String(msg).toLowerCase().includes('unknown field name')) {
@@ -14409,8 +14418,14 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
       'andelInternationellHandel', 'andelKontantintensiva', 'leveranssatt', 'geografiskMarknad',
       ...ByraProfilFields.BYRA_PROFIL_FIELDS.filter((f) => !f.existing).map((f) => f.key)
     ];
+    let ensuredProfil = null;
     if (profilFieldKeys.some(k => body[k] !== undefined)) {
-      await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId);
+      ensuredProfil = await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId);
+      // Om Meta API inte kunde lägga till nya Leveranssätt-val: skriv Distans/På plats/Blandat.
+      Object.assign(
+        fields,
+        ByraProfilFields.adaptSelectWritesToExistingChoices(fields, ensuredProfil && ensuredProfil.table)
+      );
     }
     let skippedProfilFields = [];
     try {
@@ -14441,7 +14456,10 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     }
     const response = { success: true, id: recordId };
     if (skippedProfilFields.length) {
-      response.warning = `Vissa BYRÅNS PROFIL-fält saknas i Airtable och sparades inte: ${skippedProfilFields.join(', ')}. Övriga fält sparades.`;
+      const leveransSkipped = skippedProfilFields.includes('Leveranssätt');
+      response.warning = leveransSkipped
+        ? 'Övriga uppgifter sparades, men Leveranssätt kunde inte sparas i Airtable (select-valet saknas i basen). Öppna Leveranssätt i Airtable och lägg till de beskrivande valen, eller kör fältsync med schema-behörighet.'
+        : `Vissa BYRÅNS PROFIL-fält kunde inte sparas i Airtable: ${skippedProfilFields.join(', ')}. Övriga fält sparades.`;
     }
     res.json(response);
   } catch (error) {
