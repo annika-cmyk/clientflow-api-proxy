@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913mejl-bankid-sidfot">
+    <link rel="stylesheet" href="styles.css?v=20260913mejl-layout-panes">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
 
@@ -28,9 +28,30 @@
       .mejl-layout-card { border:1px solid #e2e8f0; border-radius:10px; padding:0.65rem 0.75rem; cursor:pointer; background:#fff; text-align:left; font:inherit; font-size:0.82rem; }
       .mejl-layout-card.is-active { border-color:#64748b; background:#f8fafc; box-shadow:0 0 0 1px #94a3b8; }
 
-      .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 0.75rem; }
+      /* Split panes: isolate tracks so list content cannot bleed under detail */
+      .mejl-layout {
+        display: flex; flex-direction: column; gap: 1.25rem; margin-top: 0.75rem;
+        width: 100%; min-width: 0; box-sizing: border-box;
+      }
+      .mejl-layout > .mejl-pane { min-width: 0; max-width: 100%; box-sizing: border-box; }
+      .mejl-pane--list { overflow: hidden; }
+      .mejl-pane--detail { min-width: 0; }
       @media (min-width: 960px) {
-        .mejl-layout { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; }
+        .mejl-layout {
+          flex-direction: row; align-items: flex-start;
+          gap: 1.5rem;
+        }
+        .mejl-pane--list {
+          flex: 0 0 clamp(260px, 32%, 360px);
+          width: clamp(260px, 32%, 360px);
+          max-width: 360px;
+          overflow: hidden;
+        }
+        .mejl-pane--detail {
+          flex: 1 1 0;
+          min-width: 0;
+          max-width: 100%;
+        }
       }
       .mejl-header-bar {
         display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center;
@@ -57,19 +78,28 @@
       .mejl-folder-btn.is-active {
         color: #0f172a; background: #e2e8f0; border-color: #cbd5e1;
       }
-      .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; }
+      .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
       .mejl-item {
-        text-align: left; width: 100%; border: 1px solid #e2e8f0; background: #fff;
+        text-align: left; width: 100%; max-width: 100%; box-sizing: border-box;
+        border: 1px solid #e2e8f0; background: #fff;
         border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer;
         transition: border-color .15s, box-shadow .15s;
+        overflow: hidden;
       }
       .mejl-item:hover, .mejl-item.is-active {
         border-color: #94a3b8; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
       }
-      .mejl-item-top { display: flex; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.2rem; }
-      .mejl-item-customer { font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3; }
+      .mejl-item-top {
+        display: flex; justify-content: space-between; gap: 0.75rem;
+        margin-bottom: 0.2rem; min-width: 0;
+      }
+      .mejl-item-customer {
+        font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3;
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
       .mejl-item-customer-row {
-        display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.55rem; min-width: 0;
+        display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.55rem;
+        min-width: 0; flex: 1 1 auto; overflow: hidden;
       }
       .mejl-kundkort-link {
         display: inline-flex; align-items: center; gap: 0.28rem;
@@ -99,9 +129,15 @@
       }
       .mejl-item-from { font-weight: 500; color: #334155; font-size: 0.88rem; margin-bottom: 0.15rem; }
       .mejl-item-date { color: #94a3b8; font-size: 0.78rem; white-space: nowrap; }
-      .mejl-item-subject { font-size: 0.86rem; color: #64748b; margin-bottom: 0.15rem; }
+      .mejl-item-subject {
+        font-size: 0.86rem; color: #64748b; margin-bottom: 0.15rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
       .mejl-item-meta { font-size: 0.78rem; color: #64748b; }
-      .mejl-item-snippet { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }
+      .mejl-item-snippet {
+        font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
       .mejl-item.is-handled {
         background: #dcfce7;
         border-color: #86efac;
@@ -130,11 +166,18 @@
       .mejl-handle-status-btn.is-todo-active {
         background: #ffedd5; border-color: #fb923c; color: #9a3412;
       }
-      .mejl-detail-title { font-size: 1.05rem; color: #0f172a; line-height: 1.35; }
-      .mejl-detail .mejl-item-subject { font-size: 0.95rem; color: #334155; margin: 0.35rem 0 0.5rem; }
+      .mejl-detail-title {
+        font-size: 1.05rem; color: #0f172a; line-height: 1.35;
+        min-width: 0; overflow-wrap: anywhere;
+      }
+      .mejl-detail .mejl-item-subject {
+        font-size: 0.95rem; color: #334155; margin: 0.35rem 0 0.5rem;
+        white-space: normal; overflow: visible; text-overflow: unset;
+      }
       .mejl-detail {
         border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; min-height: 320px;
-        padding: 1.25rem 1.4rem;
+        padding: 1.25rem 1.4rem; min-width: 0; max-width: 100%; box-sizing: border-box;
+        overflow-x: auto;
       }
       .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
       .mejl-detail-body { white-space: pre-wrap; line-height: 1.55; color: #334155; margin-top: 1rem; }
@@ -378,7 +421,7 @@
                 </section>
 
                 <div class="mejl-layout" id="mejl-main" hidden>
-                    <section>
+                    <section class="mejl-pane mejl-pane--list" aria-label="Mejllista">
                         <nav class="mejl-folders" aria-label="Mappar">
                             <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
                             <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
@@ -388,7 +431,7 @@
                             <p class="mejl-hint">Laddar mejl…</p>
                         </div>
                     </section>
-                    <section>
+                    <section class="mejl-pane mejl-pane--detail" aria-label="Mejldetalj">
                         <div id="mejl-detail" class="mejl-detail">
                             <p class="mejl-detail-empty">Välj ett mejl till vänster.</p>
                         </div>
