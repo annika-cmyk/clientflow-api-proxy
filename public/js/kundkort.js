@@ -10744,18 +10744,28 @@ class CustomerCardManager {
         const kf = this._kundformularSummary || {};
         const enriched = {
             ...summary,
-            byraVhBekraftelse: kf.byraVhBekraftelse || summary.vhGate?.value || '',
-            byraVhNote: kf.byraVhNote || ''
+            // Endast byråns VH — inte kundens svar via vhGate.value
+            byraVhBekraftelse: kf.byraVhBekraftelse || summary.byraVhBekraftelse || '',
+            byraVhNote: kf.byraVhNote || summary.byraVhNote || '',
+            vhRegister: summary.vhRegister || summary.vhAlignment?.register || [],
+            vhAlignment: summary.vhAlignment || null
         };
         KundresaUi.render(host, enriched, {
-            onStep: (tab) => {
-                if (!tab) return;
+            onStep: (target) => {
+                const tab = typeof target === 'string' ? target : (target && target.tab) || '';
+                const focus = typeof target === 'object' && target ? target.focus : '';
+                if (focus === 'vh' || !tab) return;
                 this.switchToTab(tab);
                 this.loadTabContent(tab);
                 if (tab === 'foretagsinformation') {
-                    // Scrolla mot screening / Bolagsverket efter flikbyte
                     setTimeout(() => {
                         const el = document.getElementById('bolagsverket-card') || document.querySelector('.roller-screening-toolbar');
+                        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 250);
+                }
+                if (tab === 'kundformular') {
+                    setTimeout(() => {
+                        const el = document.querySelector('[data-kf-vh-section], #kundformular-content');
                         if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }, 250);
                 }
