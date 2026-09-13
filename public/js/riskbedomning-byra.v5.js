@@ -624,14 +624,6 @@ class RiskAssessmentManager {
         const hot = this.parseJsonField(f['Hot']);
         const sarbarheter = this.parseJsonField(f['Sårbarheter']);
         const atgarder = this.parseJsonField(f['Tjänstespecifika åtgärder']);
-        const answers = (entry && entry.answers) || {};
-        const comments = (entry && entry.kommentarer) || {};
-        const answerKeys = Object.keys(answers).filter((k) => {
-            const v = answers[k];
-            if (Array.isArray(v)) return v.length > 0;
-            return String(v || '').trim() !== '';
-        });
-        const answerLines = this.renderUtforandeOverviewAnswers(template, answers, comments);
         const semanticPanels = [
             this.renderOverviewSemanticPanels('hot', 'Hot och modus', 'fa-triangle-exclamation', hot, (h) => ({
                 title: h.titel || h.title || 'Hot',
@@ -668,11 +660,6 @@ class RiskAssessmentManager {
                     <p class="tjanst-mall-summary-text">${this.esc(beskrivning)}</p>
                 </section>` : ''}
                 ${semanticPanels}
-                ${answerLines ? `
-                <section class="tjanst-mall-summary-block tjanst-ov-section tjanst-ov-section--answers">
-                    <h5 class="tjanst-mall-summary-heading">Utförandesvar (${answerKeys.length})</h5>
-                    ${answerLines}
-                </section>` : (answerKeys.length ? `<p class="tjanst-mall-summary-meta">${answerKeys.length} utförandesvar ifyllda</p>` : '')}
             </div>
         `;
     }
@@ -702,33 +689,6 @@ class RiskAssessmentManager {
                 </div>
                 <ul class="tjanst-ov-panel-list">${rows}</ul>
             </article>`;
-    }
-
-    renderUtforandeOverviewAnswers(template, answers, comments = {}) {
-        const Mallar = window.TjanstUtforandeMallar;
-        if (!Mallar || !template || !answers) return '';
-        const skip = new Set(['hamtaClientflowStatistik']);
-        const questionsFn = Mallar.questionsForTemplate || Mallar.questionsForTemplate;
-        const questions = (typeof questionsFn === 'function' ? questionsFn(template) : []) || [];
-        const lines = [];
-        for (const q of questions) {
-            if (!q || skip.has(q.id)) continue;
-            const raw = answers[q.id];
-            let text = '';
-            if (Array.isArray(raw)) text = raw.filter(Boolean).join(', ');
-            else text = String(raw || '').trim();
-            if (!text && q.id !== 'antalKunderTjanst') continue;
-            if (!text) continue;
-            const label = String(q.label || q.id).replace(/\?$/, '');
-            const comment = String((comments && comments[q.id]) || '').trim();
-            lines.push(`<li>
-                <span class="tjanst-mall-summary-q">${this.esc(label)}</span>
-                <span class="tjanst-mall-summary-a">${this.esc(text)}</span>
-                ${comment ? `<span class="tjanst-mall-summary-comment">${this.esc(comment)}</span>` : ''}
-            </li>`);
-        }
-        if (!lines.length) return '';
-        return `<ul class="tjanst-mall-summary-answers">${lines.join('')}</ul>`;
     }
 
     renderUtforandeQuestion(mallId, question, entry) {
