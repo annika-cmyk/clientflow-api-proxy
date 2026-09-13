@@ -166,10 +166,8 @@
     return Forslag.groupForField(state.groups, item.key);
   }
 
-  function buttonForItem(item, analysGroup, renderedGroupIds) {
+  function buttonForItem(item, analysGroup) {
     if (!analysGroup) return '';
-    if (renderedGroupIds[analysGroup.id]) return '';
-    renderedGroupIds[analysGroup.id] = true;
     var optionalCls = analysGroup.optional ? ' is-optional' : '';
     return (
       '<button type="button" class="btn btn-secondary btn-sm kundrisker-analys-btn' + optionalCls + '" ' +
@@ -214,9 +212,6 @@
         '<button type="button" class="btn btn-primary btn-sm" data-analys-action="split" data-analys-group="' +
         escapeHtml(analysGroup.id) + '">Skapa analys</button>';
     }
-    if (items.length === 1 && analysGroup.allowMerge !== false && analysGroup.allowSplit === false) {
-      // single merge-only already has primary button
-    }
 
     return (
       '<div class="kundrisker-analys-panel" data-analys-panel="' + escapeHtml(analysGroup.id) + '">' +
@@ -245,15 +240,14 @@
 
   function renderSummary(root, summary) {
     refreshGroups();
-    var renderedGroupIds = {};
     var panelRendered = {};
 
     var groupsHtml = summary.groups.map(function (g) {
       var rows = g.items.map(function (item) {
         var analysGroup = groupForItem(item);
-        var btn = buttonForItem(item, analysGroup, renderedGroupIds);
+        var btn = buttonForItem(item, analysGroup);
         var panel = '';
-        if (analysGroup && renderedGroupIds[analysGroup.id] && !panelRendered[analysGroup.id]) {
+        if (analysGroup && state.openGroupId === analysGroup.id && !panelRendered[analysGroup.id]) {
           panelRendered[analysGroup.id] = true;
           panel = panelHtml(analysGroup);
         }
