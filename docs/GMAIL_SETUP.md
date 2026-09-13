@@ -19,7 +19,15 @@ Koppla användarens Gmail till ClientFlow för att:
 
 ## Render-miljövariabler
 
-Sätt dessa på **web service** som kör `app.clientflow.se` (Environment → Environment Variables → **Save Changes**). Om auto-deploy inte startar: **Manual Deploy → Deploy latest commit**.
+**Viktigt – rätt tjänst:** Live-appen (`www.app.clientflow.se`) pekar på Render-tjänsten
+**`clientflow-api-proxy-1`**. Sätt Gmail-variablerna där.
+
+Sätt dem **inte** bara på den äldre tjänsten `clientflow-api-proxy` (utan `-1`) – den
+används inte av Mejl-sidan, även om Environment-listan där ser komplett ut.
+
+1. Render → **clientflow-api-proxy-1** → Environment  
+2. Lägg in variablerna nedan → **Save Changes**  
+3. Om auto-deploy inte startar: **Manual Deploy → Deploy latest commit**
 
 ```
 GOOGLE_CLIENT_ID=...          # från Google Cloud OAuth-klienten
@@ -32,6 +40,7 @@ GMAIL_TOKEN_SECRET=...
 GMAIL_KUNDER_LABEL=KUNDER
 ```
 
+Klistra **inte** in värden med citattecken (`"..."`) – Render sparar då citattecknen som del av värdet.
 ### Accepterade alias (första icke-tomma vinner)
 
 | Fält | Kanoniskt namn (rekommenderat) | Alias |
@@ -42,7 +51,7 @@ GMAIL_KUNDER_LABEL=KUNDER
 
 Tomma eller bara whitespace räknas som saknade. Använd gärna de kanoniska namnen.
 
-När variablerna saknas visar Mejl-sidan status **Ej konfigurerad**. `/api/gmail/status` returnerar `missingEnv`, `envPresent` (boolean per kanonisk nyckel) och `envResolvedFrom` (vilket alias som gav värde) – utan att läcka secret-värden.
+När variablerna saknas visar Mejl-sidan status **Ej konfigurerad**. `/api/gmail/status` returnerar `missingEnv`, `envPresent` (boolean), `envLengths` (teckenlängd, 0 = tom), `envResolvedFrom`, `requestHost` och `expectedService` – utan att läcka secret-värden.
 
 ## Airtable
 
@@ -65,9 +74,10 @@ Tokens lagras krypterade (AES-256-GCM).
 
 | Symptom | Åtgärd |
 |--------|--------|
-| Status "Ej konfigurerad" | Kontrollera att alla tre OAuth-fält finns (kanoniskt eller alias) på **rätt** Render-service och att tjänsten startat om efter Save |
-| `envPresent` visar false trots att du lagt in vars | Fel variabelnamn, tomt värde, fel service, eller saknad redeploy efter Save |
-| Knappen visar toast med saknade env | Lägg in dem i Render (värden från Google Cloud); alias fungerar också |
+| Status "Ej konfigurerad" trots att nycklar syns i Render | Du tittar troligen på **fel tjänst**. Kopiera samma tre Google-vars till **`clientflow-api-proxy-1`**, Save + Manual Deploy. Kolla `requestHost` / `envLengths` i `/api/gmail/status`. |
+| Status "Ej konfigurerad" | Kontrollera att alla tre OAuth-fält finns (kanoniskt eller alias) på **clientflow-api-proxy-1** och att tjänsten startat om efter Save |
+| `envPresent` false / `envLengths` 0 trots att du lagt in vars | Fel tjänst, fel variabelnamn, tomt värde, citattecken runt värdet, eller saknad redeploy efter Save |
+| Knappen visar toast med saknade env | Lägg in dem i Render på **clientflow-api-proxy-1**; alias fungerar också |
 | `redirect_uri_mismatch` efter Google-login | Redirect URI i Google Cloud måste vara **exakt** samma som `GOOGLE_GMAIL_REDIRECT_URI` (inkl. `www`) |
 | Koppling lyckas men inkorg tom | Skapa Gmail-etikett `KUNDER` och underetiketter med kundnamn |
 

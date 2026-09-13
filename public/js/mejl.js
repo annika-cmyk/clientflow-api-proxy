@@ -57,8 +57,14 @@
     const present = data && data.envPresent && typeof data.envPresent === 'object'
       ? Object.entries(data.envPresent).filter(([, set]) => set).map(([k]) => k)
       : [];
+    const lengths = data && data.envLengths && typeof data.envLengths === 'object'
+      ? Object.entries(data.envLengths).map(([k, n]) => `${k}=${n}`).join(', ')
+      : '';
     const setPart = present.length ? ` Satta: ${present.join(', ')}.` : '';
-    return `Gmail är inte konfigurerad på servern. Saknas i Render: ${missing.join(', ')}.${setPart} Se docs/GMAIL_SETUP.md.`;
+    const lenPart = lengths ? ` Längder: ${lengths}.` : '';
+    const hostPart = data && data.requestHost ? ` API-host: ${data.requestHost}.` : '';
+    const svc = (data && data.expectedService) || 'clientflow-api-proxy-1';
+    return `Gmail är inte konfigurerad på servern. Saknas i Render (${svc}): ${missing.join(', ')}.${setPart}${lenPart}${hostPart} Se docs/GMAIL_SETUP.md.`;
   }
 
   const els = {
