@@ -1796,7 +1796,8 @@ class RiskAssessmentManager {
             : `<i class="fas fa-check" aria-hidden="true"></i> ${progress.doneCount}/${progress.total} delar klara`;
     }
 
-    toggleKlarmarkering() {
+    async toggleKlarmarkering() {
+        if (this._klarSaveInFlight) return;
         const id = this._activeTjanstTab || 'utforande';
         const turningOn = !this.klarmarkeradeFlikar.has(id);
         if (turningOn) this.klarmarkeradeFlikar.add(id);
@@ -1804,6 +1805,16 @@ class RiskAssessmentManager {
         this.syncTjanstTabDoneState();
         this.syncKlarmarkeraBtn();
         this.syncEditingRiskKlarmarkering();
+
+        const saved = await this.persistKlarmarkeringViaSave();
+        if (!saved) {
+            if (turningOn) this.klarmarkeradeFlikar.delete(id);
+            else this.klarmarkeradeFlikar.add(id);
+            this.syncTjanstTabDoneState();
+            this.syncKlarmarkeraBtn();
+            this.syncEditingRiskKlarmarkering();
+            return;
+        }
         if (turningOn) this.advanceTjanstResaAfterKlar(id);
     }
 
@@ -1817,7 +1828,7 @@ class RiskAssessmentManager {
         this.setTjanstTab(flikar[idx + 1]);
     }
 
-    /** Keep overview cards in sync while editing, and mark whole service klar when all tabs are done. */
+    /** Keep overview cards in sync while editing (local only). Persist via persistKlarmarkeringViaSave. */
     syncEditingRiskKlarmarkering() {
         const recordId = document.getElementById('tjanst-record-id')?.value;
         if (!recordId || !Array.isArray(this.risks)) return;
@@ -1834,21 +1845,99 @@ class RiskAssessmentManager {
         risk.fields = Object.assign({}, risk.fields, { 'Riskpoäng': serialized });
         if (complete) risk.fields['Aktuell'] = true;
         this.renderUtforandeKatalog();
-        this.persistKlarmarkeringQuietly(recordId, serialized, complete);
     }
 
-    async persistKlarmarkeringQuietly(recordId, serializedPoang, markAktuell) {
-        if (!recordId || !serializedPoang) return;
-        const body = { 'Riskpoäng': serializedPoang };
-        if (markAktuell) body['Aktuell'] = true;
-        try {
-            await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
-                method: 'PUT',
-                body: JSON.stringify(body)
-            });
-        } catch (err) {
-            console.warn('Kunde inte spara klarmarkering i bakgrunden', err);
+    /**
+     * Persist klarmarkering via the same payload/API as normal tjänst-save.
+     * Stays in the modal; skips hard motivering gates so mid-resa steps can save.
+     * @returns {Promise<boolean>}
+     */
+    async persistKlarmarkeringViaSave() {
+        const recordId = document.getElementById('tjanst-record-id')?.value;
+        // Nyskapad tjänst utan id: behåll lokal UI tills användaren sparar.
+        if (!recordId) return true;
+
+        const namn = document.getElementById('tjanst-name')?.value.trim();
+        if (!namn) {
+            this.showNotification('Tjänstens namn är obligatoriskt.', 'error');
+            return false;
         }
+
+        const payload = this.buildPayload();
+        const RS = window.RiskSkala;
+        const complete = !!(RS && RS.isTjanstResaComplete
+            && RS.isTjanstResaComplete([...this.klarmarkeradeFlikar]));
+        if (complete) payload['Aktuell'] = true;
+
+        const btn = document.getElementById('tjanst-klarmarkera-btn');
+        this._klarSaveInFlight = true;
+        if (btn) btn.disabled = true;
+        try {
+            const response = await this.putRiskAssessment(recordId, payload);
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                const raw = err.message || err.error;
+                const msg = (raw && typeof raw === 'object')
+                    ? (raw.message || JSON.stringify(raw))
+                    : (raw || `HTTP ${response.status}`);
+                throw new Error(msg);
+            }
+            const risk = Array.isArray(this.risks)
+                ? this.risks.find((r) => r.id === recordId)
+                : null;
+            if (risk) {
+                risk.fields = Object.assign({}, risk.fields, payload);
+                if (complete) risk.fields['Aktuell'] = true;
+                this.renderUtforandeKatalog();
+            }
+            return true;
+        } catch (error) {
+            console.error('Error saving klarmarkering:', error);
+            this.showNotification('Fel vid sparande: ' + (error.message || 'okänt fel'), 'error');
+            return false;
+        } finally {
+            this._klarSaveInFlight = false;
+            if (btn) btn.disabled = false;
+            this.syncKlarmarkeraBtn();
+        }
+    }
+
+    /** Shared PUT/POST used by normal save and klarmarkering (Riskpoäng-field fallback). */
+    async putRiskAssessment(recordId, payload) {
+        const url = recordId
+            ? `${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`
+            : `${window.apiConfig.baseUrl}/api/risk-assessments`;
+        const method = recordId ? 'PUT' : 'POST';
+        let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : { ...payload };
+        let response = await riskAuthFetch(url, {
+            method,
+            body: JSON.stringify(body)
+        });
+        if (response.ok) {
+            this._lastAiAudit = null;
+            return response;
+        }
+        if (body['Riskpoäng']) {
+            const err = await response.json().catch(() => ({}));
+            const raw = JSON.stringify(err);
+            if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
+                body = { ...body };
+                body['Samspelsexempel'] = body['Riskpoäng'];
+                delete body['Riskpoäng'];
+                response = await riskAuthFetch(url, {
+                    method,
+                    body: JSON.stringify(body)
+                });
+                if (response.ok) this._lastAiAudit = null;
+                return response;
+            }
+            const msgRaw = err.message || err.error;
+            const msg = (msgRaw && typeof msgRaw === 'object')
+                ? (msgRaw.message || JSON.stringify(msgRaw))
+                : (msgRaw || `HTTP ${response.status}`);
+            throw new Error(msg);
+        }
+        return response;
     }
 
     setKlarmarkeradeFlikar(list) {
@@ -3341,40 +3430,7 @@ class RiskAssessmentManager {
         if (asDraft) payload.utkast = true;
 
         try {
-            const url = recordId
-                ? `${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`
-                : `${window.apiConfig.baseUrl}/api/risk-assessments`;
-            const method = recordId ? 'PUT' : 'POST';
-
-            let body = this._lastAiAudit ? { ...payload, aiAudit: this._lastAiAudit } : payload;
-            let response = await riskAuthFetch(url, {
-                method,
-                body: JSON.stringify(body)
-            });
-            if (response.ok) this._lastAiAudit = null;
-
-            if (!response.ok && body['Riskpoäng']) {
-                const err = await response.json().catch(() => ({}));
-                const raw = JSON.stringify(err);
-                if (/UNKNOWN_FIELD_NAME|Unknown field/i.test(raw)) {
-                    body = { ...body };
-                    if (body['Riskpoäng']) {
-                        body['Samspelsexempel'] = body['Riskpoäng'];
-                        delete body['Riskpoäng'];
-                    }
-                    response = await riskAuthFetch(url, {
-                        method,
-                        body: JSON.stringify(body)
-                    });
-                } else {
-                    const raw = err.message || err.error;
-                    const msg = (raw && typeof raw === 'object')
-                        ? (raw.message || JSON.stringify(raw))
-                        : (raw || `HTTP ${response.status}`);
-                    throw new Error(msg);
-                }
-            }
-
+            const response = await this.putRiskAssessment(recordId || null, payload);
             if (response.ok) {
                 this.closeModal('tjanst-modal');
                 await this.loadRiskAssessments();

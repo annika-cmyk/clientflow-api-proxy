@@ -2094,7 +2094,8 @@ modeFromModalId(modalId) {
             : ('<i class="fas fa-check" aria-hidden="true"></i> ' + progress.doneCount + '/' + progress.total + ' delar klara');
     }
 
-    toggleRiskKlarmarkering(mode) {
+    async toggleRiskKlarmarkering(mode) {
+        if (this._klarSaveInFlight) return;
         const id = this._activeRiskTab[mode] || 'utforande';
         const set = this.klarmarkeradeFlikar[mode] || new Set();
         const turningOn = !set.has(id);
@@ -2103,6 +2104,16 @@ modeFromModalId(modalId) {
         this.klarmarkeradeFlikar[mode] = set;
         this.syncRiskTabDoneState(mode);
         this.syncRiskKlarmarkeraBtn(mode);
+
+        const saved = await this.persistRiskKlarmarkeringViaSave(mode);
+        if (!saved) {
+            if (turningOn) set.delete(id);
+            else set.add(id);
+            this.klarmarkeradeFlikar[mode] = set;
+            this.syncRiskTabDoneState(mode);
+            this.syncRiskKlarmarkeraBtn(mode);
+            return;
+        }
         if (turningOn) this.advanceRiskResaAfterKlar(mode, id);
     }
 
@@ -2115,6 +2126,76 @@ modeFromModalId(modalId) {
         if (idx < 0 || idx >= flikar.length - 1) return;
         const modalId = mode === 'edit' ? 'edit-risk-modal' : 'add-risk-modal';
         this.setRiskTab(modalId, flikar[idx + 1]);
+    }
+
+    /**
+     * Persist risk-klarmarkering via same payload/API as normal save (edit only).
+     * Stays in modal; skips hard form/motivering gates so mid-resa steps can save.
+     * @returns {Promise<boolean>}
+     */
+    async persistRiskKlarmarkeringViaSave(mode) {
+        if (mode !== 'edit') return true;
+
+        const form = document.getElementById('edit-risk-form');
+        if (!form) return true;
+        const formData = new FormData(form);
+        const recordId = formData.get('record-id');
+        if (!recordId) return true;
+
+        const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
+        if (!userByraId) {
+            this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
+            return false;
+        }
+
+        const btn = document.getElementById('edit-risk-klarmarkera-btn');
+        this._klarSaveInFlight = true;
+        if (btn) btn.disabled = true;
+        try {
+            let riskData;
+            try {
+                riskData = {
+                    ...this.collectRiskPayload(formData, 'edit'),
+                    'Byrå ID': userByraId
+                };
+            } catch (collectErr) {
+                this.showNotification(collectErr.message || 'Kunde inte spara klarmarkering.', 'error');
+                return false;
+            }
+            const RS = window.RiskSkala;
+            const klar = [...(this.klarmarkeradeFlikar.edit || [])];
+            const complete = !!(RS && RS.isTjanstResaComplete && RS.isTjanstResaComplete(klar));
+            if (complete) riskData['Aktuell'] = true;
+
+            const response = await this.saveRiskFactor(
+                `${window.apiConfig.baseUrl}/api/risk-factors/${recordId}`,
+                'PUT',
+                riskData
+            );
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || `HTTP ${response.status}`);
+            }
+            const risk = Array.isArray(this.risks)
+                ? this.risks.find((r) => r.id === recordId)
+                : null;
+            if (risk) {
+                risk.fields = Object.assign({}, risk.fields, riskData);
+                if (complete) risk.fields['Aktuell'] = true;
+            }
+            return true;
+        } catch (error) {
+            console.error('Error saving risk klarmarkering:', error);
+            this.showNotification(
+                'Fel vid uppdatering av riskfaktor: ' + (error.message || ''),
+                'error'
+            );
+            return false;
+        } finally {
+            this._klarSaveInFlight = false;
+            if (btn) btn.disabled = false;
+            this.syncRiskKlarmarkeraBtn(mode);
+        }
     }
 
     bindRiskKlarmarkering() {
