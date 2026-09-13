@@ -1269,18 +1269,76 @@
       });
     }
   });
+  /**
+   * Sidfot lagras som JSON i Airtable long text (~100k). Råa telefonbilder
+   * som data-URL spränger gränsen (422). Skala ner till mejlstorlek.
+   */
+  function loadImageFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Kunde inte läsa bild'));
+      };
+      img.src = url;
+    });
+  }
+
+  async function compressSignatureImage(file, which) {
+    const img = await loadImageFromFile(file);
+    const maxW = which === 1 ? 176 : 320;
+    const maxH = which === 1 ? 176 : 120;
+    const scale = Math.min(1, maxW / (img.naturalWidth || img.width), maxH / (img.naturalHeight || img.height));
+    const w = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Kunde inte bearbeta bild');
+    ctx.drawImage(img, 0, 0, w, h);
+    const preferPng = which === 2 && /png|svg|webp/i.test(file.type || '');
+    const qualities = preferPng ? [null] : [0.82, 0.7, 0.55];
+    let best = '';
+    for (const q of qualities) {
+      const dataUrl =
+        q == null ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', q);
+      if (!best || dataUrl.length < best.length) best = dataUrl;
+      if (best.length <= 40000) break;
+    }
+    if (!best || best.length > 45000) {
+      throw new Error(
+        which === 1
+          ? 'Bild 1 är fortfarande för stor efter komprimering. Använd en mindre fil eller URL.'
+          : 'Bild 2 är fortfarande för stor efter komprimering. Använd en mindre fil eller URL.'
+      );
+    }
+    return best;
+  }
+
   async function onSigImage(inputId, which) {
     const input = document.getElementById(inputId);
     if (!input || !input.files || !input.files[0]) return;
-    const dataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('Kunde inte läsa bild'));
-      reader.readAsDataURL(input.files[0]);
-    });
-    if (which === 1) sigImage1DataUrl = dataUrl;
-    else sigImage2DataUrl = dataUrl;
-    refreshSignaturePreview();
+    try {
+      if (els.sigStatus) els.sigStatus.textContent = 'Bearbetar bild…';
+      const dataUrl = await compressSignatureImage(input.files[0], which);
+      if (which === 1) sigImage1DataUrl = dataUrl;
+      else sigImage2DataUrl = dataUrl;
+      if (els.sigStatus) els.sigStatus.textContent = '';
+      refreshSignaturePreview();
+    } catch (err) {
+      if (which === 1) sigImage1DataUrl = '';
+      else sigImage2DataUrl = '';
+      input.value = '';
+      const msg = (err && err.message) || 'Kunde inte läsa bild';
+      if (els.sigStatus) els.sigStatus.textContent = msg;
+      showToast(msg, 'error');
+    }
   }
   const img1 = document.getElementById('mejl-sig-img1');
   const img2 = document.getElementById('mejl-sig-img2');
@@ -1289,20 +1347,31 @@
   if (els.sigSave) {
     els.sigSave.addEventListener('click', async () => {
       els.sigStatus.textContent = 'Sparar…';
-      const res = await fetch(`${baseUrl}/api/mejl/signature`, {
-        method: 'PUT',
-        ...authOpts(),
-        body: JSON.stringify({ settings: collectSignatureSettings() })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        els.sigStatus.textContent = data.error || 'Kunde inte spara';
-        return;
+      try {
+        const res = await fetch(`${baseUrl}/api/mejl/signature`, {
+          method: 'PUT',
+          ...authOpts(),
+          body: JSON.stringify({ settings: collectSignatureSettings() })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          const msg =
+            data.error && !/^Request failed with status code \d+$/i.test(data.error)
+              ? data.error
+              : 'Kunde inte spara sidfoten. Kontrollera bilderna och försök igen.';
+          els.sigStatus.textContent = msg;
+          showToast(msg, 'error');
+          return;
+        }
+        fillSignatureForm(data.settings);
+        if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml;
+        els.sigStatus.textContent = 'Sparad.';
+        showToast('Mejl-sidfot sparad.', 'success');
+      } catch (err) {
+        const msg = (err && err.message) || 'Kunde inte spara sidfoten.';
+        els.sigStatus.textContent = msg;
+        showToast(msg, 'error');
       }
-      fillSignatureForm(data.settings);
-      if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml;
-      els.sigStatus.textContent = 'Sparad.';
-      showToast('Mejl-sidfot sparad.', 'success');
     });
   }
 
