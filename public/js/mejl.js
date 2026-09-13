@@ -372,12 +372,35 @@
     renderList();
   }
 
+  function customerOptionsHtml(selectedId) {
+    const opts = (customers || [])
+      .map((c) => {
+        const sel = c.id === selectedId ? ' selected' : '';
+        return `<option value="${esc(c.id)}"${sel}>${esc(c.namn)}</option>`;
+      })
+      .join('');
+    return `<option value="">Välj kund i ClientFlow…</option>${opts}`;
+  }
+
+  function matchReasonLabel(reason) {
+    const r = String(reason || '').toLowerCase();
+    if (r === 'link') return { text: 'Match via sparad koppling', cls: 'is-link' };
+    if (r === 'email') return { text: 'Match via e-post (auto)', cls: 'is-auto' };
+    if (r === 'label+email') return { text: 'Match via etikett + e-post (auto)', cls: 'is-auto' };
+    if (r === 'label') return { text: 'Match via etikettnamn (auto)', cls: 'is-auto' };
+    return null;
+  }
+
   function bindDetailLabelUi(id) {
     const select = document.getElementById('mejl-label-select');
     const applyBtn = document.getElementById('mejl-label-apply');
     const createWrap = document.getElementById('mejl-label-create-wrap');
     const createInput = document.getElementById('mejl-label-create');
     const createBtn = document.getElementById('mejl-label-create-btn');
+    const linkSelect = document.getElementById('mejl-link-customer');
+    const linkBtn = document.getElementById('mejl-link-apply');
+    const unlinkBtn = document.getElementById('mejl-link-remove');
+    const syncCheck = document.getElementById('mejl-link-sync-gmail');
 
     function syncCreateVisibility() {
       if (!createWrap || !select) return;
@@ -433,6 +456,99 @@
         await modifyLabels(id, { remove: [lid] });
       });
     });
+
+    if (linkBtn && linkSelect) {
+      linkBtn.addEventListener('click', async () => {
+        const kundId = linkSelect.value;
+        if (!kundId) {
+          showToast('Välj en kund att koppla etiketten till.', 'error');
+          return;
+        }
+        const ctx = detailContext || {};
+        const m = ctx.message || {};
+        const kunderChild =
+          (m.labels || []).find((l) => l && l.isKunderChild) ||
+          (m.labelId ? { id: m.labelId, name: m.labelName } : null);
+        if (!kunderChild || !kunderChild.id) {
+          showToast('Mejlet saknar en KUNDER-etikett att koppla.', 'error');
+          return;
+        }
+        linkBtn.disabled = true;
+        try {
+          const payload = {
+            labelId: kunderChild.id,
+            labelName: kunderChild.name || m.labelName || null,
+            kundId,
+            messageId: id,
+            syncGmailLabel: !!(syncCheck && syncCheck.checked)
+          };
+          const res = await fetch(`${baseUrl}/api/gmail/label-links`, {
+            method: 'PUT',
+            ...authOpts(),
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            showToast(data.error || 'Kunde inte spara koppling', 'error');
+            return;
+          }
+          showToast(
+            payload.syncGmailLabel
+              ? 'Koppling sparad och Gmail-etikett uppdaterad.'
+              : 'Koppling sparad i ClientFlow (Gmail oförändrad).',
+            'success'
+          );
+          applyLabelResultToList(id, {
+            customerId: data.customerId,
+            customerName: data.customerName,
+            matchReason: 'link',
+            labelId: data.link && data.link.labelId,
+            labelName: data.link && data.link.labelName,
+            labelLeaf:
+              data.link && data.link.labelName
+                ? String(data.link.labelName).split('/').pop()
+                : undefined
+          });
+          await loadInbox();
+          await openMessage(id);
+        } finally {
+          linkBtn.disabled = false;
+        }
+      });
+    }
+
+    if (unlinkBtn) {
+      unlinkBtn.addEventListener('click', async () => {
+        const ctx = detailContext || {};
+        const m = ctx.message || {};
+        const link = m.labelLink || {};
+        const labelId = link.labelId || m.labelId;
+        const labelName = link.labelName || m.labelName;
+        if (!labelId && !labelName) {
+          showToast('Ingen sparad koppling att ta bort.', 'error');
+          return;
+        }
+        if (!confirm('Ta bort kopplingen etikett→kund i ClientFlow?')) return;
+        unlinkBtn.disabled = true;
+        try {
+          const res = await fetch(`${baseUrl}/api/gmail/label-links`, {
+            method: 'DELETE',
+            ...authOpts(),
+            body: JSON.stringify({ labelId, labelName })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            showToast(data.error || 'Kunde inte ta bort koppling', 'error');
+            return;
+          }
+          showToast('Koppling borttagen.', 'success');
+          await loadInbox();
+          await openMessage(id);
+        } finally {
+          unlinkBtn.disabled = false;
+        }
+      });
+    }
   }
 
   async function modifyLabels(id, payload) {
@@ -478,6 +594,15 @@
       ((m.labels || []).find((l) => l.isKunderChild) || {}).id ||
       '';
     const labelsHtml = renderLabelChips(m.labels || [], { removable: true });
+    const reason = matchReasonLabel(m.matchReason || (listMeta && listMeta.matchReason));
+    const reasonHtml = reason
+      ? `<span class="mejl-match-pill ${reason.cls}"><i class="fas fa-link"></i> ${esc(reason.text)}</span>`
+      : '';
+    const linkedKundId =
+      (m.labelLink && m.labelLink.kundId) ||
+      (m.matchReason === 'link' ? m.customerId : '') ||
+      '';
+    const hasLink = !!(m.labelLink && m.labelLink.kundId) || m.matchReason === 'link';
     els.detail.innerHTML = `
       <div class="mejl-item-top">
         <strong class="mejl-detail-title">${esc(title)}</strong>
@@ -489,8 +614,9 @@
       <div class="mejl-labels-block">
         <div class="mejl-labels-heading">Etiketter</div>
         ${labelsHtml || '<p class="mejl-hint" style="margin:0;">Inga etiketter.</p>'}
+        ${reasonHtml}
         <div class="mejl-label-edit">
-          <label class="mejl-label-edit-label" for="mejl-label-select">Kundetikett (KUNDER/…)</label>
+          <label class="mejl-label-edit-label" for="mejl-label-select">Kundetikett i Gmail (KUNDER/…)</label>
           <div class="mejl-label-edit-row">
             <select id="mejl-label-select" class="form-select form-input mejl-label-select">
               ${kunderOptionsHtml(currentKunderId)}
@@ -506,6 +632,27 @@
             </button>
           </div>
           <p class="mejl-hint">Byter kundetikett i Gmail (övriga KUNDER-barn tas bort från mejlet). Systemetiketter som Inkorg/Skickat behålls.</p>
+        </div>
+        <div class="mejl-label-link">
+          <label class="mejl-label-edit-label" for="mejl-link-customer">Koppla etikett till kund (ClientFlow)</label>
+          <p class="mejl-hint" style="margin-top:0;">Rättar fel auto-match utan att ändra Gmail. Sparad koppling väger tyngre än namnmatch.</p>
+          <div class="mejl-label-link-row">
+            <select id="mejl-link-customer" class="form-select form-input mejl-label-select">
+              ${customerOptionsHtml(linkedKundId || m.customerId || '')}
+            </select>
+            <button type="button" class="btn btn-primary btn-sm" id="mejl-link-apply">
+              Koppla etikett till kund
+            </button>
+            ${
+              hasLink
+                ? `<button type="button" class="btn btn-secondary btn-sm" id="mejl-link-remove">Ta bort koppling</button>`
+                : ''
+            }
+          </div>
+          <label class="mejl-label-link-check">
+            <input type="checkbox" id="mejl-link-sync-gmail">
+            <span>Uppdatera även Gmail-etikett (byt till KUNDER/kundnamn)</span>
+          </label>
         </div>
       </div>
       <div class="mejl-connect-actions" style="margin-top:0.75rem;">
@@ -567,7 +714,14 @@
       matchReason: m.matchReason,
       kunderLabels: data.kunderLabels
     });
-    renderDetail(id, m, listMeta, data.kunderLabels);
+    // Behåll labelLink från API på listMeta/message för UI
+    const listMetaWithLink = {
+      ...(messages.find((x) => x.id === id) || {}),
+      labelLink: m.labelLink || null
+    };
+    const idx = messages.findIndex((x) => x.id === id);
+    if (idx >= 0) messages[idx] = { ...messages[idx], labelLink: m.labelLink || null };
+    renderDetail(id, { ...m, labelLink: m.labelLink || null }, listMetaWithLink, data.kunderLabels);
   }
 
   async function sendMail() {
