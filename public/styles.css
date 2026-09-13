@@ -15873,11 +15873,15 @@ h5.ar-subsection-title {
 }
 .tjanst-panel-klar-bar {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     align-items: center;
     gap: 0.65rem;
     flex-shrink: 0;
     margin: 0 0 0.65rem;
+}
+.tjanst-panel-klar-bar:not(:has(.tjanst-resa-progress:not([hidden]))) {
+    display: none;
+    margin: 0;
 }
 .tjanst-resa-progress {
     margin-right: auto;
@@ -15890,6 +15894,14 @@ h5.ar-subsection-title {
 }
 .tjanst-resa-progress.is-complete {
     color: #15803d;
+}
+.tjanst-panel-klar-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-shrink: 0;
+    margin: 0.75rem 0 0;
+    padding-top: 0.15rem;
 }
 .tjanst-klarmarkera-btn {
     appearance: none;
