@@ -623,9 +623,13 @@ async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId
   const url = `https://api.airtable.com/v0/${bid}/${kunddataTableId()}`;
   const headers = { Authorization: `Bearer ${airtableAccessToken}` };
   const byId = new Map();
-  const fieldList = Array.isArray(opts.fields)
+  // Mutable: om fields[] innehåller okänt fältnamn droppas listan och vi hämtar alla fält.
+  let fieldList = Array.isArray(opts.fields)
     ? opts.fields.map((f) => String(f || '').trim()).filter(Boolean)
     : null;
+
+  const softAirtableMsg = (msg) => /Unknown field name|UNKNOWN_FIELD_NAME|INVALID_FILTER|422/i.test(String(msg || ''));
+  const unknownFieldMsg = (msg) => /Unknown field name|UNKNOWN_FIELD_NAME/i.test(String(msg || ''));
 
   const pull = async (filterByFormula) => {
     let offset = null;
@@ -649,8 +653,22 @@ async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId
     await pull(formula || undefined);
   } catch (e) {
     const msg = e.response?.data?.error?.message || e.message || '';
-    if (!/Unknown field name|INVALID_FILTER|422/i.test(String(msg))) throw e;
-    if (formula) await pull(access.byraFilterFormula(userData.byraId) || undefined);
+    if (!softAirtableMsg(msg)) throw e;
+    // fields[] med ogiltigt namn (t.ex. Företagsnamn) → hämta utan fields[] så listan inte blir tom.
+    if (fieldList && fieldList.length && unknownFieldMsg(msg)) {
+      console.warn('fetchKunddataRecordsForUser: okänt fields[] – hämtar utan fältbegränsning:', msg);
+      fieldList = null;
+      byId.clear();
+      try {
+        await pull(formula || undefined);
+      } catch (e2) {
+        const msg2 = e2.response?.data?.error?.message || e2.message || '';
+        if (!softAirtableMsg(msg2)) throw e2;
+        if (formula) await pull(access.byraFilterFormula(userData.byraId) || undefined);
+      }
+    } else if (formula) {
+      await pull(access.byraFilterFormula(userData.byraId) || undefined);
+    }
   }
 
   if (access.isAnstalld(userData.role)) {
@@ -659,7 +677,16 @@ async function fetchKunddataRecordsForUser(userData, airtableAccessToken, baseId
         await pull(extra);
       } catch (e) {
         const msg = e.response?.data?.error?.message || e.message || '';
-        if (!/Unknown field name|INVALID_FILTER|422/i.test(String(msg))) throw e;
+        if (!softAirtableMsg(msg)) throw e;
+        if (fieldList && fieldList.length && unknownFieldMsg(msg)) {
+          fieldList = null;
+          try {
+            await pull(extra);
+          } catch (e2) {
+            const msg2 = e2.response?.data?.error?.message || e2.message || '';
+            if (!softAirtableMsg(msg2)) throw e2;
+          }
+        }
       }
     }
   }
@@ -2841,32 +2868,48 @@ const minibokAml = createMinibokAml({
   getAirtableUser
 });
 
+const gmailCustomers = require('./lib/gmail/customers');
+
 async function listAccessibleCustomersForGmail(user) {
   const token = process.env.AIRTABLE_ACCESS_TOKEN;
   const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
   if (!token || !user) return [];
   try {
+    // Endast verkliga KUNDDATA-fält – okända fields[] (t.ex. Företagsnamn) gav 422 → tom lista → send 403.
     const records = await fetchKunddataRecordsForUser(user, token, baseId, {
-      fields: ['Namn', 'Företagsnamn', 'Orgnr', 'Byrå ID', 'Användare', 'e-post', 'Email', 'E-post']
+      fields: [...gmailCustomers.SAFE_KUNDDATA_FIELDS]
     });
-    return (records || []).map((r) => ({
-      id: r.id,
-      namn: String((r.fields && (r.fields.Namn || r.fields.Företagsnamn)) || '').trim() || 'Namnlös kund',
-      orgnr: String((r.fields && (r.fields.Orgnr || r.fields.Organisationsnummer)) || '').trim(),
-      email: String(
-        (r.fields && (r.fields['e-post'] || r.fields.Email || r.fields['E-post'] || r.fields.mailaddress)) || ''
-      ).trim()
-    })).filter((c) => c.id);
+    return (records || [])
+      .map((r) => gmailCustomers.mapCustomerRecord(r))
+      .filter((c) => c.id);
   } catch (err) {
     console.warn('listAccessibleCustomersForGmail:', err.message);
     return [];
   }
 }
 
+/** Samma behörighet som kundlistan/dropdown: hämta en kund via record-id och kolla access. */
+async function getAccessibleCustomerForGmail(user, customerId) {
+  const token = process.env.AIRTABLE_ACCESS_TOKEN;
+  const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const id = String(customerId || '').trim();
+  if (!token || !user || !id) return null;
+  try {
+    const record = await fetchKunddataRecord(id, token, baseId);
+    if (!access.userHasCustomerAccess(user, record)) return null;
+    return gmailCustomers.mapCustomerRecord(record);
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    console.warn('getAccessibleCustomerForGmail:', err.message);
+    return null;
+  }
+}
+
 const gmailIntegration = createGmailIntegration({
   authenticateToken,
   getAirtableUser,
-  listAccessibleCustomers: listAccessibleCustomersForGmail
+  listAccessibleCustomers: listAccessibleCustomersForGmail,
+  getAccessibleCustomer: getAccessibleCustomerForGmail
 });
 
 // Bolagsverket isalive endpoint (health check)
