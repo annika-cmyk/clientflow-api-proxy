@@ -636,7 +636,7 @@
           tries += 1;
           if ((window.riskManager && window.riskManager.risks && window.riskManager.risks.length) || tries > 40) {
             clearInterval(timer);
-            if (summary.hasAnswers) renderSummary(root, summary);
+            refresh();
           }
         }, 500);
       })
@@ -645,18 +645,21 @@
       });
   }
 
+  /** Anropas efter sparad riskanalys så Analysera-knappar/status uppdateras. */
+  function refresh() {
+    var root = document.getElementById('kundrisker-enkat-root');
+    if (!root || !state.summary) return;
+    if (!state.summary.hasAnswers) {
+      renderEmpty(root);
+      return;
+    }
+    renderSummary(root, state.summary);
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);
   } else {
     mount();
-  }
-
-  function refresh() {
-    var root = document.getElementById('kundrisker-enkat-root');
-    if (!root || !state.profil) return;
-    var summary = buildSummary(state.profil, state.schema || { fields: [], sections: [] });
-    if (!summary.hasAnswers) renderEmpty(root);
-    else renderSummary(root, summary);
   }
 
   window.KundriskerEnkatSammanfattning = {
