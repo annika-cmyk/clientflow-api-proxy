@@ -834,6 +834,208 @@
   }
 
 
+  function renderMultiselectCustom(field) {
+    var wrap = document.createElement('div');
+    wrap.className = 'byra-enkate-multi-custom';
+
+    var choices = (field.choices && field.choices.length) ? field.choices.slice() : [];
+    var knownSet = {};
+    choices.forEach(function (c) { knownSet[String(c).toLowerCase()] = true; });
+
+    var selected = parseBetalningsmonsterLocal(values[field.key], choices);
+    var selectedSet = {};
+    selected.forEach(function (v) { selectedSet[String(v).toLowerCase()] = true; });
+    var extras = selected.filter(function (v) { return !knownSet[String(v).toLowerCase()]; });
+
+    var hint = document.createElement('p');
+    hint.className = 'byra-enkate-it-multi-hint';
+    hint.textContent = 'Flera val möjliga';
+    wrap.appendChild(hint);
+
+    var list = document.createElement('div');
+    list.className = 'byra-enkate-it-checks';
+
+    function sync() {
+      var rows = [];
+      list.querySelectorAll('.byra-enkate-it-check input[type="checkbox"]').forEach(function (cb) {
+        if (cb.checked) rows.push(cb.value);
+      });
+      list.querySelectorAll('.byra-enkate-multi-custom-row').forEach(function (row) {
+        var input = row.querySelector('input[type="text"]');
+        var label = input ? String(input.value || '').trim() : '';
+        if (label) rows.push(label);
+      });
+      values[field.key] = rows.join(', ');
+      skipped[field.key] = false;
+      updateProgress();
+      updateNav();
+      setStatus('');
+    }
+
+    choices.forEach(function (choice, idx) {
+      var id = 'enkate-' + field.key + '-' + idx;
+      var row = document.createElement('label');
+      row.className = 'byra-enkate-it-check';
+      row.setAttribute('for', id);
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.value = choice;
+      cb.checked = !!selectedSet[String(choice).toLowerCase()];
+      cb.addEventListener('change', sync);
+      var span = document.createElement('span');
+      span.textContent = choice;
+      row.appendChild(cb);
+      row.appendChild(span);
+      list.appendChild(row);
+    });
+
+    function bindCustomRow(row) {
+      var input = row.querySelector('input[type="text"]');
+      if (input) {
+        input.addEventListener('input', sync);
+        input.addEventListener('change', sync);
+      }
+      var removeBtn = row.querySelector('.byra-enkate-bolagsformer-remove');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function () {
+          row.remove();
+          sync();
+        });
+      }
+    }
+
+    function addCustomRow(label) {
+      var row = document.createElement('div');
+      row.className = 'byra-enkate-multi-custom-row';
+      row.innerHTML = '<input type="text" class="form-input" placeholder="Eget alternativ" value="' +
+        String(label || '').replace(/"/g, '&quot;') + '">' +
+        '<button type="button" class="byra-enkate-bolagsformer-remove" aria-label="Ta bort alternativ">×</button>';
+      list.appendChild(row);
+      bindCustomRow(row);
+      return row;
+    }
+
+    extras.forEach(function (label) { addCustomRow(label); });
+    wrap.appendChild(list);
+
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'byra-enkate-bolagsformer-add';
+    addBtn.textContent = 'Lägg till eget alternativ';
+    addBtn.addEventListener('click', function () {
+      var row = addCustomRow('');
+      var input = row.querySelector('input[type="text"]');
+      if (input) input.focus();
+      sync();
+    });
+    wrap.appendChild(addBtn);
+
+    // Spegla normaliserat värde så sammanfattning/progress ser samma lista
+    values[field.key] = selected.join(', ');
+    return wrap;
+  }
+
+  function parseBetalningsmonsterLocal(raw, choices) {
+    var text = Array.isArray(raw)
+      ? raw.map(function (v) { return String(v || '').trim(); }).filter(Boolean).join(', ')
+      : String(raw == null ? '' : raw).trim();
+    if (!text) return [];
+    var opts = choices || [];
+    var known = {};
+    opts.forEach(function (c) { known[String(c).toLowerCase()] = c; });
+
+    function fold(s) {
+      return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '');
+    }
+
+    var aliases = {
+      kontant: 'Kontant', kontanter: 'Kontant', kontantbetalning: 'Kontant',
+      kort: 'Kort', kortbetalning: 'Kort', betalkort: 'Kort', kreditkort: 'Kort',
+      swish: 'Swish', faktura: 'Faktura', fakturor: 'Faktura', fakturering: 'Faktura',
+      bankoverforing: 'Banköverföring', overforing: 'Banköverföring',
+      autogiro: 'Autogiro', bankgiro: 'Bankgiro/Plusgiro', plusgiro: 'Bankgiro/Plusgiro',
+      bankgiroplusgiro: 'Bankgiro/Plusgiro'
+    };
+    Object.keys(aliases).forEach(function (k) {
+      if (known[String(aliases[k]).toLowerCase()]) known[k] = aliases[k];
+    });
+    opts.forEach(function (c) { known[fold(c)] = c; });
+    Object.keys(aliases).forEach(function (k) {
+      if (known[String(aliases[k]).toLowerCase()]) known[fold(k)] = aliases[k];
+    });
+
+    var parts = text.split(/[,;|]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var proseRe = /\b(är|ar|vanligast|vanliga|vanligt|hos|kunderna|typiska|främst|mest|oftast|beskriv)\b/i;
+    var conjRe = /\b(och|eller|samt|i|hos|med|via)\b/i;
+    var looksList = parts.length && parts.every(function (p) {
+      if (known[p.toLowerCase()] || known[fold(p)]) return true;
+      if (conjRe.test(p) || proseRe.test(p)) return false;
+      return p.length <= 40 && p.split(/\s+/).filter(Boolean).length <= 3;
+    });
+
+    if (looksList) {
+      var listOut = [];
+      var listSeen = {};
+      parts.forEach(function (p) {
+        var canon = known[p.toLowerCase()] || known[fold(p)] || p;
+        var key = fold(canon);
+        if (!key || listSeen[key]) return;
+        listSeen[key] = true;
+        listOut.push(canon);
+      });
+      return listOut;
+    }
+
+    var hay = fold(text);
+    var selected = [];
+    var seen = {};
+    Object.keys(known)
+      .filter(function (k) { return /^[a-z0-9]+$/.test(k); })
+      .sort(function (a, b) { return b.length - a.length; })
+      .forEach(function (foldKey) {
+        var canon = known[foldKey];
+        var key = fold(canon);
+        if (!foldKey || !key || seen[key]) return;
+        if (hay.indexOf(foldKey) === -1) return;
+        seen[key] = true;
+        selected.push(canon);
+      });
+
+    var rem = text;
+    var remove = {};
+    selected.forEach(function (label) { remove[String(label).toLowerCase()] = true; });
+    Object.keys(aliases).forEach(function (alias) {
+      if (selected.indexOf(aliases[alias]) >= 0) remove[alias] = true;
+    });
+    Object.keys(remove).sort(function (a, b) { return b.length - a.length; }).forEach(function (label) {
+      var escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\  function renderBolagsformer(field) {');
+      rem = rem.replace(new RegExp(escaped, 'ig'), ' ');
+    });
+    var fillerFolds = {
+      och: 1, eller: 1, samt: 1, ar: 1, vanligast: 1, vanliga: 1, vanligt: 1, hos: 1, kunderna: 1,
+      typiska: 1, framst: 1, mest: 1, oftast: 1, i: 1, butik: 1, ovrigt: 1, ovrig: 1, via: 1, med: 1,
+      av: 1, den: 1, det: 1, de: 1, en: 1, ett: 1, som: 1, for: 1, till: 1, fran: 1, pa: 1, om: 1,
+      att: 1, sa: 1, bara: 1, ocksa: 1, mm: 1
+    };
+    rem = rem.split(/[^a-zA-ZåäöÅÄÖ0-9]+/).map(function (tok) {
+      return String(tok || '').trim();
+    }).filter(function (tok) {
+      if (!tok || tok.length < 2) return false;
+      var f = fold(tok);
+      return !fillerFolds[f] && !fillerFolds[tok.toLowerCase()];
+    }).join(' ').trim();
+    if (selected.length) {
+      if (rem.length >= 3) selected.push(rem.charAt(0).toUpperCase() + rem.slice(1));
+      return selected;
+    }
+    return [text];
+  }
+
   function renderBolagsformer(field) {
     var wrap = document.createElement('div');
     wrap.className = 'byra-enkate-bolagsformer';
@@ -1033,6 +1235,8 @@
       control = renderHogrisk(field);
     } else if (field.key === 'kundernasBranscher' || field.type === 'branscher') {
       control = renderKundBranscher(field);
+    } else if (field.type === 'multiselect' && field.allowCustom) {
+      control = renderMultiselectCustom(field);
     } else if (field.type === 'multiselect') {
       control = renderItSystemSelect(field);
     } else if (isBolagsformerField(field)) {
