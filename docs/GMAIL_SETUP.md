@@ -135,6 +135,8 @@ I demoläge slutförs BankID automatiskt efter ~2,5 s och sätter en HttpOnly-co
 
 Under **Mejl → Inställningar · sidfot** sparas en personlig HTML-signatur per användare i Application Users-fältet `Mejl Sidfot` (JSON). Fyra dispositionsmallar finns. Tomma fält renderas inte. Sidfoten bifogas automatiskt vid skicka via `/api/mejl/compose-prepare`.
 
+Uppladdade bilder (Bild 1/2) komprimeras i webbläsaren till sidfotsstorlek innan sparning. Airtable long text har ~100 000 tecken; råa telefonbilder som base64 data-URL ger annars `422`. Alternativt kan du ange en bild-URL.
+
 ## BankID-skydd i utgående mejl
 
 Markera text eller bilagor som BankID-skyddade i Nytt mejl. Offentlig del går i Gmail; skyddad del + filer nås via `mejl-skyddad.html` efter BankID (återanvänder `lib/samarbete-bankid.js`, mock default).
