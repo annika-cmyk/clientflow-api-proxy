@@ -78,15 +78,16 @@ class RiskFactorsManager {
         });
         if (!pending.length) return;
         await Promise.all(pending.map(async (risk) => {
-            const fields = { ...(risk.fields || {}) };
+            const fields = risk.fields || {};
             const newTyp = (Geo && Geo.targetTypForRecord)
                 ? Geo.targetTypForRecord(fields)
                 : ((RD && RD.normalizeTyp) ? RD.normalizeTyp(fields['Typ av riskfaktor']) : fields['Typ av riskfaktor']);
             try {
+                // Minimal payload: undvik 400 från PT/TF-/motiveringskrav på full post.
                 const response = await this.saveRiskFactor(
                     `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
                     'PUT',
-                    { ...fields, 'Typ av riskfaktor': newTyp }
+                    { 'Typ av riskfaktor': newTyp }
                 );
                 if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
             } catch (err) {
@@ -692,14 +693,14 @@ class RiskFactorsManager {
         });
         if (!pending.length) return;
         await Promise.all(pending.map(async (risk) => {
-            const fields = { ...(risk.fields || {}) };
+            const fields = risk.fields || {};
             const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
             const canonical = Kat.canonicalLabel(namn);
             try {
                 const response = await this.saveRiskFactor(
                     `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
                     'PUT',
-                    { ...fields, Riskfaktor: canonical }
+                    { Riskfaktor: canonical }
                 );
                 if (response.ok) risk.fields.Riskfaktor = canonical;
             } catch (err) {
@@ -711,7 +712,6 @@ class RiskFactorsManager {
     async migrateMisplacedKundTransactionFactors() {
         const Kat = window.OvrigaRiskKategorier;
         if (!Kat || !Kat.airtableTypForLinkedKundResidual) return;
-        const kundTyp = 'Riskfaktorer kopplat till kund';
         const pending = (this.risks || []).filter((risk) => {
             const fields = risk.fields || {};
             const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
@@ -720,15 +720,16 @@ class RiskFactorsManager {
         });
         if (!pending.length) return;
         await Promise.all(pending.map(async (risk) => {
-            const fields = { ...(risk.fields || {}) };
+            const fields = risk.fields || {};
             const namn = fields.Riskfaktor || fields['Riskfaktor'] || '';
+            const want = Kat.airtableTypForLinkedKundResidual(namn);
             try {
                 const response = await this.saveRiskFactor(
                     `${window.apiConfig.baseUrl}/api/risk-factors/${risk.id}`,
                     'PUT',
-                    { ...fields, 'Typ av riskfaktor': kundTyp, Riskfaktor: namn }
+                    { 'Typ av riskfaktor': want }
                 );
-                if (response.ok) risk.fields['Typ av riskfaktor'] = kundTyp;
+                if (response.ok) risk.fields['Typ av riskfaktor'] = want;
             } catch (err) {
                 console.warn('Kunde inte flytta riskfaktor till kund:', namn, err);
             }

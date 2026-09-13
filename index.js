@@ -75,7 +75,7 @@ const {
   shouldOmitRiskSelectValue,
   missingExactRiskLabels
 } = require('./lib/risk-skala-airtable');
-const { SCHEMA_FIELDS: OVRIGA_RISK_SCHEMA_FIELDS, applyOvrigExtraAirtableFields } = require('./lib/ovriga-risk-fields');
+const { SCHEMA_FIELDS: OVRIGA_RISK_SCHEMA_FIELDS, applyOvrigExtraAirtableFields, isRiskFactorLightPatch } = require('./lib/ovriga-risk-fields');
 const { yearlyRunsThroughHorizon } = require('./lib/yearly-uppdrag-runs');
 const { weeklyRunsThroughHorizon, isWeeklyFreq } = require('./lib/weekly-uppdrag-runs');
 const UppdragTyp = require('./public/js/uppdrag-typ');
@@ -16862,8 +16862,10 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
     const riskData = { ...(req.body || {}) };
     const faktorAiAudit = riskData.aiAudit;
     delete riskData.aiAudit;
-    const aktuellOnlyToggle = Object.keys(riskData).length === 1 && Object.prototype.hasOwnProperty.call(riskData, 'Aktuell');
-    if (!aktuellOnlyToggle) {
+    // Lätta patchar (Aktuell / typ / namn) får inte kräva PT/TF eller motivering —
+    // sidladdningsmigreringar skickar bara dessa fält och orsakade annars 400-storm.
+    const lightPatch = isRiskFactorLightPatch(riskData);
+    if (!lightPatch) {
       const ptTf = RiskSkala.normalizePtTf(riskData['PT/TF-relevans'] || riskData.ptTfRelevans);
       if (!ptTf) {
         return res.status(400).json({
@@ -16887,7 +16889,7 @@ app.put('/api/risk-factors/:id', authenticateToken, async (req, res) => {
       beforeFaktor = prev.data.fields || {};
     } catch (_) { /* jämför mot tomt */ }
     const riskDataWithFlag = applyMotiveringMigrationFlag(riskData, beforeFaktor);
-    if (!aktuellOnlyToggle && rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeFaktor)) return;
+    if (!lightPatch && rejectRiskWithoutMotivering(res, riskDataWithFlag, beforeFaktor)) return;
     const airtableFields = applyOvrigExtraAirtableFields(
       riskDataWithFlag,
       mapNamedFieldsToAirtable(riskDataWithFlag, factorMapping, { dropUnknown: true })

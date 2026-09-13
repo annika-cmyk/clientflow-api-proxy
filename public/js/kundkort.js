@@ -7282,7 +7282,7 @@ class CustomerCardManager {
         if (!pending.length) return;
         const auth = getAuthOptsKundkort();
         await Promise.all(pending.map(async (risk) => {
-            const fields = { ...(risk.fields || {}) };
+            const fields = risk.fields || {};
             const newTyp = Geo.targetTypForRecord(fields);
             try {
                 const response = await fetch(`${baseUrl}/api/risk-factors/${risk.id}`, {
@@ -7292,7 +7292,7 @@ class CustomerCardManager {
                         ...(auth.headers || {}),
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ ...fields, 'Typ av riskfaktor': newTyp })
+                    body: JSON.stringify({ 'Typ av riskfaktor': newTyp })
                 });
                 if (response.ok) risk.fields['Typ av riskfaktor'] = newTyp;
             } catch (err) {
