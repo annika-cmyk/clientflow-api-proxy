@@ -17929,6 +17929,23 @@ h5.ar-subsection-title {
 }
 .byra-enkate-choice:hover { border-color: #13505c; color: #13505c; }
 .byra-enkate-choice.is-selected { background: #13505c; border-color: #13505c; color: #fff; }
+.byra-enkate-choice--add {
+  border-style: dashed;
+  color: #475569;
+  font-weight: 600;
+}
+.byra-enkate-choice--add:hover { border-color: #13505c; color: #13505c; }
+.byra-enkate-select-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.65rem;
+  max-width: 36rem;
+}
+.byra-enkate-select-custom[hidden] { display: none !important; }
+.byra-enkate-select-custom .byra-enkate-input { flex: 1; min-width: 12rem; }
+.byra-enkate-select-custom-save { white-space: nowrap; }
 .byra-enkate-choices--stack {
   flex-direction: column;
   align-items: stretch;
@@ -19951,6 +19968,139 @@ body.byra-resa-page .risk-header h1 {
   .kundrisker-enkat-head { flex-direction: column; align-items: flex-start; }
   .kundrisker-enkat-row-main { grid-template-columns: 1fr; }
   .kundrisker-enkat-actions { justify-content: flex-start; }
+}
+.kundrisker-bransch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.4rem;
+}
+.kundrisker-bransch-chip,
+.kundrisker-bransch-subchip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.22rem 0.55rem;
+  border: 1px solid #d7dee8;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.kundrisker-bransch-chip:hover,
+.kundrisker-bransch-subchip:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+.kundrisker-bransch-chip.is-active,
+.kundrisker-bransch-subchip.is-active {
+  border-color: #0f766e;
+  background: rgba(15, 118, 110, 0.08);
+  color: #115e59;
+}
+.kundrisker-bransch-chip-name {
+  min-width: 0;
+}
+.kundrisker-bransch-chip-count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+}
+.kundrisker-bransch-chip.is-active .kundrisker-bransch-chip-count,
+.kundrisker-bransch-subchip.is-active .kundrisker-bransch-chip-count {
+  color: #0f766e;
+}
+.kundrisker-bransch-drill {
+  margin-top: 0.7rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(15, 61, 62, 0.14);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+.kundrisker-bransch-drill-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+.kundrisker-bransch-drill-head strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+.kundrisker-bransch-drill-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.kundrisker-bransch-drill-subs {
+  margin-bottom: 0.85rem;
+}
+.kundrisker-bransch-subchip {
+  margin: 0 0.35rem 0.35rem 0;
+  font-size: 0.82rem;
+}
+.kundrisker-bransch-clear-sni {
+  display: inline-block;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0f766e;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.kundrisker-bransch-drill-status {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  color: #475569;
+}
+.kundrisker-bransch-drill-status.is-error {
+  color: #b91c1c;
+}
+.kundrisker-bransch-drill-kunder {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  max-height: 16rem;
+  overflow: auto;
+}
+.kundrisker-bransch-drill-kunder li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #eef2f7;
+}
+.kundrisker-bransch-drill-kunder li:last-child {
+  border-bottom: 0;
+}
+.kundrisker-bransch-drill-kunder a {
+  color: #0f766e;
+  font-weight: 600;
+  text-decoration: none;
+}
+.kundrisker-bransch-drill-kunder a:hover {
+  text-decoration: underline;
+}
+.kundrisker-bransch-drill-sni {
+  display: block;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.35;
 }
 /* Byråprofil-kaskad på Övriga riskfaktorer */
 .byra-profil-kaskad {

@@ -19,7 +19,8 @@
     byraResaState: null,
     canEditResa: false,
     byraKey: '',
-    summary: null
+    summary: null,
+    drill: null
   };
 
   function API() {
@@ -101,6 +102,143 @@
     }
     if (Array.isArray(value)) return value.map(function (v) { return String(v || '').trim(); }).filter(Boolean).join(', ');
     return String(value).trim();
+  }
+
+  function isDrillableBranschField(item) {
+    if (!item || !item.key) return false;
+    if (item.key === 'kundernasBranscher') return true;
+    if (item.key === 'branscherKundstock') {
+      var raw = String((state.profil && state.profil.branscherKundstock) || item.display || '').trim();
+      return !!raw && raw !== HOGRISK_NONE;
+    }
+    return false;
+  }
+
+  function drillTypForField(fieldKey) {
+    return fieldKey === 'branscherKundstock' ? 'hogriskbransch' : 'kund-bransch';
+  }
+
+  function branschChipsHtml(item) {
+    var raw = state.profil && state.profil[item.key];
+    var rows = parseCounted(raw);
+    if (!rows.length) return escapeHtml(item.display || '');
+    return (
+      '<span class="kundrisker-bransch-chips" role="list">' +
+      rows.map(function (r) {
+        var active =
+          state.drill &&
+          state.drill.fieldKey === item.key &&
+          state.drill.form === r.form;
+        return (
+          '<button type="button" class="kundrisker-bransch-chip' + (active ? ' is-active' : '') + '" ' +
+            'role="listitem" data-bransch-drill="' + escapeHtml(item.key) + '" ' +
+            'data-bransch-form="' + escapeHtml(r.form) + '" ' +
+            'title="Visa underbranscher och kunder">' +
+            '<span class="kundrisker-bransch-chip-name">' + escapeHtml(r.form) + '</span>' +
+            (r.count
+              ? '<span class="kundrisker-bransch-chip-count">' + escapeHtml(r.count) + '</span>'
+              : '') +
+          '</button>'
+        );
+      }).join('') +
+      '</span>'
+    );
+  }
+
+  function answerHtml(item) {
+    if (isDrillableBranschField(item)) return branschChipsHtml(item);
+    return escapeHtml(item.display || '');
+  }
+
+  function drillPanelHtml(item) {
+    if (!state.drill || state.drill.fieldKey !== item.key) return '';
+    var d = state.drill;
+    var title = d.sniFilter
+      ? (d.form + ' → ' + d.sniFilter)
+      : d.form;
+    var body = '';
+    if (d.loading) {
+      body = '<p class="kundrisker-bransch-drill-status">Hämtar detaljer…</p>';
+    } else if (d.error) {
+      body = '<p class="kundrisker-bransch-drill-status is-error">' + escapeHtml(d.error) + '</p>';
+    } else {
+      var undersni = (d.data && d.data.undersni) || [];
+      var kunder = (d.data && d.data.kunder) || [];
+      var subHtml = '';
+      if (undersni.length) {
+        subHtml =
+          '<div class="kundrisker-bransch-drill-subs" role="list">' +
+          '<p class="kundrisker-bransch-drill-label">Underbranscher / SNI</p>' +
+          undersni.map(function (row) {
+            var active = d.sniFilter && foldText(d.sniFilter) === foldText(row.namn);
+            return (
+              '<button type="button" class="kundrisker-bransch-subchip' + (active ? ' is-active' : '') + '" ' +
+                'role="listitem" data-bransch-sni="' + escapeHtml(row.namn) + '" ' +
+                'data-bransch-drill="' + escapeHtml(item.key) + '" ' +
+                'data-bransch-form="' + escapeHtml(d.form) + '" ' +
+                'title="Visa kunder med denna SNI">' +
+                '<span>' + escapeHtml(row.namn) + '</span>' +
+                '<span class="kundrisker-bransch-chip-count">' + escapeHtml(String(row.antal)) + '</span>' +
+              '</button>'
+            );
+          }).join('') +
+          (d.sniFilter
+            ? '<button type="button" class="kundrisker-bransch-clear-sni" data-bransch-clear-sni ' +
+                'data-bransch-drill="' + escapeHtml(item.key) + '" ' +
+                'data-bransch-form="' + escapeHtml(d.form) + '">Visa alla i ' + escapeHtml(d.form) + '</button>'
+            : '') +
+          '</div>';
+      } else {
+        subHtml = '<p class="kundrisker-bransch-drill-status">Inga mer detaljerade SNI-koder hittades bland aktiva kunder.</p>';
+      }
+
+      var listHtml;
+      if (!kunder.length) {
+        listHtml = '<p class="kundrisker-bransch-drill-status">Inga matchande kunder bland aktiva i Clientflow.</p>';
+      } else {
+        listHtml =
+          '<ul class="kundrisker-bransch-drill-kunder">' +
+          kunder.map(function (k) {
+            var href = k.id ? 'kundkort.html?id=' + encodeURIComponent(k.id) : '#';
+            return (
+              '<li>' +
+                (k.id
+                  ? '<a href="' + href + '">' + escapeHtml(k.namn || 'Namn saknas') + '</a>'
+                  : '<span>' + escapeHtml(k.namn || 'Namn saknas') + '</span>') +
+                (k.sni
+                  ? '<span class="kundrisker-bransch-drill-sni">' + escapeHtml(k.sni) + '</span>'
+                  : '') +
+              '</li>'
+            );
+          }).join('') +
+          '</ul>';
+      }
+
+      body =
+        subHtml +
+        '<div class="kundrisker-bransch-drill-kunder-wrap">' +
+          '<p class="kundrisker-bransch-drill-label">Kunder · ' + kunder.length + '</p>' +
+          listHtml +
+        '</div>';
+    }
+
+    return (
+      '<div class="kundrisker-bransch-drill" data-bransch-panel="' + escapeHtml(item.key) + '">' +
+        '<div class="kundrisker-bransch-drill-head">' +
+          '<strong>' + escapeHtml(title) + '</strong>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-bransch-close>Stäng</button>' +
+        '</div>' +
+        body +
+      '</div>'
+    );
+  }
+
+  function foldText(value) {
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .normalize('NFC')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function companionAntal(field, fields) {
@@ -362,14 +500,17 @@
             '</span>';
         }
         return (
-          '<li class="kundrisker-enkat-row' + (allGroup ? ' has-analys' : '') + rowStatusCls + '" data-field-key="' + escapeHtml(item.key) + '"' +
+          '<li class="kundrisker-enkat-row' + (allGroup ? ' has-analys' : '') + rowStatusCls +
+            (isDrillableBranschField(item) ? ' has-bransch-drill' : '') +
+            '" data-field-key="' + escapeHtml(item.key) + '"' +
             (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
             '<div class="kundrisker-enkat-row-main">' +
               '<span class="kundrisker-enkat-q">' + escapeHtml(item.label) + '</span>' +
-              '<span class="kundrisker-enkat-a">' + escapeHtml(item.display) + '</span>' +
+              '<span class="kundrisker-enkat-a">' + answerHtml(item) + '</span>' +
               actions +
             '</div>' +
             panel +
+            drillPanelHtml(item) +
           '</li>'
         );
       }).join('');
@@ -387,12 +528,106 @@
           '<h3>Från byråprofilen</h3>' +
           '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
+        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Klicka på en bransch för att se under-SNI och kunder. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
 
     bindPanelEvents(root, summary);
+    bindDrillEvents(root, summary);
+  }
+
+  function openBranschDrill(root, summary, fieldKey, form, sniFilter) {
+    var typ = drillTypForField(fieldKey);
+    var same =
+      state.drill &&
+      state.drill.fieldKey === fieldKey &&
+      state.drill.form === form &&
+      String(state.drill.sniFilter || '') === String(sniFilter || '');
+    if (same && !sniFilter) {
+      state.drill = null;
+      renderSummary(root, summary);
+      return;
+    }
+    if (same && sniFilter) {
+      sniFilter = '';
+    }
+    state.drill = {
+      fieldKey: fieldKey,
+      form: form,
+      typ: typ,
+      sniFilter: sniFilter || '',
+      loading: true,
+      error: null,
+      data: null
+    };
+    renderSummary(root, summary);
+
+    var params = new URLSearchParams({ typ: typ, namn: form });
+    if (sniFilter) params.set('sni', sniFilter);
+    fetch(baseUrl() + '/api/statistik-riskbedomning/bransch-drilldown?' + params.toString(), authOpts())
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!state.drill || state.drill.fieldKey !== fieldKey || state.drill.form !== form) return;
+        if (!result.ok) {
+          state.drill.loading = false;
+          state.drill.error = (result.data && result.data.error) || 'Kunde inte hämta detaljer';
+          state.drill.data = null;
+        } else {
+          state.drill.loading = false;
+          state.drill.error = null;
+          state.drill.data = result.data;
+          state.drill.sniFilter = sniFilter || '';
+        }
+        renderSummary(root, summary);
+      })
+      .catch(function (err) {
+        if (!state.drill || state.drill.fieldKey !== fieldKey || state.drill.form !== form) return;
+        state.drill.loading = false;
+        state.drill.error = (err && err.message) || 'Nätverksfel';
+        renderSummary(root, summary);
+      });
+  }
+
+  function bindDrillEvents(root, summary) {
+    root.querySelectorAll('[data-bransch-drill].kundrisker-bransch-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var fieldKey = btn.getAttribute('data-bransch-drill');
+        var form = btn.getAttribute('data-bransch-form');
+        if (!fieldKey || !form) return;
+        openBranschDrill(root, summary, fieldKey, form, '');
+      });
+    });
+
+    root.querySelectorAll('[data-bransch-sni]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var fieldKey = btn.getAttribute('data-bransch-drill');
+        var form = btn.getAttribute('data-bransch-form');
+        var sni = btn.getAttribute('data-bransch-sni');
+        if (!fieldKey || !form || !sni) return;
+        openBranschDrill(root, summary, fieldKey, form, sni);
+      });
+    });
+
+    root.querySelectorAll('[data-bransch-clear-sni]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var fieldKey = btn.getAttribute('data-bransch-drill');
+        var form = btn.getAttribute('data-bransch-form');
+        if (!fieldKey || !form) return;
+        openBranschDrill(root, summary, fieldKey, form, '');
+      });
+    });
+
+    root.querySelectorAll('[data-bransch-close]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.drill = null;
+        renderSummary(root, summary);
+      });
+    });
   }
 
   function selectedItems(panel, analysGroup) {
