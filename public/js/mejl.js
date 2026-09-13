@@ -26,6 +26,31 @@
       .replace(/"/g, '&quot;');
   }
 
+
+  function kundkortUrl(customerId) {
+    const id = String(customerId || '').trim();
+    return id ? `kundkort.html?id=${encodeURIComponent(id)}` : '';
+  }
+
+  function kundkortLinkHtml(customerId, { compact } = {}) {
+    const href = kundkortUrl(customerId);
+    if (!href) return '';
+    if (compact) {
+      return `<a class="mejl-kundkort-link" href="${esc(href)}" title="Öppna kundkort" data-kundkort-link="1"><i class="fas fa-id-card" aria-hidden="true"></i><span>Öppna kundkort</span></a>`;
+    }
+    return `<a class="btn btn-secondary btn-sm mejl-kundkort-btn" href="${esc(href)}" data-kundkort-link="1"><i class="fas fa-id-card" aria-hidden="true"></i> Öppna kundkort</a>`;
+  }
+
+  function resolveMessageCustomerId(m, listMeta) {
+    return (
+      String((m && m.customerId) || '').trim() ||
+      String((listMeta && listMeta.customerId) || '').trim() ||
+      String((m && m.labelLink && m.labelLink.kundId) || '').trim() ||
+      String((listMeta && listMeta.labelLink && listMeta.labelLink.kundId) || '').trim() ||
+      ''
+    );
+  }
+
   function fmtDate(msOrStr) {
     if (!msOrStr) return '';
     try {
@@ -268,6 +293,8 @@
       messages
         .map((m) => {
           const customer = String(m.customerName || '').trim() || 'Okänd kund';
+          const cid = resolveMessageCustomerId(m);
+          const kundkortLink = kundkortLinkHtml(cid, { compact: true });
           const sender = fromDisplayName(m);
           const kunderOnly = (m.labels || []).filter((l) => l && l.isKunderChild);
           const labelHtml = kunderOnly.length
@@ -284,22 +311,25 @@
                 ])
               : '';
           return `
-      <button type="button" class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}">
+      <div class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
-          <span class="mejl-item-customer">${esc(customer)}</span>
+          <div class="mejl-item-customer-row">
+            <span class="mejl-item-customer">${esc(customer)}</span>
+            ${kundkortLink}
+          </div>
           <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
         ${labelHtml}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
-      </button>
+      </div>
     `;
         })
         .join('') + (extraHtml || '');
   }
 
-  function setSyncStatus(text) {
+  async function setSyncStatus(text) {
     if (!els.syncStatus) return;
     if (!text) {
       els.syncStatus.hidden = true;
@@ -331,10 +361,6 @@
     return { res, data };
   }
 
-  /**
-   * Visa cachad lista direkt, synka sedan inkrementellt utan att tömma listan.
-   * opts.full = true → tvinga full sync (Shift+Uppdatera).
-   */
   async function loadInbox(opts) {
     const options = opts || {};
     setFolderUi();
@@ -670,14 +696,19 @@
     const reasonHtml = reason
       ? `<span class="mejl-match-pill ${reason.cls}"><i class="fas fa-link"></i> ${esc(reason.text)}</span>`
       : '';
+    const detailCustomerId = resolveMessageCustomerId(m, listMeta);
     const linkedKundId =
       (m.labelLink && m.labelLink.kundId) ||
       (m.matchReason === 'link' ? m.customerId : '') ||
       '';
     const hasLink = !!(m.labelLink && m.labelLink.kundId) || m.matchReason === 'link';
+    const kundkortBtn = kundkortLinkHtml(detailCustomerId);
     els.detail.innerHTML = `
       <div class="mejl-item-top">
-        <strong class="mejl-detail-title">${esc(title)}</strong>
+        <div class="mejl-detail-title-row">
+          <strong class="mejl-detail-title">${esc(title)}</strong>
+          ${kundkortBtn}
+        </div>
         <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
       </div>
       <div class="mejl-item-subject">${esc(m.subject)}</div>
@@ -750,7 +781,7 @@
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
-        const cid = m.customerId || (listMeta && listMeta.customerId);
+        const cid = resolveMessageCustomerId(m, listMeta);
         if (cid) els.customer.value = cid;
         els.body.focus();
       });
@@ -888,8 +919,17 @@
     if (c && c.email && !els.to.value) els.to.value = c.email;
   });
   els.list.addEventListener('click', (e) => {
+    if (e.target.closest('[data-kundkort-link]')) return;
     const btn = e.target.closest('.mejl-item');
     if (!btn) return;
+    openMessage(btn.getAttribute('data-id'));
+  });
+  els.list.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('[data-kundkort-link]')) return;
+    const btn = e.target.closest('.mejl-item');
+    if (!btn || e.target !== btn) return;
+    e.preventDefault();
     openMessage(btn.getAttribute('data-id'));
   });
 
