@@ -6,8 +6,10 @@ För att systemet ska fungera på `app.clientflow.se` behöver du sätta följan
 
 ### Steg 1: Gå till Render Dashboard
 1. Logga in på [render.com](https://render.com)
-2. Gå till din `clientflow-api-proxy-1` service
+2. Gå till din **`clientflow-api-proxy-1`** service (inte den äldre `clientflow-api-proxy` utan `-1`)
 3. Klicka på "Environment" i sidomenyn
+
+> `www.app.clientflow.se` är CNAME till `clientflow-api-proxy-1`. Gmail-nycklar som bara finns på `clientflow-api-proxy` syns inte i live-appen.
 
 ### Steg 2: Lägg till miljövariabler
 

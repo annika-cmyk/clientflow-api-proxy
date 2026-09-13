@@ -9,25 +9,27 @@ class APIConfig {
     }
 
     getBaseUrl() {
-        // Check if we're running on app subdomain (prioritize this)
-        if (window.location.hostname === 'app.clientflow.se' || window.location.hostname === 'www.app.clientflow.se') {
-            console.log(`🔧 Detected ${window.location.hostname} domain, using Render API`);
-            return 'https://clientflow-api-proxy-1.onrender.com';
-        }
-        
-        // Check if we're running on Render
-        if (window.location.hostname.includes('onrender.com')) {
-            console.log('🔧 Detected Render domain, using Render API');
-            return 'https://clientflow-api-proxy-1.onrender.com';
-        }
-        
-        // Check if we're running locally
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        const host = window.location.hostname;
+
+        // Lokal utveckling
+        if (host === 'localhost' || host === '127.0.0.1') {
             console.log('🔧 Detected localhost, using local API');
             return 'http://localhost:3001';
         }
-        
-        // Default fallback
+
+        // Prod: same-origin så cookies + Gmail-env träffar samma Render-tjänst
+        // som serverar sidan. www.app.clientflow.se → clientflow-api-proxy-1.
+        // (Den äldre tjänsten clientflow-api-proxy utan -1 används inte i prod.)
+        if (
+            host === 'app.clientflow.se' ||
+            host === 'www.app.clientflow.se' ||
+            host.includes('onrender.com')
+        ) {
+            console.log(`🔧 Detected ${host}, using same-origin API`);
+            return window.location.origin;
+        }
+
+        // Okänd host – kanonisk prod-API
         console.log('🔧 Using default API URL');
         return 'https://clientflow-api-proxy-1.onrender.com';
     }
