@@ -11,18 +11,29 @@ require('dotenv').config({
   path: fs.existsSync(path.join(process.cwd(), '.env')) ? '.env' : 'env.env'
 });
 
-const { ensureGmailField } = require('../lib/gmail/store');
+const { ensureGmailField, ensureLabelLinksField } = require('../lib/gmail/store');
 
 async function main() {
-  const result = await ensureGmailField();
-  if (!result.ok) {
-    console.error('❌', result.error);
+  const oauth = await ensureGmailField();
+  if (!oauth.ok) {
+    console.error('❌', oauth.error);
     process.exit(1);
   }
-  if (result.created) {
+  if (oauth.created) {
     console.log('✅ Skapade fältet "Gmail OAuth" i Application Users.');
   } else {
     console.log('✅ Fältet "Gmail OAuth" finns redan.');
+  }
+
+  const links = await ensureLabelLinksField();
+  if (!links.ok) {
+    console.error('❌', links.error);
+    process.exit(1);
+  }
+  if (links.created) {
+    console.log('✅ Skapade fältet "Gmail etikettkopplingar" i Application Users.');
+  } else {
+    console.log('✅ Fältet "Gmail etikettkopplingar" finns redan.');
   }
 }
 

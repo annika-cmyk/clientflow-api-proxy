@@ -124,6 +124,22 @@
       }
       .mejl-label-create-wrap[hidden] { display: none !important; }
       .mejl-label-create-wrap .form-input { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
+      .mejl-label-link { margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed #e2e8f0; }
+      .mejl-match-pill {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        font-size: 0.72rem; font-weight: 600; padding: 0.15rem 0.5rem;
+        border-radius: 6px; margin: 0.35rem 0 0.15rem;
+      }
+      .mejl-match-pill.is-link { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+      .mejl-match-pill.is-auto { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+      .mejl-label-link-row {
+        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.35rem;
+      }
+      .mejl-label-link-check {
+        display: flex; align-items: flex-start; gap: 0.4rem;
+        font-size: 0.82rem; color: #475569; margin-top: 0.45rem;
+      }
+      .mejl-label-link-check input { margin-top: 0.15rem; }
       .mejl-item .mejl-labels { margin-top: 0.3rem; }
       /* Global .btn { display:inline-flex } och .mejl-layout { display:grid } slår UA [hidden] */
       #mejl-connect-btn[hidden],
@@ -236,6 +252,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/mejl.js?v=20260913labels" defer></script>
+    <script src="js/mejl.js?v=20260913labellink" defer></script>
 </body>
 </html>
