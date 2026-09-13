@@ -7825,6 +7825,66 @@ button.document-list-date--editable:focus-visible {
     white-space: pre-wrap;
     font-size: 0.9rem;
 }
+.document-preview-frame--html {
+    background: #f1f5f9;
+}
+.document-email-snapshot {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    background: #f8fafc;
+}
+.document-email-header {
+    padding: 1.15rem 1.35rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+}
+.document-email-subject {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    font-weight: 650;
+    color: var(--title-text, #0f172a);
+    letter-spacing: -0.01em;
+}
+.document-email-meta {
+    display: grid;
+    gap: 0.3rem;
+}
+.document-email-meta-row {
+    display: grid;
+    grid-template-columns: 4.25rem 1fr;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+.document-email-meta-label {
+    color: #64748b;
+    font-weight: 600;
+}
+.document-email-meta-value {
+    color: #334155;
+    word-break: break-word;
+}
+.document-email-body {
+    padding: 1.15rem 1.35rem 1.5rem;
+    color: #334155;
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+.document-email-plain {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: inherit;
+}
+.uppdrag-korning-doc-link {
+    display: inline;
+    width: auto;
+    padding: 0;
+    font-size: inherit;
+}
 .document-list-item .document-delete-btn {
     padding: 0.35rem 0.5rem;
     font-size: 0.85rem;

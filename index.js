@@ -8860,14 +8860,17 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 });
 
 // GET /api/documents/file – Strömma fil för förhandsgranskning (inline, inte nedladdning)
+// Kunddokument: customerId + sourceField + sourceIndex
+// Uppdragsdokument (t.ex. körningens dokumentation): uppdragId + sourceField + sourceIndex
 app.get('/api/documents/file', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
     const customerId = req.query.customerId || req.query.customerid;
+    const uppdragId = req.query.uppdragId || req.query.uppdragid;
     const sourceField = req.query.sourceField;
     const sourceIndex = req.query.sourceIndex;
-    if (!customerId || !sourceField || sourceIndex == null) {
-      return res.status(400).json({ error: 'customerId, sourceField och sourceIndex krävs' });
+    if ((!customerId && !uppdragId) || !sourceField || sourceIndex == null) {
+      return res.status(400).json({ error: 'customerId eller uppdragId, samt sourceField och sourceIndex krävs' });
     }
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
@@ -8877,18 +8880,35 @@ app.get('/api/documents/file', authenticateToken, async (req, res) => {
     const userData = await getAirtableUser(req.user.email);
     if (!userData) return res.status(404).json({ error: 'Användare hittades inte' });
 
-    const custRes = await axios.get(
-      `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
-      { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
-    );
-    const f = custRes.data.fields || {};
-    const byraId = userData.byraId ? String(userData.byraId).trim() : '';
-    const custByraId = f['Byrå ID'] || f.Byrå || '';
-    if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
-      return res.status(403).json({ error: 'Ingen behörighet' });
+    let att = null;
+    if (uppdragId) {
+      const tableRef = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+      const uppRes = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${tableRef}/${encodeURIComponent(uppdragId)}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const uf = uppRes.data.fields || {};
+      const linkedCustomerId = String(uf['Kund ID'] || uf.Kund || '').trim();
+      if (!linkedCustomerId) return res.status(404).json({ error: 'Uppdraget saknar kundkoppling' });
+      await assertCustomerAccess(req, linkedCustomerId, {
+        airtableAccessToken,
+        baseId: airtableBaseId
+      });
+      att = documentPreview.pickAttachment(uf, sourceField, sourceIndex);
+    } else {
+      const custRes = await axios.get(
+        `https://api.airtable.com/v0/${airtableBaseId}/${KUNDDATA_TABLE}/${customerId}`,
+        { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
+      );
+      const f = custRes.data.fields || {};
+      const byraId = userData.byraId ? String(userData.byraId).trim() : '';
+      const custByraId = f['Byrå ID'] || f.Byrå || '';
+      if (userData.role !== 'ClientFlowAdmin' && String(custByraId) !== byraId) {
+        return res.status(403).json({ error: 'Ingen behörighet' });
+      }
+      att = documentPreview.pickAttachment(f, sourceField, sourceIndex);
     }
 
-    const att = documentPreview.pickAttachment(f, sourceField, sourceIndex);
     if (!att) return res.status(404).json({ error: 'Dokumentet hittades inte' });
 
     const fileRes = await axios.get(att.url, {
@@ -8907,8 +8927,11 @@ app.get('/api/documents/file', authenticateToken, async (req, res) => {
     });
     res.send(Buffer.from(fileRes.data));
   } catch (error) {
-    console.error('\u274c GET documents/file:', error.message);
-    res.status(500).json({ error: error.message || 'Kunde inte hämta dokumentet' });
+    console.error('❌ GET documents/file:', error.message);
+    const status = error.status || error.response?.status || 500;
+    res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: error.message || 'Kunde inte hämta dokumentet'
+    });
   }
 });
 
@@ -16372,6 +16395,49 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
   } catch (err) {
     console.error('❌ statistik-riskbedomning/kunder:', err.message);
     res.status(500).json({ error: err.message || 'Kunde inte hämta kunder' });
+  }
+});
+
+// GET /api/statistik-riskbedomning/bransch-drilldown – under-SNI + kundlista för branschbucket eller högriskbransch
+app.get('/api/statistik-riskbedomning/bransch-drilldown', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const typ = String(req.query.typ || '').trim();
+    const namn = req.query.namn != null ? String(req.query.namn).trim() : '';
+    const sni = req.query.sni != null ? String(req.query.sni).trim() : '';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+    if (!namn) {
+      return res.status(400).json({ error: 'Parameter namn krävs' });
+    }
+    if (typ !== 'kund-bransch' && typ !== 'hogriskbransch') {
+      return res.status(400).json({ error: 'typ måste vara kund-bransch eller hogriskbransch' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+
+    if (!statistikRiskbedomning.canBuildForUser(userData)) {
+      return res.json({ typ, bucket: namn, undersni: [], kunder: [], antalKunder: 0 });
+    }
+
+    const allRecords = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+
+    const result = typ === 'hogriskbransch'
+      ? statistikRiskbedomning.drilldownHogriskBransch(allRecords, namn, { sniFilter: sni })
+      : statistikRiskbedomning.drilldownKundBransch(allRecords, namn, { sniFilter: sni });
+
+    res.json(result);
+  } catch (err) {
+    console.error('❌ statistik-riskbedomning/bransch-drilldown:', err.message);
+    res.status(500).json({ error: err.message || 'Kunde inte hämta branschdetaljer' });
   }
 });
 
