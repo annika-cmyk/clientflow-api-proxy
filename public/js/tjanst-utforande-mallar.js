@@ -1084,6 +1084,36 @@
     return null;
   }
 
+  /**
+   * Byråns svar på «Har byrån klientmedelskonto?» (Ja/Nej).
+   * Föredrar betalningsuppdrag-mallen (firmnivå), annars första ifyllda svar.
+   */
+  function resolveKlientmedelskontoAnswer(state) {
+    const parsed = parseState(state);
+    const tjanster = parsed.tjanster || {};
+    const preferIds = ['betalningsuppdrag'].concat(Object.keys(tjanster));
+    const seen = {};
+    for (let i = 0; i < preferIds.length; i++) {
+      const id = preferIds[i];
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      const entry = tjanster[id];
+      const raw = entry && entry.answers && entry.answers.betKlientmedelskonto;
+      const v = String(raw == null ? '' : raw).trim().toLowerCase();
+      if (v === 'ja' || v === 'yes' || v === 'true') return 'Ja';
+      if (v === 'nej' || v === 'no' || v === 'false') return 'Nej';
+    }
+    return '';
+  }
+
+  /** true | false | null (okänt / obesvarat) */
+  function hasKlientmedelskonto(state) {
+    const v = resolveKlientmedelskontoAnswer(state);
+    if (v === 'Ja') return true;
+    if (v === 'Nej') return false;
+    return null;
+  }
+
   const api = {
     HELP_TEXT: HELP_TEXT,
     BASE_QUESTIONS: BASE_QUESTIONS,
@@ -1120,7 +1150,9 @@
     availableStandardTemplates: availableStandardTemplates,
     listCatalogCards: listCatalogCards,
     formatAnswersForAi: formatAnswersForAi,
-    findEntryForNamn: findEntryForNamn
+    findEntryForNamn: findEntryForNamn,
+    resolveKlientmedelskontoAnswer: resolveKlientmedelskontoAnswer,
+    hasKlientmedelskonto: hasKlientmedelskonto
   };
 
   if (typeof module !== 'undefined' && module.exports) {

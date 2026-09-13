@@ -24681,10 +24681,11 @@ app.post('/api/ai-byra-tjanst', authenticateToken, async (req, res) => {
   const exponeringBlock = AiTjanstAnalys.formatExponeringBlock(exponering);
   const utforandeSignals = AiTjanstAnalys.analyzeUtforandeSignals(namn, utforandeState);
   const riskreglerBlock = AiTjanstAnalys.formatRiskreglerBlock(utforandeSignals);
+  const hasKlientmedelskonto = TjanstUtforandeMallar.hasKlientmedelskonto(utforandeState);
 
   const reviewMode = AiFaltGranskning.hasExistingTjanstContent(befintligt);
   const existingBlock = AiFaltGranskning.formatTjanstExistingBlock(befintligt);
-  const katalogBlock = RiskanalysTjanstKatalog.formatPromptBlock(namn);
+  const katalogBlock = RiskanalysTjanstKatalog.formatPromptBlock(namn, undefined, { hasKlientmedelskonto });
   const byraAnalysVector = resolveByraAnalysVectorStoreId();
   const kunskapBasBlock = byraAnalysVector ? `\n${BYRA_ANALYS_KUNSKAPSBAS_RULES}\n` : '';
 
@@ -24839,9 +24840,12 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
     const result = parseAssistantJson(aiText);
     if (!result || typeof result !== 'object') throw new Error('Kunde inte tolka AI-svar.');
 
-    const hot = HotAmlTf.filterHots(Array.isArray(result.hot) ? result.hot
-      .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: AmlKalla.normalizeKalla(cleanStr(h?.kalla ?? h?.källa ?? h?.source)) }))
-      .filter(h => h.titel || h.beskrivning) : []);
+    const hot = RiskanalysTjanstKatalog.filterKlientmedelItems(
+      HotAmlTf.filterHots(Array.isArray(result.hot) ? result.hot
+        .map(h => ({ typ: inferHotTyp(h), titel: cleanStr(h?.titel), beskrivning: cleanStr(h?.beskrivning), kalla: AmlKalla.normalizeKalla(cleanStr(h?.kalla ?? h?.källa ?? h?.source)) }))
+        .filter(h => h.titel || h.beskrivning) : []),
+      hasKlientmedelskonto
+    );
     const sarbarheter = Array.isArray(result.sarbarheter) ? result.sarbarheter
       .map((s) => AiTjanstAnalys.cleanSarbarhetItem(s))
       .filter(s => s.titel || s.beskrivning || s.kalla) : [];
@@ -24892,8 +24896,10 @@ ${exponeringBlock}${katalogBlock ? `\n\n${katalogBlock}` : ''}${existingBlock ? 
       if (!p || p.falt !== 'hot' || !Array.isArray(p.forslag)) return p;
       return Object.assign({}, p, { forslag: HotAmlTf.filterHots(p.forslag) });
     });
+    granskningPoster = RiskanalysTjanstKatalog.filterKlientmedelGranskning(granskningPoster, hasKlientmedelskonto);
     if (reviewMode) {
       granskningPoster = AiFaltGranskning.ensureAnalysisPosters('tjanst', befintligt, tjanstAiPayload, granskningPoster);
+      granskningPoster = RiskanalysTjanstKatalog.filterKlientmedelGranskning(granskningPoster, hasKlientmedelskonto);
     }
     const userDataTjanst = req.user?.email ? await getAirtableUser(req.user.email).catch(() => null) : null;
     const tjanstAiLog = await auditHooks.logAiGenerated({
