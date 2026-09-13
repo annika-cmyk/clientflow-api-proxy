@@ -162,6 +162,9 @@
   const archiveApi = (window.MejlArchive && MejlArchive.createApi)
     ? MejlArchive.createApi({ baseUrl, authOpts, showToast })
     : null;
+  const handleStatusApi = (window.MejlHandleStatus && MejlHandleStatus.createApi)
+    ? MejlHandleStatus.createApi()
+    : null;
 
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
@@ -336,8 +339,11 @@
                   }
                 ])
               : '';
+          const handleCls =
+            handleStatusApi && handleStatusApi.listItemClass(handleStatusApi.get(m.id));
+          const handleClass = handleCls ? ` ${handleCls}` : '';
           return `
-      <div class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}" role="button" tabindex="0">
+      <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
           <div class="mejl-item-customer-row">
             <span class="mejl-item-customer">${esc(customer)}</span>
@@ -800,6 +806,11 @@
           <i class="fas fa-trash"></i> Radera
         </button>
       </div>
+      ${
+        handleStatusApi
+          ? handleStatusApi.toolbarHtml(handleStatusApi.get(id))
+          : ''
+      }
       ${archiveApi ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility) : ''}
       ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail) : ''}
       ${archiveApi ? archiveApi.attachmentsHtml(m.attachments) : ''}
@@ -827,6 +838,15 @@
     const trashBtn = document.getElementById('mejl-trash-btn');
     if (trashBtn) {
       trashBtn.addEventListener('click', () => trashMessage(id));
+    }
+    if (handleStatusApi) {
+      handleStatusApi.bindDetailButtons({
+        id,
+        onChange: () => {
+          renderList();
+          renderDetail(id, m, listMeta, kunderLabelsCache, archiveForDetail);
+        }
+      });
     }
     if (archiveApi) {
       archiveApi.bindDetailButtons({
