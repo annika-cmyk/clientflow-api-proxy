@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913mejl-layout-panes">
+    <link rel="stylesheet" href="styles.css?v=20260913mejl-compose-cards">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
 
@@ -17,10 +17,119 @@
       .mejl-page-tab.is-active { color:#0f172a; background:#e2e8f0; border-color:#cbd5e1; }
       .mejl-panel[hidden] { display:none !important; }
       .mejl-compose-tools { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; margin:0.35rem 0 0.65rem; }
-      .mejl-protected-box { border:1px dashed #99f6e4; background:#f0fdfa; border-radius:10px; padding:0.75rem 0.9rem; margin-top:0.35rem; }
+      .mejl-compose-cards { display:flex; flex-direction:column; gap:0.85rem; }
+      .mejl-compose-card {
+        border: 1px solid var(--line, #e8eaee);
+        border-radius: 10px;
+        background: var(--surface-2, #fafbfc);
+        padding: 0.9rem 1rem 1rem;
+      }
+      .mejl-compose-card__title {
+        margin: 0 0 0.7rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--label, #9aa1ab);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .mejl-compose-card__title i { font-size: 0.78rem; opacity: 0.85; }
+      .mejl-compose-card__row {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 720px) {
+        .mejl-compose-card__row--2 { grid-template-columns: 1fr 1fr; }
+      }
+      .mejl-compose-card .form-group { margin: 0; }
+      .mejl-compose-card .form-group + .form-group { margin-top: 0.75rem; }
+      .mejl-compose-card--protected {
+        /* Warning tone — samma tokens som risk/ofullständig (--warning / --warning-tint) */
+        --bg-warning: var(--warning-tint, #f8eed7);
+        --border-warning: #e0c88a;
+        background: var(--bg-warning);
+        border-color: var(--border-warning);
+      }
+      .mejl-compose-card--protected .mejl-compose-card__title {
+        color: var(--warning, #b07414);
+      }
+      .mejl-protected-box {
+        border: 1px dashed #e0c88a;
+        background: rgba(255, 255, 255, 0.55);
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        margin-top: 0.35rem;
+      }
       .mejl-protected-box[hidden] { display:none !important; }
+      .mejl-attach-pick { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; }
       .mejl-attach-list,.mejl-q-list { display:flex; flex-direction:column; gap:0.4rem; margin-top:0.45rem; }
-      .mejl-attach-row,.mejl-q-row { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; font-size:0.85rem; color:#334155; }
+      .mejl-attach-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem 0.65rem;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #334155;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid var(--line, #e8eaee);
+      }
+      .mejl-attach-row:last-child { border-bottom: 0; }
+      .mejl-attach-name { flex: 1 1 8rem; min-width: 0; word-break: break-word; }
+      .mejl-attach-row-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+      }
+      .mejl-attach-bankid-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 6px;
+        border: 1px solid var(--line, #e8eaee);
+        background: #f8fafc;
+        color: #64748b;
+        cursor: pointer;
+        user-select: none;
+        margin: 0;
+      }
+      .mejl-attach-bankid-badge.is-bankid {
+        color: #0f766e;
+        background: #f0fdfa;
+        border-color: #99f6e4;
+      }
+      .mejl-attach-bankid-badge.is-open { color: #94a3b8; font-weight: 500; }
+      .mejl-attach-remove {
+        border: 0;
+        background: transparent;
+        color: #94a3b8;
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0.15rem 0.25rem;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .mejl-attach-remove:hover { color: #b91c1c; }
+      .mejl-q-row { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; font-size:0.85rem; color:#334155; }
+      .mejl-compose-card__header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.55rem;
+      }
+      .mejl-compose-card__header-row .mejl-compose-card__title { margin: 0; }
+      
       .mejl-sig-grid { display:grid; gap:0.85rem; grid-template-columns:1fr; }
       @media (min-width:900px){ .mejl-sig-grid { grid-template-columns:1fr 1fr; align-items:start; } }
       .mejl-sig-preview { border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:1rem 1.1rem; min-height:180px; }
@@ -381,24 +490,37 @@
 
                 <section class="mejl-compose" id="mejl-compose" hidden>
                     <h2 style="margin:0 0 0.75rem; font-size:1.05rem;">Nytt mejl</h2>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="mejl-to">Till</label>
-                            <input type="email" id="mejl-to" class="form-input" placeholder="kund@foretag.se">
+                    <div class="mejl-compose-cards">
+                        <div class="mejl-compose-card" data-compose-card="mottagare">
+                            <h3 class="mejl-compose-card__title">Mottagare</h3>
+                            <div class="mejl-compose-card__row mejl-compose-card__row--2">
+                                <div class="form-group">
+                                    <label for="mejl-to">Till</label>
+                                    <input type="email" id="mejl-to" class="form-input" placeholder="kund@foretag.se">
+                                </div>
+                                <div class="form-group">
+                                    <label for="mejl-customer">Kund/etikett</label>
+                                    <select id="mejl-customer" class="form-select form-input">
+                                        <option value="">Ingen</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="mejl-customer">Koppla till kund (etikett)</label>
-                            <select id="mejl-customer" class="form-select form-input">
-                                <option value="">Ingen</option>
-                            </select>
+
+                        <div class="mejl-compose-card" data-compose-card="innehall">
+                            <h3 class="mejl-compose-card__title">Innehåll — syns öppet i Gmail</h3>
+                            <div class="form-group">
+                                <label for="mejl-subject">Ämne</label>
+                                <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
+                            </div>
+                            <div class="form-group">
+                                <label for="mejl-body">Offentlig del</label>
+                                <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="mejl-subject">Ämne</label>
-                            <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
-                        </div>
-                        <div class="form-group">
-                            <label for="mejl-body">Offentlig del (syns i Gmail-mejlet)</label>
-                            <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
+
+                        <div class="mejl-compose-card mejl-compose-card--protected" data-compose-card="skyddat">
+                            <h3 class="mejl-compose-card__title"><i class="fas fa-lock" aria-hidden="true"></i> Skyddat innehåll — kräver BankID</h3>
                             <div class="mejl-compose-tools">
                                 <button type="button" class="btn btn-secondary btn-sm" id="mejl-mark-bankid"><i class="fas fa-shield-alt"></i> Markera som BankID</button>
                                 <button type="button" class="btn btn-secondary btn-sm" id="mejl-toggle-protected">BankID-skyddad text</button>
@@ -408,15 +530,25 @@
                                 <textarea id="mejl-protected-body" class="form-input" placeholder="Denna text syns först efter BankID…"></textarea>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="mejl-attachments">Bilagor</label>
-                            <input type="file" id="mejl-attachments" class="form-input" multiple>
+
+                        <div class="mejl-compose-card" data-compose-card="bilagor">
+                            <h3 class="mejl-compose-card__title">Bilagor</h3>
+                            <div class="mejl-attach-pick">
+                                <label for="mejl-attachments" class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0;">
+                                    <i class="fas fa-paperclip" aria-hidden="true"></i> Välj filer
+                                </label>
+                                <input type="file" id="mejl-attachments" class="visually-hidden" multiple>
+                            </div>
                             <div id="mejl-attach-list" class="mejl-attach-list"></div>
-                            <p class="mejl-hint">Kryssa i BankID för bilagor som inte ska skickas öppet i mejlet.</p>
+                            <p class="mejl-hint">Klicka på statusmärket för att växla BankID-skydd per bilaga.</p>
                         </div>
-                        <div class="form-group">
-                            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                                <label style="margin:0;">Frågor / begär underlag</label>
+
+                        <div class="mejl-compose-card" data-compose-card="uppfoljning">
+                            <div class="mejl-compose-card__header-row">
+                                <h3 class="mejl-compose-card__title">Uppföljning</h3>
+                            </div>
+                            <div class="mejl-compose-card__header-row">
+                                <label style="margin:0;font-size:0.9rem;font-weight:600;color:#334155;">Frågor / begär underlag</label>
                                 <button type="button" class="btn btn-secondary btn-sm" id="mejl-q-add"><i class="fas fa-plus"></i> Lägg till fråga</button>
                             </div>
                             <div id="mejl-q-list" class="mejl-q-list"></div>

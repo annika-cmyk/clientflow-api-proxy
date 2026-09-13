@@ -960,9 +960,16 @@
     if (!els.attachList) return;
     if (!pendingFiles.length) { els.attachList.innerHTML = ''; return; }
     els.attachList.innerHTML = pendingFiles.map((f, i) =>
-      `<div class="mejl-attach-row"><span>${esc(f.name)}</span>
-      <label><input type="checkbox" data-attach-bankid="${i}" ${f.bankId ? 'checked' : ''}> BankID</label>
-      <button type="button" class="btn btn-secondary btn-sm" data-attach-remove="${i}">Ta bort</button></div>`
+      `<div class="mejl-attach-row">
+        <span class="mejl-attach-name">${esc(f.name)}</span>
+        <div class="mejl-attach-row-actions">
+          <label class="mejl-attach-bankid-badge ${f.bankId ? 'is-bankid' : 'is-open'}" title="Växla BankID-skydd">
+            <input type="checkbox" class="visually-hidden" data-attach-bankid="${i}" ${f.bankId ? 'checked' : ''}>
+            ${f.bankId ? '<i class="fas fa-lock" aria-hidden="true"></i> BankID' : 'Öppen bilaga'}
+          </label>
+          <button type="button" class="mejl-attach-remove" data-attach-remove="${i}">Ta bort</button>
+        </div>
+      </div>`
     ).join('');
   }
   function addQuestionRow(prefill) {
@@ -1213,7 +1220,10 @@
       const chk = e.target.closest('[data-attach-bankid]');
       if (!chk) return;
       const i = Number(chk.getAttribute('data-attach-bankid'));
-      if (pendingFiles[i]) pendingFiles[i].bankId = !!chk.checked;
+      if (pendingFiles[i]) {
+        pendingFiles[i].bankId = !!chk.checked;
+        renderAttachList();
+      }
     });
   }
   if (els.qAdd) els.qAdd.addEventListener('click', () => addQuestionRow());
