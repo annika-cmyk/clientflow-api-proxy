@@ -299,14 +299,14 @@
   function renderNraDerived(row) {
     var d = row.derived || {};
     var label = d.label || (d.active
-      ? ('Ja — härlett från aktiv tjänst: ' + (d.serviceName || ''))
-      : 'Nej — ingen aktiv tjänst av den typen i tjänstelistan.');
+      ? ('Härlett från aktiv tjänst: ' + (d.serviceName || ''))
+      : 'Ingen aktiv tjänst av den typen i tjänstelistan.');
     var link = d.active && d.href
       ? '<a class="byra-resa-nra-derived-link" href="' + esc(d.href) + '">Öppna tjänsten</a>'
       : '<a class="byra-resa-nra-derived-link" href="riskbedomning-byra.html">Öppna tjänstelistan</a>';
     return (
       '<div class="byra-resa-nra-derived" role="status">' +
-        '<span class="byra-resa-nra-derived-badge">' + (d.active ? 'Ja' : 'Nej') + '</span>' +
+        '<span class="byra-resa-nra-derived-badge" data-active="' + (d.active ? 'ja' : 'nej') + '">' + (d.active ? 'Ja' : 'Nej') + '</span>' +
         '<span class="byra-resa-nra-derived-text">' + esc(label) + '</span>' +
         link +
       '</div>'
@@ -315,13 +315,13 @@
 
   function renderNraControls(row) {
     var disabled = canEdit ? '' : ' disabled';
+    var ctrlId = 'nra-ctrl-' + esc(row.id);
     return (
       '<div class="byra-resa-nra-controls-wrap">' +
-        '<label class="byra-resa-nra-controls-label" for="nra-ctrl-' + esc(row.id) + '">Kontrollbeskrivning</label>' +
-        '<textarea id="nra-ctrl-' + esc(row.id) + '" class="form-input byra-resa-nra-controls" data-nra-id="' + esc(row.id) + '" rows="3" placeholder="Beskriv kort vilka kontroller ni har…"' + disabled + '>' +
+        '<textarea id="' + ctrlId + '" class="form-input byra-resa-nra-controls" data-nra-id="' + esc(row.id) + '" rows="4" aria-label="Kontrollbeskrivning för ' + esc(row.title || row.id) + '" placeholder="Beskriv kort vilka kontroller ni har…"' + disabled + '>' +
           esc(row.why || '') +
         '</textarea>' +
-        '<p class="byra-resa-nra-controls-hint">Ingen ja/nej-fråga — det räcker med en kort beskrivning av era kontroller.</p>' +
+        '<p class="byra-resa-nra-controls-hint">Ingen ja/nej — skriv en kort kontrollbeskrivning.</p>' +
       '</div>'
     );
   }
@@ -329,14 +329,12 @@
   function renderNraYesNo(row) {
     var cur = row.answer || 'unset';
     var showWhy = cur === 'nej';
-    var tag = String(row.tag || '').trim();
     return (
       '<div class="byra-resa-nra-answer-row">' +
         '<div class="byra-resa-nra-states" role="group" aria-label="' + esc(row.title || row.id) + '">' +
           nraChip(row.id, 'ja', 'Ja', cur) +
           nraChip(row.id, 'nej', 'Nej', cur) +
         '</div>' +
-        (tag ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
       '</div>' +
       (showWhy
         ? '<div class="byra-resa-nra-why-wrap">' +
@@ -344,6 +342,12 @@
           '</div>'
         : '')
     );
+  }
+
+  function nraKindMeta(kind) {
+    if (kind === 'derived') return { short: 'Härlett', full: 'Härlett från tjänstelistan' };
+    if (kind === 'controls') return { short: 'Kontroller', full: 'Inneboende risk — beskriv kontroller' };
+    return { short: 'Ja/nej', full: 'Ja/nej-bedömning' };
   }
 
   function renderNraChecklist() {
@@ -361,17 +365,17 @@
       var body = kind === 'derived'
         ? renderNraDerived(row)
         : (kind === 'controls' ? renderNraControls(row) : renderNraYesNo(row));
-      var kindLabel = kind === 'derived'
-        ? 'Härlett från tjänstelistan'
-        : (kind === 'controls' ? 'Inneboende risk — kontrollbeskrivning' : 'Ja/nej-bedömning');
+      var meta = nraKindMeta(kind);
       return (
         '<article class="byra-resa-nra-row is-' + kind + (nraRowIsComplete(row) ? ' is-complete' : '') + '" data-nra-id="' + esc(row.id) + '" data-nra-kind="' + esc(kind) + '">' +
           '<div class="byra-resa-nra-row-head">' +
-            '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
-            '<span class="byra-resa-nra-kind">' + esc(kindLabel) + '</span>' +
+            '<div class="byra-resa-nra-title-block">' +
+              '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
+              (tag ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
+            '</div>' +
+            '<span class="byra-resa-nra-kind" title="' + esc(meta.full) + '">' + esc(meta.short) + '</span>' +
           '</div>' +
           '<p class="byra-resa-nra-desc">' + esc(row.desc || '') + '</p>' +
-          ((kind !== 'yesno' && tag) ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
           body +
         '</article>'
       );
