@@ -136,6 +136,7 @@ const ByraResa = require('./lib/byra-resa');
 const RiskFactorCatalog = require('./lib/risk-factor-catalog');
 const NavStatus = require('./lib/nav-status');
 const Kundformular = require('./lib/kundformular');
+const Kundresa = require('./lib/kundresa');
 const KundRiskprofil = require('./public/js/kund-riskprofil');
 const RisksankandeKatalog = require('./public/js/risksankande-katalog');
 const TjanstForutsattning = require('./public/js/tjanst-forutsattning');
@@ -11111,6 +11112,120 @@ if (!global.__clientflowSamarbeteReminderStarted) {
   setInterval(() => { processSamarbeteReminders().catch(() => {}); }, 60 * 60 * 1000);
 }
 
+// ============================================================
+// Kundformulär – periodiska påminnelser (fas 3)
+// ============================================================
+async function processKundformularReminders() {
+  const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+  const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+  const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+  if (!airtableAccessToken) return;
+
+  const minDays = Math.max(1, parseInt(process.env.KUNDFORMULAR_REMIND_DAYS || '3', 10) || 3);
+  const maxReminders = Math.max(1, parseInt(process.env.KUNDFORMULAR_REMIND_MAX || '5', 10) || 5);
+  const fieldName = Kundformular.FIELD;
+  const baseUrl = Kundformular.publicAppBaseUrl(process.env.PUBLIC_BASE_URL);
+
+  const fetchPage = async (offset) => {
+    const params = new URLSearchParams();
+    params.set('pageSize', '100');
+    params.set('filterByFormula', `AND({${fieldName}}!='')`);
+    if (offset) params.set('offset', offset);
+    const res = await axios.get(
+      `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(tableName)}?${params}`,
+      { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 30000 }
+    );
+    return res.data || {};
+  };
+
+  let offset;
+  let processed = 0;
+  const today = stockholmDateStr(new Date());
+
+  do {
+    let page;
+    try {
+      page = await fetchPage(offset);
+    } catch (e) {
+      // Fallback utan filter om fältnamn/formeln inte stöds
+      try {
+        const params = new URLSearchParams({ pageSize: '100' });
+        if (offset) params.set('offset', offset);
+        const res = await axios.get(
+          `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(tableName)}?${params}`,
+          { headers: { Authorization: `Bearer ${airtableAccessToken}` }, timeout: 30000 }
+        );
+        page = res.data || {};
+      } catch (e2) {
+        console.warn('processKundformularReminders: kunde inte hämta kunder', e2.message);
+        return;
+      }
+    }
+
+    for (const rec of page.records || []) {
+      const fields = rec.fields || {};
+      const raw = fields[fieldName];
+      if (!raw) continue;
+      let form;
+      try {
+        form = Kundformular.parseForm(raw);
+      } catch (_) {
+        continue;
+      }
+      if (!Kundformular.shouldAutoRemind(form, { minDays, maxReminders })) continue;
+
+      // Dedup per kalenderdag (Stockholm) via lastRemindedAt
+      if (form.lastRemindedAt) {
+        const lastDay = parseDateOnly(form.lastRemindedAt);
+        if (lastDay === today) continue;
+      }
+
+      const inviteUrl = Kundformular.buildInviteUrl(form.inviteToken, baseUrl);
+      if (!inviteUrl) continue;
+      const toEmail = resolveKundformularRecipientEmail(fields);
+      if (!toEmail) continue;
+
+      // Stämpla före utskick för att undvika dubbletter vid omstart
+      const stamped = Kundformular.applySave(form, {}, { actor: 'system', action: 'remind', customerId: rec.id });
+      try {
+        await axios.patch(
+          `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(tableName)}/${rec.id}`,
+          { fields: { [fieldName]: Kundformular.serializeForm(stamped) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+        );
+      } catch (patchErr) {
+        console.warn('processKundformularReminders: kunde inte stämpla påminnelse', rec.id, patchErr.message);
+        continue;
+      }
+
+      const mail = await sendKundformularInviteEmail({
+        toEmail,
+        toName: fields['Kontaktperson'] || fields.Namn || 'Kund',
+        companyName: fields.Namn || stamped.answers?.foretagsnamn || '',
+        byraName: '',
+        inviteUrl,
+        isReminder: true
+      });
+      if (!mail.sent) {
+        console.warn('processKundformularReminders: mejl misslyckades', toEmail, mail.error);
+      }
+      processed += 1;
+    }
+
+    offset = page.offset;
+  } while (offset);
+
+  if (processed > 0) {
+    console.log(`📬 Kundformulär-påminnelser: ${processed} skickade`);
+  }
+}
+
+if (!global.__clientflowKundformularReminderStarted) {
+  global.__clientflowKundformularReminderStarted = true;
+  setTimeout(() => { processKundformularReminders().catch(() => {}); }, 45000);
+  setInterval(() => { processKundformularReminders().catch(() => {}); }, 60 * 60 * 1000);
+}
+
 if (!global.__clientflowAmlNewsJobStarted) {
   global.__clientflowAmlNewsJobStarted = true;
   setTimeout(() => { processAmlNewsJobs().catch(() => {}); }, 45000);
@@ -18213,16 +18328,24 @@ app.get('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
       }
     }
     res.set('Cache-Control', 'no-store');
-    return res.json(buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
-      baseUrl: kundformularRequestBaseUrl(req)
-    }));
+    return res.json({
+      ...buildKundformularResponse(form, ctx.fields, ctx.kyc, ctx.tjansterCtx, {
+        baseUrl: kundformularRequestBaseUrl(req)
+      }),
+      kundresa: Kundresa.buildKundresaSummary({
+        fields: ctx.fields,
+        form,
+        kyc: ctx.kyc,
+        bolagsform: ctx.fields?.Bolagsform || ctx.kyc?.bolagsform || ''
+      })
+    });
   } catch (error) {
     console.error('❌ GET /api/kundformular:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
   }
 });
 
-// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat / skicka invite / påminn
+// PUT /api/kundformular/:customerId – Spara / prefilla / markera besvarat / skicka invite / påminn / VH / sync KYC
 app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -18234,6 +18357,22 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
     const ctx = await loadKundformularCustomerContext(customerId);
     let form = ctx.form;
     let remindMeta = null;
+    let syncMeta = null;
+    const bolagsform = ctx.fields?.Bolagsform || ctx.kyc?.bolagsform || '';
+
+    // VH hard gate – blockera utskick / sync / signering när Osäker/Nej
+    try {
+      Kundresa.assertVhAllowsAction(form, action, { bolagsform });
+    } catch (gateErr) {
+      if (gateErr.code === 'VH_HARD_GATE') {
+        return res.status(409).json({
+          error: gateErr.message,
+          code: gateErr.code,
+          vhGate: gateErr.vhGate
+        });
+      }
+      throw gateErr;
+    }
 
     if (action === 'prefill') {
       form = Kundformular.applyPrefill(form, {
@@ -18241,6 +18380,47 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
         kyc: ctx.kyc,
         tjanster: ctx.tjansterCtx.linked
       });
+    } else if (action === 'set_byra_vh') {
+      form = Kundformular.applySave(form, {
+        byraVhBekraftelse: req.body?.byraVhBekraftelse ?? req.body?.vh_bekraftelse,
+        byraVhNote: req.body?.byraVhNote ?? req.body?.note
+      }, {
+        actor: 'byra',
+        action: 'set_byra_vh',
+        customerId
+      });
+    } else if (action === 'sync_to_kyc') {
+      const patch = Kundformular.buildKycSyncPatchFromKundformular(form);
+      if (!Object.keys(patch).length) {
+        return res.status(400).json({ error: 'Inget att synka — fyll i kundformuläret först.' });
+      }
+      const merged = kycFormularMerge.mergeKycFormular(ctx.kyc || {}, patch);
+      try {
+        await axios.patch(
+          `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(ctx.tableName)}/${customerId}`,
+          { fields: { 'KYC-formular (JSON)': JSON.stringify(merged) } },
+          { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+        );
+      } catch (patchErr) {
+        const msg = patchErr.response?.data?.error?.message || patchErr.message || '';
+        if (/Unknown field name/i.test(String(msg))) {
+          await ensureKunddataOptionalFields(airtableAccessToken, baseId);
+          await axios.patch(
+            `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(ctx.tableName)}/${customerId}`,
+            { fields: { 'KYC-formular (JSON)': JSON.stringify(merged) } },
+            { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          throw patchErr;
+        }
+      }
+      form = Kundformular.applySave(form, {}, {
+        actor: 'byra',
+        action: 'mark_synced_to_kyc',
+        customerId
+      });
+      syncMeta = { syncedToKyc: true, syncedFields: Object.keys(patch) };
+      ctx.kyc = merged;
     } else if (action === 'remind') {
       if (!Kundformular.canRemind(form)) {
         return res.status(400).json({
@@ -18278,6 +18458,23 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
       const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : req.body;
       const actor = req.body?.actor === 'kund' ? 'kund' : 'byra';
       const saveAction = ['mark_answered', 'mark_sent', 'mark_signed'].includes(action) ? action : 'save';
+      // Om byrån sparar vh_bekraftelse Osäker/Nej via answers — tillåt sparning,
+      // men mark_sent redan gate:ad ovan. Extra: blockera mark_sent om answers skulle sätta Osaker.
+      if (saveAction === 'mark_sent') {
+        const preview = Kundformular.applySave(form, answers, { actor, action: 'save', customerId });
+        try {
+          Kundresa.assertVhAllowsAction(preview, 'mark_sent', { bolagsform });
+        } catch (gateErr) {
+          if (gateErr.code === 'VH_HARD_GATE') {
+            return res.status(409).json({
+              error: gateErr.message,
+              code: gateErr.code,
+              vhGate: gateErr.vhGate
+            });
+          }
+          throw gateErr;
+        }
+      }
       form = Kundformular.applySave(form, answers, {
         actor,
         action: saveAction,
@@ -18293,9 +18490,38 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
       includeInviteToken: action === 'mark_sent'
     });
     if (remindMeta) Object.assign(payload, remindMeta);
+    if (syncMeta) Object.assign(payload, syncMeta);
+    payload.kundresa = Kundresa.buildKundresaSummary({
+      fields: ctx.fields,
+      form,
+      kyc: ctx.kyc,
+      bolagsform
+    });
     return res.json(payload);
   } catch (error) {
     console.error('❌ PUT /api/kundformular:', error.response?.data || error.message);
+    return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
+  }
+});
+
+// GET /api/kundresa/:customerId – Lager C onboarding-status (sex steg + VH-gate)
+app.get('/api/kundresa/:customerId', authenticateToken, async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
+    const ctx = await loadKundformularCustomerContext(customerId);
+    const summary = Kundresa.buildKundresaSummary({
+      fields: ctx.fields,
+      form: ctx.form,
+      kyc: ctx.kyc,
+      bolagsform: ctx.fields?.Bolagsform || ctx.kyc?.bolagsform || ''
+    });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, kundresa: summary });
+  } catch (error) {
+    console.error('❌ GET /api/kundresa:', error.response?.data || error.message);
     return res.status(error.status || 500).json({ error: error.message || 'Serverfel' });
   }
 });
