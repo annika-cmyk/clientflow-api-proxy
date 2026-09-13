@@ -1793,11 +1793,23 @@ class RiskAssessmentManager {
 
     toggleKlarmarkering() {
         const id = this._activeTjanstTab || 'utforande';
-        if (this.klarmarkeradeFlikar.has(id)) this.klarmarkeradeFlikar.delete(id);
-        else this.klarmarkeradeFlikar.add(id);
+        const turningOn = !this.klarmarkeradeFlikar.has(id);
+        if (turningOn) this.klarmarkeradeFlikar.add(id);
+        else this.klarmarkeradeFlikar.delete(id);
         this.syncTjanstTabDoneState();
         this.syncKlarmarkeraBtn();
         this.syncEditingRiskKlarmarkering();
+        if (turningOn) this.advanceTjanstResaAfterKlar(id);
+    }
+
+    /** After marking a Din resa step klar, move to the next sidebar step (no-op on last). */
+    advanceTjanstResaAfterKlar(fromId) {
+        const flikar = (window.RiskSkala && Array.isArray(RiskSkala.TJANST_RESA_FLIKAR))
+            ? RiskSkala.TJANST_RESA_FLIKAR
+            : ['utforande', 'oversikt', 'hot', 'sarbarhet', 'inneboende', 'atgard', 'residual'];
+        const idx = flikar.indexOf(fromId);
+        if (idx < 0 || idx >= flikar.length - 1) return;
+        this.setTjanstTab(flikar[idx + 1]);
     }
 
     /** Keep overview cards in sync while editing, and mark whole service klar when all tabs are done. */

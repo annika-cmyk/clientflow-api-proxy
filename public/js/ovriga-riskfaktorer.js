@@ -2097,11 +2097,24 @@ modeFromModalId(modalId) {
     toggleRiskKlarmarkering(mode) {
         const id = this._activeRiskTab[mode] || 'utforande';
         const set = this.klarmarkeradeFlikar[mode] || new Set();
-        if (set.has(id)) set.delete(id);
-        else set.add(id);
+        const turningOn = !set.has(id);
+        if (turningOn) set.add(id);
+        else set.delete(id);
         this.klarmarkeradeFlikar[mode] = set;
         this.syncRiskTabDoneState(mode);
         this.syncRiskKlarmarkeraBtn(mode);
+        if (turningOn) this.advanceRiskResaAfterKlar(mode, id);
+    }
+
+    /** After marking a Din resa step klar, move to the next sidebar step (no-op on last). */
+    advanceRiskResaAfterKlar(mode, fromId) {
+        const flikar = (window.RiskSkala && Array.isArray(RiskSkala.TJANST_RESA_FLIKAR))
+            ? RiskSkala.TJANST_RESA_FLIKAR
+            : ['utforande', 'oversikt', 'hot', 'sarbarhet', 'inneboende', 'atgard', 'residual'];
+        const idx = flikar.indexOf(fromId);
+        if (idx < 0 || idx >= flikar.length - 1) return;
+        const modalId = mode === 'edit' ? 'edit-risk-modal' : 'add-risk-modal';
+        this.setRiskTab(modalId, flikar[idx + 1]);
     }
 
     bindRiskKlarmarkering() {
