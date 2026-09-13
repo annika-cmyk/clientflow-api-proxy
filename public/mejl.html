@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260912gmail2">
+    <link rel="stylesheet" href="styles.css?v=20260913gmail-labels">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
       .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 0.75rem; }
@@ -78,6 +78,53 @@
         color: #b91c1c; border-color: #fecaca; background: #fff;
       }
       .btn-danger-outline:hover { background: #fef2f2; border-color: #f87171; }
+      .mejl-labels {
+        display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.35rem 0 0.15rem;
+      }
+      .mejl-label-chip {
+        display: inline-flex; align-items: center; gap: 0.28rem;
+        font-size: 0.72rem; font-weight: 600; color: #475569;
+        background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px;
+        padding: 0.12rem 0.45rem; max-width: 100%;
+      }
+      .mejl-label-chip i.fa-tag { font-size: 0.65rem; opacity: 0.7; }
+      .mejl-label-chip.is-kunder {
+        color: #1e3a5f; background: #e8eef6; border-color: #c5d4e8;
+      }
+      .mejl-label-chip.is-kunder-root {
+        color: #334155; background: #e2e8f0; border-color: #cbd5e1;
+      }
+      .mejl-label-chip.is-system {
+        color: #64748b; background: #f8fafc; font-weight: 500;
+      }
+      .mejl-label-remove {
+        border: 0; background: transparent; color: inherit; cursor: pointer;
+        padding: 0 0 0 0.1rem; line-height: 1; opacity: 0.65;
+      }
+      .mejl-label-remove:hover { opacity: 1; color: #b91c1c; }
+      .mejl-labels-block {
+        margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0;
+      }
+      .mejl-labels-heading {
+        font-size: 0.78rem; font-weight: 700; color: #64748b;
+        text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.4rem;
+      }
+      .mejl-label-edit { margin-top: 0.65rem; }
+      .mejl-label-edit-label {
+        display: block; font-size: 0.82rem; font-weight: 600; color: #334155;
+        margin-bottom: 0.3rem;
+      }
+      .mejl-label-edit-row {
+        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+      }
+      .mejl-label-select { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
+      .mejl-label-create-wrap {
+        display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+        margin-top: 0.45rem;
+      }
+      .mejl-label-create-wrap[hidden] { display: none !important; }
+      .mejl-label-create-wrap .form-input { flex: 1 1 12rem; min-width: 0; max-width: 28rem; }
+      .mejl-item .mejl-labels { margin-top: 0.3rem; }
       /* Global .btn { display:inline-flex } och .mejl-layout { display:grid } slår UA [hidden] */
       #mejl-connect-btn[hidden],
       #mejl-disconnect-btn[hidden],
@@ -189,6 +236,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/mejl.js?v=20260913headers" defer></script>
+    <script src="js/mejl.js?v=20260913labels" defer></script>
 </body>
 </html>
