@@ -1690,6 +1690,16 @@ class RiskFactorsManager {
                 AiFaltGranskning.hideReview(document.getElementById('edit-ai-review'));
             }
         }
+        const resetBtn = (id, fallbackLabel) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            const label = btn.querySelector('.ai-btn-label');
+            if (label) label.textContent = fallbackLabel;
+        };
+        if (!modalId || modalId === 'add-risk-modal') resetBtn('add-ai-suggest-btn', 'Generera AI-analys');
+        if (!modalId || modalId === 'edit-risk-modal') resetBtn('edit-ai-suggest-btn', 'Generera AI-analys');
         this._lastAiAudit = null;
     }
 
