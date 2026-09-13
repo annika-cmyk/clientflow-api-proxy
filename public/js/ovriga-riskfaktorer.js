@@ -1022,32 +1022,46 @@ class RiskFactorsManager {
         return pt;
     }
 
+    /**
+     * Läs fält från DOM (inte FormData). Namnfältet ligger i modal-head utanför <form>,
+     * så FormData missar Riskfaktor — samma mönster som tjänsteanalysen (getElementById).
+     */
+    readRiskFieldValue(mode, baseId) {
+        const prefix = mode === 'edit' ? 'edit-' : '';
+        const el = document.getElementById(`${prefix}${baseId}`);
+        return el ? String(el.value || '').trim() : '';
+    }
+
     collectRiskPayload(formData, mode = 'add') {
         const prefix = mode === 'edit' ? 'edit-' : '';
         const listPrefix = mode === 'edit' ? 'edit-' : 'add-';
         const klar = this.klarmarkeradeFlikar[mode] || new Set();
         const poang = {
-            sannolikhet: formData.get('sannolikhet'),
-            konsekvens: formData.get('konsekvens'),
-            sannolikhetEfter: formData.get('sannolikhet-efter'),
-            konsekvensEfter: formData.get('konsekvens-efter'),
+            sannolikhet: this.readRiskFieldValue(mode, 'sannolikhet') || formData?.get?.('sannolikhet'),
+            konsekvens: this.readRiskFieldValue(mode, 'konsekvens') || formData?.get?.('konsekvens'),
+            sannolikhetEfter: this.readRiskFieldValue(mode, 'sannolikhet-efter') || formData?.get?.('sannolikhet-efter'),
+            konsekvensEfter: this.readRiskFieldValue(mode, 'konsekvens-efter') || formData?.get?.('konsekvens-efter'),
             ...this.readSplitMotiveringFromDom(prefix),
             kraverManualOversyn: this.editNeedsReview === true,
             klarmarkeradeFlikar: [...klar]
         };
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
         const underlagId = mode === 'edit' ? 'edit-risk-ai-extra-underlag' : 'risk-ai-extra-underlag';
+        // Beskrivning/namn: alltid från DOM. Ingen client-side blockering på ord som
+        // «byrån»/«kontroller» — hjälptexten är vägledning, inte sparspärr.
         return {
-            'Typ av riskfaktor': formData.get('risk-type'),
-            'Riskfaktor': formData.get('risk-factor'),
-            'Beskrivning': formData.get('description'),
-            'Åtgjärd': formData.get('action'),
+            'Typ av riskfaktor': this.readRiskFieldValue(mode, 'risk-type') || formData?.get?.('risk-type') || '',
+            'Riskfaktor': this.readRiskFieldValue(mode, 'risk-factor') || formData?.get?.('risk-factor') || '',
+            'Beskrivning': this.readRiskFieldValue(mode, 'description') || formData?.get?.('description') || '',
+            'Åtgjärd': this.readRiskFieldValue(mode, 'action') || formData?.get?.('action') || '',
             'Hot': JSON.stringify(this.collectHot(listPrefix)),
             'Sårbarheter': JSON.stringify(this.collectSarbarhet(listPrefix)),
             'AI-extra underlag': (document.getElementById(underlagId)?.value || '').trim(),
             'Riskbedömning': inherent.level || '',
             'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
-            'PT/TF-relevans': this.requirePtTf(formData.get('pt-tf'))
+            'PT/TF-relevans': this.requirePtTf(
+                this.readRiskFieldValue(mode, 'pt-tf') || formData?.get?.('pt-tf')
+            )
         };
     }
     validateMotiveringBeforeSave(poang) {
@@ -1063,23 +1077,25 @@ class RiskFactorsManager {
     /**
      * Validera obligatoriska fält i Din resa-modalen och växla till rätt flik.
      * Native HTML5-validering på hidden-paneler ger ofta ingen synlig feedback.
+     * Åtgärd krävs inte vid Spara — den fylls i under Riskreducerande åtgärder /
+     * Klarmarkera, så Beskrivning ska kunna sparas utan att hela resan är klar.
      */
     validateRiskFormBeforeSave(mode = 'add') {
         const isEdit = mode === 'edit';
         const modalId = isEdit ? 'edit-risk-modal' : 'add-risk-modal';
         const id = (base) => (isEdit ? `edit-${base}` : base);
         const checks = [
-            { elId: id('risk-factor'), tab: 'oversikt', label: 'Riskfaktor' },
+            // Namn ligger i modal-head (utanför form) — läs via id, inte FormData.
+            { elId: id('risk-factor'), tab: 'oversikt', label: 'Riskfaktor', focusTab: null },
             { elId: id('risk-type'), tab: 'oversikt', label: 'Typ av riskfaktor' },
             { elId: id('pt-tf'), tab: 'oversikt', label: 'PT/TF-relevans' },
-            { elId: id('description'), tab: 'oversikt', label: 'Beskrivning' },
-            { elId: id('action'), tab: 'atgard', label: 'Riskreducerande åtgärder' }
+            { elId: id('description'), tab: 'oversikt', label: 'Beskrivning' }
         ];
         for (const check of checks) {
             const el = document.getElementById(check.elId);
             const value = el ? String(el.value || '').trim() : '';
             if (value) continue;
-            this.setRiskTab(modalId, check.tab);
+            if (check.tab) this.setRiskTab(modalId, check.tab);
             if (el && typeof el.focus === 'function') {
                 try { el.focus({ preventScroll: false }); } catch (_) { el.focus(); }
             }
