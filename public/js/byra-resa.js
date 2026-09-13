@@ -103,6 +103,7 @@
           state.nraChecklist[row.id] = {
             id: row.id,
             title: row.title || prev.title || '',
+            tag: row.tag != null ? row.tag : (prev.tag || ''),
             desc: row.desc || prev.desc || '',
             answer: row.answer || prev.answer || 'unset',
             why: row.why != null ? row.why : (prev.why || '')
@@ -272,17 +273,21 @@
     root.innerHTML = rows.map(function (row) {
       var cur = row.answer || 'unset';
       var showWhy = cur === 'nej';
+      var tag = String(row.tag || '').trim();
       return (
         '<article class="byra-resa-nra-row" data-nra-id="' + esc(row.id) + '">' +
           '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
           '<p class="byra-resa-nra-desc">' + esc(row.desc || '') + '</p>' +
-          '<div class="byra-resa-nra-states" role="group" aria-label="' + esc(row.title || row.id) + '">' +
-            nraChip(row.id, 'ja', 'Ja', cur) +
-            nraChip(row.id, 'nej', 'Nej', cur) +
+          '<div class="byra-resa-nra-answer-row">' +
+            '<div class="byra-resa-nra-states" role="group" aria-label="' + esc(row.title || row.id) + '">' +
+              nraChip(row.id, 'ja', 'Ja', cur) +
+              nraChip(row.id, 'nej', 'Nej', cur) +
+            '</div>' +
+            (tag ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
           '</div>' +
           (showWhy
             ? '<div class="byra-resa-nra-why-wrap">' +
-                '<input type="text" class="form-input byra-resa-nra-why" data-nra-id="' + esc(row.id) + '" value="' + esc(row.why || '') + '" placeholder="Kort varför scenariot inte är relevant" ' + (canEdit ? '' : 'disabled') + '>' +
+                '<input type="text" class="form-input byra-resa-nra-why" data-nra-id="' + esc(row.id) + '" value="' + esc(row.why || '') + '" placeholder="Kort varför scenariot inte är relevant för er" ' + (canEdit ? '' : 'disabled') + '>' +
               '</div>'
             : '') +
         '</article>'
@@ -530,6 +535,7 @@
           state.nraChecklist[row.id] = {
             id: row.id,
             title: row.title || '',
+            tag: row.tag || '',
             desc: row.desc || '',
             answer: row.answer || 'unset',
             why: row.why || ''
