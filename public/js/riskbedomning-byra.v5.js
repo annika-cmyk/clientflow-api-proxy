@@ -490,13 +490,22 @@ class RiskAssessmentManager {
             inneboende: scored.badge || riskLevel,
             residual: residualLevel ? ('Residualrisk: ' + (scored.residualBadge || residualLevel)) : ''
         };
-        if (!badges.inneboende && !badges.residual) {
+        const progress = (window.RiskSkala && RiskSkala.tjanstResaProgress)
+            ? RiskSkala.tjanstResaProgress(scored.klarmarkeradeFlikar)
+            : { doneCount: 0, total: 7, complete: false };
+        const klarHtml = progress.complete
+            ? '<span class="tjanst-mall-klar-badge is-complete" title="Alla analysdelar är klarmarkerade"><i class="fas fa-check" aria-hidden="true"></i> Klar</span>'
+            : (progress.doneCount > 0
+                ? `<span class="tjanst-mall-klar-badge" title="Klarmarkerade delar i Din resa">${progress.doneCount}/${progress.total} klara</span>`
+                : '');
+        if (!badges.inneboende && !badges.residual && !klarHtml) {
             return '<span class="tjanst-mall-status">AML-analys finns</span>';
         }
         const inneboende = this.formatCatalogRiskBadge(badges.inneboende);
         const residual = this.formatCatalogRiskBadge(badges.residual);
         return `
             <span class="tjanst-mall-meta">
+                ${klarHtml}
                 ${inneboende ? `<span class="risk-level-badge ${this.getRiskLevelClass(riskLevel)}">${this.esc(inneboende)}</span>` : ''}
                 ${residual ? `<span class="risk-level-badge ${this.getRiskLevelClass(residualLevel)}">${this.esc(residual)}</span>` : ''}
             </span>
@@ -559,8 +568,10 @@ class RiskAssessmentManager {
         const expandBtn = existing
             ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
             : '';
+        const resaComplete = !!(window.RiskSkala && RiskSkala.isTjanstResaComplete
+            && RiskSkala.isTjanstResaComplete(scored.klarmarkeradeFlikar));
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
                         <span class="tjanst-mall-icon${iconClass ? ' ' + iconClass : ''}" aria-hidden="true">
@@ -1239,6 +1250,7 @@ class RiskAssessmentManager {
             tab.addEventListener('click', () => this.setTjanstTab(tab.getAttribute('data-tjanst-tab')));
         });
         document.getElementById('tjanst-klarmarkera-btn')?.addEventListener('click', () => this.toggleKlarmarkering());
+        this.bindTjanstTextareaAutosize();
 
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
@@ -1246,6 +1258,33 @@ class RiskAssessmentManager {
                 if (modal) this.closeModal(modal.id);
             }
         });
+    }
+
+    /** Autosize so analysis textareas show full content without inner scrollbars. */
+    bindTjanstTextareaAutosize() {
+        const modal = document.getElementById('tjanst-modal');
+        if (!modal || modal.dataset.autosizeBound === '1') return;
+        modal.dataset.autosizeBound = '1';
+        modal.addEventListener('input', (e) => {
+            const t = e.target;
+            if (t && t.tagName === 'TEXTAREA') this.autosizeTextarea(t);
+        });
+    }
+
+    autosizeTextarea(el) {
+        if (!el || el.tagName !== 'TEXTAREA') return;
+        if (el.hidden || el.getAttribute('aria-hidden') === 'true') return;
+        if (el.style.display === 'none') return;
+        el.style.height = 'auto';
+        const min = Number(el.dataset.minHeight || 0) || 0;
+        el.style.height = `${Math.max(el.scrollHeight, min)}px`;
+        el.style.overflowY = 'hidden';
+    }
+
+    autosizeTjanstTextareas(root) {
+        const scope = root && root.querySelectorAll ? root : document.getElementById('tjanst-modal');
+        if (!scope) return;
+        scope.querySelectorAll('textarea').forEach((el) => this.autosizeTextarea(el));
     }
 
     async loadRiskAssessments() {
@@ -1753,13 +1792,19 @@ class RiskAssessmentManager {
         });
         this.syncTjanstTabDoneState();
         this.syncKlarmarkeraBtn();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas());
     }
 
     syncTjanstTabDoneState() {
         document.querySelectorAll('.tjanst-tab').forEach((tab) => {
             const id = tab.getAttribute('data-tjanst-tab');
-            tab.classList.toggle('is-done', this.klarmarkeradeFlikar.has(id));
+            const done = this.klarmarkeradeFlikar.has(id);
+            tab.classList.toggle('is-done', done);
+            tab.setAttribute('aria-label', done
+                ? `${tab.querySelector('.tjanst-tab-label')?.textContent || id} (klar)`
+                : (tab.querySelector('.tjanst-tab-label')?.textContent || id));
         });
+        this.syncTjanstResaProgress();
     }
 
     syncKlarmarkeraBtn() {
@@ -1772,12 +1817,61 @@ class RiskAssessmentManager {
         if (label) label.textContent = done ? 'Ta bort klarmarkering' : 'Klarmarkera';
     }
 
+    syncTjanstResaProgress() {
+        const el = document.getElementById('tjanst-resa-progress');
+        if (!el) return;
+        const RS = window.RiskSkala;
+        const progress = RS && RS.tjanstResaProgress
+            ? RS.tjanstResaProgress([...this.klarmarkeradeFlikar])
+            : { doneCount: this.klarmarkeradeFlikar.size, total: 7, complete: false };
+        el.hidden = progress.doneCount <= 0;
+        el.classList.toggle('is-complete', !!progress.complete);
+        el.innerHTML = progress.complete
+            ? '<i class="fas fa-check-circle" aria-hidden="true"></i> Alla delar klara'
+            : `<i class="fas fa-check" aria-hidden="true"></i> ${progress.doneCount}/${progress.total} delar klara`;
+    }
+
     toggleKlarmarkering() {
         const id = this._activeTjanstTab || 'utforande';
         if (this.klarmarkeradeFlikar.has(id)) this.klarmarkeradeFlikar.delete(id);
         else this.klarmarkeradeFlikar.add(id);
         this.syncTjanstTabDoneState();
         this.syncKlarmarkeraBtn();
+        this.syncEditingRiskKlarmarkering();
+    }
+
+    /** Keep overview cards in sync while editing, and mark whole service klar when all tabs are done. */
+    syncEditingRiskKlarmarkering() {
+        const recordId = document.getElementById('tjanst-record-id')?.value;
+        if (!recordId || !Array.isArray(this.risks)) return;
+        const risk = this.risks.find((r) => r.id === recordId);
+        if (!risk) return;
+        const RS = window.RiskSkala;
+        if (!RS || !RS.readTjanstRisk || !RS.serializeRiskPoang) return;
+        const scored = RS.readTjanstRisk(risk.fields || {}) || {};
+        const next = Object.assign({}, scored, {
+            klarmarkeradeFlikar: [...this.klarmarkeradeFlikar]
+        });
+        const serialized = RS.serializeRiskPoang(next);
+        const complete = !!(RS.isTjanstResaComplete && RS.isTjanstResaComplete(next.klarmarkeradeFlikar));
+        risk.fields = Object.assign({}, risk.fields, { 'Riskpoäng': serialized });
+        if (complete) risk.fields['Aktuell'] = true;
+        this.renderUtforandeKatalog();
+        this.persistKlarmarkeringQuietly(recordId, serialized, complete);
+    }
+
+    async persistKlarmarkeringQuietly(recordId, serializedPoang, markAktuell) {
+        if (!recordId || !serializedPoang) return;
+        const body = { 'Riskpoäng': serializedPoang };
+        if (markAktuell) body['Aktuell'] = true;
+        try {
+            await riskAuthFetch(`${window.apiConfig.baseUrl}/api/risk-assessments/${recordId}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        } catch (err) {
+            console.warn('Kunde inte spara klarmarkering i bakgrunden', err);
+        }
     }
 
     setKlarmarkeradeFlikar(list) {
@@ -1903,6 +1997,7 @@ class RiskAssessmentManager {
         this.bindDynCard(row, { expand: opts.aiAdd ? false : !!opts.expand, hasSource: true });
         list.appendChild(row);
         this.updateTjanstLists();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas(row));
     }
 
     isUserAddedItem(item) {
@@ -1956,6 +2051,7 @@ class RiskAssessmentManager {
         this.bindDynCard(row, { expand: opts.aiAdd ? false : !!opts.expand, hasSource: true });
         list.appendChild(row);
         this.updateTjanstLists();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas(row));
     }
 
     addAtgardRow(data = {}, opts = {}) {
@@ -2009,6 +2105,7 @@ class RiskAssessmentManager {
         this.bindDynCard(row, { expand: opts.aiAdd ? false : (!!opts.expand || !typ) });
         list.appendChild(row);
         this.updateTjanstLists();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas(row));
     }
 
     collectHot() {
@@ -2416,6 +2513,7 @@ class RiskAssessmentManager {
         this.parseJsonField(f['Tjänstespecifika åtgärder']).forEach(a => this.addAtgardRow(a));
         this.setKlarmarkeradeFlikar(scored.klarmarkeradeFlikar || []);
         this.updateRiskBadges();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas());
     }
 
     openAddModal() {
@@ -2423,6 +2521,7 @@ class RiskAssessmentManager {
         document.getElementById('tjanst-modal-title').textContent = 'Lägg till tjänst';
         document.getElementById('tjanst-modal').style.display = 'flex';
         this.renderModalUtforande();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas());
     }
 
     openEditModal(recordId) {
@@ -2433,6 +2532,7 @@ class RiskAssessmentManager {
         this.fillModal(risk);
         document.getElementById('tjanst-modal').style.display = 'flex';
         this.renderModalUtforande();
+        requestAnimationFrame(() => this.autosizeTjanstTextareas());
     }
 
     closeModal(modalId) {

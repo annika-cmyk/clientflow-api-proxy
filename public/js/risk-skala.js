@@ -426,6 +426,21 @@
         return out;
     }
 
+    /** True när alla steg i Din resa är klarmarkerade. */
+    function isTjanstResaComplete(raw) {
+        return normalizeKlarmarkeradeFlikar(raw).length === TJANST_RESA_FLIKAR.length;
+    }
+
+    function tjanstResaProgress(raw) {
+        var done = normalizeKlarmarkeradeFlikar(raw);
+        return {
+            done: done,
+            doneCount: done.length,
+            total: TJANST_RESA_FLIKAR.length,
+            complete: done.length === TJANST_RESA_FLIKAR.length
+        };
+    }
+
     function looksLikeRiskPoang(obj) {
         if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
         return toScore(obj.sannolikhet ?? obj.s ?? obj.likelihood) != null
@@ -674,6 +689,8 @@
         scoreOptionHtml: scoreOptionHtml,
         TJANST_RESA_FLIKAR: TJANST_RESA_FLIKAR,
         normalizeKlarmarkeradeFlikar: normalizeKlarmarkeradeFlikar,
+        isTjanstResaComplete: isTjanstResaComplete,
+        tjanstResaProgress: tjanstResaProgress,
         parseRiskPoang: parseRiskPoang,
         serializeRiskPoang: serializeRiskPoang,
         readTjanstRisk: readTjanstRisk,
