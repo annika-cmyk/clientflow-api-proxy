@@ -803,7 +803,7 @@
       ${archiveApi ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility) : ''}
       ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail) : ''}
       ${archiveApi ? archiveApi.attachmentsHtml(m.attachments) : ''}
-      <p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering (plain text).</p>
+      <p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering.</p>
       ${bodyHtml}
     `;
     detailContext = { id, message: m, listMeta };
@@ -834,6 +834,7 @@
         message: m,
         customerId: customerIdForArchive,
         plainText: m.text || m.snippet || '',
+        html: m.html || '',
         onRefresh: () => openMessage(id)
       });
     }
