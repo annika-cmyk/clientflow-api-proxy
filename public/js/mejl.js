@@ -126,7 +126,26 @@
     sendStatus: document.getElementById('mejl-send-status'),
     folderInbox: document.getElementById('mejl-folder-inbox'),
     folderSent: document.getElementById('mejl-folder-sent'),
-    syncStatus: document.getElementById('mejl-sync-status')
+    syncStatus: document.getElementById('mejl-sync-status'),
+    protectedBody: document.getElementById('mejl-protected-body'),
+    protectedWrap: document.getElementById('mejl-protected-wrap'),
+    markBankid: document.getElementById('mejl-mark-bankid'),
+    toggleProtected: document.getElementById('mejl-toggle-protected'),
+    attachments: document.getElementById('mejl-attachments'),
+    attachList: document.getElementById('mejl-attach-list'),
+    qList: document.getElementById('mejl-q-list'),
+    qAdd: document.getElementById('mejl-q-add'),
+    qTarget: document.getElementById('mejl-q-target'),
+    qRunWrap: document.getElementById('mejl-q-run-wrap'),
+    qRunId: document.getElementById('mejl-q-run-id'),
+    tabInbox: document.getElementById('mejl-tab-inbox'),
+    tabSettings: document.getElementById('mejl-tab-settings'),
+    panelInbox: document.getElementById('mejl-panel-inbox'),
+    panelSettings: document.getElementById('mejl-panel-settings'),
+    sigPreview: document.getElementById('mejl-sig-preview'),
+    sigSave: document.getElementById('mejl-sig-save'),
+    sigStatus: document.getElementById('mejl-sig-status'),
+    sigLayouts: document.getElementById('mejl-sig-layouts')
   };
 
   let status = null;
@@ -136,6 +155,10 @@
   let folder = 'inbox';
   let kunderLabelsCache = [];
   let detailContext = null;
+  let pendingFiles = [];
+  let sigLayout = 'text-left-portrait-right';
+  let sigImage1DataUrl = '';
+  let sigImage2DataUrl = '';
 
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
@@ -827,35 +850,154 @@
     renderDetail(id, { ...m, labelLink: m.labelLink || null }, listMetaWithLink, data.kunderLabels);
   }
 
-  async function sendMail() {
-    els.sendStatus.textContent = 'Skickar…';
-    const payload = {
-      to: els.to.value.trim(),
-      subject: els.subject.value.trim(),
-      text: els.body.value,
-      customerId: els.customer.value || undefined,
-      threadId: els.compose.dataset.threadId || undefined,
-      inReplyTo: els.compose.dataset.inReplyTo || undefined
-    };
-    const res = await fetch(`${baseUrl}/api/gmail/send`, {
-      method: 'POST',
-      ...authOpts(),
-      body: JSON.stringify(payload)
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(new Error('Kunde inte läsa fil'));
+      reader.readAsDataURL(file);
     });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      els.sendStatus.textContent = data.error || 'Kunde inte skicka';
-      return;
+  }
+  function renderAttachList() {
+    if (!els.attachList) return;
+    if (!pendingFiles.length) { els.attachList.innerHTML = ''; return; }
+    els.attachList.innerHTML = pendingFiles.map((f, i) =>
+      `<div class="mejl-attach-row"><span>${esc(f.name)}</span>
+      <label><input type="checkbox" data-attach-bankid="${i}" ${f.bankId ? 'checked' : ''}> BankID</label>
+      <button type="button" class="btn btn-secondary btn-sm" data-attach-remove="${i}">Ta bort</button></div>`
+    ).join('');
+  }
+  function addQuestionRow(prefill) {
+    if (!els.qList) return;
+    const row = document.createElement('div');
+    row.className = 'mejl-q-row';
+    row.innerHTML = `<input type="text" class="form-input mejl-q-text" placeholder="Fråga / underlag" style="flex:1 1 12rem;" value="${esc((prefill && prefill.text) || '')}">
+      <label><input type="checkbox" class="mejl-q-file" ${(prefill && prefill.fileRequired) ? 'checked' : ''}> Fil</label>
+      <label><input type="checkbox" class="mejl-q-bankid" ${(prefill && prefill.requiresBankId) ? 'checked' : ''}> BankID</label>
+      <button type="button" class="btn btn-secondary btn-sm mejl-q-remove">×</button>`;
+    els.qList.appendChild(row);
+  }
+  function collectQuestions() {
+    if (!els.qList) return [];
+    return Array.from(els.qList.querySelectorAll('.mejl-q-row')).map((row) => ({
+      text: String((row.querySelector('.mejl-q-text') || {}).value || '').trim(),
+      fileRequired: !!(row.querySelector('.mejl-q-file') || {}).checked,
+      requiresBankId: !!(row.querySelector('.mejl-q-bankid') || {}).checked
+    })).filter((q) => q.text);
+  }
+  function encodeQuestionsTitle(items) {
+    if (!items.length) return '';
+    if (items.length === 1) {
+      const it = items[0];
+      return `${it.requiresBankId ? '[bankid] ' : ''}${it.text}${it.fileRequired ? ' [fil obligatorisk]' : ''}`;
     }
-    els.sendStatus.textContent = `Skickat från ${data.from || 'Gmail'}`;
-    els.compose.hidden = true;
-    els.to.value = '';
-    els.subject.value = '';
-    els.body.value = '';
-    delete els.compose.dataset.threadId;
-    delete els.compose.dataset.inReplyTo;
-    folder = 'sent';
-    await loadInbox();
+    return items.map((it, i) => `${i + 1}. ${it.requiresBankId ? '[bankid] ' : ''}${it.text}${it.fileRequired ? ' [fil obligatorisk]' : ''}`).join('\n');
+  }
+  function collectSignatureSettings() {
+    return {
+      layout: sigLayout,
+      name: (document.getElementById('mejl-sig-name') || {}).value || '',
+      title: (document.getElementById('mejl-sig-title') || {}).value || '',
+      phone: (document.getElementById('mejl-sig-phone') || {}).value || '',
+      email: (document.getElementById('mejl-sig-email') || {}).value || '',
+      address: (document.getElementById('mejl-sig-address') || {}).value || '',
+      website: (document.getElementById('mejl-sig-website') || {}).value || '',
+      freeText: (document.getElementById('mejl-sig-freetext') || {}).value || '',
+      disclaimer: (document.getElementById('mejl-sig-disclaimer') || {}).value || '',
+      image1Url: (document.getElementById('mejl-sig-img1-url') || {}).value || '',
+      image2Url: (document.getElementById('mejl-sig-img2-url') || {}).value || '',
+      image1DataUrl: sigImage1DataUrl || '',
+      image2DataUrl: sigImage2DataUrl || ''
+    };
+  }
+  function fillSignatureForm(settings) {
+    const conf = settings || {};
+    sigLayout = conf.layout || 'text-left-portrait-right';
+    sigImage1DataUrl = conf.image1DataUrl || '';
+    sigImage2DataUrl = conf.image2DataUrl || '';
+    const map = {'mejl-sig-name':conf.name,'mejl-sig-title':conf.title,'mejl-sig-phone':conf.phone,'mejl-sig-email':conf.email,'mejl-sig-address':conf.address,'mejl-sig-website':conf.website,'mejl-sig-freetext':conf.freeText,'mejl-sig-disclaimer':conf.disclaimer,'mejl-sig-img1-url':conf.image1Url,'mejl-sig-img2-url':conf.image2Url};
+    Object.entries(map).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val || ''; });
+    if (els.sigLayouts) els.sigLayouts.querySelectorAll('.mejl-layout-card').forEach((btn) => btn.classList.toggle('is-active', btn.getAttribute('data-layout') === sigLayout));
+  }
+  async function refreshSignaturePreview() {
+    if (!els.sigPreview) return;
+    const res = await fetch(`${baseUrl}/api/mejl/signature/preview`, { method:'POST', ...authOpts(), body: JSON.stringify({ settings: collectSignatureSettings() }) });
+    const data = await res.json().catch(() => ({}));
+    els.sigPreview.innerHTML = data.previewHtml || '<p class="mejl-hint">Ingen sidfot ännu.</p>';
+  }
+  async function loadSignatureSettings() {
+    if (!els.panelSettings) return;
+    const res = await fetch(`${baseUrl}/api/mejl/signature`, authOpts());
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.settings) { fillSignatureForm(data.settings); if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml; else await refreshSignaturePreview(); }
+  }
+  function showMejlPanel(name) {
+    const isSettings = name === 'settings';
+    if (els.panelInbox) els.panelInbox.hidden = isSettings;
+    if (els.panelSettings) els.panelSettings.hidden = !isSettings;
+    if (els.tabInbox) els.tabInbox.classList.toggle('is-active', !isSettings);
+    if (els.tabSettings) els.tabSettings.classList.toggle('is-active', isSettings);
+    if (isSettings) loadSignatureSettings().catch(() => {});
+  }
+
+
+  async function sendMail() {
+    els.sendStatus.textContent = 'Förbereder…';
+    try {
+      const publicText = els.body.value;
+      const protectedText = (els.protectedBody && els.protectedBody.value) || '';
+      const protectedFiles = [];
+      for (const f of pendingFiles) {
+        if (!f.bankId) continue;
+        protectedFiles.push({ name: f.name, mimeType: f.file.type || 'application/octet-stream', contentBase64: await readFileAsBase64(f.file) });
+      }
+      let samarbeteUrl = '';
+      let samarbeteTitle = '';
+      const questions = collectQuestions();
+      if (questions.length) {
+        const customerId = els.customer.value;
+        if (!customerId) { els.sendStatus.textContent = 'Välj kund för att skicka frågor / underlag.'; return; }
+        const c = customers.find((x) => x.id === customerId);
+        samarbeteTitle = encodeQuestionsTitle(questions);
+        const body = {
+          customerId,
+          recipientName: (c && (c.kontaktperson || c.namn)) || 'Kund',
+          recipientEmail: els.to.value.trim() || (c && c.email) || '',
+          type: 'Filer', title: samarbeteTitle, customerMessage: publicText.slice(0, 2000), status: 'Väntar'
+        };
+        if ((els.qTarget && els.qTarget.value) === 'uppdragskorning' && els.qRunId && els.qRunId.value.trim()) {
+          body.uppdragskorningId = els.qRunId.value.trim();
+        }
+        const samRes = await fetch(`${baseUrl}/api/samarbete/requests`, { method:'POST', ...authOpts(), body: JSON.stringify(body) });
+        const samData = await samRes.json().catch(() => ({}));
+        if (!samRes.ok || !samData.success) { els.sendStatus.textContent = samData.error || 'Kunde inte skapa underlagsfrågor'; return; }
+        samarbeteUrl = samData.link || '';
+      }
+      const prepRes = await fetch(`${baseUrl}/api/mejl/compose-prepare`, {
+        method:'POST', ...authOpts(),
+        body: JSON.stringify({ publicText, protectedText, protectedFiles, subject: els.subject.value.trim(), customerId: els.customer.value || undefined, samarbeteUrl, samarbeteTitle })
+      });
+      const prep = await prepRes.json().catch(() => ({}));
+      if (!prepRes.ok || !prep.success) { els.sendStatus.textContent = prep.error || 'Kunde inte förbereda mejlet'; return; }
+      els.sendStatus.textContent = 'Skickar…';
+      const payload = { to: els.to.value.trim(), subject: els.subject.value.trim(), text: prep.text || publicText, html: prep.html || undefined, customerId: els.customer.value || undefined, threadId: els.compose.dataset.threadId || undefined, inReplyTo: els.compose.dataset.inReplyTo || undefined };
+      const res = await fetch(`${baseUrl}/api/gmail/send`, { method:'POST', ...authOpts(), body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok || !data.success) { els.sendStatus.textContent = data.error || 'Kunde inte skicka'; return; }
+      els.sendStatus.textContent = `Skickat från ${data.from || 'Gmail'}`;
+      els.compose.hidden = true;
+      els.to.value = ''; els.subject.value = ''; els.body.value = '';
+      if (els.protectedBody) els.protectedBody.value = '';
+      if (els.protectedWrap) els.protectedWrap.hidden = true;
+      pendingFiles = []; renderAttachList();
+      if (els.qList) els.qList.innerHTML = '';
+      if (els.attachments) els.attachments.value = '';
+      delete els.compose.dataset.threadId; delete els.compose.dataset.inReplyTo;
+      folder = 'sent'; await loadInbox();
+    } catch (err) { els.sendStatus.textContent = err.message || 'Kunde inte skicka'; }
   }
 
   els.connectBtn.addEventListener('click', async (e) => {
@@ -944,6 +1086,7 @@
   async function boot() {
     const params = new URLSearchParams(window.location.search);
     const presetCustomer = params.get('customerId') || '';
+    if (params.get('panel') === 'settings') showMejlPanel('settings');
     if (params.get('gmail') === 'connected') {
       showToast('Gmail är kopplad.', 'success');
       history.replaceState({}, '', 'mejl.html' + (presetCustomer ? `?customerId=${encodeURIComponent(presetCustomer)}` : ''));

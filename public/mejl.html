@@ -7,9 +7,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913mejl-kundkort">
+    <link rel="stylesheet" href="styles.css?v=20260913mejl-bankid-sidfot">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+
+      .mejl-page-tabs { display:flex; gap:0.35rem; margin:0.85rem 0 0; padding:0; list-style:none; }
+      .mejl-page-tab { border:1px solid transparent; background:transparent; color:#64748b; font:inherit; font-size:0.92rem; font-weight:600; padding:0.4rem 0.85rem; border-radius:8px; cursor:pointer; }
+      .mejl-page-tab:hover { color:#0f172a; background:#f1f5f9; }
+      .mejl-page-tab.is-active { color:#0f172a; background:#e2e8f0; border-color:#cbd5e1; }
+      .mejl-panel[hidden] { display:none !important; }
+      .mejl-compose-tools { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; margin:0.35rem 0 0.65rem; }
+      .mejl-protected-box { border:1px dashed #99f6e4; background:#f0fdfa; border-radius:10px; padding:0.75rem 0.9rem; margin-top:0.35rem; }
+      .mejl-protected-box[hidden] { display:none !important; }
+      .mejl-attach-list,.mejl-q-list { display:flex; flex-direction:column; gap:0.4rem; margin-top:0.45rem; }
+      .mejl-attach-row,.mejl-q-row { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center; font-size:0.85rem; color:#334155; }
+      .mejl-sig-grid { display:grid; gap:0.85rem; grid-template-columns:1fr; }
+      @media (min-width:900px){ .mejl-sig-grid { grid-template-columns:1fr 1fr; align-items:start; } }
+      .mejl-sig-preview { border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:1rem 1.1rem; min-height:180px; }
+      .mejl-layout-cards { display:grid; gap:0.5rem; grid-template-columns:1fr 1fr; }
+      .mejl-layout-card { border:1px solid #e2e8f0; border-radius:10px; padding:0.65rem 0.75rem; cursor:pointer; background:#fff; text-align:left; font:inherit; font-size:0.82rem; }
+      .mejl-layout-card.is-active { border-color:#64748b; background:#f8fafc; box-shadow:0 0 0 1px #94a3b8; }
+
       .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 0.75rem; }
       @media (min-width: 960px) {
         .mejl-layout { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; }
@@ -188,6 +206,12 @@
                     </div>
                 </header>
 
+                <nav class="mejl-page-tabs" aria-label="Mejl-sektioner">
+                    <button type="button" class="mejl-page-tab is-active" data-mejl-panel="inbox" id="mejl-tab-inbox">Inkorg</button>
+                    <button type="button" class="mejl-page-tab" data-mejl-panel="settings" id="mejl-tab-settings">Inställningar · sidfot</button>
+                </nav>
+
+                <div id="mejl-panel-inbox" class="mejl-panel">
                 <div id="mejl-connect" class="mejl-header-bar">
                     <span id="mejl-status-pill" class="mejl-status-pill is-off">Ej kopplad</span>
                     <div class="mejl-connect-actions">
@@ -234,8 +258,41 @@
                             <input type="text" id="mejl-subject" class="form-input" placeholder="Ämne">
                         </div>
                         <div class="form-group">
-                            <label for="mejl-body">Meddelande</label>
-                            <textarea id="mejl-body" class="form-input" placeholder="Skriv ditt mejl…"></textarea>
+                            <label for="mejl-body">Offentlig del (syns i Gmail-mejlet)</label>
+                            <textarea id="mejl-body" class="form-input" placeholder="Skriv den del som ska synas öppet i mejlet…"></textarea>
+                            <div class="mejl-compose-tools">
+                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-mark-bankid"><i class="fas fa-shield-alt"></i> Markera som BankID</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-toggle-protected">BankID-skyddad text</button>
+                            </div>
+                            <div class="mejl-protected-box" id="mejl-protected-wrap" hidden>
+                                <label for="mejl-protected-body">Skyddad text (kräver BankID via länk)</label>
+                                <textarea id="mejl-protected-body" class="form-input" placeholder="Denna text syns först efter BankID…"></textarea>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="mejl-attachments">Bilagor</label>
+                            <input type="file" id="mejl-attachments" class="form-input" multiple>
+                            <div id="mejl-attach-list" class="mejl-attach-list"></div>
+                            <p class="mejl-hint">Kryssa i BankID för bilagor som inte ska skickas öppet i mejlet.</p>
+                        </div>
+                        <div class="form-group">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                                <label style="margin:0;">Frågor / begär underlag</label>
+                                <button type="button" class="btn btn-secondary btn-sm" id="mejl-q-add"><i class="fas fa-plus"></i> Lägg till fråga</button>
+                            </div>
+                            <div id="mejl-q-list" class="mejl-q-list"></div>
+                            <div class="form-group" style="margin-top:0.55rem;">
+                                <label for="mejl-q-target">Koppla svar till</label>
+                                <select id="mejl-q-target" class="form-select form-input">
+                                    <option value="">Ingen koppling</option>
+                                    <option value="kunddokumentation">Kunddokumentation</option>
+                                    <option value="uppdragskorning">Uppdragskörning (ange ID nedan)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="mejl-q-run-wrap" hidden>
+                                <label for="mejl-q-run-id">Uppdragskörning-ID</label>
+                                <input type="text" id="mejl-q-run-id" class="form-input" placeholder="rec…">
+                            </div>
                         </div>
                     </div>
                     <div class="mejl-connect-actions" style="margin-top:0.9rem;">
@@ -264,6 +321,40 @@
                         </div>
                     </section>
                 </div>
+
+                </div><!-- /mejl-panel-inbox -->
+
+                <div id="mejl-panel-settings" class="mejl-panel" hidden>
+                    <section class="mejl-compose" style="margin-top:1rem;">
+                        <h2 style="margin:0 0 0.35rem; font-size:1.05rem;">Mejl-sidfot</h2>
+                        <p class="mejl-hint" style="margin:0 0 1rem;">Sparad per användare och bifogas automatiskt när du skickar från Mejl. Tomma fält visas inte.</p>
+                        <div class="mejl-sig-grid">
+                            <div class="form-grid">
+                                <div class="form-group"><label>Disposition</label>
+                                    <div class="mejl-layout-cards" id="mejl-sig-layouts">
+                                        <button type="button" class="mejl-layout-card is-active" data-layout="text-left-portrait-right"><strong>Text · porträtt</strong> Text vänster, rund bild höger</button>
+                                        <button type="button" class="mejl-layout-card" data-layout="portrait-left-text-right"><strong>Porträtt · text</strong> Rund bild vänster</button>
+                                        <button type="button" class="mejl-layout-card" data-layout="stacked-centered"><strong>Centrerad</strong> Bild ovanför</button>
+                                        <button type="button" class="mejl-layout-card" data-layout="compact-inline"><strong>Kompakt</strong> En rad</button>
+                                    </div>
+                                </div>
+                                <div class="form-group"><label for="mejl-sig-name">Namn</label><input type="text" id="mejl-sig-name" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-title">Titel</label><input type="text" id="mejl-sig-title" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-phone">Telefon</label><input type="text" id="mejl-sig-phone" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-email">Mejl</label><input type="email" id="mejl-sig-email" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-address">Adress</label><input type="text" id="mejl-sig-address" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-website">Hemsida</label><input type="text" id="mejl-sig-website" class="form-input"></div>
+                                <div class="form-group"><label for="mejl-sig-freetext">Övrig fritext</label><textarea id="mejl-sig-freetext" class="form-input" rows="3"></textarea></div>
+                                <div class="form-group"><label for="mejl-sig-disclaimer">Disclaimer</label><textarea id="mejl-sig-disclaimer" class="form-input" rows="2"></textarea></div>
+                                <div class="form-group"><label for="mejl-sig-img1">Bild 1</label><input type="file" id="mejl-sig-img1" class="form-input" accept="image/*"><input type="url" id="mejl-sig-img1-url" class="form-input" style="margin-top:0.35rem;" placeholder="eller URL"></div>
+                                <div class="form-group"><label for="mejl-sig-img2">Bild 2</label><input type="file" id="mejl-sig-img2" class="form-input" accept="image/*"><input type="url" id="mejl-sig-img2-url" class="form-input" style="margin-top:0.35rem;" placeholder="eller URL"></div>
+                                <div class="mejl-connect-actions"><button type="button" class="btn btn-primary" id="mejl-sig-save">Spara sidfot</button><span id="mejl-sig-status" class="mejl-hint"></span></div>
+                            </div>
+                            <div><label style="display:block;font-weight:600;margin-bottom:0.4rem;">Förhandsvisning</label><div class="mejl-sig-preview" id="mejl-sig-preview"><p class="mejl-hint">Ingen sidfot ännu.</p></div></div>
+                        </div>
+                    </section>
+                </div>
+
             </div>
         </main>
     </div>
@@ -272,6 +363,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/mejl.js?v=20260913incsync" defer></script>
+    <script src="js/mejl.js?v=20260913bankid-sidfot" defer></script>
 </body>
 </html>

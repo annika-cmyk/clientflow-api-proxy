@@ -104,3 +104,24 @@ SAMARBETE_BANKID_SECRET=...
 ```
 
 I demoläge slutförs BankID automatiskt efter ~2,5 s och sätter en HttpOnly-cookie. Svar på BankID-frågor sparas med `verifiedByBankId` i svar-JSON.
+
+
+---
+
+## Mejl-sidfot
+
+Under **Mejl → Inställningar · sidfot** sparas en personlig HTML-signatur per användare i Application Users-fältet `Mejl Sidfot` (JSON). Fyra dispositionsmallar finns. Tomma fält renderas inte. Sidfoten bifogas automatiskt vid skicka via `/api/mejl/compose-prepare`.
+
+## BankID-skydd i utgående mejl
+
+Markera text eller bilagor som BankID-skyddade i Nytt mejl. Offentlig del går i Gmail; skyddad del + filer nås via `mejl-skyddad.html` efter BankID (återanvänder `lib/samarbete-bankid.js`, mock default).
+
+API:
+- `POST /api/mejl/protected` – skapa skyddat innehåll
+- `GET /api/mejl/protected/:token` – meta / innehåll efter BankID
+- `POST /api/mejl/bankid/start|collect` – mock/provider-flöde
+- `POST /api/mejl/compose-prepare` – bygg HTML med sidfot + länkar
+
+## Frågor / begär underlag från Mejl
+
+Compose kan skapa samma Samarbete-förfrågan som kundkortet (`POST /api/samarbete/requests`) med offentlig/BankID per fråga, och koppla till uppdragskörning eller kunddokumentation.
