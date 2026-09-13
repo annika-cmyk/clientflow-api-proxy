@@ -852,8 +852,8 @@
           : ''
       }
       ${archiveApi ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility) : ''}
-      ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail) : ''}
-      ${archiveApi ? archiveApi.attachmentsHtml(m.attachments) : ''}
+      ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail, { attachments: m.attachments }) : ''}
+      ${archiveApi ? archiveApi.attachmentsHtml(m.attachments, archiveForDetail) : ''}
       <p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering.</p>
       ${bodyHtml}
     `;
