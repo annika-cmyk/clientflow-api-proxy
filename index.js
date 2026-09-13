@@ -15797,7 +15797,11 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
     const state = ByraResa.buildByraResaState({
       ...incoming,
       // Katalogversion ägs av servern (bumpas vid riskfaktor-skrivning), inte av klienten.
-      riskFactorCatalogVersion: existingState.riskFactorCatalogVersion
+      riskFactorCatalogVersion: existingState.riskFactorCatalogVersion,
+      // Behåll avstådda analysförslag om äldre klienter inte skickar fältet.
+      kundriskAnalysSkipped: Object.prototype.hasOwnProperty.call(incoming, 'kundriskAnalysSkipped')
+        ? incoming.kundriskAnalysSkipped
+        : existingState.kundriskAnalysSkipped
     });
     const nraOpts = nraOptsFromByraFields(record.fields);
     if (state.steps[8] && !ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist, nraOpts)) {

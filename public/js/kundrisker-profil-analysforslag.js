@@ -574,15 +574,74 @@
     return groups;
   }
 
-  function filterOpenGroups(groups, risks) {
+  function filterOpenGroups(groups, risks, skippedIds) {
     var existing = existingRiskNameSet(risks);
+    var skipped = skippedIdSet(skippedIds);
     return (groups || []).map(function (g) {
+      if (!g || skipped[g.id]) return null;
       var items = (g.items || []).filter(function (it) {
         return !itemAlreadyCovered(it, existing);
       });
       if (!items.length) return null;
       return Object.assign({}, g, { items: items });
     }).filter(Boolean);
+  }
+
+  function skippedIdSet(skippedIds) {
+    var set = Object.create(null);
+    (Array.isArray(skippedIds) ? skippedIds : []).forEach(function (id) {
+      var key = trimStr(id);
+      if (key) set[key] = true;
+    });
+    return set;
+  }
+
+  function normalizeSkippedGroupIds(list) {
+    var seen = Object.create(null);
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (id) {
+      var key = trimStr(id);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      out.push(key);
+    });
+    return out.slice(0, 100);
+  }
+
+  function groupIsFullyCovered(group, risks) {
+    var items = (group && group.items) || [];
+    if (!items.length) return false;
+    var existing = existingRiskNameSet(risks);
+    return items.every(function (it) {
+      return itemAlreadyCovered(it, existing);
+    });
+  }
+
+  /**
+   * Checklist-status per analysförslagsgrupp.
+   * Analyserad (matchande riskfaktor) vinner över avstådd.
+   * @returns {{status:'analyserad'|'avstadd'|'pending', label:string}|null}
+   */
+  function resolveGroupChecklistStatus(group, risks, skippedIds) {
+    if (!group) return null;
+    if (groupIsFullyCovered(group, risks)) {
+      return { status: 'analyserad', label: 'Analyserad' };
+    }
+    if (skippedIdSet(skippedIds)[group.id]) {
+      return { status: 'avstadd', label: 'Avstådd' };
+    }
+    return { status: 'pending', label: 'Ej gjord än' };
+  }
+
+  function summarizeChecklistStatuses(groups, risks, skippedIds) {
+    var counts = { analyserad: 0, avstadd: 0, pending: 0, total: 0 };
+    (groups || []).forEach(function (g) {
+      var row = resolveGroupChecklistStatus(g, risks, skippedIds);
+      if (!row) return;
+      counts[row.status] += 1;
+      counts.total += 1;
+    });
+    return counts;
   }
 
   function groupForField(groups, fieldKey) {
@@ -654,6 +713,11 @@
     buildMergedPrefill: buildMergedPrefill,
     buildSplitPrefills: buildSplitPrefills,
     shouldShowButtonForField: shouldShowButtonForField,
-    existingRiskNameSet: existingRiskNameSet
+    existingRiskNameSet: existingRiskNameSet,
+    itemAlreadyCovered: itemAlreadyCovered,
+    normalizeSkippedGroupIds: normalizeSkippedGroupIds,
+    groupIsFullyCovered: groupIsFullyCovered,
+    resolveGroupChecklistStatus: resolveGroupChecklistStatus,
+    summarizeChecklistStatuses: summarizeChecklistStatuses
   };
 });
