@@ -999,6 +999,92 @@ class RiskFactorsManager {
         return check;
     }
 
+    /**
+     * Validera obligatoriska fält i Din resa-modalen och växla till rätt flik.
+     * Native HTML5-validering på hidden-paneler ger ofta ingen synlig feedback.
+     */
+    validateRiskFormBeforeSave(mode = 'add') {
+        const isEdit = mode === 'edit';
+        const modalId = isEdit ? 'edit-risk-modal' : 'add-risk-modal';
+        const id = (base) => (isEdit ? `edit-${base}` : base);
+        const checks = [
+            { elId: id('risk-factor'), tab: 'oversikt', label: 'Riskfaktor' },
+            { elId: id('risk-type'), tab: 'oversikt', label: 'Typ av riskfaktor' },
+            { elId: id('pt-tf'), tab: 'oversikt', label: 'PT/TF-relevans' },
+            { elId: id('description'), tab: 'oversikt', label: 'Beskrivning' },
+            { elId: id('action'), tab: 'atgard', label: 'Riskreducerande åtgärder' }
+        ];
+        for (const check of checks) {
+            const el = document.getElementById(check.elId);
+            const value = el ? String(el.value || '').trim() : '';
+            if (value) continue;
+            this.setRiskTab(modalId, check.tab);
+            if (el && typeof el.focus === 'function') {
+                try { el.focus({ preventScroll: false }); } catch (_) { el.focus(); }
+            }
+            this.showNotification(
+                `${check.label} saknas. Fyll i fliken och spara igen — annars sparas inte analysen.`,
+                'error'
+            );
+            return { ok: false, field: check.elId, tab: check.tab };
+        }
+        return { ok: true };
+    }
+
+    clearListFiltersThatHideAktuell() {
+        const statusFilter = document.getElementById('status-filter');
+        if (statusFilter && statusFilter.value === 'unchecked') {
+            statusFilter.value = '';
+        }
+        const riskFilter = document.getElementById('risk-filter');
+        if (riskFilter) riskFilter.value = '';
+    }
+
+    refreshKundriskerEnkatAfterSave() {
+        const API = window.KundriskerEnkatSammanfattning;
+        if (API && typeof API.refresh === 'function') {
+            try { API.refresh(); } catch (err) {
+                console.warn('Kunde inte uppdatera Från byråprofilen efter sparning:', err);
+            }
+        }
+    }
+
+    /**
+     * Efter lyckad sparning: visa kortet under Kundkategorier och geografi.
+     */
+    revealSavedRisk(recordId, riskName) {
+        this.clearListFiltersThatHideAktuell();
+        this.applyFilters();
+        const listSection = document.querySelector('.risk-assessment-section')
+            || document.getElementById('risk-list');
+        let card = recordId
+            ? document.querySelector(`.risk-item[data-record-id="${recordId}"]`)
+            : null;
+        if (!card && riskName) {
+            const fold = (v) => String(v || '').trim().toLowerCase().normalize('NFC').replace(/\s+/g, ' ');
+            const want = fold(riskName);
+            card = [...document.querySelectorAll('.risk-item')].find((el) => {
+                const title = el.querySelector('.risk-task-name');
+                return title && fold(title.textContent).indexOf(want) === 0;
+            }) || null;
+        }
+        const target = card || listSection;
+        if (target && typeof target.scrollIntoView === 'function') {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (card) {
+            card.classList.add('risk-item--just-saved');
+            if (!card.classList.contains('expanded')) {
+                const header = card.querySelector('.risk-item-header');
+                if (header) {
+                    try { this.toggleRiskItem(header); } catch (_) { /* ignore */ }
+                }
+            }
+            setTimeout(() => card.classList.remove('risk-item--just-saved'), 6000);
+        }
+        this.refreshKundriskerEnkatAfterSave();
+    }
+
     createRiskItem(risk) {
         const scored = this.scoredRisk(risk.fields);
         const riskLevel = scored.level || 'Normal';
@@ -1617,17 +1703,21 @@ class RiskFactorsManager {
             if (requestEpoch !== this._aiSuggestionEpoch) return;
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (reviewMode) {
+                // Prefill från byråprofilen gör reviewMode (beskrivning redan ifylld).
+                // Tomma flikar (åtgärd, S×K, motivering) måste ändå fyllas — annars
+                // blockeras sparning tyst av required-fält i dolda Din resa-paneler.
+                this.applyOvrigAiIfEmpty(prefix, befintligt, data);
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
                     ? data.granskning.poster
                     : [];
                 const poster = Ai.ensureAnalysisPosters('ovrig', befintligt, data, basePoster);
                 const changed = this.paintInlineOvrigAi(prefix, poster, befintligt, reviewHost);
                 this.showNotification(changed
-                    ? 'AI har lagt förslag under era fält. Jämför och kopiera in det ni vill använda. Du ansvarar för vad som sparas.'
-                    : 'Inga nya förslag skilde sig från era texter.', 'success');
+                    ? 'AI har fyllt tomma fält och lagt förslag under ifyllda. Granska, kopiera in ändringar ni vill behålla, och spara.'
+                    : 'AI har fyllt tomma fält. Granska och spara — analysen hamnar under listan på sidan.', 'success');
             } else {
                 this.applyOvrigAiAll(prefix, data);
-                this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
+                this.showNotification('AI-förslag inlagt. Granska och spara — analysen hamnar under listan på sidan.', 'success');
             }
             if (mode === 'edit') this.editNeedsReview = false;
             this.updateRiskBadges(mode);
@@ -1783,17 +1873,19 @@ class RiskFactorsManager {
 
     async handleAddRisk(event) {
         event.preventDefault();
-        
+
+        if (!this.validateRiskFormBeforeSave('add').ok) return;
+
         const formData = new FormData(event.target);
-        
+
         // Use the first byrå ID from user's data
         const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
-        
+
         if (!userByraId) {
             this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
             return;
         }
-        
+
         this.editNeedsReview = false;
 
         try {
@@ -1815,11 +1907,20 @@ class RiskFactorsManager {
             }
             const response = await this.saveRiskFactor(`${window.apiConfig.baseUrl}/api/risk-factors`, 'POST', riskData);
             if (response.ok) {
+                const saved = await response.json().catch(() => ({}));
+                const newId = (saved.record && saved.record.id) || saved.id || null;
                 this.closeModal('add-risk-modal');
                 await this.loadRiskFactors();
                 await this.loadRiskFactorCatalogVersion();
                 this.renderByraProfilKaskad();
-                this.showNotification('Riskfaktor tillagd framgångsrikt', 'success');
+                this.revealSavedRisk(newId, riskData.Riskfaktor || riskData['Riskfaktor']);
+                const where = this.isKundriskerPage()
+                    ? ' under Kundkategorier och geografi'
+                    : '';
+                this.showNotification(
+                    `Analysen är sparad${where}. Öppna kortet för att granska eller redigera.`,
+                    'success'
+                );
             } else {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.message || err.error || `HTTP ${response.status}`);
@@ -1832,18 +1933,20 @@ class RiskFactorsManager {
 
     async handleEditRisk(event) {
         event.preventDefault();
-        
+
+        if (!this.validateRiskFormBeforeSave('edit').ok) return;
+
         const formData = new FormData(event.target);
         const recordId = formData.get('record-id');
-        
+
         // Use the first byrå ID from user's data
         const userByraId = this.userByraIds.length > 0 ? this.userByraIds[0] : null;
-        
+
         if (!userByraId) {
             this.showNotification('Inget byrå ID hittat för användaren. Kontakta administratören.', 'error');
             return;
         }
-        
+
         try {
             const riskData = {
                 ...this.collectRiskPayload(formData),
@@ -1866,7 +1969,8 @@ class RiskFactorsManager {
                 await this.loadRiskFactors();
                 await this.loadRiskFactorCatalogVersion();
                 this.renderByraProfilKaskad();
-                this.showNotification('Riskfaktor uppdaterad framgångsrikt', 'success');
+                this.revealSavedRisk(recordId, riskData.Riskfaktor || riskData['Riskfaktor']);
+                this.showNotification('Analysen är uppdaterad. Kortet är markerat i listan.', 'success');
             } else {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.message || err.error || `HTTP ${response.status}`);

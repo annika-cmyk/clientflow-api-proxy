@@ -651,9 +651,18 @@
     mount();
   }
 
+  function refresh() {
+    var root = document.getElementById('kundrisker-enkat-root');
+    if (!root || !state.profil) return;
+    var summary = buildSummary(state.profil, state.schema || { fields: [], sections: [] });
+    if (!summary.hasAnswers) renderEmpty(root);
+    else renderSummary(root, summary);
+  }
+
   window.KundriskerEnkatSammanfattning = {
     buildSummary: buildSummary,
     mount: mount,
+    refresh: refresh,
     getState: function () { return state; }
   };
 })();

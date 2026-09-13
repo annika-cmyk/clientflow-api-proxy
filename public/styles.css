@@ -5859,6 +5859,13 @@ body.sidebar-collapsed .nav-status-icon {
     animation: slideIn 0.3s ease;
 }
 
+.risk-item--just-saved {
+  outline: 2px solid var(--cf-accent, #0f6b5c);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(15, 107, 92, 0.18);
+  transition: box-shadow 0.3s ease, outline-color 0.3s ease;
+}
+
 .notification-success {
     border-left-color: #27ae60;
 }
