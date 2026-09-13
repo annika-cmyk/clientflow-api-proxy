@@ -351,6 +351,7 @@ class ByraAnvandareManager {
     const behSpara = document.getElementById('behorighet-spara-btn');
     if (behSpara) behSpara.addEventListener('click', () => this.saveBulkBehorighet());
     this._bindItSystemAnnatToggles();
+    this._bindBetalningsmonsterEditor();
     this._bindConditionalProfilFields();
     this._renderBolagsformerEditor('');
   }
@@ -599,6 +600,186 @@ class ByraAnvandareManager {
     document.querySelectorAll('.byra-it-system-checks').forEach((group) => this._syncItSystemGroup(group));
   }
 
+
+  _betalningsmonsterChoices() {
+    return ['Kontant', 'Kort', 'Swish', 'Faktura', 'Banköverföring', 'Autogiro', 'Bankgiro/Plusgiro'];
+  }
+
+  _foldBetalningsToken(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  _parseBetalningsmonster(raw) {
+    const text = Array.isArray(raw)
+      ? raw.map((v) => String(v || '').trim()).filter(Boolean).join(', ')
+      : String(raw == null ? '' : raw).trim();
+    if (!text) return [];
+    const choices = this._betalningsmonsterChoices();
+    const aliases = {
+      kontant: 'Kontant', kontanter: 'Kontant', kontantbetalning: 'Kontant',
+      kort: 'Kort', kortbetalning: 'Kort', betalkort: 'Kort', kreditkort: 'Kort',
+      swish: 'Swish', faktura: 'Faktura', fakturor: 'Faktura', fakturering: 'Faktura',
+      bankoverforing: 'Banköverföring', overforing: 'Banköverföring',
+      autogiro: 'Autogiro', bankgiro: 'Bankgiro/Plusgiro', plusgiro: 'Bankgiro/Plusgiro',
+      bankgiroplusgiro: 'Bankgiro/Plusgiro'
+    };
+    const known = {};
+    choices.forEach((c) => {
+      known[c.toLowerCase()] = c;
+      known[this._foldBetalningsToken(c)] = c;
+    });
+    Object.keys(aliases).forEach((k) => {
+      if (known[aliases[k].toLowerCase()]) {
+        known[k] = aliases[k];
+        known[this._foldBetalningsToken(k)] = aliases[k];
+      }
+    });
+    const parts = text.split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+    const proseRe = /\b(är|ar|vanligast|vanliga|vanligt|hos|kunderna|typiska|främst|mest|oftast|beskriv)\b/i;
+    const conjRe = /\b(och|eller|samt|i|hos|med|via)\b/i;
+    const looksList = parts.length && parts.every((p) => {
+      if (known[p.toLowerCase()] || known[this._foldBetalningsToken(p)]) return true;
+      if (conjRe.test(p) || proseRe.test(p)) return false;
+      return p.length <= 40 && p.split(/\s+/).filter(Boolean).length <= 3;
+    });
+    if (looksList) {
+      const out = [];
+      const seen = {};
+      parts.forEach((p) => {
+        const canon = known[p.toLowerCase()] || known[this._foldBetalningsToken(p)] || p;
+        const key = this._foldBetalningsToken(canon);
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        out.push(canon);
+      });
+      return out;
+    }
+    const hay = this._foldBetalningsToken(text);
+    const selected = [];
+    const seen = {};
+    Object.keys(known)
+      .filter((k) => /^[a-z0-9]+$/.test(k))
+      .sort((a, b) => b.length - a.length)
+      .forEach((foldKey) => {
+        const canon = known[foldKey];
+        const key = this._foldBetalningsToken(canon);
+        if (!foldKey || !key || seen[key] || hay.indexOf(foldKey) === -1) return;
+        seen[key] = true;
+        selected.push(canon);
+      });
+    let rem = text;
+    const remove = {};
+    selected.forEach((label) => { remove[String(label).toLowerCase()] = true; });
+    Object.keys(aliases).forEach((alias) => {
+      if (selected.includes(aliases[alias])) remove[alias] = true;
+    });
+    Object.keys(remove).sort((a, b) => b.length - a.length).forEach((label) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      rem = rem.replace(new RegExp(escaped, 'ig'), ' ');
+    });
+    const fillerFolds = {
+      och: 1, eller: 1, samt: 1, ar: 1, vanligast: 1, vanliga: 1, vanligt: 1, hos: 1, kunderna: 1,
+      typiska: 1, framst: 1, mest: 1, oftast: 1, i: 1, butik: 1, ovrigt: 1, ovrig: 1, via: 1, med: 1,
+      av: 1, den: 1, det: 1, de: 1, en: 1, ett: 1, som: 1, for: 1, till: 1, fran: 1, pa: 1, om: 1,
+      att: 1, sa: 1, bara: 1, ocksa: 1, mm: 1
+    };
+    rem = rem.split(/[^a-zA-ZåäöÅÄÖ0-9]+/).map((tok) => String(tok || '').trim()).filter((tok) => {
+      if (!tok || tok.length < 2) return false;
+      const f = this._foldBetalningsToken(tok);
+      return !fillerFolds[f] && !fillerFolds[tok.toLowerCase()];
+    }).join(' ').trim();
+    if (selected.length) {
+      if (rem.length >= 3) selected.push(rem.charAt(0).toUpperCase() + rem.slice(1));
+      return selected;
+    }
+    return [text];
+  }
+
+  _syncBetalningsmonsterSelection() {
+    const list = document.getElementById('byra-betalningsmonster-checks');
+    const hidden = document.getElementById('byra-betalningsmonster');
+    if (!list || !hidden) return;
+    const rows = [];
+    list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      if (cb.checked) rows.push(cb.value);
+    });
+    list.querySelectorAll('.byra-betalningsmonster-custom-row input[type="text"]').forEach((input) => {
+      const label = String(input.value || '').trim();
+      if (label) rows.push(label);
+    });
+    hidden.value = rows.join(', ');
+  }
+
+  _bindBetalningsmonsterRow(row) {
+    row.querySelectorAll('input').forEach((el) => {
+      el.addEventListener('change', () => this._syncBetalningsmonsterSelection());
+      el.addEventListener('input', () => this._syncBetalningsmonsterSelection());
+    });
+    const removeBtn = row.querySelector('.byra-bolagsformer-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        this._syncBetalningsmonsterSelection();
+      });
+    }
+  }
+
+  _addBetalningsmonsterCustom(label) {
+    const list = document.getElementById('byra-betalningsmonster-checks');
+    if (!list) return null;
+    const row = document.createElement('div');
+    row.className = 'byra-betalningsmonster-custom-row';
+    const safe = String(label || '').replace(/"/g, '&quot;');
+    row.innerHTML = '<input type="text" class="form-input" placeholder="Eget alternativ" value="' + safe + '">' +
+      '<button type="button" class="byra-bolagsformer-remove" aria-label="Ta bort alternativ">×</button>';
+    list.appendChild(row);
+    this._bindBetalningsmonsterRow(row);
+    return row;
+  }
+
+  _renderBetalningsmonsterEditor(raw) {
+    const list = document.getElementById('byra-betalningsmonster-checks');
+    const hidden = document.getElementById('byra-betalningsmonster');
+    if (!list) return;
+    const selected = this._parseBetalningsmonster(raw);
+    const choices = this._betalningsmonsterChoices();
+    const known = new Set(choices.map((c) => c.toLowerCase()));
+    const selectedSet = new Set(selected.map((v) => String(v).toLowerCase()));
+    const extras = selected.filter((v) => !known.has(String(v).toLowerCase()));
+    list.innerHTML = '';
+    choices.forEach((choice, idx) => {
+      const id = 'byra-betalningsmonster-' + idx;
+      const label = document.createElement('label');
+      label.className = 'byra-it-system-check';
+      label.setAttribute('for', id);
+      const checked = selectedSet.has(choice.toLowerCase()) ? ' checked' : '';
+      label.innerHTML = '<input type="checkbox" id="' + id + '" value="' +
+        choice.replace(/"/g, '&quot;') + '"' + checked + '><span>' + choice + '</span>';
+      list.appendChild(label);
+      this._bindBetalningsmonsterRow(label);
+    });
+    extras.forEach((label) => this._addBetalningsmonsterCustom(label));
+    if (hidden) hidden.value = selected.join(', ');
+  }
+
+  _bindBetalningsmonsterEditor() {
+    const addBtn = document.getElementById('byra-betalningsmonster-add');
+    if (addBtn && !addBtn.dataset.bound) {
+      addBtn.dataset.bound = '1';
+      addBtn.addEventListener('click', () => {
+        const row = this._addBetalningsmonsterCustom('');
+        const input = row && row.querySelector('input[type="text"]');
+        if (input) input.focus();
+        this._syncBetalningsmonsterSelection();
+      });
+    }
+    this._renderBetalningsmonsterEditor('');
+  }
+
   _bindItSystemAnnatToggles() {
     document.querySelectorAll('.byra-it-system-checks').forEach((group) => {
       group.querySelectorAll('input[type="checkbox"]').forEach((box) => {
@@ -686,7 +867,7 @@ class ByraAnvandareManager {
       setVal('byra-personalomsattning', f.personalomsattning);
       setVal('byra-andel-hogrisk', f.andelHogriskbransch);
       setVal('byra-andel-kontant', f.andelKontantintensiva);
-      setVal('byra-betalningsmonster', f.betalningsmonster);
+      this._renderBetalningsmonsterEditor(f.betalningsmonster);
       setVal('byra-komplexa-agarstrukturer', f.komplexaAgarstrukturer);
       setVal('byra-utlandska-agare', f.utlandskaAgare);
       setVal('byra-pep-kunder', f.pepKunder);

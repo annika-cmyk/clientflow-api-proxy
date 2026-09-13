@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260902villkor10">
+    <link rel="stylesheet" href="styles.css?v=20260913betalning">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -205,8 +205,11 @@
                                                 </div>
                                             </div>
                                             <div class="form-group full-width">
-                                                <label for="byra-betalningsmonster">Betalningsmönster</label>
-                                                <textarea id="byra-betalningsmonster" class="form-input" rows="2" placeholder="T.ex. kontant, kort, Swish, faktura"></textarea>
+                                                <span class="byra-bolagsformer-label" id="byra-betalningsmonster-label">Betalningsmönster</span>
+                                                <p class="byra-bolagsformer-desc">Välj ett eller flera. Lägg till egna alternativ vid behov.</p>
+                                                <div class="byra-it-system-checks byra-betalningsmonster-checks" id="byra-betalningsmonster-checks" role="group" aria-labelledby="byra-betalningsmonster-label" data-betalnings-hidden="byra-betalningsmonster"></div>
+                                                <button type="button" class="byra-bolagsformer-add" id="byra-betalningsmonster-add">Lägg till eget alternativ</button>
+                                                <input type="hidden" id="byra-betalningsmonster" value="">
                                             </div>
                                             <div class="form-group">
                                                 <label for="byra-komplexa-agarstrukturer">Komplexa ägarstrukturer</label>
@@ -879,7 +882,7 @@
     <script src="js/components.js?v=2.4" defer></script>
     <!-- Load byrå användare specific script -->
     <script src="js/hogrisk-sni.js?v=1" defer></script>
-    <script src="js/byra-anvandare.js?v=20260912cfa" defer></script>
+    <script src="js/byra-anvandare.js?v=20260913betalning" defer></script>
     <!-- Then load the main app -->
     <script src="app.js" defer></script>
 </body>

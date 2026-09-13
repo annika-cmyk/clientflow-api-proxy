@@ -20220,3 +20220,16 @@ body.byra-resa-page .risk-header h1 {
   .byra-resa-nra-row-head { flex-direction: column; align-items: flex-start; }
   .byra-resa-nra-kind { max-width: 100%; }
 }
+
+.byra-enkate-multi-custom-row,
+.byra-betalningsmonster-custom-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+}
+.byra-enkate-multi-custom-row input[type="text"],
+.byra-betalningsmonster-custom-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
