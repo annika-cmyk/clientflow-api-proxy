@@ -19631,14 +19631,91 @@ body.byra-resa-page .risk-header h1 {
 }
 .kundrisker-enkat-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  align-items: flex-start;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
 }
+.kundrisker-analys-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.kundrisker-analys-status-icon {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kundrisker-analys-status.is-analyserad {
+  color: #14532d;
+  background: rgba(22, 101, 52, 0.1);
+}
+.kundrisker-analys-status.is-analyserad .kundrisker-analys-status-icon {
+  background: #15803d;
+  box-shadow: inset 0 0 0 1px rgba(20, 83, 45, 0.25);
+}
+.kundrisker-analys-status.is-avstadd {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
+}
+.kundrisker-analys-status.is-avstadd .kundrisker-analys-status-icon {
+  background: #94a3b8;
+}
+.kundrisker-analys-status.is-pending {
+  color: #9a3412;
+  background: rgba(154, 52, 18, 0.1);
+}
+.kundrisker-analys-status.is-pending .kundrisker-analys-status-icon {
+  background: #c2410c;
+}
+.kundrisker-enkat-row.is-status-avstadd .kundrisker-enkat-a {
+  color: #64748b;
+}
+.kundrisker-enkat-row.is-status-analyserad .kundrisker-enkat-q::after {
+  content: none;
+}
+.kundrisker-enkat-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.85rem;
+  margin: -0.35rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+.kundrisker-enkat-checklist-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.kundrisker-enkat-checklist-item::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.kundrisker-enkat-checklist-item.is-analyserad::before { background: #15803d; }
+.kundrisker-enkat-checklist-item.is-avstadd::before { background: #94a3b8; }
+.kundrisker-enkat-checklist-item.is-pending::before { background: #c2410c; }
 .kundrisker-analys-btn {
   white-space: nowrap;
 }
 .kundrisker-analys-btn.is-optional {
   opacity: 0.85;
+}
+.kundrisker-analys-skip,
+.kundrisker-analys-unskip {
+  white-space: nowrap;
+  color: #64748b;
 }
 .kundrisker-analys-panel {
   margin-top: 0.75rem;

@@ -1,17 +1,25 @@
 /**
  * Read-only sammanfattning av byråprofil-enkätens kundrelaterade svar
- * på sidan Vilka är våra kunder — med knappar som föreslår analyser.
+ * på sidan Vilka är våra kunder — med knappar som föreslår analyser
+ * och checklist-status (analyserad / avstådd / ej gjord än).
  */
 (function () {
   'use strict';
 
   var SECTION_IDS = ['kundstock', 'geografi', 'kundintro'];
   var HOGRISK_NONE = 'Inga högriskbranscher';
+  var SKIP_STORAGE_PREFIX = 'kundriskAnalysSkipped:';
   var state = {
     profil: null,
+    allGroups: [],
     groups: [],
     openGroupId: null,
-    pendingPrefills: []
+    pendingPrefills: [],
+    skippedIds: [],
+    byraResaState: null,
+    canEditResa: false,
+    byraKey: '',
+    summary: null
   };
 
   function API() {
@@ -150,30 +158,119 @@
     return { hasAnswers: answeredCount > 0, answeredCount: answeredCount, groups: groups };
   }
 
+  function risksList() {
+    return (window.riskManager && window.riskManager.risks) || [];
+  }
+
+  function normalizeSkipped(list) {
+    var Forslag = API();
+    if (Forslag && Forslag.normalizeSkippedGroupIds) {
+      return Forslag.normalizeSkippedGroupIds(list);
+    }
+    return (Array.isArray(list) ? list : []).map(String).filter(Boolean);
+  }
+
+  function localSkipKey() {
+    return SKIP_STORAGE_PREFIX + (state.byraKey || 'default');
+  }
+
+  function readLocalSkipped() {
+    try {
+      var raw = localStorage.getItem(localSkipKey());
+      return normalizeSkipped(raw ? JSON.parse(raw) : []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeLocalSkipped(ids) {
+    try {
+      localStorage.setItem(localSkipKey(), JSON.stringify(normalizeSkipped(ids)));
+    } catch (_) { /* ignore */ }
+  }
+
   function refreshGroups() {
     var Forslag = API();
     if (!Forslag || !state.profil) {
+      state.allGroups = [];
       state.groups = [];
       return;
     }
-    var risks = (window.riskManager && window.riskManager.risks) || [];
-    state.groups = Forslag.filterOpenGroups(Forslag.buildAnalysGroups(state.profil), risks);
+    var risks = risksList();
+    state.allGroups = Forslag.buildAnalysGroups(state.profil);
+    state.groups = Forslag.filterOpenGroups(state.allGroups, risks, state.skippedIds);
   }
 
-  function groupForItem(item) {
+  function allGroupForItem(item) {
+    var Forslag = API();
+    if (!Forslag) return null;
+    return Forslag.groupForField(state.allGroups, item.key);
+  }
+
+  function openGroupForItem(item) {
     var Forslag = API();
     if (!Forslag) return null;
     return Forslag.groupForField(state.groups, item.key);
   }
 
-  function buttonForItem(item, analysGroup) {
-    if (!analysGroup) return '';
-    var optionalCls = analysGroup.optional ? ' is-optional' : '';
+  function statusForGroup(analysGroup) {
+    var Forslag = API();
+    if (!Forslag || !analysGroup || !Forslag.resolveGroupChecklistStatus) return null;
+    return Forslag.resolveGroupChecklistStatus(analysGroup, risksList(), state.skippedIds);
+  }
+
+  function statusBadgeHtml(statusRow) {
+    if (!statusRow) return '';
+    return (
+      '<span class="kundrisker-analys-status is-' + escapeHtml(statusRow.status) + '" ' +
+        'title="' + escapeHtml(statusRow.label) + '">' +
+        '<span class="kundrisker-analys-status-icon" aria-hidden="true"></span>' +
+        '<span class="kundrisker-analys-status-label">' + escapeHtml(statusRow.label) + '</span>' +
+      '</span>'
+    );
+  }
+
+  function buttonForItem(item, openGroup, statusRow) {
+    if (!openGroup || !statusRow || statusRow.status !== 'pending') return '';
+    var optionalCls = openGroup.optional ? ' is-optional' : '';
     return (
       '<button type="button" class="btn btn-secondary btn-sm kundrisker-analys-btn' + optionalCls + '" ' +
-        'data-analys-group="' + escapeHtml(analysGroup.id) + '">' +
-        escapeHtml(analysGroup.buttonLabel) +
+        'data-analys-group="' + escapeHtml(openGroup.id) + '">' +
+        escapeHtml(openGroup.buttonLabel) +
       '</button>'
+    );
+  }
+
+  function skipActionsHtml(allGroup, statusRow) {
+    if (!allGroup || !statusRow) return '';
+    if (statusRow.status === 'pending') {
+      return (
+        '<button type="button" class="btn btn-ghost btn-sm kundrisker-analys-skip" ' +
+          'data-analys-skip="' + escapeHtml(allGroup.id) + '" title="Markera som avstådd utan att skapa analys">' +
+          'Avstå</button>'
+      );
+    }
+    if (statusRow.status === 'avstadd') {
+      return (
+        '<button type="button" class="btn btn-ghost btn-sm kundrisker-analys-unskip" ' +
+          'data-analys-unskip="' + escapeHtml(allGroup.id) + '" title="Ångra avstå — visa förslaget igen">' +
+          'Ångra avstå</button>'
+      );
+    }
+    return '';
+  }
+
+  function checklistSummaryHtml() {
+    var Forslag = API();
+    if (!Forslag || !Forslag.summarizeChecklistStatuses || !state.allGroups.length) return '';
+    var c = Forslag.summarizeChecklistStatuses(state.allGroups, risksList(), state.skippedIds);
+    if (!c.total) return '';
+    return (
+      '<p class="kundrisker-enkat-checklist" role="status">' +
+        '<span class="kundrisker-enkat-checklist-item is-analyserad">' + c.analyserad + ' analyserade</span>' +
+        '<span class="kundrisker-enkat-checklist-item is-avstadd">' + c.avstadd + ' avstådda</span>' +
+        '<span class="kundrisker-enkat-checklist-item is-pending">' + c.pending + ' ej gjorda än</span>' +
+      '</p>'
     );
   }
 
@@ -241,22 +338,36 @@
   function renderSummary(root, summary) {
     refreshGroups();
     var panelRendered = {};
+    state.summary = summary;
 
     var groupsHtml = summary.groups.map(function (g) {
       var rows = g.items.map(function (item) {
-        var analysGroup = groupForItem(item);
-        var btn = buttonForItem(item, analysGroup);
+        var allGroup = allGroupForItem(item);
+        var openGroup = openGroupForItem(item);
+        var statusRow = statusForGroup(allGroup);
+        var btn = buttonForItem(item, openGroup, statusRow);
+        var skipBtn = skipActionsHtml(allGroup, statusRow);
+        var badge = statusBadgeHtml(statusRow);
         var panel = '';
-        if (analysGroup && state.openGroupId === analysGroup.id && !panelRendered[analysGroup.id]) {
-          panelRendered[analysGroup.id] = true;
-          panel = panelHtml(analysGroup);
+        if (openGroup && state.openGroupId === openGroup.id && !panelRendered[openGroup.id]) {
+          panelRendered[openGroup.id] = true;
+          panel = panelHtml(openGroup);
+        }
+        var rowStatusCls = statusRow ? ' is-status-' + statusRow.status : '';
+        var actions = '';
+        if (badge || btn || skipBtn) {
+          actions =
+            '<span class="kundrisker-enkat-actions">' +
+              badge + btn + skipBtn +
+            '</span>';
         }
         return (
-          '<li class="kundrisker-enkat-row' + (analysGroup ? ' has-analys' : '') + '" data-field-key="' + escapeHtml(item.key) + '">' +
+          '<li class="kundrisker-enkat-row' + (allGroup ? ' has-analys' : '') + rowStatusCls + '" data-field-key="' + escapeHtml(item.key) + '"' +
+            (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
             '<div class="kundrisker-enkat-row-main">' +
               '<span class="kundrisker-enkat-q">' + escapeHtml(item.label) + '</span>' +
               '<span class="kundrisker-enkat-a">' + escapeHtml(item.display) + '</span>' +
-              (btn ? '<span class="kundrisker-enkat-actions">' + btn + '</span>' : '') +
+              actions +
             '</div>' +
             panel +
           '</li>'
@@ -276,7 +387,8 @@
           '<h3>Från byråprofilen</h3>' +
           '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Använd <strong>Analysera</strong> för att öppna förslag till analyskort — ni väljer själva vad som slås ihop eller delas upp.</p>' +
+        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
+        checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
 
@@ -327,6 +439,7 @@
         origClose(modalId);
         if (modalId === 'add-risk-modal') {
           advanceQueueSoon();
+          rerenderSoon();
         }
       };
     }
@@ -337,7 +450,10 @@
         // Kö avanceras när modalen stängs efter lyckat sparande.
         setTimeout(function () {
           var modal = document.getElementById('add-risk-modal');
-          if (modal && modal.style.display === 'none') advanceQueueSoon();
+          if (modal && modal.style.display === 'none') {
+            advanceQueueSoon();
+            rerenderSoon();
+          }
         }, 800);
       });
     }
@@ -357,12 +473,63 @@
     }, 200);
   }
 
+  function rerenderSoon() {
+    setTimeout(function () {
+      var root = document.getElementById('kundrisker-enkat-root');
+      if (root && state.summary && state.summary.hasAnswers) {
+        renderSummary(root, state.summary);
+      }
+    }, 300);
+  }
+
+  function setSkipped(ids, root, summary) {
+    state.skippedIds = normalizeSkipped(ids);
+    writeLocalSkipped(state.skippedIds);
+    if (state.openGroupId && state.skippedIds.indexOf(state.openGroupId) >= 0) {
+      state.openGroupId = null;
+    }
+    persistSkippedToByraResa();
+    renderSummary(root, summary);
+  }
+
+  function persistSkippedToByraResa() {
+    if (!state.byraResaState) return;
+    var nextState = Object.assign({}, state.byraResaState, {
+      kundriskAnalysSkipped: state.skippedIds.slice()
+    });
+    state.byraResaState = nextState;
+    if (!state.canEditResa) return;
+    var opts = authOpts();
+    opts.method = 'PUT';
+    opts.headers = Object.assign({}, opts.headers || {}, { 'Content-Type': 'application/json' });
+    opts.body = JSON.stringify({ state: nextState });
+    fetch(baseUrl() + '/api/byra-resa', opts).catch(function () { /* lokal spegling räcker */ });
+  }
+
   function bindPanelEvents(root, summary) {
     root.querySelectorAll('[data-analys-group].kundrisker-analys-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-analys-group');
         state.openGroupId = state.openGroupId === id ? null : id;
         renderSummary(root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-analys-skip]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-analys-skip');
+        if (!id) return;
+        var list = state.skippedIds.slice();
+        if (list.indexOf(id) < 0) list.push(id);
+        setSkipped(list, root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-analys-unskip]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-analys-unskip');
+        if (!id) return;
+        setSkipped(state.skippedIds.filter(function (x) { return x !== id; }), root, summary);
       });
     });
 
@@ -403,6 +570,35 @@
       '</div>';
   }
 
+  function loadSkippedFromByraResa() {
+    return fetch(baseUrl() + '/api/byra-resa', authOpts())
+      .then(function (res) {
+        if (res.status === 401) return null;
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        state.canEditResa = data.canEdit !== false;
+        state.byraResaState = data.state || null;
+        state.byraKey = String(data.recordId || '').trim() || state.byraKey;
+        var fromServer = normalizeSkipped(
+          data.state && data.state.kundriskAnalysSkipped
+        );
+        var fromLocal = readLocalSkipped();
+        if (state.canEditResa) {
+          state.skippedIds = fromServer;
+          writeLocalSkipped(fromServer);
+        } else {
+          // Medarbetare kan inte PUT:a byråresa — lokal spegling per byrå.
+          state.skippedIds = fromLocal.length ? fromLocal : fromServer;
+        }
+      })
+      .catch(function () {
+        state.skippedIds = readLocalSkipped();
+      });
+  }
+
   function mount() {
     var root = document.getElementById('kundrisker-enkat-root');
     if (!root) return;
@@ -414,7 +610,8 @@
 
     Promise.all([
       fetch(baseUrl() + '/api/byra/profil-schema', authOpts()),
-      fetch(baseUrl() + '/api/byra/info', authOpts())
+      fetch(baseUrl() + '/api/byra/info', authOpts()),
+      loadSkippedFromByraResa()
     ])
       .then(function (results) {
         var schemaRes = results[0];
@@ -433,7 +630,7 @@
         if (!summary.hasAnswers) renderEmpty(root);
         else renderSummary(root, summary);
 
-        // När risklistan laddats om — uppdatera knappar (dölj redan skapade).
+        // När risklistan laddats om — uppdatera status/knappar.
         var tries = 0;
         var timer = setInterval(function () {
           tries += 1;
