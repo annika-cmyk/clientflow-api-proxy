@@ -13374,7 +13374,7 @@ const BYRA_PROFIL_REQUIRED_FIELDS = [
   { name: 'Branscher i kundstocken', type: 'multilineText', description: 'Branscher som förekommer i kundstocken' },
   { name: 'Andel kunder med internationell handel', type: 'number', description: 'Andel kunder med internationell handel (0–100 %)', options: { precision: 0 } },
   { name: 'Andel kontantintensiva kunder', type: 'number', description: 'Andel kontantintensiva kunder (0–100 %)', options: { precision: 0 } },
-  { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur tjänster erbjuds', options: { choices: [{ name: 'På plats' }, { name: 'Distans' }, { name: 'Blandat' }] } },
+  { name: 'Leveranssätt', type: 'singleSelect', description: 'Hur kundkontakt och onboarding sker', options: { choices: ByraProfilFields.CHOICE_LEVERANS.map((name) => ({ name })) } },
   { name: 'Geografisk marknad', type: 'multilineText', description: 'Geografisk marknad för byråns kunder' },
   ...ByraProfilFields.airtableEnsureSpecs()
 ];
