@@ -1495,6 +1495,46 @@ class CustomerCardManager {
         return !!(av && todayIso && av <= todayIso);
     }
 
+    _buildKorningDocsListHtml(allAtt, docsDeadlineKey, attFieldName, uppdragId) {
+        const deadline = String(docsDeadlineKey || '').slice(0, 10);
+        if (!Array.isArray(allAtt) || !deadline) return '';
+        const runAtt = [];
+        allAtt.forEach((a, idx) => {
+            if (String(a?.filename || '').includes(deadline)) {
+                runAtt.push({ att: a, sourceIndex: idx });
+            }
+        });
+        const limited = runAtt.slice(0, 10);
+        if (!limited.length) return '';
+        const items = limited.map(({ att, sourceIndex }) => {
+            const fn = String(att?.filename || 'Bilaga');
+            const url = String(att?.url || '');
+            const eFn = this._esc(fn);
+            const eUrl = this._esc(url);
+            const eField = this._esc(attFieldName || '');
+            const eUppdrag = this._esc(String(uppdragId || ''));
+            const canPreview = this._canPreviewInline(this._guessPreviewType(fn, att?.type || att?.contentType || ''));
+            if (canPreview && (eField || eUrl)) {
+                return `<div class="uppdrag-view-list-item">
+                    <i class="fas fa-paperclip"></i>
+                    <button type="button" class="document-list-name document-list-name--preview uppdrag-korning-doc-link"
+                        data-source-field="${eField}"
+                        data-source-index="${sourceIndex}"
+                        data-doc-name="${eFn}"
+                        data-filename="${eFn}"
+                        data-direct-url="${eUrl}"
+                        data-uppdrag-id="${eUppdrag}"
+                        title="Visa dokument"
+                        onclick="event.stopPropagation(); customerCardManager.previewDocumentFromBtn(this)">${eFn}</button>
+                </div>`;
+            }
+            return url
+                ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${eUrl}" target="_blank" rel="noopener noreferrer">${eFn}</a></div>`
+                : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${eFn}</div>`;
+        }).join('');
+        return `<div class="uppdrag-view-list">${items}</div>`;
+    }
+
     _notifyUppdragRunsEnsure(runsEnsure, successLabel = 'Uppdrag sparat') {
         const re = runsEnsure || null;
         if (!re) {
@@ -2561,18 +2601,7 @@ class CustomerCardManager {
                 const docsDeadlineKey = String(instDeadline || '').slice(0, 10);
                 const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : null);
                 const allAtt = attFieldName ? (f[attFieldName] || []) : [];
-                const runAtt = (Array.isArray(allAtt) && docsDeadlineKey)
-                    ? allAtt.filter(a => String(a?.filename || '').includes(docsDeadlineKey)).slice(0, 10)
-                    : [];
-                const runAttHtml = runAtt.length
-                    ? `<div class="uppdrag-view-list">${runAtt.map(a => {
-                        const fn = this._esc(String(a?.filename || 'Bilaga'));
-                        const url = this._esc(String(a?.url || ''));
-                        return url
-                            ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${url}" target="_blank" rel="noopener noreferrer">${fn}</a></div>`
-                            : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${fn}</div>`;
-                    }).join('')}</div>`
-                    : ``;
+                const runAttHtml = this._buildKorningDocsListHtml(allAtt, docsDeadlineKey, attFieldName, rec?.id || '');
 
                 const riskRequiredAtgarder = this._getRequiredRiskAtgarderForUppdrag(f);
                 const riskDoneAtgarder = this._parseRiskAtgarderDone(runRec?.fields?.['Riskåtgärder utförda'] || '');
@@ -3210,18 +3239,7 @@ class CustomerCardManager {
                                 const f = rec.fields || {};
                                 const attFieldName = Array.isArray(f['Dokumentation']) ? 'Dokumentation' : (Array.isArray(f['Attachments']) ? 'Attachments' : (data.fieldName || null));
                                 const allAtt = attFieldName ? (f[attFieldName] || []) : [];
-                                const runAtt = Array.isArray(allAtt) ? allAtt.filter(a => String(a?.filename || '').includes(String(dl).slice(0, 10))).slice(0, 10) : [];
-                                listEl.innerHTML = runAtt.length
-                                    ? `<div class="uppdrag-view-list">${runAtt.map(a => {
-                                        const fn = (a?.filename || 'Bilaga');
-                                        const url = (a?.url || '');
-                                        const eFn = (String(fn)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-                                        const eUrl = (String(url)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-                                        return url
-                                            ? `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i><a href="${eUrl}" target="_blank" rel="noopener noreferrer">${eFn}</a></div>`
-                                            : `<div class="uppdrag-view-list-item"><i class="fas fa-paperclip"></i>${eFn}</div>`;
-                                    }).join('')}</div>`
-                                    : ``;
+                                listEl.innerHTML = this._buildKorningDocsListHtml(allAtt, String(dl).slice(0, 10), attFieldName, rec.id || '');
                             }
                         }
 
@@ -15990,7 +16008,8 @@ class CustomerCardManager {
             sourceIndex: btn.getAttribute('data-source-index'),
             name: btn.getAttribute('data-doc-name') || 'Dokument',
             filename: btn.getAttribute('data-filename') || '',
-            url: btn.getAttribute('data-direct-url') || ''
+            url: btn.getAttribute('data-direct-url') || '',
+            uppdragId: btn.getAttribute('data-uppdrag-id') || ''
         });
     }
 
@@ -16001,12 +16020,91 @@ class CustomerCardManager {
         if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
         if (name.endsWith('.gif')) return 'image/gif';
         if (name.endsWith('.webp')) return 'image/webp';
+        if (name.endsWith('.html') || name.endsWith('.htm')) return 'text/html';
         if (name.endsWith('.txt')) return 'text/plain';
         return String(fallback || '').split(';')[0].trim() || 'application/octet-stream';
     }
 
     _canPreviewInline(type) {
-        return type === 'application/pdf' || type.startsWith('image/') || type === 'text/plain';
+        return type === 'application/pdf' || type.startsWith('image/') || type === 'text/plain' || type === 'text/html';
+    }
+
+    _looksLikeEmailSnapshotFilename(filename) {
+        const name = String(filename || '').toLowerCase();
+        if (!name) return false;
+        const base = name.replace(/^\d{4}-\d{2}-\d{2}\s+-\s+/, '');
+        if (/\.html?$/.test(base) && (base.includes('_') || /mejl/.test(base))) return true;
+        if (/\.txt$/.test(base) && (/^\d{4}-\d{2}-\d{2}_/.test(base) || /mejl/.test(base))) return true;
+        return false;
+    }
+
+    _looksLikeEmailSnapshotText(text) {
+        const t = String(text || '').replace(/^\uFEFF/, '').trimStart();
+        if (!t) return false;
+        if (t.includes('clientflow-email-snapshot')) return true;
+        return /^Ämne:\s/m.test(t) && /^Från:\s/m.test(t) && (/\n---\n/.test(t) || /^Datum:\s/m.test(t));
+    }
+
+    _parseEmailSnapshotText(text) {
+        const raw = String(text || '').replace(/^\uFEFF/, '');
+        const lines = raw.split(/\r?\n/);
+        const headers = {};
+        let i = 0;
+        for (; i < lines.length; i += 1) {
+            const line = lines[i];
+            if (line.trim() === '---') {
+                i += 1;
+                break;
+            }
+            if (!line.trim()) {
+                if (headers.subject != null) {
+                    while (i < lines.length && lines[i].trim() === '') i += 1;
+                    if (i < lines.length && lines[i].trim() === '---') i += 1;
+                    break;
+                }
+                continue;
+            }
+            const m = line.match(/^(Ämne|Från|Till|Kopia|Datum|Gmail-id):\s?(.*)$/);
+            if (!m) {
+                if (Object.keys(headers).length) break;
+                continue;
+            }
+            const keyMap = { Ämne: 'subject', Från: 'from', Till: 'to', Kopia: 'cc', Datum: 'date', 'Gmail-id': 'id' };
+            headers[keyMap[m[1]]] = m[2] || '';
+        }
+        return {
+            subject: headers.subject || '',
+            from: headers.from || '',
+            to: headers.to || '',
+            cc: headers.cc || '',
+            date: headers.date || '',
+            id: headers.id || '',
+            bodyText: lines.slice(i).join('\n').replace(/^\n+/, '')
+        };
+    }
+
+    _renderEmailSnapshotPreviewHtml(parsed) {
+        const esc = (s) => this.escapeDocHtml(s);
+        const rows = [
+            ['Från', parsed.from],
+            ['Till', parsed.to],
+            parsed.cc ? ['Kopia', parsed.cc] : null,
+            ['Datum', parsed.date]
+        ]
+            .filter(Boolean)
+            .filter(([, v]) => v != null && String(v).trim() !== '')
+            .map(([label, value]) =>
+                `<div class="document-email-meta-row"><span class="document-email-meta-label">${esc(label)}</span><span class="document-email-meta-value">${esc(value)}</span></div>`
+            )
+            .join('');
+        const body = `<pre class="document-email-plain">${esc(parsed.bodyText || '')}</pre>`;
+        return `<article class="document-email-snapshot">
+  <header class="document-email-header">
+    <h4 class="document-email-subject">${esc(parsed.subject || '(utan ämne)')}</h4>
+    <div class="document-email-meta">${rows}</div>
+  </header>
+  <div class="document-email-body">${body}</div>
+</article>`;
     }
 
     closeDocumentPreviewModal() {
@@ -16044,7 +16142,7 @@ class CustomerCardManager {
         return modal;
     }
 
-    async previewDocument({ sourceField, sourceIndex, name, filename, url }) {
+    async previewDocument({ sourceField, sourceIndex, name, filename, url, uppdragId }) {
         const title = name || filename || 'Dokument';
         const modal = this._ensureDocumentPreviewModal(title);
         const body = document.getElementById('document-preview-body');
@@ -16052,12 +16150,18 @@ class CustomerCardManager {
         try {
             let blob = null;
             const hasSource = sourceField && sourceIndex !== '' && sourceIndex != null;
-            if (hasSource && this.customerId) {
+            if (hasSource && (uppdragId || this.customerId)) {
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
                 const opts = getAuthOptsKundkort();
                 const headers = { ...(opts.headers || {}) };
                 delete headers['Content-Type'];
-                const res = await fetch(`${baseUrl}/api/documents/file?customerId=${encodeURIComponent(this.customerId)}&sourceField=${encodeURIComponent(sourceField)}&sourceIndex=${encodeURIComponent(sourceIndex)}`, {
+                const qs = new URLSearchParams({
+                    sourceField: String(sourceField),
+                    sourceIndex: String(sourceIndex)
+                });
+                if (uppdragId) qs.set('uppdragId', String(uppdragId));
+                else qs.set('customerId', String(this.customerId));
+                const res = await fetch(`${baseUrl}/api/documents/file?${qs.toString()}`, {
                     method: 'GET',
                     credentials: 'include',
                     headers
@@ -16087,9 +16191,15 @@ class CustomerCardManager {
             if (this._canPreviewInline(type)) {
                 if (type.startsWith('image/')) {
                     body.innerHTML = `<img class="document-preview-image" src="${this.escapeDocHtml(objectUrl)}" alt="${this.escapeDocHtml(title)}">`;
+                } else if (type === 'text/html') {
+                    body.innerHTML = `<iframe class="document-preview-frame document-preview-frame--html" title="${this.escapeDocHtml(title)}" src="${this.escapeDocHtml(objectUrl)}" sandbox="allow-same-origin"></iframe>`;
                 } else if (type === 'text/plain') {
                     const text = await blob.text();
-                    body.innerHTML = `<pre class="document-preview-text">${this.escapeDocHtml(text)}</pre>`;
+                    if (this._looksLikeEmailSnapshotText(text) || this._looksLikeEmailSnapshotFilename(filename || title)) {
+                        body.innerHTML = this._renderEmailSnapshotPreviewHtml(this._parseEmailSnapshotText(text));
+                    } else {
+                        body.innerHTML = `<pre class="document-preview-text">${this.escapeDocHtml(text)}</pre>`;
+                    }
                 } else {
                     body.innerHTML = `<iframe class="document-preview-frame" title="${this.escapeDocHtml(title)}" src="${this.escapeDocHtml(objectUrl)}"></iframe>`;
                 }
