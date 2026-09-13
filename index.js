@@ -50,6 +50,7 @@ const { createMinibokSync } = require('./lib/minibok-sync');
 const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 const { createMinibokAml } = require('./lib/minibok-aml');
 const { createGmailIntegration } = require('./lib/gmail');
+const { createMejlExtras } = require('./lib/mejl');
 const {
   normalizeUppdragRiskAtgarderDone,
   requiredRiskAtgarderFromUppdrag,
@@ -2910,6 +2911,11 @@ const gmailIntegration = createGmailIntegration({
   getAirtableUser,
   listAccessibleCustomers: listAccessibleCustomersForGmail,
   getAccessibleCustomer: getAccessibleCustomerForGmail
+});
+
+const mejlExtras = createMejlExtras({
+  authenticateToken,
+  getAirtableUser
 });
 
 // Bolagsverket isalive endpoint (health check)
@@ -26208,6 +26214,7 @@ minibokUppdrag.registerRoutes(app);
 minibokAml.registerRoutes(app);
 // Gmail ↔ Clientflow (inkorg under KUNDER + skicka som användaren)
 gmailIntegration.registerRoutes(app);
+mejlExtras.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);

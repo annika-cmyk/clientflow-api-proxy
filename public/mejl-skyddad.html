@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="sv"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ClientFlow – Skyddat mejl</title>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=20260913mejl-bankid">
+<style>body{font-family:Schibsted Grotesk,sans-serif;background:linear-gradient(145deg,#f4efe6,#e8eef6);min-height:100vh;margin:0;padding:40px 20px}.wrap{max-width:640px;margin:0 auto}.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:1.5rem;box-shadow:0 4px 20px rgba(15,23,42,.06)}.btn-bankid{background:#0f766e;color:#fff;border:0;border-radius:8px;padding:.7rem 1.1rem;font:inherit;font-weight:600;cursor:pointer;margin-top:1rem}[hidden]{display:none!important}.protected-body{white-space:pre-wrap;line-height:1.55;margin:1rem 0;padding:1rem;background:#f8fafc;border-radius:10px}.file-list{list-style:none;padding:0}.file-list a{display:block;padding:.65rem;border:1px solid #e2e8f0;border-radius:8px;text-decoration:none;color:#1e3a5f;font-weight:600;margin-top:.4rem}</style></head>
+<body><div class="wrap"><div id="state-loading" class="card">Laddar…</div><div id="state-error" class="card" hidden><h1>Kunde inte öppna</h1><p id="error-text"></p></div><div id="state-locked" class="card" hidden><h1>BankID krävs</h1><p>Identifiera dig för att se skyddat mejlinnehåll.</p><button type="button" class="btn-bankid" id="btn-bankid">Identifiera med BankID</button><p id="bankid-status"></p></div><div id="state-open" class="card" hidden><h1 id="open-title">Skyddat innehåll</h1><p id="open-verified"></p><div id="open-text" class="protected-body" hidden></div><ul id="open-files" class="file-list"></ul></div></div>
+<script>
+(function(){
+  const token=new URLSearchParams(location.search).get('token')||'';
+  const baseUrl=(window.CLIENTFLOW_API_BASE||location.origin).replace(/\/$/,'');
+  const $=id=>document.getElementById(id);
+  function show(id){['loading','error','locked','open'].forEach(k=>$('state-'+k).hidden=k!==id);}
+  async function api(path,opts){return fetch(baseUrl+path,{credentials:'include',headers:{'Content-Type':'application/json',...(opts&&opts.headers||{})},...opts});}
+  async function load(){
+    if(!token){$('error-text').textContent='Saknar token';show('error');return;}
+    const res=await api('/api/mejl/protected/'+encodeURIComponent(token));
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.success){$('error-text').textContent=data.error||'Fel';show('error');return;}
+    if(data.locked){show('locked');return;}
+    if(data.subject)$('open-title').textContent=data.subject;
+    $('open-verified').textContent=data.verifiedName?('Identifierad: '+data.verifiedName):'Identifierad med BankID';
+    if(data.protectedText){$('open-text').hidden=false;$('open-text').textContent=data.protectedText;}
+    $('open-files').innerHTML='';
+    (data.files||[]).forEach(f=>{const li=document.createElement('li');const a=document.createElement('a');a.href=baseUrl+'/api/mejl/protected/'+encodeURIComponent(token)+'/files/'+encodeURIComponent(f.id);a.textContent=f.name;li.appendChild(a);$('open-files').appendChild(li);});
+    show('open');
+  }
+  $('btn-bankid').onclick=async()=>{
+    $('btn-bankid').disabled=true;$('bankid-status').textContent='Startar…';
+    const startRes=await api('/api/mejl/bankid/start',{method:'POST',body:JSON.stringify({token})});
+    const started=await startRes.json().catch(()=>({}));
+    if(!startRes.ok||!started.success){$('bankid-status').textContent=started.error||'Fel';$('btn-bankid').disabled=false;return;}
+    const deadline=Date.now()+60000;
+    while(Date.now()<deadline){
+      await new Promise(r=>setTimeout(r,800));
+      const col=await (await api('/api/mejl/bankid/collect',{method:'POST',body:JSON.stringify({orderRef:started.orderRef,token})})).json().catch(()=>({}));
+      if(col.status==='complete'){await load();return;}
+      if(col.status==='failed'){$('bankid-status').textContent=col.message||'Misslyckades';$('btn-bankid').disabled=false;return;}
+      $('bankid-status').textContent=col.message||'Väntar…';
+    }
+    $('bankid-status').textContent='Timeout';$('btn-bankid').disabled=false;
+  };
+  load().catch(e=>{$('error-text').textContent=e.message;show('error');});
+})();
+</script></body></html>
