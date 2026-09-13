@@ -431,6 +431,31 @@
     selectedWrap.className = 'byra-enkate-bransch-selected';
     wrap.appendChild(selectedWrap);
 
+    var aggregateBar = null;
+    if (opts.allowAggregate) {
+      aggregateBar = document.createElement('div');
+      aggregateBar.className = 'byra-enkate-bransch-aggregate';
+      aggregateBar.hidden = true;
+      var aggregateBtn = document.createElement('button');
+      aggregateBtn.type = 'button';
+      aggregateBtn.className = 'byra-enkate-bransch-aggregate-btn';
+      aggregateBtn.textContent = 'Sammanfoga till översiktsgrupper';
+      aggregateBtn.title = 'Slår ihop detaljerade SNI-koder till bredare branschgrupper och summerar antal.';
+      aggregateBtn.addEventListener('click', function () {
+        if (!window.KundBranschAggregat || !window.KundBranschAggregat.aggregateCountedBranscher) return;
+        var next = window.KundBranschAggregat.aggregateCountedBranscher(currentRows());
+        writeRows(next);
+        paintSelected();
+        closeSuggestions();
+      });
+      aggregateBar.appendChild(aggregateBtn);
+      var aggregateHint = document.createElement('p');
+      aggregateHint.className = 'byra-enkate-bransch-aggregate-hint';
+      aggregateHint.textContent = 'Ni har många detaljerade SNI-rader. Sammanfoga till översikt (Bygg, IT, Handel …) — specifika koder kan fortfarande läggas till via sök.';
+      aggregateBar.appendChild(aggregateHint);
+      wrap.appendChild(aggregateBar);
+    }
+
     var addRow = document.createElement('div');
     addRow.className = 'byra-enkate-bransch-add';
     var search = document.createElement('input');
@@ -460,6 +485,9 @@
 
     function currentRows() {
       if (allowNone && String(values[field.key] || '').trim() === noneLabel) return [];
+      if (opts.useBranschParse && window.KundBranschAggregat && window.KundBranschAggregat.parseCountedBranschList) {
+        return window.KundBranschAggregat.parseCountedBranschList(values[field.key]);
+      }
       return parseBolagsformer(values[field.key]);
     }
 
@@ -511,9 +539,19 @@
         : (opts.emptyHint || 'Sök och lägg till branscher. Antalet får vara ungefärligt.');
     }
 
+    function syncAggregateBar() {
+      if (!aggregateBar) return;
+      var rows = currentRows();
+      var show = !!(window.KundBranschAggregat
+        && window.KundBranschAggregat.shouldSuggestAggregation
+        && window.KundBranschAggregat.shouldSuggestAggregation(rows));
+      aggregateBar.hidden = !show;
+    }
+
     function paintSelected() {
       selectedWrap.innerHTML = '';
       var rows = currentRows();
+      syncAggregateBar();
       if (!rows.length) {
         selectedWrap.innerHTML = '<p class="byra-enkate-bransch-empty">Inga branscher tillagda ännu.</p>';
         syncHint();
@@ -683,19 +721,23 @@
   function renderKundBranscher(field) {
     var catalog = Array.isArray(schema && schema.commonKundBranscher) && schema.commonKundBranscher.length
       ? schema.commonKundBranscher.slice()
-      : [
-        'Bygg och anläggning', 'Detaljhandel', 'Partihandel', 'Restaurang och café',
-        'Hotell och boende', 'Transport och logistik', 'IT och konsultverksamhet',
-        'Vård och omsorg', 'Fastighet', 'Tillverkning och industri', 'Jordbruk och skogsbruk',
-        'Utbildning', 'Kultur, media och underhållning', 'Finans och försäkring',
-        'Energi och miljö', 'Städ och facility', 'Bemanning', 'Ideell verksamhet',
-        'Offentlig sektor', 'Övrigt'
-      ];
+      : ((window.KundBranschAggregat && window.KundBranschAggregat.COMMON_KUND_BRANSCHER)
+        ? window.KundBranschAggregat.COMMON_KUND_BRANSCHER.slice()
+        : [
+          'Bygg och anläggning', 'Detaljhandel', 'Partihandel', 'Restaurang och café',
+          'Hotell och boende', 'Transport och logistik', 'IT och konsultverksamhet',
+          'Vård och omsorg', 'Fastighet', 'Tillverkning och industri', 'Jordbruk och skogsbruk',
+          'Utbildning', 'Kultur, media och underhållning', 'Finans och försäkring',
+          'Energi och miljö', 'Städ och facility', 'Bemanning', 'Ideell verksamhet',
+          'Offentlig sektor', 'Övrigt'
+        ]);
     return renderBranschPicker(field, {
       allowNone: false,
+      allowAggregate: true,
+      useBranschParse: true,
       catalog: catalog,
-      searchPlaceholder: 'Sök bransch…',
-      emptyHint: 'Lägg till de branscher ni har kunder i. Antalet får vara ungefärligt.'
+      searchPlaceholder: 'Sök översiktsbransch eller skriv specifik kod…',
+      emptyHint: 'Lägg till översiktsgrupper (t.ex. Bygg, IT, Handel). Specifika SNI-koder går att skriva in vid behov. Antalet får vara ungefärligt.'
     });
   }
 
@@ -1442,7 +1484,7 @@
         f.type = 'branscher';
         if (!f.question) f.question = 'Vilka branscher har ni era kunder i?';
         if (!f.hint) {
-          f.hint = 'Lägg till de branscher som är vanligast i kundstocken och ange ungefär hur många kunder per bransch.';
+          f.hint = 'Lägg till översiktsgrupper som är vanligast i kundstocken (t.ex. Bygg, IT, Handel) och ange ungefär hur många kunder per grupp. Specifika SNI-koder kan läggas till vid behov.';
         }
       }
     });

@@ -18062,6 +18062,33 @@ h5.ar-subsection-title {
 }
 .byra-enkate-bransch-suggestion:hover { background: #f1f5f9; }
 .byra-enkate-bransch-custom { max-width: 36rem; }
+.byra-enkate-bransch-aggregate {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+.byra-enkate-bransch-aggregate[hidden] { display: none !important; }
+.byra-enkate-bransch-aggregate-btn {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.byra-enkate-bransch-aggregate-btn:hover { text-decoration: underline; }
+.byra-enkate-bransch-aggregate-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.35;
+}
 
 .byra-enkate-actions {
   display: flex; justify-content: space-between; gap: 0.75rem;
