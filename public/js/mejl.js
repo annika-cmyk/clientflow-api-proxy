@@ -191,7 +191,7 @@
       .filter(Boolean);
     if (!names.length) return '';
     const more = list.length > names.length ? ` (+${list.length - names.length} till)` : '';
-    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}. Namnet behöver likna kundnamnet i ClientFlow.</p>`;
+    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}. Match sker via etikettnamn och/eller e-post på kundkortet (företag eller kontaktperson).</p>`;
   }
 
   function renderList(extraHtml) {
