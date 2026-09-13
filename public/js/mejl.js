@@ -1220,7 +1220,10 @@
       const chk = e.target.closest('[data-attach-bankid]');
       if (!chk) return;
       const i = Number(chk.getAttribute('data-attach-bankid'));
-      if (pendingFiles[i]) pendingFiles[i].bankId = !!chk.checked;
+      if (pendingFiles[i]) {
+        pendingFiles[i].bankId = !!chk.checked;
+        renderAttachList();
+      }
     });
   }
   if (els.qAdd) els.qAdd.addEventListener('click', () => addQuestionRow());
