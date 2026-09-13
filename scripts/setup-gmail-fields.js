@@ -11,7 +11,7 @@ require('dotenv').config({
   path: fs.existsSync(path.join(process.cwd(), '.env')) ? '.env' : 'env.env'
 });
 
-const { ensureGmailField, ensureLabelLinksField } = require('../lib/gmail/store');
+const { ensureGmailField, ensureLabelLinksField, ensureSyncCacheField } = require('../lib/gmail/store');
 
 async function main() {
   const oauth = await ensureGmailField();
@@ -34,6 +34,17 @@ async function main() {
     console.log('✅ Skapade fältet "Gmail etikettkopplingar" i Application Users.');
   } else {
     console.log('✅ Fältet "Gmail etikettkopplingar" finns redan.');
+  }
+
+  const cache = await ensureSyncCacheField();
+  if (!cache.ok) {
+    console.error('❌', cache.error);
+    process.exit(1);
+  }
+  if (cache.created) {
+    console.log('✅ Skapade fältet "Gmail Sync Cache" i Application Users.');
+  } else {
+    console.log('✅ Fältet "Gmail Sync Cache" finns redan.');
   }
 }
 

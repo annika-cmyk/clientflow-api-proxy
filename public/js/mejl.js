@@ -125,7 +125,8 @@
     sendBtn: document.getElementById('mejl-send-btn'),
     sendStatus: document.getElementById('mejl-send-status'),
     folderInbox: document.getElementById('mejl-folder-inbox'),
-    folderSent: document.getElementById('mejl-folder-sent')
+    folderSent: document.getElementById('mejl-folder-sent'),
+    syncStatus: document.getElementById('mejl-sync-status')
   };
 
   let status = null;
@@ -328,22 +329,18 @@
         .join('') + (extraHtml || '');
   }
 
-  async function loadInbox() {
-    setFolderUi();
-    els.list.innerHTML = '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar mejl från Gmail…</p>';
-    els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
-    activeId = null;
-    const customerId = els.filter.value || '';
-    const params = new URLSearchParams();
-    params.set('folder', folder);
-    if (customerId) params.set('customerId', customerId);
-    const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      els.list.innerHTML = `<p class="mejl-hint">${esc(data.error || 'Kunde inte hämta mejl')}</p>`;
-      messages = [];
+  async function setSyncStatus(text) {
+    if (!els.syncStatus) return;
+    if (!text) {
+      els.syncStatus.hidden = true;
+      els.syncStatus.innerHTML = '';
       return;
     }
+    els.syncStatus.hidden = false;
+    els.syncStatus.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${esc(text)}`;
+  }
+
+  function applyInboxData(data) {
     messages = data.messages || [];
     const unmatchedHtml = renderUnmatchedHint(data.unmatchedLabels);
     if (data.note && !messages.length) {
@@ -351,6 +348,77 @@
       return;
     }
     renderList(unmatchedHtml);
+  }
+
+  async function fetchInbox(mode) {
+    const customerId = els.filter.value || '';
+    const params = new URLSearchParams();
+    params.set('folder', folder);
+    params.set('mode', mode || 'sync');
+    if (customerId) params.set('customerId', customerId);
+    const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  }
+
+  async function loadInbox(opts) {
+    const options = opts || {};
+    setFolderUi();
+    const hadMessages = messages.length > 0;
+    const preserveDetail = options.preserveDetail === true && activeId;
+
+    if (!hadMessages) {
+      els.list.innerHTML =
+        '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar mejl från Gmail…</p>';
+      if (!preserveDetail) {
+        els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
+        activeId = null;
+      }
+    }
+
+    if (!options.full && !options.skipCache) {
+      try {
+        const { res, data } = await fetchInbox('cache');
+        if (res.ok && data.success && (data.messages || []).length) {
+          applyInboxData(data);
+          setSyncStatus('Söker efter nya…');
+        } else if (!hadMessages) {
+          setSyncStatus('Hämtar mejl från Gmail…');
+        } else {
+          setSyncStatus('Söker efter nya…');
+        }
+      } catch (_) {
+        if (!hadMessages) setSyncStatus('Hämtar mejl från Gmail…');
+      }
+    } else {
+      setSyncStatus(options.full ? 'Full synkning…' : 'Söker efter nya…');
+    }
+
+    try {
+      const { res, data } = await fetchInbox(options.full ? 'full' : 'sync');
+      setSyncStatus('');
+      if (!res.ok || !data.success) {
+        if (!messages.length) {
+          els.list.innerHTML = `<p class="mejl-hint">${esc(data.error || 'Kunde inte hämta mejl')}</p>`;
+        } else {
+          showToast(data.error || 'Kunde inte synka mejl', 'error');
+        }
+        return;
+      }
+      const prevActive = activeId;
+      applyInboxData(data);
+      if (preserveDetail && prevActive && messages.some((m) => m.id === prevActive)) {
+        activeId = prevActive;
+        renderList(renderUnmatchedHint(data.unmatchedLabels));
+      }
+    } catch (err) {
+      setSyncStatus('');
+      if (!messages.length) {
+        els.list.innerHTML = `<p class="mejl-hint">${esc(err.message || 'Kunde inte hämta mejl')}</p>`;
+      } else {
+        showToast(err.message || 'Kunde inte synka mejl', 'error');
+      }
+    }
   }
 
   async function trashMessage(id) {
@@ -831,7 +899,12 @@
     await boot();
   });
 
-  els.refreshBtn.addEventListener('click', () => loadInbox());
+  els.refreshBtn.addEventListener('click', (ev) => {
+    loadInbox({ full: !!(ev && ev.shiftKey), preserveDetail: true });
+  });
+  if (els.refreshBtn) {
+    els.refreshBtn.title = 'Uppdatera (inkrementellt). Håll Shift för full synkning.';
+  }
   els.filter.addEventListener('change', () => loadInbox());
   els.composeToggle.addEventListener('click', () => {
     els.compose.hidden = false;
