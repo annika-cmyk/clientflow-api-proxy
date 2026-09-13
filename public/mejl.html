@@ -74,6 +74,11 @@
       .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
       .mejl-filter { min-width: 220px; }
       .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
+      .mejl-sync-status {
+        font-size: 0.8rem; color: #64748b; margin: 0 0 0.55rem;
+        display: flex; align-items: center; gap: 0.4rem; min-height: 1.1rem;
+      }
+      .mejl-sync-status[hidden] { display: none !important; }
       .btn-danger-outline {
         color: #b91c1c; border-color: #fecaca; background: #fff;
       }
@@ -234,6 +239,7 @@
                             <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
                             <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
                         </nav>
+                        <p id="mejl-sync-status" class="mejl-sync-status" hidden></p>
                         <div id="mejl-list" class="mejl-list">
                             <p class="mejl-hint">Laddar mejl…</p>
                         </div>
