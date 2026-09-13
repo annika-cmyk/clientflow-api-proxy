@@ -1351,6 +1351,14 @@
     });
   }
 
+  function statusAfterSave(data, fallback) {
+    if (data && data.warning) {
+      setStatus(data.warning, true);
+      return;
+    }
+    setStatus(fallback || 'Sparat.');
+  }
+
   function markKomIgangComplete() {
     return fetch(baseUrl() + '/api/settings/kom-igang', authOpts()).then(function (res) {
       if (!res.ok) throw new Error('Kunde inte läsa Kom igång');
@@ -1391,10 +1399,10 @@
     ui.next.addEventListener('click', function () {
       ui.next.disabled = true;
       saveProfil()
-        .then(function () {
+        .then(function (data) {
           if (stepIdx < schema.sections.length - 1) {
             stepIdx += 1;
-            setStatus('Sparat.');
+            statusAfterSave(data, 'Sparat.');
             renderStep();
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
@@ -1415,10 +1423,16 @@
       ui.finish.disabled = true;
       setStatus('Sparar och klarmarkerar…');
       saveProfil()
-        .then(function () { return markKomIgangComplete(); })
-        .then(function () {
-          setStatus('Klart! Byråprofilen är sparad och steget är ikryssat.', false, true);
-          setTimeout(function () { window.location.href = 'index.html#kom-igang'; }, 700);
+        .then(function (data) {
+          return markKomIgangComplete().then(function () { return data; });
+        })
+        .then(function (data) {
+          if (data && data.warning) {
+            setStatus(data.warning + ' Steget är ändå ikryssat.', true, true);
+          } else {
+            setStatus('Klart! Byråprofilen är sparad och steget är ikryssat.', false, true);
+          }
+          setTimeout(function () { window.location.href = 'index.html#kom-igang'; }, 900);
         })
         .catch(function (e) {
           setStatus(e.message || 'Kunde inte klarmarkera', true, true);
