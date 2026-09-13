@@ -554,7 +554,9 @@
             return String(row.form).toLowerCase() !== String(r.form).toLowerCase();
           }));
           paintSelected();
-          paintSuggestions(search.value);
+          if (document.activeElement === search || !suggestions.hidden) {
+            paintSuggestions(search.value);
+          }
         });
         chip.appendChild(remove);
         selectedWrap.appendChild(chip);
@@ -578,10 +580,14 @@
       if (countInput) countInput.focus();
     }
 
+    function closeSuggestions() {
+      suggestions.hidden = true;
+    }
+
     function paintSuggestions(filter) {
       suggestions.innerHTML = '';
       if (allowNone && noneCb && noneCb.checked) {
-        suggestions.hidden = true;
+        closeSuggestions();
         return;
       }
       var q = String(filter || '').trim().toLowerCase();
@@ -592,7 +598,7 @@
         return !q || String(label).toLowerCase().indexOf(q) >= 0;
       }).slice(0, 8);
       if (!items.length) {
-        suggestions.hidden = true;
+        closeSuggestions();
         return;
       }
       items.forEach(function (label) {
@@ -600,6 +606,10 @@
         btn.type = 'button';
         btn.className = 'byra-enkate-bransch-suggestion';
         btn.textContent = label;
+        btn.addEventListener('mousedown', function (e) {
+          // Keep focus on search so blur does not close before click selects.
+          e.preventDefault();
+        });
         btn.addEventListener('click', function () { addLabel(label); });
         suggestions.appendChild(btn);
       });
@@ -609,9 +619,29 @@
     if (noneCb) {
       noneCb.addEventListener('change', function () { setNone(noneCb.checked); });
     }
-    search.addEventListener('input', function () { paintSuggestions(search.value); });
+    search.addEventListener('input', function () {
+      if (!String(search.value || '').trim() && document.activeElement !== search) {
+        closeSuggestions();
+        return;
+      }
+      paintSuggestions(search.value);
+    });
     search.addEventListener('focus', function () { paintSuggestions(search.value); });
+    search.addEventListener('blur', function () {
+      // Defer so a suggestion mousedown/click can run first.
+      setTimeout(function () {
+        if (document.activeElement === search) return;
+        if (suggestions.contains(document.activeElement)) return;
+        closeSuggestions();
+      }, 120);
+    });
     search.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSuggestions();
+        search.blur();
+        return;
+      }
       if (e.key === 'Enter') {
         e.preventDefault();
         var first = suggestions.querySelector('.byra-enkate-bransch-suggestion');
@@ -626,14 +656,15 @@
         customInput.value = '';
       }
     });
-    document.addEventListener('click', function (e) {
-      if (!wrap.contains(e.target)) suggestions.hidden = true;
+    document.addEventListener('pointerdown', function (e) {
+      if (!wrap.contains(e.target)) closeSuggestions();
     });
 
     if (allowNone && noneCb && noneCb.checked) setNone(true);
     else {
       paintSelected();
-      paintSuggestions('');
+      // Do not open suggestions on mount — only on focus/input.
+      closeSuggestions();
     }
     return wrap;
   }

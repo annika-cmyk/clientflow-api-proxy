@@ -18010,7 +18010,7 @@ h5.ar-subsection-title {
 .byra-enkate-bransch-add { position: relative; }
 .byra-enkate-bransch-suggestions {
   position: absolute;
-  z-index: 5;
+  z-index: 20;
   left: 0; right: 0;
   top: calc(100% + 0.25rem);
   display: grid;
@@ -18022,6 +18022,10 @@ h5.ar-subsection-title {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   max-height: 14rem;
   overflow: auto;
+}
+/* Author display:grid beats UA [hidden] — same pattern as .byra-enkate-actions */
+.byra-enkate-bransch-suggestions[hidden] {
+  display: none !important;
 }
 .byra-enkate-bransch-suggestion {
   border: 0;
