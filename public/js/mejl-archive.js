@@ -501,14 +501,27 @@
     }
 
     async function toggleVisibility(id, customerId, visibility, onDone) {
-      const res = await fetch(baseUrl + '/api/gmail/messages/' + encodeURIComponent(id) + '/visibility', {
-        method: 'POST', ...authOpts(),
-        body: JSON.stringify({ customerId, visibility })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) { showToast(data.error || 'Kunde inte ändra synlighet', 'error'); return; }
-      showToast(visibility === 'privat' ? 'Markerat som privat.' : 'Synligt för byrån.', 'success');
-      if (onDone) await onDone();
+      if (!customerId) { showToast('Koppla mejlet till en kund först.', 'error'); return; }
+      try {
+        const res = await fetch(baseUrl + '/api/gmail/messages/' + encodeURIComponent(id) + '/visibility', {
+          method: 'POST', ...authOpts(),
+          body: JSON.stringify({ customerId, visibility })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          const raw = data.error || '';
+          const friendly = /^Request failed with status code \d+$/i.test(raw)
+            ? 'Kunde inte ändra synlighet. Försök igen om en stund.'
+            : (raw || 'Kunde inte ändra synlighet');
+          showToast(friendly, 'error');
+          return;
+        }
+        archiveState = data.archive || archiveState;
+        showToast(visibility === 'privat' ? 'Markerat som privat.' : 'Synligt för byrån.', 'success');
+        if (onDone) await onDone();
+      } catch (err) {
+        showToast((err && err.message) || 'Kunde inte ändra synlighet', 'error');
+      }
     }
 
     async function maskSelection(id, customerId, bodyOpts, onDone) {
