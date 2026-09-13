@@ -1114,6 +1114,36 @@
     return null;
   }
 
+
+  /**
+   * Aktiv tjänst som motsvarar betalningsuppdrag/klientmedelshantering.
+   * Används bl.a. för NRA-härledning (skrivskyddat ja/nej).
+   */
+  function findActiveBetalningsuppdrag(state) {
+    const cards = listCatalogCards(state);
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      const entry = card && card.entry;
+      if (!entry || !entry.aktiv) continue;
+      const template = card.template || {};
+      const mallId = String(template.id || entry.id || '').trim();
+      const name = String(template.name || entry.namn || '').trim();
+      const folded = foldName(name);
+      const isPay = mallId === 'betalningsuppdrag'
+        || resolveTemplateId(name) === 'betalningsuppdrag'
+        || /betalningsuppdrag/.test(folded)
+        || /betalningshantering/.test(folded)
+        || /klientmedels/.test(folded);
+      if (!isPay) continue;
+      return {
+        active: true,
+        mallId: mallId || 'betalningsuppdrag',
+        name: name || 'Betalningsuppdrag och betalningshantering'
+      };
+    }
+    return { active: false, mallId: '', name: '' };
+  }
+
   const api = {
     HELP_TEXT: HELP_TEXT,
     BASE_QUESTIONS: BASE_QUESTIONS,
@@ -1152,7 +1182,8 @@
     formatAnswersForAi: formatAnswersForAi,
     findEntryForNamn: findEntryForNamn,
     resolveKlientmedelskontoAnswer: resolveKlientmedelskontoAnswer,
-    hasKlientmedelskonto: hasKlientmedelskonto
+    hasKlientmedelskonto: hasKlientmedelskonto,
+    findActiveBetalningsuppdrag: findActiveBetalningsuppdrag
   };
 
   if (typeof module !== 'undefined' && module.exports) {

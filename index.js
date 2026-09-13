@@ -13159,6 +13159,15 @@ function readTjanstUtforandeFromFields(fields) {
   return TjanstUtforandeMallar.parseState(raw);
 }
 
+function nraOptsFromByraFields(fields) {
+  const utforandeState = readTjanstUtforandeFromFields(fields || {});
+  return {
+    utforandeState,
+    findActiveBetalningsuppdrag: TjanstUtforandeMallar.findActiveBetalningsuppdrag
+  };
+}
+
+
 /** Skip meta API on every auto-save once field is known to exist. */
 let _tjanstUtforandeFieldReady = false;
 
@@ -15654,10 +15663,11 @@ app.get('/api/byra-resa', authenticateToken, async (req, res) => {
       kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
       kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor),
       nraScenarios: ByraResa.NRA_SCENARIOS,
-      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist),
+      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist, nraOptsFromByraFields(record.fields)),
       nraChecklistRequired: ByraResa.nraChecklistRequired(state.kalla),
-      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist),
-      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)
+      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist, nraOptsFromByraFields(record.fields)),
+      nraChecklistProgress: ByraResa.nraChecklistProgress(state.nraChecklist, nraOptsFromByraFields(record.fields)),
+      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist, nraOptsFromByraFields(record.fields))
     });
   } catch (error) {
     console.error('❌ GET /api/byra-resa:', error.response?.data || error.message);
@@ -15683,9 +15693,10 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       // Katalogversion ägs av servern (bumpas vid riskfaktor-skrivning), inte av klienten.
       riskFactorCatalogVersion: existingState.riskFactorCatalogVersion
     });
-    if (state.steps[8] && !ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)) {
+    const nraOpts = nraOptsFromByraFields(record.fields);
+    if (state.steps[8] && !ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist, nraOpts)) {
       const needsNra = ByraResa.nraChecklistRequired(state.kalla)
-        && !ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist);
+        && !ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist, nraOpts);
       return res.status(400).json({
         error: needsNra
           ? 'När NRA är markerad som Använder måste NRA-checklistan vara ifylld innan steg 8 kan markeras klart.'
@@ -15707,10 +15718,12 @@ app.put('/api/byra-resa', authenticateToken, async (req, res) => {
       catalog: ByraResa.mergeKallaState(state.kalla, state.customKallor),
       kallaComplete: ByraResa.kallaCatalogComplete(state.kalla, state.customKallor),
       kallaAnvandaIds: ByraResa.kallaIdsAnvanda(state.kalla, state.customKallor),
-      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist),
+      nraScenarios: ByraResa.NRA_SCENARIOS,
+      nraChecklist: ByraResa.mergeNraChecklist(state.nraChecklist, nraOpts),
       nraChecklistRequired: ByraResa.nraChecklistRequired(state.kalla),
-      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist),
-      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist)
+      nraChecklistComplete: ByraResa.nraChecklistComplete(state.kalla, state.nraChecklist, nraOpts),
+      nraChecklistProgress: ByraResa.nraChecklistProgress(state.nraChecklist, nraOpts),
+      step8Ready: ByraResa.step8Ready(state.kalla, state.customKallor, state.nraChecklist, nraOpts)
     });
   } catch (error) {
     console.error('❌ PUT /api/byra-resa:', error.response?.data || error.message);
