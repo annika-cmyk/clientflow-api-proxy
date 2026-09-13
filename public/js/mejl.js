@@ -67,6 +67,15 @@
     return `Gmail är inte konfigurerad på servern. Saknas i Render (${svc}): ${missing.join(', ')}.${setPart}${lenPart}${hostPart} Se docs/GMAIL_SETUP.md.`;
   }
 
+  function listTitle(m) {
+    const company = String(m.customerName || m.labelLeaf || '').trim();
+    const sender = String(m.fromName || '').trim() || String(m.from || 'Okänd avsändare').trim();
+    if (company && sender && company.toLowerCase() !== sender.toLowerCase()) {
+      return `${company} · ${sender}`;
+    }
+    return company || sender;
+  }
+
   const els = {
     connectText: document.getElementById('mejl-connect-text'),
     statusPill: document.getElementById('mejl-status-pill'),
@@ -86,13 +95,16 @@
     body: document.getElementById('mejl-body'),
     customer: document.getElementById('mejl-customer'),
     sendBtn: document.getElementById('mejl-send-btn'),
-    sendStatus: document.getElementById('mejl-send-status')
+    sendStatus: document.getElementById('mejl-send-status'),
+    folderInbox: document.getElementById('mejl-folder-inbox'),
+    folderSent: document.getElementById('mejl-folder-sent')
   };
 
   let status = null;
   let customers = [];
   let messages = [];
   let activeId = null;
+  let folder = 'inbox';
 
   async function loadStatus() {
     const res = await fetch(`${baseUrl}/api/gmail/status`, authOpts());
@@ -136,6 +148,11 @@
     els.connectBtn.dataset.connectReady = enabled ? '1' : '0';
   }
 
+  function setFolderUi() {
+    if (els.folderInbox) els.folderInbox.classList.toggle('is-active', folder === 'inbox');
+    if (els.folderSent) els.folderSent.classList.toggle('is-active', folder === 'sent');
+  }
+
   function renderStatus() {
     if (!status || !status.success) {
       els.connectText.textContent = 'Kunde inte hämta Gmail-status.';
@@ -147,7 +164,6 @@
       els.statusPill.classList.add('is-off');
       els.connectText.textContent = status.redirectHint || missingEnvMessage(status);
       els.connectBtn.hidden = false;
-      // Knappen förblir klickbar så användaren får tydlig toast – men ser disabled ut.
       setConnectEnabled(false, missingEnvMessage(status));
       els.disconnectBtn.hidden = true;
       els.refreshBtn.hidden = true;
@@ -159,8 +175,7 @@
     if (status.connected) {
       els.statusPill.textContent = status.email ? `Kopplad: ${status.email}` : 'Kopplad';
       els.statusPill.classList.remove('is-off');
-      els.connectText.textContent =
-        'Din Gmail är kopplad. Mejl under etiketten KUNDER visas här och utgående mejl skickas från ditt konto.';
+      els.connectText.textContent = '';
       els.connectBtn.hidden = true;
       els.disconnectBtn.hidden = false;
       els.refreshBtn.hidden = false;
@@ -171,7 +186,7 @@
       els.statusPill.textContent = 'Ej kopplad';
       els.statusPill.classList.add('is-off');
       els.connectText.textContent =
-        'Koppla din Gmail för att läsa kundmejl (etiketter under KUNDER) och skicka mejl som dig själv från ClientFlow.';
+        'Koppla Gmail för att läsa kundmejl under KUNDER och skicka som dig själv.';
       els.connectBtn.hidden = false;
       setConnectEnabled(true);
       els.disconnectBtn.hidden = true;
@@ -191,13 +206,16 @@
       .filter(Boolean);
     if (!names.length) return '';
     const more = list.length > names.length ? ` (+${list.length - names.length} till)` : '';
-    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}. Match sker via etikettnamn och/eller e-post på kundkortet (företag eller kontaktperson).</p>`;
+    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}.</p>`;
   }
 
   function renderList(extraHtml) {
     if (!messages.length) {
-      els.list.innerHTML =
-        `<p class="mejl-hint">Inga mejl hittades under matchade KUNDER-etiketter.</p>${extraHtml || ''}`;
+      const empty =
+        folder === 'sent'
+          ? 'Inga skickade mejl under matchade KUNDER-etiketter.'
+          : 'Inga mejl hittades under matchade KUNDER-etiketter.';
+      els.list.innerHTML = `<p class="mejl-hint">${empty}</p>${extraHtml || ''}`;
       return;
     }
     els.list.innerHTML =
@@ -206,11 +224,10 @@
           (m) => `
       <button type="button" class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}">
         <div class="mejl-item-top">
-          <span class="mejl-item-from">${esc(m.from || 'Okänd avsändare')}</span>
+          <span class="mejl-item-from">${esc(listTitle(m))}</span>
           <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
         </div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
-        <div class="mejl-item-meta">${esc(m.customerName || '')}${m.labelLeaf || m.labelName ? ' · ' + esc(m.labelLeaf || m.labelName) : ''}</div>
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </button>
     `
@@ -219,13 +236,18 @@
   }
 
   async function loadInbox() {
+    setFolderUi();
     els.list.innerHTML = '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar mejl från Gmail…</p>';
+    els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
+    activeId = null;
     const customerId = els.filter.value || '';
-    const qs = customerId ? `?customerId=${encodeURIComponent(customerId)}` : '';
-    const res = await fetch(`${baseUrl}/api/gmail/inbox${qs}`, authOpts());
+    const params = new URLSearchParams();
+    params.set('folder', folder);
+    if (customerId) params.set('customerId', customerId);
+    const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
     const data = await res.json();
     if (!res.ok || !data.success) {
-      els.list.innerHTML = `<p class="mejl-hint">${esc(data.error || 'Kunde inte hämta inkorg')}</p>`;
+      els.list.innerHTML = `<p class="mejl-hint">${esc(data.error || 'Kunde inte hämta mejl')}</p>`;
       messages = [];
       return;
     }
@@ -236,6 +258,24 @@
       return;
     }
     renderList(unmatchedHtml);
+  }
+
+  async function trashMessage(id) {
+    if (!confirm('Flytta mejlet till papperskorgen i Gmail?')) return;
+    const res = await fetch(`${baseUrl}/api/gmail/messages/${encodeURIComponent(id)}/trash`, {
+      method: 'POST',
+      ...authOpts(),
+      body: '{}'
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Kunde inte radera mejlet', 'error');
+      return;
+    }
+    showToast('Mejlet flyttades till papperskorgen.', 'success');
+    activeId = null;
+    els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
+    await loadInbox();
   }
 
   async function openMessage(id) {
@@ -263,6 +303,9 @@
         <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
           <i class="fas fa-reply"></i> Svara
         </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
+          <i class="fas fa-trash"></i> Radera
+        </button>
       </div>
       ${bodyHtml}
     `;
@@ -276,10 +319,14 @@
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
-        const match = messages.find((x) => x.id === id);
-        if (match && match.customerId) els.customer.value = match.customerId;
+        const matchMsg = messages.find((x) => x.id === id);
+        if (matchMsg && matchMsg.customerId) els.customer.value = matchMsg.customerId;
         els.body.focus();
       });
+    }
+    const trashBtn = document.getElementById('mejl-trash-btn');
+    if (trashBtn) {
+      trashBtn.addEventListener('click', () => trashMessage(id));
     }
   }
 
@@ -310,6 +357,7 @@
     els.body.value = '';
     delete els.compose.dataset.threadId;
     delete els.compose.dataset.inReplyTo;
+    folder = 'sent';
     await loadInbox();
   }
 
@@ -373,6 +421,14 @@
     if (!btn) return;
     openMessage(btn.getAttribute('data-id'));
   });
+
+  function onFolderClick(next) {
+    if (folder === next) return;
+    folder = next;
+    loadInbox();
+  }
+  if (els.folderInbox) els.folderInbox.addEventListener('click', () => onFolderClick('inbox'));
+  if (els.folderSent) els.folderSent.addEventListener('click', () => onFolderClick('sent'));
 
   async function boot() {
     const params = new URLSearchParams(window.location.search);
