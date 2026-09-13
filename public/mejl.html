@@ -292,7 +292,30 @@
       .mejl-archive-meta .pill-byra { background: #e8eef6; color: #1e3a5f; }
       .mejl-archive-meta .pill-privat { background: #fef3c7; color: #92400e; }
       .mejl-atts { margin-top: 0.65rem; font-size: 0.82rem; color: #475569; }
-      .mejl-atts ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+      .mejl-atts ul.mejl-att-list { margin: 0.4rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+      .mejl-att-item {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+        gap: 0.5rem; padding: 0.45rem 0.55rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+      }
+      .mejl-att-meta { flex: 1 1 12rem; min-width: 0; }
+      .mejl-att-name { font-weight: 600; color: #0f172a; word-break: break-word; }
+      .mejl-att-size { color: #64748b; font-weight: 400; }
+      .mejl-att-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+      .mejl-att-preview-backdrop { z-index: 1300; }
+      .mejl-att-preview-modal { max-width: min(920px, 96vw); width: 100%; padding: 0; display: flex; flex-direction: column; max-height: 92vh; }
+      .mejl-att-preview-header {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        padding: 0.9rem 1.1rem; border-bottom: 1px solid #e2e8f0;
+      }
+      .mejl-att-preview-header h3 { margin: 0; font-size: 1rem; color: #0f172a; }
+      .mejl-att-preview-header-actions { display: flex; gap: 0.35rem; align-items: center; }
+      .mejl-att-preview-body { padding: 1rem 1.1rem; overflow: auto; min-height: 120px; }
+      .mejl-att-preview-image { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+      .mejl-att-preview-frame { width: 100%; min-height: 70vh; border: 0; background: #f1f5f9; }
+      .mejl-att-preview-text {
+        margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1e293b;
+      }
       .mejl-modal-backdrop {
         position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
         z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 1rem;
@@ -480,7 +503,7 @@
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
-    <script src="js/mejl-archive.js?v=20260913mask" defer></script>
+    <script src="js/mejl-archive.js?v=20260913att" defer></script>
     <script src="js/mejl-handle-status.js?v=20260913handle" defer></script>
     <script src="js/mejl.js?v=20260913mask-handle" defer></script>
 </body>

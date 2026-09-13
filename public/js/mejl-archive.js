@@ -101,13 +101,247 @@
     function attachmentsHtml(atts) {
       if (!atts || !atts.length) return '';
       return (
-        '<div class="mejl-atts"><strong>Bilagor (' + atts.length + ')</strong><ul>' +
-        atts.map((a) =>
-          '<li>' + esc(a.filename || 'fil') +
-          (a.size ? ' (' + Math.round(a.size / 1024) + ' kB)' : '') + '</li>'
-        ).join('') +
+        '<div class="mejl-atts"><strong>Bilagor (' + atts.length + ')</strong>' +
+        '<ul class="mejl-att-list">' +
+        atts
+          .map((a) => {
+            const id = esc(a.attachmentId || '');
+            const name = esc(a.filename || 'fil');
+            const mime = esc(a.mimeType || '');
+            const size =
+              a.size ? ' <span class="mejl-att-size">(' + Math.round(a.size / 1024) + ' kB)</span>' : '';
+            return (
+              '<li class="mejl-att-item">' +
+              '<div class="mejl-att-meta"><span class="mejl-att-name">' +
+              name +
+              '</span>' +
+              size +
+              '</div>' +
+              '<div class="mejl-att-actions">' +
+              '<button type="button" class="btn btn-secondary btn-sm" data-mejl-att-preview' +
+              ' data-att-id="' +
+              id +
+              '" data-filename="' +
+              name +
+              '" data-mime="' +
+              mime +
+              '"><i class="fas fa-eye"></i> Förhandsgranska</button>' +
+              '<button type="button" class="btn btn-secondary btn-sm" data-mejl-att-download' +
+              ' data-att-id="' +
+              id +
+              '" data-filename="' +
+              name +
+              '" data-mime="' +
+              mime +
+              '"><i class="fas fa-download"></i> Ladda ner</button>' +
+              '</div></li>'
+            );
+          })
+          .join('') +
         '</ul></div>'
       );
+    }
+
+    function attachmentAuthFetch() {
+      const opts = authOpts();
+      const headers = { ...(opts.headers || {}) };
+      delete headers['Content-Type'];
+      return { ...opts, method: 'GET', headers };
+    }
+
+    function attachmentUrl(messageId, attachmentId, disposition) {
+      return (
+        baseUrl +
+        '/api/gmail/messages/' +
+        encodeURIComponent(messageId) +
+        '/attachments/' +
+        encodeURIComponent(attachmentId) +
+        '?disposition=' +
+        encodeURIComponent(disposition || 'attachment')
+      );
+    }
+
+    function guessPreviewType(filename, fallback) {
+      const name = String(filename || '').toLowerCase();
+      if (name.endsWith('.pdf')) return 'application/pdf';
+      if (name.endsWith('.png')) return 'image/png';
+      if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+      if (name.endsWith('.gif')) return 'image/gif';
+      if (name.endsWith('.webp')) return 'image/webp';
+      if (name.endsWith('.txt') || name.endsWith('.log') || name.endsWith('.csv')) return 'text/plain';
+      if (name.endsWith('.json')) return 'application/json';
+      return String(fallback || '').split(';')[0].trim() || 'application/octet-stream';
+    }
+
+    function canPreviewInline(type) {
+      return (
+        type === 'application/pdf' ||
+        type === 'text/plain' ||
+        type === 'application/json' ||
+        (type.indexOf('image/') === 0 && type !== 'image/svg+xml')
+      );
+    }
+
+    function closeAttPreview() {
+      const modal = document.getElementById('mejl-att-preview-modal');
+      if (modal && modal._objectUrl) {
+        try {
+          URL.revokeObjectURL(modal._objectUrl);
+        } catch (_) {}
+      }
+      if (modal) modal.remove();
+    }
+
+    function openAttPreviewModal(title) {
+      closeAttPreview();
+      const root = document.createElement('div');
+      root.id = 'mejl-att-preview-modal';
+      root.className = 'mejl-modal-backdrop mejl-att-preview-backdrop';
+      root.innerHTML =
+        '<div class="mejl-modal mejl-att-preview-modal" role="dialog" aria-modal="true">' +
+        '<div class="mejl-att-preview-header">' +
+        '<h3><i class="fas fa-file-alt"></i> ' +
+        esc(title || 'Bilaga') +
+        '</h3>' +
+        '<div class="mejl-att-preview-header-actions">' +
+        '<a class="btn btn-primary btn-sm" id="mejl-att-preview-dl" style="display:none;" download>' +
+        '<i class="fas fa-download"></i> Ladda ner</a>' +
+        '<button type="button" class="btn btn-secondary btn-sm" data-mejl-att-close title="Stäng">' +
+        '<i class="fas fa-times"></i></button>' +
+        '</div></div>' +
+        '<div class="mejl-att-preview-body" id="mejl-att-preview-body">' +
+        '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Öppnar bilagan…</p>' +
+        '</div></div>';
+      document.body.appendChild(root);
+      root.addEventListener('click', (e) => {
+        if (e.target === root) closeAttPreview();
+      });
+      root.querySelector('[data-mejl-att-close]').addEventListener('click', closeAttPreview);
+      return root;
+    }
+
+    async function fetchAttachmentBlob(messageId, attachmentId, disposition) {
+      const res = await fetch(
+        attachmentUrl(messageId, attachmentId, disposition),
+        attachmentAuthFetch()
+      );
+      if (!res.ok) {
+        let msg = 'HTTP ' + res.status;
+        try {
+          const err = await res.json();
+          if (err && err.error) msg = err.error;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.blob();
+    }
+
+    async function previewAttachment(messageId, att) {
+      const filename = att.filename || 'bilaga';
+      const modal = openAttPreviewModal(filename);
+      const body = document.getElementById('mejl-att-preview-body');
+      const dl = document.getElementById('mejl-att-preview-dl');
+      try {
+        const blob = await fetchAttachmentBlob(messageId, att.attachmentId, 'inline');
+        const type = guessPreviewType(filename, att.mimeType || blob.type);
+        const objectUrl = URL.createObjectURL(blob);
+        modal._objectUrl = objectUrl;
+        if (dl) {
+          dl.href = objectUrl;
+          dl.download = filename;
+          dl.style.display = '';
+        }
+        if (!body) return;
+        if (canPreviewInline(type)) {
+          if (type.indexOf('image/') === 0) {
+            body.innerHTML =
+              '<img class="mejl-att-preview-image" src="' +
+              esc(objectUrl) +
+              '" alt="' +
+              esc(filename) +
+              '">';
+          } else if (type === 'text/plain' || type === 'application/json') {
+            const text = await blob.text();
+            body.innerHTML = '<pre class="mejl-att-preview-text">' + esc(text) + '</pre>';
+          } else {
+            body.innerHTML =
+              '<iframe class="mejl-att-preview-frame" title="' +
+              esc(filename) +
+              '" src="' +
+              esc(objectUrl) +
+              '"></iframe>';
+          }
+        } else {
+          body.innerHTML =
+            '<p class="mejl-hint">Den här filtypen kan inte förhandsgranskas i webbläsaren. Ladda ner filen istället.</p>' +
+            '<p><button type="button" class="btn btn-primary btn-sm" id="mejl-att-fallback-dl">' +
+            '<i class="fas fa-download"></i> Ladda ner ' +
+            esc(filename) +
+            '</button></p>';
+          const fb = document.getElementById('mejl-att-fallback-dl');
+          if (fb) {
+            fb.addEventListener('click', () => {
+              const a = document.createElement('a');
+              a.href = objectUrl;
+              a.download = filename;
+              a.click();
+            });
+          }
+        }
+      } catch (err) {
+        if (body) {
+          body.innerHTML =
+            '<p class="mejl-hint">Kunde inte öppna bilagan: ' +
+            esc(err.message || 'okänt fel') +
+            '</p>';
+        }
+        showToast(err.message || 'Kunde inte förhandsgranska', 'error');
+      }
+    }
+
+    async function downloadAttachment(messageId, att) {
+      const filename = att.filename || 'bilaga';
+      try {
+        const blob = await fetchAttachmentBlob(messageId, att.attachmentId, 'attachment');
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch (_) {}
+        }, 2000);
+        showToast('Laddar ner ' + filename, 'success');
+      } catch (err) {
+        showToast(err.message || 'Kunde inte ladda ner', 'error');
+      }
+    }
+
+    function bindAttachmentActions(messageId) {
+      const root = document.querySelector('.mejl-atts');
+      if (!root || !messageId) return;
+      root.querySelectorAll('[data-mejl-att-preview]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          previewAttachment(messageId, {
+            attachmentId: btn.getAttribute('data-att-id'),
+            filename: btn.getAttribute('data-filename'),
+            mimeType: btn.getAttribute('data-mime')
+          });
+        });
+      });
+      root.querySelectorAll('[data-mejl-att-download]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          downloadAttachment(messageId, {
+            attachmentId: btn.getAttribute('data-att-id'),
+            filename: btn.getAttribute('data-filename'),
+            mimeType: btn.getAttribute('data-mime')
+          });
+        });
+      });
     }
 
     async function loadByraUsers() {
@@ -350,6 +584,7 @@
           }, onRefresh)
         );
       }
+      bindAttachmentActions(id);
     }
 
     return {
@@ -358,6 +593,7 @@
       toolbarHtml,
       attachmentsHtml,
       bindDetailButtons,
+      bindAttachmentActions,
       getArchiveState: () => archiveState
     };
   }
