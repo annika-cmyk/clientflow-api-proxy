@@ -522,11 +522,6 @@
       ], omTjanstenUtfor('lfHanterar'))
     ]),
     spec('arsredovisning', 'Årsredovisning', [
-      q('arUpprattar', 'Upprättar byrån årsredovisningen?', 'single', [
-        'Ja',
-        'Nej',
-        'I vissa uppdrag'
-      ]),
       q('arInlamning', 'Hjälper byrån kunden med inlämning till Bolagsverket?', 'single', [
         'Ja',
         'Nej',
