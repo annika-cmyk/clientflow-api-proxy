@@ -159,6 +159,9 @@
   let sigLayout = 'text-left-portrait-right';
   let sigImage1DataUrl = '';
   let sigImage2DataUrl = '';
+  const archiveApi = (window.MejlArchive && MejlArchive.createApi)
+    ? MejlArchive.createApi({ baseUrl, authOpts, showToast })
+    : null;
 
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
@@ -384,6 +387,10 @@
     return { res, data };
   }
 
+  /**
+   * Visa cachad lista direkt, synka sedan inkrementellt utan att tömma listan.
+   * opts.full = true → tvinga full sync (Shift+Uppdatera).
+   */
   async function loadInbox(opts) {
     const options = opts || {};
     setFolderUi();
@@ -697,8 +704,12 @@
     return data;
   }
 
-  function renderDetail(id, m, listMeta, kunderLabels) {
+  function renderDetail(id, m, listMeta, kunderLabels, archiveForDetail) {
     if (Array.isArray(kunderLabels)) kunderLabelsCache = kunderLabels;
+    const customerIdForArchive =
+      (m && m.customerId) || (listMeta && listMeta.customerId) || '';
+    const archiveVisibility =
+      (archiveForDetail && archiveForDetail.visibility) || 'byra';
     const customerName = String(
       (m && m.customerName) || (listMeta && listMeta.customerName) || ''
     ).trim();
@@ -789,6 +800,10 @@
           <i class="fas fa-trash"></i> Radera
         </button>
       </div>
+      ${archiveApi ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility) : ''}
+      ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail) : ''}
+      ${archiveApi ? archiveApi.attachmentsHtml(m.attachments) : ''}
+      <p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering (plain text).</p>
       ${bodyHtml}
     `;
     detailContext = { id, message: m, listMeta };
@@ -812,6 +827,15 @@
     const trashBtn = document.getElementById('mejl-trash-btn');
     if (trashBtn) {
       trashBtn.addEventListener('click', () => trashMessage(id));
+    }
+    if (archiveApi) {
+      archiveApi.bindDetailButtons({
+        id,
+        message: m,
+        customerId: customerIdForArchive,
+        plainText: m.text || m.snippet || '',
+        onRefresh: () => openMessage(id)
+      });
     }
   }
 
@@ -847,7 +871,17 @@
     };
     const idx = messages.findIndex((x) => x.id === id);
     if (idx >= 0) messages[idx] = { ...messages[idx], labelLink: m.labelLink || null };
-    renderDetail(id, { ...m, labelLink: m.labelLink || null }, listMetaWithLink, data.kunderLabels);
+    let archiveForDetail = null;
+    const cid =
+      m.customerId ||
+      listMetaWithLink.customerId ||
+      (typeof resolveMessageCustomerId === 'function'
+        ? resolveMessageCustomerId(m, listMetaWithLink)
+        : '');
+    if (archiveApi && cid) {
+      archiveForDetail = await archiveApi.fetchArchive(id, cid);
+    }
+    renderDetail(id, { ...m, labelLink: m.labelLink || null }, listMetaWithLink, data.kunderLabels, archiveForDetail);
   }
 
   function readFileAsBase64(file) {
