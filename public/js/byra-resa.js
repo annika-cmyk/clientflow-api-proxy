@@ -273,7 +273,15 @@
     if (!nraRequired) return;
     var rows = nraRows();
     var done = rows.filter(nraRowIsComplete).length;
-    if (progress) progress.textContent = done + ' av ' + rows.length + ' scenarier klara';
+    var total = rows.length;
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    if (progress) {
+      progress.innerHTML =
+        '<span class="byra-resa-nra-progress-text">' + done + ' av ' + total + ' scenarier klara</span>' +
+        '<span class="byra-resa-nra-progress-track" aria-hidden="true">' +
+          '<span class="byra-resa-nra-progress-fill" style="width:' + pct + '%"></span>' +
+        '</span>';
+    }
     if (!hint) return;
     if (nraCompleteLocal()) {
       hint.textContent = 'NRA-checklistan är komplett (ja/nej, kontrollbeskrivningar och härledda fakta).';
@@ -345,9 +353,13 @@
   }
 
   function nraKindMeta(kind) {
-    if (kind === 'derived') return { short: 'Härlett', full: 'Härlett från tjänstelistan' };
-    if (kind === 'controls') return { short: 'Kontroller', full: 'Inneboende risk — beskriv kontroller' };
-    return { short: 'Ja/nej', full: 'Ja/nej-bedömning' };
+    if (kind === 'derived') {
+      return { label: 'Härlett från tjänstelistan', icon: 'fa-link', title: 'Härlett från tjänstelistan' };
+    }
+    if (kind === 'controls') {
+      return { label: 'Alltid relevant — beskriv kontroll', icon: 'fa-list-check', title: 'Alltid relevant — beskriv kontroll' };
+    }
+    return { label: 'Ställningstagande', icon: 'fa-circle-question', title: 'Ställningstagande' };
   }
 
   function renderNraChecklist() {
@@ -373,7 +385,10 @@
               '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
               (tag ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
             '</div>' +
-            '<span class="byra-resa-nra-kind" title="' + esc(meta.full) + '">' + esc(meta.short) + '</span>' +
+            '<span class="byra-resa-nra-kind is-' + kind + '" title="' + esc(meta.title) + '">' +
+              '<span class="byra-resa-nra-kind-icon" aria-hidden="true"><i class="fas ' + meta.icon + '"></i></span>' +
+              '<span class="byra-resa-nra-kind-label">' + esc(meta.label) + '</span>' +
+            '</span>' +
           '</div>' +
           '<p class="byra-resa-nra-desc">' + esc(row.desc || '') + '</p>' +
           body +
