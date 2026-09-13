@@ -42,11 +42,12 @@
     status: document.getElementById('byra-enkate-status')
   };
 
-  var schema = { sections: [], fields: [] };
+  var schema = { sections: [], fields: [], clientflowSections: {} };
   var values = {};
   var stepIdx = 0;
   var hogriskLabels = [];
   var skipped = {};
+  var clientflowSectionKeys = {};
 
   function setStatus(msg, isError, scrollTo) {
     if (!ui.status) return;
@@ -898,6 +899,86 @@
     return wrap;
   }
 
+  function sectionSupportsClientflow(sec) {
+    var id = String((sec && sec.id) || '').trim().toLowerCase();
+    var keys = clientflowSectionKeys[id];
+    return !!(keys && keys.length);
+  }
+
+  function applyClientflowFields(incoming) {
+    var data = incoming && typeof incoming === 'object' ? incoming : {};
+    Object.keys(data).forEach(function (key) {
+      values[key] = data[key];
+      delete skipped[key];
+      // Rensa följdfrågor som inte längre behövs när parent är Nej
+      if ((key === 'komplexaAgarstrukturer' || key === 'utlandskaAgare' || key === 'pepKunder' || key === 'kunderIUtsattaOmraden')
+        && String(data[key]) !== 'Ja') {
+        var antalKey = key + 'Antal';
+        if (values[antalKey] != null && data[antalKey] == null) delete values[antalKey];
+      }
+    });
+  }
+
+  function fetchClientflowForSection(sectionId) {
+    var q = sectionId ? ('?section=' + encodeURIComponent(sectionId)) : '';
+    return fetch(baseUrl() + '/api/byra/profil-fran-clientflow' + q, authOpts()).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error(data.error || 'Kunde inte hämta statistik från Clientflow');
+        return data;
+      });
+    });
+  }
+
+  function renderClientflowBanner(sec) {
+    var wrap = document.createElement('div');
+    wrap.className = 'byra-enkate-clientflow';
+    var text = document.createElement('div');
+    text.className = 'byra-enkate-clientflow-text';
+    var title = document.createElement('p');
+    title.className = 'byra-enkate-clientflow-title';
+    title.textContent = 'Hämta statistik från Clientflow';
+    var help = document.createElement('p');
+    help.className = 'byra-enkate-clientflow-help';
+    help.textContent = 'Fyll i antal kunder, bolagsformer, branscher och övriga statistikfrågor utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
+    if (String(sec.id).toLowerCase() === 'geografi') {
+      help.textContent = 'Fyll i internationell handel, högriskländer och kunder i utsatta områden utifrån era aktiva kunder. Ni kan justera svaren efteråt.';
+    }
+    text.appendChild(title);
+    text.appendChild(help);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-secondary byra-enkate-clientflow-btn';
+    btn.textContent = 'Hämta från Clientflow';
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      var prev = btn.textContent;
+      btn.textContent = 'Hämtar…';
+      setStatus('Hämtar statistik från Clientflow…');
+      fetchClientflowForSection(sec.id)
+        .then(function (data) {
+          var fields = (data && data.fields) || {};
+          var keys = (data && data.filledKeys) || Object.keys(fields);
+          if (!keys.length) {
+            setStatus('Inga aktiva kunder att hämta statistik från.', true);
+            return;
+          }
+          applyClientflowFields(fields);
+          setStatus('Hämtade ' + keys.length + ' uppgifter från Clientflow (' + ((data.meta && data.meta.antalKunder) || 0) + ' kunder). Granska och justera vid behov.');
+          renderStep();
+        })
+        .catch(function (e) {
+          setStatus(e.message || 'Kunde inte hämta statistik från Clientflow', true);
+        })
+        .then(function () {
+          btn.disabled = false;
+          btn.textContent = prev;
+        });
+    });
+    wrap.appendChild(text);
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
   function renderField(field) {
     var card = document.createElement('article');
     card.className = 'byra-enkate-q' + (skipped[field.key] && !isAnswered(values[field.key], field) ? ' is-skipped' : '');
@@ -947,6 +1028,9 @@
     if (ui.sectionTitle) ui.sectionTitle.textContent = sec.title || '';
     if (ui.sectionSub) ui.sectionSub.textContent = sec.subtitle || '';
     ui.fields.innerHTML = '';
+    if (sectionSupportsClientflow(sec)) {
+      ui.fields.appendChild(renderClientflowBanner(sec));
+    }
     var list = document.createElement('div');
     list.className = 'byra-enkate-q-list';
     var itGroupRendered = false;
@@ -1091,6 +1175,12 @@
     schema = data[0] || {};
     if (!Array.isArray(schema.sections)) schema.sections = [];
     if (!Array.isArray(schema.fields)) schema.fields = [];
+    clientflowSectionKeys = schema.clientflowSections && typeof schema.clientflowSections === 'object'
+      ? schema.clientflowSections
+      : {
+        kundstock: ['antalKunder', 'vanligasteBolagsformer', 'kundernasBranscher', 'branscherKundstock'],
+        geografi: ['andelInternationellHandel', 'sanktionslander', 'kunderIUtsattaOmraden']
+      };
     schema.fields.forEach(function (f) {
       if (!f) return;
       if (f.key === 'vanligasteBolagsformer') {

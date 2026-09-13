@@ -13364,6 +13364,7 @@ async function resolveTjanstExponeringForAi(req, namn) {
 }
 
 const ByraProfilFields = require('./lib/byra-profil-fields');
+const ByraProfilFranClientflow = require('./lib/byra-profil-fran-clientflow');
 const KomIgang = require('./lib/kom-igang');
 
 // BYRÅNS PROFIL – kalibreringsfält (lagras i Airtable-tabellen "Byråer")
@@ -14106,8 +14107,56 @@ app.get('/api/byra/profil-schema', authenticateToken, (req, res) => {
     success: true,
     sections: ByraProfilFields.BYRA_PROFIL_SECTIONS,
     fields: ByraProfilFields.BYRA_PROFIL_FIELDS.map(({ airtable, existing, ...rest }) => rest),
-    commonKundBranscher: ByraProfilFields.COMMON_KUND_BRANSCHER
+    commonKundBranscher: ByraProfilFields.COMMON_KUND_BRANSCHER,
+    clientflowSections: ByraProfilFranClientflow.SECTION_FIELD_KEYS
   });
+});
+
+// GET /api/byra/profil-fran-clientflow – fyll byråprofilfält från aktiva kunder i Clientflow
+app.get('/api/byra/profil-fran-clientflow', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+    if (!statistikRiskbedomning.canBuildForUser(userData)) {
+      return res.json({
+        success: true,
+        fields: {},
+        filledKeys: [],
+        meta: { antalKunder: 0 },
+        sectionKeys: ByraProfilFranClientflow.SECTION_FIELD_KEYS
+      });
+    }
+    const section = (req.query?.section || '').toString().trim().toLowerCase();
+    const records = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+    const ids = statistikRiskbedomning.collectLookupIds(records);
+    const [tjanstRecords, riskfaktorRecords] = await Promise.all([
+      fetchAirtableRecordsByIds(airtableAccessToken, airtableBaseId, RISK_ASSESSMENT_TABLE, ids.tjanstIds, { concurrency: 8 }),
+      fetchAirtableRecordsByIds(airtableAccessToken, airtableBaseId, OVRIGA_RISKER_TABLE_ID, ids.riskfaktorIds, { concurrency: 8 })
+    ]);
+    const result = ByraProfilFranClientflow.buildProfilFranClientflow(records, {
+      section: section || undefined,
+      lookups: { tjanstRecords, riskfaktorRecords }
+    });
+    res.json({
+      success: true,
+      fields: result.fields,
+      filledKeys: result.filledKeys,
+      meta: result.meta,
+      sectionKeys: result.sectionKeys
+    });
+  } catch (err) {
+    console.error('❌ GET /api/byra/profil-fran-clientflow:', err.message);
+    res.status(500).json({ error: err.message || 'Kunde inte hämta statistik från Clientflow' });
+  }
 });
 
 app.get('/api/byra/info', authenticateToken, async (req, res) => {

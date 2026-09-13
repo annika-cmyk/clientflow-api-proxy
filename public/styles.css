@@ -17859,6 +17859,35 @@ h5.ar-subsection-title {
   font-weight: 700;
 }
 .byra-enkate-remaining.is-complete { background: #dcfce7; color: #166534; }
+.byra-enkate-clientflow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid #d7e6ea;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f4fafb 0%, #eef6f7 100%);
+}
+.byra-enkate-clientflow-text { flex: 1 1 16rem; min-width: 0; }
+.byra-enkate-clientflow-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #13505c;
+}
+.byra-enkate-clientflow-help {
+  margin: 0;
+  color: #4b6470;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.byra-enkate-clientflow-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .byra-enkate-q-list { display: grid; gap: 1.35rem; }
 .byra-enkate-q {
   padding: 0 0 1.15rem;
