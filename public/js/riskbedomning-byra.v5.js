@@ -451,28 +451,22 @@ class RiskAssessmentManager {
         });
     }
 
-    utforandeServiceIcon(mallId) {
-        const map = {
-            'rot-rut': 'fa-receipt',
-            'lopande-bokforing': 'fa-book',
-            'anlaggningsregister': 'fa-screwdriver-wrench',
-            'kontoavstamningar': 'fa-scale-balanced',
-            'kontrollbalansrakning': 'fa-calculator',
-            'kundfakturering': 'fa-file-invoice',
-            'bokslut': 'fa-calendar-check',
-            'momsredovisning': 'fa-percent',
-            'deklarationer': 'fa-file-lines',
-            'kapitalvinstberakningar': 'fa-chart-line',
-            'leverantorsfakturor': 'fa-file-invoice-dollar',
-            'arsredovisning': 'fa-book-open',
-            'lonehantering': 'fa-users',
-            'lagerredovisning': 'fa-boxes-stacked',
-            'betalningsuppdrag': 'fa-money-bill-transfer',
-            'radgivning': 'fa-comments'
-        };
-        if (map[mallId]) return map[mallId];
-        if (String(mallId || '').indexOf('custom:') === 0) return 'fa-puzzle-piece';
-        return 'fa-briefcase';
+    /** Circular progress for Din resa klarmarkering (0% empty → partial arc → 100% teal check). */
+    renderUtforandeProgressIcon(progress) {
+        const done = Number(progress && progress.doneCount) || 0;
+        const total = Number(progress && progress.total) || 7;
+        const complete = !!(progress && progress.complete);
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        let stateClass = 'is-empty';
+        if (complete || pct >= 100) stateClass = 'is-complete';
+        else if (done > 0) stateClass = 'is-partial';
+        const label = (complete || pct >= 100)
+            ? 'Alla analysdelar är klarmarkerade'
+            : (done > 0
+                ? `${done} av ${total} delar klarmarkerade`
+                : 'Ingen del klarmarkerad ännu');
+        const style = stateClass === 'is-partial' ? ` style="--progress:${pct}"` : '';
+        return `<span class="tjanst-mall-progress ${stateClass}" role="img" aria-label="${this.esc(label)}"${style}></span>`;
     }
 
     formatCatalogRiskBadge(label) {
@@ -528,7 +522,6 @@ class RiskAssessmentManager {
         const aktiv = !!(entry && entry.aktiv);
         const analysNamn = entry.namn || template.name;
         const existing = this.findTjanstRiskByName(analysNamn);
-        const icon = this.utforandeServiceIcon(template.id);
         const kundCount = this.kundCountForUtforandeTjanst(template.id, analysNamn);
         const lockedInactive = aktiv && kundCount > 0;
         const lockedDelete = kundCount > 0;
@@ -561,22 +554,23 @@ class RiskAssessmentManager {
         const rowRiskClass = existing && RiskSkalaApi && RiskSkalaApi.dominantRiskItemClass
             ? RiskSkalaApi.dominantRiskItemClass(scored.level, scored.residualLevel)
             : '';
-        const iconClass = aktiv ? 'is-active' : '';
+        const progress = (RiskSkalaApi && RiskSkalaApi.tjanstResaProgress)
+            ? RiskSkalaApi.tjanstResaProgress(scored.klarmarkeradeFlikar)
+            : { doneCount: 0, total: 7, complete: false };
+        const progressIcon = this.renderUtforandeProgressIcon(progress);
         // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
         // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="risk-row-menu-item is-danger tjanst-mall-delete" data-delete-tjanst role="menuitem" ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
         const expandBtn = existing
             ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
             : '';
-        const resaComplete = !!(window.RiskSkala && RiskSkala.isTjanstResaComplete
-            && RiskSkala.isTjanstResaComplete(scored.klarmarkeradeFlikar));
+        const resaComplete = !!(progress.complete || (RiskSkalaApi && RiskSkalaApi.isTjanstResaComplete
+            && RiskSkalaApi.isTjanstResaComplete(scored.klarmarkeradeFlikar)));
         return `
             <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
-                        <span class="tjanst-mall-icon${iconClass ? ' ' + iconClass : ''}" aria-hidden="true">
-                            <i class="fas ${icon}"></i>
-                        </span>
+                        ${progressIcon}
                         <div class="tjanst-mall-copy">
                             <h4 class="tjanst-mall-title">
                                 <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>

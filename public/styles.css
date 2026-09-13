@@ -18633,23 +18633,49 @@ h5.ar-subsection-title {
     min-width: 0;
     flex: 1;
 }
-.tjanst-mall-icon {
+/* Progresscirkel (Din resa-klarmarkering) — samma språk som .tjanst-tab-dot */
+.tjanst-mall-progress {
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    margin-top: 0.2rem;
+    border-radius: 50%;
+    box-sizing: border-box;
+    position: relative;
+    display: inline-block;
+    border: 2px solid var(--border, #dcdfe5);
+    background: transparent;
+}
+.tjanst-mall-progress.is-empty {
+    border-color: color-mix(in srgb, var(--border, #dcdfe5) 85%, var(--ink-3, #8b929d));
+    background: transparent;
+}
+.tjanst-mall-progress.is-partial {
+    border: none;
+    background:
+        radial-gradient(closest-side, var(--card-bg, #fff) calc(100% - 2.5px), transparent calc(100% - 2.5px + 0.5px)),
+        conic-gradient(
+            var(--accent, #13505c) calc(var(--progress, 0) * 1%),
+            color-mix(in srgb, var(--border, #dcdfe5) 80%, transparent) 0
+        );
+}
+.tjanst-mall-progress.is-complete {
+    border-color: var(--accent, #13505c);
+    background: var(--accent, #13505c);
+}
+.tjanst-mall-progress.is-complete::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--surface-2, var(--panel-2));
-    color: var(--ink-3);
-    font-size: 0.92rem;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
 }
-.tjanst-mall-icon.is-active {
-    background: var(--accent-muted, var(--accent-tint));
-    color: var(--text-accent, var(--accent));
-}
-/* Ikonruta är alltid neutral/teal — risknivå visas bara i badges */
+/* Progresscirkel är alltid neutral/teal — risknivå visas bara i badges */
 .tjanst-mall-copy {
     min-width: 0;
 }
