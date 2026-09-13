@@ -6600,6 +6600,43 @@ app.get('/api/kunddata/:id', authenticateToken, async (req, res) => {
       fields: customerRecord.fields
     };
 
+    // Lazy katalog-cascade: äldre stämpel → Riskprofil status = behöver_omprofilering
+    try {
+      const catalogVersion = await readRiskFactorCatalogVersionForRequest(req);
+      const lazyPatch = RiskFactorCatalog.lazyOmprofileringFields(
+        customerRecord.fields || {},
+        catalogVersion
+      );
+      const effectiveStatus = RiskFactorCatalog.effectiveKundProfileStatus(
+        customerRecord.fields || {},
+        catalogVersion
+      );
+      if (lazyPatch) {
+        try {
+          await ensureKunddataOptionalFields(airtableAccessToken, airtableBaseId);
+          await axios.patch(
+            url,
+            { fields: lazyPatch, typecast: true },
+            {
+              headers: {
+                Authorization: `Bearer ${airtableAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: 15000
+            }
+          );
+          Object.assign(formattedRecord.fields, lazyPatch);
+        } catch (persistErr) {
+          console.warn('Lazy omprofilering kunde inte persistas:', persistErr.message);
+          Object.assign(formattedRecord.fields, lazyPatch);
+        }
+      } else if (effectiveStatus) {
+        formattedRecord.fields[RiskFactorCatalog.KUND_FIELDS.PROFILE_STATUS] = effectiveStatus;
+      }
+    } catch (catalogErr) {
+      console.warn('Lazy omprofilering kunde inte utvärderas:', catalogErr.message);
+    }
+
     const hogriskSniMatch = await hogriskSniFromFields(customerRecord.fields || {});
     try {
       const calc = await computeKundForeslagen(customerRecord.fields || {}, airtableAccessToken, airtableBaseId);
@@ -7041,6 +7078,25 @@ app.patch('/api/kunddata/:id', authenticateToken, async (req, res) => {
       const saveCheck = KundRiskprofil.canSaveResidual(nextResidual, nextSuggested, nextAvvikelse);
       if (!saveCheck.ok) {
         return res.status(400).json({ error: saveCheck.error, code: 'avvikelse_motivering_kravs' });
+      }
+      // VH hard gate: blockera residual-sparning när Osäker/Nej
+      try {
+        const kfForm = Kundformular.parseForm(
+          (customerRecord.fields && customerRecord.fields[Kundformular.FIELD]) || ''
+        );
+        const bolagsform = customerRecord.fields?.Bolagsform
+          || customerRecord.fields?.['Bolagsform']
+          || '';
+        Kundresa.assertVhAllowsAction(kfForm, 'save_residual', { bolagsform });
+      } catch (gateErr) {
+        if (gateErr.code === 'VH_HARD_GATE') {
+          return res.status(409).json({
+            error: gateErr.message,
+            code: gateErr.code,
+            vhGate: gateErr.vhGate
+          });
+        }
+        throw gateErr;
       }
       if (!KundRiskprofil.residualAvvikerFranForeslagen(nextResidual, nextSuggested)) {
         payload[KundRiskprofil.FIELDS.AVVIKELSE] = '';
@@ -18176,46 +18232,12 @@ function buildKundformularResponse(form, fields, kyc, tjansterCtx, { baseUrl, in
 }
 
 function buildKundformularPublicResponse(form, fields, kyc, tjansterCtx) {
-  const riskFlags = kundformularRiskFlags(fields);
-  const meta = Kundformular.buildUiMeta(form, {
+  // Publik kundvy: whitelist + ingen byrå-riskinfluens i meta (riskFlags/kyc/högriskland).
+  return Kundformular.buildPublicResponse(form, {
     tjansterOptions: tjansterCtx?.options || [],
-    riskFlags,
-    kyc,
-    fields,
     bolagsform: fields?.Bolagsform || kyc?.bolagsform || '',
-    hogrisksland: kundformularHogrisksland(fields, kyc)
+    fields
   });
-  // Publik kundvy: ingen riskflagga/högriskland synlig
-  delete meta.skarptKapital;
-  meta.skarptKapital = Kundformular.needsSkarptKapitalUrsprung(form.answers || {}, {
-    riskFlags: [],
-    hogrisksland: false
-  }) || form.answers?.pep === 'Ja' || form.answers?.pepFamilj === 'Ja';
-  const publicForm = {
-    ...form,
-    inviteToken: undefined,
-    answers: form.answers
-  };
-  delete publicForm.inviteToken;
-  return {
-    success: true,
-    form: publicForm,
-    summary: {
-      status: form.status,
-      statusLabel: Kundformular.statusLabel(form.status),
-      answeredAt: form.answeredAt,
-      sentAt: form.sentAt,
-      isAnswered: Kundformular.isAnswered(form),
-      inviteExpiresAt: form.inviteExpiresAt
-    },
-    meta: {
-      ...meta,
-      customerMode: true,
-      fieldSourceLabels: meta.fieldSourceLabels,
-      // Behåll skarpt om redan ifyllt / PEP i formuläret — utan byråns riskflaggor
-      customerParity: true
-    }
-  };
 }
 
 async function loadKundformularCustomerContext(customerId) {
@@ -18576,6 +18598,8 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
 
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
+
     const custRes = await axios.get(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME || 'Kunder')}/${customerId}`,
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
@@ -18679,7 +18703,12 @@ app.get('/api/kyc-formular/:customerId', authenticateToken, async (req, res) => 
     });
   } catch (error) {
     console.error('❌ Error fetching KYC-formular:', error.message);
-    res.status(500).json({ error: 'Kunde inte hämta KYC-formulär.' });
+    const status = error.status || 500;
+    res.status(status).json({
+      error: status === 403
+        ? (error.message || 'Du har inte behörighet att se denna kund')
+        : (status === 404 ? (error.message || 'Kund hittades inte') : 'Kunde inte hämta KYC-formulär.')
+    });
   }
 });
 
@@ -18690,6 +18719,8 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
 
     let existingKyc = {};
     let existingFields = {};
@@ -18801,6 +18832,9 @@ app.post('/api/kyc-formular/:customerId', authenticateToken, async (req, res) =>
     res.json({ success: true, message: 'KYC-formulär sparat.' });
   } catch (error) {
     console.error('❌ Error saving KYC-formular:', error.message);
+    if (error.status === 403 || error.status === 404) {
+      return res.status(error.status).json({ error: error.message });
+    }
     if (error.response?.status === 422) {
       console.error('   Airtable 422 – fältet "KYC-formular (JSON)" kanske saknas. Skapa ett "Long text"-fält med det namnet i tabellen Kunder.');
     }
@@ -18815,6 +18849,8 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
+
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
 
     const custRes = await axios.get(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
@@ -19011,6 +19047,9 @@ app.post('/api/kyc-formular/:customerId/pdf', authenticateToken, async (req, res
 
   } catch (error) {
     console.error('❌ Error generating KYC-formular PDF:', error.message);
+    if (error.status === 403 || error.status === 404) {
+      return res.status(error.status).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Kunde inte generera KYC PDF.' });
   }
 });
@@ -19035,12 +19074,31 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
     const baseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
     const tableName = process.env.AIRTABLE_TABLE_NAME || 'Kunder';
 
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
+
     // Hämta kunddata och KYC
     const custRes = await axios.get(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
       { headers: { Authorization: `Bearer ${airtableAccessToken}` } }
     );
     const custFields = custRes.data.fields || {};
+
+    // VH hard gate: blockera KYC-utskick när Osäker/Nej
+    try {
+      const kfForm = Kundformular.parseForm(custFields[Kundformular.FIELD] || '');
+      const bolagsform = custFields.Bolagsform || custFields['Bolagsform'] || '';
+      Kundresa.assertVhAllowsAction(kfForm, 'kyc_skicka_for_signering', { bolagsform });
+    } catch (gateErr) {
+      if (gateErr.code === 'VH_HARD_GATE') {
+        return res.status(409).json({
+          error: gateErr.message,
+          code: gateErr.code,
+          vhGate: gateErr.vhGate
+        });
+      }
+      throw gateErr;
+    }
+
     const kundnamn = custFields['Namn'] || 'Kund';
     const loggedIn = await getAirtableUser(req.user.email);
     const sender = await resolveKlientansvarigForSend({
@@ -19150,6 +19208,13 @@ app.post('/api/kyc-formular/:customerId/skicka-for-signering', authenticateToken
 
   } catch (error) {
     console.error('❌ Fel vid KYC skicka-för-signering:', error.message);
+    if (error.status === 403 || error.status === 404 || error.status === 409) {
+      return res.status(error.status).json({
+        error: error.message,
+        code: error.code,
+        vhGate: error.vhGate
+      });
+    }
     res.status(500).json({ error: 'Kunde inte skicka KYC-formuläret för signering.' });
   }
 });
@@ -19165,6 +19230,8 @@ app.post('/api/kyc-formular/:customerId/hamta-signerat', authenticateToken, asyn
     if (!docsignApiKey || !airtableAccessToken) {
       return res.status(500).json({ error: 'DOCSIGN_API_KEY eller Airtable-token saknas.' });
     }
+
+    await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId });
 
     const custRes = await axios.get(
       `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${customerId}`,
