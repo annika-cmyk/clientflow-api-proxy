@@ -277,21 +277,50 @@
       if (onDone) await onDone();
     }
 
-    async function maskSelection(id, customerId, plainText, onDone) {
+    async function maskSelection(id, customerId, bodyOpts, onDone) {
+      const plainText = typeof bodyOpts === 'string' ? bodyOpts : String((bodyOpts && bodyOpts.plainText) || '');
+      const html = typeof bodyOpts === 'string' ? '' : String((bodyOpts && bodyOpts.html) || '');
       const sel = window.getSelection && window.getSelection();
       const selected = sel ? String(sel.toString() || '') : '';
       if (!selected.trim()) { showToast('Markera text i brödtexten först.', 'error'); return; }
-      const src = String(plainText || '');
-      const start = src.indexOf(selected);
-      if (start < 0) {
-        showToast('Markeringen hittades inte i plain text.', 'error');
+
+      const bodyEl = document.querySelector('.mejl-detail-body');
+      const displayedText = bodyEl
+        ? String(bodyEl.innerText || bodyEl.textContent || '')
+        : '';
+
+      const resolver = global.MejlMaskSelection && global.MejlMaskSelection.resolveMaskRanges;
+      const resolved = resolver
+        ? resolver({ selectedText: selected, plainText, html, displayedText })
+        : (function fallbackExact() {
+            const start = plainText.indexOf(selected);
+            if (start < 0) return { ranges: [], error: 'not_found' };
+            return {
+              ranges: [{ start, end: start + selected.length, field: 'text' }],
+              bodyText: plainText
+            };
+          })();
+
+      if (resolved.error === 'empty') {
+        showToast('Markera text i brödtexten först.', 'error');
         return;
       }
-      const end = start + selected.length;
-      if (!confirm('Maska ' + selected.length + ' tecken? Syns bara för dig och ClientFlow-admin.')) return;
+      if (resolved.error === 'not_found' || !resolved.ranges || !resolved.ranges.length) {
+        showToast('Markeringen hittades inte i mejlets text.', 'error');
+        return;
+      }
+
+      const textRange = resolved.ranges.find((r) => r.field === 'text');
+      const approxLen = textRange ? textRange.end - textRange.start : selected.trim().length;
+      if (!confirm('Maska ' + approxLen + ' tecken? Syns bara för dig och ClientFlow-admin.')) return;
+
       const res = await fetch(baseUrl + '/api/gmail/messages/' + encodeURIComponent(id) + '/mask', {
         method: 'POST', ...authOpts(),
-        body: JSON.stringify({ customerId, ranges: [{ start, end, field: 'text' }] })
+        body: JSON.stringify({
+          customerId,
+          ranges: resolved.ranges,
+          bodyText: resolved.bodyText || undefined
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) { showToast(data.error || 'Kunde inte maska', 'error'); return; }
@@ -300,7 +329,7 @@
     }
 
     function bindDetailButtons(ctx) {
-      const { id, message, customerId, plainText, onRefresh } = ctx;
+      const { id, message, customerId, plainText, html, onRefresh } = ctx;
       const vis = (archiveState && archiveState.visibility) || 'byra';
       const saveBtn = document.getElementById('mejl-save-btn');
       if (saveBtn) saveBtn.addEventListener('click', () => openSaveWizard(id, message, customerId, onRefresh));
@@ -313,7 +342,14 @@
         );
       }
       const maskBtn = document.getElementById('mejl-mask-btn');
-      if (maskBtn) maskBtn.addEventListener('click', () => maskSelection(id, customerId, plainText, onRefresh));
+      if (maskBtn) {
+        maskBtn.addEventListener('click', () =>
+          maskSelection(id, customerId, {
+            plainText: plainText || (message && (message.text || message.snippet)) || '',
+            html: html || (message && (message.html || message.bodyHtml)) || ''
+          }, onRefresh)
+        );
+      }
     }
 
     return {
