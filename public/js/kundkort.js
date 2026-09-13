@@ -491,7 +491,17 @@ class CustomerCardManager {
                 const shouldOpenAnteckningar = noteId || hash === 'anteckningar';
                 const shouldOpenAvvikelser = hash === 'avvikelser';
                 const shouldOpenSamarbete = hash === 'samarbete';
-                const initialTab = shouldOpenAnteckningar ? 'anteckningar' : (shouldOpenAvvikelser ? 'avvikelser' : (shouldOpenSamarbete ? 'samarbete' : 'foretagsinformation'));
+                const shouldOpenDokumentation = hash === 'dokumentation';
+                const shouldOpenUppdrag = hash === 'uppdrag';
+                const initialTab = shouldOpenAnteckningar
+                    ? 'anteckningar'
+                    : (shouldOpenAvvikelser
+                        ? 'avvikelser'
+                        : (shouldOpenSamarbete
+                            ? 'samarbete'
+                            : (shouldOpenDokumentation
+                                ? 'dokumentation'
+                                : (shouldOpenUppdrag ? 'uppdrag' : 'foretagsinformation'))));
                 this.switchToTab(initialTab);
                 this.loadTabContent(initialTab);
                 // Tab badge API fan-out after first paint so it does not compete with LCP.

@@ -64,21 +64,176 @@
       return null;
     }
 
-    function archiveMetaHtml(archive) {
-      if (!archive) return '<div class="mejl-archive-meta">Inte sparat i ClientFlow ännu.</div>';
+    function destinationDisplayName(dest) {
+      const base = dest.label || 'ClientFlow';
+      const extra = dest.runName || dest.uppdragName || '';
+      return extra ? base + ': ' + extra : base;
+    }
+
+    function destinationContents(dest) {
+      const parts = [];
+      if (dest.emailSaved) parts.push('mejl');
+      if (dest.attachments && dest.attachments.length) {
+        const names = dest.attachments.slice(0, 3).join(', ');
+        const more =
+          dest.attachments.length > 3 ? ' +' + (dest.attachments.length - 3) : '';
+        parts.push(
+          dest.attachments.length === 1
+            ? 'bilaga (' + names + ')'
+            : dest.attachments.length + ' bilagor (' + names + more + ')'
+        );
+      }
+      return parts.length ? parts.join(' + ') : 'sparad';
+    }
+
+    function summarizeSavedToClient(savedTo, customerId) {
+      const entries = Array.isArray(savedTo) ? savedTo : [];
+      const byKey = new Map();
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object') continue;
+        let type = String(entry.type || '').toLowerCase();
+        if (type === 'run' || type === 'uppdragskorning') type = 'korning';
+        if (type === 'docs' || type === 'kund' || type === 'customer') type = 'dokumentation';
+        if (!type) type = 'dokumentation';
+        const cid = String(entry.customerId || customerId || '').trim();
+        const uppdragId = String(entry.uppdragId || '').trim();
+        const runId = String(entry.runId || '').trim();
+        const key = [type, cid, uppdragId, runId].join('|');
+        let dest = byKey.get(key);
+        if (!dest) {
+          const label =
+            type === 'korning' ? 'Uppdragskörning' : type === 'uppdrag' ? 'Uppdrag' : 'Dokumentation';
+          const href = cid
+            ? 'kundkort.html?id=' +
+              encodeURIComponent(cid) +
+              (type === 'dokumentation'
+                ? '#dokumentation'
+                : type === 'uppdrag' || type === 'korning'
+                  ? '#uppdrag'
+                  : '')
+            : '';
+          dest = {
+            type,
+            label,
+            customerId: cid,
+            uppdragId: uppdragId || null,
+            runId: runId || null,
+            uppdragName: entry.uppdragName || entry.uppdragLabel || null,
+            runName: entry.runName || entry.runLabel || entry.periodLabel || null,
+            href,
+            emailSaved: false,
+            attachments: []
+          };
+          byKey.set(key, dest);
+        }
+        const filename = String(entry.filename || '').trim();
+        if (entry.gmailAttachmentId || entry.attachmentId) {
+          if (filename && dest.attachments.indexOf(filename) < 0) dest.attachments.push(filename);
+        } else {
+          dest.emailSaved = true;
+        }
+      }
+      const destinations = Array.from(byKey.values());
+      return { hasSaves: destinations.length > 0, destinations, totalSaves: entries.length };
+    }
+
+    function attachmentSaveFlags(messageAttachments, archive) {
+      const savedIds = new Set();
+      const savedNames = new Set();
+      const pushEntry = (entry) => {
+        if (!entry) return;
+        const id = String(entry.gmailAttachmentId || entry.attachmentId || '').trim();
+        if (id) savedIds.add(id);
+        const name = String(entry.filename || '').trim().toLowerCase();
+        if (name) savedNames.add(name);
+      };
+      (archive && archive.savedTo ? archive.savedTo : []).forEach((e) => {
+        if (e && (e.gmailAttachmentId || e.attachmentId)) pushEntry(e);
+      });
+      (archive && archive.attachmentMeta ? archive.attachmentMeta : []).forEach(pushEntry);
+      return (messageAttachments || []).map((a) => {
+        const id = String((a && a.attachmentId) || '').trim();
+        const filename = String((a && a.filename) || '').trim();
+        const saved =
+          (id && savedIds.has(id)) ||
+          (filename && savedNames.has(filename.toLowerCase()));
+        return { attachmentId: id, filename, saved: !!saved };
+      });
+    }
+
+    function archiveMetaHtml(archive, opts) {
+      const messageAttachments = (opts && opts.attachments) || [];
+      if (!archive) {
+        return '<div class="mejl-archive-meta">Inte sparat i ClientFlow ännu.</div>';
+      }
       const vis = archive.visibility === 'privat' ? 'privat' : 'byra';
-      return (
+      const summary =
+        archive.savedSummary && Array.isArray(archive.savedSummary.destinations)
+          ? archive.savedSummary
+          : summarizeSavedToClient(archive.savedTo, archive.customerId);
+      const flags = attachmentSaveFlags(messageAttachments, archive);
+      const savedAttCount = flags.filter((f) => f.saved).length;
+      const unsavedAttCount = flags.length ? flags.length - savedAttCount : 0;
+
+      let html =
         '<div class="mejl-archive-meta">' +
-        '<span class="pill pill-' + vis + '">' + (vis === 'privat' ? 'Privat' : 'Byrå') + '</span>' +
-        (archive.sharedWith && archive.sharedWith.length
-          ? 'Delad med ' + archive.sharedWith.length + ' kollega(or). '
-          : '') +
-        (archive.savedTo && archive.savedTo.length
-          ? 'Sparad ' + archive.savedTo.length + ' gång(er). '
-          : '') +
-        (archive.maskedRanges && archive.maskedRanges.length ? 'Innehåller maskering.' : '') +
-        '</div>'
-      );
+        '<div class="mejl-archive-meta-row">' +
+        '<span class="pill pill-' +
+        vis +
+        '">' +
+        (vis === 'privat' ? 'Privat' : 'Byrå') +
+        '</span>';
+      if (archive.sharedWith && archive.sharedWith.length) {
+        html +=
+          '<span class="mejl-archive-chip">Delad med ' +
+          archive.sharedWith.length +
+          ' kollega(or)</span>';
+      }
+      if (archive.maskedRanges && archive.maskedRanges.length) {
+        html += '<span class="mejl-archive-chip">Maskering</span>';
+      }
+      html += '</div>';
+
+      if (summary.hasSaves) {
+        html += '<div class="mejl-archive-saved-label">Sparat i ClientFlow</div><ul class="mejl-archive-dest-list">';
+        summary.destinations.forEach((dest) => {
+          const title = destinationDisplayName(dest);
+          const contents = destinationContents(dest);
+          const titleHtml = dest.href
+            ? '<a class="mejl-archive-dest-link" href="' +
+              esc(dest.href) +
+              '" target="_blank" rel="noopener">' +
+              esc(title) +
+              '</a>'
+            : '<span class="mejl-archive-dest-name">' + esc(title) + '</span>';
+          html +=
+            '<li>' +
+            titleHtml +
+            '<span class="mejl-archive-dest-detail"> — ' +
+            esc(contents) +
+            '</span></li>';
+        });
+        html += '</ul>';
+        if (flags.length) {
+          html +=
+            '<div class="mejl-archive-att-status">' +
+            (savedAttCount
+              ? savedAttCount +
+                ' av ' +
+                flags.length +
+                ' bilaga(or) sparad(e)' +
+                (unsavedAttCount ? '; ' + unsavedAttCount + ' ej sparad(e)' : '')
+              : 'Inga bilagor sparade ännu (' + flags.length + ' i mejlet)') +
+            '.</div>';
+        }
+      } else {
+        html +=
+          '<div class="mejl-archive-saved-label mejl-archive-saved-label--muted">' +
+          'I Mejlarkiv (synlighet/delning) — inte sparat till dokumentation eller uppdrag ännu.' +
+          '</div>';
+      }
+      html += '</div>';
+      return html;
     }
 
     function toolbarHtml(customerId, visibility) {
@@ -98,8 +253,10 @@
       );
     }
 
-    function attachmentsHtml(atts) {
+    function attachmentsHtml(atts, archive) {
       if (!atts || !atts.length) return '';
+      const flags = attachmentSaveFlags(atts, archive);
+      const savedById = new Map(flags.map((f) => [f.attachmentId, f.saved]));
       return (
         '<div class="mejl-atts"><strong>Bilagor (' + atts.length + ')</strong>' +
         '<ul class="mejl-att-list">' +
@@ -110,12 +267,17 @@
             const mime = esc(a.mimeType || '');
             const size =
               a.size ? ' <span class="mejl-att-size">(' + Math.round(a.size / 1024) + ' kB)</span>' : '';
+            const saved = savedById.get(String(a.attachmentId || '')) === true;
+            const savedBadge = saved
+              ? ' <span class="mejl-att-saved" title="Sparad i ClientFlow">Sparad</span>'
+              : '';
             return (
               '<li class="mejl-att-item">' +
               '<div class="mejl-att-meta"><span class="mejl-att-name">' +
               name +
               '</span>' +
               size +
+              savedBadge +
               '</div>' +
               '<div class="mejl-att-actions">' +
               '<button type="button" class="btn btn-secondary btn-sm" data-mejl-att-preview' +
@@ -422,23 +584,63 @@
           const includeEmail = root.querySelector('#mejl-save-email').checked;
           const saveAtts = root.querySelector('#mejl-save-atts').checked;
           const selectedAtts = [...root.querySelectorAll('input[name="att"]:checked')].map((el) => el.value);
-          const uppdragId = (root.querySelector('#mejl-save-uppdrag') || {}).value || '';
-          const runId = (root.querySelector('#mejl-save-run') || {}).value || '';
+          const uppdragEl = root.querySelector('#mejl-save-uppdrag');
+          const runEl = root.querySelector('#mejl-save-run');
+          const uppdragId = (uppdragEl || {}).value || '';
+          const runId = (runEl || {}).value || '';
+          const uppdragName =
+            uppdragEl && uppdragEl.selectedIndex > 0
+              ? String(uppdragEl.options[uppdragEl.selectedIndex].textContent || '').trim()
+              : '';
+          const runName =
+            runEl && runEl.selectedIndex > 0
+              ? String(runEl.options[runEl.selectedIndex].textContent || '').trim()
+              : '';
           let targets = [];
           if (mode === 'dokumentation') {
             targets = [{ type: 'dokumentation', customerId, includeEmail, attachmentIds: saveAtts ? selectedAtts : [] }];
           } else if (mode === 'uppdrag') {
             if (!uppdragId) { showToast('Välj ett uppdrag.', 'error'); return; }
-            targets = [{ type: 'uppdrag', uppdragId, customerId, includeEmail, attachmentIds: saveAtts ? selectedAtts : [] }];
+            targets = [{
+              type: 'uppdrag',
+              uppdragId,
+              uppdragName,
+              customerId,
+              includeEmail,
+              attachmentIds: saveAtts ? selectedAtts : []
+            }];
           } else if (mode === 'korning') {
             if (!runId) { showToast('Välj en körning.', 'error'); return; }
-            targets = [{ type: 'korning', runId, customerId, includeEmail, attachmentIds: saveAtts ? selectedAtts : [] }];
+            targets = [{
+              type: 'korning',
+              runId,
+              runName,
+              customerId,
+              includeEmail,
+              attachmentIds: saveAtts ? selectedAtts : []
+            }];
           } else {
             if (includeEmail) targets.push({ type: 'dokumentation', customerId, includeEmail: true, attachmentIds: [] });
             if (saveAtts && selectedAtts.length) {
-              if (runId) targets.push({ type: 'korning', runId, customerId, includeEmail: false, attachmentIds: selectedAtts });
-              else if (uppdragId) targets.push({ type: 'uppdrag', uppdragId, customerId, includeEmail: false, attachmentIds: selectedAtts });
-              else { showToast('Välj uppdrag eller körning för bilagor.', 'error'); return; }
+              if (runId) {
+                targets.push({
+                  type: 'korning',
+                  runId,
+                  runName,
+                  customerId,
+                  includeEmail: false,
+                  attachmentIds: selectedAtts
+                });
+              } else if (uppdragId) {
+                targets.push({
+                  type: 'uppdrag',
+                  uppdragId,
+                  uppdragName,
+                  customerId,
+                  includeEmail: false,
+                  attachmentIds: selectedAtts
+                });
+              } else { showToast('Välj uppdrag eller körning för bilagor.', 'error'); return; }
             }
           }
           if (!targets.length) { showToast('Inget att spara.', 'error'); return; }
@@ -459,10 +661,27 @@
             showToast(firstResultErr || 'Kunde inte spara', 'error');
             return;
           }
+          const destLabel =
+            data.destinationLabel ||
+            (Array.isArray(data.destinations) && data.destinations.length
+              ? data.destinations.join('; ')
+              : '') ||
+            runName ||
+            uppdragName ||
+            '';
+          const okMsg = destLabel
+            ? 'Sparat till ' + destLabel + ' (' + nOk + ' objekt).'
+            : 'Sparat (' + nOk + ' objekt).';
           showToast(
             nErr
-              ? 'Sparat ' + nOk + ', ' + nErr + ' fel' + (firstResultErr ? ': ' + firstResultErr : '.')
-              : 'Sparat (' + nOk + ' objekt).',
+              ? 'Sparat ' +
+                  nOk +
+                  (destLabel ? ' till ' + destLabel : '') +
+                  ', ' +
+                  nErr +
+                  ' fel' +
+                  (firstResultErr ? ': ' + firstResultErr : '.')
+              : okMsg,
             nErr ? 'error' : 'success'
           );
           closeModal();
