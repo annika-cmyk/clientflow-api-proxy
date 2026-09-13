@@ -19365,12 +19365,14 @@ body.byra-resa-page .risk-header h1 {
 .byra-resa-nra-list{display:flex;flex-direction:column;gap:.75rem;margin-top:.75rem;}
 .byra-resa-nra-row{padding:.85rem 1rem;border:1px solid var(--border-color,#e5e7eb);border-radius:8px;background:#fff;}
 .byra-resa-nra-title{font-weight:600;margin:0 0 .25rem;}
-.byra-resa-nra-desc{margin:0 0 .6rem;color:#4b5563;font-size:.92rem;}
+.byra-resa-nra-desc{margin:0 0 .6rem;color:#4b5563;font-size:.92rem;line-height:1.45;}
+.byra-resa-nra-answer-row{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;}
 .byra-resa-nra-states{display:flex;gap:.5rem;flex-wrap:wrap;}
 .byra-resa-nra-state{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .55rem;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-size:.9rem;}
 .byra-resa-nra-state input{margin:0;}
 .byra-resa-nra-state[data-value="ja"].is-on{border-color:#16a34a;background:#f0fdf4;}
 .byra-resa-nra-state[data-value="nej"].is-on{border-color:#dc2626;background:#fef2f2;}
+.byra-resa-nra-tag{font-size:.75rem;color:#6b7280;letter-spacing:.01em;white-space:nowrap;}
 .byra-resa-nra-why-wrap{margin-top:.55rem;}
 .byra-resa-nra-hint.is-ok{color:#166534;}
 .byra-resa-nra-hint.is-warn{color:#92400e;}
