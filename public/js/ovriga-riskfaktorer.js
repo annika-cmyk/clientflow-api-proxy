@@ -1593,6 +1593,7 @@ class RiskFactorsManager {
             motiveringResidual: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || ''
         };
         const reviewMode = !!(Ai && Ai.hasExistingOvrigContent(befintligt));
+        const requestEpoch = this.bumpAiSuggestionEpoch();
         if (btn) {
             btn.disabled = true;
             btn.classList.add('loading');
@@ -1607,11 +1608,13 @@ class RiskFactorsManager {
                 headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
                 body: JSON.stringify({ riskfaktor, typ, befintligt })
             });
+            if (requestEpoch !== this._aiSuggestionEpoch) return;
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
                 throw new Error(err.error || `HTTP ${response.status}`);
             }
             const data = await response.json();
+            if (requestEpoch !== this._aiSuggestionEpoch) return;
             this._lastAiAudit = data.auditLogId ? { logId: data.auditLogId } : null;
             if (reviewMode) {
                 const basePoster = (data.granskning && Array.isArray(data.granskning.poster))
@@ -1629,10 +1632,11 @@ class RiskFactorsManager {
             if (mode === 'edit') this.editNeedsReview = false;
             this.updateRiskBadges(mode);
         } catch (error) {
+            if (requestEpoch !== this._aiSuggestionEpoch) return;
             console.error('AI-förslag fel:', error);
             this.showNotification('Kunde inte generera AI-förslag: ' + error.message, 'error');
         } finally {
-            if (btn) {
+            if (requestEpoch === this._aiSuggestionEpoch && btn) {
                 btn.disabled = false;
                 btn.classList.remove('loading');
                 if (label) label.textContent = originalLabel || 'Generera AI-analys';
@@ -1670,7 +1674,34 @@ class RiskFactorsManager {
     }
 
 
+    /** Rensa AI-förslag-DOM så föregående riskfaktor aldrig syns i nästa modal. */
+    clearOvrigInlineAi(modalId) {
+        const scopes = modalId
+            ? [document.getElementById(modalId)].filter(Boolean)
+            : [document.getElementById('add-risk-modal'), document.getElementById('edit-risk-modal')].filter(Boolean);
+        scopes.forEach((scope) => {
+            scope.querySelectorAll('.field-ai-forslag').forEach((el) => el.remove());
+        });
+        if (window.AiFaltGranskning) {
+            if (!modalId || modalId === 'add-risk-modal') {
+                AiFaltGranskning.hideReview(document.getElementById('add-ai-review'));
+            }
+            if (!modalId || modalId === 'edit-risk-modal') {
+                AiFaltGranskning.hideReview(document.getElementById('edit-ai-review'));
+            }
+        }
+        this._lastAiAudit = null;
+    }
+
+    /** Ogiltigförklara pågående AI-svar så de inte målar förslag i en annan riskfaktors modal. */
+    bumpAiSuggestionEpoch() {
+        this._aiSuggestionEpoch = (this._aiSuggestionEpoch || 0) + 1;
+        return this._aiSuggestionEpoch;
+    }
+
     openAddModal(prefill) {
+        this.bumpAiSuggestionEpoch();
+        this.clearOvrigInlineAi('add-risk-modal');
         document.getElementById('add-risk-form')?.reset();
         const pt = document.getElementById('pt-tf');
         if (pt) pt.value = '';
@@ -1697,15 +1728,16 @@ class RiskFactorsManager {
 
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
-        if (window.AiFaltGranskning) {
-            AiFaltGranskning.hideReview(document.getElementById('add-ai-review'));
-            AiFaltGranskning.hideReview(document.getElementById('edit-ai-review'));
-        }
+        this.bumpAiSuggestionEpoch();
+        this.clearOvrigInlineAi(modalId);
     }
 
     async openEditModal(recordId) {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
+
+        this.bumpAiSuggestionEpoch();
+        this.clearOvrigInlineAi('edit-risk-modal');
 
         const fields = risk.fields;
         
