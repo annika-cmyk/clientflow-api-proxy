@@ -52,6 +52,8 @@
 - Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten). Föreslå inte ta-bort för [Eget]-poster.
 - Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar (ska vara rikare eller tydligare — inte kortare utan mer substans).
 - Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
+- Om bara källa saknas/ändras: markera redigera med kommentar om källan — påstå INTE att beskrivningen ändras när titel+beskrivning är oförändrade (även med annan whitespace).
+- Föreslå inte redigera alls när titel, beskrivning och källa är identiska med nuvarande efter normalisering (trim/whitespace).
 - andra=false bara om ditt förslag är identiskt med nuvarande innehåll efter en genuin omprövning, eller om skillnaden bara är kosmetisk utan mer pedagogik/AML-värde.`;
 
   function getTjanstTfTackning() {
@@ -545,13 +547,22 @@
       parts.push('beskrivningen');
     }
     if (falt === 'hot' || falt === 'sarbarheter') {
-      const curK = trimStr(current.kalla || current.källa);
-      const nextK = trimStr(forslag.kalla || forslag.källa);
+      const curK = trimStr(current.kalla || current.källa || current.source);
+      const nextK = trimStr(forslag.kalla || forslag.källa || forslag.source);
       if (fold(curK) !== fold(nextK)) {
-        parts.push(curK ? 'källan' : 'källa läggs till');
+        parts.push('källan');
       }
     }
+    if (falt === 'atgarder') {
+      const curS = fold(current.status);
+      const nextS = fold(forslag.status);
+      if (curS && nextS && curS !== nextS) parts.push('status');
+    }
     return parts;
+  }
+
+  function isKallaOnlyFieldChange(fields) {
+    return Array.isArray(fields) && fields.length === 1 && fields[0] === 'källan';
   }
 
   function buildFallbackItemComment(falt, changeKind, current, forslag) {
@@ -569,16 +580,38 @@
       return `AI föreslår att ta bort «${title}» eftersom den inte ingår i den samlade analysen — den bedöms vara överflödig, svagt kopplad till tjänsten eller redan täckt av andra faktorer.`;
     }
     const fields = listItemFieldChanges(falt, current, forslag);
+    if (isKallaOnlyFieldChange(fields)) {
+      const hadKalla = trimStr(current && (current.kalla || current.källa || current.source));
+      return hadKalla
+        ? `AI föreslår att uppdatera källan för «${title}». Beskrivningen är oförändrad.`
+        : `AI föreslår att lägga till källa för «${title}». Beskrivningen är oförändrad.`;
+    }
     if (fields.length) {
       return `AI föreslår att justera ${fields.join(', ')} för «${title}» så att kopplingen till tjänsten och AML/TF blir tydligare.`;
     }
     return `AI föreslår en justering av «${title}».`;
   }
 
+  function commentClaimsDescriptionChange(comment) {
+    const t = fold(comment);
+    if (!t) return false;
+    return t.includes('beskrivning') || t.includes('omskriv') || t.includes('formulering');
+  }
+
   function getListItemComment(item, changeKind, current, forslag) {
     const map = item._andringMap || andringCommentMap(item.andringar);
     const key = fold(itemTitle(forslag || current));
     const fromMap = key ? map.get(`${changeKind}:${key}`) : '';
+    if (changeKind === 'redigera') {
+      const fields = listItemFieldChanges(item.falt, current, forslag);
+      // Hoppa över vilseledande AI-motivering som påstår beskrivningsändring när bara källa skiljer.
+      if (fromMap && commentClaimsDescriptionChange(fromMap) && !fields.includes('beskrivningen')) {
+        return buildFallbackItemComment(item.falt, changeKind, current, forslag);
+      }
+      if (fromMap && isKallaOnlyFieldChange(fields) && !/k[aä]lla/i.test(fromMap)) {
+        return buildFallbackItemComment(item.falt, changeKind, current, forslag);
+      }
+    }
     if (fromMap) return fromMap;
     return buildFallbackItemComment(item.falt, changeKind, current, forslag);
   }
@@ -661,6 +694,23 @@
 
   function listDiffHasChanges(diff) {
     return !!(diff && (diff.updated.length || diff.added.length || diff.removed.length));
+  }
+
+  /**
+   * Filtrera bort "uppdateringar" där inget fält skiljer sig efter normalisering
+   * (t.ex. identisk beskrivning + samma källa, eller AI-påstådd redigering utan delta).
+   */
+  function filterMeaningfulListDiff(falt, diff) {
+    const base = diff || { updated: [], added: [], removed: [] };
+    const updated = (Array.isArray(base.updated) ? base.updated : []).filter((row) => {
+      if (!row) return false;
+      return listItemFieldChanges(falt, row.current, row.forslag).length > 0;
+    });
+    return {
+      updated,
+      added: Array.isArray(base.added) ? base.added.slice() : [],
+      removed: Array.isArray(base.removed) ? base.removed.slice() : []
+    };
   }
 
   function classifyAndring(falt, current, forslag, andra) {
@@ -1258,6 +1308,7 @@
     preferRicherListItems,
     listDiff,
     listDiffHasChanges,
+    filterMeaningfulListDiff,
     isUserAddedItem,
     listDiffPreserveUserAdded,
     usefulComment,
@@ -1268,6 +1319,7 @@
     getListItemComment,
     buildFallbackItemComment,
     listItemFieldChanges,
+    isKallaOnlyFieldChange,
     explainTextFieldChange,
     decoratePoster,
     isVisibleReviewItem,
