@@ -162,6 +162,14 @@
   const archiveApi = (window.MejlArchive && MejlArchive.createApi)
     ? MejlArchive.createApi({ baseUrl, authOpts, showToast })
     : null;
+  const createWorkApi = (window.MejlCreateWork && MejlCreateWork.createApi)
+    ? MejlCreateWork.createApi({
+        baseUrl,
+        authOpts,
+        showToast,
+        getCustomers: () => customers
+      })
+    : null;
 
   function labelChipHtml(label, opts) {
     const removable = opts && opts.removable;
@@ -796,6 +804,7 @@
         <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
           <i class="fas fa-reply"></i> Svara
         </button>
+        ${createWorkApi ? createWorkApi.toolbarButtonHtml() : ''}
         <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
           <i class="fas fa-trash"></i> Radera
         </button>
@@ -835,6 +844,14 @@
         customerId: customerIdForArchive,
         plainText: m.text || m.snippet || '',
         onRefresh: () => openMessage(id)
+      });
+    }
+    if (createWorkApi) {
+      createWorkApi.bindDetailButtons({
+        id,
+        message: m,
+        listMeta,
+        customerId: detailCustomerId || customerIdForArchive
       });
     }
   }
