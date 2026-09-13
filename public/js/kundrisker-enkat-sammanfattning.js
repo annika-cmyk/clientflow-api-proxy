@@ -636,13 +636,24 @@
           tries += 1;
           if ((window.riskManager && window.riskManager.risks && window.riskManager.risks.length) || tries > 40) {
             clearInterval(timer);
-            if (summary.hasAnswers) renderSummary(root, summary);
+            refresh();
           }
         }, 500);
       })
       .catch(function (err) {
         renderError(root, err && err.message);
       });
+  }
+
+  /** Anropas efter sparad riskanalys så Analysera-knappar/status uppdateras. */
+  function refresh() {
+    var root = document.getElementById('kundrisker-enkat-root');
+    if (!root || !state.summary) return;
+    if (!state.summary.hasAnswers) {
+      renderEmpty(root);
+      return;
+    }
+    renderSummary(root, state.summary);
   }
 
   if (document.readyState === 'loading') {
@@ -654,6 +665,7 @@
   window.KundriskerEnkatSammanfattning = {
     buildSummary: buildSummary,
     mount: mount,
+    refresh: refresh,
     getState: function () { return state; }
   };
 })();
