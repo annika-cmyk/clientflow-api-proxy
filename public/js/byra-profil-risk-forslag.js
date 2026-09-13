@@ -36,6 +36,30 @@
       .replace(/\s+/g, ' ');
   }
 
+  var LEVERANS_ENDAST_DISTANS = [
+    'distans',
+    'vi träffar kunder endast på distans'
+  ];
+  var LEVERANS_BLANDAD = [
+    'blandat',
+    'vi träffar kunder både fysiskt ibland och digitalt regelbundet',
+    'onboarding fysiskt, därefter främst distans',
+    'blandad modell – varierar kraftigt mellan kunder',
+    'blandad modell - varierar kraftigt mellan kunder'
+  ];
+
+  function isLeveransEndastDistans(value) {
+    return LEVERANS_ENDAST_DISTANS.indexOf(fold(value)) !== -1;
+  }
+
+  function isLeveransBlandad(value) {
+    return LEVERANS_BLANDAD.indexOf(fold(value)) !== -1;
+  }
+
+  function isLeveransMedDistans(value) {
+    return isLeveransEndastDistans(value) || isLeveransBlandad(value);
+  }
+
   function isAnswered(value) {
     if (value == null) return false;
     if (Array.isArray(value)) return value.some(function (v) { return trimStr(v); });
@@ -117,33 +141,33 @@
     }
 
     var leverans = trimStr(p.leveranssatt);
-    if (leverans === 'Distans') {
+    if (isLeveransEndastDistans(leverans)) {
       add({
         id: 'distans-leverans',
         typ: TYP_DISTRIBUTION,
         riskfaktor: 'Distansrelation utan fysiskt möte',
-        triggerLabel: 'Distans',
+        triggerLabel: 'Endast distans',
         beskrivning:
           'När kundrelation och onboarding sker helt på distans blir det svårare att verifiera identitet, avsikt och verklig huvudman jämfört med fysiskt möte.',
         ptTf: 'Båda',
-        why: 'Byråprofil: leveranssätt Distans'
+        why: 'Byråprofil: leveranssätt endast distans'
       });
-    } else if (leverans === 'Blandat') {
+    } else if (isLeveransBlandad(leverans)) {
       add({
         id: 'blandad-leverans',
         typ: TYP_DISTRIBUTION,
         riskfaktor: 'Blandad distans- och fysisk kundkontakt',
-        triggerLabel: 'Blandat',
+        triggerLabel: 'Blandad / hybrid',
         beskrivning:
           'Blandade kanaler kräver konsekventa kontroller oavsett om kunden möts fysiskt eller digitalt — annars uppstår luckor i identifiering och uppföljning.',
         ptTf: 'Båda',
-        why: 'Byråprofil: leveranssätt Blandat'
+        why: 'Byråprofil: leveranssätt blandad/hybrid'
       });
     }
 
     var bankId = trimStr(p.bankIdKrav);
     if (
-      (leverans === 'Distans' || leverans === 'Blandat') &&
+      isLeveransMedDistans(leverans) &&
       (bankId === 'Nej' || bankId === 'Ibland')
     ) {
       add({
@@ -255,6 +279,9 @@
   }
 
   return {
+    isLeveransEndastDistans: isLeveransEndastDistans,
+    isLeveransBlandad: isLeveransBlandad,
+    isLeveransMedDistans: isLeveransMedDistans,
     TYP_VERKSAMHET: TYP_VERKSAMHET,
     TYP_DISTRIBUTION: TYP_DISTRIBUTION,
     SUMMARY_KEYS: SUMMARY_KEYS,
