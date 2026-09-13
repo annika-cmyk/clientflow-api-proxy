@@ -8787,6 +8787,16 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
     margin: 0;
 }
 
+.risk-task-name .risk-task-name-missing {
+    font-style: italic;
+    font-weight: 600;
+    color: #9a3412;
+}
+
+.risk-item--missing-name .risk-task-name {
+    color: #9a3412;
+}
+
 .risk-meta-info {
     display: flex;
     align-items: center;

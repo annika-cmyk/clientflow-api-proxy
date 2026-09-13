@@ -1179,7 +1179,11 @@ class RiskFactorsManager {
         };
         const isChecked = risk.fields['Aktuell'] === true;
         const riskType = risk.fields['Typ av riskfaktor'] || 'Namnlös riskfaktor';
-        const riskFactor = risk.fields['Riskfaktor'] || '';
+        const riskFactor = String(risk.fields['Riskfaktor'] || '').trim();
+        const hasName = !!riskFactor;
+        const titleHtml = hasName
+            ? this.esc(riskFactor)
+            : '<em class="risk-task-name-missing">Namnlös riskfaktor</em>';
         const motStatus = (window.RiskMotivering && RiskMotivering.assessMotivering(scored)) || { complete: true };
         const motWarn = (!motStatus.complete && isChecked)
             ? '<span class="risk-motivering-warn risk-motivering-warn--list" title="Motivering saknas eller är för kort">✗</span>'
@@ -1190,16 +1194,19 @@ class RiskFactorsManager {
         const tfTag = (window.RiskSkala && RiskSkala.isTfRelevant(scored.ptTfRelevans))
             ? '<span class="pt-tf-tag">TF</span>'
             : '';
+        const nameSectionHtml = hasName
+            ? `${this.esc(riskFactor).replace(/\n/g, '<br>')}${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''}`
+            : `<em>Namn saknas</em>${scored.ptTfRelevans ? ` · ${this.esc(scored.ptTfRelevans)}` : ''} — öppna <strong>Byt namn</strong> i menyn eller <strong>Redigera</strong> för att sätta namnet.`;
         
         return `
-            <div class="risk-item ${rowRiskClass} ${isChecked ? '' : 'inactive'}" data-record-id="${risk.id}">
+            <div class="risk-item ${rowRiskClass} ${isChecked ? '' : 'inactive'}${hasName ? '' : ' risk-item--missing-name'}" data-record-id="${risk.id}">
                 <div class="risk-item-header" onclick="riskManager.toggleRiskItem(this)">
                     <div class="risk-item-title">
                         <div class="risk-status-indicator ${isChecked ? 'checked' : 'unchecked'}">
                             ${isChecked ? '✓' : '○'}
                         </div>
                         <div class="risk-item-info">
-                            <h4 class="risk-task-name">${riskFactor} ${tfTag} ${motWarn}</h4>
+                            <h4 class="risk-task-name">${titleHtml} ${tfTag} ${motWarn}</h4>
                             <div class="risk-meta-info">
                                 <span class="risk-level-badge ${riskLevelClass}" title="${this.esc(badges.inneboendeTitle)}">${this.esc(badges.inneboende)}</span>
                                 ${badges.residual ? `<span class="risk-level-badge ${residualClass}" title="${this.esc(badges.residualTitle)}">${this.esc(badges.residual)}</span>` : ''}
@@ -1214,6 +1221,10 @@ class RiskFactorsManager {
                                 <i class="fas fa-ellipsis" aria-hidden="true"></i>
                             </button>
                             <div class="risk-row-menu-panel" hidden role="menu">
+                                <button type="button" class="risk-row-menu-item rename-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
+                                    <i class="fas fa-pen" aria-hidden="true"></i>
+                                    Byt namn
+                                </button>
                                 <button type="button" class="risk-row-menu-item is-danger delete-risk" role="menuitem" data-record-id="${risk.id}" onclick="event.stopPropagation()">
                                     <i class="fas fa-trash" aria-hidden="true"></i>
                                     Ta bort
@@ -1230,7 +1241,7 @@ class RiskFactorsManager {
                     <div class="risk-content-section">
                         <h5><i class="fas fa-exclamation-triangle"></i> Riskfaktor</h5>
                         <p class="risk-content-text">
-                            ${this.formatDescription(riskFactor)}${scored.ptTfRelevans ? ` · ${scored.ptTfRelevans}` : ''}
+                            ${nameSectionHtml}
                         </p>
                     </div>
                     
@@ -1335,6 +1346,15 @@ class RiskFactorsManager {
             button.addEventListener('click', (e) => {
                 const recordId = e.target.closest('.edit-risk').dataset.recordId;
                 this.openEditModal(recordId);
+            });
+        });
+
+        // Rename via ⋯-menu — öppnar samma modal med fokus på namnfältet
+        document.querySelectorAll('.rename-risk').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const recordId = e.target.closest('.rename-risk').dataset.recordId;
+                this.closeAllRiskRowMenus();
+                this.openEditModal(recordId, { focusName: true });
             });
         });
 
@@ -2332,7 +2352,7 @@ modeFromModalId(modalId) {
         this.clearOvrigInlineAi(modalId);
     }
 
-    async openEditModal(recordId) {
+    async openEditModal(recordId, opts = {}) {
         const risk = this.risks.find(r => r.id === recordId);
         if (!risk) return;
 
@@ -2353,7 +2373,8 @@ modeFromModalId(modalId) {
         }
         
         const scored = this.scoredRisk(fields);
-        document.getElementById('edit-risk-factor').value = fields['Riskfaktor'] || '';
+        const nameEl = document.getElementById('edit-risk-factor');
+        if (nameEl) nameEl.value = fields['Riskfaktor'] || '';
         document.getElementById('edit-description').value = fields['Beskrivning'] || '';
         document.getElementById('edit-action').value = fields['Åtgjärd'] || fields['Åtgärd'] || '';
         const pt = document.getElementById('edit-pt-tf');
@@ -2375,6 +2396,14 @@ modeFromModalId(modalId) {
         this.setKlarmarkeradeFlikar('edit', scored.klarmarkeradeFlikar || []);
         this.setRiskTab('edit-risk-modal', 'utforande');
         document.getElementById('edit-risk-modal').style.display = 'flex';
+
+        const focusName = opts.focusName === true || !String(fields['Riskfaktor'] || '').trim();
+        if (focusName && nameEl && typeof nameEl.focus === 'function') {
+            setTimeout(() => {
+                try { nameEl.focus({ preventScroll: false }); } catch (_) { nameEl.focus(); }
+                if (typeof nameEl.select === 'function' && nameEl.value) nameEl.select();
+            }, 0);
+        }
     }
 
     async handleAddRisk(event) {
