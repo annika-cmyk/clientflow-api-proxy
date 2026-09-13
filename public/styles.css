@@ -19623,8 +19623,88 @@ body.byra-resa-page .risk-header h1 {
   align-items: center;
 }
 .kundrisker-enkat.is-loading .kundrisker-enkat-lead { margin-bottom: 0; }
+.kundrisker-enkat-row-main {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.9fr) minmax(8rem, 1.2fr) auto;
+  gap: 0.5rem 1rem;
+  align-items: start;
+}
+.kundrisker-enkat-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+.kundrisker-analys-btn {
+  white-space: nowrap;
+}
+.kundrisker-analys-btn.is-optional {
+  opacity: 0.85;
+}
+.kundrisker-analys-panel {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(15, 61, 62, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 61, 62, 0.03);
+}
+.kundrisker-analys-panel-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  color: #3d4f50;
+  line-height: 1.4;
+}
+.kundrisker-analys-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+.kundrisker-analys-check {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.kundrisker-analys-check input {
+  margin-top: 0.2rem;
+}
+.kundrisker-analys-check-label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  align-items: baseline;
+}
+.kundrisker-analys-check-detail {
+  color: #5a6b6c;
+  font-size: 0.85rem;
+}
+.kundrisker-analys-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #8a4b2a;
+  background: rgba(138, 75, 42, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+.kundrisker-analys-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.kundrisker-analys-queue {
+  margin: 0.65rem 0 0;
+  font-size: 0.85rem;
+  color: #3d4f50;
+}
 @media (max-width: 720px) {
   .kundrisker-enkat-head { flex-direction: column; align-items: flex-start; }
+  .kundrisker-enkat-row-main { grid-template-columns: 1fr; }
+  .kundrisker-enkat-actions { justify-content: flex-start; }
+}
 /* Byråprofil-kaskad på Övriga riskfaktorer */
 .byra-profil-kaskad {
   margin: 0 0 1.75rem;
