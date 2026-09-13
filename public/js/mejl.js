@@ -67,13 +67,16 @@
     return `Gmail är inte konfigurerad på servern. Saknas i Render (${svc}): ${missing.join(', ')}.${setPart}${lenPart}${hostPart} Se docs/GMAIL_SETUP.md.`;
   }
 
-  function listTitle(m) {
-    const company = String(m.customerName || m.labelLeaf || '').trim();
-    const sender = String(m.fromName || '').trim() || String(m.from || 'Okänd avsändare').trim();
-    if (company && sender && company.toLowerCase() !== sender.toLowerCase()) {
-      return `${company} · ${sender}`;
+  function fromDisplayName(m) {
+    if (m && m.fromName) return String(m.fromName).trim();
+    const raw = String((m && m.from) || '').trim();
+    if (!raw) return 'Okänd avsändare';
+    const angled = raw.match(/^(.*?)\s*<([^>]+)>\s*$/);
+    if (angled) {
+      const name = angled[1].replace(/^["']+|["']+$/g, '').trim();
+      return name || angled[2] || 'Okänd avsändare';
     }
-    return company || sender;
+    return raw;
   }
 
   const els = {
@@ -213,25 +216,28 @@
     if (!messages.length) {
       const empty =
         folder === 'sent'
-          ? 'Inga skickade mejl under matchade KUNDER-etiketter.'
-          : 'Inga mejl hittades under matchade KUNDER-etiketter.';
+          ? 'Inga skickade mejl under etiketten KUNDER.'
+          : 'Inga mejl hittades under etiketten KUNDER.';
       els.list.innerHTML = `<p class="mejl-hint">${empty}</p>${extraHtml || ''}`;
       return;
     }
     els.list.innerHTML =
       messages
-        .map(
-          (m) => `
+        .map((m) => {
+          const customer = String(m.customerName || '').trim() || 'Okänd kund';
+          const sender = fromDisplayName(m);
+          return `
       <button type="button" class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}">
         <div class="mejl-item-top">
-          <span class="mejl-item-from">${esc(listTitle(m))}</span>
+          <span class="mejl-item-customer">${esc(customer)}</span>
           <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
         </div>
+        <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </button>
-    `
-        )
+    `;
+        })
         .join('') + (extraHtml || '');
   }
 
@@ -289,14 +295,19 @@
       return;
     }
     const m = data.message;
+    const listMeta = messages.find((x) => x.id === id) || {};
+    const customerName = String(listMeta.customerName || '').trim();
+    const sender = fromDisplayName({ fromName: listMeta.fromName, from: m.from });
+    const title = customerName ? `${customerName} · ${sender}` : sender;
     const bodyHtml = m.html
       ? `<div class="mejl-detail-body html-body">${m.html}</div>`
       : `<div class="mejl-detail-body">${esc(m.text || m.snippet || '')}</div>`;
     els.detail.innerHTML = `
       <div class="mejl-item-top">
-        <strong>${esc(m.subject)}</strong>
+        <strong class="mejl-detail-title">${esc(title)}</strong>
         <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
       </div>
+      <div class="mejl-item-subject">${esc(m.subject)}</div>
       <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
       <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
       <div class="mejl-connect-actions" style="margin-top:0.75rem;">
@@ -319,8 +330,7 @@
         els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
         els.compose.dataset.threadId = m.threadId || '';
         els.compose.dataset.inReplyTo = m.messageIdHeader || '';
-        const matchMsg = messages.find((x) => x.id === id);
-        if (matchMsg && matchMsg.customerId) els.customer.value = matchMsg.customerId;
+        if (listMeta.customerId) els.customer.value = listMeta.customerId;
         els.body.focus();
       });
     }
