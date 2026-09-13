@@ -182,12 +182,28 @@
     }
   }
 
-  function renderList() {
+  function renderUnmatchedHint(unmatchedLabels) {
+    const list = Array.isArray(unmatchedLabels) ? unmatchedLabels : [];
+    if (!list.length) return '';
+    const names = list
+      .slice(0, 6)
+      .map((u) => u.labelLeaf || u.labelName)
+      .filter(Boolean);
+    if (!names.length) return '';
+    const more = list.length > names.length ? ` (+${list.length - names.length} till)` : '';
+    return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}. Namnet behöver likna kundnamnet i ClientFlow.</p>`;
+  }
+
+  function renderList(extraHtml) {
     if (!messages.length) {
-      els.list.innerHTML = '<p class="mejl-hint">Inga mejl hittades under matchade KUNDER-etiketter.</p>';
+      els.list.innerHTML =
+        `<p class="mejl-hint">Inga mejl hittades under matchade KUNDER-etiketter.</p>${extraHtml || ''}`;
       return;
     }
-    els.list.innerHTML = messages.map((m) => `
+    els.list.innerHTML =
+      messages
+        .map(
+          (m) => `
       <button type="button" class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}">
         <div class="mejl-item-top">
           <span class="mejl-item-from">${esc(m.from || 'Okänd avsändare')}</span>
@@ -197,7 +213,9 @@
         <div class="mejl-item-meta">${esc(m.customerName || '')}${m.labelLeaf || m.labelName ? ' · ' + esc(m.labelLeaf || m.labelName) : ''}</div>
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </button>
-    `).join('');
+    `
+        )
+        .join('') + (extraHtml || '');
   }
 
   async function loadInbox() {
@@ -212,10 +230,12 @@
       return;
     }
     messages = data.messages || [];
-    renderList();
+    const unmatchedHtml = renderUnmatchedHint(data.unmatchedLabels);
     if (data.note && !messages.length) {
-      els.list.innerHTML = `<p class="mejl-hint">${esc(data.note)}</p>`;
+      els.list.innerHTML = `<p class="mejl-hint">${esc(data.note)}</p>${unmatchedHtml}`;
+      return;
     }
+    renderList(unmatchedHtml);
   }
 
   async function openMessage(id) {
