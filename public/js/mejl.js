@@ -525,6 +525,34 @@
     return null;
   }
 
+  const LABELS_PANEL_STORAGE_KEY = 'mejl-labels-panel-open';
+
+  function isLabelsPanelOpen() {
+    try {
+      return sessionStorage.getItem(LABELS_PANEL_STORAGE_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setLabelsPanelOpen(open) {
+    try {
+      sessionStorage.setItem(LABELS_PANEL_STORAGE_KEY, open ? '1' : '0');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function applyLabelsPanelState(open) {
+    const panel = document.getElementById('mejl-labels-panel');
+    const toggle = document.getElementById('mejl-labels-toggle');
+    if (panel) panel.hidden = !open;
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.classList.toggle('is-open', !!open);
+    }
+  }
+
   function bindDetailLabelUi(id) {
     const select = document.getElementById('mejl-label-select');
     const applyBtn = document.getElementById('mejl-label-apply');
@@ -535,6 +563,15 @@
     const linkBtn = document.getElementById('mejl-link-apply');
     const unlinkBtn = document.getElementById('mejl-link-remove');
     const syncCheck = document.getElementById('mejl-link-sync-gmail');
+    const labelsToggle = document.getElementById('mejl-labels-toggle');
+
+    if (labelsToggle) {
+      labelsToggle.addEventListener('click', () => {
+        const next = !isLabelsPanelOpen();
+        setLabelsPanelOpen(next);
+        applyLabelsPanelState(next);
+      });
+    }
 
     function syncCreateVisibility() {
       if (!createWrap || !select) return;
@@ -743,18 +780,21 @@
       '';
     const hasLink = !!(m.labelLink && m.labelLink.kundId) || m.matchReason === 'link';
     const kundkortBtn = kundkortLinkHtml(detailCustomerId);
+    const labelsOpen = isLabelsPanelOpen();
+    const labelsToggleHtml = `<button type="button" class="mejl-labels-toggle${labelsOpen ? ' is-open' : ''}" id="mejl-labels-toggle" aria-expanded="${labelsOpen ? 'true' : 'false'}" aria-controls="mejl-labels-panel" title="Etiketter" aria-label="Etiketter"><i class="fas fa-tag" aria-hidden="true"></i></button>`;
     els.detail.innerHTML = `
       <div class="mejl-item-top">
         <div class="mejl-detail-title-row">
           <strong class="mejl-detail-title">${esc(title)}</strong>
           ${kundkortBtn}
+          ${labelsToggleHtml}
         </div>
         <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
       </div>
       <div class="mejl-item-subject">${esc(m.subject)}</div>
       <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
       <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
-      <div class="mejl-labels-block">
+      <div class="mejl-labels-block" id="mejl-labels-panel"${labelsOpen ? '' : ' hidden'}>
         <div class="mejl-labels-heading">Etiketter</div>
         ${labelsHtml || '<p class="mejl-hint" style="margin:0;">Inga etiketter.</p>'}
         ${reasonHtml}

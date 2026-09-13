@@ -82,6 +82,21 @@
         display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.65rem; min-width: 0;
       }
       .mejl-detail-title-row .mejl-kundkort-btn { flex-shrink: 0; }
+      .mejl-labels-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.85rem; height: 1.85rem; padding: 0; flex-shrink: 0;
+        border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc;
+        color: #475569; cursor: pointer; line-height: 1;
+      }
+      .mejl-labels-toggle i.fa-tag { font-size: 0.72rem; opacity: 0.85; }
+      .mejl-labels-toggle:hover { background: #f1f5f9; color: #1e3a5f; border-color: #c5d4e8; }
+      .mejl-labels-toggle.is-open,
+      .mejl-labels-toggle[aria-expanded="true"] {
+        background: #e8eef6; color: #1e3a5f; border-color: #c5d4e8;
+      }
+      .mejl-labels-toggle:focus-visible {
+        outline: 2px solid #93c5fd; outline-offset: 2px;
+      }
       .mejl-item-from { font-weight: 500; color: #334155; font-size: 0.88rem; margin-bottom: 0.15rem; }
       .mejl-item-date { color: #94a3b8; font-size: 0.78rem; white-space: nowrap; }
       .mejl-item-subject { font-size: 0.86rem; color: #64748b; margin-bottom: 0.15rem; }
@@ -170,6 +185,7 @@
       .mejl-labels-block {
         margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid #e2e8f0;
       }
+      .mejl-labels-block[hidden] { display: none !important; }
       .mejl-labels-heading {
         font-size: 0.78rem; font-weight: 700; color: #64748b;
         text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.4rem;
