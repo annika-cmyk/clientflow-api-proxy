@@ -86,9 +86,7 @@
             const showDesc = isFocus || step.status === 'next' || step.status === 'attention';
             return `
             <li class="kundresa-step ${statusClass(step.status)}${step.comingSoonBankId ? ' is-soon' : ''}${isFocus ? ' is-active-panel' : ''}"
-                data-kundresa-step="${esc(String(step.id))}"
-                data-tab="${esc(step.tab || '')}"
-                data-focus="${esc(step.focus || '')}">
+                data-kundresa-step="${esc(String(step.id))}">
               <button type="button" class="kundresa-step-btn"
                 data-kundresa-goto="${esc(step.tab || '')}"
                 data-kundresa-focus="${esc(step.focus || '')}"
@@ -99,7 +97,7 @@
                 <span class="kundresa-step-body">
                   <span class="kundresa-step-meta">${esc(String(step.id))} · ${esc(step.label || '')}</span>
                   <span class="kundresa-step-title">${esc(step.title)}</span>
-                  ${showDesc ? `<span class="kundresa-step-desc">${esc(step.desc)}</span>` : ''}
+                  ${showDesc ? `<span class="kundresa-step-desc">${esc(step.desc || '')}</span>` : ''}
                 </span>
               </button>
             </li>`;

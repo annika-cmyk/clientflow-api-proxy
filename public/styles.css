@@ -19381,6 +19381,7 @@ body.byra-resa-page .risk-header h1 {
 .kundresa-step.is-attention .kundresa-step-meta { color: #b91c1c; }
 .kundresa-step.is-gated .kundresa-step-meta { color: #94a3b8; }
 .kundresa-step.is-gated .kundresa-step-title { color: #64748b; }
+.kundresa-step.is-soon .kundresa-step-meta { color: #94a3b8; }
 .kundresa-vh-box {
   border-top: 1px solid #e2e8f0;
   padding-top: 0.85rem;
@@ -19499,6 +19500,10 @@ body.byra-resa-page .risk-header h1 {
   font-size: 0.84rem;
   font-weight: 600;
   color: #334155;
+}
+/* display:flex ovan slår annars ut UA-[hidden] */
+.kundresa-vh-field[hidden] {
+  display: none !important;
 }
 .kundresa-vh-field .form-control {
   font-weight: 500;
