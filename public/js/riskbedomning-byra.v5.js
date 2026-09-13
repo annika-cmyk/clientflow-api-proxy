@@ -1800,22 +1800,50 @@ class RiskAssessmentManager {
         if (this._klarSaveInFlight) return;
         const id = this._activeTjanstTab || 'utforande';
         const turningOn = !this.klarmarkeradeFlikar.has(id);
-        if (turningOn) this.klarmarkeradeFlikar.add(id);
-        else this.klarmarkeradeFlikar.delete(id);
+        if (turningOn) {
+            await this.markTjanstFlikKlar(id);
+            return;
+        }
+        this.klarmarkeradeFlikar.delete(id);
         this.syncTjanstTabDoneState();
         this.syncKlarmarkeraBtn();
         this.syncEditingRiskKlarmarkering();
 
         const saved = await this.persistKlarmarkeringViaSave();
         if (!saved) {
-            if (turningOn) this.klarmarkeradeFlikar.delete(id);
-            else this.klarmarkeradeFlikar.add(id);
+            this.klarmarkeradeFlikar.add(id);
             this.syncTjanstTabDoneState();
             this.syncKlarmarkeraBtn();
             this.syncEditingRiskKlarmarkering();
-            return;
         }
-        if (turningOn) this.advanceTjanstResaAfterKlar(id);
+    }
+
+    /**
+     * Mark a Din resa step klar (same as Klarmarkera ON) and persist via putRiskAssessment.
+     * @param {string} [id]
+     * @param {{ advance?: boolean }} [opts] advance defaults true (match manual Klarmarkera)
+     * @returns {Promise<boolean>}
+     */
+    async markTjanstFlikKlar(id, opts = {}) {
+        if (this._klarSaveInFlight) return false;
+        const flikId = id || 'utforande';
+        if (this.klarmarkeradeFlikar.has(flikId)) return true;
+
+        this.klarmarkeradeFlikar.add(flikId);
+        this.syncTjanstTabDoneState();
+        this.syncKlarmarkeraBtn();
+        this.syncEditingRiskKlarmarkering();
+
+        const saved = await this.persistKlarmarkeringViaSave();
+        if (!saved) {
+            this.klarmarkeradeFlikar.delete(flikId);
+            this.syncTjanstTabDoneState();
+            this.syncKlarmarkeraBtn();
+            this.syncEditingRiskKlarmarkering();
+            return false;
+        }
+        if (opts.advance !== false) this.advanceTjanstResaAfterKlar(flikId);
+        return true;
     }
 
     /** After marking a Din resa step klar, move to the next sidebar step (no-op on last). */
@@ -3121,6 +3149,9 @@ class RiskAssessmentManager {
         if (typeof Ai.listDiffPreserveUserAdded === 'function') {
             diff = Ai.listDiffPreserveUserAdded(diff);
         }
+        if (typeof Ai.filterMeaningfulListDiff === 'function') {
+            diff = Ai.filterMeaningfulListDiff(kind, diff);
+        }
         if (!Ai.listDiffHasChanges(diff)) return false;
         const listId = kind === 'hot' ? 'hot-list' : kind === 'sarbarheter' ? 'sarbarhet-list' : 'atgard-list';
         const list = document.getElementById(listId);
@@ -3134,7 +3165,15 @@ class RiskAssessmentManager {
             banner.innerHTML = `<span class="dyn-ai-motivering-label">AI:s helhetsmotivering:</span> ${this.esc(note)}`;
             list.insertAdjacentElement('beforebegin', banner);
         }
+        const meaningfulUpdates = [];
         diff.updated.forEach((row) => {
+            const domRow = rows[row.currentIndex];
+            const liveCurrent = this.readDynListRowItem(domRow, kind) || row.current;
+            const fields = Ai.listItemFieldChanges(kind, liveCurrent, row.forslag);
+            if (!fields.length) return;
+            meaningfulUpdates.push({ ...row, current: liveCurrent, fields });
+        });
+        meaningfulUpdates.forEach((row) => {
             const comment = Ai.getListItemComment(item, 'redigera', row.current, row.forslag);
             this.markRowAiUpdate(rows[row.currentIndex], kind, row.forslag, comment, row.current);
         });
@@ -3153,8 +3192,44 @@ class RiskAssessmentManager {
             const row = addedRows[addedRows.length - 1];
             this.markRowAiAdd(row, Ai.getListItemComment(item, 'lagg-till', null, rowItem));
         });
+        if (!meaningfulUpdates.length && !diff.added.length && !diff.removed.length) return false;
         this.groupDynListAiZones(list);
         return true;
+    }
+
+    /** Läs aktuell (osparad) rad från modal-DOM — samma källa som AI-payload. */
+    readDynListRowItem(row, kind) {
+        if (!row) return null;
+        if (kind === 'hot') {
+            const item = {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+                kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
+            };
+            const typ = (window.RiskSkala && RiskSkala.normalizePtTf(row.dataset.hotTyp)) || '';
+            if (typ) item.typ = typ;
+            if (row.dataset.userAdded === '1') item.userAdded = true;
+            return item;
+        }
+        if (kind === 'sarbarheter') {
+            return {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: this.stripEvidensLeakFromText(row.querySelector('.dyn-besk')?.value || ''),
+                kalla: row.querySelector('.dyn-kalla')?.value.trim() || '',
+                ...(row.dataset.userAdded === '1' ? { userAdded: true } : {})
+            };
+        }
+        if (kind === 'atgarder') {
+            const typ = row.querySelector('.dyn-atgard-typ input:checked')?.value || '';
+            return {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+                atgardTyp: typ,
+                status: this.normalizeAtgardStatus(row.querySelector('.dyn-atgard-status')?.value),
+                ...(row.dataset.userAdded === '1' ? { userAdded: true } : {})
+            };
+        }
+        return null;
     }
 
     paintInlineTjanstAi(poster, befintligt) {
@@ -3338,8 +3413,12 @@ class RiskAssessmentManager {
                 this.showNotification(changed
                     ? 'AI har lagt förslag i era kort. Grönt är nytt, överstruket föreslås tas bort. Du ansvarar för vad som sparas.'
                     : 'Inga nya förslag skilde sig från era texter.', 'success');
+                // Lyckad AI-analys: klarmarkera utförandefrågor (samma sparväg som Klarmarkera).
+                await this.markTjanstFlikKlar('utforande');
             } else {
                 this.applyTjanstAiAll(data);
+                // Markera utförande klar utan advance — första generering hoppar till Hot.
+                await this.markTjanstFlikKlar('utforande', { advance: false });
                 this.setTjanstTab('hot');
                 this.showNotification('AI-förslag inlagt. Granska och justera innan du sparar.', 'success');
             }
