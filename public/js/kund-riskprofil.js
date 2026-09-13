@@ -755,7 +755,91 @@
     return prefix + ': ' + name + sxk + note;
   }
 
-  function collectResidualItems(kund) {
+  
+  /**
+   * Kedja av faktorer som driver den beräknade residualen.
+   * Visas som "Din residual drivs av: …" med länkar till byråfaktorer.
+   * @returns {{kind:string,namn:string,level:string,product:number|null,golv:boolean,href:string}[]}
+   */
+  function buildDrivandeKedja(calc) {
+    var src = calc || {};
+    var poster = Array.isArray(src.poster) ? src.poster.slice() : [];
+    var golv = src.golv || null;
+    var maxProduct = src.product;
+    var out = [];
+    var seen = Object.create(null);
+
+    function hrefFor(kind) {
+      return kind === 'tjänst' ? '/riskbedomning-byra.html' : '/ovriga-riskfaktorer.html';
+    }
+
+    function add(item, opts) {
+      opts = opts || {};
+      if (!item && !opts.namn) return null;
+      var namn = trimStr((item && (item.namn || item.name)) || opts.namn || '');
+      if (!namn) return null;
+      var key = namn.toLowerCase();
+      if (seen[key]) {
+        if (opts.golv) seen[key].golv = true;
+        if (opts.level && !seen[key].level) seen[key].level = trimStr(opts.level);
+        return seen[key];
+      }
+      var kind = (item && item.kind === 'tjänst') ? 'tjänst' : 'riskfaktor';
+      if (opts.kind === 'tjänst') kind = 'tjänst';
+      var level = trimStr(opts.level || (item && (item.level || item.residualLevel)) || '');
+      var product = null;
+      if (item && item.product != null && isFinite(Number(item.product))) product = Number(item.product);
+      else if (item && item.residualProduct != null && isFinite(Number(item.residualProduct))) product = Number(item.residualProduct);
+      else if (opts.product != null && isFinite(Number(opts.product))) product = Number(opts.product);
+      var entry = {
+        kind: kind,
+        namn: namn,
+        level: level,
+        product: product,
+        golv: !!opts.golv,
+        href: hrefFor(kind)
+      };
+      seen[key] = entry;
+      out.push(entry);
+      return entry;
+    }
+
+    poster.forEach(function (p) {
+      if (maxProduct != null && Number(p.product) === Number(maxProduct)) add(p);
+    });
+
+    poster
+      .slice()
+      .sort(function (a, b) { return (Number(b.product) || 0) - (Number(a.product) || 0); })
+      .forEach(function (p) {
+        if (rankOf(p.level || p.residualLevel) >= 3) add(p);
+      });
+
+    if (golv) {
+      var kalla = Array.isArray(golv.kalla) ? golv.kalla.slice() : [];
+      if (!kalla.length && golv.namn) {
+        String(golv.namn).split(',').forEach(function (part) {
+          var n = trimStr(part);
+          if (n) kalla.push(n);
+        });
+      }
+      kalla.forEach(function (namn) {
+        add(
+          { kind: 'riskfaktor', namn: namn, level: golv.niva, product: golv.product },
+          { golv: true, level: golv.niva, product: golv.product }
+        );
+      });
+    }
+
+    out.sort(function (a, b) {
+      if (!!a.golv !== !!b.golv) return a.golv ? 1 : -1;
+      return (Number(b.product) || 0) - (Number(a.product) || 0);
+    });
+
+    return out.slice(0, 6);
+  }
+
+function collectResidualItems(kund) {
     var src = kund && typeof kund === 'object' ? kund : {};
     var items = [];
     function push(kind, raw) {
@@ -1125,6 +1209,7 @@
     markKindForRiskhojande: markKindForRiskhojande,
     foreslagenFromLinkedRecords: foreslagenFromLinkedRecords,
     formatDrivandeFaktor: formatDrivandeFaktor,
+    buildDrivandeKedja: buildDrivandeKedja,
     residualAvvikerFranForeslagen: residualAvvikerFranForeslagen,
     avvikelseRiktning: avvikelseRiktning,
     canSaveResidual: canSaveResidual,
