@@ -246,6 +246,9 @@
       || summary.status === 'besvarat'
       || summary.status === 'signerat';
     const inviteUrl = String(summary.inviteUrl || payload?.inviteUrl || '').trim();
+    const kundresa = payload?.kundresa || opts.kundresa || null;
+    const vhGate = kundresa?.vhGate || null;
+    const vhBlocked = !!(vhGate && vhGate.blocked);
 
     const metaBits = [];
     if (customerMode) {
@@ -310,6 +313,10 @@
 
         ${submitted ? '<div class="kundformular-submitted-banner" role="status">Visar det kunden skickat in. Samma innehåll som kundvyn.</div>' : ''}
 
+        ${!customerMode && vhBlocked ? `<div class="kundformular-vh-gate-banner" role="alert">
+          <strong>VH-gate:</strong> ${esc(vhGate.message || 'Osäker/Nej blockerar kundlänk och KYC-synk tills byrån bekräftar Ja.')}
+        </div>` : ''}
+
         ${!customerMode && Array.isArray(summary.statusStrip) && summary.statusStrip.length ? `
         <ol class="kundformular-status-strip" aria-label="Kundformulärstatus">
           ${summary.statusStrip.map((step) => `
@@ -335,10 +342,11 @@
               ? ''
               : `<button type="button" class="btn btn-secondary" data-kf-action="save"><i class="fas fa-save"></i> Spara utkast</button>
                  <button type="button" class="btn btn-primary" data-kf-action="mark_answered"><i class="fas fa-paper-plane"></i> Skicka in svar</button>`)
-            : (readOnly ? '' : `<button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort</button>
+            : (readOnly ? '' : `<button type="button" class="btn btn-secondary" data-kf-action="prefill"><i class="fas fa-magic"></i> Prefylla från kundkort/KYC</button>
+          <button type="button" class="btn btn-ghost" data-kf-action="sync_to_kyc" title="Kopiera overlappande svar till KYC-utkast utan att röra utskick/signering" ${vhBlocked ? 'disabled' : ''}><i class="fas fa-right-left"></i> Synka till KYC</button>
           <button type="button" class="btn btn-primary" data-kf-action="save"><i class="fas fa-save"></i> Spara</button>
           <button type="button" class="btn btn-secondary" data-kf-action="mark_answered" title="Om kunden svarat utanför länken"><i class="fas fa-check"></i> Markera som besvarat</button>
-          <button type="button" class="btn btn-ghost" data-kf-action="mark_sent" title="Skapa delbar länk till kunden"><i class="fas fa-link"></i> Skapa kundlänk</button>`)}
+          <button type="button" class="btn btn-ghost" data-kf-action="mark_sent" title="Skapa delbar länk till kunden" ${vhBlocked ? 'disabled' : ''}><i class="fas fa-link"></i> Skapa kundlänk</button>`)}
         </div>
 
         <form class="kundformular-form${readOnly ? ' kundformular-form--readonly' : ''}" id="kundformular-form" autocomplete="off">

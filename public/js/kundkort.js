@@ -484,6 +484,7 @@ class CustomerCardManager {
                     throw new Error('Oväntat svar från servern');
                 }
                 this.displayCustomerInfo();
+                this.loadKundresa().catch((e) => console.warn('kundresa:', e));
                 const urlParams = new URLSearchParams(window.location.search);
                 const noteId = urlParams.get('note');
                 const hash = (window.location.hash || '').replace('#', '');
@@ -10638,6 +10639,107 @@ class CustomerCardManager {
 
     // ─── KYC-FORMULÄR ─────────────────────────────────────────────────────────
 
+    async loadKundresa() {
+        const host = document.getElementById('kundresa-shell');
+        if (!host || !this.customerId) return;
+        if (!window.KundresaUi || typeof KundresaUi.render !== 'function') {
+            host.hidden = true;
+            return;
+        }
+        try {
+            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+            const res = await fetch(`${baseUrl}/api/kundresa/${encodeURIComponent(this.customerId)}`, {
+                method: 'GET',
+                ...getAuthOptsKundkort()
+            });
+            if (!res.ok) {
+                host.hidden = true;
+                return;
+            }
+            const data = await res.json();
+            this._kundresa = data.kundresa || null;
+            this._renderKundresa();
+        } catch (e) {
+            console.warn('loadKundresa:', e);
+            host.hidden = true;
+        }
+    }
+
+    _renderKundresa() {
+        const host = document.getElementById('kundresa-shell');
+        if (!host || !window.KundresaUi) return;
+        const summary = this._kundresa;
+        if (!summary) {
+            host.hidden = true;
+            return;
+        }
+        host.hidden = false;
+        // Bifoga byrå-VH från kundformulär-summary om vi redan har den
+        const kf = this._kundformularSummary || {};
+        const enriched = {
+            ...summary,
+            byraVhBekraftelse: kf.byraVhBekraftelse || summary.vhGate?.value || '',
+            byraVhNote: kf.byraVhNote || ''
+        };
+        KundresaUi.render(host, enriched, {
+            onStep: (tab) => {
+                if (!tab) return;
+                this.switchToTab(tab);
+                this.loadTabContent(tab);
+                if (tab === 'foretagsinformation') {
+                    // Scrolla mot screening / Bolagsverket efter flikbyte
+                    setTimeout(() => {
+                        const el = document.getElementById('bolagsverket-card') || document.querySelector('.roller-screening-toolbar');
+                        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 250);
+                }
+            },
+            onVhSave: (payload, btn) => this._onKundresaVhSave(payload, btn)
+        });
+    }
+
+    async _onKundresaVhSave(payload, btn) {
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sparar...'; }
+        try {
+            const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
+                method: 'PUT',
+                ...getAuthOptsKundkort(),
+                body: JSON.stringify({
+                    action: 'set_byra_vh',
+                    byraVhBekraftelse: payload?.byraVhBekraftelse || '',
+                    byraVhNote: payload?.byraVhNote || ''
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this._kundformular = data.form || this._kundformular;
+            this._kundformularSummary = data.summary || this._kundformularSummary;
+            this._kundresa = data.kundresa || this._kundresa;
+            this._renderKundresa();
+            if (document.getElementById('kundformular-content') && this._kundformular) {
+                this._renderKundformular({
+                    form: this._kundformular,
+                    summary: this._kundformularSummary,
+                    meta: this._kundformularMeta,
+                    kundresa: this._kundresa
+                });
+            }
+            this.showNotification(
+                data.kundresa?.blocked
+                    ? 'VH sparad — resan är blockerad tills bekräftelsen är Ja.'
+                    : 'VH-bekräftelse sparad.',
+                data.kundresa?.blocked ? 'warning' : 'success'
+            );
+        } catch (e) {
+            console.error('_onKundresaVhSave:', e);
+            this.showNotification(`Kunde inte spara VH: ${e.message}`, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+        }
+    }
+
     async loadKundformular() {
         const container = document.getElementById('kundformular-content');
         if (!container) return;
@@ -10665,8 +10767,10 @@ class CustomerCardManager {
             this._kundformular = data.form || null;
             this._kundformularSummary = data.summary || null;
             this._kundformularMeta = data.meta || null;
+            if (data.kundresa) this._kundresa = data.kundresa;
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
+            if (data.kundresa) this._renderKundresa();
         } catch (e) {
             console.error('loadKundformular:', e);
             container.innerHTML = `
@@ -10712,9 +10816,11 @@ class CustomerCardManager {
         KundformularUi.render(container, payload || {
             form: this._kundformular,
             summary: this._kundformularSummary,
-            meta: this._kundformularMeta
+            meta: this._kundformularMeta,
+            kundresa: this._kundresa
         }, {
-            onAction: (action, answers, btn) => this._onKundformularAction(action, answers, btn)
+            onAction: (action, answers, btn) => this._onKundformularAction(action, answers, btn),
+            kundresa: (payload && payload.kundresa) || this._kundresa
         });
     }
 
@@ -10725,18 +10831,28 @@ class CustomerCardManager {
             prefill: { action: 'prefill', label: 'Prefillar...' },
             mark_answered: { action: 'mark_answered', label: 'Markerar...' },
             mark_sent: { action: 'mark_sent', label: 'Skapar länk...' },
-            remind: { action: 'remind', label: 'Skickar påminnelse...' }
+            remind: { action: 'remind', label: 'Skickar påminnelse...' },
+            sync_to_kyc: { action: 'sync_to_kyc', label: 'Synkar till KYC...' },
+            set_byra_vh: { action: 'set_byra_vh', label: 'Sparar VH...' }
         };
         const cfg = map[action];
         if (!cfg) return;
         const orig = btn?.innerHTML;
         if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${cfg.label}`; }
         try {
-            const body = action === 'prefill'
-                ? { action: 'prefill' }
-                : (action === 'remind'
-                  ? { action: 'remind' }
-                  : { action: cfg.action, answers, actor: 'byra' });
+            let body;
+            if (action === 'prefill') body = { action: 'prefill' };
+            else if (action === 'remind') body = { action: 'remind' };
+            else if (action === 'sync_to_kyc') body = { action: 'sync_to_kyc' };
+            else if (action === 'set_byra_vh') {
+                body = {
+                    action: 'set_byra_vh',
+                    byraVhBekraftelse: answers?.byraVhBekraftelse || answers?.vh_bekraftelse || '',
+                    byraVhNote: answers?.byraVhNote || answers?.note || ''
+                };
+            } else {
+                body = { action: cfg.action, answers, actor: 'byra' };
+            }
             const res = await fetch(`${baseUrl}/api/kundformular/${encodeURIComponent(this.customerId)}`, {
                 method: 'PUT',
                 ...getAuthOptsKundkort(),
@@ -10750,18 +10866,26 @@ class CustomerCardManager {
             this._kundformular = data.form || null;
             this._kundformularSummary = data.summary || null;
             this._kundformularMeta = data.meta || null;
+            if (data.kundresa) {
+                this._kundresa = data.kundresa;
+                this._renderKundresa();
+            }
             this._renderKundformular(data);
             this._updateKundformularTabStatus(data.summary);
             const inviteUrl = data.inviteUrl || data.summary?.inviteUrl || '';
             const msg = action === 'prefill'
-                ? 'Prefillat från kundkort'
-                : (action === 'mark_answered'
-                  ? 'Markerat som besvarat'
-                  : (action === 'mark_sent'
-                    ? (inviteUrl ? 'Kundlänk skapad — kopiera och dela med kunden' : 'Markerat som skickat')
-                    : (action === 'remind'
-                      ? (data.remindedTo ? `Påminnelse skickad till ${data.remindedTo}` : 'Påminnelse skickad')
-                      : 'Kundformulär sparat')));
+                ? 'Prefillat från kundkort / KYC'
+                : (action === 'sync_to_kyc'
+                  ? (data.syncedFields?.length
+                    ? `Synkat ${data.syncedFields.length} fält till KYC-utkast`
+                    : 'Synkat till KYC-utkast')
+                  : (action === 'mark_answered'
+                    ? 'Markerat som besvarat'
+                    : (action === 'mark_sent'
+                      ? (inviteUrl ? 'Kundlänk skapad — kopiera och dela med kunden' : 'Markerat som skickat')
+                      : (action === 'remind'
+                        ? (data.remindedTo ? `Påminnelse skickad till ${data.remindedTo}` : 'Påminnelse skickad')
+                        : 'Kundformulär sparat'))));
             this.showNotification(msg, 'success');
             if (action === 'mark_sent' && inviteUrl && navigator.clipboard?.writeText) {
                 try { await navigator.clipboard.writeText(inviteUrl); } catch (_) {}
