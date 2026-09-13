@@ -35,21 +35,24 @@
 
   const REVIEW_PROMPT_RULES = `ANALYSLÄGE (när befintligt innehåll finns):
 - Du ska INTE bara språkgranska eller kommentera det som redan står. Gör en självständig, omfattande AML-analys av hela tjänsten eller riskfaktorn.
+- MÅLGRUPP: texterna ska vara pedagogiska för nyanställda med begränsad AML- och branschkunskap. Förklara vad risken/åtgärden betyder, varför den spelar roll för penningtvätt/terrorismfinansiering, och vad byrån ska vara uppmärksam på.
 - OBLIGATORISKT — komplettera ALLA sektioner i ETT svar. Huvudfälten ska alltid innehålla din fullständiga analys för: beskrivning, hot, sarbarheter, atgarder, sannolikhet, konsekvens, motiveringInneboende, sannolikhetEfter, konsekvensEfter, motiveringResidual. Lämna aldrig hot/sårbarheter/åtgärder/motivering tomma bara för att beskrivningen redan är ifylld.
 - Ta fram DITT kompletta förslag för ALLA fält: beskrivning (3–5 meningar), S×K, motivering av S/K, residual, motivering av residual, fullständiga listor för hot/sårbarheter/åtgärder (med källor på hot). Antalet poster enligt ANTAL-regeln.
 - Befintlig text är underlag du får förhålla dig till — inte facit. Fyll luckor, skriv om vaga hot till konkret mekanism (felaktig uppgift/faktura/betalning/ansökan; hur pengar kommer in, flyttas eller legitimeras; byråns roll; PT, TF eller båda), justera S×K om din analys ger annan nivå, och skriv en rikare beskrivning när den är tunn. Kräv inte ett separat TF-hot per tjänst. Avfärda inte TF bara för att tjänsten inte avser ideell organisation eller utlandsbetalning.
-- Kopiera inte rakt av befintliga listor eller motiveringar. En lätt omskrivning räcker inte. Skriv om hot/sårbarheter/åtgärder med konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas — även när listorna redan har poster.
+- EXPANDERA FRAMFÖR ATT KORTA NER: Om befintlig text redan är konkret och bra — behåll fakta, exempel och operativa detaljer (t.ex. retroaktiva kontroller, skattetillägg, kundbeteende, system, ansvarig). Föredra att förtydliga och lägga till pedagogik/AML-koppling. Föreslå ALDRIG en kortare/svagare omskrivning som tar bort användbart innehåll. Dåligt: ersätt en rik åtgärdsbeskrivning med en enda vag mening. Bra: behåll detaljerna och lägg till varför det minskar AML/TF-risk.
+- Skriv om en post bara när den är vag, saknar AML-mekanism/pedagogik, är felaktig mot underlaget, eller saknar viktiga luckor. En lätt språkputs utan mer värde → andra=false / ingen redigera för den posten (behåll innehållet i huvudlistan).
+- Hot/sårbarheter/åtgärder ska ha konkret mekanism utifrån byråquiz, utförandefrågor, statistik och kunskapsbas. Hitta luckor och komplettera — men torka inte bort byråns egna konkreta beskrivningar.
 - Poster markerade [Eget] är tillagda av byrån. Behåll dem i dina listor (samma eller likvärdig titel+innehåll), föreslå inte ta-bort för dem, och skapa inte nära dubbletter. Du får komplettera med andra poster.
 - Om EXTRA UNDERLAG FRÅN BYRÅN finns: inkludera det som konkreta hot/modus/sårbarheter/åtgärder när det är AML-relevant.
 - Tomma fält: skriv ditt förslag i huvudfälten.
 - Ifyllda fält som skiljer sig från din analys: lägg en post i granskning.poster med andra=true. forslag är valfritt (servern lyfter innehållet från huvudfälten) — prioritera kommentar och andringar[].
-- kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor). Skriv så att en kollega förstår utan att läsa hela listan.
+- kommentar: 2–3 meningar om HELHETEN — vad analysen tillför och varför du föreslår ändringar (luckor, TF, S×K, källor, pedagogik). Skriv så att en kollega förstår utan att läsa hela listan.
 - För listfält (hot, sarbarheter, atgarder): lägg OCKSÅ andringar[] med EN post per tillägg, redigering eller borttagning:
   { "titel": "samma titel som raden gäller", "typ": "lagg-till|redigera|ta-bort", "kommentar": "1–2 meningar: VARFÖR just denna ändring — koppla till tjänsten, TF, källor eller varför något ska bort." }
 - Vid ta-bort: förklara uttryckligen varför faktorn inte behövs (dubblett, irrelevant, fel typ, redan täckt, svag koppling till tjänsten). Föreslå inte ta-bort för [Eget]-poster.
-- Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar.
+- Vid redigera: förklara vad som är bristfälligt i nuvarande text och vad ditt förslag förbättrar (ska vara rikare eller tydligare — inte kortare utan mer substans).
 - Vid lagg-till: förklara varför faktorn saknas men behövs i analysen.
-- andra=false bara om ditt förslag är identiskt med nuvarande innehåll efter en genuin omprövning.`;
+- andra=false bara om ditt förslag är identiskt med nuvarande innehåll efter en genuin omprövning, eller om skillnaden bara är kosmetisk utan mer pedagogik/AML-värde.`;
 
   function getTjanstTfTackning() {
     if (typeof global !== 'undefined' && global.TjanstTfTackning) return global.TjanstTfTackning;
@@ -145,7 +148,7 @@
     const o = befintligt || {};
     const keys = filledTjanstKeys(o);
     if (!keys.length) return '';
-    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
+    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys. Gör en komplett egen bedömning av alla fält. Preferera expandera/förtydliga framför att korta ner — behåll konkreta detaljer som redan finns):'];
     const markUser = (item, line) => (isUserAddedItem(item) ? `[Eget] ${line}` : line);
     if (keys.includes('tjanstebeskrivning')) {
       parts.push(`Tjänsten:\n${trimStr(o.tjanstebeskrivning)}`);
@@ -191,7 +194,7 @@
     const o = befintligt || {};
     const keys = filledOvrigKeys(o);
     if (!keys.length) return '';
-    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys — kopiera inte rakt av. Gör en komplett egen bedömning av alla fält.):'];
+    const parts = ['BEFINTLIGT INNEHÅLL (underlag för din egen analys. Gör en komplett egen bedömning av alla fält. Preferera expandera/förtydliga framför att korta ner — behåll konkreta detaljer som redan finns):'];
     if (keys.includes('beskrivning')) parts.push(`Beskrivning:\n${trimStr(o.beskrivning)}`);
     if (keys.includes('atgard')) parts.push(`Åtgärd:\n${trimStr(o.atgard)}`);
     if (keys.includes('ptTfRelevans')) parts.push(`PT/TF-relevans: ${trimStr(o.ptTfRelevans)}`);
@@ -856,12 +859,56 @@
     return list;
   }
 
+
+  function significantWords(text) {
+    return fold(text).split(' ').filter((w) => w.length > 3);
+  }
+
+  /**
+   * True when proposed text is a shorter rewrite that drops concrete detail
+   * without adding comparable new substance (typical weak AI "polish").
+   */
+  function isWeakerShortening(currentText, proposedText) {
+    const cur = trimStr(currentText);
+    const next = trimStr(proposedText);
+    if (!cur || !next) return false;
+    if (fold(cur) === fold(next)) return false;
+    if (next.length >= Math.floor(cur.length * 0.85)) return false;
+    const curWords = significantWords(cur);
+    const nextWords = significantWords(next);
+    if (curWords.length < 3) return false;
+    const nextSet = new Set(nextWords);
+    const curSet = new Set(curWords);
+    const lost = curWords.filter((w) => !nextSet.has(w));
+    const gained = nextWords.filter((w) => !curSet.has(w));
+    return lost.length >= 3 && gained.length <= Math.max(1, Math.floor(lost.length / 2));
+  }
+
+  function preferRicherListItems(current, proposed) {
+    const cur = asList(current);
+    return asList(proposed).map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      const key = itemKey(item);
+      if (!key) return item;
+      const match = cur.find((c) => itemKey(c) === key)
+        || cur.find((c) => similarKeys(itemKey(c), key));
+      if (!match) return item;
+      if (!isWeakerShortening(match.beskrivning, item.beskrivning)) return item;
+      return Object.assign({}, item, { beskrivning: trimStr(match.beskrivning) });
+    });
+  }
+
   function ensureAnalysisPosters(kind, befintligt, generated, posters) {
     const catalog = kind === 'ovrig' ? OVRIG_FALT : TJANST_FALT;
     const list = Array.isArray(posters) ? posters.slice() : [];
     Object.keys(catalog).forEach((key) => {
       const current = currentValueFor(key, befintligt);
-      const forslag = generatedValueFor(key, generated);
+      let forslag = generatedValueFor(key, generated);
+      if (key === 'hot' || key === 'sarbarheter' || key === 'atgarder') {
+        forslag = preferRicherListItems(current, forslag);
+      } else if (typeof current === 'string' && typeof forslag === 'string' && isWeakerShortening(current, forslag)) {
+        return;
+      }
       // Lyft förslag även för tomma fält så banner/flikar listar alla sektioner
       // (inte bara Översikt). Tomma fält visas som AI-förslag i stället för tyst ifyllning.
       if (!hasForslag(key, forslag) || sameForslag(key, current, forslag)) return;
@@ -1207,6 +1254,8 @@
     classifyAndring,
     sameForslag,
     similarKeys,
+    isWeakerShortening,
+    preferRicherListItems,
     listDiff,
     listDiffHasChanges,
     isUserAddedItem,

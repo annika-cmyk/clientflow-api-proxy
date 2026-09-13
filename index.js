@@ -25103,6 +25103,7 @@ ${AmlKalla.KALLA_DOKUMENT_PROMPT}
 
 ${AiTjanstAnalys.TJANST_BESKRIVNING_AI_RULES}
 ${AiTjanstAnalys.HOT_MODUS_AI_RULES}
+${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${katalogBlock ? `\n${RiskanalysTjanstKatalog.PROMPT_RULES}\n` : ''}${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
@@ -25357,6 +25358,7 @@ ${existingBlock ? `\n${existingBlock}\n` : ''}
 Väg in BYRÅPROFIL ovan när du kalibrerar sannolikhet, konsekvens och åtgärder. Skriv inte in byrån i beskrivningen.
 
 ${INHERENT_DESCRIPTION_AI_RULES}
+${AiTjanstAnalys.PEDAGOGISK_ANALYS_AI_RULES}
 ${AtgardKonkret.AI_RULES}
 ${AiFaltGranskning.MOTIVERING_AI_RULES}
 ${kunskapBasBlock}${reviewMode ? `\n${AiFaltGranskning.REVIEW_PROMPT_RULES}\n` : ''}
