@@ -8904,10 +8904,18 @@ class CustomerCardManager {
         const storedForeslagen = KP ? KP.readForeslagen(fields) : this._riskLabel(fields['Kund föreslagen nivå'] || '');
         const foreslagen = live.niva || storedForeslagen;
         const residualStored = KP ? KP.readResidual(fields) : this._riskLabel(fields.Riskniva || fields['sammanlagd risk'] || '');
+        const kedja = (KP && KP.buildDrivandeKedja) ? KP.buildDrivandeKedja(live) : [];
+        const katalogVersionRaw = fields['Riskfaktor katalogversion'];
+        const katalogVersion = (katalogVersionRaw === '' || katalogVersionRaw == null)
+            ? null
+            : (Number(katalogVersionRaw) || katalogVersionRaw);
+        const profilStatus = String(fields['Riskprofil status'] || '').trim();
         return {
             residual: residualStored || foreslagen,
             foreslagen,
             drivande: live.drivandeFaktor || (KP ? KP.readDrivande(fields) : (fields['Kund föreslagen drivande faktor'] || '')),
+            kedja,
+            live,
             golv: live.golv || null,
             ofullstandig: !!live.ofullstandig,
             varning: live.varning || '',
@@ -8915,7 +8923,10 @@ class CustomerCardManager {
             avvikelse: KP ? KP.readAvvikelseMotivering(fields) : (fields['Kund avvikelse motivering'] || ''),
             motivering: KP ? KP.readMotivering(fields) : (fields['Byrans riskbedomning'] || ''),
             atgarder: KP && KP.readAtgarder ? KP.readAtgarder(fields) : (fields['Atgarder riskbedomning'] || ''),
-            prefilled: !residualStored && !!foreslagen
+            prefilled: !residualStored && !!foreslagen,
+            katalogVersion,
+            profilStatus,
+            behovOmprofilering: profilStatus === 'behöver_omprofilering'
         };
     }
 
@@ -8925,6 +8936,39 @@ class CustomerCardManager {
         return raw
             .replace(/^(riskfaktor|tjänst):\s*/i, '')
             .replace(/\s*\(residual\s*S×K\s*(\d+)\)\s*$/i, ' (S×K $1)');
+    }
+
+    _drivandeKedjaHtml(profil) {
+        const kedja = Array.isArray(profil && profil.kedja) ? profil.kedja : [];
+        if (profil && profil.ofullstandig && profil.varning) {
+            return `<div class="ai-rb-driven ai-rb-driven--warn"><p class="ai-rb-kalla ai-rb-kalla--warn">${this._esc(profil.varning)}</p></div>`;
+        }
+        if (!kedja.length) {
+            const fallback = this._drivandeKort(profil && profil.drivande);
+            if (!fallback) return '';
+            return `<div class="ai-rb-driven"><p class="ai-rb-driven-label">Din residual drivs av</p><p class="ai-rb-kalla">${this._esc(fallback)}</p></div>`;
+        }
+        const chips = kedja.map((item) => {
+            const levelText = item.golv
+                ? (`golv ${item.level || ''}`).trim()
+                : (item.level || '');
+            const label = levelText ? `${item.namn} (${levelText})` : item.namn;
+            const href = item.href || (item.kind === 'tjänst' ? '/riskbedomning-byra.html' : '/ovriga-riskfaktorer.html');
+            const cls = item.golv ? 'ai-rb-driven-chip ai-rb-driven-chip--golv' : 'ai-rb-driven-chip';
+            return `<a class="${cls}" href="${this._esc(href)}" target="_blank" rel="noopener" title="Öppna byråfaktor">${this._esc(label)}</a>`;
+        }).join('');
+        return `<div class="ai-rb-driven"><p class="ai-rb-driven-label">Din residual drivs av</p><div class="ai-rb-driven-chips">${chips}</div></div>`;
+    }
+
+    _katalogMetaHtml(profil) {
+        const parts = [];
+        if (profil && profil.behovOmprofilering) {
+            parts.push('<div class="ai-rb-omprofilering" role="status"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Byråns riskfaktorkatalog har uppdaterats sedan senaste bedömningen — ompröva residualen.</div>');
+        }
+        if (profil && profil.katalogVersion != null && profil.katalogVersion !== '') {
+            parts.push(`<p class="ai-rb-katalogversion">Bedömd mot riskfaktorkatalog v${this._esc(String(profil.katalogVersion))}</p>`);
+        }
+        return parts.join('');
     }
 
     _golvBadgeHtml(golv) {
@@ -8938,46 +8982,75 @@ class CustomerCardManager {
         return '';
     }
 
-    _foreslagenHtml(foreslagen, drivande, golv, ofullstandig, varning) {
-        if (ofullstandig && varning) {
-            return `<div class="ai-rb-foreslagen ai-rb-foreslagen--ofullstandig"><p class="ai-rb-kalla ai-rb-kalla--warn">${this._esc(varning)}</p></div>`;
+    _foreslagenHtml(foreslagen, drivande, golv, ofullstandig, varning, profilExtra) {
+        const profil = (foreslagen && typeof foreslagen === 'object' && !Array.isArray(foreslagen))
+            ? foreslagen
+            : Object.assign({
+                foreslagen,
+                drivande,
+                golv,
+                ofullstandig,
+                varning,
+                kedja: []
+            }, profilExtra || {});
+        if (profil.ofullstandig && profil.varning) {
+            return `<div class="ai-rb-foreslagen ai-rb-foreslagen--ofullstandig">${this._drivandeKedjaHtml(profil)}${this._katalogMetaHtml(profil)}</div>`;
         }
-        const niva = this._riskLabel(foreslagen);
-        const kalla = this._drivandeKort(drivande);
-        const badge = this._golvBadgeHtml(golv);
-        const text = niva
-            ? `Förslag: ${niva}${kalla ? ` (${kalla})` : ''}`
+        const niva = this._riskLabel(profil.foreslagen);
+        const badge = this._golvBadgeHtml(profil.golv);
+        const kedja = this._drivandeKedjaHtml(profil);
+        const meta = this._katalogMetaHtml(profil);
+        const defaultNote = profil.prefilled
+            ? '<p class="ai-rb-default-note">Bedömd residual är förvald till den beräknade nivån. Ändra bara med motivering.</p>'
+            : '';
+        const textLine = niva
+            ? `Beräknad residual: ${niva}`
             : 'Välj bedömd risk nedan.';
-        return `<div class="ai-rb-foreslagen">${badge}<p class="ai-rb-kalla">${this._esc(text)}</p></div>`;
+        return `<div class="ai-rb-foreslagen">${badge}<p class="ai-rb-kalla">${this._esc(textLine)}</p>${kedja}${defaultNote}${meta}</div>`;
     }
 
-    _riskKallaHtml(foreslagen, residual, drivande, avvikelse, golv, ofullstandig, varning) {
-        if (ofullstandig && varning) {
-            return `<p class="ai-rb-kalla ai-rb-kalla--warn">${this._esc(varning)}</p>`;
+    _riskKallaHtml(foreslagen, residual, drivande, avvikelse, golv, ofullstandig, varning, profilExtra) {
+        const profil = (foreslagen && typeof foreslagen === 'object' && !Array.isArray(foreslagen) && ('foreslagen' in foreslagen || 'kedja' in foreslagen))
+            ? foreslagen
+            : Object.assign({
+                foreslagen,
+                residual,
+                drivande,
+                avvikelse,
+                golv,
+                ofullstandig,
+                varning,
+                kedja: []
+            }, profilExtra || {});
+        if (profil.ofullstandig && profil.varning) {
+            return `${this._drivandeKedjaHtml(profil)}${this._katalogMetaHtml(profil)}`;
         }
         const KP = window.KundRiskprofil;
-        const niva = this._riskLabel(foreslagen);
-        const kalla = this._drivandeKort(drivande);
-        const residualLabel = this._riskLabel(residual);
-        const badge = this._golvBadgeHtml(golv);
-        const avviker = KP && KP.residualAvvikerFranForeslagen(residual, foreslagen);
-        if (!niva && !kalla && !badge) return '';
+        const niva = this._riskLabel(profil.foreslagen);
+        const residualLabel = this._riskLabel(profil.residual != null ? profil.residual : residual);
+        const badge = this._golvBadgeHtml(profil.golv);
+        const kedja = this._drivandeKedjaHtml(profil);
+        const meta = this._katalogMetaHtml(profil);
+        const avviker = KP && KP.residualAvvikerFranForeslagen(residualLabel || residual, niva);
+        if (!niva && !kedja && !badge) return meta;
         if (!avviker) {
-            const line = niva
-                ? `Beräknad risk: ${niva}${kalla ? ` · ${kalla}` : ''}`
-                : (kalla ? kalla : '');
-            return `${badge}${line ? `<p class="ai-rb-kalla">${this._esc(line)}</p>` : ''}`;
+            const line = niva ? `Beräknad residual: ${niva}` : '';
+            return `${badge}${line ? `<p class="ai-rb-kalla">${this._esc(line)}</p>` : ''}${kedja}${meta}`;
         }
         return `
                         <div class="ai-rb-avvikelse-kort">
                             ${badge}
-                            <p class="ai-rb-kalla">⚠ Avviker från beräknad residual risk (${this._esc(niva)} → ${this._esc(residualLabel || 'ej vald')})</p>
-                            ${avvikelse ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Varför</span><div class="risker-vald-desc">${this._esc(avvikelse)}</div></div>` : ''}
+                            <p class="ai-rb-kalla">⚠ Avviker från beräknad residual (${this._esc(niva)} → ${this._esc(residualLabel || 'ej vald')})</p>
+                            ${kedja}
+                            ${(profil.avvikelse || avvikelse) ? `<div class="ai-rb-avvikelse-view"><span class="ai-rb-profil-kind">Varför</span><div class="risker-vald-desc">${this._esc(profil.avvikelse || avvikelse)}</div></div>` : ''}
+                            ${meta}
                         </div>`;
     }
 
     _riskbedomningViewHtml(residual, motivering, atgarder, opts = {}) {
-        const kalla = this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse, opts.golv, opts.ofullstandig, opts.varning);
+        const kalla = opts.profil
+            ? this._riskKallaHtml(opts.profil, residual)
+            : this._riskKallaHtml(opts.foreslagen, residual, opts.drivande, opts.avvikelse, opts.golv, opts.ofullstandig, opts.varning);
         const motiveringBlock = motivering
             ? `<div class="risker-vald-section-label">Motivering</div>
                         <div class="risker-vald-desc" id="ai-rb-text-display" style="white-space:pre-wrap;">${this._esc(motivering)}</div>`
@@ -9012,18 +9085,11 @@ class CustomerCardManager {
                 <div class="collapsible-body" id="ai-riskbedomning-body">
                     ${this._renderRiskForutsattningBlock()}
                     <div id="ai-rb-view">
-                        ${this._riskbedomningViewHtml(profil.residual, profil.motivering, profil.atgarder, {
-                            foreslagen: profil.foreslagen,
-                            drivande: profil.drivande,
-                            golv: profil.golv,
-                            avvikelse: profil.avvikelse,
-                            ofullstandig: profil.ofullstandig,
-                            varning: profil.varning
-                        })}
+                        ${this._riskbedomningViewHtml(profil.residual, profil.motivering, profil.atgarder, { profil })}
                     </div>
 
                     <div id="ai-rb-edit" style="display:none;" data-residual="${this._esc(profil.residual)}" data-foreslagen="${this._esc(profil.foreslagen)}">
-                        ${this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv, profil.ofullstandig, profil.varning)}
+                        ${this._foreslagenHtml(profil)}
                         <div class="kunduppgifter-form-row" style="margin-bottom:0.75rem;">
                             <label style="font-weight:600;font-size:0.82rem;color:#475569;margin-bottom:0.3rem;display:block;">Bedömd risk</label>
                             <div class="ai-rb-niva-btns" data-riskprofil="residual">
@@ -9124,7 +9190,7 @@ class CustomerCardManager {
             const wrap = edit.querySelector('.ai-rb-foreslagen');
             if (wrap) {
                 const tmp = document.createElement('div');
-                tmp.innerHTML = this._foreslagenHtml(profil.foreslagen, profil.drivande, profil.golv, profil.ofullstandig, profil.varning);
+                tmp.innerHTML = this._foreslagenHtml(profil);
                 if (tmp.firstElementChild) wrap.replaceWith(tmp.firstElementChild);
             }
         }
