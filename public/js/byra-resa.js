@@ -6,9 +6,7 @@
 (function () {
   if (!document.getElementById('byra-resa-steps')) return;
 
-  var state = { version: 1, steps: {}, kalla: {}, customKallor: [], nraChecklist: {} };
-  var nraScenarios = [];
-  var nraRequired = false;
+  var state = { version: 1, steps: {}, kalla: {}, customKallor: [] };
   var catalog = [];
   var steps = [];
   var saveTimer = null;
@@ -95,11 +93,7 @@
       if (!Array.isArray(state.customKallor)) state.customKallor = [];
       if (Array.isArray(data.catalog)) catalog = data.catalog;
       setStatus('Sparat');
-      if (typeof data.nraChecklistRequired === 'boolean') nraRequired = data.nraChecklistRequired;
-      if (Array.isArray(data.nraScenarios) && data.nraScenarios.length) nraScenarios = data.nraScenarios;
-      ingestNraChecklist(data.nraChecklist);
       renderKalla();
-      renderNraChecklist();
       renderSteps();
     } catch (e) {
       setStatus(e.message || 'Kunde inte spara', true);
@@ -183,255 +177,8 @@
   }
 
 
-  function ingestNraChecklist(rows) {
-    if (!Array.isArray(rows) || !rows.length) return;
-    state.nraChecklist = state.nraChecklist || {};
-    rows.forEach(function (row) {
-      if (!row || !row.id) return;
-      var prev = state.nraChecklist[row.id] || {};
-      state.nraChecklist[row.id] = {
-        id: row.id,
-        kind: row.kind || prev.kind || 'yesno',
-        title: row.title || prev.title || '',
-        tag: row.tag != null ? row.tag : (prev.tag || ''),
-        desc: row.desc || prev.desc || '',
-        answer: row.answer || prev.answer || 'unset',
-        why: row.why != null ? row.why : (prev.why || ''),
-        derived: row.derived || prev.derived || null
-      };
-    });
-  }
-
-  function seedNraFromScenarios() {
-    if (!nraScenarios.length) return;
-    state.nraChecklist = state.nraChecklist || {};
-    nraScenarios.forEach(function (scenario) {
-      if (!scenario || !scenario.id) return;
-      var prev = state.nraChecklist[scenario.id] || {};
-      state.nraChecklist[scenario.id] = {
-        id: scenario.id,
-        kind: scenario.kind || prev.kind || 'yesno',
-        title: scenario.title || prev.title || '',
-        tag: scenario.tag != null ? scenario.tag : (prev.tag || ''),
-        desc: scenario.desc || prev.desc || '',
-        answer: prev.answer || (scenario.kind === 'derived' ? 'derived' : 'unset'),
-        why: prev.why || '',
-        derived: prev.derived || (scenario.kind === 'derived'
-          ? {
-              active: false,
-              answer: 'nej',
-              label: 'Nej — ingen aktiv tjänst av den typen i tjänstelistan.',
-              serviceName: '',
-              mallId: '',
-              href: 'riskbedomning-byra.html'
-            }
-          : null)
-      };
-    });
-  }
-
-  function nraRows() {
-    seedNraFromScenarios();
-    var map = state.nraChecklist || {};
-    if (nraScenarios.length) {
-      return nraScenarios.map(function (scenario) {
-        return Object.assign({}, scenario, map[scenario.id] || { id: scenario.id });
-      });
-    }
-    return Object.keys(map).map(function (id) {
-      return Object.assign({ id: id }, map[id]);
-    });
-  }
-
-  function nraRowIsComplete(row) {
-    if (!row) return false;
-    var kind = row.kind || 'yesno';
-    if (kind === 'derived') return true;
-    if (kind === 'controls') return String(row.why || '').trim().length >= 12;
-    if (!row.answer || row.answer === 'unset') return false;
-    if (row.answer === 'nej' && String(row.why || '').trim().length < 3) return false;
-    return row.answer === 'ja' || row.answer === 'nej';
-  }
-
-  function nraCompleteLocal() {
-    if (!nraRequired) return true;
-    var rows = nraRows();
-    if (!rows.length) return false;
-    return rows.every(nraRowIsComplete);
-  }
-
   function step8ReadyLocal() {
-    return kallaComplete() && nraCompleteLocal();
-  }
-
-  function updateNraProgress() {
-    var section = document.getElementById('byra-resa-nra-section');
-    var progress = document.getElementById('byra-resa-nra-progress');
-    var hint = document.getElementById('byra-resa-nra-hint');
-    if (!section) return;
-    section.hidden = !nraRequired;
-    if (!nraRequired) return;
-    var rows = nraRows();
-    var done = rows.filter(nraRowIsComplete).length;
-    var total = rows.length;
-    var pct = total ? Math.round((done / total) * 100) : 0;
-    if (progress) {
-      progress.innerHTML =
-        '<span class="byra-resa-nra-progress-text">' + done + ' av ' + total + ' scenarier klara</span>' +
-        '<span class="byra-resa-nra-progress-track" aria-hidden="true">' +
-          '<span class="byra-resa-nra-progress-fill" style="width:' + pct + '%"></span>' +
-        '</span>';
-    }
-    if (!hint) return;
-    if (nraCompleteLocal()) {
-      hint.textContent = 'NRA-checklistan är komplett (ja/nej, kontrollbeskrivningar och härledda fakta).';
-      hint.className = 'byra-resa-nra-hint is-ok';
-    } else {
-      hint.textContent = 'Fyll ja/nej där det krävs, skriv kontrollbeskrivning för inneboende risker, och kontrollera den härledda tjänstefaktan.';
-      hint.className = 'byra-resa-nra-hint is-warn';
-    }
-  }
-
-  function nraChip(id, value, label, cur) {
-    var checked = cur === value ? ' checked' : '';
-    var disabled = canEdit ? '' : ' disabled';
-    var on = cur === value ? ' is-on' : '';
-    return (
-      '<label class="byra-resa-nra-state' + on + '" data-value="' + value + '">' +
-        '<input type="radio" name="nra-' + esc(id) + '" value="' + value + '" data-nra-id="' + esc(id) + '"' + checked + disabled + '>' +
-        '<span>' + esc(label) + '</span>' +
-      '</label>'
-    );
-  }
-
-  function renderNraDerived(row) {
-    var d = row.derived || {};
-    var label = d.label || (d.active
-      ? ('Härlett från aktiv tjänst: ' + (d.serviceName || ''))
-      : 'Ingen aktiv tjänst av den typen i tjänstelistan.');
-    var link = d.active && d.href
-      ? '<a class="byra-resa-nra-derived-link" href="' + esc(d.href) + '">Öppna tjänsten</a>'
-      : '<a class="byra-resa-nra-derived-link" href="riskbedomning-byra.html">Öppna tjänstelistan</a>';
-    return (
-      '<div class="byra-resa-nra-derived" role="status">' +
-        '<span class="byra-resa-nra-derived-badge" data-active="' + (d.active ? 'ja' : 'nej') + '">' + (d.active ? 'Ja' : 'Nej') + '</span>' +
-        '<span class="byra-resa-nra-derived-text">' + esc(label) + '</span>' +
-        link +
-      '</div>'
-    );
-  }
-
-  function renderNraControls(row) {
-    var disabled = canEdit ? '' : ' disabled';
-    var ctrlId = 'nra-ctrl-' + esc(row.id);
-    return (
-      '<div class="byra-resa-nra-controls-wrap">' +
-        '<textarea id="' + ctrlId + '" class="form-input byra-resa-nra-controls" data-nra-id="' + esc(row.id) + '" rows="4" aria-label="Kontrollbeskrivning för ' + esc(row.title || row.id) + '" placeholder="Beskriv kort vilka kontroller ni har…"' + disabled + '>' +
-          esc(row.why || '') +
-        '</textarea>' +
-        '<p class="byra-resa-nra-controls-hint">Ingen ja/nej — skriv en kort kontrollbeskrivning.</p>' +
-      '</div>'
-    );
-  }
-
-  function renderNraYesNo(row) {
-    var cur = row.answer || 'unset';
-    var showWhy = cur === 'nej';
-    return (
-      '<div class="byra-resa-nra-answer-row">' +
-        '<div class="byra-resa-nra-states" role="group" aria-label="' + esc(row.title || row.id) + '">' +
-          nraChip(row.id, 'ja', 'Ja', cur) +
-          nraChip(row.id, 'nej', 'Nej', cur) +
-        '</div>' +
-      '</div>' +
-      (showWhy
-        ? '<div class="byra-resa-nra-why-wrap">' +
-            '<input type="text" class="form-input byra-resa-nra-why" data-nra-id="' + esc(row.id) + '" value="' + esc(row.why || '') + '" placeholder="Kort varför scenariot inte är relevant för er" ' + (canEdit ? '' : 'disabled') + '>' +
-          '</div>'
-        : '')
-    );
-  }
-
-  function nraKindMeta(kind) {
-    if (kind === 'derived') {
-      return { label: 'Härlett från tjänstelistan', icon: 'fa-link', title: 'Härlett från tjänstelistan' };
-    }
-    if (kind === 'controls') {
-      return { label: 'Alltid relevant — beskriv kontroll', icon: 'fa-list-check', title: 'Alltid relevant — beskriv kontroll' };
-    }
-    return { label: 'Ställningstagande', icon: 'fa-circle-question', title: 'Ställningstagande' };
-  }
-
-  function renderNraChecklist() {
-    var root = document.getElementById('byra-resa-nra-list');
-    if (!root) return;
-    updateNraProgress();
-    if (!nraRequired) {
-      root.innerHTML = '';
-      return;
-    }
-    var rows = nraRows();
-    root.innerHTML = rows.map(function (row) {
-      var kind = row.kind || 'yesno';
-      var tag = String(row.tag || '').trim();
-      var body = kind === 'derived'
-        ? renderNraDerived(row)
-        : (kind === 'controls' ? renderNraControls(row) : renderNraYesNo(row));
-      var meta = nraKindMeta(kind);
-      return (
-        '<article class="byra-resa-nra-row is-' + kind + (nraRowIsComplete(row) ? ' is-complete' : '') + '" data-nra-id="' + esc(row.id) + '" data-nra-kind="' + esc(kind) + '">' +
-          '<div class="byra-resa-nra-row-head">' +
-            '<div class="byra-resa-nra-title-block">' +
-              '<p class="byra-resa-nra-title">' + esc(row.title || row.id) + '</p>' +
-              (tag ? '<span class="byra-resa-nra-tag">' + esc(tag) + '</span>' : '') +
-            '</div>' +
-            '<span class="byra-resa-nra-kind is-' + kind + '" title="' + esc(meta.title) + '">' +
-              '<span class="byra-resa-nra-kind-icon" aria-hidden="true"><i class="fas ' + meta.icon + '"></i></span>' +
-              '<span class="byra-resa-nra-kind-label">' + esc(meta.label) + '</span>' +
-            '</span>' +
-          '</div>' +
-          '<p class="byra-resa-nra-desc">' + esc(row.desc || '') + '</p>' +
-          body +
-        '</article>'
-      );
-    }).join('');
-
-    root.querySelectorAll('input[type="radio"][data-nra-id]').forEach(function (input) {
-      input.addEventListener('change', function () {
-        var id = input.getAttribute('data-nra-id');
-        if (!state.nraChecklist) state.nraChecklist = {};
-        if (!state.nraChecklist[id]) state.nraChecklist[id] = { id: id, kind: 'yesno', answer: 'unset', why: '' };
-        state.nraChecklist[id].answer = input.value;
-        if (input.value !== 'nej') state.nraChecklist[id].why = '';
-        renderNraChecklist();
-        renderSteps();
-        save();
-      });
-    });
-    root.querySelectorAll('.byra-resa-nra-why').forEach(function (input) {
-      input.addEventListener('change', function () {
-        var id = input.getAttribute('data-nra-id');
-        if (!state.nraChecklist) state.nraChecklist = {};
-        if (!state.nraChecklist[id]) state.nraChecklist[id] = { id: id, kind: 'yesno', answer: 'nej', why: '' };
-        state.nraChecklist[id].why = input.value;
-        updateNraProgress();
-        renderSteps();
-        save();
-      });
-    });
-    root.querySelectorAll('.byra-resa-nra-controls').forEach(function (input) {
-      input.addEventListener('change', function () {
-        var id = input.getAttribute('data-nra-id');
-        if (!state.nraChecklist) state.nraChecklist = {};
-        if (!state.nraChecklist[id]) state.nraChecklist[id] = { id: id, kind: 'controls', answer: 'unset', why: '' };
-        var text = String(input.value || '').trim();
-        state.nraChecklist[id].why = text;
-        state.nraChecklist[id].answer = text.length >= 12 ? 'beskriven' : 'unset';
-        updateNraProgress();
-        renderSteps();
-        save();
-      });
-    });
+    return kallaComplete();
   }
 
   function renderKalla() {
@@ -480,9 +227,7 @@
         if (!state.kalla[id]) state.kalla[id] = { status: 'unset', note: '' };
         state.kalla[id].status = input.value;
         if (input.value !== 'inte_relevant') state.kalla[id].note = '';
-        if (id === 'nra-2024-2025') nraRequired = input.value === 'anvander';
         renderKalla();
-        renderNraChecklist();
         renderSteps();
         renderSteps();
         scheduleSave();
@@ -587,7 +332,7 @@
           '<h3 class="byra-resa-step-title">' + esc(step.title) + '</h3>' +
           '<p class="byra-resa-step-desc">' + esc(step.desc) + '</p>' +
           '<a class="byra-resa-step-link" href="' + esc(step.href) + '">' + esc(step.linkLabel) + '</a>' +
-          (gate ? '<p class="byra-resa-step-gate">' + (nraRequired && !nraCompleteLocal() ? 'Fyll i NRA-checklistan och källkatalogen innan slutgodkännande.' : 'Fyll i källkatalogen innan slutgodkännande.') + '</p>' : '') +
+          (gate ? '<p class="byra-resa-step-gate">Fyll i källkatalogen innan slutgodkännande.</p>' : '') +
           '<label class="byra-resa-step-check">' +
             '<input type="checkbox" data-step-id="' + step.id + '"' + (done ? ' checked' : '') + (canEdit ? '' : ' disabled') + '>' +
             '<span>Steget klart</span>' +
@@ -641,13 +386,7 @@
       canEdit = data.canEdit !== false;
       if (window.__clientflowNavStatus) syncAttentionFromNav(window.__clientflowNavStatus);
       syncAddFormVisibility();
-      nraRequired = !!data.nraChecklistRequired || ((state.kalla['nra-2024-2025'] || {}).status === 'anvander');
-      if (Array.isArray(data.nraScenarios) && data.nraScenarios.length) nraScenarios = data.nraScenarios;
-      state.nraChecklist = {};
-      ingestNraChecklist(data.nraChecklist);
-      seedNraFromScenarios();
       renderKalla();
-      renderNraChecklist();
       renderSteps();
       setStatus('');
     } catch (e) {
