@@ -331,6 +331,163 @@
       .sort((a, b) => b.antal - a.antal || a.namn.localeCompare(b.namn, 'sv'));
   }
 
+  function resolveBucketName(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const exact = matchCommonExact(text);
+    if (exact) return exact;
+    return mapToCommonKundBransch(text);
+  }
+
+  function labelsMatchingBucket(labels, bucketRaw) {
+    const list = Array.isArray(labels) ? labels : [];
+    const wanted = resolveBucketName(bucketRaw);
+    const foldWanted = fold(bucketRaw);
+    return list.filter((label) => {
+      const mapped = mapToCommonKundBransch(label);
+      if (wanted && mapped === wanted) return true;
+      return fold(label) === foldWanted;
+    });
+  }
+
+  function customerNameFromFields(fields) {
+    const f = fields || {};
+    return String(f.Namn || f.Kundnamn || f['Kundnamn'] || '').trim() || 'Namn saknas';
+  }
+
+  function asHelperValues(helpers, value) {
+    if (helpers && typeof helpers.asValues === 'function') return helpers.asValues(value);
+    if (value == null || value === '') return [];
+    if (Array.isArray(value)) return value.map((x) => String(x || '').trim()).filter(Boolean);
+    return [String(value).trim()].filter(Boolean);
+  }
+
+  function hogriskLabelsFromFields(fields, helpers) {
+    return asHelperValues(helpers, (fields || {})['Kunden verkar i en högriskbransch'])
+      .map((v) => String(v || '').trim())
+      .filter((v) => v && v !== '---');
+  }
+
+  function labelMatchesFilter(label, filterRaw) {
+    const filter = String(filterRaw || '').trim();
+    if (!filter) return true;
+    const a = fold(label);
+    const b = fold(filter);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    // Tillåt match på enbart SNI-kod (t.ex. 68201 vs "68201 - Uthyrning…")
+    const codesA = extractSniCodes(label);
+    const codesB = extractSniCodes(filter);
+    if (codesA.length && codesB.length && codesA.some((c) => codesB.includes(c))) return true;
+    if (codesB.length === 1 && codesA.includes(codesB[0])) return true;
+    if (/^\d{5}$/.test(filter.replace(/\D/g, '')) && codesA.includes(filter.replace(/\D/g, ''))) return true;
+    return a.indexOf(b) >= 0 || b.indexOf(a) >= 0;
+  }
+
+  function sortNamedCounts(map) {
+    return Object.entries(map || {})
+      .map(([namn, antal]) => ({ namn, antal }))
+      .sort((a, b) => b.antal - a.antal || a.namn.localeCompare(b.namn, 'sv'));
+  }
+
+  /**
+   * Bryter ner en översiktsbransch till under-SNI + kundlista.
+   * @param {Array} records
+   * @param {string} bucketName – t.ex. "Fastighet" eller "Bygg och anläggning"
+   * @param {{ asValues?, parseKycJson?, sniFilter? }} [helpers]
+   */
+  function drilldownKundBransch(records, bucketName, helpers) {
+    const list = Array.isArray(records) ? records : [];
+    const bucket = resolveBucketName(bucketName) || String(bucketName || '').trim();
+    const sniFilter = helpers && helpers.sniFilter != null ? String(helpers.sniFilter).trim() : '';
+    const undersni = {};
+    const kunder = [];
+
+    list.forEach((rec) => {
+      const fields = (rec && rec.fields) || {};
+      const labels = industryLabelsFromFields(fields, helpers);
+      const matching = labelsMatchingBucket(labels, bucketName);
+      if (!matching.length) return;
+
+      matching.forEach((label) => {
+        undersni[label] = (undersni[label] || 0) + 1;
+      });
+
+      if (sniFilter && !matching.some((label) => labelMatchesFilter(label, sniFilter))) return;
+
+      const shown = sniFilter
+        ? matching.filter((label) => labelMatchesFilter(label, sniFilter))
+        : matching;
+
+      kunder.push({
+        id: rec && rec.id,
+        namn: customerNameFromFields(fields),
+        sni: shown.join(' · ')
+      });
+    });
+
+    kunder.sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
+
+    return {
+      typ: 'kund-bransch',
+      bucket,
+      undersni: sortNamedCounts(undersni),
+      kunder,
+      antalKunder: kunder.length
+    };
+  }
+
+  /**
+   * Bryter ner en högriskbransch-etikett till under-SNI + kundlista.
+   * Matchar fältet "Kunden verkar i en högriskbransch".
+   */
+  function drilldownHogriskBransch(records, hogriskName, helpers) {
+    const list = Array.isArray(records) ? records : [];
+    const wanted = String(hogriskName || '').trim();
+    const foldWanted = fold(wanted);
+    const sniFilter = helpers && helpers.sniFilter != null ? String(helpers.sniFilter).trim() : '';
+    const undersni = {};
+    const kunder = [];
+
+    list.forEach((rec) => {
+      const fields = (rec && rec.fields) || {};
+      const hogLabels = hogriskLabelsFromFields(fields, helpers);
+      if (!hogLabels.some((l) => fold(l) === foldWanted)) return;
+
+      const industry = industryLabelsFromFields(fields, helpers);
+      industry.forEach((label) => {
+        undersni[label] = (undersni[label] || 0) + 1;
+      });
+      if (!industry.length) {
+        undersni['(SNI saknas)'] = (undersni['(SNI saknas)'] || 0) + 1;
+      }
+
+      if (sniFilter) {
+        if (!industry.some((label) => labelMatchesFilter(label, sniFilter))) return;
+      }
+
+      const shown = sniFilter
+        ? industry.filter((label) => labelMatchesFilter(label, sniFilter))
+        : industry;
+
+      kunder.push({
+        id: rec && rec.id,
+        namn: customerNameFromFields(fields),
+        sni: shown.length ? shown.join(' · ') : ''
+      });
+    });
+
+    kunder.sort((a, b) => String(a.namn).localeCompare(String(b.namn), 'sv'));
+
+    return {
+      typ: 'hogriskbransch',
+      bucket: wanted,
+      undersni: sortNamedCounts(undersni),
+      kunder,
+      antalKunder: kunder.length
+    };
+  }
+
   const api = {
     COMMON_KUND_BRANSCHER,
     FALLBACK,
@@ -343,7 +500,12 @@
     aggregateCountedBranscher,
     parseCountedBranschList,
     industryLabelsFromFields,
-    countKundBranschBuckets
+    countKundBranschBuckets,
+    resolveBucketName,
+    labelsMatchingBucket,
+    labelMatchesFilter,
+    drilldownKundBransch,
+    drilldownHogriskBransch
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -16375,6 +16375,49 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
   }
 });
 
+// GET /api/statistik-riskbedomning/bransch-drilldown – under-SNI + kundlista för branschbucket eller högriskbransch
+app.get('/api/statistik-riskbedomning/bransch-drilldown', authenticateToken, async (req, res) => {
+  try {
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
+    const typ = String(req.query.typ || '').trim();
+    const namn = req.query.namn != null ? String(req.query.namn).trim() : '';
+    const sni = req.query.sni != null ? String(req.query.sni).trim() : '';
+
+    if (!airtableAccessToken) {
+      return res.status(500).json({ error: 'Airtable API-nyckel saknas' });
+    }
+    if (!namn) {
+      return res.status(400).json({ error: 'Parameter namn krävs' });
+    }
+    if (typ !== 'kund-bransch' && typ !== 'hogriskbransch') {
+      return res.status(400).json({ error: 'typ måste vara kund-bransch eller hogriskbransch' });
+    }
+
+    const userData = await getAirtableUser(req.user.email);
+    if (!userData) {
+      return res.status(404).json({ error: 'Användare hittades inte' });
+    }
+
+    if (!statistikRiskbedomning.canBuildForUser(userData)) {
+      return res.json({ typ, bucket: namn, undersni: [], kunder: [], antalKunder: 0 });
+    }
+
+    const allRecords = kundDold.filterAktivaKunder(
+      await fetchKunddataRecordsForUser(userData, airtableAccessToken, airtableBaseId)
+    );
+
+    const result = typ === 'hogriskbransch'
+      ? statistikRiskbedomning.drilldownHogriskBransch(allRecords, namn, { sniFilter: sni })
+      : statistikRiskbedomning.drilldownKundBransch(allRecords, namn, { sniFilter: sni });
+
+    res.json(result);
+  } catch (err) {
+    console.error('❌ statistik-riskbedomning/bransch-drilldown:', err.message);
+    res.status(500).json({ error: err.message || 'Kunde inte hämta branschdetaljer' });
+  }
+});
+
 // POST /api/kunddata - Hämta KUNDDATA med rollbaserad filtrering (POST version för frontend)
 app.post('/api/kunddata', authenticateToken, async (req, res) => {
   const startTime = Date.now();
