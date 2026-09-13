@@ -13855,7 +13855,7 @@ async function syncDokumentationSignering({
   };
 }
 
-async function ensureByraProfilAirtableFields(airtableToken, baseId) {
+async function ensureByraProfilAirtableFields(airtableToken, baseId, options) {
   const byraTable = await getByraerTableMeta(airtableToken, baseId);
   if (!byraTable?.id) return { created: [], converted: [], table: null };
   const existingNames = (byraTable.fields || []).map(f => (f.name || '').trim());
@@ -13965,7 +13965,10 @@ async function ensureByraProfilAirtableFields(airtableToken, baseId) {
   }
   const choiceSynced = [];
   const choiceSyncErrors = [];
-  const neededByName = ByraProfilFields.selectChoicesByAirtableName();
+  const neededByName = ByraProfilFields.selectChoicesNeededByAirtableName(
+    ByraProfilFields.BYRA_PROFIL_FIELDS,
+    options && options.extraSelectChoices
+  );
   for (const field of tableMeta.fields || []) {
     const name = (field.name || '').trim();
     if (field.type !== 'singleSelect' || !field.id || !neededByName.has(name)) continue;
@@ -14443,7 +14446,9 @@ app.put('/api/byra/info', authenticateToken, async (req, res) => {
     ];
     let ensuredProfil = null;
     if (profilFieldKeys.some(k => body[k] !== undefined)) {
-      ensuredProfil = await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId);
+      ensuredProfil = await ensureByraProfilAirtableFields(airtableAccessToken, airtableBaseId, {
+        extraSelectChoices: ByraProfilFields.extraSelectChoicesFromAirtableFields(fields)
+      });
       // Om Meta API inte kunde lägga till nya Leveranssätt-val: skriv Distans/På plats/Blandat.
       Object.assign(
         fields,

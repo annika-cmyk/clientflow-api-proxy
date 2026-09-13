@@ -306,34 +306,124 @@
     var wrap = document.createElement('div');
     wrap.className = 'byra-enkate-select-block';
 
+    var knownChoices = (field.choices || []).map(function (choice) {
+      if (typeof choice === 'string') return { label: choice, value: choice };
+      return { label: choice.label, value: choice.value };
+    });
+    var knownSet = {};
+    knownChoices.forEach(function (c) {
+      knownSet[String(c.value).toLowerCase()] = true;
+    });
+
+    var customChoices = [];
+    var cur = current == null ? '' : String(current).trim();
+    if (cur && !knownSet[cur.toLowerCase()]) {
+      customChoices.push({ label: cur, value: cur });
+    }
+
     var choices = document.createElement('div');
     var stackUi = field.ui === 'stack' || field.key === 'leveranssatt';
     choices.className = 'byra-enkate-choices' + (stackUi ? ' byra-enkate-choices--stack' : '');
-    (field.choices || []).forEach(function (choice) {
-      var label = typeof choice === 'string' ? choice : choice.label;
-      var value = typeof choice === 'string' ? choice : choice.value;
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'byra-enkate-choice' + (String(current) === String(value) ? ' is-selected' : '');
-      btn.textContent = label;
-      btn.addEventListener('click', function () {
-        values[field.key] = value;
-        skipped[field.key] = false;
-        companionsFor(field).forEach(function (companion) {
-          if (!valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
-            values[companion.key] = '';
-          }
-        });
-        choices.querySelectorAll('.byra-enkate-choice').forEach(function (b) { b.classList.remove('is-selected'); });
-        btn.classList.add('is-selected');
-        syncCompanionUi(field, wrap);
-        updateProgress();
-        updateNav();
-        setStatus('');
+
+    var customPanel = document.createElement('div');
+    customPanel.className = 'byra-enkate-select-custom';
+    customPanel.hidden = true;
+    var customInput = document.createElement('input');
+    customInput.type = 'text';
+    customInput.className = 'form-input byra-enkate-input';
+    customInput.placeholder = 'Skriv eget alternativ';
+    customInput.setAttribute('aria-label', 'Eget alternativ för ' + (field.label || field.key));
+    var customSave = document.createElement('button');
+    customSave.type = 'button';
+    customSave.className = 'btn btn-secondary byra-enkate-select-custom-save';
+    customSave.textContent = 'Använd';
+    customPanel.appendChild(customInput);
+    customPanel.appendChild(customSave);
+
+    function allOptions() {
+      return knownChoices.concat(customChoices);
+    }
+
+    function isSelectedValue(value) {
+      return String(values[field.key] == null ? '' : values[field.key]).trim().toLowerCase() ===
+        String(value == null ? '' : value).trim().toLowerCase();
+    }
+
+    function applyValue(value) {
+      values[field.key] = value;
+      skipped[field.key] = false;
+      companionsFor(field).forEach(function (companion) {
+        if (!valueIncludesChoice(value, (companion.requiredWhen || {}).equals)) {
+          values[companion.key] = '';
+        }
       });
-      choices.appendChild(btn);
+      paintChoices();
+      syncCompanionUi(field, wrap);
+      updateProgress();
+      updateNav();
+      setStatus('');
+    }
+
+    function paintChoices() {
+      choices.innerHTML = '';
+      allOptions().forEach(function (opt) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'byra-enkate-choice' + (isSelectedValue(opt.value) ? ' is-selected' : '');
+        btn.textContent = opt.label;
+        btn.addEventListener('click', function () {
+          applyValue(opt.value);
+          customPanel.hidden = true;
+          customInput.value = '';
+        });
+        choices.appendChild(btn);
+      });
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'byra-enkate-choice byra-enkate-choice--add';
+      addBtn.textContent = '+ Eget alternativ';
+      addBtn.addEventListener('click', function () {
+        customPanel.hidden = false;
+        customInput.focus();
+      });
+      choices.appendChild(addBtn);
+    }
+
+    function commitCustom() {
+      var label = String(customInput.value || '').trim();
+      if (!label) {
+        customInput.focus();
+        return;
+      }
+      var lower = label.toLowerCase();
+      var existing = allOptions().find(function (o) {
+        return String(o.value).toLowerCase() === lower;
+      });
+      if (existing) {
+        applyValue(existing.value);
+      } else {
+        customChoices.push({ label: label, value: label });
+        applyValue(label);
+      }
+      customPanel.hidden = true;
+      customInput.value = '';
+    }
+
+    customSave.addEventListener('click', commitCustom);
+    customInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitCustom();
+      } else if (e.key === 'Escape') {
+        customPanel.hidden = true;
+        customInput.value = '';
+      }
     });
+
+    paintChoices();
     wrap.appendChild(choices);
+    wrap.appendChild(customPanel);
     syncCompanionUi(field, wrap);
     return wrap;
   }

@@ -852,7 +852,19 @@ class ByraAnvandareManager {
       }
       const setVal = (id, value) => {
         const node = document.getElementById(id);
-        if (node) node.value = value ?? '';
+        if (!node) return;
+        const next = value ?? '';
+        if (node.tagName === 'SELECT' && next !== '' && next != null) {
+          const str = String(next);
+          const exists = Array.from(node.options).some((o) => o.value === str);
+          if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = str;
+            opt.textContent = str;
+            node.appendChild(opt);
+          }
+        }
+        node.value = next;
       };
       setVal('byra-antal-kontor', f.antalKontor);
       this._setItSystemValues('byra-bokforingssystem', f.bokforingssystem);

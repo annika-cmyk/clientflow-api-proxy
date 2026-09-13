@@ -17989,6 +17989,23 @@ h5.ar-subsection-title {
 }
 .byra-enkate-choice:hover { border-color: #13505c; color: #13505c; }
 .byra-enkate-choice.is-selected { background: #13505c; border-color: #13505c; color: #fff; }
+.byra-enkate-choice--add {
+  border-style: dashed;
+  color: #475569;
+  font-weight: 600;
+}
+.byra-enkate-choice--add:hover { border-color: #13505c; color: #13505c; }
+.byra-enkate-select-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.65rem;
+  max-width: 36rem;
+}
+.byra-enkate-select-custom[hidden] { display: none !important; }
+.byra-enkate-select-custom .byra-enkate-input { flex: 1; min-width: 12rem; }
+.byra-enkate-select-custom-save { white-space: nowrap; }
 .byra-enkate-choices--stack {
   flex-direction: column;
   align-items: stretch;
