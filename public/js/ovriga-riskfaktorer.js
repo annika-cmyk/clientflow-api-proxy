@@ -20,6 +20,8 @@ class RiskFactorsManager {
         this.byraProfil = null;
         this.riskFactorCatalogVersion = 1;
         this._profilForslagDismissed = this.readDismissedProfilSuggestions();
+        this.klarmarkeradeFlikar = { add: new Set(), edit: new Set() };
+        this._activeRiskTab = { add: 'utforande', edit: 'utforande' };
 
         this.init();
     }
@@ -636,6 +638,8 @@ class RiskFactorsManager {
         document.getElementById('edit-risk-form').addEventListener('submit', (e) => this.handleEditRisk(e));
 
         this.bindRiskTabs();
+        this.bindRiskDynLists();
+        this.bindRiskKlarmarkering();
 
         const addAiBtn = document.getElementById('add-ai-suggest-btn');
         if (addAiBtn) addAiBtn.addEventListener('click', () => this.generateAiSuggestion('add'));
@@ -969,27 +973,34 @@ class RiskFactorsManager {
         return pt;
     }
 
-    collectRiskPayload(formData) {
+    collectRiskPayload(formData, mode = 'add') {
+        const prefix = mode === 'edit' ? 'edit-' : '';
+        const listPrefix = mode === 'edit' ? 'edit-' : 'add-';
+        const klar = this.klarmarkeradeFlikar[mode] || new Set();
         const poang = {
             sannolikhet: formData.get('sannolikhet'),
             konsekvens: formData.get('konsekvens'),
             sannolikhetEfter: formData.get('sannolikhet-efter'),
             konsekvensEfter: formData.get('konsekvens-efter'),
-            ...this.readSplitMotiveringFromDom(''),
-            kraverManualOversyn: this.editNeedsReview === true
+            ...this.readSplitMotiveringFromDom(prefix),
+            kraverManualOversyn: this.editNeedsReview === true,
+            klarmarkeradeFlikar: [...klar]
         };
         const inherent = (window.RiskSkala && RiskSkala.assessRisk(poang.sannolikhet, poang.konsekvens)) || {};
+        const underlagId = mode === 'edit' ? 'edit-risk-ai-extra-underlag' : 'risk-ai-extra-underlag';
         return {
             'Typ av riskfaktor': formData.get('risk-type'),
             'Riskfaktor': formData.get('risk-factor'),
             'Beskrivning': formData.get('description'),
             'Åtgjärd': formData.get('action'),
+            'Hot': JSON.stringify(this.collectHot(listPrefix)),
+            'Sårbarheter': JSON.stringify(this.collectSarbarhet(listPrefix)),
+            'AI-extra underlag': (document.getElementById(underlagId)?.value || '').trim(),
             'Riskbedömning': inherent.level || '',
             'Riskpoäng': (window.RiskSkala && RiskSkala.serializeRiskPoang(poang)) || JSON.stringify(poang),
             'PT/TF-relevans': this.requirePtTf(formData.get('pt-tf'))
         };
     }
-
     validateMotiveringBeforeSave(poang) {
         const RM = window.RiskMotivering;
         if (!RM) return { ok: true };
@@ -1476,6 +1487,8 @@ class RiskFactorsManager {
     }
 
     applyOvrigAiAll(prefix, data) {
+        const mode = prefix === 'edit-' ? 'edit' : 'add';
+        const listPrefix = this.listPrefix(mode);
         if (data.beskrivning) document.getElementById(`${prefix}description`).value = data.beskrivning;
         if (data.atgard) document.getElementById(`${prefix}action`).value = data.atgard;
         if (data.ptTfRelevans) {
@@ -1492,8 +1505,33 @@ class RiskFactorsManager {
             if (data.konsekvens == null) this.setScoreSelect(`${prefix}konsekvens`, inferred.konsekvens);
         }
         this.applyOvrigAiMotivering(prefix, data);
+        if (Array.isArray(data.hot) || Array.isArray(data.sarbarheter)) {
+            const Ai = window.AiFaltGranskning;
+            const existingHot = this.collectHot(listPrefix);
+            const existingSar = this.collectSarbarhet(listPrefix);
+            const hotList = document.getElementById(listPrefix + 'hot-list');
+            const sarList = document.getElementById(listPrefix + 'sarbarhet-list');
+            if (hotList) hotList.innerHTML = '';
+            if (sarList) sarList.innerHTML = '';
+            const keptHot = existingHot.filter((h) => this.isUserAddedItem(h));
+            const keptSar = existingSar.filter((s) => this.isUserAddedItem(s));
+            const hotMerged = Array.isArray(data.hot)
+                ? (Ai && Ai.mergeHotLists ? Ai.mergeHotLists(keptHot, data.hot) : keptHot.concat(data.hot))
+                : existingHot;
+            let sarMerged = existingSar;
+            if (Array.isArray(data.sarbarheter)) {
+                sarMerged = keptSar.slice();
+                data.sarbarheter.forEach((s) => {
+                    const title = String(s.titel || s.title || '').trim().toLowerCase();
+                    if (title && sarMerged.some((m) => String(m.titel || '').trim().toLowerCase() === title)) return;
+                    sarMerged.push(s);
+                });
+            }
+            hotMerged.forEach((h) => this.addHotRow(mode, h, { aiAdd: !this.isUserAddedItem(h) }));
+            sarMerged.forEach((s) => this.addSarbarhetRow(mode, s, { aiAdd: !this.isUserAddedItem(s) }));
+            this.updateRiskDynLists(mode);
+        }
     }
-
     applyOvrigAiIfEmpty(prefix, existing, data) {
         const Ai = window.AiFaltGranskning;
         if (!(Ai && Ai.isFilledText(existing.beskrivning)) && data.beskrivning) {
@@ -1677,7 +1715,10 @@ class RiskFactorsManager {
             ptTfRelevans: document.getElementById(`${prefix}pt-tf`)?.value || '',
             riskbedomning: inherent.level || '',
             motiveringInneboende: document.getElementById(`${prefix}motivering-inneboende`)?.value.trim() || '',
-            motiveringResidual: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || ''
+            motiveringResidual: document.getElementById(`${prefix}motivering-residual`)?.value.trim() || '',
+            hot: this.collectHot(this.listPrefix(isEdit ? 'edit' : 'add')),
+            sarbarheter: this.collectSarbarhet(this.listPrefix(isEdit ? 'edit' : 'add')),
+            extraUnderlag: (document.getElementById(isEdit ? 'edit-risk-ai-extra-underlag' : 'risk-ai-extra-underlag')?.value || '').trim()
         };
         const reviewMode = !!(Ai && Ai.hasExistingOvrigContent(befintligt));
         const requestEpoch = this.bumpAiSuggestionEpoch();
@@ -1735,10 +1776,304 @@ class RiskFactorsManager {
         }
     }
 
+modeFromModalId(modalId) {
+        return modalId === 'edit-risk-modal' ? 'edit' : 'add';
+    }
+
+    listPrefix(mode) {
+        return mode === 'edit' ? 'edit-' : 'add-';
+    }
+
+    escAttr(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    parseJsonField(raw) {
+        if (Array.isArray(raw)) return raw;
+        if (raw == null || raw === '') return [];
+        if (typeof raw === 'string') {
+            try {
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+        return [];
+    }
+
+    isUserAddedItem(item) {
+        const Ai = window.AiFaltGranskning;
+        if (Ai && typeof Ai.isUserAddedItem === 'function') return Ai.isUserAddedItem(item);
+        if (!item || typeof item !== 'object') return false;
+        if (item.userAdded === true || item.userAdded === 'true' || item.userAdded === 1) return true;
+        const origin = String(item.ursprung || item.source || '').trim().toLowerCase();
+        return origin === 'user' || origin === 'eget' || origin === 'egen';
+    }
+
+    bindDynCard(row, { expand = false, hasSource = false, onChange } = {}) {
+        row.classList.toggle('is-collapsed', !expand);
+        row.querySelector('.dyn-remove')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            row.remove();
+            if (onChange) onChange();
+        });
+        row.querySelector('.dyn-toggle')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            row.classList.toggle('is-collapsed');
+        });
+        if (expand) setTimeout(() => row.querySelector('.dyn-titel')?.focus(), 0);
+        if (!hasSource) return;
+        const kallaToggle = row.querySelector('.dyn-kalla-toggle');
+        const kallaRow = row.querySelector('.dyn-kalla-row');
+        kallaToggle?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const wrap = row.querySelector('.dyn-kalla-wrap');
+            if (kallaRow) kallaRow.hidden = false;
+            if (wrap) wrap.classList.remove('is-collapsed');
+            kallaToggle.hidden = true;
+            row.classList.remove('is-collapsed');
+            row.querySelector('.dyn-kalla')?.focus();
+        });
+    }
+
+    updateRiskDynLists(mode) {
+        const pfx = this.listPrefix(mode);
+        ['hot', 'sarbarhet'].forEach((kind) => {
+            const n = document.querySelectorAll('#' + pfx + kind + '-list .dyn-row').length;
+            const empty = document.getElementById(pfx + kind + '-empty');
+            if (empty) empty.hidden = n > 0;
+        });
+    }
+
+    addHotRow(mode, data = {}, opts = {}) {
+        const pfx = this.listPrefix(mode);
+        const list = document.getElementById(pfx + 'hot-list');
+        if (!list) return;
+        const titel = data.titel ?? data.title ?? '';
+        const beskrivning = data.beskrivning ?? data.description ?? '';
+        const kalla = data.kalla ?? data.källa ?? data.source ?? '';
+        const typ = (window.RiskSkala && RiskSkala.normalizePtTf(data.typ ?? data.type)) || '';
+        const userAdded = !!(opts.userAdded || this.isUserAddedItem(data));
+        const row = document.createElement('div');
+        row.className = 'dyn-row dyn-row-hot dyn-card'
+            + (opts.aiAdd ? ' is-ai-add' : '')
+            + (userAdded ? ' is-user-added' : '');
+        if (typ) row.dataset.hotTyp = typ;
+        if (userAdded) row.dataset.userAdded = '1';
+        row.innerHTML = `
+            <div class="dyn-row-header">
+                <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                <span class="dyn-row-kind is-hot" aria-hidden="true"><i class="fas fa-triangle-exclamation"></i></span>
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
+                ${userAdded && !opts.aiAdd ? '<span class="dyn-user-badge" title="Tillagt av er">eget</span>' : ''}
+                <input type="text" class="dyn-titel" placeholder="Hotets titel" value="${this.escAttr(titel)}">
+                <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
+                <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="dyn-row-body">
+                <textarea class="dyn-besk" rows="3" placeholder="Hur riskfaktorn kan utnyttjas för penningtvätt eller finansiering av terrorism.">${this.escAttr(beskrivning)}</textarea>
+            </div>
+            <div class="dyn-kalla-wrap is-collapsed">
+                <button type="button" class="dyn-kalla-toggle">${kalla ? 'Visa källa (valfritt)' : 'Lägg till källa (valfritt)'}</button>
+                <div class="dyn-kalla-row" hidden>
+                    <span class="dyn-kalla-label">Källa <span class="dyn-kalla-optional">(valfritt)</span></span>
+                    <input type="text" class="dyn-kalla" placeholder="Valfritt — utgivare eller länk" value="${this.escAttr(kalla)}" aria-label="Källa (valfritt)">
+                </div>
+            </div>
+        `;
+        this.bindDynCard(row, {
+            expand: opts.aiAdd ? false : !!opts.expand,
+            hasSource: true,
+            onChange: () => this.updateRiskDynLists(mode)
+        });
+        list.appendChild(row);
+        this.updateRiskDynLists(mode);
+    }
+
+    addSarbarhetRow(mode, data = {}, opts = {}) {
+        const pfx = this.listPrefix(mode);
+        const list = document.getElementById(pfx + 'sarbarhet-list');
+        if (!list) return;
+        const titel = data.titel ?? data.title ?? '';
+        const beskrivning = data.beskrivning ?? data.description ?? '';
+        const kalla = data.kalla ?? data.källa ?? data.source ?? '';
+        const userAdded = !!(opts.userAdded || this.isUserAddedItem(data));
+        const row = document.createElement('div');
+        row.className = 'dyn-row dyn-row-sarbarhet dyn-card'
+            + (opts.aiAdd ? ' is-ai-add' : '')
+            + (userAdded ? ' is-user-added' : '');
+        if (userAdded) row.dataset.userAdded = '1';
+        row.innerHTML = `
+            <div class="dyn-row-header">
+                <span class="dyn-drag" title="Dra för att sortera" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                <span class="dyn-row-kind is-sarbarhet" aria-hidden="true"><i class="fas fa-circle-exclamation"></i></span>
+                ${opts.aiAdd ? '<span class="dyn-ai-badge">ny</span>' : ''}
+                ${userAdded && !opts.aiAdd ? '<span class="dyn-user-badge" title="Tillagt av er">eget</span>' : ''}
+                <input type="text" class="dyn-titel" placeholder="Sårbarhetens titel" value="${this.escAttr(titel)}">
+                <button type="button" class="dyn-toggle" title="Visa mer" aria-label="Visa mer"><i class="fas fa-chevron-down"></i></button>
+                <button type="button" class="dyn-remove" title="Ta bort"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="dyn-row-body">
+                <textarea class="dyn-besk" rows="3" placeholder="Beskrivning av sårbarheten">${this.escAttr(beskrivning)}</textarea>
+            </div>
+            <div class="dyn-kalla-wrap is-collapsed">
+                <button type="button" class="dyn-kalla-toggle">${kalla ? 'Visa källa (valfritt)' : 'Lägg till källa (valfritt)'}</button>
+                <div class="dyn-kalla-row" hidden>
+                    <span class="dyn-kalla-label">Källa <span class="dyn-kalla-optional">(valfritt)</span></span>
+                    <input type="text" class="dyn-kalla" placeholder="Valfritt — utgivare eller länk" value="${this.escAttr(kalla)}" aria-label="Källa (valfritt)">
+                </div>
+            </div>
+        `;
+        this.bindDynCard(row, {
+            expand: opts.aiAdd ? false : !!opts.expand,
+            hasSource: true,
+            onChange: () => this.updateRiskDynLists(mode)
+        });
+        list.appendChild(row);
+        this.updateRiskDynLists(mode);
+    }
+
+    collectHot(listPrefix) {
+        return [...document.querySelectorAll('#' + listPrefix + 'hot-list .dyn-row')].map((row) => {
+            const item = {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+                kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
+            };
+            const typ = (window.RiskSkala && RiskSkala.normalizePtTf(row.dataset.hotTyp)) || '';
+            if (typ) item.typ = typ;
+            if (row.dataset.userAdded === '1') item.userAdded = true;
+            return item;
+        }).filter((h) => h.titel || h.beskrivning || h.kalla);
+    }
+
+    collectSarbarhet(listPrefix) {
+        return [...document.querySelectorAll('#' + listPrefix + 'sarbarhet-list .dyn-row')].map((row) => {
+            const item = {
+                titel: row.querySelector('.dyn-titel')?.value.trim() || '',
+                beskrivning: row.querySelector('.dyn-besk')?.value.trim() || '',
+                kalla: row.querySelector('.dyn-kalla')?.value.trim() || ''
+            };
+            if (row.dataset.userAdded === '1') item.userAdded = true;
+            return item;
+        }).filter((s) => s.titel || s.beskrivning || s.kalla);
+    }
+
+    clearRiskDynLists(mode) {
+        const pfx = this.listPrefix(mode);
+        ['hot-list', 'sarbarhet-list'].forEach((id) => {
+            const el = document.getElementById(pfx + id);
+            if (el) el.innerHTML = '';
+        });
+        this.updateRiskDynLists(mode);
+    }
+
+    bindRiskDynLists() {
+        ['add-risk-modal', 'edit-risk-modal'].forEach((modalId) => {
+            const modal = document.getElementById(modalId);
+            if (!modal || modal.dataset.riskDynBound === '1') return;
+            modal.dataset.riskDynBound = '1';
+            const mode = this.modeFromModalId(modalId);
+            modal.querySelectorAll('.btn-add-row[data-add]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const kind = btn.getAttribute('data-add');
+                    if (kind === 'hot') this.addHotRow(mode, {}, { expand: true, userAdded: true });
+                    if (kind === 'sarbarhet') this.addSarbarhetRow(mode, {}, { expand: true, userAdded: true });
+                });
+            });
+        });
+    }
+
+    setKlarmarkeradeFlikar(mode, list) {
+        const RS = window.RiskSkala;
+        const allowed = RS && RS.normalizeKlarmarkeradeFlikar
+            ? RS.normalizeKlarmarkeradeFlikar(list)
+            : (Array.isArray(list) ? list : []);
+        this.klarmarkeradeFlikar[mode] = new Set(allowed);
+        this.syncRiskTabDoneState(mode);
+        this.syncRiskKlarmarkeraBtn(mode);
+    }
+
+    syncRiskTabDoneState(mode) {
+        const modalId = mode === 'edit' ? 'edit-risk-modal' : 'add-risk-modal';
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        const klar = this.klarmarkeradeFlikar[mode] || new Set();
+        modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
+            const id = tab.getAttribute('data-risk-tab');
+            const done = klar.has(id);
+            tab.classList.toggle('is-done', done);
+            tab.setAttribute('aria-label', done
+                ? ((tab.querySelector('.tjanst-tab-label')?.textContent || id) + ' (klar)')
+                : (tab.querySelector('.tjanst-tab-label')?.textContent || id));
+        });
+        this.syncRiskResaProgress(mode);
+    }
+
+    syncRiskKlarmarkeraBtn(mode) {
+        const btnId = mode === 'edit' ? 'edit-risk-klarmarkera-btn' : 'add-risk-klarmarkera-btn';
+        const btn = document.getElementById(btnId);
+        const label = btn?.querySelector('.tjanst-klarmarkera-label');
+        if (!btn) return;
+        const done = (this.klarmarkeradeFlikar[mode] || new Set()).has(this._activeRiskTab[mode] || 'utforande');
+        btn.classList.toggle('is-done', done);
+        btn.setAttribute('aria-pressed', done ? 'true' : 'false');
+        if (label) label.textContent = done ? 'Ta bort klarmarkering' : 'Klarmarkera';
+    }
+
+    syncRiskResaProgress(mode) {
+        const elId = mode === 'edit' ? 'edit-risk-resa-progress' : 'add-risk-resa-progress';
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const RS = window.RiskSkala;
+        const klar = [...(this.klarmarkeradeFlikar[mode] || [])];
+        const progress = RS && RS.tjanstResaProgress
+            ? RS.tjanstResaProgress(klar)
+            : { doneCount: klar.length, total: 7, complete: false };
+        el.hidden = progress.doneCount <= 0;
+        el.classList.toggle('is-complete', !!progress.complete);
+        el.innerHTML = progress.complete
+            ? '<i class="fas fa-check-circle" aria-hidden="true"></i> Alla delar klara'
+            : ('<i class="fas fa-check" aria-hidden="true"></i> ' + progress.doneCount + '/' + progress.total + ' delar klara');
+    }
+
+    toggleRiskKlarmarkering(mode) {
+        const id = this._activeRiskTab[mode] || 'utforande';
+        const set = this.klarmarkeradeFlikar[mode] || new Set();
+        if (set.has(id)) set.delete(id);
+        else set.add(id);
+        this.klarmarkeradeFlikar[mode] = set;
+        this.syncRiskTabDoneState(mode);
+        this.syncRiskKlarmarkeraBtn(mode);
+    }
+
+    bindRiskKlarmarkering() {
+        const addBtn = document.getElementById('add-risk-klarmarkera-btn');
+        if (addBtn && addBtn.dataset.bound !== '1') {
+            addBtn.dataset.bound = '1';
+            addBtn.addEventListener('click', () => this.toggleRiskKlarmarkering('add'));
+        }
+        const editBtn = document.getElementById('edit-risk-klarmarkera-btn');
+        if (editBtn && editBtn.dataset.bound !== '1') {
+            editBtn.dataset.bound = '1';
+            editBtn.addEventListener('click', () => this.toggleRiskKlarmarkering('edit'));
+        }
+    }
+
     setRiskTab(modalId, tabId) {
         const modal = document.getElementById(modalId);
         if (!modal) return;
-        const id = tabId || 'oversikt';
+        const mode = this.modeFromModalId(modalId);
+        const id = tabId || 'utforande';
+        this._activeRiskTab[mode] = id;
         modal.querySelectorAll('.tjanst-tab[data-risk-tab]').forEach((tab) => {
             const on = tab.getAttribute('data-risk-tab') === id;
             tab.classList.toggle('is-active', on);
@@ -1749,6 +2084,8 @@ class RiskFactorsManager {
             panel.classList.toggle('is-active', on);
             panel.hidden = !on;
         });
+        this.syncRiskTabDoneState(mode);
+        this.syncRiskKlarmarkeraBtn(mode);
     }
 
     bindRiskTabs() {
@@ -1804,6 +2141,10 @@ class RiskFactorsManager {
         this.bumpAiSuggestionEpoch();
         this.clearOvrigInlineAi('add-risk-modal');
         document.getElementById('add-risk-form')?.reset();
+        this.clearRiskDynLists('add');
+        this.setKlarmarkeradeFlikar('add', []);
+        const underlag = document.getElementById('risk-ai-extra-underlag');
+        if (underlag) underlag.value = '';
         const pt = document.getElementById('pt-tf');
         if (pt) pt.value = '';
         const typ = document.getElementById('risk-type');
@@ -1823,10 +2164,9 @@ class RiskFactorsManager {
         this.editNeedsReview = false;
         this.updateRiskBadges('add');
         this.updateMotiveringWarnings('add');
-        this.setRiskTab('add-risk-modal', 'oversikt');
+        this.setRiskTab('add-risk-modal', 'utforande');
         document.getElementById('add-risk-modal').style.display = 'flex';
     }
-
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
         this.bumpAiSuggestionEpoch();
@@ -1868,7 +2208,13 @@ class RiskFactorsManager {
         this.editNeedsReview = scored.kraverManualOversyn === true;
         this.updateRiskBadges('edit');
 
-        this.setRiskTab('edit-risk-modal', 'oversikt');
+        this.clearRiskDynLists('edit');
+        this.parseJsonField(fields.Hot).forEach((h) => this.addHotRow('edit', h));
+        this.parseJsonField(fields['Sårbarheter']).forEach((s) => this.addSarbarhetRow('edit', s));
+        const underlag = document.getElementById('edit-risk-ai-extra-underlag');
+        if (underlag) underlag.value = fields['AI-extra underlag'] || '';
+        this.setKlarmarkeradeFlikar('edit', scored.klarmarkeradeFlikar || []);
+        this.setRiskTab('edit-risk-modal', 'utforande');
         document.getElementById('edit-risk-modal').style.display = 'flex';
     }
 
@@ -1891,7 +2237,7 @@ class RiskFactorsManager {
 
         try {
             const riskData = {
-                ...this.collectRiskPayload(formData),
+                ...this.collectRiskPayload(formData, 'add'),
                 'Byrå ID': userByraId,
                 'Aktuell': true
             };
@@ -1950,7 +2296,7 @@ class RiskFactorsManager {
 
         try {
             const riskData = {
-                ...this.collectRiskPayload(formData),
+                ...this.collectRiskPayload(formData, 'edit'),
                 'Byrå ID': userByraId
             };
             const poang = RiskSkala && RiskSkala.parseRiskPoang ? RiskSkala.parseRiskPoang(riskData['Riskpoäng']) : null;

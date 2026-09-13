@@ -21,7 +21,9 @@
     sxk: { etikett: 'Sannolikhet och konsekvens' },
     motiveringInneboende: { etikett: 'Motivering av inneboende risk' },
     residual: { etikett: 'Risk efter åtgärd' },
-    motiveringResidual: { etikett: 'Motivering av residualrisk' }
+    motiveringResidual: { etikett: 'Motivering av residualrisk' },
+    hot: { etikett: 'Hot och modus' },
+    sarbarheter: { etikett: 'Sårbarheter' }
   };
 
   const MOTIVERING_AI_RULES = `- MOTIVERING AV S×K (krav vid tillsyn): Skriv alltid motiveringInneboende och motiveringResidual när du sätter S/K.
@@ -120,6 +122,8 @@
     if (readMotiveringInneboende(o)) keys.push('motiveringInneboende');
     if (isFilledScore(o.sannolikhetEfter) || isFilledScore(o.konsekvensEfter)) keys.push('residual');
     if (readMotiveringResidual(o)) keys.push('motiveringResidual');
+    if (hasListItems(o.hot)) keys.push('hot');
+    if (hasListItems(o.sarbarheter)) keys.push('sarbarheter');
     return keys;
   }
 
@@ -202,6 +206,18 @@
     }
     if (keys.includes('motiveringResidual')) {
       parts.push(`Motivering residualrisk:\n${readMotiveringResidual(o)}`);
+    }
+    const markUser = (item, line) => (isUserAddedItem(item) ? `[Eget] ${line}` : line);
+    if (keys.includes('hot')) {
+      parts.push('Hot:\n' + formatList(o.hot, (h) => {
+        const kalla = h.kalla ? ` (källa: ${h.kalla})` : '';
+        return markUser(h, `${h.titel || ''} — ${h.beskrivning || ''}${kalla}`);
+      }));
+    }
+    if (keys.includes('sarbarheter')) {
+      parts.push('Sårbarheter:\n' + formatList(o.sarbarheter, (s) => (
+        markUser(s, `${s.titel || ''} — ${s.beskrivning || ''}`)
+      )));
     }
     return parts.join('\n\n');
   }
@@ -915,11 +931,25 @@
     motiveringInneboende: 'sxk',
     atgard: 'atgard',
     residual: 'atgard',
-    motiveringResidual: 'atgard'
+    motiveringResidual: 'atgard',
+    hot: 'hot',
+    sarbarheter: 'sarbarhet'
+  };
+
+  const OVRIG_TAB_FOR_FALT = {
+    beskrivning: 'oversikt',
+    ptTfRelevans: 'oversikt',
+    sxk: 'inneboende',
+    motiveringInneboende: 'inneboende',
+    hot: 'hot',
+    sarbarheter: 'sarbarhet',
+    atgard: 'atgard',
+    residual: 'residual',
+    motiveringResidual: 'residual'
   };
 
   function tabForFalt(falt, kind) {
-    if (kind === 'ovrig') return OVRIG_HOST_FOR_FALT[falt] || 'beskrivning';
+    if (kind === 'ovrig') return OVRIG_TAB_FOR_FALT[falt] || 'oversikt';
     return TJANST_TAB_FOR_FALT[falt] || 'oversikt';
   }
 
