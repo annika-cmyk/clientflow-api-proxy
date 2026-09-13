@@ -154,6 +154,52 @@ class RiskFactorsManager {
         }
     }
 
+    /** NRA kap. 4 — terrorfinansiering som kundriskfaktor (inte separat NRA-checklista). */
+    async ensureTerrorfinansieringTemplate() {
+        const Kat = window.OvrigaRiskKategorier;
+        if (!Kat || !Kat.findFactor) return;
+        const factor = Kat.findFactor('Kunder med terrorfinansieringsrisk (ideell/insamling/internationell överföring)')
+            || (Kat.FACTORS || []).find((f) => f && f.id === 'terrorfinansiering');
+        if (!factor) return;
+        const byraId = String(this.userData?.byraId || this.userByraIds?.[0] || '').trim();
+        if (!byraId) return;
+        const kundTyp = 'Riskfaktorer kopplat till kund';
+        const fold = (v) => String(v || '').trim().toLowerCase().normalize('NFC').replace(/\s+/g, ' ');
+        const byraRisks = (this.risks || []).filter((risk) => {
+            const bid = String((risk.fields || {})['Byrå ID'] || '').trim();
+            return bid === byraId;
+        });
+        const exists = byraRisks.some((risk) => {
+            const f = risk.fields || {};
+            if (fold(f['Typ av riskfaktor']) !== fold(kundTyp)) return false;
+            const hit = Kat.findFactor(f.Riskfaktor || '');
+            return !!(hit && hit.id === 'terrorfinansiering');
+        });
+        if (exists) return;
+        const payload = {
+            'Typ av riskfaktor': kundTyp,
+            Riskfaktor: factor.label,
+            Beskrivning: factor.hint
+                || 'Ideella föreningar, insamlingsorganisationer eller internationella överföringar utan tydlig affärsmässig motprestation (NRA kap. 4).',
+            'Byrå ID': byraId,
+            'PT/TF-relevans': 'TF',
+            Aktuell: false
+        };
+        try {
+            const response = await this.saveRiskFactor(
+                `${window.apiConfig.baseUrl}/api/risk-factors`,
+                'POST',
+                payload
+            );
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data.record) this.risks.push(data.record);
+            }
+        } catch (err) {
+            console.warn('Kunde inte skapa terrorfinansieringsfaktor:', factor.label, err);
+        }
+    }
+
     async init() {
         await this.loadDatasourceConfig();
         await this.loadUserData();
@@ -763,6 +809,9 @@ class RiskFactorsManager {
                 await this.migrateMisplacedKundTransactionFactors();
                 await this.migrateRenamedGeoTyp();
                 await this.ensureMotpartGeoTemplates();
+                if (this.isKundriskerPage()) {
+                    await this.ensureTerrorfinansieringTemplate();
+                }
                 
                 // Populate byrå dropdown with unique byrå IDs from the data
                 this.populateByraDropdown();
