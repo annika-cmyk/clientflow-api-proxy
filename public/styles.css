@@ -15768,6 +15768,19 @@ h5.ar-subsection-title {
 .tjanst-tab.is-done .tjanst-tab-dot {
     background: var(--accent, #13505c);
     border-color: var(--accent, #13505c);
+    position: relative;
+}
+.tjanst-tab.is-done .tjanst-tab-dot::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
 }
 .tjanst-tab.is-done:not(.is-active) .tjanst-tab-dot {
     box-shadow: none;
@@ -15784,8 +15797,21 @@ h5.ar-subsection-title {
     display: flex;
     justify-content: flex-end;
     align-items: center;
+    gap: 0.65rem;
     flex-shrink: 0;
     margin: 0 0 0.65rem;
+}
+.tjanst-resa-progress {
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text, #5a626d);
+}
+.tjanst-resa-progress.is-complete {
+    color: #15803d;
 }
 .tjanst-klarmarkera-btn {
     appearance: none;
@@ -15881,8 +15907,9 @@ h5.ar-subsection-title {
 }
 .tjanst-panel #tjanst-beskrivning {
     width: 100%;
-    flex: 1;
+    flex: 0 0 auto;
     min-height: 160px;
+    height: auto;
     resize: none;
     border: 1px solid #d7dee8;
     border-radius: 10px;
@@ -15893,9 +15920,40 @@ h5.ar-subsection-title {
     background: #fff;
     box-sizing: border-box;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+    field-sizing: content;
+}
+.risk-motivering-field textarea,
+.dyn-row-body .dyn-besk,
+.tjanst-panel textarea:not([hidden]):not([aria-hidden="true"]) {
+    overflow-y: hidden;
+    resize: none;
+    field-sizing: content;
+    height: auto;
+    min-height: 4.5rem;
+}
+.tjanst-mall-klar-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.tjanst-mall-klar-badge.is-complete {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #15803d;
+}
+.tjanst-mall-card.is-resa-complete {
+    border-color: color-mix(in srgb, #22c55e 28%, var(--border, #e2e8f0));
 }
 .tjanst-empty {
     border: 1px dashed #cbd5e1;
