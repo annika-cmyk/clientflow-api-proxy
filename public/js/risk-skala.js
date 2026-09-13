@@ -607,7 +607,8 @@
         var mot = stored ? {
             motivering_inneboende_risk: stored.motivering_inneboende_risk,
             motivering_residual_risk: stored.motivering_residual_risk,
-            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering
+            kraver_uppdaterad_motivering: stored.kraver_uppdaterad_motivering,
+            klarmarkeradeFlikar: stored.klarmarkeradeFlikar
         } : {};
         return {
             sannolikhet: inherent.sannolikhet,
@@ -623,6 +624,7 @@
             motivering_inneboende_risk: mot.motivering_inneboende_risk || '',
             motivering_residual_risk: mot.motivering_residual_risk || '',
             kraver_uppdaterad_motivering: mot.kraver_uppdaterad_motivering === true,
+            klarmarkeradeFlikar: Array.isArray(mot.klarmarkeradeFlikar) ? mot.klarmarkeradeFlikar.slice() : [],
             ptTfRelevans: normalizePtTf(f['PT/TF-relevans'] || f.ptTfRelevans),
             kraverManualOversyn: fromLegacy || poangNeedsReview(f['Riskpoäng'] || f.Riskpoang)
         };

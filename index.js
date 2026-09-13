@@ -25345,10 +25345,12 @@ Svara ENDAST med ett JSON-objekt, ingen annan text, inga markdown-backticks:
   "konsekvensEfter": 1,
   "motiveringInneboende": "2-4 meningar: varför sannolikhet X och varför konsekvens Y — knutet till riskfaktorns benämning.",
   "motiveringResidual": "2-4 meningar: hur åtgärderna sänkt S och/eller K.",
-  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör."${reviewMode ? `,
+  "atgard": "Vad byrån gör nu, eller en tydlig plan med när, vem och var. Inte Inför/öka/bör.",
+  "hot": [ { "titel": "Kort hot-titel", "beskrivning": "Hur riskfaktorn kan utnyttjas (PT/TF).", "kalla": "valfri källa" } ],
+  "sarbarheter": [ { "titel": "Kort sårbarhetstitel", "beskrivning": "Varför byrån kan vara exponerad." } ]${reviewMode ? `,
   "granskning": {
     "poster": [
-      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
+      { "falt": "beskrivning|atgard|ptTfRelevans|sxk|motiveringInneboende|residual|motiveringResidual|hot|sarbarheter", "kommentar": "2-3 meningar om helheten och varför du föreslår ändringar", "andra": true, "forslag": "samma kompletta innehåll som i huvudfältet" }
     ]
   }` : ''}
 }
@@ -25413,6 +25415,13 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).sannolikhet,
       RiskSkala.scoresFromLegacyLevel(fallbackLevel).konsekvens
     );
+    const normList = (arr) => (Array.isArray(arr) ? arr : []).map((item) => ({
+      titel: cleanStr(item?.titel ?? item?.title),
+      beskrivning: cleanStr(item?.beskrivning ?? item?.description),
+      kalla: cleanStr(item?.kalla ?? item?.källa ?? item?.source),
+      ...(item?.typ || item?.type ? { typ: RiskSkala.normalizePtTf(item.typ ?? item.type) || undefined } : {}),
+      ...(item?.userAdded ? { userAdded: true } : {})
+    })).filter((item) => item.titel || item.beskrivning);
     const faktorAiPayload = {
       beskrivning: (result.beskrivning || '').toString().trim(),
       ptTfRelevans: RiskSkala.normalizePtTf(result.ptTfRelevans) || 'PT',
@@ -25423,7 +25432,9 @@ Returnera bara talen för S/K. Motiveringen ska använda dimensionsorden och nä
       motiveringInneboende: cleanStr(result.motiveringInneboende ?? result.motivering_inneboende_risk),
       motiveringResidual: cleanStr(result.motiveringResidual ?? result.motivering_residual_risk),
       riskbedomning: fallbackScores.level || fallbackLevel,
-      atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim()
+      atgard: (result.atgard || result.åtgärd || result.atgardText || '').toString().trim(),
+      hot: HotAmlTf.filterHots(normList(result.hot)),
+      sarbarheter: normList(result.sarbarheter)
     };
     let granskningPoster = reviewMode
       ? AiFaltGranskning.normalizeGranskning(result.granskning, 'ovrig', befintligt)
