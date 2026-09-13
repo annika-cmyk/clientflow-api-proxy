@@ -401,14 +401,14 @@
           ${vhRelevant ? `
           <section class="kundformular-section" data-kf-vh-section>
             <h4>${sVh}. Verklig huvudman</h4>
-            <p class="kundformular-hint">Prefyllt från register. Bekräfta aktivt. Vid komplex ägarstruktur beskrivs kedjan.</p>
+            <p class="kundformular-hint">Prefyllt från Bolagsverkets register (när kopplingen är aktiv). <strong>Ja</strong> betyder att listan stämmer med registret — samma bedömning som byrån gör i kundresans steg 2.</p>
             <div class="kundformular-label-row" style="margin-bottom:0.5rem">${fieldLabel('Registrerade verkliga huvudmän')}</div>
             <div class="kundformular-person-list" data-kf-person-list="huvudman">
               ${personRows(a.huvudman, 'huvudman', readOnly)}
             </div>
             ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-add-person="huvudman"><i class="fas fa-plus"></i> Lägg till verklig huvudman</button>'}
             <div class="kundformular-grid" style="margin-top:0.75rem">
-              <label>${fieldLabel('Stämmer detta?')}
+              <label>${fieldLabel('Stämmer detta med Bolagsverkets register?')}
                 ${vhBekraftelseSelect(a.vh_bekraftelse, readOnly)}
               </label>
             </div>
@@ -463,19 +463,19 @@
               <label>${fieldLabel('PEP (politiskt exponerad person)?')}
                 ${jaNejSelect('pep', a.pep, readOnly)}
               </label>
-              <label>${fieldLabel('Detaljer PEP')}
+              <label data-kf-pep-detaljer${a.pep === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer PEP')}
                 <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
               </label>
               <label>${fieldLabel('Närstående till PEP?')}
                 ${jaNejSelect('pepFamilj', a.pepFamilj, readOnly)}
               </label>
-              <label>${fieldLabel('Detaljer närstående')}
+              <label data-kf-pep-familj-detaljer${a.pepFamilj === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer närstående')}
                 <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
               </label>
               <label>${fieldLabel('Kontanthantering?')}
                 ${jaNejSelect('kontanter', a.kontanter, readOnly)}
               </label>
-              <label>${fieldLabel('Andel kontanter (om ja)')}
+              <label data-kf-kontanter-andel${a.kontanter === 'Ja' ? '' : ' hidden'}>${fieldLabel('Andel kontanter (om ja)')}
                 <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}"${ro}>
               </label>
               <label>${fieldLabel('Kryptovaluta?')}
@@ -514,6 +514,12 @@
       if (ombud) ombud.hidden = answers.ombud_annan !== 'Ja';
       const skarpt = root.querySelector('[data-kf-skarpt]');
       if (skarpt) skarpt.hidden = !local.skarptKapital;
+      const pepDet = root.querySelector('[data-kf-pep-detaljer]');
+      if (pepDet) pepDet.hidden = answers.pep !== 'Ja';
+      const pepFamDet = root.querySelector('[data-kf-pep-familj-detaljer]');
+      if (pepFamDet) pepFamDet.hidden = answers.pepFamilj !== 'Ja';
+      const kontAndel = root.querySelector('[data-kf-kontanter-andel]');
+      if (kontAndel) kontAndel.hidden = answers.kontanter !== 'Ja';
       root.querySelectorAll('[data-kf-villkorad]').forEach((wrap) => {
         const svar = (wrap.querySelector('[data-kf-villkorad-svar]')?.value || '').trim();
         const varfor = wrap.querySelector('.kundformular-villkorad-varfor');
@@ -539,7 +545,7 @@
         syncConditionalUi();
         return;
       }
-      if (e.target.matches('[data-kf="vh_bekraftelse"], [data-kf="ombud_annan"], [data-kf="pep"], [data-kf="pepFamilj"], [data-kf-villkorad-svar]')) {
+      if (e.target.matches('[data-kf="vh_bekraftelse"], [data-kf="ombud_annan"], [data-kf="pep"], [data-kf="pepFamilj"], [data-kf="kontanter"], [data-kf-villkorad-svar]')) {
         syncConditionalUi();
       }
     });

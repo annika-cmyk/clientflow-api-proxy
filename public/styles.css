@@ -19298,26 +19298,25 @@ body.byra-resa-page .risk-header h1 {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.4rem;
 }
 .kundresa-step-btn {
   width: 100%;
   text-align: left;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
-  padding: 0.7rem 0.75rem;
+  padding: 0.55rem 0.6rem;
   display: flex;
-  gap: 0.55rem;
+  gap: 0.45rem;
   cursor: pointer;
   min-height: 100%;
-  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 .kundresa-step-btn:hover:not(:disabled) {
   border-color: #93c5fd;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.08);
-  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
 }
 .kundresa-step-btn:disabled {
   cursor: not-allowed;
@@ -19325,37 +19324,46 @@ body.byra-resa-page .risk-header h1 {
   background: #f8fafc;
 }
 .kundresa-step-icon {
-  width: 1.85rem;
-  height: 1.85rem;
-  border-radius: 9px;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: #f1f5f9;
   color: #475569;
   flex: 0 0 auto;
+  font-size: 0.78rem;
 }
 .kundresa-step-body {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.1rem;
   min-width: 0;
 }
 .kundresa-step-meta {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 650;
   color: #64748b;
   text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kundresa-step-title {
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: #0f172a;
+  line-height: 1.25;
 }
 .kundresa-step-desc {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: #64748b;
-  line-height: 1.35;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .kundresa-step.is-done .kundresa-step-icon { background: #dcfce7; color: #15803d; }
 .kundresa-step.is-done .kundresa-step-meta { color: #15803d; }
@@ -19373,39 +19381,156 @@ body.byra-resa-page .risk-header h1 {
 .kundresa-step.is-attention .kundresa-step-meta { color: #b91c1c; }
 .kundresa-step.is-gated .kundresa-step-meta { color: #94a3b8; }
 .kundresa-step.is-gated .kundresa-step-title { color: #64748b; }
+.kundresa-step.is-soon .kundresa-step-meta { color: #94a3b8; }
 .kundresa-vh-box {
   border-top: 1px solid #e2e8f0;
   padding-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
-.kundresa-vh-box h4 {
-  margin: 0 0 0.25rem;
+.kundresa-vh-box.is-flash {
+  animation: kundresa-vh-flash 0.9s ease;
+}
+@keyframes kundresa-vh-flash {
+  0%, 100% { background: transparent; }
+  35% { background: #eff6ff; }
+}
+.kundresa-vh-box-head h4 {
+  margin: 0 0 0.2rem;
   font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
 }
 .kundresa-hint {
-  margin: 0 0 0.65rem;
+  margin: 0;
   color: #64748b;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  max-width: 42rem;
 }
-.kundresa-vh-row {
+.kundresa-vh-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(14rem, 0.9fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+.kundresa-vh-block {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  min-height: 4.5rem;
+}
+.kundresa-vh-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.kundresa-vh-register {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.kundresa-vh-register li {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  align-items: flex-end;
+  gap: 0.25rem 0.55rem;
+  align-items: baseline;
+  font-size: 0.9rem;
+  color: #0f172a;
 }
-.kundresa-vh-row label {
+.kundresa-vh-meta {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+.kundresa-vh-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.84rem;
+}
+.kundresa-vh-align {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.kundresa-vh-align.is-match {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+.kundresa-vh-align.is-mismatch {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+}
+.kundresa-vh-align.is-pending {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
+}
+.kundresa-vh-align.is-na {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+.kundresa-vh-align-meta {
+  font-size: 0.78rem;
+  opacity: 0.9;
+}
+.kundresa-vh-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.kundresa-vh-field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  font-weight: 600;
   color: #334155;
-  min-width: 9rem;
 }
-.kundresa-vh-note { flex: 1 1 14rem; }
+/* display:flex ovan slår annars ut UA-[hidden] */
+.kundresa-vh-field[hidden] {
+  display: none !important;
+}
+.kundresa-vh-field .form-control {
+  font-weight: 500;
+}
+.kundresa-vh-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+.kundresa-step.is-active-panel .kundresa-step-btn {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px #dbeafe;
+}
 
+@media (max-width: 960px) {
+  .kundresa-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .kundresa-vh-layout {
+    grid-template-columns: 1fr;
+  }
+}
 @media (max-width: 720px) {
   .kundformular-header { flex-direction: column; }
   .kundformular-person-row { flex-direction: column; }
-  .kundresa-vh-row { flex-direction: column; align-items: stretch; }
+  .kundresa-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 
