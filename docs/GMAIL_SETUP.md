@@ -70,6 +70,25 @@ Tokens lagras krypterade (AES-256-GCM).
 3. Se inkorg från etiketter under KUNDER
 4. Skicka nya mejl – de går ut från ditt Gmail och kan etiketteras med kundnamn
 
+
+## Mejlarkiv (spara / dela / privat / maska)
+
+På mejldetaljen:
+
+1. **Spara…** – hela mejlet och/eller bilagor till Dokumentation, Uppdrag eller Uppdragskörning (samma ställe eller uppdelat).
+2. **Dela…** – välj byråkollegor med kundbehörighet.
+3. **Markera privat** – syns bara för dig, dem du delat med, och ClientFlow-admin (inte vid omfördelning till andra).
+4. **Maska markering** – maskerad text syns bara för ägare och ClientFlow-admin.
+
+Airtable-tabell **Mejlarkiv**:
+
+```
+node scripts/setup-mejlarkiv.js
+# eller POST /api/setup/airtable-mejlarkiv (Ledare/Admin)
+```
+
+Valfri env: `AIRTABLE_TABLE_MEJLARKIV_ID`.
+
 ## Felsökning
 
 | Symptom | Åtgärd |
