@@ -108,6 +108,48 @@
   let messages = [];
   let activeId = null;
   let folder = 'inbox';
+  let kunderLabelsCache = [];
+  let detailContext = null;
+
+  function labelChipHtml(label, opts) {
+    const removable = opts && opts.removable;
+    const cls = [
+      'mejl-label-chip',
+      label && label.isKunderChild ? 'is-kunder' : '',
+      label && label.isSystem ? 'is-system' : '',
+      label && label.isKunderRoot ? 'is-kunder-root' : ''
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const text =
+      (label && (label.isKunderChild ? label.leaf || label.name : label.displayName || label.name)) ||
+      '';
+    const title = (label && label.name) || text;
+    const removeBtn =
+      removable && label && label.isKunderChild
+        ? `<button type="button" class="mejl-label-remove" data-remove-label="${esc(label.id)}" title="Ta bort etikett" aria-label="Ta bort ${esc(text)}"><i class="fas fa-times"></i></button>`
+        : '';
+    return `<span class="${cls}" title="${esc(title)}"><i class="fas fa-tag"></i> ${esc(text)}${removeBtn}</span>`;
+  }
+
+  function renderLabelChips(labels, opts) {
+    const list = Array.isArray(labels) ? labels : [];
+    if (!list.length) return '';
+    // Visa kundetiketter tydligt; systemetiketter mer diskret (hoppa UNREAD).
+    const visible = list.filter((l) => !(l && l.id === 'UNREAD'));
+    if (!visible.length) return '';
+    return `<div class="mejl-labels">${visible.map((l) => labelChipHtml(l, opts)).join('')}</div>`;
+  }
+
+  function kunderOptionsHtml(selectedId) {
+    const opts = (kunderLabelsCache || [])
+      .map((l) => {
+        const sel = l.id === selectedId ? ' selected' : '';
+        return `<option value="${esc(l.id)}"${sel}>${esc(l.leaf || l.name)}</option>`;
+      })
+      .join('');
+    return `<option value="">Välj kundetikett…</option>${opts}<option value="__create__">＋ Skapa ny KUNDER/…</option>`;
+  }
 
   async function loadStatus() {
     const res = await fetch(`${baseUrl}/api/gmail/status`, authOpts());
@@ -226,6 +268,20 @@
         .map((m) => {
           const customer = String(m.customerName || '').trim() || 'Okänd kund';
           const sender = fromDisplayName(m);
+          const kunderOnly = (m.labels || []).filter((l) => l && l.isKunderChild);
+          const labelHtml = kunderOnly.length
+            ? renderLabelChips(kunderOnly)
+            : m.labelLeaf
+              ? renderLabelChips([
+                  {
+                    id: m.labelId,
+                    name: m.labelName,
+                    leaf: m.labelLeaf,
+                    displayName: m.labelLeaf,
+                    isKunderChild: true
+                  }
+                ])
+              : '';
           return `
       <button type="button" class="mejl-item${m.id === activeId ? ' is-active' : ''}" data-id="${esc(m.id)}">
         <div class="mejl-item-top">
@@ -234,6 +290,7 @@
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
+        ${labelHtml}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </button>
     `;
@@ -284,6 +341,207 @@
     await loadInbox();
   }
 
+  function applyLabelResultToList(id, data) {
+    const idx = messages.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    const prev = messages[idx];
+    messages[idx] = {
+      ...prev,
+      labelIds: data.labelIds || prev.labelIds,
+      labels: data.labels || prev.labels,
+      customerId: Object.prototype.hasOwnProperty.call(data, 'customerId')
+        ? data.customerId
+        : prev.customerId,
+      customerName: Object.prototype.hasOwnProperty.call(data, 'customerName')
+        ? data.customerName || ''
+        : prev.customerName,
+      labelId: Object.prototype.hasOwnProperty.call(data, 'labelId')
+        ? data.labelId
+        : prev.labelId,
+      labelName: Object.prototype.hasOwnProperty.call(data, 'labelName')
+        ? data.labelName
+        : prev.labelName,
+      labelLeaf: Object.prototype.hasOwnProperty.call(data, 'labelLeaf')
+        ? data.labelLeaf
+        : prev.labelLeaf,
+      matchReason: Object.prototype.hasOwnProperty.call(data, 'matchReason')
+        ? data.matchReason
+        : prev.matchReason
+    };
+    if (Array.isArray(data.kunderLabels)) kunderLabelsCache = data.kunderLabels;
+    renderList();
+  }
+
+  function bindDetailLabelUi(id) {
+    const select = document.getElementById('mejl-label-select');
+    const applyBtn = document.getElementById('mejl-label-apply');
+    const createWrap = document.getElementById('mejl-label-create-wrap');
+    const createInput = document.getElementById('mejl-label-create');
+    const createBtn = document.getElementById('mejl-label-create-btn');
+
+    function syncCreateVisibility() {
+      if (!createWrap || !select) return;
+      createWrap.hidden = select.value !== '__create__';
+    }
+
+    if (select) {
+      select.addEventListener('change', syncCreateVisibility);
+      syncCreateVisibility();
+    }
+    if (applyBtn && select) {
+      applyBtn.addEventListener('click', async () => {
+        const val = select.value;
+        if (!val) {
+          showToast('Välj en kundetikett först.', 'error');
+          return;
+        }
+        if (val === '__create__') {
+          if (createWrap) createWrap.hidden = false;
+          if (createInput) createInput.focus();
+          return;
+        }
+        applyBtn.disabled = true;
+        try {
+          await modifyLabels(id, { setKunderLabelId: val });
+        } finally {
+          applyBtn.disabled = false;
+        }
+      });
+    }
+    if (createBtn && createInput) {
+      createBtn.addEventListener('click', async () => {
+        const leaf = createInput.value.trim();
+        if (!leaf) {
+          showToast('Ange kundnamn för den nya etiketten.', 'error');
+          return;
+        }
+        createBtn.disabled = true;
+        try {
+          await modifyLabels(id, { createKunderLeaf: leaf });
+        } finally {
+          createBtn.disabled = false;
+        }
+      });
+    }
+    els.detail.querySelectorAll('[data-remove-label]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const lid = btn.getAttribute('data-remove-label');
+        if (!lid) return;
+        if (!confirm('Ta bort kundetiketten från mejlet i Gmail?')) return;
+        await modifyLabels(id, { remove: [lid] });
+      });
+    });
+  }
+
+  async function modifyLabels(id, payload) {
+    const res = await fetch(`${baseUrl}/api/gmail/messages/${encodeURIComponent(id)}/labels`, {
+      method: 'POST',
+      ...authOpts(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      showToast(data.error || 'Kunde inte ändra etiketter', 'error');
+      return null;
+    }
+    showToast('Etiketter uppdaterade i Gmail.', 'success');
+    applyLabelResultToList(id, data);
+    // Om mejlet förlorade KUNDER-barn kan det försvinna från listan – ladda om.
+    const stillHasKunder = (data.labels || []).some((l) => l && l.isKunderChild);
+    if (!stillHasKunder) {
+      await loadInbox();
+      els.detail.innerHTML =
+        '<p class="mejl-detail-empty">Mejlet har ingen kundetikett under KUNDER längre och syns eventuellt inte i listan. Uppdatera eller märk det igen i Gmail.</p>';
+      return data;
+    }
+    await openMessage(id);
+    return data;
+  }
+
+  function renderDetail(id, m, listMeta, kunderLabels) {
+    if (Array.isArray(kunderLabels)) kunderLabelsCache = kunderLabels;
+    const customerName = String(
+      (m && m.customerName) || (listMeta && listMeta.customerName) || ''
+    ).trim();
+    const sender = fromDisplayName({
+      fromName: (listMeta && listMeta.fromName) || null,
+      from: m.from
+    });
+    const title = customerName ? `${customerName} · ${sender}` : sender;
+    const bodyHtml = m.html
+      ? `<div class="mejl-detail-body html-body">${m.html}</div>`
+      : `<div class="mejl-detail-body">${esc(m.text || m.snippet || '')}</div>`;
+    const currentKunderId =
+      (m.labelId && (m.labels || []).some((l) => l.id === m.labelId && l.isKunderChild) && m.labelId) ||
+      ((m.labels || []).find((l) => l.isKunderChild) || {}).id ||
+      '';
+    const labelsHtml = renderLabelChips(m.labels || [], { removable: true });
+    els.detail.innerHTML = `
+      <div class="mejl-item-top">
+        <strong class="mejl-detail-title">${esc(title)}</strong>
+        <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
+      </div>
+      <div class="mejl-item-subject">${esc(m.subject)}</div>
+      <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
+      <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
+      <div class="mejl-labels-block">
+        <div class="mejl-labels-heading">Etiketter</div>
+        ${labelsHtml || '<p class="mejl-hint" style="margin:0;">Inga etiketter.</p>'}
+        <div class="mejl-label-edit">
+          <label class="mejl-label-edit-label" for="mejl-label-select">Kundetikett (KUNDER/…)</label>
+          <div class="mejl-label-edit-row">
+            <select id="mejl-label-select" class="form-select form-input mejl-label-select">
+              ${kunderOptionsHtml(currentKunderId)}
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" id="mejl-label-apply">
+              Sätt etikett
+            </button>
+          </div>
+          <div id="mejl-label-create-wrap" class="mejl-label-create-wrap" hidden>
+            <input type="text" id="mejl-label-create" class="form-input" placeholder="Nytt kundnamn, t.ex. Linda Fiore AB">
+            <button type="button" class="btn btn-primary btn-sm" id="mejl-label-create-btn">
+              Skapa &amp; sätt
+            </button>
+          </div>
+          <p class="mejl-hint">Byter kundetikett i Gmail (övriga KUNDER-barn tas bort från mejlet). Systemetiketter som Inkorg/Skickat behålls.</p>
+        </div>
+      </div>
+      <div class="mejl-connect-actions" style="margin-top:0.75rem;">
+        <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
+          <i class="fas fa-reply"></i> Svara
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
+          <i class="fas fa-trash"></i> Radera
+        </button>
+      </div>
+      ${bodyHtml}
+    `;
+    detailContext = { id, message: m, listMeta };
+    bindDetailLabelUi(id);
+
+    const replyBtn = document.getElementById('mejl-reply-btn');
+    if (replyBtn) {
+      replyBtn.addEventListener('click', () => {
+        const fromEmail = String(m.from || '').match(/<([^>]+)>/)?.[1] || m.from;
+        els.compose.hidden = false;
+        els.to.value = fromEmail || '';
+        els.subject.value = /^re:/i.test(m.subject || '') ? m.subject : `Re: ${m.subject || ''}`;
+        els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
+        els.compose.dataset.threadId = m.threadId || '';
+        els.compose.dataset.inReplyTo = m.messageIdHeader || '';
+        const cid = m.customerId || (listMeta && listMeta.customerId);
+        if (cid) els.customer.value = cid;
+        els.body.focus();
+      });
+    }
+    const trashBtn = document.getElementById('mejl-trash-btn');
+    if (trashBtn) {
+      trashBtn.addEventListener('click', () => trashMessage(id));
+    }
+  }
+
   async function openMessage(id) {
     activeId = id;
     renderList();
@@ -296,48 +554,20 @@
     }
     const m = data.message;
     const listMeta = messages.find((x) => x.id === id) || {};
-    const customerName = String(listMeta.customerName || '').trim();
-    const sender = fromDisplayName({ fromName: listMeta.fromName, from: m.from });
-    const title = customerName ? `${customerName} · ${sender}` : sender;
-    const bodyHtml = m.html
-      ? `<div class="mejl-detail-body html-body">${m.html}</div>`
-      : `<div class="mejl-detail-body">${esc(m.text || m.snippet || '')}</div>`;
-    els.detail.innerHTML = `
-      <div class="mejl-item-top">
-        <strong class="mejl-detail-title">${esc(title)}</strong>
-        <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
-      </div>
-      <div class="mejl-item-subject">${esc(m.subject)}</div>
-      <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
-      <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
-      <div class="mejl-connect-actions" style="margin-top:0.75rem;">
-        <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
-          <i class="fas fa-reply"></i> Svara
-        </button>
-        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
-          <i class="fas fa-trash"></i> Radera
-        </button>
-      </div>
-      ${bodyHtml}
-    `;
-    const replyBtn = document.getElementById('mejl-reply-btn');
-    if (replyBtn) {
-      replyBtn.addEventListener('click', () => {
-        const fromEmail = String(m.from || '').match(/<([^>]+)>/)?.[1] || m.from;
-        els.compose.hidden = false;
-        els.to.value = fromEmail || '';
-        els.subject.value = /^re:/i.test(m.subject || '') ? m.subject : `Re: ${m.subject || ''}`;
-        els.body.value = `\n\n---\n${m.text || m.snippet || ''}`;
-        els.compose.dataset.threadId = m.threadId || '';
-        els.compose.dataset.inReplyTo = m.messageIdHeader || '';
-        if (listMeta.customerId) els.customer.value = listMeta.customerId;
-        els.body.focus();
-      });
-    }
-    const trashBtn = document.getElementById('mejl-trash-btn');
-    if (trashBtn) {
-      trashBtn.addEventListener('click', () => trashMessage(id));
-    }
+    if (Array.isArray(data.kunderLabels)) kunderLabelsCache = data.kunderLabels;
+    // Synka listkort med detaljens etiketter/kund
+    applyLabelResultToList(id, {
+      labelIds: m.labelIds,
+      labels: m.labels,
+      customerId: m.customerId,
+      customerName: m.customerName,
+      labelId: m.labelId,
+      labelName: m.labelName,
+      labelLeaf: m.labelLeaf,
+      matchReason: m.matchReason,
+      kunderLabels: data.kunderLabels
+    });
+    renderDetail(id, m, listMeta, data.kunderLabels);
   }
 
   async function sendMail() {
