@@ -307,7 +307,8 @@
     wrap.className = 'byra-enkate-select-block';
 
     var choices = document.createElement('div');
-    choices.className = 'byra-enkate-choices';
+    var stackUi = field.ui === 'stack' || field.key === 'leveranssatt';
+    choices.className = 'byra-enkate-choices' + (stackUi ? ' byra-enkate-choices--stack' : '');
     (field.choices || []).forEach(function (choice) {
       var label = typeof choice === 'string' ? choice : choice.label;
       var value = typeof choice === 'string' ? choice : choice.value;

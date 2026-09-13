@@ -17917,6 +17917,17 @@ h5.ar-subsection-title {
 }
 .byra-enkate-choice:hover { border-color: #13505c; color: #13505c; }
 .byra-enkate-choice.is-selected { background: #13505c; border-color: #13505c; color: #fff; }
+.byra-enkate-choices--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.byra-enkate-choices--stack .byra-enkate-choice {
+  border-radius: 10px;
+  text-align: left;
+  line-height: 1.35;
+  white-space: normal;
+  font-weight: 600;
+}
 .byra-enkate-input { width: 100%; }
 .byra-enkate-suffix-wrap { display: flex; align-items: stretch; }
 .byra-enkate-bolagsformer,
