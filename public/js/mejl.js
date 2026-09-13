@@ -1109,6 +1109,132 @@
     openMessage(btn.getAttribute('data-id'));
   });
 
+  // Panel tabs + compose/sidfot listeners (DOM already present; bind once after load)
+  if (els.tabInbox) els.tabInbox.addEventListener('click', () => showMejlPanel('inbox'));
+  if (els.tabSettings) els.tabSettings.addEventListener('click', () => showMejlPanel('settings'));
+  if (els.toggleProtected) els.toggleProtected.addEventListener('click', () => {
+    if (els.protectedWrap) els.protectedWrap.hidden = !els.protectedWrap.hidden;
+  });
+  if (els.markBankid) els.markBankid.addEventListener('click', () => {
+    const ta = els.body;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    if (start === end) {
+      showToast('Markera text i den offentliga delen först.', 'error');
+      return;
+    }
+    const selected = ta.value.slice(start, end);
+    ta.value = (ta.value.slice(0, start) + ta.value.slice(end)).replace(/\n{3,}/g, '\n\n');
+    if (els.protectedWrap) els.protectedWrap.hidden = false;
+    if (els.protectedBody) {
+      els.protectedBody.value = els.protectedBody.value
+        ? `${els.protectedBody.value}\n\n${selected}`
+        : selected;
+    }
+  });
+  if (els.attachments) els.attachments.addEventListener('change', () => {
+    Array.from(els.attachments.files || []).forEach((file) =>
+      pendingFiles.push({ name: file.name, size: file.size, file, bankId: true })
+    );
+    els.attachments.value = '';
+    renderAttachList();
+  });
+  if (els.attachList) {
+    els.attachList.addEventListener('click', (e) => {
+      const rem = e.target.closest('[data-attach-remove]');
+      if (rem) {
+        pendingFiles.splice(Number(rem.getAttribute('data-attach-remove')), 1);
+        renderAttachList();
+      }
+    });
+    els.attachList.addEventListener('change', (e) => {
+      const chk = e.target.closest('[data-attach-bankid]');
+      if (!chk) return;
+      const i = Number(chk.getAttribute('data-attach-bankid'));
+      if (pendingFiles[i]) pendingFiles[i].bankId = !!chk.checked;
+    });
+  }
+  if (els.qAdd) els.qAdd.addEventListener('click', () => addQuestionRow());
+  if (els.qList) {
+    els.qList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mejl-q-remove');
+      if (btn) btn.closest('.mejl-q-row').remove();
+    });
+  }
+  if (els.qTarget) {
+    els.qTarget.addEventListener('change', () => {
+      if (els.qRunWrap) els.qRunWrap.hidden = els.qTarget.value !== 'uppdragskorning';
+    });
+  }
+  if (els.sigLayouts) {
+    els.sigLayouts.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-layout]');
+      if (!btn) return;
+      sigLayout = btn.getAttribute('data-layout');
+      els.sigLayouts.querySelectorAll('.mejl-layout-card').forEach((el) =>
+        el.classList.toggle('is-active', el === btn)
+      );
+      refreshSignaturePreview();
+    });
+  }
+  [
+    'mejl-sig-name',
+    'mejl-sig-title',
+    'mejl-sig-phone',
+    'mejl-sig-email',
+    'mejl-sig-address',
+    'mejl-sig-website',
+    'mejl-sig-freetext',
+    'mejl-sig-disclaimer',
+    'mejl-sig-img1-url',
+    'mejl-sig-img2-url'
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        clearTimeout(el._sigTimer);
+        el._sigTimer = setTimeout(() => refreshSignaturePreview(), 250);
+      });
+    }
+  });
+  async function onSigImage(inputId, which) {
+    const input = document.getElementById(inputId);
+    if (!input || !input.files || !input.files[0]) return;
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Kunde inte läsa bild'));
+      reader.readAsDataURL(input.files[0]);
+    });
+    if (which === 1) sigImage1DataUrl = dataUrl;
+    else sigImage2DataUrl = dataUrl;
+    refreshSignaturePreview();
+  }
+  const img1 = document.getElementById('mejl-sig-img1');
+  const img2 = document.getElementById('mejl-sig-img2');
+  if (img1) img1.addEventListener('change', () => onSigImage('mejl-sig-img1', 1));
+  if (img2) img2.addEventListener('change', () => onSigImage('mejl-sig-img2', 2));
+  if (els.sigSave) {
+    els.sigSave.addEventListener('click', async () => {
+      els.sigStatus.textContent = 'Sparar…';
+      const res = await fetch(`${baseUrl}/api/mejl/signature`, {
+        method: 'PUT',
+        ...authOpts(),
+        body: JSON.stringify({ settings: collectSignatureSettings() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        els.sigStatus.textContent = data.error || 'Kunde inte spara';
+        return;
+      }
+      fillSignatureForm(data.settings);
+      if (data.previewHtml && els.sigPreview) els.sigPreview.innerHTML = data.previewHtml;
+      els.sigStatus.textContent = 'Sparad.';
+      showToast('Mejl-sidfot sparad.', 'success');
+    });
+  }
+
   function onFolderClick(next) {
     if (folder === next) return;
     folder = next;
