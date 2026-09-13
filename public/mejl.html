@@ -10,26 +10,35 @@
     <link rel="stylesheet" href="styles.css?v=20260912gmail2">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-      .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1rem; }
+      .mejl-layout { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 0.75rem; }
       @media (min-width: 960px) {
         .mejl-layout { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; }
       }
-      .mejl-connect-banner {
-        background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 55%, #eef2ff 100%);
-        border: 1px solid #dbeafe;
-        border-radius: 12px;
-        padding: 1.25rem 1.5rem;
-        margin-top: 1rem;
+      .mejl-header-bar {
+        display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center;
+        margin-top: 0.75rem; padding: 0.35rem 0;
       }
-      .mejl-connect-banner h2 { margin: 0 0 0.4rem; font-size: 1.1rem; }
-      .mejl-connect-banner p { margin: 0 0 0.9rem; color: #475569; line-height: 1.5; }
-      .mejl-connect-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+      .mejl-header-bar .mejl-hint { margin: 0; flex: 1 1 12rem; }
+      .mejl-connect-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
       .mejl-status-pill {
         display: inline-flex; align-items: center; gap: 0.35rem;
-        font-size: 0.8rem; font-weight: 600; color: #166534;
-        background: #dcfce7; border-radius: 999px; padding: 0.25rem 0.7rem;
+        font-size: 0.75rem; font-weight: 600; color: #166534;
+        background: #dcfce7; border-radius: 999px; padding: 0.2rem 0.55rem;
       }
       .mejl-status-pill.is-off { color: #9a3412; background: #ffedd5; }
+      .mejl-folders {
+        display: flex; gap: 0.35rem; margin: 0 0 0.75rem; padding: 0;
+        list-style: none;
+      }
+      .mejl-folder-btn {
+        border: 1px solid transparent; background: transparent; color: #64748b;
+        font: inherit; font-size: 0.92rem; font-weight: 600; padding: 0.35rem 0.7rem;
+        border-radius: 8px; cursor: pointer;
+      }
+      .mejl-folder-btn:hover { color: #0f172a; background: #f1f5f9; }
+      .mejl-folder-btn.is-active {
+        color: #0f172a; background: #e2e8f0; border-color: #cbd5e1;
+      }
       .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; }
       .mejl-item {
         text-align: left; width: 100%; border: 1px solid #e2e8f0; background: #fff;
@@ -52,7 +61,7 @@
       .mejl-detail-empty { color: #94a3b8; padding: 2rem 0.5rem; }
       .mejl-detail-body { white-space: pre-wrap; line-height: 1.55; color: #334155; margin-top: 1rem; }
       .mejl-detail-body.html-body { white-space: normal; }
-      .mejl-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 1rem; }
+      .mejl-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.5rem; }
       .mejl-compose {
         border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
         padding: 1.25rem 1.4rem; margin-top: 1rem;
@@ -62,12 +71,10 @@
       .mejl-compose textarea.form-input { min-height: 160px; resize: vertical; }
       .mejl-filter { min-width: 220px; }
       .mejl-hint { font-size: 0.85rem; color: #64748b; margin: 0.5rem 0 0; }
-      .mejl-samarbete-nav {
-        display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;
-        margin-top: 0.75rem; padding: 0.75rem 1rem;
-        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      .btn-danger-outline {
+        color: #b91c1c; border-color: #fecaca; background: #fff;
       }
-      .mejl-samarbete-label { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+      .btn-danger-outline:hover { background: #fef2f2; border-color: #f87171; }
       /* Global .btn { display:inline-flex } och .mejl-layout { display:grid } slår UA [hidden] */
       #mejl-connect-btn[hidden],
       #mejl-disconnect-btn[hidden],
@@ -92,35 +99,27 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Mejl</h1>
-                        <p class="risk-header-sub">Kundmejl från Gmail (etiketten KUNDER) och Samarbete med kunden</p>
+                        <p class="risk-header-sub">Kundmejl från Gmail under etiketten KUNDER</p>
                     </div>
                 </header>
 
-                <nav class="mejl-samarbete-nav" aria-label="Samarbete">
-                    <span class="mejl-samarbete-label"><i class="fas fa-handshake"></i> Samarbete</span>
-                    <a class="btn btn-secondary btn-sm" href="dashboard.html#samarbete-nya">Oläst</a>
-                    <span class="mejl-hint" style="margin:0">Skapa nytt / hantera under kundkortets flik <strong>Samarbete</strong> (+ Nytt, Skickat, Hanterat).</span>
-                </nav>
-
-                <div id="mejl-connect" class="mejl-connect-banner">
-                    <h2><i class="fas fa-envelope"></i> Koppla Gmail</h2>
-                    <p id="mejl-connect-text">Laddar status…</p>
+                <div id="mejl-connect" class="mejl-header-bar">
+                    <span id="mejl-status-pill" class="mejl-status-pill is-off">Ej kopplad</span>
                     <div class="mejl-connect-actions">
-                        <span id="mejl-status-pill" class="mejl-status-pill is-off">Ej kopplad</span>
-                        <button type="button" class="btn btn-primary" id="mejl-connect-btn">
+                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-connect-btn">
                             <i class="fab fa-google"></i> Koppla Gmail
                         </button>
-                        <button type="button" class="btn btn-secondary" id="mejl-disconnect-btn" hidden>
+                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-disconnect-btn" hidden>
                             Koppla från
                         </button>
-                        <button type="button" class="btn btn-secondary" id="mejl-refresh-btn" hidden>
+                        <button type="button" class="btn btn-secondary btn-sm" id="mejl-refresh-btn" hidden>
                             <i class="fas fa-sync"></i> Uppdatera
                         </button>
-                        <button type="button" class="btn btn-primary" id="mejl-compose-toggle" hidden>
+                        <button type="button" class="btn btn-primary btn-sm" id="mejl-compose-toggle" hidden>
                             <i class="fas fa-pen"></i> Nytt mejl
                         </button>
                     </div>
-                    <p class="mejl-hint">Mejl under etiketten <strong>KUNDER</strong> i Gmail matchas via etikettnamn och/eller e-post på kundkortet (företag eller kontaktperson), t.ex. <code>KUNDER/Acme AB</code>.</p>
+                    <p id="mejl-connect-text" class="mejl-hint">Laddar status…</p>
                 </div>
 
                 <div class="mejl-toolbar" id="mejl-toolbar" hidden>
@@ -165,7 +164,10 @@
 
                 <div class="mejl-layout" id="mejl-main" hidden>
                     <section>
-                        <h2 style="font-size:1rem; margin:0 0 0.75rem;">Inkorg</h2>
+                        <nav class="mejl-folders" aria-label="Mappar">
+                            <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
+                            <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
+                        </nav>
                         <div id="mejl-list" class="mejl-list">
                             <p class="mejl-hint">Laddar mejl…</p>
                         </div>
@@ -184,6 +186,6 @@
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
-    <script src="js/mejl.js?v=20260913match" defer></script>
+    <script src="js/mejl.js?v=20260913ui" defer></script>
 </body>
 </html>
