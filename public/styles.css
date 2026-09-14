@@ -14631,11 +14631,21 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 /* Modal f?r kundlista i statistik */
 .statistik-kunder-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .statistik-kunder-modal { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); max-width: 480px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
-.statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
-.statistik-kunder-modal-header h4 { margin: 0; font-size: 1.1rem; color: var(--title-text); }
+.statistik-kunder-modal--wide { max-width: 560px; }
+.statistik-kunder-modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+.statistik-kunder-modal-header h4 { margin: 0; font-size: 1.1rem; color: var(--title-text); flex: 1; min-width: 0; }
+.statistik-kunder-modal-back {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  background: none; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--accent); cursor: pointer; font-size: 0.85rem; padding: 0.35rem 0.6rem; white-space: nowrap;
+}
+.statistik-kunder-modal-back:hover { background: var(--line); }
 .statistik-kunder-modal-close { background: none; border: none; font-size: 1.25rem; color: var(--text); cursor: pointer; padding: 0.25rem; line-height: 1; }
 .statistik-kunder-modal-close:hover { color: var(--title-text); }
 .statistik-kunder-modal-body { padding: 1rem 1.25rem; overflow-y: auto; }
+.statistik-bransch-drilldown-summary { margin: 0 0 0.75rem 0; font-size: 0.95rem; color: var(--text); }
+.statistik-bransch-drilldown-heading { margin: 1.25rem 0 0.5rem 0; font-size: 0.95rem; color: var(--title-text); }
+.statistik-bransch-visa-alla { margin-bottom: 0.25rem; }
 .statistik-kunder-lista { list-style: none; margin: 0; padding: 0; }
 .statistik-kunder-lista li { margin: 0 0 0.35rem 0; }
 .statistik-kunder-lista a { display: block; padding: 0.5rem 0.75rem; border-radius: 8px; color: var(--accent); text-decoration: none; font-size: 0.95rem; transition: background 0.15s; }

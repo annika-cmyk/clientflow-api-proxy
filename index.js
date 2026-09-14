@@ -16336,10 +16336,22 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
     } else if (typ === 'hogriskbransch' && paramNamn !== undefined) {
       const sokNamn = String(paramNamn).trim();
       for (const rec of allRecords) {
-        const list = statistikRiskbedomning.asValues(rec.fields?.['Kunden verkar i en högriskbransch']);
-        if (list.some((b) => b === sokNamn)) {
+        if (statistikRiskbedomning.recordMatchesHogriskBransch(rec.fields, sokNamn)) {
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
+      }
+    } else if (typ === 'kund-bransch' && paramNamn !== undefined) {
+      const sokNamn = String(paramNamn).trim();
+      const under = req.query.underbransch != null ? String(req.query.underbransch).trim()
+        : (req.query.sni != null ? String(req.query.sni).trim() : '');
+      for (const rec of allRecords) {
+        const matching = statistikRiskbedomning.labelsInKundBranschBucket(rec.fields, sokNamn);
+        if (!matching.length) continue;
+        if (under) {
+          const underFold = String(under).trim().toLowerCase().replace(/\s+/g, ' ');
+          if (!matching.some((l) => String(l || '').trim().toLowerCase().replace(/\s+/g, ' ') === underFold)) continue;
+        }
+        kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
       }
     } else if (typ === 'riskfaktor') {
       const RISKER_KUND_TABLE = 'tblWw6tM2YOTYFn2H';
