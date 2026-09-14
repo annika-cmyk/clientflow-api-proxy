@@ -14609,17 +14609,71 @@ textarea.kunduppgifter-input.uppdrag-run-note[readonly] {
 .stat-card-clickable:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: #fafafa; }
 .statistik-riskfaktorer-kort { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1rem; }
 .statistik-riskfaktor-kort { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
-.statistik-riskfaktor-kort h4 { margin: 0 0 0.5rem 0; font-size: 1rem; color: var(--title-text); display: flex; align-items: center; gap: 0.5rem; }
+.statistik-riskfaktor-kort h4 { margin: 0 0 0.75rem 0; font-size: 1rem; color: var(--title-text); display: flex; align-items: center; gap: 0.5rem; }
 .statistik-riskfaktor-kort h4 i { color: var(--accent); }
 .statistik-riskfaktor-kort .riskfaktor-kort-antal { font-size: 0.9rem; color: var(--text); margin-bottom: 0.75rem; padding: 0.35rem 0; }
 .statistik-riskfaktor-kort .riskfaktor-kort-antal.stat-list-row-clickable { border-radius: 6px; padding: 0.5rem 0.75rem; }
+.statistik-riskfaktor-kort .statistik-stat-chip { margin-bottom: 0.65rem; }
 .statistik-riskfaktor-kort .stat-list { margin-top: 0; }
 .statistik-sections { display: grid; gap: 1.5rem; }
 .statistik-section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
-.statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--title-text); }
+.statistik-section h3 { margin: 0 0 0.5rem 0; font-size: 1.1rem; display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color: var(--title-text); }
 .statistik-section h3 i { color: var(--accent); }
 .statistik-section-desc { margin: 0 0 1rem 0; font-size: 0.9rem; color: var(--text); }
+.statistik-source-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.15rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #1e3a5f;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.statistik-source-badge--byraprofil {
+  color: #3b2f1a;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+.statistik-stat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.statistik-stat-chips--nested {
+  margin-top: 0.15rem;
+}
+.statistik-stat-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 999px;
+  padding: 0.22rem 0.75rem;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: #0f172a;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+.statistik-stat-chip:hover,
+.statistik-stat-chip:focus-visible {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  outline: none;
+}
+.stat-card-clickable { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
+.stat-card-clickable:hover { border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18); }
 .stat-list { display: flex; flex-direction: column; gap: 0.35rem; }
+.stat-list:has(.statistik-stat-chips) { gap: 0; }
 .stat-list-empty { margin: 0; font-size: 0.9rem; color: var(--ink-3); }
 .stat-list-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #f8fafc; border-radius: 8px; font-size: 0.9rem; }
 .stat-list-row-clickable { cursor: pointer; transition: background 0.15s; }

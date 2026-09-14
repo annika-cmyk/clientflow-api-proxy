@@ -306,6 +306,14 @@
       fetchKunderForRow('anstallda', null, row.getAttribute('data-namn'), titel);
     } else if (typ === 'utsatt-omrade') {
       fetchKunderForRow('utsatt-omrade', null, row.getAttribute('data-namn'), titel);
+    } else if (typ === 'bolagsform') {
+      fetchKunderForRow('bolagsform', null, row.getAttribute('data-namn'), titel);
+    } else if (typ === 'riskniva') {
+      fetchKunderForRow('riskniva', null, row.getAttribute('data-namn'), titel);
+    } else if (typ === 'pep-sanktion') {
+      fetchKunderForRow('pep-sanktion', null, null, titel);
+    } else if (typ === 'alla') {
+      fetchKunderForRow('alla', null, null, titel);
     }
   }
 
@@ -315,9 +323,7 @@
     scope.querySelectorAll('.stat-card-clickable').forEach((card) => {
       card.removeEventListener('click', card._statistikCardClick);
       card._statistikCardClick = function () {
-        const typ = card.getAttribute('data-typ');
-        const titel = card.getAttribute('data-titel') || 'Kunder';
-        if (typ === 'pep-sanktion') fetchKunderForRow('pep-sanktion', null, null, titel);
+        handleRowClick(card);
       };
       card.addEventListener('click', card._statistikCardClick);
     });
@@ -328,24 +334,25 @@
       };
       row.addEventListener('click', row._statistikClick);
     });
+    bindStatChips(scope);
   }
 
-  function bindBranschTriggers(root) {
+  function bindStatChips(root) {
     bindChrome();
     const scope = root || document;
-    scope.querySelectorAll('[data-typ="kund-bransch"], [data-typ="hogriskbransch"]').forEach((el) => {
-      if (el._branschDrillBound) return;
-      el._branschDrillBound = true;
+    scope.querySelectorAll('.statistik-stat-chip, .kundrisker-bransch-chip').forEach((el) => {
+      if (el._statChipBound) return;
+      el._statChipBound = true;
       el.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const typ = el.getAttribute('data-typ');
-        const namn = el.getAttribute('data-namn') || '';
-        const titel = el.getAttribute('data-titel') || namn;
-        if (!namn) return;
-        fetchBranschDrilldown(typ, namn, '', titel);
+        handleRowClick(el);
       });
     });
+  }
+
+  function bindBranschTriggers(root) {
+    bindStatChips(root);
   }
 
   function openBransch(typ, namn, titel) {
@@ -355,6 +362,7 @@
   global.StatistikKunderModal = {
     ensureModal,
     bindRowClicks,
+    bindStatChips,
     bindBranschTriggers,
     fetchKunderForRow,
     fetchBranschDrilldown,

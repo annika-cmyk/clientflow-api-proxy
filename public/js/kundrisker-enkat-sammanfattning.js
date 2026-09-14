@@ -89,12 +89,27 @@
     var key = (item && item.key) || (field && field.key) || '';
     if (key === 'kundernasBranscher' || (field && field.type === 'branscher')) return 'kund-bransch';
     if (key === 'branscherKundstock' || (field && field.type === 'hogrisk-branscher')) return 'hogriskbransch';
+    if (key === 'vanligasteBolagsformer' || (field && field.type === 'bolagsformer')) return 'bolagsform';
+    if (key === 'pepKunder') return 'pep-sanktion';
     return '';
   }
 
   function countedChipsHtml(item) {
     var typ = drillTypForField(null, item);
     if (!typ || !state.profil) return escapeHtml(item.display);
+    if (typ === 'pep-sanktion') {
+      var pepRaw = state.profil[item.key];
+      pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
+      if (!/^ja/i.test(pepRaw)) return escapeHtml(item.display);
+      return (
+        '<button type="button" class="kundrisker-bransch-chip" ' +
+          'data-typ="pep-sanktion" ' +
+          'data-titel="PEP eller anhörig till PEP" ' +
+          'title="Klicka för kundlista från Clientflow">' +
+          escapeHtml(item.display) +
+        '</button>'
+      );
+    }
     var raw = state.profil[item.key];
     raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
     if (!raw) return escapeHtml(item.display);
@@ -110,7 +125,7 @@
             'data-typ="' + escapeHtml(typ) + '" ' +
             'data-namn="' + escapeHtml(r.form) + '" ' +
             'data-titel="' + escapeHtml(r.form) + '" ' +
-            'title="Klicka för underbranscher och kunder">' +
+            'title="Klicka för kundlista från Clientflow">' +
             escapeHtml(label) +
           '</button>'
         );
@@ -361,7 +376,7 @@
     root.innerHTML =
       '<div class="kundrisker-enkat is-empty">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Från byråprofilen</h3>' +
+          '<h3>Från byråprofilen <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
         '</div>' +
         '<p class="kundrisker-enkat-lead">Här syns svaren ni redan gett om kundstocken i byråprofil-enkäten — som stöd när ni bedömer kundkategorier och geografi.</p>' +
         '<p class="kundrisker-enkat-empty">Ni har ännu inte fyllt i kundstocken i enkäten.</p>' +
@@ -418,10 +433,10 @@
     root.innerHTML =
       '<div class="kundrisker-enkat">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Från byråprofilen</h3>' +
+          '<h3>Från byråprofilen <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
           '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Klicka på en <strong>bransch</strong> för underbranscher och kundlista. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
+        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Klicka på <strong>bransch</strong>, <strong>bolagsform</strong> eller <strong>PEP</strong> för kundlista från Clientflow. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
@@ -432,6 +447,10 @@
 
   function bindBranschChips(root) {
     var Modal = window.StatistikKunderModal;
+    if (Modal && typeof Modal.bindStatChips === 'function') {
+      Modal.bindStatChips(root);
+      return;
+    }
     if (Modal && typeof Modal.bindBranschTriggers === 'function') {
       Modal.bindBranschTriggers(root);
       return;
@@ -440,8 +459,18 @@
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        if (Modal && typeof Modal.openBransch === 'function') {
-          Modal.openBransch(btn.getAttribute('data-typ'), btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
+        if (!Modal) return;
+        var typ = btn.getAttribute('data-typ');
+        if (typ === 'pep-sanktion' && typeof Modal.fetchKunderForRow === 'function') {
+          Modal.fetchKunderForRow('pep-sanktion', null, null, btn.getAttribute('data-titel') || 'PEP');
+          return;
+        }
+        if (typ === 'bolagsform' && typeof Modal.fetchKunderForRow === 'function') {
+          Modal.fetchKunderForRow('bolagsform', null, btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
+          return;
+        }
+        if (typeof Modal.openBransch === 'function') {
+          Modal.openBransch(typ, btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
         }
       });
     });
