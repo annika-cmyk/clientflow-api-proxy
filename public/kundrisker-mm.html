@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260913namn">
+    <link rel="stylesheet" href="styles.css?v=20260914bransch">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body data-risk-page-scope="kundrisker">
@@ -666,6 +666,23 @@
         </div>
     </footer>
 
+    <div id="statistik-kunder-modal-overlay" class="statistik-kunder-modal-overlay" style="display:none;" aria-hidden="true">
+        <div class="statistik-kunder-modal statistik-kunder-modal--wide" role="dialog" aria-labelledby="statistik-kunder-modal-title">
+            <div class="statistik-kunder-modal-header">
+                <button type="button" class="statistik-kunder-modal-back" id="statistik-kunder-modal-back" style="display:none;" aria-label="Tillbaka">← Tillbaka</button>
+                <h4 id="statistik-kunder-modal-title">Kunder</h4>
+                <button type="button" class="statistik-kunder-modal-close" id="statistik-kunder-modal-close" aria-label="Stäng">&times;</button>
+            </div>
+            <div class="statistik-kunder-modal-body">
+                <div class="statistik-kunder-modal-loading" id="statistik-kunder-modal-loading" style="display:none;">Laddar kunder...</div>
+                <div id="statistik-bransch-drilldown" class="statistik-bransch-drilldown" style="display:none;"></div>
+                <ul class="statistik-kunder-lista" id="statistik-kunder-lista"></ul>
+                <p class="statistik-kunder-modal-empty" id="statistik-kunder-modal-empty" style="display:none;">Inga kunder hittades.</p>
+                <p class="statistik-kunder-modal-error" id="statistik-kunder-modal-error" style="display:none;"></p>
+            </div>
+        </div>
+    </div>
+
     <script src="js/config.js" defer></script>
     <script src="js/auth.js" defer></script>
     <script src="js/navigation.js" defer></script>
@@ -683,7 +700,9 @@
     <script src="js/ai-falt-granskning.js?v=15" defer></script>
     <script src="js/eu-hogrisk-lander.js?v=5" defer></script>
     <script src="js/ovriga-riskfaktorer.js?v=50" defer></script>
+    <script src="js/kund-bransch-aggregat.js?v=20260914drill" defer></script>
+    <script src="js/statistik-kunder-modal.js?v=1" defer></script>
     <script src="js/kundrisker-profil-analysforslag.js?v=2" defer></script>
-    <script src="js/kundrisker-enkat-sammanfattning.js?v=4" defer></script>
+    <script src="js/kundrisker-enkat-sammanfattning.js?v=5" defer></script>
 </body>
 </html>

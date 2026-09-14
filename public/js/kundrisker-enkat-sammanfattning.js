@@ -85,6 +85,40 @@
     return true;
   }
 
+  function drillTypForField(field, item) {
+    var key = (item && item.key) || (field && field.key) || '';
+    if (key === 'kundernasBranscher' || (field && field.type === 'branscher')) return 'kund-bransch';
+    if (key === 'branscherKundstock' || (field && field.type === 'hogrisk-branscher')) return 'hogriskbransch';
+    return '';
+  }
+
+  function countedChipsHtml(item) {
+    var typ = drillTypForField(null, item);
+    if (!typ || !state.profil) return escapeHtml(item.display);
+    var raw = state.profil[item.key];
+    raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
+    if (!raw) return escapeHtml(item.display);
+    if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return escapeHtml(HOGRISK_NONE);
+    var rows = parseCounted(raw);
+    if (!rows.length) return escapeHtml(item.display);
+    return (
+      '<span class="kundrisker-enkat-chips">' +
+      rows.map(function (r) {
+        var label = r.count ? r.form + ' · ' + r.count : r.form;
+        return (
+          '<button type="button" class="kundrisker-bransch-chip" ' +
+            'data-typ="' + escapeHtml(typ) + '" ' +
+            'data-namn="' + escapeHtml(r.form) + '" ' +
+            'data-titel="' + escapeHtml(r.form) + '" ' +
+            'title="Klicka för underbranscher och kunder">' +
+            escapeHtml(label) +
+          '</button>'
+        );
+      }).join('') +
+      '</span>'
+    );
+  }
+
   function formatDisplay(field, value) {
     if (!isAnswered(value, field)) return '';
     if (field && (field.key === 'branscherKundstock' || field.type === 'hogrisk-branscher')) {
@@ -366,7 +400,7 @@
             (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
             '<div class="kundrisker-enkat-row-main">' +
               '<span class="kundrisker-enkat-q">' + escapeHtml(item.label) + '</span>' +
-              '<span class="kundrisker-enkat-a">' + escapeHtml(item.display) + '</span>' +
+              '<span class="kundrisker-enkat-a">' + (drillTypForField(null, item) ? countedChipsHtml(item) : escapeHtml(item.display)) + '</span>' +
               actions +
             '</div>' +
             panel +
@@ -387,12 +421,30 @@
           '<h3>Från byråprofilen</h3>' +
           '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
+        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Klicka på en <strong>bransch</strong> för underbranscher och kundlista. Använd <strong>Analysera</strong> för att öppna förslag till analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över — så syns vad som är analyserat, avstått eller kvar.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
 
     bindPanelEvents(root, summary);
+    bindBranschChips(root);
+  }
+
+  function bindBranschChips(root) {
+    var Modal = window.StatistikKunderModal;
+    if (Modal && typeof Modal.bindBranschTriggers === 'function') {
+      Modal.bindBranschTriggers(root);
+      return;
+    }
+    root.querySelectorAll('.kundrisker-bransch-chip').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (Modal && typeof Modal.openBransch === 'function') {
+          Modal.openBransch(btn.getAttribute('data-typ'), btn.getAttribute('data-namn'), btn.getAttribute('data-titel'));
+        }
+      });
+    });
   }
 
   function selectedItems(panel, analysGroup) {
@@ -666,6 +718,7 @@
     buildSummary: buildSummary,
     mount: mount,
     refresh: refresh,
+    drillTypForField: drillTypForField,
     getState: function () { return state; }
   };
 })();

@@ -19880,6 +19880,31 @@ body.byra-resa-page .risk-header h1 {
   color: #0f172a;
   white-space: pre-wrap;
 }
+.kundrisker-enkat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.kundrisker-bransch-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 999px;
+  padding: 0.18rem 0.7rem;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.kundrisker-bransch-chip:hover,
+.kundrisker-bransch-chip:focus-visible {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  outline: none;
+}
 .kundrisker-enkat-empty {
   margin: 0 0 0.85rem;
   font-size: 0.95rem;
