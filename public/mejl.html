@@ -187,6 +187,17 @@
       .mejl-folder-btn.is-active {
         color: #0f172a; background: #e2e8f0; border-color: #cbd5e1;
       }
+      .mejl-folder-btn .mejl-folder-count {
+        display: inline-block; margin-left: 0.25rem;
+        font-size: 0.72rem; font-weight: 700; color: #64748b;
+      }
+      .mejl-item-shared-badge {
+        display: inline-flex; align-items: center; gap: 0.25rem;
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+        text-transform: uppercase; color: #0f766e; background: #f0fdfa;
+        border: 1px solid #99f6e4; border-radius: 6px; padding: 0.1rem 0.4rem;
+        margin-top: 0.35rem;
+      }
       .mejl-list { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
       .mejl-item {
         text-align: left; width: 100%; max-width: 100%; box-sizing: border-box;
@@ -606,6 +617,7 @@
                     <section class="mejl-pane mejl-pane--list" aria-label="Mejllista">
                         <nav class="mejl-folders" aria-label="Mappar">
                             <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
+                            <button type="button" class="mejl-folder-btn" data-folder="shared" id="mejl-folder-shared">Delat med mig</button>
                             <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
                         </nav>
                         <p id="mejl-sync-status" class="mejl-sync-status" hidden></p>
@@ -662,8 +674,8 @@
     <script src="js/navigation.js" defer></script>
     <script src="js/components.js?v=2.2" defer></script>
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
-    <script src="js/mejl-archive.js?v=20260913sparstatus" defer></script>
+    <script src="js/mejl-archive.js?v=20260914delat" defer></script>
     <script src="js/mejl-handle-status.js?v=20260913handle" defer></script>
-    <script src="js/mejl.js?v=20260913sidfot-img" defer></script>
+    <script src="js/mejl.js?v=20260914delat" defer></script>
 </body>
 </html>

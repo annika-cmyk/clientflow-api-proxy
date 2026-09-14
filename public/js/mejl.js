@@ -126,6 +126,7 @@
     sendStatus: document.getElementById('mejl-send-status'),
     folderInbox: document.getElementById('mejl-folder-inbox'),
     folderSent: document.getElementById('mejl-folder-sent'),
+    folderShared: document.getElementById('mejl-folder-shared'),
     syncStatus: document.getElementById('mejl-sync-status'),
     protectedBody: document.getElementById('mejl-protected-body'),
     protectedWrap: document.getElementById('mejl-protected-wrap'),
@@ -151,6 +152,7 @@
   let status = null;
   let customers = [];
   let messages = [];
+  let sharedMessages = [];
   let activeId = null;
   let folder = 'inbox';
   let kunderLabelsCache = [];
@@ -159,6 +161,7 @@
   let sigLayout = 'text-left-portrait-right';
   let sigImage1DataUrl = '';
   let sigImage2DataUrl = '';
+  let connectInFlight = false;
   const archiveApi = (window.MejlArchive && MejlArchive.createApi)
     ? MejlArchive.createApi({ baseUrl, authOpts, showToast })
     : null;
@@ -251,12 +254,34 @@
   function setFolderUi() {
     if (els.folderInbox) els.folderInbox.classList.toggle('is-active', folder === 'inbox');
     if (els.folderSent) els.folderSent.classList.toggle('is-active', folder === 'sent');
+    if (els.folderShared) {
+      els.folderShared.classList.toggle('is-active', folder === 'shared');
+      const count = sharedMessages.length;
+      els.folderShared.innerHTML =
+        'Delat med mig' +
+        (count ? `<span class="mejl-folder-count">(${count})</span>` : '');
+    }
+  }
+
+  function resetConnectButton() {
+    if (!els.connectBtn) return;
+    connectInFlight = false;
+    els.connectBtn.innerHTML = '<i class="fab fa-google"></i> Koppla Gmail';
   }
 
   function renderStatus() {
     if (!status || !status.success) {
       els.connectText.textContent = 'Kunde inte hämta Gmail-status.';
       setConnectEnabled(false, 'Kunde inte hämta Gmail-status');
+      resetConnectButton();
+      // Visa ändå delade mejl om de finns
+      const showShared = sharedMessages.length > 0;
+      els.main.hidden = !showShared;
+      els.toolbar.hidden = !showShared;
+      if (showShared && folder !== 'shared') {
+        folder = 'shared';
+        setFolderUi();
+      }
       return;
     }
     if (!status.configured) {
@@ -264,12 +289,23 @@
       els.statusPill.classList.add('is-off');
       els.connectText.textContent = status.redirectHint || missingEnvMessage(status);
       els.connectBtn.hidden = false;
+      resetConnectButton();
       setConnectEnabled(false, missingEnvMessage(status));
       els.disconnectBtn.hidden = true;
       els.refreshBtn.hidden = true;
       els.composeToggle.hidden = true;
-      els.toolbar.hidden = true;
-      els.main.hidden = true;
+      const showShared = sharedMessages.length > 0;
+      els.toolbar.hidden = !showShared;
+      els.main.hidden = !showShared;
+      if (showShared) {
+        folder = 'shared';
+        setFolderUi();
+        els.connectText.textContent =
+          (els.connectText.textContent || '') +
+          (sharedMessages.length
+            ? ' Delade mejl visas under «Delat med mig» utan Gmail.'
+            : '');
+      }
       return;
     }
     if (status.connected) {
@@ -277,6 +313,7 @@
       els.statusPill.classList.remove('is-off');
       els.connectText.textContent = '';
       els.connectBtn.hidden = true;
+      resetConnectButton();
       els.disconnectBtn.hidden = false;
       els.refreshBtn.hidden = false;
       els.composeToggle.hidden = false;
@@ -285,16 +322,25 @@
     } else {
       els.statusPill.textContent = 'Ej kopplad';
       els.statusPill.classList.add('is-off');
+      const sharedHint = sharedMessages.length
+        ? ` ${sharedMessages.length} ${sharedMessages.length === 1 ? 'delat mejl' : 'delade mejl'} visas under «Delat med mig» — Gmail behövs inte för dem.`
+        : '';
       els.connectText.textContent =
-        'Koppla Gmail för att läsa kundmejl under KUNDER och skicka som dig själv.';
+        'Koppla Gmail för att läsa kundmejl under KUNDER och skicka som dig själv.' + sharedHint;
       els.connectBtn.hidden = false;
+      if (!connectInFlight) resetConnectButton();
       setConnectEnabled(true);
       els.disconnectBtn.hidden = true;
       els.refreshBtn.hidden = true;
       els.composeToggle.hidden = true;
-      els.toolbar.hidden = true;
-      els.main.hidden = true;
+      // Visa listan även utan Gmail så delade mejl syns
+      els.toolbar.hidden = false;
+      els.main.hidden = false;
+      if (folder === 'inbox' || folder === 'sent') {
+        folder = 'shared';
+      }
     }
+    setFolderUi();
   }
 
   function renderUnmatchedHint(unmatchedLabels) {
@@ -309,17 +355,70 @@
     return `<p class="mejl-hint mejl-unmatched">Etiketter under KUNDER utan kundmatch: <strong>${esc(names.join(', '))}</strong>${esc(more)}.</p>`;
   }
 
+  function sharedListId(archiveId) {
+    return 'shared:' + String(archiveId || '').trim();
+  }
+
+  function isSharedListId(id) {
+    return String(id || '').startsWith('shared:');
+  }
+
+  function archiveIdFromListId(id) {
+    return String(id || '').replace(/^shared:/, '').trim();
+  }
+
+  function archiveToListItem(archive) {
+    const cid = String((archive && archive.customerId) || '').trim();
+    const fromCustomers = customers.find((c) => c.id === cid);
+    return {
+      id: sharedListId(archive.id),
+      archiveId: archive.id,
+      gmailMessageId: archive.gmailMessageId || '',
+      source: 'shared',
+      subject: archive.subject || '(Inget ämne)',
+      from: archive.from || '',
+      to: archive.to || '',
+      snippet: archive.snippet || '',
+      date: archive.date || '',
+      customerId: cid,
+      customerName:
+        String(archive.customerName || '').trim() ||
+        (fromCustomers && fromCustomers.namn) ||
+        '',
+      threadId: archive.threadId || '',
+      visibility: archive.visibility || 'byra',
+      bodyText: archive.bodyText || '',
+      bodyHtml: archive.bodyHtml || '',
+      masked: !!archive.masked,
+      attachmentMeta: archive.attachmentMeta || [],
+      savedTo: archive.savedTo || [],
+      isOwner: !!archive.isOwner
+    };
+  }
+
+  function displayedMessages() {
+    if (folder === 'shared') return sharedMessages;
+    return messages;
+  }
+
   function renderList(extraHtml) {
-    if (!messages.length) {
-      const empty =
-        folder === 'sent'
-          ? 'Inga skickade mejl under etiketten KUNDER.'
-          : 'Inga mejl hittades under etiketten KUNDER.';
+    const list = displayedMessages();
+    if (!list.length) {
+      let empty = 'Inga mejl hittades under etiketten KUNDER.';
+      if (folder === 'sent') empty = 'Inga skickade mejl under etiketten KUNDER.';
+      if (folder === 'shared') {
+        empty =
+          status && status.connected
+            ? 'Inga mejl har delats med dig ännu.'
+            : 'Inga mejl har delats med dig ännu. När en kollega delar ett mejl visas det här — även utan att du kopplat Gmail.';
+      } else if (!(status && status.connected) && folder !== 'shared') {
+        empty = 'Koppla Gmail för att se inkorg under KUNDER, eller öppna «Delat med mig».';
+      }
       els.list.innerHTML = `<p class="mejl-hint">${empty}</p>${extraHtml || ''}`;
       return;
     }
     els.list.innerHTML =
-      messages
+      list
         .map((m) => {
           const customer = String(m.customerName || '').trim() || 'Okänd kund';
           const cid = resolveMessageCustomerId(m);
@@ -340,8 +439,14 @@
                 ])
               : '';
           const handleCls =
-            handleStatusApi && handleStatusApi.listItemClass(handleStatusApi.get(m.id));
+            handleStatusApi && !isSharedListId(m.id)
+              ? handleStatusApi.listItemClass(handleStatusApi.get(m.id))
+              : '';
           const handleClass = handleCls ? ` ${handleCls}` : '';
+          const sharedBadge =
+            m.source === 'shared' || folder === 'shared'
+              ? `<span class="mejl-item-shared-badge"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</span>`
+              : '';
           return `
       <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
@@ -354,11 +459,31 @@
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
         ${labelHtml}
+        ${sharedBadge}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </div>
     `;
         })
         .join('') + (extraHtml || '');
+  }
+
+  async function loadSharedWithMe() {
+    try {
+      const res = await fetch(`${baseUrl}/api/gmail/archive/shared-with-me`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        sharedMessages = [];
+        return [];
+      }
+      const filterId = els.filter && els.filter.value ? els.filter.value : '';
+      sharedMessages = (data.archives || [])
+        .map(archiveToListItem)
+        .filter((m) => !filterId || m.customerId === filterId);
+      return sharedMessages;
+    } catch (_) {
+      sharedMessages = [];
+      return [];
+    }
   }
 
   async function setSyncStatus(text) {
@@ -400,6 +525,26 @@
   async function loadInbox(opts) {
     const options = opts || {};
     setFolderUi();
+
+    if (folder === 'shared') {
+      els.list.innerHTML =
+        '<p class="mejl-hint"><i class="fas fa-spinner fa-spin"></i> Hämtar delade mejl…</p>';
+      if (!options.preserveDetail) {
+        els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
+        activeId = null;
+      }
+      await loadSharedWithMe();
+      renderList();
+      setFolderUi();
+      return;
+    }
+
+    if (!(status && status.connected)) {
+      els.list.innerHTML =
+        '<p class="mejl-hint">Koppla Gmail för att se inkorg under KUNDER. Delade mejl finns under «Delat med mig».</p>';
+      return;
+    }
+
     const hadMessages = messages.length > 0;
     const preserveDetail = options.preserveDetail === true && activeId;
 
@@ -749,10 +894,13 @@
 
   function renderDetail(id, m, listMeta, kunderLabels, archiveForDetail) {
     if (Array.isArray(kunderLabels)) kunderLabelsCache = kunderLabels;
+    const isShared = isSharedListId(id) || (m && m.source === 'shared');
     const customerIdForArchive =
       (m && m.customerId) || (listMeta && listMeta.customerId) || '';
     const archiveVisibility =
-      (archiveForDetail && archiveForDetail.visibility) || 'byra';
+      (archiveForDetail && archiveForDetail.visibility) ||
+      (m && m.visibility) ||
+      'byra';
     const customerName = String(
       (m && m.customerName) || (listMeta && listMeta.customerName) || ''
     ).trim();
@@ -768,7 +916,7 @@
       (m.labelId && (m.labels || []).some((l) => l.id === m.labelId && l.isKunderChild) && m.labelId) ||
       ((m.labels || []).find((l) => l.isKunderChild) || {}).id ||
       '';
-    const labelsHtml = renderLabelChips(m.labels || [], { removable: true });
+    const labelsHtml = renderLabelChips(m.labels || [], { removable: !isShared });
     const reason = matchReasonLabel(m.matchReason || (listMeta && listMeta.matchReason));
     const reasonHtml = reason
       ? `<span class="mejl-match-pill ${reason.cls}"><i class="fas fa-link"></i> ${esc(reason.text)}</span>`
@@ -781,20 +929,22 @@
     const hasLink = !!(m.labelLink && m.labelLink.kundId) || m.matchReason === 'link';
     const kundkortBtn = kundkortLinkHtml(detailCustomerId);
     const labelsOpen = isLabelsPanelOpen();
-    const labelsToggleHtml = `<button type="button" class="mejl-labels-toggle${labelsOpen ? ' is-open' : ''}" id="mejl-labels-toggle" aria-expanded="${labelsOpen ? 'true' : 'false'}" aria-controls="mejl-labels-panel" title="Etiketter" aria-label="Etiketter"><i class="fas fa-tag" aria-hidden="true"></i></button>`;
-    els.detail.innerHTML = `
-      <div class="mejl-item-top">
-        <div class="mejl-detail-title-row">
-          <strong class="mejl-detail-title">${esc(title)}</strong>
-          ${kundkortBtn}
-          ${labelsToggleHtml}
-        </div>
-        <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
-      </div>
-      <div class="mejl-item-subject">${esc(m.subject)}</div>
-      <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
-      <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
-      <div class="mejl-labels-block" id="mejl-labels-panel"${labelsOpen ? '' : ' hidden'}>
+    const labelsToggleHtml = isShared
+      ? ''
+      : `<button type="button" class="mejl-labels-toggle${labelsOpen ? ' is-open' : ''}" id="mejl-labels-toggle" aria-expanded="${labelsOpen ? 'true' : 'false'}" aria-controls="mejl-labels-panel" title="Etiketter" aria-label="Etiketter"><i class="fas fa-tag" aria-hidden="true"></i></button>`;
+    const gmailActionsHtml = isShared
+      ? `<p class="mejl-hint" style="margin-top:0.75rem;">Detta mejl delades med dig via ClientFlow. Svara/radera och Gmail-etiketter kräver att du kopplar din egen Gmail.</p>`
+      : `<div class="mejl-connect-actions" style="margin-top:0.75rem;">
+        <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
+          <i class="fas fa-reply"></i> Svara
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
+          <i class="fas fa-trash"></i> Radera
+        </button>
+      </div>`;
+    const labelsBlockHtml = isShared
+      ? `<p class="mejl-item-shared-badge" style="margin:0.5rem 0;"><i class="fas fa-share-alt" aria-hidden="true"></i> Delat med dig</p>`
+      : `<div class="mejl-labels-block" id="mejl-labels-panel"${labelsOpen ? '' : ' hidden'}>
         <div class="mejl-labels-heading">Etiketter</div>
         ${labelsHtml || '<p class="mejl-hint" style="margin:0;">Inga etiketter.</p>'}
         ${reasonHtml}
@@ -837,28 +987,41 @@
             <span>Uppdatera även Gmail-etikett (byt till KUNDER/kundnamn)</span>
           </label>
         </div>
+      </div>`;
+    const gmailMessageIdForArchive = isShared
+      ? m.gmailMessageId || (archiveForDetail && archiveForDetail.gmailMessageId) || ''
+      : id;
+    els.detail.innerHTML = `
+      <div class="mejl-item-top">
+        <div class="mejl-detail-title-row">
+          <strong class="mejl-detail-title">${esc(title)}</strong>
+          ${kundkortBtn}
+          ${labelsToggleHtml}
+        </div>
+        <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
       </div>
-      <div class="mejl-connect-actions" style="margin-top:0.75rem;">
-        <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
-          <i class="fas fa-reply"></i> Svara
-        </button>
-        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
-          <i class="fas fa-trash"></i> Radera
-        </button>
-      </div>
+      <div class="mejl-item-subject">${esc(m.subject)}</div>
+      <div class="mejl-item-meta">Från: ${esc(m.from)}</div>
+      <div class="mejl-item-meta">Till: ${esc(m.to)}</div>
+      ${labelsBlockHtml}
+      ${gmailActionsHtml}
       ${
-        handleStatusApi
+        !isShared && handleStatusApi
           ? handleStatusApi.toolbarHtml(handleStatusApi.get(id))
           : ''
       }
-      ${archiveApi ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility) : ''}
+      ${
+        !isShared && archiveApi && customerIdForArchive && gmailMessageIdForArchive
+          ? archiveApi.toolbarHtml(customerIdForArchive, archiveVisibility)
+          : ''
+      }
       ${archiveApi ? archiveApi.archiveMetaHtml(archiveForDetail, { attachments: m.attachments }) : ''}
-      ${archiveApi ? archiveApi.attachmentsHtml(m.attachments, archiveForDetail) : ''}
-      <p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering.</p>
+      ${!isShared && archiveApi ? archiveApi.attachmentsHtml(m.attachments, archiveForDetail) : ''}
+      ${isShared ? '' : '<p class="mejl-mask-hint">Markera text i brödtexten och klicka Maska markering.</p>'}
       ${bodyHtml}
     `;
-    detailContext = { id, message: m, listMeta };
-    bindDetailLabelUi(id);
+    detailContext = { id, message: m, listMeta, isShared };
+    if (!isShared) bindDetailLabelUi(id);
 
     const replyBtn = document.getElementById('mejl-reply-btn');
     if (replyBtn) {
@@ -879,7 +1042,7 @@
     if (trashBtn) {
       trashBtn.addEventListener('click', () => trashMessage(id));
     }
-    if (handleStatusApi) {
+    if (!isShared && handleStatusApi) {
       handleStatusApi.bindDetailButtons({
         id,
         onChange: () => {
@@ -888,9 +1051,9 @@
         }
       });
     }
-    if (archiveApi) {
+    if (!isShared && archiveApi && customerIdForArchive && gmailMessageIdForArchive) {
       archiveApi.bindDetailButtons({
-        id,
+        id: gmailMessageIdForArchive,
         message: m,
         customerId: customerIdForArchive,
         plainText: m.text || m.snippet || '',
@@ -900,7 +1063,51 @@
     }
   }
 
+  async function openSharedMessage(listId) {
+    activeId = listId;
+    renderList();
+    els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
+    const archiveId = archiveIdFromListId(listId);
+    const res = await fetch(
+      `${baseUrl}/api/gmail/archive/${encodeURIComponent(archiveId)}`,
+      authOpts()
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success || !data.archive) {
+      els.detail.innerHTML = `<p class="mejl-detail-empty">${esc(data.error || 'Kunde inte öppna det delade mejlet')}</p>`;
+      return;
+    }
+    const archive = data.archive;
+    const listMeta = sharedMessages.find((x) => x.id === listId) || archiveToListItem(archive);
+    const idx = sharedMessages.findIndex((x) => x.id === listId);
+    const item = archiveToListItem(archive);
+    if (idx >= 0) sharedMessages[idx] = { ...sharedMessages[idx], ...item };
+    else sharedMessages.unshift(item);
+    const m = {
+      source: 'shared',
+      archiveId: archive.id,
+      gmailMessageId: archive.gmailMessageId,
+      subject: archive.subject,
+      from: archive.from,
+      to: archive.to,
+      date: archive.date,
+      snippet: archive.snippet,
+      text: archive.bodyText || '',
+      html: archive.bodyHtml || '',
+      customerId: archive.customerId,
+      customerName: listMeta.customerName || archive.customerName || '',
+      threadId: archive.threadId,
+      visibility: archive.visibility,
+      attachments: Array.isArray(archive.attachmentMeta) ? archive.attachmentMeta : []
+    };
+    renderDetail(listId, m, listMeta, null, archive);
+  }
+
   async function openMessage(id) {
+    if (isSharedListId(id)) {
+      await openSharedMessage(id);
+      return;
+    }
     activeId = id;
     renderList();
     els.detail.innerHTML = '<p class="mejl-detail-empty"><i class="fas fa-spinner fa-spin"></i> Laddar…</p>';
@@ -1111,28 +1318,49 @@
       els.connectText.textContent = msg;
       return;
     }
+    if (connectInFlight) return;
     const prevHtml = els.connectBtn.innerHTML;
+    connectInFlight = true;
     els.connectBtn.dataset.connectReady = '0';
     els.connectBtn.classList.add('is-disabled');
     els.connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Öppnar Google…';
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+      if (controller) controller.abort();
+    }, 20000);
     try {
       const res = await fetch(`${baseUrl}/api/gmail/connect?redirect=0`, {
         ...authOpts(),
+        signal: controller ? controller.signal : undefined,
         headers: { ...(authOpts().headers || {}), Accept: 'application/json' }
       });
+      clearTimeout(timeoutId);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success || !data.url) {
         const msg = data.error || missingEnvMessage(data);
         showToast(msg, 'error');
         els.connectText.textContent = msg;
-        els.connectBtn.innerHTML = prevHtml;
+        resetConnectButton();
         setConnectEnabled(!!(status && status.configured), msg);
         return;
       }
+      // Lämna knappen i loading-läge tills navigering sker; återställ om den inte gör det.
       window.location.href = data.url;
+      setTimeout(() => {
+        if (connectInFlight) {
+          resetConnectButton();
+          setConnectEnabled(true);
+          showToast('Kunde inte öppna Google. Tillåt popup/omdirigering och försök igen.', 'error');
+        }
+      }, 8000);
     } catch (err) {
-      showToast(err.message || 'Kunde inte starta Gmail-koppling', 'error');
-      els.connectBtn.innerHTML = prevHtml;
+      clearTimeout(timeoutId);
+      const aborted = err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''));
+      const msg = aborted
+        ? 'Timeout när Google skulle öppnas. Försök igen.'
+        : err.message || 'Kunde inte starta Gmail-koppling';
+      showToast(msg, 'error');
+      resetConnectButton();
       setConnectEnabled(true);
     }
   });
@@ -1377,11 +1605,19 @@
 
   function onFolderClick(next) {
     if (folder === next) return;
+    if ((next === 'inbox' || next === 'sent') && !(status && status.connected)) {
+      showToast('Koppla Gmail för att öppna Inkorg/Skickat. Delade mejl finns under «Delat med mig».', 'error');
+      folder = 'shared';
+      setFolderUi();
+      loadInbox();
+      return;
+    }
     folder = next;
     loadInbox();
   }
   if (els.folderInbox) els.folderInbox.addEventListener('click', () => onFolderClick('inbox'));
   if (els.folderSent) els.folderSent.addEventListener('click', () => onFolderClick('sent'));
+  if (els.folderShared) els.folderShared.addEventListener('click', () => onFolderClick('shared'));
 
   async function boot() {
     const params = new URLSearchParams(window.location.search);
@@ -1403,10 +1639,39 @@
       els.filter.value = presetCustomer;
       els.customer.value = presetCustomer;
     }
+    // Ladda delade mejl först så de syns även utan Gmail (och innan status kan dölja UI).
+    await loadSharedWithMe();
     await loadStatus();
+    if (!(status && status.connected)) {
+      folder = 'shared';
+    }
     renderStatus();
-    if (status && status.connected) await loadInbox();
+    resetConnectButton();
+    setConnectEnabled(!!(status && status.configured && !status.connected));
+    if (status && status.connected) {
+      await loadInbox();
+      // Uppdatera räknare för Delat med mig i bakgrunden
+      setFolderUi();
+    } else {
+      els.main.hidden = false;
+      els.toolbar.hidden = false;
+      await loadInbox();
+    }
   }
+
+  // Om användaren återvänder efter misslyckad OAuth – nollställ stuck «Öppnar Google…»
+  window.addEventListener('pageshow', () => {
+    if (connectInFlight) {
+      resetConnectButton();
+      if (status && status.configured && !status.connected) setConnectEnabled(true);
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && connectInFlight) {
+      resetConnectButton();
+      if (status && status.configured && !status.connected) setConnectEnabled(true);
+    }
+  });
 
   if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) {
     boot();

@@ -715,7 +715,7 @@
         : '<p class="mejl-hint">Inga byråanvändare hittades.</p>';
       openModal(
         'Dela mejl',
-        '<p class="mejl-hint">Privata mejl syns bara för dig och dem du delar med.</p><div>' + opts + '</div>',
+        '<p class="mejl-hint">Mottagaren ser mejlet under <strong>Delat med mig</strong> i Mejl — även utan egen Gmail-koppling. Privata mejl syns bara för dig och dem du delar med.</p><div>' + opts + '</div>',
         async (root) => {
           const ids = [...root.querySelectorAll('input[name="share"]:checked')].map((el) => el.value);
           const remove = [...shared].filter((x) => !ids.includes(x));
@@ -725,7 +725,12 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.success) { showToast(data.error || 'Kunde inte dela', 'error'); return; }
-          showToast('Delning uppdaterad.', 'success');
+          showToast(
+            ids.length
+              ? 'Delning uppdaterad. Mottagaren hittar mejlet under Delat med mig.'
+              : 'Delning uppdaterad.',
+            'success'
+          );
           closeModal();
           if (onDone) await onDone();
         },
