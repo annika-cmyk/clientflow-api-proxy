@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260914bransch">
+    <link rel="stylesheet" href="styles.css?v=20260914statchips">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -20,7 +20,7 @@
                 <header class="content-header risk-header">
                     <div class="risk-header-content">
                         <h1>Statistik för riskbedömning</h1>
-                        <p class="risk-header-sub">Siffror baserade på din byrås kunder</p>
+                        <p class="risk-header-sub">Siffror baserade på din byrås kunder i Clientflow. Klicka på en siffra eller etikett för kundlista.</p>
                     </div>
                 </header>
 
@@ -32,49 +32,49 @@
 
                 <div id="statistik-riskbedomning-content">
                     <div class="stats-cards-row">
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="alla" data-titel="Alla kunder" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-users"></i></div>
                             <div class="stat-content">
-                                <h3>Antal kunder (byrån)</h3>
+                                <h3>Antal kunder (byrån) <span class="statistik-source-badge" title="Aggregerat från aktiva kunder i Clientflow">Clientflow</span></h3>
                                 <div class="stat-number" id="stat-antal-kunder">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Låg" data-titel="Låg risk" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-shield-alt"></i></div>
                             <div class="stat-content">
                                 <h3>Låg risk</h3>
                                 <div class="stat-number stat-number--low" id="stat-lag">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Normal" data-titel="Normal risk" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-balance-scale"></i></div>
                             <div class="stat-content">
                                 <h3>Normal risk</h3>
                                 <div class="stat-number stat-number--normal" id="stat-normal">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Förhöjd" data-titel="Förhöjd risk" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-arrow-up"></i></div>
                             <div class="stat-content">
                                 <h3>Förhöjd risk</h3>
                                 <div class="stat-number stat-number--elevated" id="stat-forhojd">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Hög" data-titel="Hög risk" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
                             <div class="stat-content">
                                 <h3>Hög risk</h3>
                                 <div class="stat-number stat-number--high" id="stat-hog">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Oacceptabel" data-titel="Oacceptabel risk" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-ban"></i></div>
                             <div class="stat-content">
                                 <h3>Oacceptabel</h3>
                                 <div class="stat-number stat-number--unacceptable" id="stat-oacceptabel">–</div>
                             </div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-card-clickable" data-typ="riskniva" data-namn="Övrigt" data-titel="Övrig risknivå" title="Klicka för att se kunder">
                             <div class="stat-icon"><i class="fas fa-question-circle"></i></div>
                             <div class="stat-content">
                                 <h3>Övrig risknivå</h3>
@@ -93,38 +93,38 @@
 
                     <div class="statistik-sections">
                         <section class="statistik-section">
-                            <h3><i class="fas fa-chart-line"></i> Omsättning</h3>
-                            <p class="statistik-section-desc">Antal kunder per omsättningsintervall (från kunduppgifter/KYC). Klicka på en rad för att se vilka företag det gäller.</p>
+                            <h3><i class="fas fa-chart-line"></i> Omsättning <span class="statistik-source-badge" title="Från kunduppgifter/KYC i Clientflow">Clientflow</span></h3>
+                            <p class="statistik-section-desc">Antal kunder per omsättningsintervall. Klicka på en etikett för kundlista.</p>
                             <div id="statistik-omsattning-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section">
-                            <h3><i class="fas fa-user-friends"></i> Antal anställda</h3>
-                            <p class="statistik-section-desc">Antal kunder per antal anställda (från KYC). Klicka på en rad för att se vilka företag det gäller.</p>
+                            <h3><i class="fas fa-user-friends"></i> Antal anställda <span class="statistik-source-badge" title="Från KYC i Clientflow">Clientflow</span></h3>
+                            <p class="statistik-section-desc">Antal kunder per antal anställda. Klicka på en etikett för kundlista.</p>
                             <div id="statistik-anstallda-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section">
-                            <h3><i class="fas fa-cogs"></i> Kunder per tjänst</h3>
+                            <h3><i class="fas fa-cogs"></i> Kunder per tjänst <span class="statistik-source-badge" title="Från kopplade tjänster i Clientflow">Clientflow</span></h3>
                             <p class="statistik-section-desc">Antal kunder som har respektive tjänst kopplad.</p>
                             <div id="statistik-tjanster-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section">
-                            <h3><i class="fas fa-layer-group"></i> Branscher</h3>
+                            <h3><i class="fas fa-layer-group"></i> Branscher <span class="statistik-source-badge" title="Från SNI/bransch i Clientflow">Clientflow</span></h3>
                             <p class="statistik-section-desc">Översiktsgrupper från kundernas SNI/bransch. Klicka för underbranscher och kundlista.</p>
                             <div id="statistik-bransch-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section">
-                            <h3><i class="fas fa-industry"></i> Högriskbransch</h3>
+                            <h3><i class="fas fa-industry"></i> Högriskbransch <span class="statistik-source-badge" title="Från högriskbransch-fält i Clientflow">Clientflow</span></h3>
                             <p class="statistik-section-desc">Antal kunder som har angivit respektive högriskbransch. Klicka för underbranscher och kundlista.</p>
                             <div id="statistik-hogriskbransch-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section">
-                            <h3><i class="fas fa-map-marker-alt"></i> Utsatta områden (Polisen)</h3>
-                            <p class="statistik-section-desc">Adresskontroll mot Polisens lista uso_2025. Klicka på en rad för att se vilka kunder det gäller.</p>
+                            <h3><i class="fas fa-map-marker-alt"></i> Utsatta områden (Polisen) <span class="statistik-source-badge" title="Adresskontroll i Clientflow mot Polisens lista">Clientflow</span></h3>
+                            <p class="statistik-section-desc">Adresskontroll mot Polisens lista uso_2025. Klicka på en kategori för kundlista.</p>
                             <div id="statistik-utsatt-omrade-lista" class="stat-list"></div>
                         </section>
                         <section class="statistik-section" style="grid-column:1/-1;">
-                            <h3><i class="fas fa-exclamation-circle"></i> Riskfaktorer per typ</h3>
-                            <p class="statistik-section-desc">Kort för varje typ av riskfaktor (från Airtable: Risker kopplade till kunden). Varje kort visar antal kunder och de specifika riskfaktorerna. Klicka på en rad för att se vilka kunder.</p>
+                            <h3><i class="fas fa-exclamation-circle"></i> Riskfaktorer per typ <span class="statistik-source-badge" title="Från Risker kopplade till kunden i Clientflow/Airtable">Clientflow</span></h3>
+                            <p class="statistik-section-desc">Varje typ visar antal kunder och de specifika riskfaktorerna. Klicka för kundlista.</p>
                             <div id="statistik-riskfaktorer-kort" class="statistik-riskfaktorer-kort"></div>
                         </section>
                     </div>
@@ -163,7 +163,7 @@
     <script src="app.js" defer></script>
     <script src="js/risk-skala.js?v=1" defer></script>
     <script src="js/kund-bransch-aggregat.js?v=20260914drill" defer></script>
-    <script src="js/statistik-kunder-modal.js?v=1" defer></script>
-    <script src="js/statistik-riskbedomning.js?v=8" defer></script>
+    <script src="js/statistik-kunder-modal.js?v=2" defer></script>
+    <script src="js/statistik-riskbedomning.js?v=9" defer></script>
 </body>
 </html>

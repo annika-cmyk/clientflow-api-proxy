@@ -16406,6 +16406,22 @@ app.get('/api/statistik-riskbedomning/kunder', authenticateToken, async (req, re
           kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
         }
       }
+    } else if (typ === 'bolagsform' && paramNamn !== undefined) {
+      for (const rec of allRecords) {
+        if (statistikRiskbedomning.recordMatchesBolagsform(rec.fields, paramNamn)) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+        }
+      }
+    } else if (typ === 'riskniva' && paramNamn !== undefined) {
+      for (const rec of allRecords) {
+        if (statistikRiskbedomning.recordMatchesRiskniva(rec.fields, paramNamn)) {
+          kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+        }
+      }
+    } else if (typ === 'alla') {
+      for (const rec of allRecords) {
+        kunder.push({ id: rec.id, namn: (rec.fields?.['Namn'] || rec.fields?.['Kundnamn'] || '').trim() || 'Namn saknas' });
+      }
     }
 
     res.json({ kunder });

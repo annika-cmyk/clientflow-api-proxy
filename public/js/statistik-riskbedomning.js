@@ -18,6 +18,26 @@
     return res.json();
   }
 
+  function chipHtml(opts) {
+    const typ = opts.typ || '';
+    const namn = opts.namn == null ? '' : String(opts.namn);
+    const id = opts.id == null ? '' : String(opts.id);
+    const titel = opts.titel || namn || 'Kunder';
+    const label = opts.label == null ? namn : String(opts.label);
+    const antal = opts.antal;
+    const text = (antal != null && antal !== '') ? (label + ' · ' + antal) : label;
+    const idAttr = id ? ` data-id="${escapeAttr(id)}"` : '';
+    const namnAttr = namn !== '' ? ` data-namn="${escapeAttr(namn)}"` : '';
+    return (
+      `<button type="button" class="statistik-stat-chip" data-typ="${escapeAttr(typ)}"${namnAttr}${idAttr} ` +
+      `data-titel="${escapeAttr(titel)}" title="Klicka för att se kunder">${escapeHtml(text)}</button>`
+    );
+  }
+
+  function chipsWrap(html) {
+    return `<div class="statistik-stat-chips">${html}</div>`;
+  }
+
   function renderStatistik(data) {
     const wrap = document.getElementById('statistik-riskbedomning-content');
     if (!wrap) return;
@@ -49,12 +69,9 @@
       if (tj.length === 0) {
         tjansterList.innerHTML = '<p class="stat-list-empty">Inga tjänster valda hos kunderna.</p>';
       } else {
-        tjansterList.innerHTML = tj.map(t => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="tjanst" data-namn="${escapeAttr(t.namn)}" data-titel="${escapeAttr(t.namn)}" title="Klicka för att se kunder">
-            <span class="stat-list-namn">${escapeHtml(t.namn)}</span>
-            <span class="stat-list-antal">${t.antal} kunder</span>
-          </div>
-        `).join('');
+        tjansterList.innerHTML = chipsWrap(tj.map(t => chipHtml({
+          typ: 'tjanst', namn: t.namn, titel: t.namn, label: t.namn, antal: t.antal
+        })).join(''));
       }
     }
 
@@ -63,12 +80,9 @@
       if (oms.length === 0) {
         omsList.innerHTML = '<p class="stat-list-empty">Ingen omsättning registrerad hos kunderna.</p>';
       } else {
-        omsList.innerHTML = oms.map(o => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="omsattning" data-namn="${escapeAttr(o.namn)}" data-titel="${escapeAttr('Omsättning: ' + o.namn)}" title="Klicka för att se kunder">
-            <span class="stat-list-namn">${escapeHtml(o.namn)}</span>
-            <span class="stat-list-antal">${o.antal} kunder</span>
-          </div>
-        `).join('');
+        omsList.innerHTML = chipsWrap(oms.map(o => chipHtml({
+          typ: 'omsattning', namn: o.namn, titel: 'Omsättning: ' + o.namn, label: o.namn, antal: o.antal
+        })).join(''));
       }
     }
 
@@ -77,12 +91,9 @@
       if (anst.length === 0) {
         anstList.innerHTML = '<p class="stat-list-empty">Inget antal anställda registrerat hos kunderna.</p>';
       } else {
-        anstList.innerHTML = anst.map(a => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="anstallda" data-namn="${escapeAttr(a.namn)}" data-titel="${escapeAttr('Anställda: ' + a.namn)}" title="Klicka för att se kunder">
-            <span class="stat-list-namn">${escapeHtml(a.namn)}</span>
-            <span class="stat-list-antal">${a.antal} kunder</span>
-          </div>
-        `).join('');
+        anstList.innerHTML = chipsWrap(anst.map(a => chipHtml({
+          typ: 'anstallda', namn: a.namn, titel: 'Anställda: ' + a.namn, label: a.namn, antal: a.antal
+        })).join(''));
       }
     }
 
@@ -91,12 +102,9 @@
       if (branschBuckets.length === 0) {
         branschList.innerHTML = '<p class="stat-list-empty">Ingen branschstatistik tillgänglig.</p>';
       } else {
-        branschList.innerHTML = branschBuckets.map(b => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="kund-bransch" data-namn="${escapeAttr(b.namn)}" data-titel="${escapeAttr(b.namn)}" title="Klicka för underbranscher och kunder">
-            <span class="stat-list-namn">${escapeHtml(b.namn)}</span>
-            <span class="stat-list-antal">${b.antal} kunder</span>
-          </div>
-        `).join('');
+        branschList.innerHTML = chipsWrap(branschBuckets.map(b => chipHtml({
+          typ: 'kund-bransch', namn: b.namn, titel: b.namn, label: b.namn, antal: b.antal
+        })).join(''));
       }
     }
 
@@ -105,12 +113,9 @@
       if (hr.length === 0) {
         hrList.innerHTML = '<p class="stat-list-empty">Inga kunder med högriskbransch registrerad.</p>';
       } else {
-        hrList.innerHTML = hr.map(h => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="hogriskbransch" data-namn="${escapeAttr(h.namn)}" data-titel="${escapeAttr(h.namn)}" title="Klicka för underbranscher och kunder">
-            <span class="stat-list-namn">${escapeHtml(h.namn)}</span>
-            <span class="stat-list-antal">${h.antal} kunder</span>
-          </div>
-        `).join('');
+        hrList.innerHTML = chipsWrap(hr.map(h => chipHtml({
+          typ: 'hogriskbransch', namn: h.namn, titel: h.namn, label: h.namn, antal: h.antal
+        })).join(''));
       }
     }
 
@@ -121,28 +126,15 @@
       } else {
         const summary = data.utsattOmrade || {};
         const meta = typeof summary.antalTrff === 'number'
-          ? `<p class="statistik-section-desc">${summary.antalKontrollerade || 0} kontrollerade adresser, ${summary.antalTrff} träffar. Endast pågående kunder. Klicka på träffar eller geokodningsfel för kundlista.</p>`
+          ? `<p class="statistik-section-desc">${summary.antalKontrollerade || 0} kontrollerade adresser, ${summary.antalTrff} träffar. Endast pågående kunder. Klicka på en kategori för kundlista.</p>`
           : '';
-        const actionable = new Set([
-          'Kunde inte geokoda',
-          'Särskilt utsatt område (SEU)',
-          'Utsatt område'
-        ]);
-        utsattList.innerHTML = meta + utsatt.map(u => {
-          const canOpen = actionable.has(u.namn);
-          if (canOpen) {
-            return `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="utsatt-omrade" data-namn="${escapeAttr(u.namn)}" data-titel="${escapeAttr('Utsatt område: ' + u.namn)}" title="Klicka för att se kunder">
-            <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
-            <span class="stat-list-antal">${u.antal} kunder</span>
-          </div>`;
-          }
-          return `
-          <div class="stat-list-row">
-            <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
-            <span class="stat-list-antal">${u.antal} kunder</span>
-          </div>`;
-        }).join('');
+        utsattList.innerHTML = meta + chipsWrap(utsatt.map(u => chipHtml({
+          typ: 'utsatt-omrade',
+          namn: u.namn,
+          titel: 'Utsatt område: ' + u.namn,
+          label: u.namn,
+          antal: u.antal
+        })).join(''));
       }
     }
 
@@ -155,14 +147,20 @@
         riskfaktorKortWrap.innerHTML = rpt.map(kort => `
           <div class="statistik-riskfaktor-kort">
             <h4><i class="fas fa-exclamation-circle"></i> ${escapeHtml(kort.typ)}</h4>
-            <div class="riskfaktor-kort-antal stat-list-row-clickable" data-typ="riskfaktor" data-namn="${escapeAttr(kort.typ)}" data-titel="${escapeAttr(kort.typ)}" title="Klicka för att se kunder">${kort.antalKunder} kunder har denna typ</div>
-            <div class="stat-list">
-              ${(kort.riskfaktorer || []).map(r => `
-                <div class="stat-list-row stat-list-row-clickable" data-typ="riskfaktor" data-id="${escapeAttr(r.id)}" data-titel="${escapeAttr(r.namn)}" title="Klicka för att se kunder">
-                  <span class="stat-list-namn">${escapeHtml(r.namn)}</span>
-                  <span class="stat-list-antal">${r.antal} kunder</span>
-                </div>
-              `).join('')}
+            ${chipHtml({
+              typ: 'riskfaktor',
+              namn: kort.typ,
+              titel: kort.typ,
+              label: kort.antalKunder + ' kunder har denna typ'
+            })}
+            <div class="statistik-stat-chips statistik-stat-chips--nested">
+              ${(kort.riskfaktorer || []).map(r => chipHtml({
+                typ: 'riskfaktor',
+                id: r.id,
+                titel: r.namn,
+                label: r.namn,
+                antal: r.antal
+              })).join('')}
             </div>
           </div>
         `).join('');
@@ -418,10 +416,12 @@
         const typ = card.getAttribute('data-typ');
         const titel = card.getAttribute('data-titel') || 'Kunder';
         if (typ === 'pep-sanktion') fetchKunderForRow('pep-sanktion', null, null, titel);
+        else if (typ === 'riskniva') fetchKunderForRow('riskniva', null, card.getAttribute('data-namn'), titel);
+        else if (typ === 'alla') fetchKunderForRow('alla', null, null, titel);
       };
       card.addEventListener('click', card._statistikCardClick);
     });
-    document.querySelectorAll('.stat-list-row-clickable').forEach(row => {
+    document.querySelectorAll('.stat-list-row-clickable, .statistik-stat-chip').forEach(row => {
       row.removeEventListener('click', row._statistikClick);
       row._statistikClick = function () {
         const typ = row.getAttribute('data-typ');
@@ -442,6 +442,14 @@
           fetchKunderForRow('anstallda', null, row.getAttribute('data-namn'), titel);
         } else if (typ === 'utsatt-omrade') {
           fetchKunderForRow('utsatt-omrade', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'bolagsform') {
+          fetchKunderForRow('bolagsform', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'riskniva') {
+          fetchKunderForRow('riskniva', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'pep-sanktion') {
+          fetchKunderForRow('pep-sanktion', null, null, titel);
+        } else if (typ === 'alla') {
+          fetchKunderForRow('alla', null, null, titel);
         }
       };
       row.addEventListener('click', row._statistikClick);
