@@ -4,6 +4,9 @@
 (function () {
   const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
 
+  /** @type {{ mode: string, typ?: string, namn?: string, titel?: string, data?: object } | null} */
+  let modalNav = null;
+
   function getAuthOpts() {
     return (window.AuthManager && AuthManager.getAuthFetchOptions && AuthManager.getAuthFetchOptions()) || { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
   }
@@ -25,6 +28,7 @@
     const hr = data.högriskbransch || [];
     const oms = data.omsattning || [];
     const anst = data.anstallda || [];
+    const branschBuckets = data.kundBranschBuckets || [];
     const utsatt = (data.utsattOmrade && data.utsattOmrade.rader) || [];
 
     document.getElementById('stat-antal-kunder').textContent = n;
@@ -82,13 +86,27 @@
       }
     }
 
+    const branschList = document.getElementById('statistik-bransch-lista');
+    if (branschList) {
+      if (branschBuckets.length === 0) {
+        branschList.innerHTML = '<p class="stat-list-empty">Ingen branschstatistik tillgänglig.</p>';
+      } else {
+        branschList.innerHTML = branschBuckets.map(b => `
+          <div class="stat-list-row stat-list-row-clickable" data-typ="kund-bransch" data-namn="${escapeAttr(b.namn)}" data-titel="${escapeAttr(b.namn)}" title="Klicka för underbranscher och kunder">
+            <span class="stat-list-namn">${escapeHtml(b.namn)}</span>
+            <span class="stat-list-antal">${b.antal} kunder</span>
+          </div>
+        `).join('');
+      }
+    }
+
     const hrList = document.getElementById('statistik-hogriskbransch-lista');
     if (hrList) {
       if (hr.length === 0) {
         hrList.innerHTML = '<p class="stat-list-empty">Inga kunder med högriskbransch registrerad.</p>';
       } else {
         hrList.innerHTML = hr.map(h => `
-          <div class="stat-list-row stat-list-row-clickable" data-typ="hogriskbransch" data-namn="${escapeAttr(h.namn)}" data-titel="${escapeAttr(h.namn)}" title="Klicka för att se kunder">
+          <div class="stat-list-row stat-list-row-clickable" data-typ="hogriskbransch" data-namn="${escapeAttr(h.namn)}" data-titel="${escapeAttr(h.namn)}" title="Klicka för underbranscher och kunder">
             <span class="stat-list-namn">${escapeHtml(h.namn)}</span>
             <span class="stat-list-antal">${h.antal} kunder</span>
           </div>
@@ -166,24 +184,48 @@
     return div.innerHTML;
   }
 
+  function modalEls() {
+    return {
+      overlay: document.getElementById('statistik-kunder-modal-overlay'),
+      titleEl: document.getElementById('statistik-kunder-modal-title'),
+      listEl: document.getElementById('statistik-kunder-lista'),
+      loadingEl: document.getElementById('statistik-kunder-modal-loading'),
+      emptyEl: document.getElementById('statistik-kunder-modal-empty'),
+      errorEl: document.getElementById('statistik-kunder-modal-error'),
+      drillEl: document.getElementById('statistik-bransch-drilldown'),
+      backBtn: document.getElementById('statistik-kunder-modal-back')
+    };
+  }
+
+  function openOverlay() {
+    const { overlay } = modalEls();
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+  }
+
+  function setBackVisible(show) {
+    const { backBtn } = modalEls();
+    if (backBtn) backBtn.style.display = show ? 'inline-flex' : 'none';
+  }
+
   function showKunderModal(titel, kunder, loading, error) {
-    const overlay = document.getElementById('statistik-kunder-modal-overlay');
-    const titleEl = document.getElementById('statistik-kunder-modal-title');
-    const listEl = document.getElementById('statistik-kunder-lista');
-    const loadingEl = document.getElementById('statistik-kunder-modal-loading');
-    const emptyEl = document.getElementById('statistik-kunder-modal-empty');
-    const errorEl = document.getElementById('statistik-kunder-modal-error');
+    const { overlay, titleEl, listEl, loadingEl, emptyEl, errorEl, drillEl } = modalEls();
     if (!overlay) return;
     titleEl.textContent = titel || 'Kunder';
     loadingEl.style.display = loading ? 'block' : 'none';
     emptyEl.style.display = 'none';
     errorEl.style.display = 'none';
+    if (drillEl) {
+      drillEl.style.display = 'none';
+      drillEl.innerHTML = '';
+    }
     listEl.innerHTML = '';
+    listEl.style.display = '';
     if (error) {
       errorEl.textContent = error;
       errorEl.style.display = 'block';
-      overlay.style.display = 'flex';
-      overlay.setAttribute('aria-hidden', 'false');
+      openOverlay();
       return;
     }
     if (!loading && kunder) {
@@ -195,22 +237,107 @@
         `).join('');
       }
     }
-    overlay.style.display = 'flex';
-    overlay.setAttribute('aria-hidden', 'false');
+    openOverlay();
+  }
+
+  function showDrilldownView(titel, data, typ, namn) {
+    const { titleEl, listEl, loadingEl, emptyEl, errorEl, drillEl } = modalEls();
+    if (!drillEl) return;
+    titleEl.textContent = titel || namn || 'Bransch';
+    loadingEl.style.display = 'none';
+    emptyEl.style.display = 'none';
+    errorEl.style.display = 'none';
+    listEl.innerHTML = '';
+    listEl.style.display = 'none';
+
+    const undersni = data.undersni || [];
+    const antal = typeof data.antalKunder === 'number' ? data.antalKunder : (data.kunder || []).length;
+    const hasFine = undersni.length > 1 || (undersni.length === 1 && foldKey(undersni[0].namn) !== foldKey(namn));
+
+    let html = `
+      <p class="statistik-bransch-drilldown-summary">${antal} kunder i gruppen</p>
+      <button type="button" class="btn btn-secondary statistik-bransch-visa-alla" data-action="visa-alla">
+        Visa alla kunder
+      </button>
+    `;
+    if (hasFine && undersni.length) {
+      html += `
+        <h5 class="statistik-bransch-drilldown-heading">Underbranscher</h5>
+        <div class="stat-list">
+          ${undersni.map((u) => `
+            <div class="stat-list-row stat-list-row-clickable" data-action="underbransch" data-namn="${escapeAttr(u.namn)}" title="Visa kunder i underbranschen">
+              <span class="stat-list-namn">${escapeHtml(u.namn)}</span>
+              <span class="stat-list-antal">${u.antal} kunder</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else if (!undersni.length) {
+      html += '<p class="stat-list-empty">Inga underbranscher registrerade — visa kundlistan ovan.</p>';
+    }
+
+    drillEl.innerHTML = html;
+    drillEl.style.display = 'block';
+    setBackVisible(false);
+    modalNav = { mode: 'drilldown', typ, namn, titel, data };
+    openOverlay();
+
+    const visaAlla = drillEl.querySelector('[data-action="visa-alla"]');
+    if (visaAlla) {
+      visaAlla.addEventListener('click', () => {
+        showKunderFromDrill(titel, data.kunder || [], { fromDrill: true, typ, namn, titel, data });
+      });
+    }
+    drillEl.querySelectorAll('[data-action="underbransch"]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const under = row.getAttribute('data-namn') || '';
+        fetchBranschDrilldown(typ, namn, under, under || titel);
+      });
+    });
+  }
+
+  function showKunderFromDrill(titel, kunder, nav) {
+    showKunderModal(titel, kunder, false, null);
+    setBackVisible(true);
+    modalNav = Object.assign({ mode: 'kunder' }, nav || {});
+  }
+
+  function foldKey(s) {
+    return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
   function closeKunderModal() {
-    const overlay = document.getElementById('statistik-kunder-modal-overlay');
+    const { overlay } = modalEls();
     if (overlay) {
       overlay.style.display = 'none';
       overlay.setAttribute('aria-hidden', 'true');
     }
+    modalNav = null;
+    setBackVisible(false);
+  }
+
+  function goBackInModal() {
+    if (!modalNav) {
+      closeKunderModal();
+      return;
+    }
+    if (modalNav.mode === 'kunder' && modalNav.data) {
+      showDrilldownView(modalNav.titel || modalNav.namn, modalNav.data, modalNav.typ, modalNav.namn);
+      return;
+    }
+    if (modalNav.mode === 'under-kunder' && modalNav.parentData) {
+      showDrilldownView(modalNav.titel || modalNav.namn, modalNav.parentData, modalNav.typ, modalNav.namn);
+      return;
+    }
+    closeKunderModal();
   }
 
   async function fetchKunderForRow(typ, paramId, paramNamn, titel) {
     const params = new URLSearchParams({ typ });
     if (paramId) params.set('id', paramId);
     if (paramNamn !== undefined && paramNamn !== '') params.set('namn', paramNamn);
+    setBackVisible(false);
+    modalNav = null;
     showKunderModal(titel, null, true, null);
     try {
       const res = await fetch(baseUrl + '/api/statistik-riskbedomning/kunder?' + params.toString(), getAuthOpts());
@@ -227,12 +354,53 @@
     }
   }
 
+  async function fetchBranschDrilldown(typ, namn, sniFilter, titel) {
+    const params = new URLSearchParams({ typ, namn });
+    if (sniFilter) params.set('sni', sniFilter);
+    const parent = modalNav && modalNav.data && !sniFilter ? null : (modalNav && modalNav.data);
+    const parentNav = modalNav && (modalNav.mode === 'drilldown' || modalNav.mode === 'under-kunder')
+      ? { typ: modalNav.typ, namn: modalNav.namn, titel: modalNav.titel, data: modalNav.data || modalNav.parentData }
+      : null;
+
+    setBackVisible(Boolean(sniFilter));
+    showKunderModal(titel || namn, null, true, null);
+    try {
+      const res = await fetch(baseUrl + '/api/statistik-riskbedomning/bransch-drilldown?' + params.toString(), getAuthOpts());
+      const data = await res.json();
+      document.getElementById('statistik-kunder-modal-loading').style.display = 'none';
+      if (!res.ok) {
+        showKunderModal(titel || namn, null, false, data.error || 'Kunde inte hämta branschdetaljer');
+        return;
+      }
+      if (sniFilter) {
+        showKunderFromDrill(titel || sniFilter, data.kunder || [], {
+          mode: 'under-kunder',
+          typ,
+          namn,
+          titel: parentNav ? parentNav.titel : namn,
+          parentData: parentNav ? parentNav.data : parent,
+          data: parentNav ? parentNav.data : data
+        });
+        return;
+      }
+      showDrilldownView(titel || namn, data, typ, namn);
+    } catch (e) {
+      document.getElementById('statistik-kunder-modal-loading').style.display = 'none';
+      showKunderModal(titel || namn, null, false, e.message || 'Nätverksfel');
+    }
+  }
+
   function bindStatistikRowClicks() {
     const closeBtn = document.getElementById('statistik-kunder-modal-close');
+    const backBtn = document.getElementById('statistik-kunder-modal-back');
     const overlay = document.getElementById('statistik-kunder-modal-overlay');
     if (closeBtn && !closeBtn._bound) {
       closeBtn._bound = true;
       closeBtn.addEventListener('click', closeKunderModal);
+    }
+    if (backBtn && !backBtn._bound) {
+      backBtn._bound = true;
+      backBtn.addEventListener('click', goBackInModal);
     }
     if (overlay && !overlay._bound) {
       overlay._bound = true;
@@ -256,8 +424,10 @@
         const titel = row.getAttribute('data-titel') || 'Kunder';
         if (typ === 'tjanst') {
           fetchKunderForRow('tjanst', null, row.getAttribute('data-namn'), titel);
+        } else if (typ === 'kund-bransch') {
+          fetchBranschDrilldown('kund-bransch', row.getAttribute('data-namn'), '', titel);
         } else if (typ === 'hogriskbransch') {
-          fetchKunderForRow('hogriskbransch', null, row.getAttribute('data-namn'), titel);
+          fetchBranschDrilldown('hogriskbransch', row.getAttribute('data-namn'), '', titel);
         } else if (typ === 'riskfaktor') {
           const id = row.getAttribute('data-id');
           const namn = row.getAttribute('data-namn');
