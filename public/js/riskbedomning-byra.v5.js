@@ -268,57 +268,90 @@ class RiskAssessmentManager {
         this.setupRiskRowMenus(host);
         host.querySelectorAll('[data-mall-id]').forEach((cardEl) => {
             const mallId = cardEl.getAttribute('data-mall-id');
-            cardEl.querySelector('[data-utforande-aktiv]')?.addEventListener('change', (e) => {
-                const wantAktiv = !!e.target.checked;
-                if (!wantAktiv) {
-                    const namn = cardEl.getAttribute('data-mall-namn') || '';
-                    const kundCount = this.kundCountForUtforandeTjanst(mallId, namn);
-                    if (kundCount > 0) {
-                        e.target.checked = true;
-                        const msg = kundCount === 1
-                            ? `Kan inte inaktivera «${namn}»: 1 kund har tjänsten. Ta bort den från kunden först.`
-                            : `Kan inte inaktivera «${namn}»: ${kundCount} kunder har tjänsten. Ta bort den från kunderna först.`;
-                        this.showNotification(msg, 'error');
-                        return;
-                    }
-                } else if (String(mallId || '').indexOf('custom:') === 0) {
-                    const namn = cardEl.getAttribute('data-mall-namn') || '';
-                    const gate = this.assessCustomTjanstLiveReady(namn);
-                    if (!gate.ok) {
-                        e.target.checked = false;
-                        this.showNotification(gate.message, 'error');
-                        return;
-                    }
-                }
-                this.patchUtforandeEntry(mallId, { aktiv: wantAktiv });
+            cardEl.querySelector('[data-utforande-aktiv-toggle]')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const btn = e.currentTarget;
+                if (btn.disabled) return;
+                const wantAktiv = btn.getAttribute('aria-checked') !== 'true';
+                this.applyUtforandeAktivFromCard(cardEl, mallId, wantAktiv);
+                this.closeAllRiskRowMenus();
             });
             cardEl.querySelectorAll('[data-open-analys]').forEach((btn) => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeAllRiskRowMenus();
                     this.openTjanstAnalysFromCard(mallId, cardEl.getAttribute('data-mall-namn') || '', {
                         ai: btn.hasAttribute('data-open-analys-ai')
                     });
                 });
             });
-            cardEl.querySelector('[data-toggle-overview]')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const overview = cardEl.querySelector('.tjanst-mall-overview');
-                const btn = e.currentTarget;
-                if (!overview || !btn) return;
-                const open = overview.hasAttribute('hidden');
-                if (open) overview.removeAttribute('hidden');
-                else overview.setAttribute('hidden', '');
-                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-                btn.innerHTML = open
-                    ? '<i class="fas fa-chevron-up" aria-hidden="true"></i> Dölj översikt'
-                    : '<i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt';
-            });
+            if (cardEl.hasAttribute('data-has-overview')) {
+                cardEl.addEventListener('click', (e) => {
+                    if (this.utforandeCardClickShouldIgnore(e)) return;
+                    this.toggleUtforandeOverview(cardEl);
+                });
+                cardEl.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    if (e.target !== cardEl) return;
+                    e.preventDefault();
+                    this.toggleUtforandeOverview(cardEl);
+                });
+            }
             cardEl.querySelector('[data-delete-tjanst]')?.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 this.deleteUtforandeTjanst(mallId, cardEl.getAttribute('data-mall-namn') || '');
             });
         });
+    }
+
+    utforandeCardClickShouldIgnore(e) {
+        const el = e.target;
+        if (!el || !el.closest) return true;
+        if (el.closest('.risk-row-menu')) return true;
+        if (el.closest('.tjanst-mall-body')) return true;
+        if (el.closest('a, button, input, select, textarea, label')) return true;
+        return false;
+    }
+
+    toggleUtforandeOverview(cardEl) {
+        const overview = cardEl && cardEl.querySelector('.tjanst-mall-overview');
+        if (!overview) return;
+        const open = overview.hasAttribute('hidden');
+        if (open) {
+            overview.removeAttribute('hidden');
+            cardEl.classList.add('is-overview-open');
+            cardEl.setAttribute('aria-expanded', 'true');
+        } else {
+            overview.setAttribute('hidden', '');
+            cardEl.classList.remove('is-overview-open');
+            cardEl.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    applyUtforandeAktivFromCard(cardEl, mallId, wantAktiv) {
+        if (!wantAktiv) {
+            const namn = cardEl.getAttribute('data-mall-namn') || '';
+            const kundCount = this.kundCountForUtforandeTjanst(mallId, namn);
+            if (kundCount > 0) {
+                const msg = kundCount === 1
+                    ? `Kan inte inaktivera «${namn}»: 1 kund har tjänsten. Ta bort den från kunden först.`
+                    : `Kan inte inaktivera «${namn}»: ${kundCount} kunder har tjänsten. Ta bort den från kunderna först.`;
+                this.showNotification(msg, 'error');
+                return false;
+            }
+        } else if (String(mallId || '').indexOf('custom:') === 0) {
+            const namn = cardEl.getAttribute('data-mall-namn') || '';
+            const gate = this.assessCustomTjanstLiveReady(namn);
+            if (!gate.ok) {
+                this.showNotification(gate.message, 'error');
+                return false;
+            }
+        }
+        this.patchUtforandeEntry(mallId, { aktiv: wantAktiv });
+        return true;
     }
 
     assessCustomTjanstLiveReady(namn) {
@@ -566,19 +599,21 @@ class RiskAssessmentManager {
         // Alltid synlig i topraden (egen + standard). Standard sparas i excludedMallIds
         // och kan läggas till igen via "Lägg till standardtjänst".
         const deleteBtn = `<button type="button" class="risk-row-menu-item is-danger tjanst-mall-delete" data-delete-tjanst role="menuitem" ${lockedDelete ? 'disabled' : ''} title="${this.esc(deleteLabel)}"><i class="fas fa-trash" aria-hidden="true"></i> Ta bort</button>`;
-        const expandBtn = existing
-            ? `<button type="button" class="btn btn-ghost btn-sm tjanst-mall-expand" data-toggle-overview aria-expanded="false"><i class="fas fa-chevron-down" aria-hidden="true"></i> Visa översikt</button>`
-            : '';
+        const editBtn = `<button type="button" class="risk-row-menu-item tjanst-mall-edit" role="menuitem" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>`;
+        const aktivBtn = `<button type="button" class="risk-row-menu-item tjanst-mall-aktiv-menu" data-utforande-aktiv-toggle role="menuitemcheckbox" aria-checked="${aktiv ? 'true' : 'false'}" ${lockedInactive ? 'disabled' : ''} title="${this.esc(toggleLabel)}" aria-label="${this.esc(toggleLabel)}"><span class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" aria-hidden="true"><span class="tjanst-mall-switch-ui${aktiv ? ' is-on' : ''}"></span></span>${aktiv ? 'Inaktivera' : 'Aktivera'}</button>`;
         const resaComplete = !!(progress.complete || (RiskSkalaApi && RiskSkalaApi.isTjanstResaComplete
             && RiskSkalaApi.isTjanstResaComplete(scored.klarmarkeradeFlikar)));
+        const overviewAttrs = existing
+            ? ' data-has-overview tabindex="0" aria-expanded="false"'
+            : '';
         return `
-            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}">
+            <article class="tjanst-mall-card${aktiv ? '' : ' is-inactive'}${rowRiskClass ? ' ' + rowRiskClass : ''}${resaComplete ? ' is-resa-complete' : ''}" data-mall-id="${this.esc(template.id)}" data-mall-namn="${this.esc(analysNamn)}"${overviewAttrs}>
                 <div class="tjanst-mall-top">
                     <div class="tjanst-mall-identity">
                         ${progressIcon}
                         <div class="tjanst-mall-copy">
                             <h4 class="tjanst-mall-title">
-                                <button type="button" class="tjanst-mall-title-btn" data-open-analys>${this.esc(template.name)}</button>
+                                <span class="tjanst-mall-title-btn">${this.esc(template.name)}</span>
                             </h4>
                             ${draftBadge}
                             ${template.description ? `<p class="tjanst-mall-desc">${this.esc(template.description)}</p>` : ''}
@@ -590,22 +625,16 @@ class RiskAssessmentManager {
                                 <i class="fas fa-ellipsis" aria-hidden="true"></i>
                             </button>
                             <div class="risk-row-menu-panel" hidden role="menu">
+                                ${editBtn}
+                                ${aktivBtn}
                                 ${deleteBtn}
                             </div>
                         </div>
-                        <label class="tjanst-mall-switch${lockedInactive ? ' is-locked' : ''}" title="${this.esc(toggleLabel)}">
-                            <input type="checkbox" data-utforande-aktiv ${aktiv ? 'checked' : ''} ${lockedInactive ? 'disabled' : ''} aria-label="${this.esc(toggleLabel)}">
-                            <span class="tjanst-mall-switch-ui" aria-hidden="true"></span>
-                        </label>
                     </div>
                 </div>
                 <div class="tjanst-mall-toolbar">
                     ${existing ? this.renderUtforandeRiskMeta(existing) : '<span class="tjanst-mall-status">Ingen analys ännu</span>'}
                     ${kundCount > 0 ? this.renderKundCountBadge(kundCount) : ''}
-                    <div class="tjanst-mall-actions">
-                        ${expandBtn}
-                        <button type="button" class="btn btn-ghost btn-sm tjanst-mall-edit" data-open-analys>${existing ? 'Redigera' : 'Skapa analys'}</button>
-                    </div>
                 </div>
                 ${analysHtml ? `<div class="tjanst-mall-body">${analysHtml}</div>` : ''}
             </article>
