@@ -169,7 +169,11 @@
       }
     }
 
-    bindStatistikRowClicks();
+    if (window.StatistikKunderModal && StatistikKunderModal.bindRowClicks) {
+      StatistikKunderModal.bindRowClicks();
+    } else {
+      bindStatistikRowClicks();
+    }
   }
 
   function escapeAttr(str) {
