@@ -29,11 +29,12 @@
   };
 
   let invites = [];
+  let bound = false;
 
   function authOpts() {
     return window.AuthManager && AuthManager.getAuthFetchOptions
       ? AuthManager.getAuthFetchOptions()
-      : { headers: { 'Content-Type': 'application/json' } };
+      : { credentials: 'include', headers: { 'Content-Type': 'application/json' } };
   }
 
   function show(node, on) {
@@ -355,6 +356,8 @@
   }
 
   function bind() {
+    if (bound) return;
+    bound = true;
     if (el.newBtn) el.newBtn.addEventListener('click', openModal);
     if (el.addSlot) el.addSlot.addEventListener('click', () => addSlotRow());
     if (el.form) el.form.addEventListener('submit', createInvite);
@@ -384,7 +387,7 @@
     }
   }
 
-  async function init() {
+  async function start() {
     bind();
     const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
     if (!user) {
@@ -394,7 +397,41 @@
       show(el.noAuth, true);
       return;
     }
+    show(el.noAuth, false);
     await loadInvites();
+  }
+
+  function init() {
+    const user = window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser();
+    if (user) {
+      start();
+      return;
+    }
+    // AuthManager hydrerar via cookie asynkront – vänta in clientflow:authReady
+    show(el.loading, true);
+    show(el.noAuth, false);
+    show(el.content, false);
+    let settled = false;
+    const go = () => {
+      if (settled) return;
+      settled = true;
+      start();
+    };
+    window.addEventListener('clientflow:authReady', go, { once: true });
+    // Om auth redan misslyckats (redirect) eller aldrig firar: visa login-hint efter timeout
+    setTimeout(() => {
+      if (settled) return;
+      if (window.AuthManager && AuthManager.getCurrentUser && AuthManager.getCurrentUser()) {
+        go();
+      } else {
+        settled = true;
+        bind();
+        show(el.loading, false);
+        show(el.content, false);
+        show(el.setup, false);
+        show(el.noAuth, true);
+      }
+    }, 4000);
   }
 
   if (document.readyState === 'loading') {
