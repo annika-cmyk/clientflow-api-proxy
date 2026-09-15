@@ -19997,6 +19997,8 @@ const UPPDRAG_RUNS_REQUIRED_FIELDS = [
   { name: 'Dokumentation', type: 'multipleAttachments', description: 'Bilagor kopplade till denna uppdragskörning' },
   { name: 'Utskick datum', type: 'date', options: { dateFormat: { name: 'iso' } } },
   { name: 'Deadline', type: 'date', options: { dateFormat: { name: 'iso' } } },
+  { name: 'Planerad start', type: 'dateTime', description: 'Avsatt starttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
+  { name: 'Planerad slut', type: 'dateTime', description: 'Avsatt sluttid i kalendern (tidblock)', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
   { name: 'Status', type: 'singleSelect', options: { choices: [{ name: 'Planerad' }, { name: 'Pågående' }, { name: 'Klar' }, { name: 'Sen' }] } },
   { name: 'Ansvarig', type: 'singleLineText', description: 'Tilldelad handläggare för just denna körning (kan skilja sig från uppdragets ansvarig)' },
   { name: 'Skapad', type: 'dateTime', options: { dateFormat: { name: 'iso' }, timeFormat: { name: '24hour' }, timeZone: 'Europe/Stockholm' } },
@@ -20153,6 +20155,39 @@ async function airtablePatchRecordWithFieldFallback(url, fields, headers, maxRet
   const err = new Error(msg);
   err.response = lastErr?.response;
   throw err;
+}
+
+async function ensureUppdragRunsScheduleFields(airtableToken, baseId) {
+  const wanted = ['Planerad start', 'Planerad slut'];
+  try {
+    const t = await getUppdragRunsTableMeta(airtableToken, baseId);
+    if (!t?.id) return { ok: false, reason: 'table_missing' };
+    const existingNames = new Set((t.fields || []).map((f) => (f.name || '').trim()));
+    const defs = UPPDRAG_RUNS_REQUIRED_FIELDS.filter((f) => wanted.includes(f.name) && !existingNames.has(f.name));
+    if (!defs.length) return { ok: true, created: [] };
+    const createUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields`;
+    const created = [];
+    for (const field of defs) {
+      try {
+        const body = { name: field.name, type: field.type };
+        if (field.description) body.description = field.description;
+        if (field.options) body.options = field.options;
+        // eslint-disable-next-line no-await-in-loop
+        await axios.post(createUrl, body, {
+          headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        created.push(field.name);
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message;
+        console.warn('ensureUppdragRunsScheduleFields:', field.name, msg);
+      }
+    }
+    if (created.length) _airtableTablesMetaCache.delete(String(baseId || ''));
+    return { ok: true, created };
+  } catch (e) {
+    return { ok: false, reason: e.message || 'error' };
+  }
 }
 
 function isForwardUppdragRun(runFields, todayIso) {
@@ -20383,51 +20418,59 @@ async function listUppdragRunsForByra({ airtableToken, baseId, byraId, maxPages 
   let records = [];
   let formulaOk = false;
   let truncated = false;
-  for (const formula of formulas) {
-    try {
-      let offset = null;
-      const page = [];
-      let pages = 0;
-      do {
-        if (Date.now() - started > timeoutMs) {
-          truncated = true;
-          break;
+  const baseFieldList = [
+    'Run Key', 'Uppdrag ID', 'Kund ID', 'Byrå ID', 'Typ', 'Frekvens',
+    'Startdatum', 'PeriodKey', 'Period Label', 'Deadline', 'Status',
+    'Anteckning', 'Uppdaterad', 'Skapad'
+  ];
+  const fieldLists = [
+    [...baseFieldList, 'Planerad start', 'Planerad slut'],
+    baseFieldList
+  ];
+  for (const fieldList of fieldLists) {
+    for (const formula of formulas) {
+      try {
+        let offset = null;
+        const page = [];
+        let pages = 0;
+        do {
+          if (Date.now() - started > timeoutMs) {
+            truncated = true;
+            break;
+          }
+          const params = {
+            filterByFormula: formula,
+            pageSize: 100,
+            fields: fieldList
+          };
+          if (offset) params.offset = offset;
+          // eslint-disable-next-line no-await-in-loop
+          const r = await axios.get(url, {
+            headers: { Authorization: `Bearer ${airtableToken}` },
+            params,
+            timeout: Math.max(3000, Math.min(15000, timeoutMs))
+          });
+          page.push(...(r.data.records || []));
+          offset = r.data.offset || null;
+          pages += 1;
+          if (pages >= pageLimit) {
+            truncated = !!offset;
+            offset = null;
+          }
+        } while (offset);
+        records = page;
+        formulaOk = true;
+        break;
+      } catch (e) {
+        const msg = e.response?.data?.error?.message || e.message || '';
+        if (/Invalid permissions|not found/i.test(msg)) {
+          return { records: [], tableMissing: true, error: msg };
         }
-        const params = {
-          filterByFormula: formula,
-          pageSize: 100,
-          fields: [
-            'Run Key', 'Uppdrag ID', 'Kund ID', 'Byrå ID', 'Typ', 'Frekvens',
-            'Startdatum', 'PeriodKey', 'Period Label', 'Deadline', 'Status',
-            'Anteckning', 'Uppdaterad', 'Skapad'
-          ]
-        };
-        if (offset) params.offset = offset;
-        // eslint-disable-next-line no-await-in-loop
-        const r = await axios.get(url, {
-          headers: { Authorization: `Bearer ${airtableToken}` },
-          params,
-          timeout: Math.max(3000, Math.min(15000, timeoutMs))
-        });
-        page.push(...(r.data.records || []));
-        offset = r.data.offset || null;
-        pages += 1;
-        if (pages >= pageLimit) {
-          truncated = !!offset;
-          offset = null;
-        }
-      } while (offset);
-      records = page;
-      formulaOk = true;
-      break;
-    } catch (e) {
-      const msg = e.response?.data?.error?.message || e.message || '';
-      if (/Invalid permissions|not found/i.test(msg)) {
-        return { records: [], tableMissing: true, error: msg };
+        if (/Unknown field|formula|INVALID_FILTER|timeout|ECONNABORTED/i.test(String(msg))) continue;
+        throw e;
       }
-      if (/Unknown field|formula|INVALID_FILTER|timeout|ECONNABORTED/i.test(String(msg))) continue;
-      throw e;
     }
+    if (formulaOk) break;
   }
   if (!formulaOk) {
     console.warn('listUppdragRunsForByra: ingen formel fungerade för byrå', byraIdClean);
@@ -21133,6 +21176,99 @@ app.post('/api/uppdrag/ensure-runs', authenticateToken, async (req, res) => {
     const status = error.response?.status || 500;
     const msg = error.response?.data?.error?.message || error.message;
     res.status(status).json({ error: msg });
+  }
+});
+
+// PATCH /api/uppdrag/runs/:runId/schedule – avsatt tidblock (planerad start/slut) i kalendern
+// Body: { start: ISO datetime|null, end: ISO datetime|null } — null rensar blocket
+app.patch('/api/uppdrag/runs/:runId/schedule', authenticateToken, async (req, res) => {
+  try {
+    const { runId } = req.params || {};
+    const id = String(runId || '').trim();
+    if (!id) return res.status(400).json({ error: 'runId saknas' });
+
+    const body = req.body || {};
+    const hasStart = Object.prototype.hasOwnProperty.call(body, 'start');
+    const hasEnd = Object.prototype.hasOwnProperty.call(body, 'end');
+    if (!hasStart && !hasEnd) {
+      return res.status(400).json({ error: 'Ange start och/eller end (ISO-datetime), eller null för att rensa.' });
+    }
+
+    const parseDt = (v) => {
+      if (v == null || v === '') return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return undefined;
+      // Spara som lokal-liknande ISO utan timezone-suffix om klient skickar YYYY-MM-DDTHH:mm:ss
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) {
+        return s.length >= 19 ? s.slice(0, 19) : `${s}:00`.slice(0, 19);
+      }
+      return d.toISOString();
+    };
+
+    let startVal;
+    let endVal;
+    if (hasStart) {
+      startVal = parseDt(body.start);
+      if (startVal === undefined) return res.status(400).json({ error: 'Ogiltig start-tid' });
+    }
+    if (hasEnd) {
+      endVal = parseDt(body.end);
+      if (endVal === undefined) return res.status(400).json({ error: 'Ogiltig slut-tid' });
+    }
+
+    if (startVal && endVal) {
+      const a = new Date(startVal).getTime();
+      const b = new Date(endVal).getTime();
+      if (!(b > a)) return res.status(400).json({ error: 'Slut måste vara efter start' });
+    }
+
+    const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
+    if (!airtableAccessToken) return res.status(500).json({ error: 'AIRTABLE_ACCESS_TOKEN saknas' });
+    const runsTableId = await resolveUppdragRunsTableId(airtableAccessToken, airtableBaseId);
+    if (!runsTableId) {
+      return res.status(404).json({ error: `Tabellen "${UPPDRAG_RUNS_TABLE_NAME}" saknas.` });
+    }
+
+    const userData = await getUser(req.user.email);
+    const byraIdClean = userData?.byraId ? String(userData.byraId).replace(/,/g, '').trim() : '';
+    if (!byraIdClean) return res.status(403).json({ error: 'Saknar byråkoppling (user.byraId)' });
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${runsTableId}/${encodeURIComponent(id)}`;
+    const headers = { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' };
+    const existing = await axios.get(url, { headers: { Authorization: `Bearer ${airtableAccessToken}` } });
+    const f = existing.data?.fields || {};
+    const recordByra = (f['Byrå ID'] != null) ? String(f['Byrå ID']).replace(/,/g, '').trim() : '';
+    if (!recordByra || recordByra !== byraIdClean) {
+      return res.status(403).json({ error: 'Du saknar behörighet att uppdatera denna uppdragskörning.' });
+    }
+
+    // Best-effort: skapa Planerad start/slut om de saknas
+    try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+
+    const fields = { Uppdaterad: new Date().toISOString() };
+    if (hasStart) fields['Planerad start'] = startVal;
+    if (hasEnd) fields['Planerad slut'] = endVal;
+
+    let patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
+    if ((patched.dropped || []).includes('Planerad start') || (patched.dropped || []).includes('Planerad slut')) {
+      // Försök skapa fält igen och retry en gång
+      try { await ensureUppdragRunsScheduleFields(airtableAccessToken, airtableBaseId); } catch (_) {}
+      patched = await airtablePatchRecordWithFieldFallback(url, fields, headers);
+    }
+    if ((patched.dropped || []).includes('Planerad start') || (patched.dropped || []).includes('Planerad slut')) {
+      return res.status(503).json({
+        error: 'Fälten Planerad start/slut saknas i Airtable. Kör setup för uppdragskörningar och försök igen.',
+        dropped: patched.dropped
+      });
+    }
+    return res.json({ record: patched.record });
+  } catch (error) {
+    console.error('❌ PATCH /api/uppdrag/runs/:runId/schedule:', error.response?.data || error.message);
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.error?.message || error.message;
+    return res.status(status).json({ error: msg });
   }
 });
 

@@ -183,9 +183,199 @@
     return out;
   }
 
+  /** Timmar i tidsrutnät (inkl. start, exkl. slut): 07–20 → 13 timmar. */
+  const DAY_START_HOUR = 7;
+  const DAY_END_HOUR = 20;
+  const SNAP_MINUTES = 15;
+  const DEFAULT_BLOCK_MINUTES = 60;
+  const PX_PER_HOUR = 48;
+
+  function dayStartMinutes() {
+    return DAY_START_HOUR * 60;
+  }
+
+  function dayEndMinutes() {
+    return DAY_END_HOUR * 60;
+  }
+
+  function daySpanMinutes() {
+    return dayEndMinutes() - dayStartMinutes();
+  }
+
+  function hourLabels() {
+    const out = [];
+    for (let h = DAY_START_HOUR; h < DAY_END_HOUR; h++) {
+      out.push(`${pad2(h)}:00`);
+    }
+    return out;
+  }
+
+  function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function snapMinutes(mins, step) {
+    const s = Number(step) > 0 ? Number(step) : SNAP_MINUTES;
+    return Math.round(Number(mins) / s) * s;
+  }
+
+  /** Minuter från midnatt för en Date/ISO; NaN om ogiltig. */
+  function minutesOfDay(isoOrDate) {
+    let d = isoOrDate;
+    if (!(d instanceof Date)) {
+      const raw = String(isoOrDate || '').trim();
+      if (!raw) return NaN;
+      d = new Date(raw);
+    }
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return NaN;
+    return d.getHours() * 60 + d.getMinutes();
+  }
+
+  function parseDateTime(iso) {
+    const raw = String(iso || '').trim();
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  /**
+   * Bygg lokal ISO-sträng (utan Z) för Airtable dateTime: YYYY-MM-DDTHH:mm:ss
+   * Används med Europe/Stockholm-semantik via klientens lokala tid.
+   */
+  function toLocalDateTimeIso(dateIsoStr, minutesFromMidnight) {
+    const day = parseIso(dateIsoStr);
+    if (!day) return '';
+    const mins = clamp(Number(minutesFromMidnight) || 0, 0, 24 * 60 - 1);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${dateIso(day)}T${pad2(h)}:${pad2(m)}:00`;
+  }
+
+  function durationHours(startIso, endIso) {
+    const a = parseDateTime(startIso);
+    const b = parseDateTime(endIso);
+    if (!a || !b) return null;
+    const ms = b.getTime() - a.getTime();
+    if (!(ms > 0)) return null;
+    return Math.round((ms / 3600000) * 100) / 100;
+  }
+
+  function durationMinutes(startIso, endIso) {
+    const a = parseDateTime(startIso);
+    const b = parseDateTime(endIso);
+    if (!a || !b) return null;
+    const mins = Math.round((b.getTime() - a.getTime()) / 60000);
+    return mins > 0 ? mins : null;
+  }
+
+  /**
+   * Normalisera planerat block från körningsfält.
+   * @returns {{ start: string, end: string, date: string, startMin: number, endMin: number, hours: number }|null}
+   */
+  function normalizeSchedule(startRaw, endRaw) {
+    const start = parseDateTime(startRaw);
+    if (!start) return null;
+    let end = parseDateTime(endRaw);
+    if (!end || end.getTime() <= start.getTime()) {
+      end = new Date(start.getTime() + DEFAULT_BLOCK_MINUTES * 60000);
+    }
+    const date = dateIso(start);
+    const startMin = start.getHours() * 60 + start.getMinutes();
+    const endMin = end.getHours() * 60 + end.getMinutes()
+      + (dateIso(end) > date ? 24 * 60 : 0);
+    const hours = Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
+    return {
+      start: toLocalDateTimeIso(date, startMin),
+      end: toLocalDateTimeIso(dateIso(end), end.getHours() * 60 + end.getMinutes()),
+      date,
+      startMin,
+      endMin: Math.max(startMin + SNAP_MINUTES, endMin),
+      hours
+    };
+  }
+
+  /**
+   * Placering i tidsrutnät (0–100 % av synlig höjd).
+   * Klampas till [DAY_START, DAY_END]; block kortare än snap behåller minhöjd via CSS.
+   */
+  function blockLayout(startMin, endMin) {
+    const gridStart = dayStartMinutes();
+    const gridEnd = dayEndMinutes();
+    const span = daySpanMinutes();
+    const s = clamp(Number(startMin) || gridStart, gridStart, gridEnd - SNAP_MINUTES);
+    let e = clamp(Number(endMin) || (s + DEFAULT_BLOCK_MINUTES), s + SNAP_MINUTES, gridEnd);
+    if (e <= s) e = Math.min(gridEnd, s + SNAP_MINUTES);
+    const topPct = ((s - gridStart) / span) * 100;
+    const heightPct = ((e - s) / span) * 100;
+    return { topPct, heightPct, startMin: s, endMin: e };
+  }
+
+  /** Y-position → minuter från midnatt, snappat. */
+  function yToMinutes(y, columnHeight) {
+    const h = Number(columnHeight) || 1;
+    const ratio = clamp(Number(y) / h, 0, 1);
+    const raw = dayStartMinutes() + ratio * daySpanMinutes();
+    return clamp(snapMinutes(raw, SNAP_MINUTES), dayStartMinutes(), dayEndMinutes() - SNAP_MINUTES);
+  }
+
+  function moveBlock(startMin, endMin, newStartMin) {
+    const dur = Math.max(SNAP_MINUTES, (Number(endMin) || 0) - (Number(startMin) || 0));
+    const gridStart = dayStartMinutes();
+    const gridEnd = dayEndMinutes();
+    let s = snapMinutes(newStartMin, SNAP_MINUTES);
+    s = clamp(s, gridStart, gridEnd - SNAP_MINUTES);
+    let e = s + dur;
+    if (e > gridEnd) {
+      e = gridEnd;
+      s = Math.max(gridStart, e - dur);
+      s = snapMinutes(s, SNAP_MINUTES);
+      e = Math.min(gridEnd, s + dur);
+    }
+    return { startMin: s, endMin: e };
+  }
+
+  function resizeBlock(startMin, newEndMin) {
+    const gridEnd = dayEndMinutes();
+    const s = Number(startMin) || dayStartMinutes();
+    let e = snapMinutes(newEndMin, SNAP_MINUTES);
+    e = clamp(e, s + SNAP_MINUTES, gridEnd);
+    return { startMin: s, endMin: e };
+  }
+
+  /** Kalenderdag för placering: planerad start om satt, annars deadline. */
+  function placementDate(scheduledStart, deadlineIso) {
+    const sched = normalizeSchedule(scheduledStart, null);
+    if (sched) return sched.date;
+    return String(deadlineIso || '').slice(0, 10);
+  }
+
+  function inVisibleRangeForEvent(deadlineIso, scheduledStart, range) {
+    if (inVisibleRange(deadlineIso, range)) return true;
+    const d = placementDate(scheduledStart, '');
+    return d ? inVisibleRange(d, range) : false;
+  }
+
+  function fmtTimeLabel(minutesFromMidnight) {
+    const m = clamp(Number(minutesFromMidnight) || 0, 0, 24 * 60 - 1);
+    return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+  }
+
+  function tidPrefillHours(startIso, endIso) {
+    const h = durationHours(startIso, endIso);
+    if (h == null || !(h > 0)) return '';
+    // Tidregistrering använder decimaltimmar; max 2 decimaler
+    return String(h);
+  }
+
   return {
     VIEWS,
     STORAGE_KEY,
+    DAY_START_HOUR,
+    DAY_END_HOUR,
+    SNAP_MINUTES,
+    DEFAULT_BLOCK_MINUTES,
+    PX_PER_HOUR,
     normalizeView,
     loadStoredView,
     saveStoredView,
@@ -197,11 +387,30 @@
     isoWeekNumber,
     visibleRange,
     inVisibleRange,
+    inVisibleRangeForEvent,
     periodTitle,
     shiftFocus,
     goToday,
     navAria,
     rangeEmptyLabel,
-    weekDays
+    weekDays,
+    dayStartMinutes,
+    dayEndMinutes,
+    daySpanMinutes,
+    hourLabels,
+    snapMinutes,
+    minutesOfDay,
+    parseDateTime,
+    toLocalDateTimeIso,
+    durationHours,
+    durationMinutes,
+    normalizeSchedule,
+    blockLayout,
+    yToMinutes,
+    moveBlock,
+    resizeBlock,
+    placementDate,
+    fmtTimeLabel,
+    tidPrefillHours
   };
 });
