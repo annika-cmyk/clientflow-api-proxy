@@ -19990,34 +19990,52 @@ body.byra-resa-page .risk-header h1 {
   border-color: #38bdf8;
   outline: none;
 }
-.kundrisker-clientflow-statistik-section {
-  margin: 0 0 1.25rem;
-}
-.kundrisker-clientflow-statistik {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.15rem 1.25rem 1.25rem;
-}
-.kundrisker-clientflow-statistik-head {
+.kundrisker-enkat--stat .kundrisker-enkat-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.75rem 1.25rem;
   flex-wrap: wrap;
   margin-bottom: 0.35rem;
 }
-.kundrisker-clientflow-statistik-head h3 {
-  margin: 0;
-  font-size: 1.05rem;
+.kundrisker-enkat-head-links {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  color: var(--title-text);
+  gap: 0.75rem 1.1rem;
 }
-.kundrisker-clientflow-sections {
-  margin-top: 0.75rem;
+.kundrisker-enkat-stat-sections {
+  margin-top: 0.35rem;
+}
+.kundrisker-enkat-stat-section {
+  position: relative;
+}
+.kundrisker-enkat-stat-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.15rem;
+}
+.kundrisker-enkat-stat-head h3 {
+  margin: 0;
+  flex: 1 1 14rem;
+}
+.kundrisker-enkat-stat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  justify-content: flex-end;
+}
+.statistik-stat-chip--static {
+  cursor: default;
+  pointer-events: none;
+}
+.statistik-stat-chip--static:hover,
+.statistik-stat-chip--static:focus-visible {
+  background: #f8fafc;
+  border-color: #cbd5e1;
 }
 .kundrisker-enkat .statistik-stat-chips {
   margin-top: 0.1rem;
