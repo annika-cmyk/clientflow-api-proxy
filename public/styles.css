@@ -20697,6 +20697,17 @@ body.byra-resa-page .risk-header h1 {
     font-size: 0.95rem;
     max-width: 42rem;
 }
+.kalender-view-toggle {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+    margin-left: 0.35rem;
+}
+.kalender-view-toggle .uppdragboard-tab {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.8rem;
+}
 .kalender-legend {
     display: flex;
     flex-wrap: wrap;
@@ -20752,6 +20763,12 @@ body.byra-resa-page .risk-header h1 {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
 }
+.kalender-grid--week {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.kalender-grid--day {
+    grid-template-columns: 1fr;
+}
 .kalender-cell {
     min-height: 7.5rem;
     border-right: 1px solid var(--border, var(--line));
@@ -20762,6 +20779,10 @@ body.byra-resa-page .risk-header h1 {
     gap: 0.25rem;
 }
 .kalender-cell:nth-child(7n) { border-right: none; }
+.kalender-grid--week .kalender-cell:nth-child(7n) { border-right: none; }
+.kalender-cell--week {
+    min-height: 14rem;
+}
 .kalender-cell--empty { background: #f8fafb; min-height: 7.5rem; }
 .kalender-cell.is-today {
     background: color-mix(in srgb, var(--accent, #13505c) 6%, white);
@@ -20776,6 +20797,12 @@ body.byra-resa-page .risk-header h1 {
     font-size: 0.8rem;
     font-weight: 700;
     color: var(--title-text, #0f172a);
+}
+.kalender-weekday-label {
+    font-weight: 600;
+    text-transform: capitalize;
+    opacity: 0.7;
+    margin-right: 0.15rem;
 }
 .kalender-cell.is-today .kalender-daynum { color: var(--accent, #13505c); }
 .kalender-cell-count {
@@ -20840,6 +20867,97 @@ body.byra-resa-page .risk-header h1 {
     text-align: left;
 }
 .kalender-more:hover { text-decoration: underline; }
+
+.kalender-day-panel {
+    padding: 1rem 1.1rem 1.15rem;
+    min-height: 12rem;
+}
+.kalender-day-panel.is-today {
+    background: color-mix(in srgb, var(--accent, #13505c) 4%, white);
+}
+.kalender-day-panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+    flex-wrap: wrap;
+}
+.kalender-day-panel-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--title-text, #0f172a);
+    text-transform: capitalize;
+}
+.kalender-day-panel-count {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.kalender-day-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.kalender-day-empty {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+.kalender-day-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    width: 100%;
+    border: 1px solid var(--border, var(--line));
+    border-left: none;
+    background: #fff;
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    position: relative;
+    overflow: hidden;
+}
+.kalender-day-item:hover { background: var(--muted, #e3eef0); }
+.kalender-day-item-accent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent, #13505c);
+}
+.kalender-day-item--klar .kalender-day-item-accent { background: var(--success, #1f7a4d); }
+.kalender-day-item--pagande .kalender-day-item-accent { background: var(--warning, #b07414); }
+.kalender-day-item--planerad .kalender-day-item-accent { background: var(--accent, #13505c); }
+.kalender-day-item--sen .kalender-day-item-accent { background: var(--error, #b42318); }
+.kalender-day-item-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 1 1 auto;
+    padding-left: 0.25rem;
+}
+.kalender-day-item-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--title-text, #0f172a);
+}
+.kalender-day-item-meta {
+    font-size: 0.8rem;
+    color: var(--text);
+}
+.kalender-day-item-status {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text);
+    padding-top: 0.1rem;
+}
 
 .kalender-side {
     background: #fff;
@@ -21014,11 +21132,31 @@ body.byra-resa-page .risk-header h1 {
         max-height: none;
     }
     .kalender-cell { min-height: 5.5rem; }
+    .kalender-cell--week { min-height: 10rem; }
+}
+@media (max-width: 720px) {
+    .kalender-grid--week {
+        grid-template-columns: 1fr;
+    }
+    .kalender-grid--week .kalender-cell {
+        border-right: none;
+        min-height: 0;
+    }
+    .kalender-grid-wrap[data-view="week"] .kalender-weekdays {
+        display: none;
+    }
 }
 @media (max-width: 640px) {
     .kalender-chip-typ { display: none; }
     .kalender-cell { min-height: 4.5rem; padding: 0.25rem; }
     .kalender-weekdays span { font-size: 0.65rem; padding: 0.4rem 0.15rem; }
+    .kalender-view-toggle {
+        margin-left: 0;
+        width: 100%;
+    }
+    .uppdragboard-period {
+        flex-wrap: wrap;
+    }
 }
 
 .kalender-side-list { display: flex; flex-direction: column; gap: 0.15rem; }

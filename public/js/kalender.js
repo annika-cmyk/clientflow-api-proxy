@@ -1,10 +1,16 @@
 /**
- * Kalender – månadsvy över uppdragskörningar (deadline).
+ * Kalender – månad / vecka / dag över uppdragskörningar (deadline).
  * Data: GET /api/uppdrag/byra (samma som Uppdrag översikt).
  */
 (function () {
   const gridEl = document.getElementById('kal-grid');
   if (!gridEl) return;
+
+  const KV = window.KalenderView;
+  if (!KV) {
+    console.error('Kalender: saknar kalender-view.js');
+    return;
+  }
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
   const authOpts = () => (window.AuthManager && AuthManager.getAuthFetchOptions
@@ -24,24 +30,30 @@
     search: document.getElementById('kal-search'),
     sideList: document.getElementById('kal-side-list'),
     sideCount: document.getElementById('kal-side-count'),
+    side: document.getElementById('kal-side'),
+    gridWrap: document.getElementById('kal-grid-wrap'),
+    weekdays: document.getElementById('kal-weekdays'),
     detail: document.getElementById('kal-detail'),
     detailTitle: document.getElementById('kal-detail-title'),
     detailBody: document.getElementById('kal-detail-body'),
     statusOpen: document.getElementById('kal-status-open'),
     statusDone: document.getElementById('kal-status-done'),
-    typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]'))
+    typeTabs: Array.from(document.querySelectorAll('[data-kal-typ]')),
+    viewTabs: Array.from(document.querySelectorAll('[data-kal-view]'))
   };
 
   const LONE = 'Löneuppdrag';
   const OVRIGA = 'Övriga';
-  const MAX_CHIPS = 3;
+  const MAX_CHIPS_MONTH = 3;
+  const MAX_CHIPS_WEEK = 8;
 
   let scope = 'byra';
   let activeType = 'Alla';
   let showOpen = true;
   let showDone = false;
   let q = '';
-  let cursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let view = KV.loadStoredView();
+  let focus = KV.goToday(view, new Date());
   let records = [];
   let runRecords = [];
   let events = [];
@@ -60,11 +72,7 @@
   function ym(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
-  function monthTitle(d) {
-    return d.toLocaleDateString('sv-SE', { month: 'long', year: 'numeric' })
-      .replace(/^\w/, (c) => c.toUpperCase());
-  }
-  function today() { return new Date().toISOString().slice(0, 10); }
+  function today() { return KV.dateIso(new Date()); }
   function safeJson(raw, fb) {
     try {
       const v = raw ? JSON.parse(String(raw)) : fb;
@@ -123,8 +131,8 @@
     const st = String(status || '').trim();
     if (st === 'Klar' || st === 'Avslutad') return 'klar';
     if (st === 'Sen') return 'sen';
-    const KV = window.KoringVisibility;
-    if (KV && KV.isOverdueNotDone({ Status: st, Deadline: deadline }, today())) return 'sen';
+    const KorVis = window.KoringVisibility;
+    if (KorVis && KorVis.isOverdueNotDone({ Status: st, Deadline: deadline }, today())) return 'sen';
     if (st === 'Pågående') return 'pagande';
     return 'planerad';
   }
@@ -163,14 +171,12 @@
   function buildEvents() {
     const runsById = indexRuns(runRecords);
     const map = new Map();
-    const y = cursor.getFullYear();
-    const m = cursor.getMonth();
-    const monthStart = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    const monthEnd = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const range = KV.visibleRange(view, focus);
+    const rangeStart = KV.parseIso(range.start) || focus;
+    const rangeEnd = KV.parseIso(range.end) || focus;
+    const horizonStart = new Date(rangeStart.getFullYear(), rangeStart.getMonth() - 1, 1);
+    const horizonEnd = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() + 2, 1);
     const todayYm = ym(new Date());
-    const horizonStart = new Date(y, m - 1, 1);
-    const horizonEnd = new Date(y, m + 2, 1);
 
     const put = (rec, opts) => {
       const dl = toDate(opts.deadline);
@@ -190,7 +196,7 @@
           periodKey: pk,
           periodLabel: String(opts.periodLabel || '').trim(),
           status: status || 'Planerad',
-          inMonth: dl >= monthStart && dl <= monthEnd
+          inRange: KV.inVisibleRange(dl, range)
         });
         return;
       }
@@ -199,7 +205,7 @@
       else if ((!prev.status || prev.status === 'Planerad') && status) prev.status = status;
       if (!prev.periodLabel && opts.periodLabel) prev.periodLabel = String(opts.periodLabel);
       if (!prev.startDate && opts.startDate) prev.startDate = toDate(opts.startDate);
-      prev.inMonth = prev.deadline >= monthStart && prev.deadline <= monthEnd;
+      prev.inRange = KV.inVisibleRange(prev.deadline, range);
     };
 
     (records || []).forEach((r) => {
@@ -321,7 +327,7 @@
 
   function filtered() {
     return events.filter((ev) => {
-      if (!ev.inMonth) return false;
+      if (!ev.inRange) return false;
       if (!typeMatch(ev.typ)) return false;
       if (!searchMatch(ev.record)) return false;
       const st = statusOf(ev);
@@ -352,9 +358,9 @@
     return map;
   }
 
-  function cellsFor(cursorDate) {
-    const y = cursorDate.getFullYear();
-    const m = cursorDate.getMonth();
+  function cellsForMonth(focusDate) {
+    const y = focusDate.getFullYear();
+    const m = focusDate.getMonth();
     const pad = (new Date(y, m, 1).getDay() + 6) % 7;
     const days = new Date(y, m + 1, 0).getDate();
     const cells = [];
@@ -378,13 +384,28 @@
     </button>`;
   }
 
-  function renderGrid(dayMap) {
+  function bindGridClicks(dayMap) {
+    gridEl.querySelectorAll('[data-key]').forEach((btn) => {
+      btn.addEventListener('click', (e) => { e.preventDefault(); openDetail(btn.getAttribute('data-key')); });
+    });
+    gridEl.querySelectorAll('.kalender-more').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const list = dayMap.get(btn.getAttribute('data-date')) || [];
+        if (list[0]) openDetail(list[0].key, list);
+      });
+    });
+  }
+
+  function renderMonth(dayMap) {
     const t = today();
-    gridEl.innerHTML = cellsFor(cursor).map((iso) => {
+    const maxChips = MAX_CHIPS_MONTH;
+    gridEl.className = 'kalender-grid kalender-grid--month';
+    gridEl.setAttribute('aria-label', 'Månadskalender');
+    gridEl.innerHTML = cellsForMonth(focus).map((iso) => {
       if (!iso) return '<div class="kalender-cell kalender-cell--empty" aria-hidden="true"></div>';
       const day = Number(iso.slice(8, 10));
       const list = dayMap.get(iso) || [];
-      const shown = list.slice(0, MAX_CHIPS);
+      const shown = list.slice(0, maxChips);
       const more = list.length - shown.length;
       return `<div class="kalender-cell${iso === t ? ' is-today' : ''}" role="gridcell" data-date="${esc(iso)}">
         <div class="kalender-cell-head">
@@ -397,15 +418,74 @@
         </div>
       </div>`;
     }).join('');
+    bindGridClicks(dayMap);
+  }
 
+  function renderWeek(dayMap) {
+    const t = today();
+    const days = KV.weekDays(focus);
+    const maxChips = MAX_CHIPS_WEEK;
+    gridEl.className = 'kalender-grid kalender-grid--week';
+    gridEl.setAttribute('aria-label', 'Veckokalender');
+    gridEl.innerHTML = days.map((iso) => {
+      const day = Number(iso.slice(8, 10));
+      const list = dayMap.get(iso) || [];
+      const shown = list.slice(0, maxChips);
+      const more = list.length - shown.length;
+      const weekday = new Date(`${iso}T00:00:00`).toLocaleDateString('sv-SE', { weekday: 'short' });
+      return `<div class="kalender-cell kalender-cell--week${iso === t ? ' is-today' : ''}" role="gridcell" data-date="${esc(iso)}">
+        <div class="kalender-cell-head">
+          <span class="kalender-daynum"><span class="kalender-weekday-label">${esc(weekday)}</span> ${day}</span>
+          ${list.length ? `<span class="kalender-cell-count">${list.length}</span>` : ''}
+        </div>
+        <div class="kalender-cell-events">
+          ${shown.map(chip).join('')}
+          ${more > 0 ? `<button type="button" class="kalender-more" data-date="${esc(iso)}">+${more} till</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    bindGridClicks(dayMap);
+  }
+
+  function dayEventRow(ev) {
+    const f = ev.record?.fields || {};
+    const name = String(f['Kundnamn'] || f['Namn'] || 'Klient');
+    const st = statusOf(ev);
+    const cls = statusClass(st, ev.deadline);
+    const period = ev.periodLabel || ev.periodKey || '';
+    const ansvarig = String(f['Ansvarig'] || f['Klientansvarig'] || '').trim();
+    return `<button type="button" class="kalender-day-item kalender-day-item--${cls}" data-key="${esc(ev.key)}">
+      <span class="kalender-day-item-accent" aria-hidden="true"></span>
+      <span class="kalender-day-item-main">
+        <span class="kalender-day-item-name">${esc(name)}</span>
+        <span class="kalender-day-item-meta">${esc(displayName(ev.typ, f))}${period ? ` · ${esc(period)}` : ''}${ansvarig ? ` · ${esc(ansvarig)}` : ''}</span>
+      </span>
+      <span class="kalender-day-item-status">${esc(statusLabel(st, ev.deadline))}</span>
+    </button>`;
+  }
+
+  function renderDay(list) {
+    const iso = KV.dateIso(focus);
+    const t = today();
+    gridEl.className = 'kalender-grid kalender-grid--day';
+    gridEl.setAttribute('aria-label', 'Dagskalender');
+    const heading = new Date(`${iso}T00:00:00`).toLocaleDateString('sv-SE', {
+      weekday: 'long', day: 'numeric', month: 'long'
+    }).replace(/^\w/, (c) => c.toUpperCase());
+    gridEl.innerHTML = `
+      <div class="kalender-day-panel${iso === t ? ' is-today' : ''}">
+        <div class="kalender-day-panel-head">
+          <h3 class="kalender-day-panel-title">${esc(heading)}</h3>
+          <span class="kalender-day-panel-count">${list.length ? `${list.length} deadline${list.length === 1 ? '' : 's'}` : 'Inga deadlines'}</span>
+        </div>
+        <div class="kalender-day-list">
+          ${list.length
+            ? list.map(dayEventRow).join('')
+            : `<p class="kalender-day-empty">Inga deadlines ${esc(KV.rangeEmptyLabel('day'))} med aktuella filter.</p>`}
+        </div>
+      </div>`;
     gridEl.querySelectorAll('[data-key]').forEach((btn) => {
       btn.addEventListener('click', (e) => { e.preventDefault(); openDetail(btn.getAttribute('data-key')); });
-    });
-    gridEl.querySelectorAll('.kalender-more').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const list = dayMap.get(btn.getAttribute('data-date')) || [];
-        if (list[0]) openDetail(list[0].key, list);
-      });
     });
   }
 
@@ -420,8 +500,9 @@
   function renderSide(list) {
     if (!el.sideList) return;
     if (el.sideCount) el.sideCount.textContent = list.length ? `(${list.length})` : '';
+    const emptyWhen = KV.rangeEmptyLabel(view);
     if (!list.length) {
-      el.sideList.innerHTML = '<p class="kalender-side-empty">Inga deadlines denna månad med aktuella filter.</p>';
+      el.sideList.innerHTML = `<p class="kalender-side-empty">Inga deadlines ${esc(emptyWhen)} med aktuella filter.</p>`;
       return;
     }
     let last = '';
@@ -500,14 +581,53 @@
     document.body.classList.remove('kalender-detail-open');
   }
 
+  function syncNavLabels() {
+    const labels = KV.navAria(view);
+    if (el.prev) {
+      el.prev.title = labels.prev;
+      el.prev.setAttribute('aria-label', labels.prev);
+    }
+    if (el.next) {
+      el.next.title = labels.next;
+      el.next.setAttribute('aria-label', labels.next);
+    }
+  }
+
+  function syncViewChrome() {
+    if (el.gridWrap) el.gridWrap.setAttribute('data-view', view);
+    if (el.weekdays) {
+      const showWeekdays = view === 'month' || view === 'week';
+      el.weekdays.hidden = !showWeekdays;
+      el.weekdays.style.display = showWeekdays ? '' : 'none';
+    }
+    if (el.side) {
+      el.side.setAttribute('aria-label', `Deadlines ${KV.rangeEmptyLabel(view)}`);
+    }
+    syncNavLabels();
+  }
+
   function render() {
-    if (el.month) el.month.textContent = monthTitle(cursor);
+    if (el.month) el.month.textContent = KV.periodTitle(view, focus);
+    syncViewChrome();
     events = buildEvents();
     byKey = new Map(events.map((e) => [e.key, e]));
     const list = filtered();
     const dayMap = byDay(list);
-    renderGrid(dayMap);
+    if (view === 'week') renderWeek(dayMap);
+    else if (view === 'day') renderDay(list);
+    else renderMonth(dayMap);
     renderSide(list);
+  }
+
+  function setView(next) {
+    const v = KV.normalizeView(next);
+    if (v === view) return;
+    const keep = KV.parseIso(KV.dateIso(focus)) || KV.startOfDay(new Date());
+    view = v;
+    KV.saveStoredView(view);
+    focus = keep;
+    syncUi();
+    render();
   }
 
   function syncUi() {
@@ -518,6 +638,11 @@
     });
     if (el.statusOpen) el.statusOpen.classList.toggle('is-active', showOpen);
     if (el.statusDone) el.statusDone.classList.toggle('is-active', showDone);
+    el.viewTabs.forEach((tab) => {
+      const on = tab.getAttribute('data-kal-view') === view;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
   }
 
   async function load() {
@@ -556,16 +681,19 @@
   }
 
   if (el.prev) el.prev.addEventListener('click', () => {
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+    focus = KV.shiftFocus(view, focus, -1);
     render();
   });
   if (el.next) el.next.addEventListener('click', () => {
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    focus = KV.shiftFocus(view, focus, 1);
     render();
   });
   if (el.today) el.today.addEventListener('click', () => {
-    cursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    focus = KV.goToday(view, new Date());
     render();
+  });
+  el.viewTabs.forEach((tab) => {
+    tab.addEventListener('click', () => setView(tab.getAttribute('data-kal-view')));
   });
   if (el.mine) el.mine.addEventListener('click', () => {
     if (scope === 'mine') return;
@@ -616,6 +744,7 @@
   }
 
   syncUi();
+  syncViewChrome();
 
   // AuthManager hydrerar via cookie asynkront – vänta in clientflow:authReady
   // innan auth-gaten, annars visas "Logga in…" trots att användaren är inloggad.
