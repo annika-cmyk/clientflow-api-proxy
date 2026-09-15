@@ -14253,7 +14253,7 @@ class CustomerCardManager {
         const labels = {
             kyc: 'KYC-formulär',
             kund_riskbedomning: 'Kundens riskbedömning',
-            aml_kollen: 'AML-kollen (kontoutdrag + SIE)',
+            aml_kollen: 'AML-kollen (kontoutdrag eller SIE)',
             pep_sanktion: 'PEP-sanktionssökningar',
             ovrigt_risk: 'Övrigt dokumentation riskbedömning'
         };
@@ -14452,8 +14452,8 @@ class CustomerCardManager {
             <div class="statistik-section" id="aml-kollen-panel" style="margin-top:0.75rem;">
                 <div style="display:flex;gap:0.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap;">
                     <div>
-                        <h4 style="margin:0;"><i class="fas fa-shield-halved" style="margin-right:0.45rem;"></i> AML-kollen (kontoutdrag + SIE)</h4>
-                        <p class="statistik-section-desc" style="margin-top:0.35rem;">Ladda upp kontoutdrag och SIE för en engångsanalys. Resultatet sparas på ärendet och används som input till er riskbedömning.</p>
+                        <h4 style="margin:0;"><i class="fas fa-shield-halved" style="margin-right:0.45rem;"></i> AML-kollen (kontoutdrag eller SIE)</h4>
+                        <p class="statistik-section-desc" style="margin-top:0.35rem;">Ladda upp kontoutdrag och/eller SIE för en engångsanalys. Minst en fil krävs; båda ger bättre matchning bank↔bokföring. Resultatet sparas på ärendet och används som input till er riskbedömning.</p>
                     </div>
                     <div style="display:flex;gap:0.5rem;align-items:center;">
                         <button type="button" class="btn btn-primary btn-sm" onclick="customerCardManager.openAmlKollenUploadModal()">
@@ -14486,6 +14486,7 @@ class CustomerCardManager {
                     <button class="modal-close" type="button" onclick="document.getElementById('aml-kollen-upload-modal')?.remove()"><i class="fas fa-times"></i></button>
                 </div>
                 <div class="modal-body" style="overflow:auto;">
+                    <p class="uppdrag-muted" style="margin:0 0 0.75rem;">Ladda upp minst en fil: kontoutdrag eller SIE. Båda ger mer komplett analys (matchning bank↔bokföring).</p>
                     <div class="form-group" style="margin-top:0;">
                         <label>Kontoutdrag (CSV eller PDF)</label>
                         <input type="file" id="aml-kollen-bank-file" class="kunduppgifter-input" accept=".csv,.pdf,.txt">
@@ -14528,31 +14529,36 @@ class CustomerCardManager {
                 const bankFile = document.getElementById('aml-kollen-bank-file')?.files?.[0] || null;
                 const sieFile = document.getElementById('aml-kollen-sie-file')?.files?.[0] || null;
                 const related = (document.getElementById('aml-kollen-related')?.value || '').trim();
-                if (!bankFile) throw new Error('Välj kontoutdrag.');
-                if (!sieFile) throw new Error('Välj SIE-fil.');
+                if (!bankFile && !sieFile) throw new Error('Ladda upp kontoutdrag eller SIE-fil (minst en krävs).');
                 if (btn) {
                     btn.dataset.busy = '1';
                     btn.disabled = true;
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kör...';
                 }
                 if (statusEl) statusEl.textContent = 'Läser filer...';
-                const [bankB64, sieB64] = await Promise.all([readBase64(bankFile), readBase64(sieFile)]);
-                if (!bankB64) throw new Error('Kontoutdraget kunde inte läsas.');
-                if (!sieB64) throw new Error('SIE-filen kunde inte läsas.');
+                const bankB64 = bankFile ? await readBase64(bankFile) : '';
+                const sieB64 = sieFile ? await readBase64(sieFile) : '';
+                if (bankFile && !bankB64) throw new Error('Kontoutdraget kunde inte läsas.');
+                if (sieFile && !sieB64) throw new Error('SIE-filen kunde inte läsas.');
                 if (statusEl) statusEl.textContent = 'Skickar till analys...';
                 const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+                const payload = {
+                    customerId: this.customerId,
+                    relatedPartyNames: related,
+                    createdDate: new Date().toISOString().slice(0, 10)
+                };
+                if (bankFile) {
+                    payload.bankFileBase64 = bankB64;
+                    payload.bankFilename = bankFile.name;
+                }
+                if (sieFile) {
+                    payload.sieFileBase64 = sieB64;
+                    payload.sieFilename = sieFile.name;
+                }
                 const res = await fetch(`${baseUrl}/api/aml-kollen/analyze`, {
                     method: 'POST',
                     ...getAuthOptsKundkort(),
-                    body: JSON.stringify({
-                        customerId: this.customerId,
-                        bankFileBase64: bankB64,
-                        bankFilename: bankFile.name,
-                        sieFileBase64: sieB64,
-                        sieFilename: sieFile.name,
-                        relatedPartyNames: related,
-                        createdDate: new Date().toISOString().slice(0, 10)
-                    })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -14692,8 +14698,8 @@ class CustomerCardManager {
                                 <div class="uppdrag-muted" style="margin-top:0.15rem;">${esc(Number(counts.bankUnmatched || 0))} bank utan bokföring · ${esc(Number(counts.ledgerUnmatched || 0))} bokföring utan bank</div>
                             </div>
                             <div style="min-width:240px;">
-                                <div class="uppdrag-muted">Kontoutdrag: ${esc(run?.inputs?.bankFilename || '')}</div>
-                                <div class="uppdrag-muted" style="margin-top:0.15rem;">SIE: ${esc(run?.inputs?.sieFilename || '')}</div>
+                                <div class="uppdrag-muted">Kontoutdrag: ${esc(run?.inputs?.bankFilename || '—')}</div>
+                                <div class="uppdrag-muted" style="margin-top:0.15rem;">SIE: ${esc(run?.inputs?.sieFilename || '—')}</div>
                             </div>
                         </div>
                     </div>
