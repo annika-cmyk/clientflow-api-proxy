@@ -21112,3 +21112,96 @@ body.kalender-detail-open { overflow: hidden; }
   .moten-slot-row { grid-template-columns: 1fr; }
   .moten-slot-sep { display: none; }
 }
+
+/* —— Tidregistrering —— */
+.tid-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.tid-stat {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, #dce3f0);
+  border-radius: 8px;
+  background: #f8fafb;
+  display: grid;
+  gap: 0.15rem;
+}
+.tid-stat--basis {
+  border-color: color-mix(in srgb, var(--success, #1f7a4d) 35%, var(--border, #dce3f0));
+  background: color-mix(in srgb, var(--success, #1f7a4d) 8%, white);
+}
+.tid-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.tid-stat strong { font-size: 1.15rem; }
+.tid-stat-sub { font-size: 0.85rem; color: var(--text); }
+.tid-filters {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(10rem, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: end;
+}
+.tid-filter { display: grid; gap: 0.3rem; font-size: 0.85rem; }
+.tid-filter span { font-weight: 600; }
+.tid-filter--grow { min-width: 0; }
+.tid-list { display: grid; gap: 0.85rem; }
+.tid-card {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border, #dce3f0);
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  background: white;
+}
+.tid-card:has(.tid-badge--klar) { border-left-color: var(--success, #1f7a4d); }
+.tid-card:has(.tid-badge--fakturerad) { border-left-color: #64748b; }
+.tid-card-main { flex: 1; min-width: 0; }
+.tid-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.tid-card-top h3 { margin: 0; font-size: 1rem; }
+.tid-card-meta { margin: 0.15rem 0; font-size: 0.85rem; color: var(--text); }
+.tid-card-desc { margin: 0.35rem 0; font-size: 0.9rem; }
+.tid-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #eef2f6;
+  color: #64748b;
+}
+.tid-badge--klar { background: color-mix(in srgb, var(--success, #1f7a4d) 14%, white); color: var(--success, #1f7a4d); }
+.tid-badge--fakturerad { background: #e2e8f0; color: #475569; }
+.tid-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+.tid-amount-hint {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent, #13505c);
+}
+@media (max-width: 900px) {
+  .tid-summary { grid-template-columns: 1fr; }
+  .tid-filters { grid-template-columns: 1fr 1fr; }
+  .tid-filter--grow { grid-column: 1 / -1; }
+  .tid-card { flex-direction: column; }
+  .tid-card-actions { flex-direction: row; flex-wrap: wrap; }
+}
