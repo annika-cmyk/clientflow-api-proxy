@@ -51,6 +51,7 @@ const { createMinibokUppdrag } = require('./lib/minibok-uppdrag');
 const { createMinibokAml } = require('./lib/minibok-aml');
 const { createGmailIntegration } = require('./lib/gmail');
 const { createMejlExtras } = require('./lib/mejl');
+const { createMotesbokning } = require('./lib/motesbokning');
 const {
   normalizeUppdragRiskAtgarderDone,
   requiredRiskAtgarderFromUppdrag,
@@ -2914,6 +2915,11 @@ const gmailIntegration = createGmailIntegration({
 });
 
 const mejlExtras = createMejlExtras({
+  authenticateToken,
+  getAirtableUser
+});
+
+const motesbokning = createMotesbokning({
   authenticateToken,
   getAirtableUser
 });
@@ -26399,6 +26405,7 @@ minibokAml.registerRoutes(app);
 // Gmail ↔ Clientflow (inkorg under KUNDER + skicka som användaren)
 gmailIntegration.registerRoutes(app);
 mejlExtras.registerRoutes(app);
+motesbokning.registerRoutes(app);
 
 // Data-source (Airtable) – explicit före 404 så den alltid finns
 app.get('/api/data-source', handleDataSource);

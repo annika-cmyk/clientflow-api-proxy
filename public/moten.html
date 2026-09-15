@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Möten</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260915mot">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <div class="uppdragboard-top">
+                            <div class="uppdragboard-title">
+                                <h1>Möten</h1>
+                            </div>
+                            <div class="uppdragboard-actions">
+                                <a href="kalender.html" class="btn btn-ghost btn-sm"><i class="fas fa-calendar-alt"></i> Kalender</a>
+                                <button type="button" class="btn btn-primary btn-sm" id="mot-new"><i class="fas fa-plus"></i> Ny bokningslänk</button>
+                            </div>
+                        </div>
+                        <p class="kalender-lead">Skapa tidsluckor och skicka en länk så kunden kan boka möte själv.</p>
+                    </div>
+                </header>
+
+                <div id="mot-loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar möten...</p>
+                </div>
+                <div id="mot-no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa möten.</p>
+                </div>
+                <div id="mot-setup" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc">Airtable-tabellen för mötesbokning saknas ännu.</p>
+                    <button type="button" class="btn btn-primary btn-sm" id="mot-setup-btn"><i class="fas fa-database"></i> Skapa tabell</button>
+                    <p class="statistik-section-desc" id="mot-setup-msg" style="margin-top:0.75rem;"></p>
+                </div>
+
+                <div id="mot-content" style="display:none; margin-top:1rem;">
+                    <div class="moten-list" id="mot-list"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="mot-modal" class="kalender-detail" hidden>
+        <div class="kalender-detail-backdrop" data-mot-close></div>
+        <div class="kalender-detail-panel moten-modal-panel" role="dialog" aria-modal="true" aria-labelledby="mot-modal-title">
+            <div class="kalender-detail-header">
+                <h3 id="mot-modal-title">Ny bokningslänk</h3>
+                <button type="button" class="modal-close" data-mot-close aria-label="Stäng"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="kalender-detail-body">
+                <form id="mot-form" class="moten-form">
+                    <label class="moten-field">
+                        <span>Titel</span>
+                        <input type="text" id="mot-title" class="kunduppgifter-input" value="Möte" required>
+                    </label>
+                    <label class="moten-field">
+                        <span>Meddelande till kunden (valfritt)</span>
+                        <textarea id="mot-message" class="kunduppgifter-input" rows="2" placeholder="T.ex. välj en tid som passar dig"></textarea>
+                    </label>
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Mötestyp</span>
+                            <select id="mot-type" class="kunduppgifter-input">
+                                <option value="Distans">Distans</option>
+                                <option value="På plats">På plats</option>
+                                <option value="Telefon">Telefon</option>
+                            </select>
+                        </label>
+                        <label class="moten-field">
+                            <span>Plats / länk (valfritt)</span>
+                            <input type="text" id="mot-location" class="kunduppgifter-input" placeholder="Teams / kontor">
+                        </label>
+                    </div>
+                    <label class="moten-field">
+                        <span>Kundnamn (valfritt)</span>
+                        <input type="text" id="mot-customer-name" class="kunduppgifter-input" placeholder="Visas bara internt">
+                    </label>
+
+                    <div class="moten-slots-head">
+                        <strong>Tidsluckor</strong>
+                        <button type="button" class="btn btn-ghost btn-sm" id="mot-add-slot"><i class="fas fa-plus"></i> Lägg till</button>
+                    </div>
+                    <div id="mot-slots" class="moten-slots"></div>
+
+                    <div class="moten-form-actions">
+                        <button type="button" class="btn btn-ghost btn-sm" data-mot-close>Avbryt</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="mot-save"><i class="fas fa-link"></i> Skapa länk</button>
+                    </div>
+                    <p class="moten-form-error" id="mot-form-error" hidden></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/navigation.js" defer></script>
+    <script src="js/components.js?v=2.4" defer></script>
+    <script src="js/moten.js?v=1" defer></script>
+</body>
+</html>
