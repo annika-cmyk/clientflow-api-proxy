@@ -45,7 +45,7 @@
         return `<option value="${esc(opt)}"${opt === v ? ' selected' : ''}>${esc(label)}</option>`;
       })
       .join('');
-    return `<select class="form-control" data-kf="${esc(name)}"${readOnly ? ' disabled' : ''}>${opts}</select>`;
+    return `<select class="form-control kundformular-select--compact" data-kf="${esc(name)}"${readOnly ? ' disabled' : ''}>${opts}</select>`;
   }
 
   function vhBekraftelseSelect(selected, readOnly) {
@@ -61,12 +61,20 @@
     return `<select class="form-control" data-kf="vh_bekraftelse"${readOnly ? ' disabled' : ''}>${opts}</select>`;
   }
 
+  function isSwedenHemvist(value) {
+    const v = String(value || '').trim();
+    return !v || /^sverige$/i.test(v);
+  }
+
   function personRows(list, prefix, readOnly) {
     const rows = Array.isArray(list) && list.length
       ? list
       : [{ namn: '', personnr: '', hemvist: 'Sverige', tin: '', agarandel: '', roll: '' }];
     const ro = readOnly ? ' readonly' : '';
-    return rows.map((p, idx) => `
+    return rows.map((p, idx) => {
+      const hemvist = p.hemvist || 'Sverige';
+      const showTin = !isSwedenHemvist(hemvist);
+      return `
       <div class="kundformular-person-row" data-kf-person-row="${esc(prefix)}" data-idx="${idx}">
         <div class="kundformular-grid kundformular-grid--person">
           <label>Namn
@@ -76,9 +84,9 @@
             <input type="text" class="form-control" data-kf-field="personnr" value="${esc(p.personnr || '')}" autocomplete="off"${ro}>
           </label>
           <label>Skatterättslig hemvist
-            <input type="text" class="form-control" data-kf-field="hemvist" value="${esc(p.hemvist || 'Sverige')}" autocomplete="off"${ro}>
+            <input type="text" class="form-control" data-kf-field="hemvist" value="${esc(hemvist)}" autocomplete="off"${ro}>
           </label>
-          <label>TIN (om ej Sverige)
+          <label data-kf-tin${showTin ? '' : ' hidden'}>TIN (om ej Sverige)
             <input type="text" class="form-control" data-kf-field="tin" value="${esc(p.tin || '')}" autocomplete="off"${ro}>
           </label>
           ${prefix === 'huvudman'
@@ -90,7 +98,8 @@
               </label>`}
         </div>
         ${readOnly ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-remove-person title="Ta bort rad"><i class="fas fa-times"></i></button>'}
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   function collectPeople(root, prefix) {
@@ -204,17 +213,18 @@
     const svar = svarMap && typeof svarMap === 'object' ? svarMap : {};
     return list.map((c) => {
       const row = svar[c.id] || {};
+      const showVarfor = row.svar === 'Ja';
       const needsVarfor = c.typ === 'ja_nej_varfor';
       return `<div class="kundformular-villkorad" data-kf-villkorad="${esc(c.id)}" data-kf-villkorad-typ="${esc(c.typ || 'ja_nej')}">
-        <label>${esc(c.frage)}
-          <select class="form-control" data-kf-villkorad-svar${readOnly ? ' disabled' : ''}>
+        <label class="kundformular-villkorad-svar">${esc(c.frage)}
+          <select class="form-control kundformular-select--compact" data-kf-villkorad-svar${readOnly ? ' disabled' : ''}>
             <option value="">—</option>
             <option value="Ja"${row.svar === 'Ja' ? ' selected' : ''}>Ja</option>
             <option value="Nej"${row.svar === 'Nej' ? ' selected' : ''}>Nej</option>
           </select>
         </label>
-        <label class="kundformular-villkorad-varfor"${row.svar === 'Ja' || needsVarfor ? '' : ' hidden'}>Kort förklaring
-          <input type="text" class="form-control" data-kf-villkorad-varfor value="${esc(row.varfor || '')}" placeholder="Valfritt vid Nej"${readOnly ? ' readonly' : ''}>
+        <label class="kundformular-villkorad-varfor"${showVarfor ? '' : ' hidden'}>Kort förklaring
+          <input type="text" class="form-control" data-kf-villkorad-varfor value="${esc(row.varfor || '')}" placeholder="${needsVarfor ? 'Beskriv kort' : 'Valfritt'}"${readOnly ? ' readonly' : ''}>
         </label>
       </div>`;
     }).join('');
@@ -388,11 +398,11 @@
                 <textarea class="form-control" rows="2" data-kf="kapitalUrsprungSkarpt" placeholder="Ursprung till de aktuella medlen"${ro}>${esc(a.kapitalUrsprungSkarpt || '')}</textarea>
               </label>
             </div>
-            <div class="kundformular-grid">
-              <label>${fieldLabel('Internationell koppling / utlandstransaktioner?')}
+            <div class="kundformular-grid kundformular-grid--pair">
+              <label class="kundformular-field--ja-nej">${fieldLabel('Internationell koppling / utlandstransaktioner?')}
                 ${jaNejSelect('internationellHandel', a.internationellHandel, readOnly)}
               </label>
-              <label>${fieldLabel('Kundens nätverksgeografi (länder)')}
+              <label data-kf-internationella-lander${a.internationellHandel === 'Ja' ? '' : ' hidden'}>${fieldLabel('Kundens nätverksgeografi (länder)')}
                 <input type="text" class="form-control" data-kf="internationellaLander" value="${esc(a.internationellaLander || '')}" placeholder="t.ex. Norge, Tyskland"${ro}>
               </label>
             </div>
@@ -425,8 +435,8 @@
           <section class="kundformular-section">
             <h4>${sOmbud}. Ombud</h4>
             <p class="kundformular-hint">${esc(ombudHint)}</p>
-            <div class="kundformular-grid">
-              <label>${fieldLabel(ombudLabel)}
+            <div class="kundformular-grid kundformular-grid--pair">
+              <label class="kundformular-field--ja-nej">${fieldLabel(ombudLabel)}
                 ${jaNejSelect('ombud_annan', a.ombud_annan, readOnly)}
               </label>
             </div>
@@ -459,26 +469,34 @@
 
           <section class="kundformular-section">
             <h4>${sOvrigt}. Övriga fakta</h4>
-            <div class="kundformular-grid">
-              <label>${fieldLabel('PEP (politiskt exponerad person)?')}
-                ${jaNejSelect('pep', a.pep, readOnly)}
-              </label>
-              <label data-kf-pep-detaljer${a.pep === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer PEP')}
-                <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
-              </label>
-              <label>${fieldLabel('Närstående till PEP?')}
-                ${jaNejSelect('pepFamilj', a.pepFamilj, readOnly)}
-              </label>
-              <label data-kf-pep-familj-detaljer${a.pepFamilj === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer närstående')}
-                <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
-              </label>
-              <label>${fieldLabel('Kontanthantering?')}
-                ${jaNejSelect('kontanter', a.kontanter, readOnly)}
-              </label>
-              <label data-kf-kontanter-andel${a.kontanter === 'Ja' ? '' : ' hidden'}>${fieldLabel('Andel kontanter (om ja)')}
-                <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}"${ro}>
-              </label>
-              <label>${fieldLabel('Kryptovaluta?')}
+            <div class="kundformular-conditional-stack">
+              <div class="kundformular-conditional-pair">
+                <label class="kundformular-field--ja-nej">${fieldLabel('PEP (politiskt exponerad person)?')}
+                  ${jaNejSelect('pep', a.pep, readOnly)}
+                </label>
+                <label data-kf-pep-detaljer${a.pep === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer PEP')}
+                  <input type="text" class="form-control" data-kf="pepDetaljer" value="${esc(a.pepDetaljer || '')}" placeholder="Namn och roll"${ro}>
+                </label>
+              </div>
+              <div class="kundformular-conditional-pair">
+                <label class="kundformular-field--ja-nej">${fieldLabel('Närstående till PEP?')}
+                  ${jaNejSelect('pepFamilj', a.pepFamilj, readOnly)}
+                </label>
+                <label data-kf-pep-familj-detaljer${a.pepFamilj === 'Ja' ? '' : ' hidden'}>${fieldLabel('Detaljer närstående')}
+                  <input type="text" class="form-control" data-kf="pepFamiljDetaljer" value="${esc(a.pepFamiljDetaljer || '')}"${ro}>
+                </label>
+              </div>
+              <div class="kundformular-conditional-pair">
+                <label class="kundformular-field--ja-nej">${fieldLabel('Kontanthantering?')}
+                  ${jaNejSelect('kontanter', a.kontanter, readOnly)}
+                </label>
+                <label data-kf-kontanter-andel${a.kontanter === 'Ja' ? '' : ' hidden'}>${fieldLabel('Andel kontanter')}
+                  <input type="text" class="form-control" data-kf="kontanterAndel" value="${esc(a.kontanterAndel || '')}" placeholder="t.ex. 10 %"${ro}>
+                </label>
+              </div>
+            </div>
+            <div class="kundformular-grid" style="margin-top:0.35rem">
+              <label class="kundformular-field--ja-nej">${fieldLabel('Kryptovaluta?')}
                 ${jaNejSelect('kryptovaluta', a.kryptovaluta, readOnly)}
               </label>
               <label>${fieldLabel('Ungefärlig omsättning')}
@@ -514,18 +532,24 @@
       if (ombud) ombud.hidden = answers.ombud_annan !== 'Ja';
       const skarpt = root.querySelector('[data-kf-skarpt]');
       if (skarpt) skarpt.hidden = !local.skarptKapital;
+      const lander = root.querySelector('[data-kf-internationella-lander]');
+      if (lander) lander.hidden = answers.internationellHandel !== 'Ja';
       const pepDet = root.querySelector('[data-kf-pep-detaljer]');
       if (pepDet) pepDet.hidden = answers.pep !== 'Ja';
       const pepFamDet = root.querySelector('[data-kf-pep-familj-detaljer]');
       if (pepFamDet) pepFamDet.hidden = answers.pepFamilj !== 'Ja';
       const kontAndel = root.querySelector('[data-kf-kontanter-andel]');
       if (kontAndel) kontAndel.hidden = answers.kontanter !== 'Ja';
+      root.querySelectorAll('[data-kf-person-row]').forEach((row) => {
+        const hemvist = (row.querySelector('[data-kf-field="hemvist"]')?.value || '').trim();
+        const tin = row.querySelector('[data-kf-tin]');
+        if (tin) tin.hidden = isSwedenHemvist(hemvist);
+      });
       root.querySelectorAll('[data-kf-villkorad]').forEach((wrap) => {
         const svar = (wrap.querySelector('[data-kf-villkorad-svar]')?.value || '').trim();
         const varfor = wrap.querySelector('.kundformular-villkorad-varfor');
         if (!varfor) return;
-        const always = wrap.getAttribute('data-kf-villkorad-typ') === 'ja_nej_varfor';
-        varfor.hidden = !(always || svar === 'Ja');
+        varfor.hidden = svar !== 'Ja';
       });
     }
 
@@ -545,7 +569,14 @@
         syncConditionalUi();
         return;
       }
-      if (e.target.matches('[data-kf="vh_bekraftelse"], [data-kf="ombud_annan"], [data-kf="pep"], [data-kf="pepFamilj"], [data-kf="kontanter"], [data-kf-villkorad-svar]')) {
+      if (e.target.matches('[data-kf="vh_bekraftelse"], [data-kf="ombud_annan"], [data-kf="pep"], [data-kf="pepFamilj"], [data-kf="kontanter"], [data-kf="internationellHandel"], [data-kf-villkorad-svar], [data-kf-field="hemvist"]')) {
+        syncConditionalUi();
+      }
+    });
+
+    root.addEventListener('input', (e) => {
+      if (readOnly) return;
+      if (e.target.matches('[data-kf-field="hemvist"]')) {
         syncConditionalUi();
       }
     });
@@ -577,6 +608,7 @@
         const wrap = document.createElement('div');
         wrap.innerHTML = personRows([{}], prefix, false);
         list.appendChild(wrap.firstElementChild);
+        syncConditionalUi();
         return;
       }
       const rm = e.target.closest('[data-remove-person]');
