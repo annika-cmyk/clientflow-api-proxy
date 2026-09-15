@@ -20954,3 +20954,92 @@ body.byra-resa-page .risk-header h1 {
 
 .kalender-side-list { display: flex; flex-direction: column; gap: 0.15rem; }
 body.kalender-detail-open { overflow: hidden; }
+
+/* ─── Mötesbokning ───────────────────────────────────────────────────────── */
+.moten-list { display: grid; gap: 0.85rem; }
+.moten-empty, .moten-setup-card {
+  background: #fff;
+  border: 1px solid var(--border, var(--line));
+  border-radius: 12px;
+  padding: 1.25rem 1.1rem;
+}
+.moten-card {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid var(--border, var(--line));
+  border-left: 3px solid var(--accent, #13505c);
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+}
+.moten-card--bokad { border-left-color: var(--success, #1f7a4d); }
+.moten-card--stangd { border-left-color: #94a3b8; }
+.moten-card--avbokad { border-left-color: var(--error, #b42318); }
+.moten-card-main { flex: 1; min-width: 0; }
+.moten-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.moten-card-top h3 { margin: 0; font-size: 1rem; }
+.moten-card-meta { margin: 0.15rem 0; font-size: 0.85rem; color: var(--text); }
+.moten-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--muted, #e3eef0);
+  color: var(--accent, #13505c);
+}
+.moten-badge--bokad { background: color-mix(in srgb, var(--success, #1f7a4d) 14%, white); color: var(--success, #1f7a4d); }
+.moten-badge--stangd { background: #eef2f6; color: #64748b; }
+.moten-badge--avbokad { background: color-mix(in srgb, var(--error, #b42318) 12%, white); color: var(--error, #b42318); }
+.moten-link-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  align-items: center;
+}
+.moten-link-row input { flex: 1; min-width: 0; }
+.moten-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+.moten-modal-panel { width: min(560px, calc(100vw - 2rem)); }
+.moten-form { display: grid; gap: 0.85rem; }
+.moten-field { display: grid; gap: 0.35rem; font-size: 0.9rem; }
+.moten-field span { font-weight: 600; }
+.moten-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.moten-slots-head, .moten-slots-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.moten-slots { display: grid; gap: 0.5rem; }
+.moten-slot-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+.moten-slot-sep { color: var(--text); font-size: 0.85rem; }
+.moten-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+.moten-form-error { color: var(--error, #b42318); font-size: 0.9rem; margin: 0; }
+@media (max-width: 700px) {
+  .moten-card { flex-direction: column; }
+  .moten-row { grid-template-columns: 1fr; }
+  .moten-slot-row { grid-template-columns: 1fr; }
+  .moten-slot-sep { display: none; }
+}
