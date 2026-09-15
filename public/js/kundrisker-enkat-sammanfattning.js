@@ -263,7 +263,7 @@
 
   function sourceBadgeHtml(fromClientflow) {
     if (fromClientflow) {
-      return '<span class="statistik-source-badge" title="Aggregerat från aktiva kunder i Clientflow">Clientflow</span>';
+      return '<span class="statistik-source-badge" title="Aggregerat från pågående kunder i Clientflow">Clientflow</span>';
     }
     return '<span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span>';
   }
@@ -378,6 +378,49 @@
     } catch (_) { /* ignore */ }
   }
 
+  function formatNamedCounts(rows) {
+    return (rows || []).map(function (r) {
+      var namn = String((r && r.namn) || '').trim();
+      var antal = Number(r && r.antal);
+      if (!namn || !Number.isFinite(antal) || antal <= 0) return '';
+      return namn + ': ' + Math.round(antal);
+    }).filter(Boolean).join(', ');
+  }
+
+  /**
+   * När live Clientflow-statistik finns (redan filtrerad till pågående kunder)
+   * ska analysförslag och panelräkningar använda den — inte äldre enkät-siffror
+   * som kan inkludera avslutade.
+   */
+  function profilWithLiveClientflow() {
+    var p = Object.assign({}, state.profil || {});
+    var stat = state.clientflowStat;
+    if (!stat) return p;
+
+    if (typeof stat.antalKunder === 'number') {
+      p.antalKunder = stat.antalKunder;
+    }
+    if (Array.isArray(stat.bolagsform) && stat.bolagsform.length) {
+      p.vanligasteBolagsformer = formatNamedCounts(stat.bolagsform);
+    }
+    if (Array.isArray(stat.kundBranschBuckets) && stat.kundBranschBuckets.length) {
+      p.kundernasBranscher = formatNamedCounts(stat.kundBranschBuckets);
+    }
+    var hr = stat.högriskbransch || stat.hogriskbransch;
+    if (Array.isArray(hr)) {
+      p.branscherKundstock = hr.length
+        ? formatNamedCounts(hr)
+        : HOGRISK_NONE;
+    }
+    if (typeof stat.antalPepEllerSanktion === 'number') {
+      var pep = Number(stat.antalPepEllerSanktion) || 0;
+      p.pepKunder = pep > 0 ? 'Ja' : 'Nej';
+      if (pep > 0) p.pepKunderAntal = pep;
+      else delete p.pepKunderAntal;
+    }
+    return p;
+  }
+
   function refreshGroups() {
     var Forslag = API();
     if (!Forslag || !state.profil) {
@@ -386,7 +429,7 @@
       return;
     }
     var risks = risksList();
-    state.allGroups = Forslag.buildAnalysGroups(state.profil);
+    state.allGroups = Forslag.buildAnalysGroups(profilWithLiveClientflow());
     state.groups = Forslag.filterOpenGroups(state.allGroups, risks, state.skippedIds);
   }
 
