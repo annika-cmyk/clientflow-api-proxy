@@ -11,6 +11,7 @@
   var SKIP_STORAGE_PREFIX = 'kundriskAnalysSkipped:';
   var state = {
     profil: null,
+    schema: null,
     allGroups: [],
     groups: [],
     openGroupId: null,
@@ -20,7 +21,11 @@
     canEditResa: false,
     byraKey: '',
     summary: null,
-    clientflowStat: null
+    clientflowStat: null,
+    editingKey: null,
+    editDraft: null,
+    editSaving: false,
+    editError: ''
   };
 
   function API() {
@@ -324,7 +329,13 @@
         if (antalField && isAnswered(profil[antalField.key], antalField)) {
           display = display + ' · ca ' + String(profil[antalField.key]).trim();
         }
-        items.push({ key: field.key, label: field.label || field.key, display: display });
+        items.push({
+          key: field.key,
+          label: field.label || field.key,
+          display: display,
+          antalKey: antalField ? antalField.key : null,
+          fieldType: field.type || ''
+        });
         answeredCount += 1;
       });
 
@@ -518,6 +529,241 @@
     return !!(live && live.fromClientflow);
   }
 
+
+  function fieldByKey(key) {
+    var fields = (state.schema && state.schema.fields) || [];
+    for (var i = 0; i < fields.length; i++) {
+      if (fields[i] && fields[i].key === key) return fields[i];
+    }
+    return null;
+  }
+
+  function canEditProfil() {
+    var user =
+      (window.AuthManager && typeof window.AuthManager.getCurrentUser === 'function' && window.AuthManager.getCurrentUser()) ||
+      window.__clientFlowUser ||
+      null;
+    var role = user && user.role;
+    return role === 'Ledare' || role === 'ClientFlowAdmin';
+  }
+
+  function isInlineEditableField(field) {
+    if (!field) return false;
+    var t = field.type || '';
+    if (t === 'bolagsformer' || t === 'branscher' || t === 'hogrisk-branscher') return false;
+    return t === 'select' || t === 'number' || t === 'text' || t === 'percent' || t === 'multiselect';
+  }
+
+  function itemCanInlineEdit(item) {
+    if (!item || !canEditProfil()) return false;
+    if (itemUsesClientflow(item)) return false;
+    return isInlineEditableField(fieldByKey(item.key));
+  }
+
+  function startEdit(item) {
+    var field = fieldByKey(item.key);
+    if (!field) return;
+    var allFields = (state.schema && state.schema.fields) || [];
+    var antalField = item.antalKey ? fieldByKey(item.antalKey) : companionAntal(field, allFields);
+    var raw = state.profil ? state.profil[item.key] : '';
+    var value = Array.isArray(raw) ? raw.slice() : raw == null ? '' : String(raw);
+    var antal = '';
+    if (antalField && state.profil && state.profil[antalField.key] != null && state.profil[antalField.key] !== '') {
+      antal = String(state.profil[antalField.key]);
+    }
+    state.editingKey = item.key;
+    state.editError = '';
+    state.editSaving = false;
+    state.editDraft = {
+      key: item.key,
+      antalKey: antalField ? antalField.key : null,
+      type: field.type,
+      value: value,
+      antal: antal
+    };
+  }
+
+  function cancelEdit() {
+    state.editingKey = null;
+    state.editDraft = null;
+    state.editError = '';
+    state.editSaving = false;
+  }
+
+  function editPanelHtml(item) {
+    var field = fieldByKey(item.key);
+    var draft = state.editDraft || {};
+    if (!field || draft.key !== item.key) return '';
+    var q = field.question || field.label || item.label;
+    var body = '';
+    if (field.type === 'select' || field.type === 'multiselect') {
+      var choices = field.choices || [];
+      var selected = draft.value;
+      var selectedList = Array.isArray(selected)
+        ? selected
+        : String(selected || '')
+            .split(/\s*,\s*/)
+            .map(function (s) { return s.trim(); })
+            .filter(Boolean);
+      body +=
+        '<div class="byra-enkate-choices kundrisker-inline-choices" role="group" aria-label="' +
+        escapeHtml(field.label || '') +
+        '">';
+      choices.forEach(function (choice) {
+        var on =
+          field.type === 'multiselect'
+            ? selectedList.indexOf(choice) >= 0
+            : String(selected || '') === String(choice);
+        body +=
+          '<button type="button" class="byra-enkate-choice' +
+          (on ? ' is-selected' : '') +
+          '" data-inline-choice="' +
+          escapeHtml(choice) +
+          '">' +
+          escapeHtml(choice) +
+          '</button>';
+      });
+      body += '</div>';
+    } else if (field.type === 'number' || field.type === 'percent') {
+      body +=
+        '<label class="kundrisker-inline-number"><span>' +
+        escapeHtml(field.label || 'Värde') +
+        (field.type === 'percent' ? ' (%)' : '') +
+        '</span><input type="number" min="0" step="1" data-inline-number value="' +
+        escapeHtml(draft.value) +
+        '"></label>';
+    } else {
+      body +=
+        '<label class="kundrisker-inline-number"><span>' +
+        escapeHtml(field.label || 'Svar') +
+        '</span><input type="text" data-inline-text value="' +
+        escapeHtml(Array.isArray(draft.value) ? draft.value.join(', ') : draft.value) +
+        '"></label>';
+    }
+
+    var showAntal = draft.antalKey && (field.type !== 'select' || String(draft.value || '') === 'Ja');
+    if (showAntal) {
+      var antalField = fieldByKey(draft.antalKey);
+      body +=
+        '<label class="kundrisker-inline-number"><span>' +
+        escapeHtml((antalField && (antalField.question || antalField.label)) || 'Ungefär hur många kunder?') +
+        '</span><input type="number" min="0" step="1" data-inline-antal value="' +
+        escapeHtml(draft.antal || '') +
+        '"></label>';
+    }
+
+    var err = state.editError
+      ? '<p class="kundrisker-inline-error" role="alert">' + escapeHtml(state.editError) + '</p>'
+      : '';
+    return (
+      '<div class="kundrisker-inline-edit" data-inline-edit="' +
+      escapeHtml(item.key) +
+      '">' +
+      '<p class="kundrisker-inline-question">' +
+      escapeHtml(q) +
+      '</p>' +
+      body +
+      err +
+      '<div class="kundrisker-inline-actions">' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-inline-cancel>Avbryt</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" data-inline-save' +
+      (state.editSaving ? ' disabled' : '') +
+      '>' +
+      (state.editSaving ? 'Sparar…' : 'Spara') +
+      '</button>' +
+      '</div></div>'
+    );
+  }
+
+  function valueAreaHtml(item) {
+    if (!itemCanInlineEdit(item)) return valueHtmlForItem(item);
+    if (state.editingKey === item.key) return editPanelHtml(item);
+    return (
+      '<div class="kundrisker-inline-value">' +
+      valueHtmlForItem(item) +
+      '<button type="button" class="kundrisker-inline-edit-btn" data-inline-open="' +
+      escapeHtml(item.key) +
+      '" title="Redigera svar från byråprofilen">' +
+      '<i class="fas fa-pen" aria-hidden="true"></i><span>Ändra</span></button></div>'
+    );
+  }
+
+  function saveInlineEdit(root) {
+    var draft = state.editDraft;
+    if (!draft || !draft.key) return;
+    var field = fieldByKey(draft.key);
+    if (!field) return;
+    var body = {};
+    if (field.type === 'multiselect') {
+      body[draft.key] = Array.isArray(draft.value) ? draft.value : [];
+    } else if (field.type === 'number' || field.type === 'percent') {
+      var n = String(draft.value || '').trim();
+      if (n === '') body[draft.key] = null;
+      else {
+        body[draft.key] = Number(n);
+        if (!isFinite(body[draft.key])) {
+          state.editError = 'Ange ett giltigt tal.';
+          renderSummary(root, state.summary);
+          return;
+        }
+      }
+    } else {
+      body[draft.key] = draft.value == null ? '' : String(draft.value);
+    }
+    if (draft.antalKey) {
+      if (String(body[draft.key] || '') === 'Ja') {
+        var a = String(draft.antal || '').trim();
+        if (a === '') {
+          state.editError = 'Ange ungefärligt antal kunder.';
+          renderSummary(root, state.summary);
+          return;
+        }
+        body[draft.antalKey] = Number(a);
+        if (!isFinite(body[draft.antalKey])) {
+          state.editError = 'Ange ett giltigt antal.';
+          renderSummary(root, state.summary);
+          return;
+        }
+      } else {
+        body[draft.antalKey] = null;
+      }
+    }
+    state.editSaving = true;
+    state.editError = '';
+    renderSummary(root, state.summary);
+
+    var opts = authOpts();
+    opts.method = 'PUT';
+    opts.headers = Object.assign({}, opts.headers || {}, { 'Content-Type': 'application/json' });
+    opts.body = JSON.stringify(body);
+    fetch(baseUrl() + '/api/byra/info', opts)
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.error || data.message || ('HTTP ' + res.status));
+          return data;
+        });
+      })
+      .then(function () {
+        state.profil = Object.assign({}, state.profil || {}, body);
+        Object.keys(body).forEach(function (k) {
+          if (body[k] == null) delete state.profil[k];
+        });
+        cancelEdit();
+        var summary = buildSummary(state.profil, state.schema || {});
+        if (!summary.hasAnswers) renderEmpty(root);
+        else renderSummary(root, summary);
+      })
+      .catch(function (err) {
+        state.editSaving = false;
+        state.editError = (err && err.message) || 'Kunde inte spara';
+        if (/403|behörighet|Endast Ledare/i.test(state.editError)) {
+          state.editError = 'Endast Ledare kan ändra byråprofilen.';
+        }
+        renderSummary(root, state.summary);
+      });
+  }
+
+
   function renderSummary(root, summary) {
     refreshGroups();
     var panelRendered = {};
@@ -556,7 +802,7 @@
               actions +
             '</div>' +
             '<p class="statistik-section-desc">' + escapeHtml(descForItem(item, fromCf)) + '</p>' +
-            '<div class="stat-list">' + valueHtmlForItem(item) + '</div>' +
+            '<div class="stat-list">' + valueAreaHtml(item) + '</div>' +
             panel +
           '</section>'
         );
@@ -578,7 +824,7 @@
             '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
           '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter — klicka <strong>Ändra</strong> för att uppdatera dem direkt här. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
@@ -782,6 +1028,79 @@
         }
       });
     });
+
+    root.querySelectorAll('[data-inline-open]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var key = btn.getAttribute('data-inline-open');
+        var item = null;
+        (summary.groups || []).forEach(function (g) {
+          (g.items || []).forEach(function (it) {
+            if (it.key === key) item = it;
+          });
+        });
+        if (!item) return;
+        startEdit(item);
+        renderSummary(root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-inline-cancel]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        cancelEdit();
+        renderSummary(root, summary);
+      });
+    });
+
+    root.querySelectorAll('[data-inline-choice]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!state.editDraft) return;
+        var field = fieldByKey(state.editDraft.key);
+        var choice = btn.getAttribute('data-inline-choice');
+        if (!field) return;
+        if (field.type === 'multiselect') {
+          var list = Array.isArray(state.editDraft.value) ? state.editDraft.value.slice() : [];
+          var idx = list.indexOf(choice);
+          if (idx >= 0) list.splice(idx, 1);
+          else list.push(choice);
+          state.editDraft.value = list;
+        } else {
+          state.editDraft.value = choice;
+          if (choice !== 'Ja') state.editDraft.antal = '';
+        }
+        renderSummary(root, summary);
+      });
+    });
+
+    var antalInput = root.querySelector('[data-inline-antal]');
+    if (antalInput) {
+      antalInput.addEventListener('input', function () {
+        if (state.editDraft) state.editDraft.antal = antalInput.value;
+      });
+    }
+    var numInput = root.querySelector('[data-inline-number]');
+    if (numInput) {
+      numInput.addEventListener('input', function () {
+        if (state.editDraft) state.editDraft.value = numInput.value;
+      });
+    }
+    var textInput = root.querySelector('[data-inline-text]');
+    if (textInput) {
+      textInput.addEventListener('input', function () {
+        if (state.editDraft) state.editDraft.value = textInput.value;
+      });
+    }
+
+    root.querySelectorAll('[data-inline-save]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        saveInlineEdit(root);
+      });
+    });
+
   }
 
   function renderError(root, msg) {
@@ -854,8 +1173,10 @@
         var schema = data[0] || {};
         var profilPayload = data[1] || {};
         var profil = profilPayload.fields || profilPayload || {};
+        state.schema = schema;
         state.profil = profil;
         state.clientflowStat = data[2] || null;
+        cancelEdit();
         var summary = buildSummary(profil, schema);
         if (!summary.hasAnswers) renderEmpty(root);
         else renderSummary(root, summary);
