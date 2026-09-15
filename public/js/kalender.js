@@ -472,6 +472,7 @@
       </dl>
       <div class="kalender-detail-actions">
         ${kundId ? `<a class="btn btn-primary btn-sm" href="kundkort.html?id=${encodeURIComponent(kundId)}"><i class="fas fa-user"></i> Öppna kundkort</a>` : ''}
+        ${kundId ? `<a class="btn btn-ghost btn-sm" href="tid.html?new=1&customerId=${encodeURIComponent(kundId)}&customerName=${encodeURIComponent(name)}&uppdrag=${encodeURIComponent(displayName(ev.typ, f))}"><i class="fas fa-clock"></i> Registrera tid</a>` : ''}
         <a class="btn btn-ghost btn-sm" href="uppdrag-oversikt.html"><i class="fas fa-briefcase"></i> Uppdragstavla</a>
       </div>
       ${siblings ? `<div class="kalender-detail-siblings"><h4>Fler samma dag</h4>

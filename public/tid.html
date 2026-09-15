@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClientFlow • Tid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260915tid">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar-container"></div>
+
+        <main class="main-content">
+            <div class="container">
+                <header class="content-header risk-header">
+                    <div class="risk-header-content">
+                        <div class="uppdragboard-top">
+                            <div class="uppdragboard-title">
+                                <h1>Tid</h1>
+                            </div>
+                            <div class="uppdragboard-actions">
+                                <a href="kalender.html" class="btn btn-ghost btn-sm"><i class="fas fa-calendar-alt"></i> Kalender</a>
+                                <a href="moten.html" class="btn btn-ghost btn-sm"><i class="fas fa-handshake"></i> Möten</a>
+                                <button type="button" class="btn btn-primary btn-sm" id="tid-new"><i class="fas fa-plus"></i> Registrera tid</button>
+                            </div>
+                        </div>
+                        <p class="kalender-lead">Registrera arbetad tid per kund. Poster markerade som Klar blir fakturaunderlag.</p>
+                    </div>
+                </header>
+
+                <div id="tid-loading" class="statistik-section" style="margin-top:1rem;">
+                    <p class="statistik-section-desc"><i class="fas fa-spinner fa-spin"></i> Laddar tid...</p>
+                </div>
+                <div id="tid-no-auth" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc" style="color:#94a3b8;">Logga in för att visa tidregistrering.</p>
+                </div>
+                <div id="tid-setup" class="statistik-section" style="margin-top:1rem; display:none;">
+                    <p class="statistik-section-desc">Airtable-tabellen för tidregistrering saknas ännu.</p>
+                    <button type="button" class="btn btn-primary btn-sm" id="tid-setup-btn"><i class="fas fa-database"></i> Skapa tabell</button>
+                    <p class="statistik-section-desc" id="tid-setup-msg" style="margin-top:0.75rem;"></p>
+                </div>
+
+                <div id="tid-content" style="display:none; margin-top:1rem;">
+                    <div class="tid-summary" id="tid-summary" aria-live="polite"></div>
+
+                    <div class="tid-filters">
+                        <label class="tid-filter">
+                            <span>Från</span>
+                            <input type="date" id="tid-from" class="kunduppgifter-input">
+                        </label>
+                        <label class="tid-filter">
+                            <span>Till</span>
+                            <input type="date" id="tid-to" class="kunduppgifter-input">
+                        </label>
+                        <label class="tid-filter">
+                            <span>Status</span>
+                            <select id="tid-status-filter" class="kunduppgifter-input">
+                                <option value="">Alla</option>
+                                <option value="Utkast">Utkast</option>
+                                <option value="Klar">Klar (fakturaunderlag)</option>
+                                <option value="Fakturerad">Fakturerad</option>
+                            </select>
+                        </label>
+                        <label class="tid-filter tid-filter--grow">
+                            <span>Kund</span>
+                            <input type="search" id="tid-customer-filter" class="kunduppgifter-input" placeholder="Filtrera på kundnamn" autocomplete="off">
+                        </label>
+                    </div>
+
+                    <div class="tid-list" id="tid-list"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="tid-modal" class="kalender-detail" hidden>
+        <div class="kalender-detail-backdrop" data-tid-close></div>
+        <div class="kalender-detail-panel moten-modal-panel" role="dialog" aria-modal="true" aria-labelledby="tid-modal-title">
+            <div class="kalender-detail-header">
+                <h3 id="tid-modal-title">Registrera tid</h3>
+                <button type="button" class="modal-close" data-tid-close aria-label="Stäng"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="kalender-detail-body">
+                <form id="tid-form" class="moten-form">
+                    <input type="hidden" id="tid-edit-id" value="">
+                    <label class="moten-field">
+                        <span>Kund</span>
+                        <input type="search" id="tid-customer-search" class="kunduppgifter-input" list="tid-customer-datalist" placeholder="Sök kund…" required autocomplete="off">
+                        <datalist id="tid-customer-datalist"></datalist>
+                        <input type="hidden" id="tid-customer-id" value="">
+                    </label>
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Datum</span>
+                            <input type="date" id="tid-date" class="kunduppgifter-input" required>
+                        </label>
+                        <label class="moten-field">
+                            <span>Timmar</span>
+                            <input type="number" id="tid-hours" class="kunduppgifter-input" min="0.25" step="0.25" placeholder="1.5" required>
+                        </label>
+                    </div>
+                    <div class="moten-row">
+                        <label class="moten-field">
+                            <span>Aktivitet (valfritt)</span>
+                            <input type="text" id="tid-activity" class="kunduppgifter-input" placeholder="T.ex. Bokslut, Rådgivning">
+                        </label>
+                        <label class="moten-field">
+                            <span>Timpris SEK (valfritt)</span>
+                            <input type="number" id="tid-rate" class="kunduppgifter-input" min="0" step="1" placeholder="1200">
+                        </label>
+                    </div>
+                    <label class="moten-field">
+                        <span>Uppdrag / referens (valfritt)</span>
+                        <input type="text" id="tid-uppdrag" class="kunduppgifter-input" placeholder="T.ex. Månadsbokslut">
+                    </label>
+                    <label class="moten-field">
+                        <span>Beskrivning</span>
+                        <textarea id="tid-description" class="kunduppgifter-input" rows="3" placeholder="Vad gjordes?"></textarea>
+                    </label>
+                    <label class="moten-field">
+                        <span>Status</span>
+                        <select id="tid-status" class="kunduppgifter-input">
+                            <option value="Utkast">Utkast</option>
+                            <option value="Klar">Klar (fakturaunderlag)</option>
+                        </select>
+                    </label>
+                    <p class="tid-amount-hint" id="tid-amount-hint" hidden></p>
+                    <div class="moten-form-actions">
+                        <button type="button" class="btn btn-ghost btn-sm" data-tid-close>Avbryt</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="tid-save"><i class="fas fa-save"></i> Spara</button>
+                    </div>
+                    <p class="moten-form-error" id="tid-form-error" hidden></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/navigation.js" defer></script>
+    <script src="js/components.js?v=2.4" defer></script>
+    <script src="js/tid.js?v=1" defer></script>
+</body>
+</html>
