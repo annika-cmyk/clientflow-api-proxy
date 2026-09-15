@@ -217,6 +217,15 @@
         font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3;
         min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
+      a.mejl-item-customer-link {
+        font-weight: 700; color: #0f172a; font-size: 0.95rem; line-height: 1.3;
+        text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      a.mejl-item-customer-link:hover { color: #1e3a5f; text-decoration: underline; }
+      .mejl-detail-customer-link {
+        color: inherit; text-decoration: none;
+      }
+      .mejl-detail-customer-link:hover { text-decoration: underline; color: #1e3a5f; }
       .mejl-item-customer-row {
         display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.55rem;
         min-width: 0; flex: 1 1 auto; overflow: hidden;
@@ -617,6 +626,7 @@
                     <section class="mejl-pane mejl-pane--list" aria-label="Mejllista">
                         <nav class="mejl-folders" aria-label="Mappar">
                             <button type="button" class="mejl-folder-btn is-active" data-folder="inbox" id="mejl-folder-inbox">Inkorg</button>
+                            <button type="button" class="mejl-folder-btn" data-folder="open" id="mejl-folder-open">Endast öppna</button>
                             <button type="button" class="mejl-folder-btn" data-folder="shared" id="mejl-folder-shared">Delat med mig</button>
                             <button type="button" class="mejl-folder-btn" data-folder="sent" id="mejl-folder-sent">Skickat</button>
                         </nav>
@@ -676,7 +686,8 @@
     <script src="js/mejl-mask-selection.js?v=20260913mask" defer></script>
     <script src="js/uppdrag-typ.js?v=2" defer></script>
     <script src="js/mejl-archive.js?v=20260915koppla" defer></script>
+    <script src="js/mejl-hidden.js?v=1" defer></script>
     <script src="js/mejl-handle-status.js?v=20260913handle" defer></script>
-    <script src="js/mejl.js?v=20260915noetikett" defer></script>
+    <script src="js/mejl.js?v=20260915oppna" defer></script>
 </body>
 </html>
