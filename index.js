@@ -20627,6 +20627,40 @@ function friendlyUppdragSelectOptionError(msg) {
   );
 }
 
+
+function buildSelectChoicesPreservingIds(existingChoiceObjs, desiredNames) {
+  const existing = Array.isArray(existingChoiceObjs) ? existingChoiceObjs : [];
+  const desired = (desiredNames || []).map((n) => String(n || '').trim()).filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const c of existing) {
+    const name = String(c?.name || '').trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const entry = { name };
+    if (c.id) entry.id = c.id;
+    if (c.color) entry.color = c.color;
+    out.push(entry);
+  }
+  for (const name of desired) {
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name });
+  }
+  return out;
+}
+
+function findSelectChoiceName(existingChoiceObjs, wanted) {
+  const w = String(wanted || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!w) return '';
+  for (const c of existingChoiceObjs || []) {
+    const name = String(c?.name || '').trim();
+    if (!name) continue;
+    if (name.toLowerCase().replace(/\s+/g, ' ') === w) return name;
+  }
+  return '';
+}
+
 async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
   try {
     const t = tableMeta || await getUppdragTableMeta(airtableToken, baseId);
@@ -20635,13 +20669,16 @@ async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
     if (!typField || !typField.id) return { ok: false, reason: 'Fältet "Typ" saknas' };
 
     const desired = UPPDRAG_TYP_CHOICES.map(c => c.name);
-    const current = (typField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
-    const missing = desired.filter(x => !current.includes(x));
+    const currentChoices = typField.options?.choices || [];
+    const current = currentChoices.map(c => (c?.name || '').trim()).filter(Boolean);
+    const currentNorm = new Set(current.map((n) => n.toLowerCase()));
+    const missing = desired.filter((x) => !currentNorm.has(String(x).toLowerCase()));
     if (!missing.length) return { ok: true, updated: false };
 
     try {
       const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
-      const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+      // Behåll id på befintliga val – annars kan Airtable neka patch (ser ut som delete/recreate).
+      const choices = buildSelectChoicesPreservingIds(currentChoices, desired);
       await axios.patch(patchUrl, {
         name: 'Typ',
         type: 'singleSelect',
@@ -20677,13 +20714,15 @@ async function ensureUppdragFrekvensChoices(airtableToken, baseId, tableMeta) {
     if ((freqField.type || '') !== 'singleSelect') return { ok: true, updated: false, skipped: 'not_select' };
 
     const desired = UPPDRAG_FREKVENS_CHOICES.map(c => c.name);
-    const current = (freqField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
-    const missing = desired.filter(x => !current.includes(x));
+    const currentChoices = freqField.options?.choices || [];
+    const current = currentChoices.map(c => (c?.name || '').trim()).filter(Boolean);
+    const currentNorm = new Set(current.map((n) => n.toLowerCase()));
+    const missing = desired.filter((x) => !currentNorm.has(String(x).toLowerCase()));
     if (!missing.length) return { ok: true, updated: false };
 
     try {
       const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${freqField.id}`;
-      const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
+      const choices = buildSelectChoicesPreservingIds(currentChoices, desired);
       await axios.patch(patchUrl, {
         name: 'Frekvens',
         type: 'singleSelect',
@@ -21845,9 +21884,14 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       );
       return createRes.data;
     };
+    // Eget uppdrag / Engång saknas ofta i äldre baser – typecast direkt så create
+    // inte först failar med 422 "Insufficient permissions to create new select option".
+    const preferTypecast =
+      UppdragTyp.isEgetUppdragTyp(typ) ||
+      String(fields.Frekvens || '').trim() === 'Engång';
     let record;
     try {
-      record = await tryWriteWithFallback(write);
+      record = await tryWriteWithFallback((payload) => write(payload, { typecast: preferTypecast }));
     } catch (createErr) {
       const cmsg = createErr.response?.data?.error?.message || createErr.message || '';
       if (!isAirtableSelectOptionError(cmsg)) throw createErr;
