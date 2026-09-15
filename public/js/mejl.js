@@ -210,10 +210,15 @@
   }
 
   async function loadStatus() {
-    const res = await fetch(`${baseUrl}/api/gmail/status`, authOpts());
-    const data = await res.json();
-    status = data;
-    return data;
+    try {
+      const res = await fetch(`${baseUrl}/api/gmail/status`, authOpts());
+      const data = await res.json().catch(() => ({}));
+      status = data && typeof data === 'object' ? data : { success: false };
+      return status;
+    } catch (err) {
+      status = { success: false, error: (err && err.message) || 'Kunde inte hämta Gmail-status' };
+      return status;
+    }
   }
 
   async function loadCustomers() {
@@ -424,20 +429,6 @@
           const cid = resolveMessageCustomerId(m);
           const kundkortLink = kundkortLinkHtml(cid, { compact: true });
           const sender = fromDisplayName(m);
-          const kunderOnly = (m.labels || []).filter((l) => l && l.isKunderChild);
-          const labelHtml = kunderOnly.length
-            ? renderLabelChips(kunderOnly)
-            : m.labelLeaf
-              ? renderLabelChips([
-                  {
-                    id: m.labelId,
-                    name: m.labelName,
-                    leaf: m.labelLeaf,
-                    displayName: m.labelLeaf,
-                    isKunderChild: true
-                  }
-                ])
-              : '';
           const handleCls =
             handleStatusApi && !isSharedListId(m.id)
               ? handleStatusApi.listItemClass(handleStatusApi.get(m.id))
@@ -458,7 +449,6 @@
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
-        ${labelHtml}
         ${sharedBadge}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </div>
@@ -507,6 +497,48 @@
     renderList(unmatchedHtml);
   }
 
+  function inboxErrorNeedsReconnect(res, data) {
+    const code = (data && data.code) || '';
+    if (
+      code === 'GMAIL_NOT_CONNECTED' ||
+      code === 'GMAIL_REAUTH_REQUIRED' ||
+      code === 'GMAIL_INSUFFICIENT_SCOPE'
+    ) {
+      return true;
+    }
+    return !!(res && (res.status === 401 || res.status === 403));
+  }
+
+  function markGmailNeedsReconnect(message) {
+    if (status && typeof status === 'object') {
+      status.connected = false;
+      status.email = '';
+    }
+    try {
+      renderStatus();
+      setConnectEnabled(!!(status && status.configured), message || 'Koppla Gmail igen');
+      if (els.connectBtn) els.connectBtn.hidden = false;
+      if (els.disconnectBtn) els.disconnectBtn.hidden = true;
+    } catch (_) {
+      /* ignore UI update errors */
+    }
+  }
+
+  function showInboxFailure(message, opts) {
+    const options = opts || {};
+    const text = message || 'Kunde inte hämta mejl';
+    els.main.hidden = false;
+    els.toolbar.hidden = false;
+    if (!messages.length) {
+      const reconnectHint = options.reconnect
+        ? ' Koppla Gmail igen ovanför, eller öppna «Delat med mig».'
+        : '';
+      els.list.innerHTML = `<p class="mejl-hint">${esc(text)}${esc(reconnectHint)}</p>`;
+    } else {
+      showToast(text, 'error');
+    }
+  }
+
   async function fetchInbox(mode) {
     const customerId = els.filter.value || '';
     const params = new URLSearchParams();
@@ -533,8 +565,14 @@
         els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
         activeId = null;
       }
-      await loadSharedWithMe();
-      renderList();
+      try {
+        await loadSharedWithMe();
+        renderList();
+      } catch (err) {
+        els.list.innerHTML = `<p class="mejl-hint">${esc(
+          (err && err.message) || 'Kunde inte hämta delade mejl'
+        )}</p>`;
+      }
       setFolderUi();
       return;
     }
@@ -579,11 +617,11 @@
       const { res, data } = await fetchInbox(options.full ? 'full' : 'sync');
       setSyncStatus('');
       if (!res.ok || !data.success) {
-        if (!messages.length) {
-          els.list.innerHTML = `<p class="mejl-hint">${esc(data.error || 'Kunde inte hämta mejl')}</p>`;
-        } else {
-          showToast(data.error || 'Kunde inte synka mejl', 'error');
-        }
+        const reconnect = inboxErrorNeedsReconnect(res, data);
+        if (reconnect) markGmailNeedsReconnect(data.error);
+        showInboxFailure(data.error || (reconnect ? 'Gmail behöver kopplas igen.' : 'Kunde inte hämta mejl'), {
+          reconnect
+        });
         return;
       }
       const prevActive = activeId;
@@ -594,11 +632,7 @@
       }
     } catch (err) {
       setSyncStatus('');
-      if (!messages.length) {
-        els.list.innerHTML = `<p class="mejl-hint">${esc(err.message || 'Kunde inte hämta mejl')}</p>`;
-      } else {
-        showToast(err.message || 'Kunde inte synka mejl', 'error');
-      }
+      showInboxFailure((err && err.message) || 'Kunde inte hämta mejl');
     }
   }
 
@@ -1620,42 +1654,69 @@
   if (els.folderShared) els.folderShared.addEventListener('click', () => onFolderClick('shared'));
 
   async function boot() {
-    const params = new URLSearchParams(window.location.search);
-    const presetCustomer = params.get('customerId') || '';
-    if (params.get('panel') === 'settings') showMejlPanel('settings');
-    if (params.get('gmail') === 'connected') {
-      showToast('Gmail är kopplad.', 'success');
-      history.replaceState({}, '', 'mejl.html' + (presetCustomer ? `?customerId=${encodeURIComponent(presetCustomer)}` : ''));
-    }
-    if (params.get('gmail') === 'error') {
-      const reason = params.get('reason') || 'okänt fel';
-      els.connectText.textContent = `Kunde inte koppla Gmail: ${reason}`;
-      showToast(`Kunde inte koppla Gmail: ${reason}`, 'error');
-      history.replaceState({}, '', 'mejl.html');
-    }
-    await loadCustomers();
-    fillCustomerSelects();
-    if (presetCustomer) {
-      els.filter.value = presetCustomer;
-      els.customer.value = presetCustomer;
-    }
-    // Ladda delade mejl först så de syns även utan Gmail (och innan status kan dölja UI).
-    await loadSharedWithMe();
-    await loadStatus();
-    if (!(status && status.connected)) {
-      folder = 'shared';
-    }
-    renderStatus();
-    resetConnectButton();
-    setConnectEnabled(!!(status && status.configured && !status.connected));
-    if (status && status.connected) {
-      await loadInbox();
-      // Uppdatera räknare för Delat med mig i bakgrunden
-      setFolderUi();
-    } else {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const presetCustomer = params.get('customerId') || '';
+      if (params.get('panel') === 'settings') showMejlPanel('settings');
+      if (params.get('gmail') === 'connected') {
+        showToast('Gmail är kopplad.', 'success');
+        history.replaceState(
+          {},
+          '',
+          'mejl.html' + (presetCustomer ? `?customerId=${encodeURIComponent(presetCustomer)}` : '')
+        );
+      }
+      if (params.get('gmail') === 'error') {
+        const reason = params.get('reason') || 'okänt fel';
+        els.connectText.textContent = `Kunde inte koppla Gmail: ${reason}`;
+        showToast(`Kunde inte koppla Gmail: ${reason}`, 'error');
+        history.replaceState({}, '', 'mejl.html');
+      }
+      await loadCustomers();
+      fillCustomerSelects();
+      if (presetCustomer) {
+        els.filter.value = presetCustomer;
+        els.customer.value = presetCustomer;
+      }
+      // Ladda delade mejl först så de syns även utan Gmail (och innan status kan dölja UI).
+      try {
+        await loadSharedWithMe();
+      } catch (_) {
+        /* delade mejl är optional vid boot */
+      }
+      await loadStatus();
+      if (!(status && status.connected)) {
+        folder = 'shared';
+      }
+      renderStatus();
+      resetConnectButton();
+      setConnectEnabled(!!(status && status.configured && !status.connected));
       els.main.hidden = false;
       els.toolbar.hidden = false;
-      await loadInbox();
+      try {
+        await loadInbox();
+        setFolderUi();
+      } catch (err) {
+        console.warn('mejl boot loadInbox:', err);
+        showInboxFailure(
+          (err && err.message) ||
+            'Kunde inte synka inkorg just nu. Delade mejl och övrigt fungerar fortfarande.'
+        );
+        setFolderUi();
+      }
+    } catch (err) {
+      console.error('mejl boot:', err);
+      try {
+        els.main.hidden = false;
+        els.toolbar.hidden = false;
+        if (els.list) {
+          els.list.innerHTML = `<p class="mejl-hint">${esc(
+            (err && err.message) || 'Mejl-sidan kunde inte laddas helt. Prova att ladda om.'
+          )}</p>`;
+        }
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
