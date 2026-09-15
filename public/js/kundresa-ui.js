@@ -1,6 +1,7 @@
 /**
- * Kundresa-UI (Lager C fas 2) — sexstegs koordinator på kundkortet.
- * Steg 2 = byråns VH-bekräftelse mot register (inte samma sak som steg 4 kundformulär).
+ * Kundresa-UI (Lager C fas 2) — stegs koordinator på kundkortet.
+ * VH-steget utelämnas för enskild firma / fysisk person.
+ * När VH visas: byråns bekräftelse mot register (inte samma sak som kundformulär-steget).
  */
 (function (global) {
   function esc(s) {
@@ -84,6 +85,7 @@
           ${steps.map((step) => {
             const isFocus = Number(step.id) === Number(activeStepId);
             const showDesc = isFocus || step.status === 'next' || step.status === 'attention';
+            const displayNum = step.number != null ? step.number : step.id;
             return `
             <li class="kundresa-step ${statusClass(step.status)}${step.comingSoonBankId ? ' is-soon' : ''}${isFocus ? ' is-active-panel' : ''}"
                 data-kundresa-step="${esc(String(step.id))}">
@@ -95,7 +97,7 @@
                 title="${esc(step.gated ? 'Blockerad tills VH är bekräftad' : step.linkLabel || step.title)}">
                 <span class="kundresa-step-icon" aria-hidden="true"><i class="fas ${esc(step.icon || 'fa-circle')}"></i></span>
                 <span class="kundresa-step-body">
-                  <span class="kundresa-step-meta">${esc(String(step.id))} · ${esc(step.label || '')}</span>
+                  <span class="kundresa-step-meta">${esc(String(displayNum))} · ${esc(step.label || '')}</span>
                   <span class="kundresa-step-title">${esc(step.title)}</span>
                   ${showDesc ? `<span class="kundresa-step-desc">${esc(step.desc || '')}</span>` : ''}
                 </span>
@@ -144,7 +146,7 @@
               </div>
             </div>
           </div>
-        </div>` : `<p class="kundresa-hint">VH är inte aktuell för enskild firma / fysisk person.</p>`}
+        </div>` : ''}
       </section>
     `;
 
