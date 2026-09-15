@@ -20133,6 +20133,75 @@ body.byra-resa-page .risk-header h1 {
 .kundrisker-enkat-checklist-item.is-analyserad::before { background: #15803d; }
 .kundrisker-enkat-checklist-item.is-avstadd::before { background: #94a3b8; }
 .kundrisker-enkat-checklist-item.is-pending::before { background: #c2410c; }
+
+/* Inline-redigering av byråprofil-svar på Vilka är våra kunder */
+.kundrisker-inline-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+.kundrisker-inline-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border, #d5dde3);
+  background: #fff;
+  color: var(--accent, #13505c);
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.kundrisker-inline-edit-btn:hover {
+  border-color: var(--accent, #13505c);
+  background: color-mix(in srgb, var(--accent, #13505c) 8%, white);
+}
+.kundrisker-inline-edit {
+  margin-top: 0.35rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border, #d5dde3);
+  border-radius: 12px;
+  background: #fbfcfd;
+  display: grid;
+  gap: 0.75rem;
+}
+.kundrisker-inline-question {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text, #334155);
+}
+.kundrisker-inline-number {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.kundrisker-inline-number input {
+  max-width: 12rem;
+  font: inherit;
+  font-weight: 500;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border, #d5dde3);
+  border-radius: 8px;
+}
+.kundrisker-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.kundrisker-inline-error {
+  margin: 0;
+  color: var(--error, #b42318);
+  font-size: 0.88rem;
+}
+.kundrisker-inline-choices {
+  margin: 0;
+}
+
 .kundrisker-analys-btn {
   white-space: nowrap;
 }
