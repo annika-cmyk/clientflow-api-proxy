@@ -19,7 +19,8 @@
     byraResaState: null,
     canEditResa: false,
     byraKey: '',
-    summary: null
+    summary: null,
+    clientflowStat: null
   };
 
   function API() {
@@ -94,44 +95,172 @@
     return '';
   }
 
-  function countedChipsHtml(item) {
+  function iconForKey(key) {
+    var map = {
+      antalKunder: 'fa-users',
+      vanligasteBolagsformer: 'fa-building',
+      kundernasBranscher: 'fa-layer-group',
+      branscherKundstock: 'fa-industry',
+      andelHogriskbransch: 'fa-percent',
+      andelKontantintensiva: 'fa-coins',
+      betalningsmonster: 'fa-credit-card',
+      komplexaAgarstrukturer: 'fa-sitemap',
+      utlandskaAgare: 'fa-globe',
+      pepKunder: 'fa-user-secret',
+      geografiskMarknad: 'fa-map-marker-alt',
+      andelInternationellHandel: 'fa-percent',
+      sanktionslander: 'fa-ban',
+      kunderIUtsattaOmraden: 'fa-map-marked-alt',
+      kundIntroduktion: 'fa-handshake',
+      andelNystartadeBolag: 'fa-seedling'
+    };
+    return map[key] || 'fa-chart-bar';
+  }
+
+  function descForItem(item, fromClientflow) {
     var typ = drillTypForField(null, item);
-    if (!typ || !state.profil) return escapeHtml(item.display);
-    if (typ === 'pep-sanktion') {
-      var pepRaw = state.profil[item.key];
-      pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
-      if (!/^ja/i.test(pepRaw)) return escapeHtml(item.display);
-      return (
-        '<button type="button" class="statistik-stat-chip" ' +
-          'data-typ="pep-sanktion" ' +
-          'data-titel="PEP eller anhörig till PEP" ' +
-          'title="Klicka för kundlista från Clientflow">' +
-          escapeHtml(item.display) +
-        '</button>'
-      );
+    if (fromClientflow) {
+      if (typ === 'kund-bransch' || typ === 'hogriskbransch') {
+        return 'Klicka för underbranscher och kundlista.';
+      }
+      if (typ) return 'Klicka för kundlista.';
     }
-    var raw = state.profil[item.key];
-    raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
-    if (!raw) return escapeHtml(item.display);
-    if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return escapeHtml(HOGRISK_NONE);
-    var rows = parseCounted(raw);
-    if (!rows.length) return escapeHtml(item.display);
+    if (typ === 'kund-bransch' || typ === 'hogriskbransch') {
+      return 'Från byråprofilen. Klicka för underbranscher och kundlista från Clientflow.';
+    }
+    if (typ) return 'Från byråprofilen. Klicka för kundlista från Clientflow.';
+    return 'Svar från byråprofil-enkäten.';
+  }
+
+  function namedListChips(typ, rows, titelPrefix) {
+    if (!rows || !rows.length) return '';
     return (
       '<div class="statistik-stat-chips">' +
       rows.map(function (r) {
-        var label = r.count ? r.form + ' · ' + r.count : r.form;
+        var namn = r.namn || r.form || '';
+        var antal = r.antal != null ? r.antal : r.count;
+        var label = antal != null && antal !== '' ? namn + ' · ' + antal : namn;
         return (
           '<button type="button" class="statistik-stat-chip" ' +
             'data-typ="' + escapeHtml(typ) + '" ' +
-            'data-namn="' + escapeHtml(r.form) + '" ' +
-            'data-titel="' + escapeHtml(r.form) + '" ' +
-            'title="Klicka för kundlista från Clientflow">' +
+            'data-namn="' + escapeHtml(namn) + '" ' +
+            'data-titel="' + escapeHtml((titelPrefix ? titelPrefix + namn : namn)) + '" ' +
+            'title="Klicka för att se kunder">' +
             escapeHtml(label) +
           '</button>'
         );
       }).join('') +
       '</div>'
     );
+  }
+
+  function staticValueChips(display) {
+    var text = String(display || '').trim();
+    if (!text) return '<p class="stat-list-empty">Inget svar.</p>';
+    var parts = text.split(/\s*,\s*/).map(function (p) { return p.trim(); }).filter(Boolean);
+    if (parts.length <= 1) {
+      return (
+        '<div class="statistik-stat-chips">' +
+          '<span class="statistik-stat-chip statistik-stat-chip--static">' + escapeHtml(text) + '</span>' +
+        '</div>'
+      );
+    }
+    return (
+      '<div class="statistik-stat-chips">' +
+      parts.map(function (p) {
+        return '<span class="statistik-stat-chip statistik-stat-chip--static">' + escapeHtml(p) + '</span>';
+      }).join('') +
+      '</div>'
+    );
+  }
+
+  function clientflowChipsForItem(item) {
+    var stat = state.clientflowStat;
+    if (!stat) return null;
+    var typ = drillTypForField(null, item);
+    var key = item.key || '';
+
+    if (key === 'antalKunder' && typeof stat.antalKunder === 'number') {
+      return {
+        html:
+          '<div class="statistik-stat-chips">' +
+            '<button type="button" class="statistik-stat-chip" data-typ="alla" data-titel="Alla kunder" title="Klicka för att se kunder">' +
+              escapeHtml('Antal kunder · ' + stat.antalKunder) +
+            '</button>' +
+          '</div>',
+        fromClientflow: true
+      };
+    }
+    if (typ === 'bolagsform' && Array.isArray(stat.bolagsform) && stat.bolagsform.length) {
+      return { html: namedListChips('bolagsform', stat.bolagsform), fromClientflow: true };
+    }
+    if (typ === 'kund-bransch' && Array.isArray(stat.kundBranschBuckets) && stat.kundBranschBuckets.length) {
+      return { html: namedListChips('kund-bransch', stat.kundBranschBuckets), fromClientflow: true };
+    }
+    if (typ === 'hogriskbransch') {
+      var hr = stat.högriskbransch || stat.hogriskbransch || [];
+      if (hr.length) return { html: namedListChips('hogriskbransch', hr), fromClientflow: true };
+    }
+    if (typ === 'pep-sanktion' && typeof stat.antalPepEllerSanktion === 'number') {
+      return {
+        html:
+          '<div class="statistik-stat-chips">' +
+            '<button type="button" class="statistik-stat-chip" data-typ="pep-sanktion" ' +
+              'data-titel="PEP eller anhörig till PEP" title="Klicka för att se kunder">' +
+              escapeHtml('PEP eller anhörig till PEP · ' + stat.antalPepEllerSanktion) +
+            '</button>' +
+          '</div>',
+        fromClientflow: true
+      };
+    }
+    return null;
+  }
+
+  function countedChipsHtml(item) {
+    var live = clientflowChipsForItem(item);
+    if (live) return live.html;
+
+    var typ = drillTypForField(null, item);
+    if (!typ || !state.profil) return staticValueChips(item.display);
+    if (typ === 'pep-sanktion') {
+      var pepRaw = state.profil[item.key];
+      pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
+      if (!/^ja/i.test(pepRaw)) return staticValueChips(item.display);
+      return (
+        '<div class="statistik-stat-chips">' +
+          '<button type="button" class="statistik-stat-chip" ' +
+            'data-typ="pep-sanktion" ' +
+            'data-titel="PEP eller anhörig till PEP" ' +
+            'title="Klicka för kundlista från Clientflow">' +
+            escapeHtml(item.display) +
+          '</button>' +
+        '</div>'
+      );
+    }
+    var raw = state.profil[item.key];
+    raw = Array.isArray(raw) ? raw.join(', ') : String(raw || '').trim();
+    if (!raw) return staticValueChips(item.display);
+    if (typ === 'hogriskbransch' && raw === HOGRISK_NONE) return staticValueChips(HOGRISK_NONE);
+    var rows = parseCounted(raw);
+    if (!rows.length) return staticValueChips(item.display);
+    return namedListChips(
+      typ,
+      rows.map(function (r) { return { namn: r.form, antal: r.count }; })
+    );
+  }
+
+  function valueHtmlForItem(item) {
+    if (drillTypForField(null, item) || item.key === 'antalKunder') {
+      return countedChipsHtml(item);
+    }
+    return staticValueChips(item.display);
+  }
+
+  function sourceBadgeHtml(fromClientflow) {
+    if (fromClientflow) {
+      return '<span class="statistik-source-badge" title="Aggregerat från aktiva kunder i Clientflow">Clientflow</span>';
+    }
+    return '<span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span>';
   }
 
   function formatDisplay(field, value) {
@@ -376,12 +505,17 @@
     root.innerHTML =
       '<div class="kundrisker-enkat is-empty">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Från byråprofilen <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
+          '<h3>Vilka är våra kunder <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Här syns svaren ni redan gett om kundstocken i byråprofil-enkäten — som stöd när ni bedömer kundkategorier och geografi.</p>' +
+        '<p class="kundrisker-enkat-lead">Här samlas enkätens uppgifter om kundstock och geografi — i samma format som under Statistik för riskbedömning.</p>' +
         '<p class="kundrisker-enkat-empty">Ni har ännu inte fyllt i kundstocken i enkäten.</p>' +
         '<a class="btn btn-secondary kundrisker-enkat-cta" href="byra-profil-enkate.html?section=kundstock">Fyll i kundstocken</a>' +
       '</div>';
+  }
+
+  function itemUsesClientflow(item) {
+    var live = clientflowChipsForItem(item);
+    return !!(live && live.fromClientflow);
   }
 
   function renderSummary(root, summary) {
@@ -390,7 +524,7 @@
     state.summary = summary;
 
     var groupsHtml = summary.groups.map(function (g) {
-      var rows = g.items.map(function (item) {
+      var sections = g.items.map(function (item) {
         var allGroup = allGroupForItem(item);
         var openGroup = openGroupForItem(item);
         var statusRow = statusForGroup(allGroup);
@@ -403,40 +537,48 @@
           panel = panelHtml(openGroup);
         }
         var rowStatusCls = statusRow ? ' is-status-' + statusRow.status : '';
+        var fromCf = itemUsesClientflow(item);
         var actions = '';
         if (badge || btn || skipBtn) {
           actions =
-            '<span class="kundrisker-enkat-actions">' +
+            '<div class="kundrisker-enkat-stat-actions">' +
               badge + btn + skipBtn +
-            '</span>';
+            '</div>';
         }
         return (
-          '<li class="kundrisker-enkat-row' + (allGroup ? ' has-analys' : '') + rowStatusCls + '" data-field-key="' + escapeHtml(item.key) + '"' +
+          '<section class="statistik-section kundrisker-enkat-stat-section' +
+            (allGroup ? ' has-analys' : '') + rowStatusCls + '" data-field-key="' + escapeHtml(item.key) + '"' +
             (allGroup ? ' data-analys-group-id="' + escapeHtml(allGroup.id) + '"' : '') + '>' +
-            '<div class="kundrisker-enkat-row-main">' +
-              '<span class="kundrisker-enkat-q">' + escapeHtml(item.label) + '</span>' +
-              '<span class="kundrisker-enkat-a">' + (drillTypForField(null, item) ? countedChipsHtml(item) : escapeHtml(item.display)) + '</span>' +
+            '<div class="kundrisker-enkat-stat-head">' +
+              '<h3><i class="fas ' + escapeHtml(iconForKey(item.key)) + '"></i> ' +
+                escapeHtml(item.label) + ' ' + sourceBadgeHtml(fromCf) +
+              '</h3>' +
               actions +
             '</div>' +
+            '<p class="statistik-section-desc">' + escapeHtml(descForItem(item, fromCf)) + '</p>' +
+            '<div class="stat-list">' + valueHtmlForItem(item) + '</div>' +
             panel +
-          '</li>'
+          '</section>'
         );
       }).join('');
       return (
         '<div class="kundrisker-enkat-group">' +
           '<h4 class="kundrisker-enkat-group-title">' + escapeHtml(g.title) + '</h4>' +
-          '<ul class="kundrisker-enkat-list">' + rows + '</ul>' +
+          '<div class="statistik-sections kundrisker-enkat-stat-sections">' + sections + '</div>' +
         '</div>'
       );
     }).join('');
 
     root.innerHTML =
-      '<div class="kundrisker-enkat">' +
+      '<div class="kundrisker-enkat kundrisker-enkat--stat">' +
         '<div class="kundrisker-enkat-head">' +
-          '<h3>Från byråprofilen <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
-          '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
+          '<h3>Vilka är våra kunder</h3>' +
+          '<div class="kundrisker-enkat-head-links">' +
+            '<a class="kundrisker-enkat-edit" href="statistik-riskbedomning.html">Öppna all statistik</a>' +
+            '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
+          '</div>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Live-siffror och samma borrning som på statistiksidan finns ovan under <strong>Kundstock från Clientflow</strong>. Etiketter här är också klickbara. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Alla uppgifter från byråprofil-enkäten om vilka byråns kunder är — i samma chip- och sektionsformat som Statistik för riskbedömning. Där live-data finns används Clientflow-siffror (klickbara). Övriga enkät-svar visas som etiketter. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
@@ -692,14 +834,20 @@
     Promise.all([
       fetch(baseUrl() + '/api/byra/profil-schema', authOpts()),
       fetch(baseUrl() + '/api/byra/info', authOpts()),
+      fetch(baseUrl() + '/api/statistik-riskbedomning', authOpts()).catch(function () { return null; }),
       loadSkippedFromByraResa()
     ])
       .then(function (results) {
         var schemaRes = results[0];
         var profilRes = results[1];
+        var statRes = results[2];
         if (schemaRes.status === 401 || profilRes.status === 401) return null;
         if (!schemaRes.ok || !profilRes.ok) throw new Error('Kunde inte hämta byråprofilen');
-        return Promise.all([schemaRes.json(), profilRes.json()]);
+        var statPromise = Promise.resolve(null);
+        if (statRes && statRes.ok) {
+          statPromise = statRes.json().catch(function () { return null; });
+        }
+        return Promise.all([schemaRes.json(), profilRes.json(), statPromise]);
       })
       .then(function (data) {
         if (!data) return;
@@ -707,11 +855,11 @@
         var profilPayload = data[1] || {};
         var profil = profilPayload.fields || profilPayload || {};
         state.profil = profil;
+        state.clientflowStat = data[2] || null;
         var summary = buildSummary(profil, schema);
         if (!summary.hasAnswers) renderEmpty(root);
         else renderSummary(root, summary);
 
-        // När risklistan laddats om — uppdatera status/knappar.
         var tries = 0;
         var timer = setInterval(function () {
           tries += 1;
