@@ -9582,8 +9582,9 @@ app.get('/api/aml-kollen/runs', authenticateToken, async (req, res) => {
   }
 });
 
-// POST /api/aml-kollen/analyze – Ladda upp kontoutdrag + SIE och kör AML-kollen (auth)
-// Body: { customerId, bankFileBase64, bankFilename, sieFileBase64, sieFilename, relatedPartyNames? }
+// POST /api/aml-kollen/analyze – Ladda upp kontoutdrag och/eller SIE och kör AML-kollen (auth)
+// Body: { customerId, bankFileBase64?, bankFilename?, sieFileBase64?, sieFilename?, relatedPartyNames? }
+// Minst en av kontoutdrag eller SIE krävs.
 app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
   const KUNDDATA_TABLE = 'tblOIuLQS2DqmOQWe';
   try {
@@ -9598,8 +9599,14 @@ app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
     } = req.body || {};
 
     if (!customerId) return res.status(400).json({ error: 'customerId krävs' });
-    if (!bankFileBase64 || !bankFilename) return res.status(400).json({ error: 'bankFileBase64 och bankFilename krävs' });
-    if (!sieFileBase64 || !sieFilename) return res.status(400).json({ error: 'sieFileBase64 och sieFilename krävs' });
+    const uploadCheck = amlKollen.validateAmlKollenUploadInputs({
+      bankFilename,
+      bankFileBase64,
+      sieFilename,
+      sieFileBase64
+    });
+    if (!uploadCheck.ok) return res.status(400).json({ error: uploadCheck.error });
+    const { hasBank, hasSie } = uploadCheck;
 
     const airtableAccessToken = process.env.AIRTABLE_ACCESS_TOKEN;
     const airtableBaseId = process.env.AIRTABLE_BASE_ID || 'appPF8F7VvO5XYB50';
@@ -9607,20 +9614,26 @@ app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
 
     const { userData, customerRecord } = await assertCustomerAccess(req, customerId, { airtableAccessToken, baseId: airtableBaseId });
 
-    let bankBuf;
-    let sieBuf;
-    try { bankBuf = Buffer.from(String(bankFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig bankFileBase64' }); }
-    try { sieBuf = Buffer.from(String(sieFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig sieFileBase64' }); }
-    if (bankBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'Kontoutdraget är för stort. Max 12 MB.' });
-    if (sieBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'SIE-filen är för stor. Max 12 MB.' });
+    let bankBuf = null;
+    let sieBuf = null;
+    if (hasBank) {
+      try { bankBuf = Buffer.from(String(bankFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig bankFileBase64' }); }
+      if (!bankBuf.length) return res.status(400).json({ error: 'Kontoutdraget är tomt' });
+      if (bankBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'Kontoutdraget är för stort. Max 12 MB.' });
+    }
+    if (hasSie) {
+      try { sieBuf = Buffer.from(String(sieFileBase64), 'base64'); } catch (_) { return res.status(400).json({ error: 'Ogiltig sieFileBase64' }); }
+      if (!sieBuf.length) return res.status(400).json({ error: 'SIE-filen är tom' });
+      if (sieBuf.length > 12 * 1024 * 1024) return res.status(400).json({ error: 'SIE-filen är för stor. Max 12 MB.' });
+    }
 
     const manualRel = parseRelatedPartyNames(relatedPartyNames);
     const autoRel = deriveRelatedPartyNamesFromCustomer(customerRecord);
     const rel = [...new Set([...(autoRel || []), ...(manualRel || [])])].slice(0, 60);
     const analysis = await amlKollen.analyzeAmlKollenOnce({
       customer: customerRecord,
-      bankStatement: { buffer: bankBuf, filename: String(bankFilename) },
-      sieFile: { buffer: sieBuf, filename: String(sieFilename) },
+      bankStatement: hasBank ? { buffer: bankBuf, filename: String(bankFilename) } : null,
+      sieFile: hasSie ? { buffer: sieBuf, filename: String(sieFilename) } : null,
       relatedPartyNames: rel
     });
     if (!analysis.ok) return res.status(400).json({ error: analysis.error || 'Kunde inte analysera underlaget' });
@@ -9630,15 +9643,23 @@ app.post('/api/aml-kollen/analyze', authenticateToken, async (req, res) => {
 
     // 1) Ladda upp underlag som bilagor (så de syns i Dokumentation i samma vy som riskdokumentationen)
     const safeId = String(run.id).slice(0, 8);
-    const bankName = `aml-kollen_${dateIso}_${safeId}_kontoutdrag_${String(bankFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
-    const sieName = `aml-kollen_${dateIso}_${safeId}_sie_${String(sieFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
+    let bankAtt = null;
+    let sieAtt = null;
+    let bankName = null;
+    let sieName = null;
 
-    const bankAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
-      airtableAccessToken, airtableBaseId, customerId, bankBuf, bankName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
-    );
-    const sieAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
-      airtableAccessToken, airtableBaseId, customerId, sieBuf, sieName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
-    );
+    if (hasBank) {
+      bankName = `aml-kollen_${dateIso}_${safeId}_kontoutdrag_${String(bankFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
+      bankAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken, airtableBaseId, customerId, bankBuf, bankName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
+      );
+    }
+    if (hasSie) {
+      sieName = `aml-kollen_${dateIso}_${safeId}_sie_${String(sieFilename).replace(/[^\w.\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6-]+/g, '_')}`;
+      sieAtt = await uploadAttachmentToAirtableFieldReturnAttachment(
+        airtableAccessToken, airtableBaseId, customerId, sieBuf, sieName, 'application/octet-stream', KUNDDATA_TABLE, 'Dokumentation'
+      );
+    }
 
     const metaUpdates = {
       category: dokumentRiskSubkategori.AKTUELL_RISK_CATEGORY,
@@ -18738,7 +18759,7 @@ app.put('/api/kundformular/:customerId', authenticateToken, async (req, res) => 
   }
 });
 
-// GET /api/kundresa/:customerId – Lager C onboarding-status (sex steg + VH-gate)
+// GET /api/kundresa/:customerId – Lager C onboarding-status (steg + VH-gate; VH utelämnas för EF)
 app.get('/api/kundresa/:customerId', authenticateToken, async (req, res) => {
   try {
     const { customerId } = req.params;
