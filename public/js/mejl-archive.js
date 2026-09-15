@@ -1033,6 +1033,7 @@
       attachmentsHtml,
       bindDetailButtons,
       bindAttachmentActions,
+      openSaveWizard,
       getArchiveState: () => archiveState
     };
   }
