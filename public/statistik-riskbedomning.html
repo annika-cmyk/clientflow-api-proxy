@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260914statchips">
+    <link rel="stylesheet" href="styles.css?v=20260915kundstat">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -93,6 +93,11 @@
 
                     <div class="statistik-sections">
                         <section class="statistik-section">
+                            <h3><i class="fas fa-building"></i> Bolagsformer <span class="statistik-source-badge" title="Från kunduppgifter i Clientflow">Clientflow</span></h3>
+                            <p class="statistik-section-desc">Antal kunder per bolagsform. Klicka på en etikett för kundlista.</p>
+                            <div id="statistik-bolagsform-lista" class="stat-list"></div>
+                        </section>
+                        <section class="statistik-section">
                             <h3><i class="fas fa-chart-line"></i> Omsättning <span class="statistik-source-badge" title="Från kunduppgifter/KYC i Clientflow">Clientflow</span></h3>
                             <p class="statistik-section-desc">Antal kunder per omsättningsintervall. Klicka på en etikett för kundlista.</p>
                             <div id="statistik-omsattning-lista" class="stat-list"></div>
@@ -164,6 +169,6 @@
     <script src="js/risk-skala.js?v=1" defer></script>
     <script src="js/kund-bransch-aggregat.js?v=20260914drill" defer></script>
     <script src="js/statistik-kunder-modal.js?v=2" defer></script>
-    <script src="js/statistik-riskbedomning.js?v=9" defer></script>
+    <script src="js/statistik-riskbedomning.js?v=10" defer></script>
 </body>
 </html>

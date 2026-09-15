@@ -102,7 +102,7 @@
       pepRaw = Array.isArray(pepRaw) ? pepRaw.join(', ') : String(pepRaw || '').trim();
       if (!/^ja/i.test(pepRaw)) return escapeHtml(item.display);
       return (
-        '<button type="button" class="kundrisker-bransch-chip" ' +
+        '<button type="button" class="statistik-stat-chip" ' +
           'data-typ="pep-sanktion" ' +
           'data-titel="PEP eller anhörig till PEP" ' +
           'title="Klicka för kundlista från Clientflow">' +
@@ -117,11 +117,11 @@
     var rows = parseCounted(raw);
     if (!rows.length) return escapeHtml(item.display);
     return (
-      '<span class="kundrisker-enkat-chips">' +
+      '<div class="statistik-stat-chips">' +
       rows.map(function (r) {
         var label = r.count ? r.form + ' · ' + r.count : r.form;
         return (
-          '<button type="button" class="kundrisker-bransch-chip" ' +
+          '<button type="button" class="statistik-stat-chip" ' +
             'data-typ="' + escapeHtml(typ) + '" ' +
             'data-namn="' + escapeHtml(r.form) + '" ' +
             'data-titel="' + escapeHtml(r.form) + '" ' +
@@ -130,7 +130,7 @@
           '</button>'
         );
       }).join('') +
-      '</span>'
+      '</div>'
     );
   }
 
@@ -436,7 +436,7 @@
           '<h3>Från byråprofilen <span class="statistik-source-badge statistik-source-badge--byraprofil" title="Svar ni fyllt i byråprofil-enkäten">Byråprofil</span></h3>' +
           '<a class="kundrisker-enkat-edit" href="byra-profil-enkate.html?section=kundstock">Ändra i enkäten</a>' +
         '</div>' +
-        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Klicka på <strong>bransch</strong>, <strong>bolagsform</strong> eller <strong>PEP</strong> för kundlista från Clientflow. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
+        '<p class="kundrisker-enkat-lead">Svar från byråprofil-enkäten om kundstock och geografi. Live-siffror och samma borrning som på statistiksidan finns ovan under <strong>Kundstock från Clientflow</strong>. Etiketter här är också klickbara. Använd <strong>Analysera</strong> för analyskort, eller <strong>Avstå</strong> om ni medvetet hoppar över.</p>' +
         checklistSummaryHtml() +
         '<div class="kundrisker-enkat-groups">' + groupsHtml + '</div>' +
       '</div>';
@@ -455,7 +455,7 @@
       Modal.bindBranschTriggers(root);
       return;
     }
-    root.querySelectorAll('.kundrisker-bransch-chip').forEach(function (btn) {
+    root.querySelectorAll('.statistik-stat-chip, .kundrisker-bransch-chip').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
