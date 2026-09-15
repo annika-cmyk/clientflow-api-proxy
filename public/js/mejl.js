@@ -33,12 +33,27 @@
   }
 
   function kundkortLinkHtml(customerId, { compact } = {}) {
+    // Bakåtkompat: knappen används inte längre i listan/detaljrubrik.
     const href = kundkortUrl(customerId);
     if (!href) return '';
     if (compact) {
       return `<a class="mejl-kundkort-link" href="${esc(href)}" title="Öppna kundkort" data-kundkort-link="1"><i class="fas fa-id-card" aria-hidden="true"></i><span>Öppna kundkort</span></a>`;
     }
     return `<a class="btn btn-secondary btn-sm mejl-kundkort-btn" href="${esc(href)}" data-kundkort-link="1"><i class="fas fa-id-card" aria-hidden="true"></i> Öppna kundkort</a>`;
+  }
+
+  function customerNameLinkHtml(customerId, customerName, { detail } = {}) {
+    const name = String(customerName || '').trim() || 'Okänd kund';
+    const href = kundkortUrl(customerId);
+    if (!href) {
+      return detail
+        ? `<strong class="mejl-detail-title">${esc(name)}</strong>`
+        : `<span class="mejl-item-customer">${esc(name)}</span>`;
+    }
+    if (detail) {
+      return `<a class="mejl-detail-customer-link mejl-detail-title" href="${esc(href)}" title="Öppna kundkort" data-kundkort-link="1"><strong>${esc(name)}</strong></a>`;
+    }
+    return `<a class="mejl-item-customer-link" href="${esc(href)}" title="Öppna kundkort" data-kundkort-link="1">${esc(name)}</a>`;
   }
 
   function resolveMessageCustomerId(m, listMeta) {
@@ -125,6 +140,7 @@
     sendBtn: document.getElementById('mejl-send-btn'),
     sendStatus: document.getElementById('mejl-send-status'),
     folderInbox: document.getElementById('mejl-folder-inbox'),
+    folderOpen: document.getElementById('mejl-folder-open'),
     folderSent: document.getElementById('mejl-folder-sent'),
     folderShared: document.getElementById('mejl-folder-shared'),
     syncStatus: document.getElementById('mejl-sync-status'),
@@ -167,6 +183,9 @@
     : null;
   const handleStatusApi = (window.MejlHandleStatus && MejlHandleStatus.createApi)
     ? MejlHandleStatus.createApi()
+    : null;
+  const hiddenMessagesApi = (window.MejlHidden && MejlHidden.createApi)
+    ? MejlHidden.createApi()
     : null;
 
   function labelChipHtml(label, opts) {
@@ -258,6 +277,7 @@
 
   function setFolderUi() {
     if (els.folderInbox) els.folderInbox.classList.toggle('is-active', folder === 'inbox');
+    if (els.folderOpen) els.folderOpen.classList.toggle('is-active', folder === 'open');
     if (els.folderSent) els.folderSent.classList.toggle('is-active', folder === 'sent');
     if (els.folderShared) {
       els.folderShared.classList.toggle('is-active', folder === 'shared');
@@ -401,9 +421,33 @@
     };
   }
 
+  function isUnderlagRecipient(m) {
+    const headers = [m && m.to, m && m.cc, m && m.deliveredTo].filter(Boolean).join(' ');
+    return /(?:^|[\s,<])underlag@/i.test(String(headers || ''));
+  }
+
+  function isClientHidden(m) {
+    if (!m || !m.id) return false;
+    if (isUnderlagRecipient(m)) return true;
+    if (hiddenMessagesApi && hiddenMessagesApi.isHidden(m.id)) return true;
+    return false;
+  }
+
+  function isUnhandled(m) {
+    if (!m || !m.id) return true;
+    if (!handleStatusApi) return true;
+    return handleStatusApi.get(m.id) !== 'handled';
+  }
+
   function displayedMessages() {
-    if (folder === 'shared') return sharedMessages;
-    return messages;
+    if (folder === 'shared') {
+      return (sharedMessages || []).filter((m) => !isClientHidden(m));
+    }
+    let list = (messages || []).filter((m) => !isClientHidden(m));
+    if (folder === 'open') {
+      list = list.filter((m) => isUnhandled(m) && !isSharedListId(m.id));
+    }
+    return list;
   }
 
   function renderList(extraHtml) {
@@ -411,6 +455,7 @@
     if (!list.length) {
       let empty = 'Inga mejl hittades under etiketten KUNDER.';
       if (folder === 'sent') empty = 'Inga skickade mejl under etiketten KUNDER.';
+      if (folder === 'open') empty = 'Inga öppna (ohanerade) mejl just nu.';
       if (folder === 'shared') {
         empty =
           status && status.connected
@@ -427,7 +472,7 @@
         .map((m) => {
           const customer = String(m.customerName || '').trim() || 'Okänd kund';
           const cid = resolveMessageCustomerId(m);
-          const kundkortLink = kundkortLinkHtml(cid, { compact: true });
+          const customerLink = customerNameLinkHtml(cid, customer);
           const sender = fromDisplayName(m);
           const handleCls =
             handleStatusApi && !isSharedListId(m.id)
@@ -442,8 +487,7 @@
       <div class="mejl-item${m.id === activeId ? ' is-active' : ''}${handleClass}" data-id="${esc(m.id)}" role="button" tabindex="0">
         <div class="mejl-item-top">
           <div class="mejl-item-customer-row">
-            <span class="mejl-item-customer">${esc(customer)}</span>
-            ${kundkortLink}
+            ${customerLink}
           </div>
           <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
         </div>
@@ -542,7 +586,7 @@
   async function fetchInbox(mode) {
     const customerId = els.filter.value || '';
     const params = new URLSearchParams();
-    params.set('folder', folder);
+    params.set('folder', folder === 'open' ? 'inbox' : folder);
     params.set('mode', mode || 'sync');
     if (customerId) params.set('customerId', customerId);
     const res = await fetch(`${baseUrl}/api/gmail/inbox?${params}`, authOpts());
@@ -637,21 +681,23 @@
   }
 
   async function trashMessage(id) {
-    if (!confirm('Flytta mejlet till papperskorgen i Gmail?')) return;
-    const res = await fetch(`${baseUrl}/api/gmail/messages/${encodeURIComponent(id)}/trash`, {
-      method: 'POST',
-      ...authOpts(),
-      body: '{}'
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      showToast(data.error || 'Kunde inte radera mejlet', 'error');
+    if (
+      !confirm(
+        'Ta bort mejlet från ClientFlow-listan?\n\nDet raderas inte i Gmail — du ser det kvar där.'
+      )
+    ) {
       return;
     }
-    showToast('Mejlet flyttades till papperskorgen.', 'success');
+    if (hiddenMessagesApi) {
+      hiddenMessagesApi.hide(id);
+    } else {
+      showToast('Kunde inte dölja mejlet lokalt.', 'error');
+      return;
+    }
+    showToast('Mejlet togs bort från listan (finns kvar i Gmail).', 'success');
     activeId = null;
     els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
-    await loadInbox();
+    renderList();
   }
 
   function applyLabelResultToList(id, data) {
@@ -961,7 +1007,7 @@
       (m.matchReason === 'link' ? m.customerId : '') ||
       '';
     const hasLink = !!(m.labelLink && m.labelLink.kundId) || m.matchReason === 'link';
-    const kundkortBtn = kundkortLinkHtml(detailCustomerId);
+    const customerTitleHtml = customerNameLinkHtml(detailCustomerId, customerName || title, { detail: true });
     const labelsOpen = isLabelsPanelOpen();
     const labelsToggleHtml = isShared
       ? ''
@@ -972,8 +1018,8 @@
         <button type="button" class="btn btn-secondary btn-sm" id="mejl-reply-btn">
           <i class="fas fa-reply"></i> Svara
         </button>
-        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn">
-          <i class="fas fa-trash"></i> Radera
+        <button type="button" class="btn btn-secondary btn-sm btn-danger-outline" id="mejl-trash-btn" title="Tas bort från ClientFlow, inte från Gmail">
+          <i class="fas fa-eye-slash"></i> Ta bort från listan
         </button>
       </div>`;
     const labelsBlockHtml = isShared
@@ -1028,8 +1074,7 @@
     els.detail.innerHTML = `
       <div class="mejl-item-top">
         <div class="mejl-detail-title-row">
-          <strong class="mejl-detail-title">${esc(title)}</strong>
-          ${kundkortBtn}
+          ${customerTitleHtml}
           ${labelsToggleHtml}
         </div>
         <span class="mejl-item-date">${esc(fmtDate(m.internalDate || m.date))}</span>
@@ -1641,17 +1686,30 @@
 
   function onFolderClick(next) {
     if (folder === next) return;
-    if ((next === 'inbox' || next === 'sent') && !(status && status.connected)) {
-      showToast('Koppla Gmail för att öppna Inkorg/Skickat. Delade mejl finns under «Delat med mig».', 'error');
+    if ((next === 'inbox' || next === 'sent' || next === 'open') && !(status && status.connected)) {
+      showToast('Koppla Gmail för att öppna Inkorg/öppna/Skickat. Delade mejl finns under «Delat med mig».', 'error');
       folder = 'shared';
       setFolderUi();
       loadInbox();
       return;
     }
     folder = next;
+    // "open" filtrerar lokalt bland inbox-data
+    if (next === 'open') {
+      setFolderUi();
+      // återanvänd senaste inbox-data; hämta om tomt
+      if (!messages.length) loadInbox();
+      else {
+        activeId = null;
+        els.detail.innerHTML = '<p class="mejl-detail-empty">Välj ett mejl till vänster.</p>';
+        renderList();
+      }
+      return;
+    }
     loadInbox();
   }
   if (els.folderInbox) els.folderInbox.addEventListener('click', () => onFolderClick('inbox'));
+  if (els.folderOpen) els.folderOpen.addEventListener('click', () => onFolderClick('open'));
   if (els.folderSent) els.folderSent.addEventListener('click', () => onFolderClick('sent'));
   if (els.folderShared) els.folderShared.addEventListener('click', () => onFolderClick('shared'));
 
