@@ -1094,6 +1094,8 @@
         html: m.html || '',
         onRefresh: () => openMessage(id)
       });
+    } else if (!isShared && archiveApi && gmailMessageIdForArchive) {
+      archiveApi.bindAttachmentActions(gmailMessageIdForArchive, m.attachments);
     }
   }
 
