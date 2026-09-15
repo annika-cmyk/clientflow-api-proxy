@@ -11,6 +11,11 @@
     console.error('Kalender: saknar kalender-view.js');
     return;
   }
+  const KE = window.KalenderEvents;
+  if (!KE || typeof KE.buildEventsFromRuns !== 'function') {
+    console.error('Kalender: saknar kalender-events.js');
+    return;
+  }
 
   const baseUrl = (window.apiConfig && window.apiConfig.baseUrl) || 'http://localhost:3001';
   const authOpts = () => (window.AuthManager && AuthManager.getAuthFetchOptions
@@ -70,9 +75,6 @@
   function toDate(iso) {
     const s = String(iso || '').slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
-  }
-  function ym(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
   function today() { return KV.dateIso(new Date()); }
   function safeJson(raw, fb) {
@@ -147,183 +149,20 @@
     return 'Planerad';
   }
 
-  function indexRuns(runs) {
-    const map = new Map();
-    (runs || []).forEach((rr) => {
-      const id = String(rr?.fields?.['Uppdrag ID'] || '').trim();
-      if (!id) return;
-      const arr = map.get(id) || [];
-      arr.push(rr);
-      map.set(id, arr);
-    });
-    return map;
-  }
-
-  function addMonths(iso, n) {
-    const s = toDate(iso);
-    if (!s) return '';
-    const [y, m, d] = s.split('-').map(Number);
-    const base = new Date(y, m - 1 + n, 1);
-    const last = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
-    const day = Math.min(d, last);
-    const out = new Date(base.getFullYear(), base.getMonth(), day);
-    return `${out.getFullYear()}-${String(out.getMonth() + 1).padStart(2, '0')}-${String(out.getDate()).padStart(2, '0')}`;
-  }
-
   function buildEvents() {
-    const runsById = indexRuns(runRecords);
-    const map = new Map();
-    const range = KV.visibleRange(view, focus);
-    const rangeStart = KV.parseIso(range.start) || focus;
-    const rangeEnd = KV.parseIso(range.end) || focus;
-    const horizonStart = new Date(rangeStart.getFullYear(), rangeStart.getMonth() - 1, 1);
-    const horizonEnd = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() + 2, 1);
-    const todayYm = ym(new Date());
-
-    const put = (rec, opts) => {
-      const dl = toDate(opts.deadline);
-      if (!dl) return;
-      const pk = String(opts.periodKey || dl.slice(0, 7)).trim();
-      const key = `${rec.id}:${pk}`;
-      const status = String(opts.status || '').trim();
-      const prev = map.get(key);
-      if (!prev) {
-        map.set(key, {
-          key,
-          record: rec,
-          runRec: opts.runRec || null,
-          typ: String(rec.fields?.['Typ'] || opts.typ || ''),
-          deadline: dl,
-          startDate: toDate(opts.startDate) || '',
-          periodKey: pk,
-          periodLabel: String(opts.periodLabel || '').trim(),
-          status: status || 'Planerad',
-          scheduledStart: String(opts.scheduledStart || '').trim(),
-          scheduledEnd: String(opts.scheduledEnd || '').trim(),
-          inRange: false
-        });
-      } else {
-        if (!prev.runRec && opts.runRec) prev.runRec = opts.runRec;
-        if (status === 'Klar') prev.status = 'Klar';
-        else if ((!prev.status || prev.status === 'Planerad') && status) prev.status = status;
-        if (!prev.periodLabel && opts.periodLabel) prev.periodLabel = String(opts.periodLabel);
-        if (!prev.startDate && opts.startDate) prev.startDate = toDate(opts.startDate);
-        if (!prev.scheduledStart && opts.scheduledStart) prev.scheduledStart = String(opts.scheduledStart).trim();
-        if (!prev.scheduledEnd && opts.scheduledEnd) prev.scheduledEnd = String(opts.scheduledEnd).trim();
-      }
-      const cur = map.get(key);
-      cur.inRange = KV.inVisibleRangeForEvent(cur.deadline, cur.scheduledStart, range);
-    };
-
-    (records || []).forEach((r) => {
-      const f = r.fields || {};
-      const typ = String(f['Typ'] || '');
-      const freq = String(f['Frekvens'] || '');
-      const refDl = toDate(f['Nästa deadline'] || '');
-      const refSt = toDate(f['Startdatum'] || '');
-
-      (runsById.get(String(r.id || '').trim()) || []).forEach((rr) => {
-        const ff = rr.fields || {};
-        if (typ && String(ff['Typ'] || '').trim() && String(ff['Typ'] || '').trim() !== typ) return;
-        const pk = String(ff['PeriodKey'] || '').trim();
-        let dl = toDate(ff['Deadline'] || '');
-        if (typ === 'Momsredovisning' && window.MomsPeriod && pk) {
-          dl = MomsPeriod.deadlineIsoFromPeriodKey(pk, freq) || dl;
-        }
-        if (!dl && !pk) return;
-        let st = toDate(ff['Startdatum'] || '');
-        if (typ === 'Momsredovisning' && window.MomsPeriod && pk) {
-          st = MomsPeriod.startIsoFromPeriodKey(pk, freq) || st;
-        }
-        if (isLone(typ) && window.LonePeriod && pk && !st) {
-          st = LonePeriod.startIsoFromPeriodKey(pk, typ, refSt || dl) || '';
-        }
-        const label = String(ff['Period Label'] || '').trim()
-          || (typ === 'Momsredovisning' && window.MomsPeriod && pk ? MomsPeriod.displayLabel(pk, freq) : '')
-          || (isLone(typ) && window.LonePeriod && pk ? LonePeriod.displayLabel(pk, typ) : '');
-        put(r, {
-          typ, periodKey: pk || (dl ? dl.slice(0, 7) : ''), deadline: dl,
-          startDate: st, periodLabel: label, status: String(ff['Status'] || '').trim(), runRec: rr,
-          scheduledStart: ff['Planerad start'] || '',
-          scheduledEnd: ff['Planerad slut'] || ''
-        });
-      });
-
-      const hist = safeJson(String(f['Historik'] || '').trim(), []);
-      if (Array.isArray(hist)) {
-        hist.forEach((h) => {
-          const pk = String(h?.periodKey || '').trim();
-          if (!pk) return;
-          let dl = toDate(h?.deadline);
-          if (!dl && typ === 'Momsredovisning' && window.MomsPeriod) {
-            dl = MomsPeriod.deadlineIsoFromPeriodKey(pk, freq) || '';
-          }
-          if (!dl && isLone(typ) && window.LonePeriod) {
-            dl = LonePeriod.deadlineIsoFromPeriodKey(pk, typ, refDl) || '';
-          }
-          if (!dl && /^\d{4}-\d{2}$/.test(pk)) dl = `${pk}-15`;
-          if (!dl && /^\d{4}-\d{2}-\d{2}$/.test(pk)) dl = pk;
-          put(r, { typ, periodKey: pk, deadline: dl, status: String(h?.status || '').trim() });
-        });
-      }
-
-      if (isLone(typ) && window.LonePeriod && refDl) {
-        LonePeriod.runsThroughHorizon(refSt || refDl, refDl, typ, todayYm).forEach((run) => {
-          put(r, {
-            typ, periodKey: run.periodKey, deadline: run.deadlineIso,
-            startDate: run.startIso, periodLabel: run.periodLabel
-          });
-        });
-        return;
-      }
-
-      if (typ === 'Momsredovisning' && window.MomsPeriod
-        && (MomsPeriod.isMonthlyFreq(freq) || MomsPeriod.isQuarterlyFreq(freq))) {
-        const first = MomsPeriod.inferFirstPeriod(f, freq);
-        if (first) {
-          MomsPeriod.runsThroughHorizon(first, freq, todayYm).forEach((run) => {
-            put(r, {
-              typ, periodKey: run.periodKey, deadline: run.deadlineIso,
-              startDate: run.startIso, periodLabel: run.periodLabel
-            });
-          });
-          return;
-        }
-      }
-
-      if (!refDl) return;
-      const fl = freq.toLowerCase();
-      let step = 1;
-      if (fl.includes('kvartal')) step = 3;
-      else if (fl.includes('årsvis') || (fl.includes('år') && !fl.includes('månad'))) step = 12;
-      else if (fl.includes('veck') || fl.includes('engång')) step = 0;
-
-      if (step === 0) {
-        put(r, { typ, periodKey: refDl.slice(0, 7), deadline: refDl, startDate: refSt });
-        return;
-      }
-
-      let d = refDl;
-      for (let i = 0; i < 36; i++) {
-        if (!d) break;
-        const dm = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, 1);
-        if (dm > horizonEnd) break;
-        if (dm >= horizonStart) {
-          put(r, { typ, periodKey: d.slice(0, 7), deadline: d, startDate: refSt });
-        }
-        d = addMonths(d, step);
-      }
-      d = refDl;
-      for (let i = 0; i < 24; i++) {
-        d = addMonths(d, -step);
-        if (!d) break;
-        const dm = new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, 1);
-        if (dm < horizonStart) break;
-        put(r, { typ, periodKey: d.slice(0, 7), deadline: d, startDate: refSt });
+    // Endast riktiga Uppdragskörningar — inte föräldra-uppdrag / historik / syntetiska perioder.
+    return KE.buildEventsFromRuns({
+      records,
+      runRecords,
+      range: KV.visibleRange(view, focus),
+      helpers: {
+        MomsPeriod: window.MomsPeriod || null,
+        LonePeriod: window.LonePeriod || null,
+        isLone,
+        inVisibleRangeForEvent: (deadline, scheduledStart, range) =>
+          KV.inVisibleRangeForEvent(deadline, scheduledStart, range)
       }
     });
-
-    return Array.from(map.values());
   }
 
   function searchMatch(rec) {
