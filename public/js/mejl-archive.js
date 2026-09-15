@@ -311,15 +311,18 @@
       return { ...opts, method: 'GET', headers };
     }
 
-    function attachmentUrl(messageId, attachmentId, disposition) {
+    function attachmentUrl(messageId, attachmentId, disposition, extra) {
+      const q = new URLSearchParams();
+      q.set('attachmentId', String(attachmentId || ''));
+      q.set('disposition', disposition || 'attachment');
+      if (extra && extra.filename) q.set('filename', String(extra.filename));
+      if (extra && extra.mimeType) q.set('mimeType', String(extra.mimeType));
       return (
         baseUrl +
         '/api/gmail/messages/' +
         encodeURIComponent(messageId) +
-        '/attachments/' +
-        encodeURIComponent(attachmentId) +
-        '?disposition=' +
-        encodeURIComponent(disposition || 'attachment')
+        '/attachment?' +
+        q.toString()
       );
     }
 
@@ -382,9 +385,12 @@
       return root;
     }
 
-    async function fetchAttachmentBlob(messageId, attachmentId, disposition) {
+    async function fetchAttachmentBlob(messageId, att, disposition) {
       const res = await fetch(
-        attachmentUrl(messageId, attachmentId, disposition),
+        attachmentUrl(messageId, att.attachmentId, disposition, {
+          filename: att.filename,
+          mimeType: att.mimeType
+        }),
         attachmentAuthFetch()
       );
       if (!res.ok) {
@@ -404,7 +410,7 @@
       const body = document.getElementById('mejl-att-preview-body');
       const dl = document.getElementById('mejl-att-preview-dl');
       try {
-        const blob = await fetchAttachmentBlob(messageId, att.attachmentId, 'inline');
+        const blob = await fetchAttachmentBlob(messageId, att, 'inline');
         const type = guessPreviewType(filename, att.mimeType || blob.type);
         const objectUrl = URL.createObjectURL(blob);
         modal._objectUrl = objectUrl;
@@ -464,7 +470,7 @@
     async function downloadAttachment(messageId, att) {
       const filename = att.filename || 'bilaga';
       try {
-        const blob = await fetchAttachmentBlob(messageId, att.attachmentId, 'attachment');
+        const blob = await fetchAttachmentBlob(messageId, att, 'attachment');
         const objectUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = objectUrl;
@@ -483,24 +489,34 @@
       }
     }
 
-    function bindAttachmentActions(messageId) {
+    function bindAttachmentActions(messageId, attachments) {
       const root = document.querySelector('.mejl-atts');
       if (!root || !messageId) return;
+      const byId = new Map();
+      (Array.isArray(attachments) ? attachments : []).forEach((a) => {
+        if (a && a.attachmentId) byId.set(String(a.attachmentId), a);
+      });
       root.querySelectorAll('[data-mejl-att-preview]').forEach((btn) => {
         btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-att-id') || '';
+          const fromList = byId.get(id);
           previewAttachment(messageId, {
-            attachmentId: btn.getAttribute('data-att-id'),
-            filename: btn.getAttribute('data-filename'),
-            mimeType: btn.getAttribute('data-mime')
+            attachmentId: (fromList && fromList.attachmentId) || id,
+            filename:
+              (fromList && fromList.filename) || btn.getAttribute('data-filename') || 'bilaga',
+            mimeType: (fromList && fromList.mimeType) || btn.getAttribute('data-mime') || ''
           });
         });
       });
       root.querySelectorAll('[data-mejl-att-download]').forEach((btn) => {
         btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-att-id') || '';
+          const fromList = byId.get(id);
           downloadAttachment(messageId, {
-            attachmentId: btn.getAttribute('data-att-id'),
-            filename: btn.getAttribute('data-filename'),
-            mimeType: btn.getAttribute('data-mime')
+            attachmentId: (fromList && fromList.attachmentId) || id,
+            filename:
+              (fromList && fromList.filename) || btn.getAttribute('data-filename') || 'bilaga',
+            mimeType: (fromList && fromList.mimeType) || btn.getAttribute('data-mime') || ''
           });
         });
       });
@@ -1007,7 +1023,7 @@
           }, onRefresh)
         );
       }
-      bindAttachmentActions(id);
+      bindAttachmentActions(id, message && message.attachments);
     }
 
     return {
