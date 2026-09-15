@@ -20566,6 +20566,101 @@ async function deleteUppdragRunsAfterDate({ airtableToken, baseId, uppdragId, en
   return { deleted };
 }
 
+/**
+ * Skapa saknade singleSelect-val via typecast på en befintlig rad
+ * (Meta API saknar ofta schema.bases:write i PAT).
+ */
+async function seedUppdragSelectChoicesViaTypecast(airtableToken, baseId, fieldName, missingNames) {
+  const missing = (missingNames || []).map((x) => String(x || '').trim()).filter(Boolean);
+  if (!missing.length) return { ok: true, updated: false };
+  const tableRef = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
+  const listUrl = `https://api.airtable.com/v0/${baseId}/${tableRef}`;
+  const headers = { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' };
+  const listRes = await axios.get(listUrl, {
+    headers: { Authorization: `Bearer ${airtableToken}` },
+    params: { maxRecords: 1, fields: [fieldName] },
+    timeout: 10000
+  });
+  const sample = (listRes.data.records || [])[0];
+  if (!sample?.id) return { ok: false, reason: `Ingen Uppdrag-rad att typecasta ${fieldName} mot`, missing };
+  const prev = sample.fields?.[fieldName];
+  for (const name of missing) {
+    // eslint-disable-next-line no-await-in-loop
+    await axios.patch(
+      `${listUrl}/${sample.id}`,
+      { fields: { [fieldName]: name }, typecast: true },
+      { headers, timeout: 10000 }
+    );
+  }
+  if (prev != null && prev !== '') {
+    await axios.patch(
+      `${listUrl}/${sample.id}`,
+      { fields: { [fieldName]: prev }, typecast: true },
+      { headers, timeout: 10000 }
+    );
+  } else {
+    try {
+      await axios.patch(
+        `${listUrl}/${sample.id}`,
+        { fields: { [fieldName]: null } },
+        { headers, timeout: 10000 }
+      );
+    } catch (_) {}
+  }
+  return { ok: true, updated: true, added: missing, via: 'typecast' };
+}
+
+function isAirtableSelectOptionError(msg) {
+  return /insufficient permissions to create new select option|INVALID_MULTIPLE_CHOICE|cannot create new select|create new select option|select option/i.test(
+    String(msg || '')
+  );
+}
+
+function friendlyUppdragSelectOptionError(msg) {
+  const m = String(msg || '');
+  const opt = (m.match(/select option\s*[""]?([^""]+)[""]?/i) || [])[1];
+  const label = opt ? `«${opt.trim()}»` : 'ett obligatoriskt val';
+  return (
+    `Airtable saknar ${label} i Uppdrag-tabellen (Typ/Frekvens/Status). ` +
+    `Lägg till valet i Airtable eller kör «Installera/uppdatera Airtable för Uppdrag» ` +
+    `med en token som har schema.bases:write. (${m})`
+  );
+}
+
+
+function buildSelectChoicesPreservingIds(existingChoiceObjs, desiredNames) {
+  const existing = Array.isArray(existingChoiceObjs) ? existingChoiceObjs : [];
+  const desired = (desiredNames || []).map((n) => String(n || '').trim()).filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const c of existing) {
+    const name = String(c?.name || '').trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const entry = { name };
+    if (c.id) entry.id = c.id;
+    if (c.color) entry.color = c.color;
+    out.push(entry);
+  }
+  for (const name of desired) {
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name });
+  }
+  return out;
+}
+
+function findSelectChoiceName(existingChoiceObjs, wanted) {
+  const w = String(wanted || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!w) return '';
+  for (const c of existingChoiceObjs || []) {
+    const name = String(c?.name || '').trim();
+    if (!name) continue;
+    if (name.toLowerCase().replace(/\s+/g, ' ') === w) return name;
+  }
+  return '';
+}
+
 async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
   try {
     const t = tableMeta || await getUppdragTableMeta(airtableToken, baseId);
@@ -20574,21 +20669,36 @@ async function ensureUppdragTypChoices(airtableToken, baseId, tableMeta) {
     if (!typField || !typField.id) return { ok: false, reason: 'Fältet "Typ" saknas' };
 
     const desired = UPPDRAG_TYP_CHOICES.map(c => c.name);
-    const current = (typField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
-    const missing = desired.filter(x => !current.includes(x));
+    const currentChoices = typField.options?.choices || [];
+    const current = currentChoices.map(c => (c?.name || '').trim()).filter(Boolean);
+    const currentNorm = new Set(current.map((n) => n.toLowerCase()));
+    const missing = desired.filter((x) => !currentNorm.has(String(x).toLowerCase()));
     if (!missing.length) return { ok: true, updated: false };
 
-    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
-    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
-    await axios.patch(patchUrl, {
-      name: 'Typ',
-      type: 'singleSelect',
-      options: { choices }
-    }, {
-      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
-      timeout: 10000
-    });
-    return { ok: true, updated: true, added: missing };
+    try {
+      const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${typField.id}`;
+      // Behåll id på befintliga val – annars kan Airtable neka patch (ser ut som delete/recreate).
+      const choices = buildSelectChoicesPreservingIds(currentChoices, desired);
+      await axios.patch(patchUrl, {
+        name: 'Typ',
+        type: 'singleSelect',
+        options: { choices }
+      }, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      return { ok: true, updated: true, added: missing };
+    } catch (metaErr) {
+      // Fallback: skapa val via typecast (samma mönster som Status).
+      const seeded = await seedUppdragSelectChoicesViaTypecast(airtableToken, baseId, 'Typ', missing);
+      if (seeded.ok) return seeded;
+      const msg = metaErr.response?.data?.error?.message || metaErr.message;
+      return {
+        ok: false,
+        reason: seeded.reason || msg || 'Kunde inte uppdatera typ-val',
+        missing
+      };
+    }
   } catch (e) {
     const msg = e.response?.data?.error?.message || e.message;
     return { ok: false, reason: msg || 'Kunde inte uppdatera typ-val' };
@@ -20604,21 +20714,34 @@ async function ensureUppdragFrekvensChoices(airtableToken, baseId, tableMeta) {
     if ((freqField.type || '') !== 'singleSelect') return { ok: true, updated: false, skipped: 'not_select' };
 
     const desired = UPPDRAG_FREKVENS_CHOICES.map(c => c.name);
-    const current = (freqField.options?.choices || []).map(c => (c?.name || '').trim()).filter(Boolean);
-    const missing = desired.filter(x => !current.includes(x));
+    const currentChoices = freqField.options?.choices || [];
+    const current = currentChoices.map(c => (c?.name || '').trim()).filter(Boolean);
+    const currentNorm = new Set(current.map((n) => n.toLowerCase()));
+    const missing = desired.filter((x) => !currentNorm.has(String(x).toLowerCase()));
     if (!missing.length) return { ok: true, updated: false };
 
-    const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${freqField.id}`;
-    const choices = Array.from(new Set(current.concat(desired))).map(name => ({ name }));
-    await axios.patch(patchUrl, {
-      name: 'Frekvens',
-      type: 'singleSelect',
-      options: { choices }
-    }, {
-      headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
-      timeout: 10000
-    });
-    return { ok: true, updated: true, added: missing };
+    try {
+      const patchUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${t.id}/fields/${freqField.id}`;
+      const choices = buildSelectChoicesPreservingIds(currentChoices, desired);
+      await axios.patch(patchUrl, {
+        name: 'Frekvens',
+        type: 'singleSelect',
+        options: { choices }
+      }, {
+        headers: { Authorization: `Bearer ${airtableToken}`, 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+      return { ok: true, updated: true, added: missing };
+    } catch (metaErr) {
+      const seeded = await seedUppdragSelectChoicesViaTypecast(airtableToken, baseId, 'Frekvens', missing);
+      if (seeded.ok) return seeded;
+      const msg = metaErr.response?.data?.error?.message || metaErr.message;
+      return {
+        ok: false,
+        reason: seeded.reason || msg || 'Kunde inte uppdatera frekvens-val',
+        missing
+      };
+    }
   } catch (e) {
     const msg = e.response?.data?.error?.message || e.message;
     return { ok: false, reason: msg || 'Kunde inte uppdatera frekvens-val' };
@@ -21591,11 +21714,26 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
     const tableIdOrName = process.env.AIRTABLE_TABLE_UPPDRAG_ID || encodeURIComponent(UPPDRAG_TABLE_NAME);
     const { customerId, typ, fields: rawFields, uppdragId } = req.body || {};
     if (!customerId || !typ) return res.status(400).json({ error: 'customerId och typ krävs' });
-    try {
-      await ensureUppdragTypChoices(airtableAccessToken, airtableBaseId);
-      await ensureUppdragFrekvensChoices(airtableAccessToken, airtableBaseId);
-    } catch (_) {}
-
+    const typEnsure = await ensureUppdragTypChoices(airtableAccessToken, airtableBaseId);
+    const freqEnsure = await ensureUppdragFrekvensChoices(airtableAccessToken, airtableBaseId);
+    try { await ensureUppdragStatusChoices(airtableAccessToken, airtableBaseId); } catch (_) {}
+    if (typEnsure && typEnsure.ok === false) {
+      console.warn('ensureUppdragTypChoices:', typEnsure.reason || typEnsure);
+      // Best-effort: seed just this typ via typecast before create
+      try {
+        await seedUppdragSelectChoicesViaTypecast(airtableAccessToken, airtableBaseId, 'Typ', [typ]);
+      } catch (e) {
+        console.warn('seed Typ before create:', e.message);
+      }
+    }
+    if (freqEnsure && freqEnsure.ok === false) {
+      console.warn('ensureUppdragFrekvensChoices:', freqEnsure.reason || freqEnsure);
+      try {
+        await seedUppdragSelectChoicesViaTypecast(airtableAccessToken, airtableBaseId, 'Frekvens', ['Engång']);
+      } catch (e) {
+        console.warn('seed Frekvens before create:', e.message);
+      }
+    }
     const userData = await getUser(req.user.email);
     const byraId = userData?.byraId ? String(userData.byraId).replace(/,/g, '') : '';
     try {
@@ -21736,16 +21874,54 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       return res.json({ record, updated: true, warning, runsEnsure, rutinPropagate });
     }
 
-    const write = async (payloadFields) => {
+    const write = async (payloadFields, { typecast = false } = {}) => {
+      const body = typecast ? { fields: payloadFields, typecast: true } : { fields: payloadFields };
       const createRes = await axios.post(
         `https://api.airtable.com/v0/${airtableBaseId}/${tableIdOrName}`,
-        // Skicka inte default för singleSelect-fält (Airtable kan annars försöka skapa nytt val och neka)
-        { fields: payloadFields },
+        // typecast: true skapar saknade select-val när token tillåter det
+        body,
         { headers: { Authorization: `Bearer ${airtableAccessToken}`, 'Content-Type': 'application/json' } }
       );
       return createRes.data;
     };
-    const record = await tryWriteWithFallback(write);
+    // Eget uppdrag / Engång saknas ofta i äldre baser – typecast direkt så create
+    // inte först failar med 422 "Insufficient permissions to create new select option".
+    const preferTypecast =
+      UppdragTyp.isEgetUppdragTyp(typ) ||
+      String(fields.Frekvens || '').trim() === 'Engång';
+    let record;
+    try {
+      record = await tryWriteWithFallback((payload) => write(payload, { typecast: preferTypecast }));
+    } catch (createErr) {
+      const cmsg = createErr.response?.data?.error?.message || createErr.message || '';
+      if (!isAirtableSelectOptionError(cmsg)) throw createErr;
+      // Försök seed:a Typ/Frekvens/Status och skriv om med typecast.
+      const need = [];
+      if (fields.Typ) need.push(['Typ', [fields.Typ]]);
+      if (fields.Frekvens) need.push(['Frekvens', [fields.Frekvens]]);
+      if (fields.Status) need.push(['Status', [fields.Status]]);
+      for (const [fname, vals] of need) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await seedUppdragSelectChoicesViaTypecast(airtableAccessToken, airtableBaseId, fname, vals);
+        } catch (seedErr) {
+          console.warn('seed select', fname, seedErr.message);
+        }
+      }
+      try {
+        await ensureUppdragTypChoices(airtableAccessToken, airtableBaseId);
+        await ensureUppdragFrekvensChoices(airtableAccessToken, airtableBaseId);
+        await ensureUppdragStatusChoices(airtableAccessToken, airtableBaseId);
+      } catch (_) {}
+      try {
+        record = await tryWriteWithFallback((payload) => write(payload, { typecast: true }));
+      } catch (retryErr) {
+        const rmsg = retryErr.response?.data?.error?.message || retryErr.message || cmsg;
+        const err = new Error(friendlyUppdragSelectOptionError(rmsg));
+        err.response = { status: 422, data: { error: { message: err.message } } };
+        throw err;
+      }
+    }
     const warning = record && record.__clientflow_warning;
     if (warning) delete record.__clientflow_warning;
     let runsEnsure = null;
@@ -21769,6 +21945,12 @@ app.post('/api/uppdrag', authenticateToken, async (req, res) => {
       return res.status(500).json({
         error: 'Uppdrag-tabellen i Airtable saknar fält (t.ex. "Kund ID" och "Typ"). Skapa/uppdatera tabellen via /api/setup/airtable-uppdrag (kräver schema-token).',
         details: msg
+      });
+    }
+    if (isAirtableSelectOptionError(msg)) {
+      return res.status(422).json({
+        error: friendlyUppdragSelectOptionError(msg),
+        airtableError: error.response?.data
       });
     }
     res.status(status).json({ error: msg, airtableError: error.response?.data });
