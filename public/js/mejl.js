@@ -429,20 +429,6 @@
           const cid = resolveMessageCustomerId(m);
           const kundkortLink = kundkortLinkHtml(cid, { compact: true });
           const sender = fromDisplayName(m);
-          const kunderOnly = (m.labels || []).filter((l) => l && l.isKunderChild);
-          const labelHtml = kunderOnly.length
-            ? renderLabelChips(kunderOnly)
-            : m.labelLeaf
-              ? renderLabelChips([
-                  {
-                    id: m.labelId,
-                    name: m.labelName,
-                    leaf: m.labelLeaf,
-                    displayName: m.labelLeaf,
-                    isKunderChild: true
-                  }
-                ])
-              : '';
           const handleCls =
             handleStatusApi && !isSharedListId(m.id)
               ? handleStatusApi.listItemClass(handleStatusApi.get(m.id))
@@ -463,7 +449,6 @@
         </div>
         <div class="mejl-item-from">${esc(sender)}</div>
         <div class="mejl-item-subject">${esc(m.subject)}</div>
-        ${labelHtml}
         ${sharedBadge}
         <div class="mejl-item-snippet">${esc(m.snippet || '')}</div>
       </div>
