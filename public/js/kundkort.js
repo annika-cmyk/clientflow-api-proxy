@@ -13185,8 +13185,11 @@ class CustomerCardManager {
                             <i class="fas fa-save"></i> Spara utkast
                         </button>
                         ${avtal ? `
-                        <button type="button" class="btn btn-secondary" onclick="customerCardManager.downloadUppdragsavtalPdf('${avtal.id}')">
+                        <button type="button" class="btn btn-secondary" id="ua-download-pdf-btn" onclick="customerCardManager.downloadUppdragsavtalPdf('${avtal.id}')">
                             <i class="fas fa-file-pdf"></i> Ladda ner PDF
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="ua-preview-pdf-btn" onclick="customerCardManager.previewUppdragsavtalPdf('${avtal.id}')">
+                            <i class="fas fa-eye"></i> Förhandsgranskning
                         </button>
                         <button type="button" class="btn btn-inleed" onclick="customerCardManager.skickaInleed('${avtal.id}')">
                             <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
@@ -13412,30 +13415,118 @@ class CustomerCardManager {
         }
     }
 
+    async _fetchUppdragsavtalPdfBlob(avtalId) {
+        const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/pdf`, {
+            method: 'POST',
+            ...getAuthOptsKundkort()
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+        const filename = match
+            ? decodeURIComponent(match[1].replace(/"/g, '').trim())
+            : 'Uppdragsavtal.pdf';
+        return { blob, filename };
+    }
+
+    closeUppdragsavtalPreviewModal() {
+        const modal = document.getElementById('ua-pdf-preview-modal');
+        if (modal && modal._objectUrl) {
+            try { URL.revokeObjectURL(modal._objectUrl); } catch (_) { /* ignore */ }
+        }
+        if (modal) modal.remove();
+    }
+
+    async previewUppdragsavtalPdf(avtalId) {
+        if (!avtalId) return;
+        const triggerBtn = document.getElementById('ua-preview-pdf-btn');
+        const origText = triggerBtn?.innerHTML;
+        if (triggerBtn) {
+            triggerBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar...';
+            triggerBtn.disabled = true;
+        }
+
+        this.closeUppdragsavtalPreviewModal();
+        const modal = document.createElement('div');
+        modal.id = 'ua-pdf-preview-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-box document-preview-box ua-pdf-preview-box">
+                <div class="modal-header">
+                    <h3><i class="fas fa-eye"></i> Förhandsgranskning — uppdragsavtal</h3>
+                    <div class="document-preview-header-actions">
+                        <button type="button" class="modal-close" title="Stäng" onclick="customerCardManager.closeUppdragsavtalPreviewModal()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-body document-preview-body" id="ua-pdf-preview-body">
+                    <p class="section-desc"><i class="fas fa-spinner fa-spin"></i> Genererar förhandsgranskning...</p>
+                </div>
+                <div class="modal-footer ua-pdf-preview-footer">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="customerCardManager.closeUppdragsavtalPreviewModal()">Stäng</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="ua-pdf-preview-download" disabled>
+                        <i class="fas fa-download"></i> Ladda ner PDF
+                    </button>
+                    <button type="button" class="btn btn-inleed btn-sm" id="ua-pdf-preview-skicka" onclick="customerCardManager.skickaInleed('${avtalId}')">
+                        <i class="fas fa-pen-nib"></i> Skicka för signering (InLeed)
+                    </button>
+                </div>
+            </div>`;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) this.closeUppdragsavtalPreviewModal();
+        });
+        document.body.appendChild(modal);
+
+        const body = document.getElementById('ua-pdf-preview-body');
+        const downloadBtn = document.getElementById('ua-pdf-preview-download');
+        try {
+            const { blob, filename } = await this._fetchUppdragsavtalPdfBlob(avtalId);
+            const objectUrl = URL.createObjectURL(blob);
+            modal._objectUrl = objectUrl;
+            if (body) {
+                body.innerHTML = `<iframe class="document-preview-frame" title="Förhandsgranskning uppdragsavtal" src="${this.escapeDocHtml(objectUrl)}"></iframe>`;
+            }
+            if (downloadBtn) {
+                downloadBtn.disabled = false;
+                downloadBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = objectUrl;
+                    a.download = filename || 'Uppdragsavtal.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+            }
+        } catch (error) {
+            console.error('❌ Förhandsgranska uppdragsavtal:', error);
+            if (body) {
+                body.innerHTML = `<p class="section-desc">Kunde inte generera förhandsgranskning: ${this.escapeDocHtml(error.message || 'okänt fel')}</p>`;
+            }
+            this.showNotification(`Kunde inte förhandsgranska: ${error.message}`, 'error');
+        } finally {
+            if (triggerBtn) {
+                triggerBtn.innerHTML = origText;
+                triggerBtn.disabled = false;
+            }
+        }
+    }
+
     async downloadUppdragsavtalPdf(avtalId) {
-        const btn = document.querySelector('.btn-inleed')?.previousElementSibling;
+        const btn = document.getElementById('ua-download-pdf-btn');
         const origText = btn?.innerHTML;
         if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Genererar...'; btn.disabled = true; }
 
         try {
-            const baseUrl = window.apiConfig?.baseUrl || 'http://localhost:3001';
-            const response = await fetch(`${baseUrl}/api/uppdragsavtal/${avtalId}/pdf`, {
-                method: 'POST',
-                ...getAuthOptsKundkort()
-            });
-
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || `HTTP ${response.status}`);
-            }
-
-            // Ladda ner PDF i webbläsaren
-            const blob = await response.blob();
+            const { blob, filename } = await this._fetchUppdragsavtalPdfBlob(avtalId);
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            const disposition = response.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
-            a.download = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'Uppdragsavtal.pdf';
+            a.download = filename || 'Uppdragsavtal.pdf';
             a.href = url;
             document.body.appendChild(a);
             a.click();
